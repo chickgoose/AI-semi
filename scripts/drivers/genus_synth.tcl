@@ -24,9 +24,9 @@ set_db syn_map_effort medium
 set_db syn_opt_effort medium
 
 read_hdl -sv -f $filelist
-set parameters [list NUM_SOURCES $sources ADDR_WIDTH $addr_w]
+set parameters [list $sources $addr_w]
 if {$variant eq "improved"} {
-  lappend parameters FIFO_DEPTH [require_env AER_FIFO_DEPTH]
+  lappend parameters [require_env AER_FIFO_DEPTH]
 }
 elaborate $top -parameters $parameters
 check_design -unresolved
