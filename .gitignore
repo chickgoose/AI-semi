@@ -1,0 +1,14 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+.venv/
+
+# Agent worktrees
+.worktrees/
+
+# Common generated files
+__pycache__/
+node_modules/
+dist/
+build/
