@@ -30,7 +30,8 @@ module aer_sync_fifo #(
 
     // A full FIFO can accept a replacement in the same cycle that its head
     // is consumed. An empty FIFO intentionally has no combinational bypass.
-    assign in_ready_o = (count_q < DEPTH) || (out_valid_o && out_ready_i);
+    assign in_ready_o = (count_q < COUNT_WIDTH'(DEPTH)) ||
+                        (out_valid_o && out_ready_i);
     assign push       = in_valid_i && in_ready_o;
     assign pop        = out_valid_o && out_ready_i;
     assign occupancy_o = count_q;
@@ -43,14 +44,14 @@ module aer_sync_fifo #(
         end else begin
             if (push) begin
                 mem[write_ptr_q] <= in_data_i;
-                if (write_ptr_q == DEPTH-1)
+                if (write_ptr_q == PTR_WIDTH'(DEPTH-1))
                     write_ptr_q <= '0;
                 else
                     write_ptr_q <= write_ptr_q + 1'b1;
             end
 
             if (pop) begin
-                if (read_ptr_q == DEPTH-1)
+                if (read_ptr_q == PTR_WIDTH'(DEPTH-1))
                     read_ptr_q <= '0;
                 else
                     read_ptr_q <= read_ptr_q + 1'b1;

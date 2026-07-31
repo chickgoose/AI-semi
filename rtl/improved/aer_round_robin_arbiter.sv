@@ -22,6 +22,7 @@ module aer_round_robin_arbiter #(
         grant_o       = '0;
         grant_valid_o = 1'b0;
         grant_index_o = '0;
+        candidate     = 0;
 
         if (locked_q) begin
             grant_o[locked_index_q] = 1'b1;
@@ -29,7 +30,7 @@ module aer_round_robin_arbiter #(
             grant_index_o           = locked_index_q;
         end else begin
             for (offset = 0; offset < NUM_SOURCES; offset = offset + 1) begin
-                candidate = priority_q + offset;
+                candidate = int'(priority_q) + offset;
                 if (candidate >= NUM_SOURCES)
                     candidate = candidate - NUM_SOURCES;
 
@@ -54,14 +55,14 @@ module aer_round_robin_arbiter #(
             if (locked_q) begin
                 if (advance_i) begin
                     locked_q <= 1'b0;
-                    if (locked_index_q == NUM_SOURCES-1)
+                    if (locked_index_q == INDEX_WIDTH'(NUM_SOURCES-1))
                         priority_q <= '0;
                     else
                         priority_q <= locked_index_q + 1'b1;
                 end
             end else if (grant_valid_o) begin
                 if (advance_i) begin
-                    if (grant_index_o == NUM_SOURCES-1)
+                    if (grant_index_o == INDEX_WIDTH'(NUM_SOURCES-1))
                         priority_q <= '0;
                     else
                         priority_q <= grant_index_o + 1'b1;

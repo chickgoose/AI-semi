@@ -1,11 +1,12 @@
 `timescale 1ns/1ps
 
-module aer_improved_tb;
-    localparam int NUM_SOURCES = 3;
-    localparam int ADDR_WIDTH  = 8;
-    localparam int FIFO_DEPTH = 2;
-    localparam int EVENTS_PER_SOURCE = 18;
-    localparam int SOURCE_WIDTH = $clog2(NUM_SOURCES);
+module aer_improved_tb #(
+    parameter int NUM_SOURCES = 3,
+    parameter int ADDR_WIDTH  = 8,
+    parameter int FIFO_DEPTH = 2,
+    parameter int EVENTS_PER_SOURCE = 18
+);
+    localparam int SOURCE_WIDTH = (NUM_SOURCES > 1) ? $clog2(NUM_SOURCES) : 1;
     localparam int MAX_EVENTS = 128;
 
     logic clk;
@@ -132,37 +133,40 @@ module aer_improved_tb;
     endtask
 
     task automatic test_fifo_full_replacement;
+        integer item;
         begin
-            $display("A2_TEST FIFO full simultaneous pop/push");
-            push_fifo(8'h11);
-            push_fifo(8'h22);
+            $display("A2_TEST FIFO full simultaneous pop/push depth=%0d", FIFO_DEPTH);
+            for (item = 0; item < FIFO_DEPTH; item = item + 1)
+                push_fifo(ADDR_WIDTH'(8'h10 + item));
 
-            if (fifo_occupancy != FIFO_DEPTH || fifo_in_ready)
+            if (int'(fifo_occupancy) != FIFO_DEPTH || fifo_in_ready)
                 report_error("FIFO did not enter the expected full state");
 
             @(negedge clk);
             fifo_in_valid = 1'b1;
-            fifo_in_data = 8'h33;
+            fifo_in_data = ADDR_WIDTH'(8'hE1);
             fifo_out_ready = 1'b1;
             #1;
-            if (!fifo_in_ready || !fifo_out_valid || fifo_out_data != 8'h11)
+            if (!fifo_in_ready || !fifo_out_valid ||
+                fifo_out_data != ADDR_WIDTH'(8'h10))
                 report_error("FIFO full replacement handshake is incorrect");
             @(posedge clk);
             #1;
             fifo_in_valid = 1'b0;
-            if (fifo_occupancy != FIFO_DEPTH || fifo_out_data != 8'h22)
-                report_error("FIFO replacement changed count/order");
+            if (int'(fifo_occupancy) != FIFO_DEPTH)
+                report_error("FIFO replacement changed occupancy");
 
-            @(posedge clk);
-            if (!fifo_out_valid || fifo_out_data != 8'h22)
-                report_error("FIFO lost or reordered the second event");
-            #1;
-            if (fifo_occupancy != 1 || fifo_out_data != 8'h33)
-                report_error("FIFO replacement event was not retained");
+            for (item = 1; item < FIFO_DEPTH; item = item + 1) begin
+                if (!fifo_out_valid ||
+                    fifo_out_data != ADDR_WIDTH'(8'h10 + item))
+                    report_error("FIFO lost or reordered a pre-existing event");
+                @(posedge clk);
+                #1;
+            end
 
-            @(posedge clk);
-            if (!fifo_out_valid || fifo_out_data != 8'h33)
+            if (!fifo_out_valid || fifo_out_data != ADDR_WIDTH'(8'hE1))
                 report_error("FIFO replacement event was duplicated or lost");
+            @(posedge clk);
             #1;
             fifo_out_ready = 1'b0;
             if (fifo_occupancy != 0 || fifo_out_valid)
@@ -173,39 +177,51 @@ module aer_improved_tb;
     task automatic test_grant_lock;
         logic [ADDR_WIDTH-1:0] held_addr;
         logic [SOURCE_WIDTH-1:0] held_src;
+        integer held_source;
+        integer competing_source;
+        logic competing_accepted;
         integer stall_cycle;
         begin
-            $display("A2_TEST backpressure grant lock");
+            held_source = NUM_SOURCES - 1;
+            competing_source = 0;
+            competing_accepted = 1'b0;
+            $display("A2_TEST backpressure grant lock sources=%0d depth=%0d",
+                     NUM_SOURCES, FIFO_DEPTH);
             reset_design();
 
             @(negedge clk);
-            in_valid[2] = 1'b1;
-            in_addr[2] = 8'hA2;
+            in_valid[held_source] = 1'b1;
+            in_addr[held_source] = ADDR_WIDTH'(8'hA0 + held_source);
             @(posedge clk);
             @(negedge clk);
-            in_valid[2] = 1'b0;
-            in_valid[0] = 1'b1;
-            in_addr[0] = 8'hB0;
+            in_valid[held_source] = 1'b0;
+            in_valid[competing_source] = 1'b1;
+            in_addr[competing_source] = ADDR_WIDTH'(8'hB0);
             #1;
-            if (!out_valid || out_src != 2 || out_addr != 8'hA2)
+            if (!out_valid || out_src != SOURCE_WIDTH'(held_source) ||
+                out_addr != ADDR_WIDTH'(8'hA0 + held_source))
                 report_error("Unexpected initial grant before stall");
             held_addr = out_addr;
             held_src = out_src;
 
             for (stall_cycle = 0; stall_cycle < 4; stall_cycle = stall_cycle + 1) begin
                 @(posedge clk);
+                if (in_valid[competing_source] && in_ready[competing_source])
+                    competing_accepted = 1'b1;
                 #1;
                 if (!out_valid || out_addr != held_addr || out_src != held_src)
                     report_error("Grant/payload changed while output was stalled");
                 @(negedge clk);
-                if (in_ready[0])
-                    in_valid[0] = 1'b0;
+                if (competing_accepted)
+                    in_valid[competing_source] = 1'b0;
             end
 
             out_ready = 1'b1;
             @(posedge clk);
             #1;
-            if (!out_valid || out_src != 0 || out_addr != 8'hB0)
+            in_valid[competing_source] = 1'b0;
+            if (!out_valid || out_src != SOURCE_WIDTH'(competing_source) ||
+                out_addr != ADDR_WIDTH'(8'hB0))
                 report_error("Round-robin did not advance after releasing stall");
             @(posedge clk);
             #1;
@@ -219,7 +235,8 @@ module aer_improved_tb;
         integer active_sources;
         integer i;
         begin
-            $display("A2_TEST three-source saturated fairness");
+            $display("A2_TEST saturated fairness sources=%0d depth=%0d",
+                     NUM_SOURCES, FIFO_DEPTH);
             reset_design();
             for (i = 0; i < NUM_SOURCES; i = i + 1) begin
                 sent[i] = 0;
@@ -298,7 +315,8 @@ module aer_improved_tb;
             end
 
             if (out_valid && out_ready) begin
-                if ($isunknown({out_src, out_addr}) || out_src >= NUM_SOURCES) begin
+                if ($isunknown({out_src, out_addr}) ||
+                    int'(out_src) >= NUM_SOURCES) begin
                     report_error("Unknown or illegal output payload");
                 end else if (head[out_src] >= tail[out_src]) begin
                     report_error("Duplicate or unexpected output event");
@@ -339,7 +357,8 @@ module aer_improved_tb;
         test_saturated_fairness();
 
         if (error_count == 0) begin
-            $display("A2_TEST_PASS all improved RTL checks");
+            $display("A2_TEST_PASS sources=%0d depth=%0d accepted=%0d emitted=%0d",
+                     NUM_SOURCES, FIFO_DEPTH, accepted_count, emitted_count);
             $finish;
         end else begin
             $fatal(1, "A2_TEST_FAIL errors=%0d", error_count);
