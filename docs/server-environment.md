@@ -102,7 +102,7 @@ RC tech file의 위치를 확인한다. 전체 PDK를 재귀 검색하거나 로
 | 표준셀 library/revision | `gsclib045_all_v4.7` |
 | 합성 target/link library | config의 `AER_LIBRARY_FILE` |
 | STA library set | TBD |
-| 비교용 PVT corner | provisional slow, 0.9 V / 125°C |
+| 비교용 PVT corner | `PVT_0P9V_125C` (provisional slow, 0.9 V / 125°C) |
 | 공식 평가 corner | TBD |
 | RC corner | TBD |
 | power용 library/activity 형식 | TBD |

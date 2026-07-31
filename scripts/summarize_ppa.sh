@@ -18,12 +18,17 @@ comparison="$run_dir/comparison.tsv"
 mkdir -p "$run_dir"
 printf 'design\tarea_um2\twns_ns\ttns_ns\tfmax_mhz\ttotal_power_mw\tdynamic_power_mw\tleakage_power_mw\n' > "$summary"
 
+is_number() {
+  [[ "$1" =~ ^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$ ]]
+}
+
 validate_metrics_file() {
   local metrics_file="$1"
   local expected
   local metric
   local unit
   local count
+  local value
   [[ -f "$metrics_file" ]] || aer_die "missing $metrics_file"
   [[ "$(sed -n '1p' "$metrics_file")" == $'metric\tvalue\tunit' ]] ||
     aer_die "invalid metrics header: $metrics_file"
@@ -34,6 +39,8 @@ validate_metrics_file() {
     count="$(awk -F '\t' -v wanted="$metric" -v expected_unit="$unit" \
       '$1 == wanted && $3 == expected_unit {count++} END {print count+0}' "$metrics_file")"
     [[ "$count" == "1" ]] || aer_die "expected one $metric ($unit) row: $metrics_file"
+    value="$(awk -F '\t' -v wanted="$metric" '$1 == wanted {print $2; exit}' "$metrics_file")"
+    is_number "$value" || aer_die "required metric $metric is not numeric ($value): $metrics_file"
   done
 }
 
@@ -71,10 +78,6 @@ printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$AER_IMPROVED_NAME" "${improved_values[cell_area]}" "${improved_values[wns]}" \
   "${improved_values[tns]}" "${improved_values[fmax]}" "${improved_values[total_power]}" \
   "${improved_values[dynamic_power]}" "${improved_values[leakage_power]}" >> "$summary"
-
-is_number() {
-  [[ "$1" =~ ^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$ ]]
-}
 
 write_comparison() {
   local metric="$1"

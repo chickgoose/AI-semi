@@ -26,7 +26,7 @@ export AER_OUTPUT_DELAY_NS="0.250"
 export AER_CLOCK_UNCERTAINTY_NS="0.100"
 export AER_LOAD_PF="0.010"
 export AER_DRIVER_CELL=""
-export AER_CORNER="gpdk045_slow_vdd1v0"
+export AER_CORNER="PVT_0P9V_125C"
 
 # Supply one absolute server path. AER_STD_CELL_ROOT should name the extracted
 # .../gsclib045 directory, not the archive and not a copied repository file.

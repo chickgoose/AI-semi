@@ -33,17 +33,29 @@ if rg -q 'aer_baseline_top.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"; then
   exit 1
 fi
 rg -qx 'rtl/improved/aer_dut.sv' "$PROJECT_ROOT/tb/filelists/improved.f"
+rg -q 'set parameters \[list \$sources \$addr_w\]' "$PROJECT_ROOT/scripts/drivers/genus_synth.tcl" || {
+  printf 'Genus top parameters must use positional source/address values\n' >&2
+  exit 1
+}
+rg -q 'lappend parameters \[require_env AER_FIFO_DEPTH\]' "$PROJECT_ROOT/scripts/drivers/genus_synth.tcl" || {
+  printf 'Improved Genus parameters must append FIFO depth value only\n' >&2
+  exit 1
+}
+if rg -q 'git -C' "$PROJECT_ROOT/scripts/lib/common.sh"; then
+  printf 'manifest commit lookup must support old Git without -C\n' >&2
+  exit 1
+fi
 rg -q 'command=.*-timescale 1ns/1ps' "$PROJECT_ROOT/scripts/run_sim.sh" || {
   printf 'Xcelium command must set -timescale 1ns/1ps\n' >&2
   exit 1
 }
 example_config="$(bash -c 'source "$1"; printf "%s:%s:%s:%s:%s:%s" "$AER_BASELINE_TOP" "$AER_IMPROVED_TOP" "$AER_ADDR_WIDTH" "$AER_CLOCK_PORT" "$AER_RESET_PORT" "$AER_CORNER"' _ "$PROJECT_ROOT/scripts/config.example.sh")"
-[[ "$example_config" == "aer_dut:aer_dut:16:clk:rst_n:gpdk045_slow_vdd1v0" ]] || {
+[[ "$example_config" == "aer_dut:aer_dut:16:clk:rst_n:PVT_0P9V_125C" ]] || {
   printf 'common config defaults changed: %s\n' "$example_config" >&2
   exit 1
 }
 frozen="$(AER_LIBRARY_FILE=/tmp/slow_vdd1v0_basicCells.lib bash -c 'source "$1"; printf "%s:%s:%s:%s:%s:%s:%s:%s:%s" "$AER_NUM_SOURCES" "$AER_ADDR_WIDTH" "$AER_FIFO_DEPTH" "$AER_CLOCK_PERIOD_NS" "$AER_CLOCK_PORT" "$AER_RESET_PORT" "$AER_CORNER" "$AER_POWER_MODE" "$AER_RUN_ID"' _ "$PROJECT_ROOT/scripts/config.ppa.sh")"
-[[ "$frozen" == "4:16:4:5.000:clk:rst_n:gpdk045_slow_vdd1v0:genus_vectorless:ppa-20260731-slow1v0-5ns" ]] || {
+[[ "$frozen" == "4:16:4:5.000:clk:rst_n:PVT_0P9V_125C:genus_vectorless:ppa-20260731-slow1v0-5ns" ]] || {
   printf 'frozen PPA configuration changed: %s\n' "$frozen" >&2
   exit 1
 }

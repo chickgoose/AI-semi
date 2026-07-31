@@ -76,36 +76,84 @@ extract_qor_timing() {
   ' "$qor_report"
 }
 
+extract_power_subtotal() {
+  awk '
+    tolower($0) ~ /leakage.*internal.*switching.*total/ {seen_header = 1; next}
+    seen_header && /^[[:space:]]*Subtotal([[:space:]]|$)/ {
+      count = 0
+      for (i = 2; i <= NF; i++) {
+        token = $i
+        gsub(/[,;:=()]/, "", token)
+        if (token ~ /^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$/) {
+          count++
+          number[count] = token
+        }
+      }
+      if (count >= 4) {
+        # Genus Subtotal columns: Leakage, Internal, Switching, Total (W).
+        printf "%s\t%s\t%s\t%s\n", number[1], number[2], number[3], number[4]
+        exit
+      }
+    }
+  ' "$power_report"
+}
+
 area="$(extract_number 'total[[:space:]_]+(cell[[:space:]_]+)?area|cell[[:space:]_]+area' "$area_report" "$qor_report")"
-wns="$(extract_number '(^|[^a-z])wns([^a-z]|$)|worst.*slack|slack.*worst' "$qor_report" "$timing_report")"
-tns="$(extract_number '(^|[^a-z])tns([^a-z]|$)|total.*negative.*slack' "$qor_report" "$timing_report")"
+wns_ps="$(extract_number '(^|[^a-z])wns([^a-z]|$)|worst.*slack|slack.*worst' "$qor_report" "$timing_report")"
+tns_ps="$(extract_number '(^|[^a-z])tns([^a-z]|$)|total.*negative.*slack' "$qor_report" "$timing_report")"
 [[ -n "$area" ]] || area="$(extract_qor_area)"
-[[ -n "$wns" ]] || wns="$(extract_qor_timing wns)"
-[[ -n "$tns" ]] || tns="$(extract_qor_timing tns)"
-total_power="$(extract_number 'total[[:space:]_]+power' "$power_report")"
-dynamic_power="$(extract_number 'dynamic[[:space:]_]+power|total[[:space:]_]+dynamic' "$power_report")"
-leakage_power="$(extract_number 'leakage[[:space:]_]+power|total[[:space:]_]+leakage' "$power_report")"
+[[ -n "$wns_ps" ]] || wns_ps="$(extract_qor_timing wns)"
+[[ -n "$tns_ps" ]] || tns_ps="$(extract_qor_timing tns)"
+
+wns_ns=""
+tns_ns=""
+if [[ -n "$wns_ps" ]]; then
+  wns_ns="$(awk -v value="$wns_ps" 'BEGIN {printf "%.6f", value/1000.0}')"
+fi
+if [[ -n "$tns_ps" ]]; then
+  tns_ns="$(awk -v value="$tns_ps" 'BEGIN {printf "%.6f", value/1000.0}')"
+fi
+
+power_subtotal="$(extract_power_subtotal)"
+leakage_w=""
+internal_w=""
+switching_w=""
+total_w=""
+if [[ -n "$power_subtotal" ]]; then
+  IFS=$'\t' read -r leakage_w internal_w switching_w total_w <<< "$power_subtotal"
+fi
+
+leakage_power=""
+dynamic_power=""
+total_power=""
+if [[ -n "$leakage_w" && -n "$internal_w" && -n "$switching_w" && -n "$total_w" ]]; then
+  leakage_power="$(awk -v value="$leakage_w" 'BEGIN {printf "%.9f", value*1000.0}')"
+  dynamic_power="$(awk -v internal="$internal_w" -v switching="$switching_w" \
+    'BEGIN {printf "%.9f", (internal+switching)*1000.0}')"
+  total_power="$(awk -v value="$total_w" 'BEGIN {printf "%.9f", value*1000.0}')"
+fi
 
 fmax="N/A"
-if [[ -n "$wns" ]]; then
-  fmax="$(awk -v period="$clock_period" -v slack="$wns" 'BEGIN {
-    delay = period - slack
-    if (delay > 0) printf "%.6f", 1000.0 / delay; else print "N/A"
+if [[ -n "$wns_ps" ]]; then
+  fmax="$(awk -v period_ns="$clock_period" -v slack_ps="$wns_ps" 'BEGIN {
+    period_ps = period_ns * 1000.0
+    critical_path_ps = period_ps - slack_ps
+    if (critical_path_ps > 0) printf "%.6f", 1000000.0 / critical_path_ps; else print "N/A"
   }')"
 fi
 
 {
   printf 'metric\tvalue\tunit\n'
   printf 'cell_area\t%s\tum2\n' "$(first_or_na "$area")"
-  printf 'wns\t%s\tns\n' "$(first_or_na "$wns")"
-  printf 'tns\t%s\tns\n' "$(first_or_na "$tns")"
+  printf 'wns\t%s\tns\n' "$(first_or_na "$wns_ns")"
+  printf 'tns\t%s\tns\n' "$(first_or_na "$tns_ns")"
   printf 'fmax\t%s\tMHz\n' "$fmax"
-  # Confirm the unit printed in the server report before treating these as mW.
   printf 'total_power\t%s\tmW\n' "$(first_or_na "$total_power")"
   printf 'dynamic_power\t%s\tmW\n' "$(first_or_na "$dynamic_power")"
   printf 'leakage_power\t%s\tmW\n' "$(first_or_na "$leakage_power")"
 } > "$output_dir/metrics.tsv"
 
-if [[ "$area" == "" || "$wns" == "" || "$tns" == "" || "$total_power" == "" ]]; then
+if [[ "$area" == "" || "$wns_ns" == "" || "$tns_ns" == "" ||
+      "$leakage_power" == "" || "$dynamic_power" == "" || "$total_power" == "" ]]; then
   printf 'warning: one or more metrics were not recognized; inspect reports and N/A fields\n' >&2
 fi

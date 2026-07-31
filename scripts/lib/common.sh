@@ -52,7 +52,7 @@ aer_record_manifest() {
   {
     printf 'run_id=%s\n' "$AER_RUN_ID"
     printf 'utc_started=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf 'git_commit=%s\n' "$(git -C "$AER_PROJECT_ROOT" rev-parse HEAD)"
+    printf 'git_commit=%s\n' "$(cd "$AER_PROJECT_ROOT" && git rev-parse HEAD)"
     printf 'design=%s\n' "$AER_DESIGN"
     printf 'stage=%s\n' "$AER_STAGE"
     printf 'top=%s\n' "$AER_TOP"

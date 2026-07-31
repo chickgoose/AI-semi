@@ -63,3 +63,9 @@ around zero is misleading.
 `N/A` when a Genus format is not recognized; inspect and update the extractor
 instead of substituting a guessed value. Confirm the power unit printed by the
 server report before publishing the normalized mW values.
+
+For the current GPDK045 Genus reports, QoR timing values are parsed as ps and
+converted to ns. The power `Subtotal` columns are parsed as Leakage, Internal,
+Switching, and Total in W, then converted to mW; dynamic power is
+`Internal + Switching`. Summary generation fails if any required metric is
+missing, `N/A`, duplicated, or non-numeric.

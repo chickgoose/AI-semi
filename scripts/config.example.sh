@@ -29,7 +29,7 @@ export AER_CLOCK_UNCERTAINTY_NS="${AER_CLOCK_UNCERTAINTY_NS:-0.100}"
 export AER_DRIVER_CELL="${AER_DRIVER_CELL:-}"
 export AER_LOAD_PF="${AER_LOAD_PF:-0.010}"
 # This is a provisional comparison corner, not the official competition corner.
-export AER_CORNER="${AER_CORNER:-gpdk045_slow_vdd1v0}"
+export AER_CORNER="${AER_CORNER:-PVT_0P9V_125C}"
 
 # Set AER_STD_CELL_ROOT to the extracted .../gsclib045 directory on the server.
 export AER_GPDK_ROOT="${AER_GPDK_ROOT:-}"
