@@ -1,0 +1,368 @@
+`timescale 1ns/1ps
+
+module aer_improved_tb #(
+    parameter int NUM_SOURCES = 3,
+    parameter int ADDR_WIDTH  = 8,
+    parameter int FIFO_DEPTH = 2,
+    parameter int EVENTS_PER_SOURCE = 18
+);
+    localparam int SOURCE_WIDTH = (NUM_SOURCES > 1) ? $clog2(NUM_SOURCES) : 1;
+    localparam int MAX_EVENTS = 128;
+
+    logic clk;
+    logic rst_n;
+
+    logic [NUM_SOURCES-1:0] in_valid;
+    logic [NUM_SOURCES-1:0] in_ready;
+    logic [ADDR_WIDTH-1:0] in_addr [NUM_SOURCES];
+    logic out_valid;
+    logic out_ready;
+    logic [ADDR_WIDTH-1:0] out_addr;
+    logic [SOURCE_WIDTH-1:0] out_src;
+
+    logic fifo_in_valid;
+    logic fifo_in_ready;
+    logic [ADDR_WIDTH-1:0] fifo_in_data;
+    logic fifo_out_valid;
+    logic fifo_out_ready;
+    logic [ADDR_WIDTH-1:0] fifo_out_data;
+    logic [$clog2(FIFO_DEPTH+1)-1:0] fifo_occupancy;
+
+    logic [ADDR_WIDTH-1:0] expected [NUM_SOURCES][MAX_EVENTS];
+    integer head [NUM_SOURCES];
+    integer tail [NUM_SOURCES];
+    integer service_count [NUM_SOURCES];
+    integer accepted_count;
+    integer emitted_count;
+    integer error_count;
+    integer source;
+    integer sent [NUM_SOURCES];
+    integer minimum_service;
+    integer maximum_service;
+    logic check_fairness;
+    logic previous_stalled;
+    logic [ADDR_WIDTH-1:0] stalled_addr;
+    logic [SOURCE_WIDTH-1:0] stalled_src;
+
+    aer_dut #(
+        .NUM_SOURCES (NUM_SOURCES),
+        .ADDR_WIDTH  (ADDR_WIDTH),
+        .FIFO_DEPTH  (FIFO_DEPTH)
+    ) u_dut (
+        .clk       (clk),
+        .rst_n     (rst_n),
+        .in_valid  (in_valid),
+        .in_ready  (in_ready),
+        .in_addr   (in_addr),
+        .out_valid (out_valid),
+        .out_ready (out_ready),
+        .out_addr  (out_addr),
+        .out_src   (out_src)
+    );
+
+    aer_sync_fifo #(
+        .DATA_WIDTH (ADDR_WIDTH),
+        .DEPTH      (FIFO_DEPTH)
+    ) u_fifo_unit (
+        .clk_i       (clk),
+        .rst_ni      (rst_n),
+        .in_valid_i  (fifo_in_valid),
+        .in_ready_o  (fifo_in_ready),
+        .in_data_i   (fifo_in_data),
+        .out_valid_o (fifo_out_valid),
+        .out_ready_i (fifo_out_ready),
+        .out_data_o  (fifo_out_data),
+        .occupancy_o (fifo_occupancy)
+    );
+
+    initial clk = 1'b0;
+    always #5 clk = ~clk;
+
+    function automatic logic [ADDR_WIDTH-1:0] make_event(
+        input integer source_id,
+        input integer event_sequence
+    );
+        make_event = ADDR_WIDTH'((source_id << 5) | event_sequence);
+    endfunction
+
+    task automatic report_error(input string message);
+        begin
+            $error("%s", message);
+            error_count = error_count + 1;
+        end
+    endtask
+
+    task automatic clear_inputs;
+        integer i;
+        begin
+            in_valid = '0;
+            out_ready = 1'b0;
+            fifo_in_valid = 1'b0;
+            fifo_in_data = '0;
+            fifo_out_ready = 1'b0;
+            check_fairness = 1'b0;
+            for (i = 0; i < NUM_SOURCES; i = i + 1)
+                in_addr[i] = '0;
+        end
+    endtask
+
+    task automatic reset_design;
+        begin
+            @(negedge clk);
+            clear_inputs();
+            rst_n = 1'b0;
+            repeat (3) @(posedge clk);
+            @(negedge clk);
+            rst_n = 1'b1;
+        end
+    endtask
+
+    task automatic push_fifo(input logic [ADDR_WIDTH-1:0] data);
+        begin
+            @(negedge clk);
+            fifo_in_valid = 1'b1;
+            fifo_in_data = data;
+            fifo_out_ready = 1'b0;
+            #1;
+            if (!fifo_in_ready)
+                report_error("FIFO unexpectedly rejected a fill push");
+            @(posedge clk);
+            #1;
+            fifo_in_valid = 1'b0;
+        end
+    endtask
+
+    task automatic test_fifo_full_replacement;
+        integer item;
+        begin
+            $display("A2_TEST FIFO full simultaneous pop/push depth=%0d", FIFO_DEPTH);
+            for (item = 0; item < FIFO_DEPTH; item = item + 1)
+                push_fifo(ADDR_WIDTH'(8'h10 + item));
+
+            if (int'(fifo_occupancy) != FIFO_DEPTH || fifo_in_ready)
+                report_error("FIFO did not enter the expected full state");
+
+            @(negedge clk);
+            fifo_in_valid = 1'b1;
+            fifo_in_data = ADDR_WIDTH'(8'hE1);
+            fifo_out_ready = 1'b1;
+            #1;
+            if (!fifo_in_ready || !fifo_out_valid ||
+                fifo_out_data != ADDR_WIDTH'(8'h10))
+                report_error("FIFO full replacement handshake is incorrect");
+            @(posedge clk);
+            #1;
+            fifo_in_valid = 1'b0;
+            if (int'(fifo_occupancy) != FIFO_DEPTH)
+                report_error("FIFO replacement changed occupancy");
+
+            for (item = 1; item < FIFO_DEPTH; item = item + 1) begin
+                if (!fifo_out_valid ||
+                    fifo_out_data != ADDR_WIDTH'(8'h10 + item))
+                    report_error("FIFO lost or reordered a pre-existing event");
+                @(posedge clk);
+                #1;
+            end
+
+            if (!fifo_out_valid || fifo_out_data != ADDR_WIDTH'(8'hE1))
+                report_error("FIFO replacement event was duplicated or lost");
+            @(posedge clk);
+            #1;
+            fifo_out_ready = 1'b0;
+            if (fifo_occupancy != 0 || fifo_out_valid)
+                report_error("FIFO did not become empty after the expected pops");
+        end
+    endtask
+
+    task automatic test_grant_lock;
+        logic [ADDR_WIDTH-1:0] held_addr;
+        logic [SOURCE_WIDTH-1:0] held_src;
+        integer held_source;
+        integer competing_source;
+        logic competing_accepted;
+        integer stall_cycle;
+        begin
+            held_source = NUM_SOURCES - 1;
+            competing_source = 0;
+            competing_accepted = 1'b0;
+            $display("A2_TEST backpressure grant lock sources=%0d depth=%0d",
+                     NUM_SOURCES, FIFO_DEPTH);
+            reset_design();
+
+            @(negedge clk);
+            in_valid[held_source] = 1'b1;
+            in_addr[held_source] = ADDR_WIDTH'(8'hA0 + held_source);
+            @(posedge clk);
+            @(negedge clk);
+            in_valid[held_source] = 1'b0;
+            in_valid[competing_source] = 1'b1;
+            in_addr[competing_source] = ADDR_WIDTH'(8'hB0);
+            #1;
+            if (!out_valid || out_src != SOURCE_WIDTH'(held_source) ||
+                out_addr != ADDR_WIDTH'(8'hA0 + held_source))
+                report_error("Unexpected initial grant before stall");
+            held_addr = out_addr;
+            held_src = out_src;
+
+            for (stall_cycle = 0; stall_cycle < 4; stall_cycle = stall_cycle + 1) begin
+                @(posedge clk);
+                if (in_valid[competing_source] && in_ready[competing_source])
+                    competing_accepted = 1'b1;
+                #1;
+                if (!out_valid || out_addr != held_addr || out_src != held_src)
+                    report_error("Grant/payload changed while output was stalled");
+                @(negedge clk);
+                if (competing_accepted)
+                    in_valid[competing_source] = 1'b0;
+            end
+
+            out_ready = 1'b1;
+            @(posedge clk);
+            #1;
+            in_valid[competing_source] = 1'b0;
+            if (!out_valid || out_src != SOURCE_WIDTH'(competing_source) ||
+                out_addr != ADDR_WIDTH'(8'hB0))
+                report_error("Round-robin did not advance after releasing stall");
+            @(posedge clk);
+            #1;
+            out_ready = 1'b0;
+            if (out_valid)
+                report_error("Unexpected duplicate output after grant-lock test");
+        end
+    endtask
+
+    task automatic test_saturated_fairness;
+        integer active_sources;
+        integer i;
+        begin
+            $display("A2_TEST saturated fairness sources=%0d depth=%0d",
+                     NUM_SOURCES, FIFO_DEPTH);
+            reset_design();
+            for (i = 0; i < NUM_SOURCES; i = i + 1) begin
+                sent[i] = 0;
+                in_valid[i] = 1'b1;
+                in_addr[i] = make_event(i, 0);
+            end
+            out_ready = 1'b1;
+            check_fairness = 1'b1;
+            active_sources = NUM_SOURCES;
+
+            while (active_sources != 0) begin
+                @(posedge clk);
+                for (i = 0; i < NUM_SOURCES; i = i + 1) begin
+                    if (in_valid[i] && in_ready[i])
+                        sent[i] = sent[i] + 1;
+                end
+                @(negedge clk);
+                active_sources = 0;
+                for (i = 0; i < NUM_SOURCES; i = i + 1) begin
+                    if (sent[i] < EVENTS_PER_SOURCE) begin
+                        in_valid[i] = 1'b1;
+                        in_addr[i] = make_event(i, sent[i]);
+                        active_sources = active_sources + 1;
+                    end else begin
+                        in_valid[i] = 1'b0;
+                    end
+                end
+            end
+
+            while (emitted_count < accepted_count)
+                @(posedge clk);
+            @(negedge clk);
+            check_fairness = 1'b0;
+            out_ready = 1'b0;
+
+            for (i = 0; i < NUM_SOURCES; i = i + 1) begin
+                if (sent[i] != EVENTS_PER_SOURCE ||
+                    service_count[i] != EVENTS_PER_SOURCE)
+                    report_error("A source was starved or lost events");
+            end
+            if (accepted_count != NUM_SOURCES * EVENTS_PER_SOURCE ||
+                emitted_count != accepted_count)
+                report_error("Saturated test count mismatch");
+        end
+    endtask
+
+    always @(posedge clk or negedge rst_n) begin
+        integer i;
+        if (!rst_n) begin
+            accepted_count = 0;
+            emitted_count = 0;
+            previous_stalled = 1'b0;
+            stalled_addr = '0;
+            stalled_src = '0;
+            for (i = 0; i < NUM_SOURCES; i = i + 1) begin
+                head[i] = 0;
+                tail[i] = 0;
+                service_count[i] = 0;
+            end
+        end else begin
+            if (previous_stalled &&
+                (!out_valid || out_addr !== stalled_addr || out_src !== stalled_src))
+                report_error("Monitor detected output changes during stall");
+            previous_stalled = out_valid && !out_ready;
+            if (out_valid && !out_ready) begin
+                stalled_addr = out_addr;
+                stalled_src = out_src;
+            end
+
+            for (i = 0; i < NUM_SOURCES; i = i + 1) begin
+                if (in_valid[i] && in_ready[i]) begin
+                    expected[i][tail[i]] = in_addr[i];
+                    tail[i] = tail[i] + 1;
+                    accepted_count = accepted_count + 1;
+                end
+            end
+
+            if (out_valid && out_ready) begin
+                if ($isunknown({out_src, out_addr}) ||
+                    int'(out_src) >= NUM_SOURCES) begin
+                    report_error("Unknown or illegal output payload");
+                end else if (head[out_src] >= tail[out_src]) begin
+                    report_error("Duplicate or unexpected output event");
+                end else begin
+                    if (out_addr !== expected[out_src][head[out_src]])
+                        report_error("Output event was lost, reordered, or corrupted");
+                    head[out_src] = head[out_src] + 1;
+                    service_count[out_src] = service_count[out_src] + 1;
+                    emitted_count = emitted_count + 1;
+                end
+
+                if (check_fairness) begin
+                    minimum_service = service_count[0];
+                    maximum_service = service_count[0];
+                    for (i = 1; i < NUM_SOURCES; i = i + 1) begin
+                        if (service_count[i] < minimum_service)
+                            minimum_service = service_count[i];
+                        if (service_count[i] > maximum_service)
+                            maximum_service = service_count[i];
+                    end
+                    if ((maximum_service - minimum_service) > 1)
+                        report_error("Saturated service skew exceeded one event");
+                end
+            end
+        end
+    end
+
+    initial begin
+        error_count = 0;
+        rst_n = 1'b0;
+        clear_inputs();
+        repeat (3) @(posedge clk);
+        @(negedge clk);
+        rst_n = 1'b1;
+
+        test_fifo_full_replacement();
+        test_grant_lock();
+        test_saturated_fairness();
+
+        if (error_count == 0) begin
+            $display("A2_TEST_PASS sources=%0d depth=%0d accepted=%0d emitted=%0d",
+                     NUM_SOURCES, FIFO_DEPTH, accepted_count, emitted_count);
+            $finish;
+        end else begin
+            $fatal(1, "A2_TEST_FAIL errors=%0d", error_count);
+        end
+    end
+
+endmodule
