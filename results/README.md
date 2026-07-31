@@ -5,7 +5,7 @@ kept out of Git. A run compares both designs with one configuration:
 
 ```text
 results/runs/<run-id>/
-├── baseline/{synth,sta,power}/
+├── baseline/{synth,sta,power}/   # STA/power appear when drivers are configured
 ├── improved/{synth,sta,power}/
 └── summary.tsv
 ```
@@ -40,3 +40,16 @@ the team agrees.
 Simulation writes one CSV per workload under `results/sim/`. Its columns cover
 accepted/emitted/error counts, average and maximum latency, throughput, Jain's
 fairness index, and maximum observed wait.
+
+`summary.tsv` is a one-row-per-design comparison table:
+
+```text
+design  area_um2  wns_ns  tns_ns  fmax_mhz  total_power_mw  dynamic_power_mw  leakage_power_mw
+baseline  ...
+improved  ...
+```
+
+`fmax` is derived as `1000 / (clock_period_ns - WNS_ns)`. Report parsing emits
+`N/A` when a Genus format is not recognized; inspect and update the extractor
+instead of substituting a guessed value. Confirm the power unit printed by the
+server report before publishing the normalized mW values.

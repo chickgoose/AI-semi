@@ -25,6 +25,20 @@ aer_init() {
   export AER_PROJECT_ROOT
 }
 
+aer_resolve_config() {
+  local requested="${1:-}"
+  local config_dir
+  if [[ -n "$requested" ]]; then
+    [[ -f "$requested" ]] || aer_die "config not found: $requested"
+    config_dir="$(cd "$(dirname "$requested")" && pwd)"
+    printf '%s/%s\n' "$config_dir" "$(basename "$requested")"
+  elif [[ -f "$AER_PROJECT_ROOT/scripts/config.local.sh" ]]; then
+    printf '%s\n' "$AER_PROJECT_ROOT/scripts/config.local.sh"
+  else
+    printf '%s\n' "$AER_PROJECT_ROOT/scripts/config.example.sh"
+  fi
+}
+
 aer_record_manifest() {
   local destination="$1"
   {
@@ -38,6 +52,10 @@ aer_record_manifest() {
     printf 'sdc=%s\n' "$AER_SDC"
     printf 'corner=%s\n' "$AER_CORNER"
     printf 'clock_period_ns=%s\n' "$AER_CLOCK_PERIOD_NS"
+    printf 'num_sources=%s\n' "$AER_NUM_SOURCES"
+    printf 'addr_width=%s\n' "$AER_ADDR_WIDTH"
+    printf 'fifo_depth=%s\n' "$AER_FIFO_DEPTH"
+    printf 'library_file=%s\n' "${AER_LIBRARY_FILE:-}"
     printf 'power_activity=%s\n' "${AER_POWER_ACTIVITY:-}"
     printf 'driver=%s\n' "$AER_DRIVER"
   } > "$destination"

@@ -3,14 +3,21 @@
 module aer_tb;
   parameter int NUM_SOURCES = 4;
   parameter int ADDR_WIDTH = 16;
+  parameter int FIFO_DEPTH = 4;
   parameter int EVENTS_PER_SOURCE = 32;
   parameter int TIMEOUT_CYCLES = 10000;
+  parameter bit SOURCE_ONLY_WORKLOAD = 1'b1;
 
   logic clk = 1'b0;
   always #5 clk = ~clk;
 
   aer_if #(.NUM_SOURCES(NUM_SOURCES), .ADDR_WIDTH(ADDR_WIDTH)) bus(clk);
-  dut_adapter #(.NUM_SOURCES(NUM_SOURCES), .ADDR_WIDTH(ADDR_WIDTH)) dut(bus);
+  dut_adapter #(
+    .NUM_SOURCES(NUM_SOURCES), .ADDR_WIDTH(ADDR_WIDTH), .FIFO_DEPTH(FIFO_DEPTH)
+  ) dut(bus);
+  aer_protocol_assertions #(
+    .NUM_SOURCES(NUM_SOURCES), .ADDR_WIDTH(ADDR_WIDTH)
+  ) protocol_assertions(bus);
 
   integer accepted_count;
   integer emitted_count;
@@ -25,13 +32,17 @@ module aer_tb;
 
   string test_name;
   string metrics_path;
+  string dump_path;
   integer metrics_fd;
   integer timeout;
   integer i;
 
   function automatic logic [ADDR_WIDTH-1:0] make_event(input integer source,
                                                         input integer sequence);
-    make_event = ADDR_WIDTH'((source << (ADDR_WIDTH/2)) ^ sequence);
+    if (SOURCE_ONLY_WORKLOAD)
+      make_event = ADDR_WIDTH'(source);
+    else
+      make_event = ADDR_WIDTH'((source << (ADDR_WIDTH/2)) ^ sequence);
   endfunction
 
   task automatic send_burst(input integer source, input integer count);
@@ -48,6 +59,11 @@ module aer_tb;
         if (bus.in_ready[source]) begin
           sequence = sequence + 1;
           request_timeout = 0;
+          // Apply the legacy baseline request-low phase to both designs so
+          // their offered event streams remain directly comparable.
+          @(negedge clk);
+          bus.in_valid[source] = 1'b0;
+          @(posedge clk);
         end else begin
           request_timeout = request_timeout + 1;
           if (request_timeout >= TIMEOUT_CYCLES)
@@ -170,6 +186,10 @@ module aer_tb;
   endtask
 
   initial begin
+    if ($value$plusargs("DUMPFILE=%s", dump_path)) begin
+      $dumpfile(dump_path);
+      $dumpvars(0, aer_tb);
+    end
     if (!$value$plusargs("TEST=%s", test_name))
       test_name = "single";
     if (!$value$plusargs("METRICS=%s", metrics_path))

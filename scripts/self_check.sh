@@ -9,7 +9,10 @@ for script in "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/lib/*.sh "$SCRIPT_DIR"/drivers/*.
 done
 
 required=(
-  tb/aer_if.sv tb/dut_adapter.sv tb/aer_scoreboard.sv tb/aer_tb.sv
+  tb/aer_if.sv tb/dut_adapter.sv tb/aer_protocol_assertions.sv
+  tb/aer_scoreboard.sv tb/aer_tb.sv tb/filelists/baseline.f
+  tb/filelists/improved.f scripts/drivers/genus.sh
+  scripts/drivers/genus_synth.tcl scripts/drivers/extract_genus_metrics.sh
   constraints/aer_common.sdc results/README.md docs/server-environment.md
   docs/tasks/a3.md
 )
