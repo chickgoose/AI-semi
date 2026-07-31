@@ -6,6 +6,9 @@ comparison increased area and power while reducing maximum frequency. Its
 implementation and measurements remain available in Git history and the `a2`
 branch; the decision record remains under `docs/`.
 
+팀 작업 경위, 서버 제공물, 자체 workload와 공식/비공식 평가 조건의 구분은
+[`docs/TEAM_HANDOFF_WORKLOAD.md`](docs/TEAM_HANDOFF_WORKLOAD.md)를 먼저 읽는다.
+
 Active RTL and file list:
 
 ```text

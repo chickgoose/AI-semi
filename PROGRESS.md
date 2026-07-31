@@ -10,6 +10,7 @@
 - 1차 결과 제출: **2026-08-28**
 - 2차 최종 제출: **2026-10-30**
 - 발표·시상: **2026-11-28**, 곤지암리조트
+- 팀 인수인계·workload 기준: [`docs/TEAM_HANDOFF_WORKLOAD.md`](docs/TEAM_HANDOFF_WORKLOAD.md)
 
 ## 완료
 
@@ -36,7 +37,7 @@
 - 할당 계정: `aiasic26911`
 - 접속 상태: SSH 인증 및 원격 셸 접속 완료
 - 원격 셸: `csh`
-- 다음 확인: EDA 도구·버전, PDK·표준셀 라이브러리, 작업 디렉터리·권한, 공식 실행/제출 절차
+- 다음 확인: 공식 AER 인터페이스/testbench, 평가 PVT·제약·power 방식, 제출 절차
 
 ### 재접속 절차
 
@@ -84,19 +85,20 @@ Git 이력에 보존하고, 측정 과정과 기각 근거는 `docs/tasks/a2.md`
 - [ ] Digital 트랙 제출이 공식 접수됐는지 확인
 - [ ] 참가팀 명단에서 팀 상태 확인
 - [x] 온라인 설계 환경 접근 권한 확인
-- [ ] 공정/PDK/표준셀 라이브러리 확인
-- [ ] 합성·STA·Power 도구와 버전 확인
+- [x] 서버 제공 GPDK045/표준셀 library inventory와 탐색 Liberty 확인
+- [x] Xcelium/Genus/Innovus/Tempus/Voltus 도구와 버전 확인
+- [ ] 공식 평가 PDK/PVT/clock/power 조건 확인
 - [ ] 공식 테스트벤치와 제출 형식 확인
 
 ### P1 — 사양 및 기준 모델
 
-- [ ] 이벤트 소스 개수와 주소 폭 결정
-- [ ] Request/Acknowledge handshake 결정
-- [ ] 동시 이벤트 처리와 backpressure 정책 결정
-- [ ] 파라미터화된 AER 인터페이스 작성
-- [ ] Fixed-priority arbiter 구현
-- [ ] AER transmitter/receiver 구현
-- [ ] Scoreboard 기반 self-checking testbench 구현
+- [x] 팀 내부 비교값으로 source 4개와 address 16 bit 결정(공식값 TBD)
+- [x] 내부 ready/valid handshake 결정(공식 request/ack 규격 TBD)
+- [x] 동시 이벤트와 backpressure 정책 결정
+- [x] 파라미터화된 AER 인터페이스 작성
+- [x] Fixed-priority arbiter 구현
+- [x] AER transmitter/receiver 구현
+- [x] Scoreboard 기반 self-checking testbench 구현
 
 ### P2 — 개선 및 측정
 
@@ -117,6 +119,11 @@ Git 이력에 보존하고, 측정 과정과 기각 근거는 `docs/tasks/a2.md`
 - 최종 참가 40팀 선발 기준과 발표 시점
 
 ## 참고 문서
+
+팀원이 작업 경위, 서버 제공물, 자체 workload, 평가 출처와 다음 할 일을 한 번에
+파악하려면 먼저 아래 문서를 읽는다.
+
+- [`docs/TEAM_HANDOFF_WORKLOAD.md`](docs/TEAM_HANDOFF_WORKLOAD.md)
 
 장기 프로젝트 자료는 Windows 로컬 경로에 보관한다.
 
