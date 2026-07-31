@@ -33,3 +33,9 @@ FIFO는 무한 burst를 흡수할 수 없다. FIFO가 full이고 해당 source�
 ## 계층형 arbiter 검토
 
 현재 flat round-robin은 모든 request를 한 번에 검색한다. `NUM_SOURCES`가 커져 arbitration mux가 critical path가 되면 source를 소규모 group으로 나누고, group 내부와 group 사이에 각각 round-robin을 적용하는 2단 구조를 검토한다. 다만 계층별 pointer 때문에 flat 방식과 정확히 같은 순서는 아니며, group-level fairness와 grant lock을 별도로 검증해야 한다. source 수와 timing 결과가 확정되기 전에는 면적·검증 부담을 피하기 위해 구현하지 않는다.
+
+## 1차 기능 검증 결과
+
+Xcelium 집중 회귀에서 3-source 포화 부하 동안 service count 편차가 1 event를 넘지 않았고, source당 18개 이벤트가 모두 한 번씩 출력됐다. full FIFO의 동시 pop/push는 점유량을 유지하면서 기존 head 다음에 replacement event를 보존했으며, 4-cycle receiver stall 동안 출력 주소와 source ID가 고정됐다.
+
+a3 scoreboard 연결 회귀에서도 simultaneous와 backpressure 각각 128개 입력 수락과 128개 출력을 기록했고 누락·중복 오류는 0, Jain fairness는 1.0이었다. 이는 기능·공정성 가설의 1차 근거이며, 기준 설계 대비 PPA와 latency trade-off는 통합 Genus run 이후 확정한다.
