@@ -134,8 +134,9 @@ operating condition은 0.9 V / 125°C이므로 header를 재확인한다.
 gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib
 ```
 
-서버의 `scripts/config.local.sh`에서만 `AER_STD_CELL_ROOT`와
-`AER_LIBRARY_FILE`을 설정한다. PDK 원본과 절대 경로는 커밋하지 않는다.
+탐색 합성에서는 `scripts/config.ppa.sh`를 사용하고 셸 환경의
+`AER_LIBRARY_FILE`에 이 파일의 절대 경로를 전달한다. PDK 원본과 절대 경로는
+커밋하지 않는다.
 
 ## 5. 공식 예제와 실행법
 
@@ -152,12 +153,22 @@ Xcelium 회귀와 Genus 논리 합성 driver는 저장소에 준비되어 있다
 ```bash
 scripts/run_sim.sh baseline
 scripts/run_sim.sh improved
-scripts/run_ppa.sh
+env AER_RUN_ID=ppa-20260731-slow1v0-5ns \
+  scripts/run_stage.sh synth baseline /absolute/path/to/scripts/config.ppa.sh
+env AER_RUN_ID=ppa-20260731-slow1v0-5ns \
+  scripts/run_stage.sh synth improved /absolute/path/to/scripts/config.ppa.sh
+scripts/summarize_ppa.sh \
+  /absolute/path/to/scripts/config.ppa.sh ppa-20260731-slow1v0-5ns
 ```
 
+두 synth stage를 분리하는 이유는 `run_ppa.sh`를 각 작업자가 실행해 같은 결과를
+중복 생성하는 것을 막기 위해서다. 동일 integration checkout에서 실행하면 design별
+결과 디렉터리가 달라 병렬 실행할 수 있다. 라이선스 checkout 제한이 있으면 명령만
+직렬화한다.
+
 Genus driver는 mapped netlist/SDC와 area/timing/power/QoR report를 만들고 동일한
-`metrics.tsv`로 정규화한다. power activity Tcl을 사용하지 않으면 power 값은
-vectorless estimate이므로 workload 기반 결과와 구분해 기록한다.
+`metrics.tsv`로 정규화한다. 이번 고정 run의 `POWER_MODE`는 Genus vectorless이며
+1차 상대 비교용이다. workload 기반 최종 전력 결론으로 사용하지 않는다.
 
 ## 6. SDC 확인
 

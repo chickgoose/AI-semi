@@ -9,7 +9,10 @@ config="$3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 aer_init
+config="$(cd "$(dirname "$config")" && pwd)/$(basename "$config")"
 source "$config"
+AER_CONFIG_FILE="$config"
+AER_POWER_MODE="${AER_POWER_MODE:-unspecified}"
 
 case "$design" in
   "$AER_BASELINE_NAME") AER_VARIANT="baseline"; AER_TOP="$AER_BASELINE_TOP"; AER_RTL_FILELIST="$AER_BASELINE_FILELIST"; AER_POWER_ACTIVITY="${AER_BASELINE_POWER_ACTIVITY:-${AER_POWER_ACTIVITY:-}}" ;;
@@ -38,6 +41,7 @@ AER_SDC="$(aer_abs_path "$AER_SDC")"
 driver="$(aer_abs_path "$driver")"
 AER_DRIVER="$driver"
 export AER_DESIGN AER_VARIANT AER_STAGE AER_TOP AER_RTL_FILELIST AER_SDC AER_OUTPUT_DIR AER_DRIVER
+export AER_CONFIG_FILE AER_POWER_MODE
 export AER_CLOCK_PORT AER_CLOCK_PERIOD_NS AER_INPUT_DELAY_NS
 export AER_RESET_PORT AER_OUTPUT_DELAY_NS AER_CLOCK_UNCERTAINTY_NS AER_DRIVER_CELL
 export AER_LOAD_PF AER_CORNER AER_POWER_ACTIVITY AER_LIBRARY_FILE

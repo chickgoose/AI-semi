@@ -7,7 +7,9 @@ kept out of Git. A run compares both designs with one configuration:
 results/runs/<run-id>/
 ├── baseline/{synth,sta,power}/   # STA/power appear when drivers are configured
 ├── improved/{synth,sta,power}/
-└── summary.tsv
+├── manifest-comparison.tsv
+├── summary.tsv
+└── comparison.tsv
 ```
 
 Each stage directory contains:
@@ -48,6 +50,14 @@ design  area_um2  wns_ns  tns_ns  fmax_mhz  total_power_mw  dynamic_power_mw  le
 baseline  ...
 improved  ...
 ```
+
+`manifest-comparison.tsv` must show `match=yes` for the shared integration
+commit, config/SDC/Liberty hashes, parameters, corner, clock, driver and power
+mode before metrics are compared. `comparison.tsv` records improved-minus-
+baseline deltas and improvement percentages. Positive percentages mean better:
+area/power are lower-is-better, fmax is higher-is-better, and TNS improvement
+means reduced absolute violation. WNS is reported as a delta because a percent
+around zero is misleading.
 
 `fmax` is derived as `1000 / (clock_period_ns - WNS_ns)`. Report parsing emits
 `N/A` when a Genus format is not recognized; inspect and update the extractor

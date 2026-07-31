@@ -10,6 +10,11 @@ done
 [[ -f "$AER_RTL_FILELIST" ]] || { printf 'file list not found: %s\n' "$AER_RTL_FILELIST" >&2; exit 2; }
 [[ -f "$AER_SDC" ]] || { printf 'SDC not found: %s\n' "$AER_SDC" >&2; exit 2; }
 
+if [[ "${AER_POWER_MODE:-}" == "genus_vectorless" && -n "${AER_GENUS_ACTIVITY_TCL:-}" ]]; then
+  printf 'vectorless mode must not configure AER_GENUS_ACTIVITY_TCL\n' >&2
+  exit 2
+fi
+
 if [[ -n "${AER_GENUS_ACTIVITY_TCL:-}" ]]; then
   if [[ "$AER_GENUS_ACTIVITY_TCL" != /* ]]; then
     AER_GENUS_ACTIVITY_TCL="$AER_PROJECT_ROOT/$AER_GENUS_ACTIVITY_TCL"
