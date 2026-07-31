@@ -20,6 +20,7 @@ module aer_baseline_top #(
   logic                  tx_aer_valid;
   logic                  tx_aer_ready;
   logic [ADDR_WIDTH-1:0] tx_aer_addr;
+  logic [SOURCE_INDEX_WIDTH-1:0] tx_aer_source;
   logic                  tx_completion_valid;
   logic [SOURCE_INDEX_WIDTH-1:0] tx_completion_source;
 
@@ -51,21 +52,25 @@ module aer_baseline_top #(
     .aer_valid_o(tx_aer_valid),
     .aer_ready_i(tx_aer_ready),
     .aer_addr_o(tx_aer_addr),
+    .aer_source_o(tx_aer_source),
     .completion_valid_o(tx_completion_valid),
     .completion_source_o(tx_completion_source)
   );
 
   aer_rx #(
-    .ADDR_WIDTH(ADDR_WIDTH)
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .SOURCE_INDEX_WIDTH(SOURCE_INDEX_WIDTH)
   ) u_rx (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
     .aer_valid_i(tx_aer_valid),
     .aer_ready_o(tx_aer_ready),
     .aer_addr_i(tx_aer_addr),
+    .aer_source_i(tx_aer_source),
     .event_valid_o(event_valid_o),
     .event_ready_i(event_ready_i),
-    .event_addr_o(event_addr_o)
+    .event_addr_o(event_addr_o),
+    .event_source_o()
   );
 
   always_comb begin

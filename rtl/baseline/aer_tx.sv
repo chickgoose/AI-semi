@@ -13,6 +13,7 @@ module aer_tx #(
   output logic                          aer_valid_o,
   input  logic                          aer_ready_i,
   output logic [ADDR_WIDTH-1:0]         aer_addr_o,
+  output logic [SOURCE_INDEX_WIDTH-1:0] aer_source_o,
 
   output logic                          completion_valid_o,
   output logic [SOURCE_INDEX_WIDTH-1:0] completion_source_o
@@ -24,6 +25,7 @@ module aer_tx #(
   assign event_ready_o = !busy_q;
   assign aer_valid_o   = busy_q;
   assign aer_addr_o    = addr_q;
+  assign aer_source_o  = source_q;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin

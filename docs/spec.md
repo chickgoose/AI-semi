@@ -16,12 +16,14 @@ about the final official interface.
 
 | Parameter | Default | Meaning |
 | --- | ---: | --- |
-| `NUM_SOURCES` | 8 | Number of event-producing sources |
-| `ADDR_WIDTH` | `max(1, ceil(log2(NUM_SOURCES)))` | Width of the AER address |
+| `NUM_SOURCES` | 4 | Number of event-producing sources in the comparison wrapper |
+| `ADDR_WIDTH` | 16 | Width of each source-provided event address |
 | `SOURCE_INDEX_WIDTH` | `max(1, ceil(log2(NUM_SOURCES)))` | Internal source tag width |
 
-`ADDR_WIDTH` must be at least `SOURCE_INDEX_WIDTH`.  Source `i` maps directly
-to AER address `i`; unused high address bits are zero.
+Address payload and source identity are independent.  The comparison DUT
+preserves each source-provided `ADDR_WIDTH`-bit payload and separately reports
+the selected source ID.  The legacy request/ack wrapper still maps source `i`
+directly to address `i` for backward compatibility.
 
 ## 2.1 Confirmed implementation environment
 
@@ -50,18 +52,20 @@ evaluation corner and clock target remain unconfirmed.
 The reset polarity and synchrony are provisional and can be changed when the
 official server flow or testbench is known.
 
-## 4. Source request/acknowledge contract
+## 4. Comparison source contract
 
-- `source_req_i[i]` is a level request for one event from source `i`.
-- A source must hold its request high until `source_ack_o[i]` is observed.
-- `source_ack_o[i]` is a one-cycle pulse.
-- After an acknowledge, the source must lower its request for at least one
-  cycle before raising it for a new event.
-- Each source may have at most one outstanding event in this baseline.
+- `in_valid[i]` indicates a valid address in `in_addr[i]`.
+- The source must hold `in_valid[i]` and `in_addr[i]` stable until accepted.
+- An input transfer occurs on a rising edge where both `in_valid[i]` and
+  `in_ready[i]` are high.
+- Only the fixed-priority selected source receives `in_ready` in a cycle.
 - Simultaneous requests are legal.
+- `out_src` identifies the source of the corresponding `out_addr` payload.
 
-The acknowledge means that the receiver input buffer accepted the event.  It
-does not mean that downstream logic has already consumed the event.
+`rtl/baseline/aer_dut.sv` implements this contract for the shared a3
+verification environment.  `rtl/baseline/aer_baseline_top.sv` retains the
+older level request/one-cycle acknowledge interface as a compatibility wrapper;
+it is not the primary PPA comparison top.
 
 ## 5. Arbitration
 
@@ -93,28 +97,28 @@ a clear throughput target for an improved implementation.
 ## 7. Receiver/output contract
 
 - The receiver contains a one-entry elastic buffer.
-- `event_valid_o` and `event_addr_o` use another ready/valid handshake with the
-  downstream consumer.
+- `event_valid_o`, `event_addr_o`, and `event_source_o` use another ready/valid
+  handshake with the downstream consumer.
 - The receiver supports simultaneous downstream consumption and replacement
   by a new AER link event.
-- While stalled, the output address remains stable.
+- While stalled, output valid, address, and source ID remain stable.
 
 ## 8. Required baseline checks
 
 The verification environment must cover:
 
-1. Single request and correct address delivery.
+1. Single request with unmodified payload and source ID delivery.
 2. Lowest-index selection for simultaneous requests.
-3. Request held until acknowledge.
-4. Stable address during receiver backpressure.
+3. Input valid and payload held until ready.
+4. Stable address and source ID during receiver backpressure.
 5. No missing or duplicate transfers.
 6. Continuous high-priority traffic demonstrating the fixed-priority
    starvation risk.
 
 ## 9. Measurement definitions
 
-- **Latency:** cycles from the first asserted source request to its
-  acknowledge, and separately to downstream consumption.
+- **Latency:** cycles from the input ready/valid transfer to downstream
+  consumption.  Request wait time is measured separately before acceptance.
 - **Throughput:** downstream-consumed events divided by elapsed cycles.
 - **Fairness:** per-source completed-event count and maximum request wait.
 - **Loss:** generated events minus downstream-consumed events after draining.
