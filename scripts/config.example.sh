@@ -3,10 +3,10 @@
 
 # The two variants are deliberately driven by the same SDC and power workload.
 export AER_BASELINE_NAME="${AER_BASELINE_NAME:-baseline}"
-export AER_BASELINE_TOP="${AER_BASELINE_TOP:-aer_baseline_top}"
+export AER_BASELINE_TOP="${AER_BASELINE_TOP:-aer_dut}"
 export AER_BASELINE_FILELIST="${AER_BASELINE_FILELIST:-tb/filelists/baseline.f}"
 export AER_IMPROVED_NAME="${AER_IMPROVED_NAME:-improved}"
-export AER_IMPROVED_TOP="${AER_IMPROVED_TOP:-aer_event_buffer}"
+export AER_IMPROVED_TOP="${AER_IMPROVED_TOP:-aer_dut}"
 export AER_IMPROVED_FILELIST="${AER_IMPROVED_FILELIST:-tb/filelists/improved.f}"
 
 export AER_NUM_SOURCES="${AER_NUM_SOURCES:-4}"

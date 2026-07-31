@@ -6,7 +6,6 @@ module aer_tb;
   parameter int FIFO_DEPTH = 4;
   parameter int EVENTS_PER_SOURCE = 32;
   parameter int TIMEOUT_CYCLES = 10000;
-  parameter bit SOURCE_ONLY_WORKLOAD = 1'b1;
 
   logic clk = 1'b0;
   always #5 clk = ~clk;
@@ -38,32 +37,24 @@ module aer_tb;
   integer i;
 
   function automatic logic [ADDR_WIDTH-1:0] make_event(input integer source,
-                                                        input integer sequence);
-    if (SOURCE_ONLY_WORKLOAD)
-      make_event = ADDR_WIDTH'(source);
-    else
-      make_event = ADDR_WIDTH'((source << (ADDR_WIDTH/2)) ^ sequence);
+                                                        input integer event_sequence);
+    make_event = ADDR_WIDTH'((source << (ADDR_WIDTH/2)) ^ event_sequence);
   endfunction
 
   task automatic send_burst(input integer source, input integer count);
-    integer sequence;
+    integer event_sequence;
     integer request_timeout;
     begin
-      sequence = 0;
+      event_sequence = 0;
       request_timeout = 0;
       @(negedge clk);
-      while (sequence < count) begin
+      while (event_sequence < count) begin
         bus.in_valid[source] = 1'b1;
-        bus.in_addr[source] = make_event(source, sequence);
+        bus.in_addr[source] = make_event(source, event_sequence);
         @(posedge clk);
         if (bus.in_ready[source]) begin
-          sequence = sequence + 1;
+          event_sequence = event_sequence + 1;
           request_timeout = 0;
-          // Apply the legacy baseline request-low phase to both designs so
-          // their offered event streams remain directly comparable.
-          @(negedge clk);
-          bus.in_valid[source] = 1'b0;
-          @(posedge clk);
         end else begin
           request_timeout = request_timeout + 1;
           if (request_timeout >= TIMEOUT_CYCLES)
