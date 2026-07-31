@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s <baseline|improved|mock> [--config FILE] [--filelist FILE]\n' "$0" >&2
+  printf 'usage: %s <baseline|mock> [--config FILE] [--filelist FILE]\n' "$0" >&2
   exit 2
 }
 
@@ -29,10 +29,6 @@ case "$design" in
   baseline)
     design_define="AER_DUT_BASELINE"
     design_filelist="${filelist_override:-$AER_BASELINE_FILELIST}"
-    ;;
-  improved)
-    design_define="AER_DUT_IMPROVED"
-    design_filelist="${filelist_override:-$AER_IMPROVED_FILELIST}"
     ;;
   mock)
     design_define=""

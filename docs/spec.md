@@ -135,3 +135,12 @@ The verification environment must cover:
 - Whether the competition expects RTL-to-gate synthesis only or also
   placement/routing results for the first submission.
 - Official workload, testbench, output format, and submission layout.
+
+## 11. Design selection
+
+The fixed-priority baseline was selected on 2026-08-01. Under the same Genus
+snapshot, SDC, Liberty, PVT, and 5 ns constraint, the buffered round-robin
+experiment increased cell area by 548.8924%, reduced Fmax by 51.6836%, and
+increased vectorless total power by 228.2244%. The rejected implementation is
+retained in the `a2` branch and Git history; `main` contains only the selected
+baseline RTL.

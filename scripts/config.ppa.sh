@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# Frozen exploratory PPA configuration for the 2026-07-31 comparison run.
+# Frozen PPA configuration for the selected baseline.
 # The official competition corner remains TBD.
 
 CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$CONFIG_DIR/config.example.sh"
 
-export AER_RUN_ID="${AER_RUN_ID:-ppa-20260731-slow1v0-5ns}"
+export AER_RUN_ID="${AER_RUN_ID:-ppa-20260801-pvt0p9v125c-5ns}"
 export AER_BASELINE_NAME="baseline"
 export AER_BASELINE_TOP="aer_dut"
 export AER_BASELINE_FILELIST="tb/filelists/baseline.f"
-export AER_IMPROVED_NAME="improved"
-export AER_IMPROVED_TOP="aer_dut"
-export AER_IMPROVED_FILELIST="tb/filelists/improved.f"
 
 export AER_NUM_SOURCES="4"
 export AER_ADDR_WIDTH="16"
@@ -45,7 +42,6 @@ fi
 export AER_POWER_MODE="genus_vectorless"
 export AER_POWER_ACTIVITY=""
 export AER_BASELINE_POWER_ACTIVITY=""
-export AER_IMPROVED_POWER_ACTIVITY=""
 export AER_GENUS_ACTIVITY_TCL=""
 
 # VCD generation is prepared for the later activity-based power run, but the

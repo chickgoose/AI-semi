@@ -152,19 +152,15 @@ Xcelium 회귀와 Genus 논리 합성 driver는 저장소에 준비되어 있다
 
 ```bash
 scripts/run_sim.sh baseline
-scripts/run_sim.sh improved
-env AER_RUN_ID=ppa-20260731-slow1v0-5ns \
+env AER_RUN_ID=ppa-20260801-pvt0p9v125c-5ns \
   scripts/run_stage.sh synth baseline /absolute/path/to/scripts/config.ppa.sh
-env AER_RUN_ID=ppa-20260731-slow1v0-5ns \
-  scripts/run_stage.sh synth improved /absolute/path/to/scripts/config.ppa.sh
 scripts/summarize_ppa.sh \
-  /absolute/path/to/scripts/config.ppa.sh ppa-20260731-slow1v0-5ns
+  /absolute/path/to/scripts/config.ppa.sh ppa-20260801-pvt0p9v125c-5ns
 ```
 
-두 synth stage를 분리하는 이유는 `run_ppa.sh`를 각 작업자가 실행해 같은 결과를
-중복 생성하는 것을 막기 위해서다. 동일 integration checkout에서 실행하면 design별
-결과 디렉터리가 달라 병렬 실행할 수 있다. 라이선스 checkout 제한이 있으면 명령만
-직렬화한다.
+buffered round-robin 비교 설계는 2026-08-01 PPA 결과로 기각됐다. 기존 비교 명령과
+산출물은 `a2`, `a3` 브랜치와 Git 이력에 보존하며 현재 `main`에서는 baseline만
+실행한다.
 
 Genus driver는 mapped netlist/SDC와 area/timing/power/QoR report를 만들고 동일한
 `metrics.tsv`로 정규화한다. 이번 고정 run의 `POWER_MODE`는 Genus vectorless이며
@@ -182,8 +178,8 @@ Genus driver는 mapped netlist/SDC와 area/timing/power/QoR report를 만들고 
 - [ ] 모든 endpoint가 constrained인지 확인하는 명령
 
 확정값은 서버 전용 config에서 `AER_CLOCK_*`, `AER_*_DELAY_NS`,
-`AER_DRIVER_CELL`, `AER_LOAD_PF`로 설정한다. baseline과 improved에는 반드시 같은
-`constraints/aer_common.sdc`와 값을 사용한다.
+`AER_DRIVER_CELL`, `AER_LOAD_PF`로 설정한다. 활성 baseline에는
+`constraints/aer_common.sdc`와 고정 config 값을 사용한다.
 
 ## 7. 제출 구조
 

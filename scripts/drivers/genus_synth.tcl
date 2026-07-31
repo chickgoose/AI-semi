@@ -10,7 +10,6 @@ set filelist  [require_env AER_RTL_FILELIST]
 set sdc       [require_env AER_SDC]
 set library   [require_env AER_LIBRARY_FILE]
 set output    [require_env AER_OUTPUT_DIR]
-set variant   [require_env AER_VARIANT]
 set sources   [require_env AER_NUM_SOURCES]
 set addr_w    [require_env AER_ADDR_WIDTH]
 
@@ -25,9 +24,6 @@ set_db syn_opt_effort medium
 
 read_hdl -sv -f $filelist
 set parameters [list $sources $addr_w]
-if {$variant eq "improved"} {
-  lappend parameters [require_env AER_FIFO_DEPTH]
-}
 elaborate $top -parameters $parameters
 check_design -unresolved
 read_sdc $sdc

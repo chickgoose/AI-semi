@@ -1,12 +1,12 @@
 # AI-semi Progress
 
-최종 갱신: 2026-07-31
+최종 갱신: 2026-08-01
 
 ## 프로젝트 상태
 
 - 대회: 2026 전국 대학생 AI 반도체 회로 설계 경진대회
 - 트랙: **Digital 확정**
-- 현재 단계: 자료 정리·방향 결정·설계 서버 접근 완료 → 서버 환경 확인 및 1차 AER 사양 정의 착수
+- 현재 단계: baseline/improved 구현·검증·동일 조건 PPA 비교 완료 → baseline 최종 채택
 - 1차 결과 제출: **2026-08-28**
 - 2차 최종 제출: **2026-10-30**
 - 발표·시상: **2026-11-28**, 곤지암리조트
@@ -25,6 +25,10 @@
 - [x] Digital 1차 AER 착수 계획 작성
 - [x] 프로젝트 장기 메모리 구성
 - [x] 대회 할당 설계 서버 SSH 접속
+- [x] fixed-priority baseline RTL 및 self-checking testbench 구현
+- [x] buffered round-robin improved RTL 구현 및 기능 검증
+- [x] 동일 snapshot·SDC·Liberty·PVT 조건의 Genus PPA 비교
+- [x] improved 방식 기각 및 baseline을 main의 유일한 활성 설계로 확정
 
 ## 설계 환경 접속 상태
 
@@ -59,13 +63,19 @@ Bio-mimic Neuron을 위한 AER(Address-Event Representation) 통신 방식을 �
 
 ## 현재 설계 전략
 
-먼저 비교 기준이 되는 기본 AER RTL과 self-checking testbench를 만든다.
+최종 채택 설계는 fixed-priority baseline이다. buffered round-robin 방식은
+기능·공정성은 개선됐지만 동일 조건의 탐색 합성에서 PPA가 모두 악화되어 기각했다.
 
-1. Fixed-priority arbiter로 기준 설계 구현
-2. Round-robin arbiter로 starvation과 공정성 개선
-3. FIFO를 추가해 burst 이벤트 손실과 backpressure 대응
-4. 동일 workload에서 latency, throughput, fairness, frequency, area, power 비교
-5. 합성 결과에 따라 계층형 arbiter 검토
+| 지표 | baseline | improved | 판정 |
+| --- | ---: | ---: | --- |
+| Cell area | 432.288 um2 | 2805.084 um2 | baseline 채택 |
+| Fmax | 762.485703 MHz | 368.405541 MHz | baseline 채택 |
+| Total power | 0.053546900 mW | 0.175754000 mW | baseline 채택 |
+| TNS | 0 ns | 0 ns | 동률 |
+
+측정 run은 `ppa-20260801-pvt0p9v125c-5ns`, integration snapshot은
+`22dab24d81572814514f069359b2029a288d6019`이다. improved 소스는 `a2` 브랜치와
+Git 이력에 보존하고, 측정 과정과 기각 근거는 `docs/tasks/a2.md`에 보존한다.
 
 ## 다음 작업
 
@@ -90,13 +100,13 @@ Bio-mimic Neuron을 위한 AER(Address-Event Representation) 통신 방식을 �
 
 ### P2 — 개선 및 측정
 
-- [ ] Round-robin arbiter 구현
-- [ ] FIFO 버퍼 구현
-- [ ] 단일·동시·burst·backpressure 테스트
-- [ ] Starvation 및 누락·중복 검증
-- [ ] 기준/개선 설계 합성
-- [ ] PPA 및 최대 주파수 비교
-- [ ] 결과 분석과 설계 선택
+- [x] Round-robin arbiter 구현
+- [x] FIFO 버퍼 구현
+- [x] 단일·동시·burst·backpressure 테스트
+- [x] Starvation 및 누락·중복 검증
+- [x] 기준/개선 설계 합성
+- [x] PPA 및 최대 주파수 비교
+- [x] 결과 분석과 baseline 선택
 
 ## 아직 확인되지 않은 사항
 

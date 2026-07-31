@@ -1,6 +1,4 @@
-// Baseline adapter for the common verification contract in docs/tasks/a3.md.
-// Compile this file only for the baseline run; the improved run supplies its
-// own module named aer_dut.
+// Selected AER implementation for the common verification contract.
 module aer_dut #(
   parameter int unsigned NUM_SOURCES = 4,
   parameter int unsigned ADDR_WIDTH = 16,
