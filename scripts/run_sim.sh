@@ -67,7 +67,7 @@ case "$SIMULATOR" in
   xrun)
     xrun_bin="${AER_XRUN_BIN:-xrun}"
     snapshot="aer_tb_${design}"
-    command=("$xrun_bin" -64bit -sv -top aer_tb
+    command=("$xrun_bin" -64bit -sv -timescale 1ns/1ps -top aer_tb
       -snapshot "$snapshot" -elaborate -xmlibdirname "$OUT_DIR/xcelium.d"
       -defparam "aer_tb.NUM_SOURCES=$AER_NUM_SOURCES"
       -defparam "aer_tb.ADDR_WIDTH=$AER_ADDR_WIDTH"

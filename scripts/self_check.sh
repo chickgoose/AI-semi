@@ -31,6 +31,10 @@ if rg -q 'aer_baseline_top.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"; then
   exit 1
 fi
 rg -qx 'rtl/improved/aer_dut.sv' "$PROJECT_ROOT/tb/filelists/improved.f"
+rg -q 'command=.*-timescale 1ns/1ps' "$PROJECT_ROOT/scripts/run_sim.sh" || {
+  printf 'Xcelium command must set -timescale 1ns/1ps\n' >&2
+  exit 1
+}
 [[ "$(bash -c 'source "$1"; printf "%s:%s" "$AER_BASELINE_TOP" "$AER_IMPROVED_TOP"' _ "$PROJECT_ROOT/scripts/config.example.sh")" == "aer_dut:aer_dut" ]] || {
   printf 'baseline/improved synthesis tops must both be aer_dut\n' >&2
   exit 1
