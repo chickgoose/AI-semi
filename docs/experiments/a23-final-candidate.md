@@ -92,6 +92,7 @@ event semantics and scoring contract are available.
 
 Detailed evidence:
 
+- [Baseline-to-A23 improvements and quantitative comparison](baseline-to-a23-improvements.md)
 - [Committed RTL functional verification](../verification/a23-functional.md)
 - [Independent stress verification](../verification/a23-stress-report.md)
 - [Genus PPA comparison](a23-ee430-genus-comparison.md)

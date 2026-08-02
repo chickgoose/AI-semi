@@ -4,6 +4,8 @@ Digital AER RTL project. The current internal final candidate is the FIFO-free
 A23 EE430 core: rotating round-robin arbitration, bubble-free TX refill, and an
 elastic RX. Its qualification and limitations are recorded in
 [`docs/experiments/a23-final-candidate.md`](docs/experiments/a23-final-candidate.md).
+The complete baseline-to-A23 design evolution and quantitative comparison are in
+[`docs/experiments/baseline-to-a23-improvements.md`](docs/experiments/baseline-to-a23-improvements.md).
 The fixed-priority baseline remains the comparison reference.
 
 팀 작업 경위, 서버 제공물, 자체 workload와 공식/비공식 평가 조건의 구분은
