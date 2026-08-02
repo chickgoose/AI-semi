@@ -35,6 +35,13 @@ module aer_tb;
   integer metrics_fd;
   integer timeout;
   integer i;
+  integer starvation_accepts [NUM_SOURCES];
+  integer starvation_last_ordinal [NUM_SOURCES];
+  integer starvation_total_accepts;
+  integer starvation_max_gap;
+  integer starvation_source;
+  integer starvation_gap;
+  logic backpressure_done;
 
   function automatic logic [ADDR_WIDTH-1:0] make_event(input integer source,
                                                         input integer event_sequence);
@@ -111,7 +118,7 @@ module aer_tb;
 
   task automatic apply_backpressure();
     begin
-      while (bus.rst_n) begin
+      while (bus.rst_n && !backpressure_done) begin
         repeat (2) @(negedge clk) bus.out_ready = 1'b1;
         repeat (3) @(negedge clk) bus.out_ready = 1'b0;
       end
@@ -120,7 +127,8 @@ module aer_tb;
 
   task automatic run_backpressure();
     begin
-      fork : bp_workers
+      backpressure_done = 1'b0;
+      fork
         apply_backpressure();
         begin
           fork
@@ -129,10 +137,84 @@ module aer_tb;
             send_burst(2, EVENTS_PER_SOURCE);
             send_burst(3, EVENTS_PER_SOURCE);
           join
+          backpressure_done = 1'b1;
         end
-      join_any
-      disable bp_workers;
+      join
       @(negedge clk) bus.out_ready = 1'b1;
+    end
+  endtask
+
+  // Keep every source continuously asserted and express the service bound in
+  // arbitration opportunities rather than wall-clock cycles. With N saturated
+  // sources, round-robin must accept each source at least once in every N input
+  // handshakes, independent of the baseline TX pipeline's bubbles.
+  task automatic run_starvation();
+    integer target_accepts;
+    begin
+      target_accepts = EVENTS_PER_SOURCE * NUM_SOURCES;
+      starvation_total_accepts = 0;
+      starvation_max_gap = 0;
+      for (starvation_source = 0;
+           starvation_source < NUM_SOURCES;
+           starvation_source = starvation_source + 1) begin
+        starvation_accepts[starvation_source] = 0;
+        starvation_last_ordinal[starvation_source] = 0;
+      end
+
+      @(negedge clk);
+      bus.in_valid = '1;
+      for (starvation_source = 0;
+           starvation_source < NUM_SOURCES;
+           starvation_source = starvation_source + 1) begin
+        bus.in_addr[starvation_source] = make_event(starvation_source, 0);
+      end
+
+      while (starvation_total_accepts < target_accepts) begin
+        @(posedge clk);
+        for (starvation_source = 0;
+             starvation_source < NUM_SOURCES;
+             starvation_source = starvation_source + 1) begin
+          if (bus.in_valid[starvation_source] &&
+              bus.in_ready[starvation_source]) begin
+            starvation_total_accepts = starvation_total_accepts + 1;
+            starvation_gap = starvation_total_accepts -
+                              starvation_last_ordinal[starvation_source];
+            if (starvation_gap > starvation_max_gap) begin
+              starvation_max_gap = starvation_gap;
+            end
+            if (starvation_gap > NUM_SOURCES) begin
+              $fatal(1,
+                "Source %0d exceeded bounded service: %0d accepts (bound %0d)",
+                starvation_source, starvation_gap, NUM_SOURCES);
+            end
+            starvation_last_ordinal[starvation_source] =
+              starvation_total_accepts;
+            starvation_accepts[starvation_source] =
+              starvation_accepts[starvation_source] + 1;
+          end
+        end
+
+        @(negedge clk);
+        for (starvation_source = 0;
+             starvation_source < NUM_SOURCES;
+             starvation_source = starvation_source + 1) begin
+          bus.in_addr[starvation_source] = make_event(
+            starvation_source, starvation_accepts[starvation_source]);
+        end
+      end
+      bus.in_valid = '0;
+
+      for (starvation_source = 0;
+           starvation_source < NUM_SOURCES;
+           starvation_source = starvation_source + 1) begin
+        if (starvation_accepts[starvation_source] != EVENTS_PER_SOURCE) begin
+          $fatal(1, "Source %0d service count %0d, expected %0d",
+            starvation_source, starvation_accepts[starvation_source],
+            EVENTS_PER_SOURCE);
+        end
+      end
+      $display("AER_BOUNDED_SERVICE max_accept_gap=%0d bound=%0d",
+        starvation_max_gap, NUM_SOURCES);
     end
   endtask
 
@@ -192,6 +274,7 @@ module aer_tb;
       "simultaneous": run_simultaneous();
       "burst":        run_burst();
       "backpressure": run_backpressure();
+      "starvation":   run_starvation();
       default: $fatal(2, "Unknown TEST=%s", test_name);
     endcase
     drain_and_report();

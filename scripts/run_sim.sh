@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s <baseline|mock> [--config FILE] [--filelist FILE]\n' "$0" >&2
+  printf 'usage: %s <baseline|a2_round_robin|mock> [--config FILE] [--filelist FILE]\n' "$0" >&2
   exit 2
 }
 
@@ -29,6 +29,10 @@ case "$design" in
   baseline)
     design_define="AER_DUT_BASELINE"
     design_filelist="${filelist_override:-$AER_BASELINE_FILELIST}"
+    ;;
+  a2_round_robin)
+    design_define="AER_DUT_A2_ROUND_ROBIN"
+    design_filelist="${filelist_override:-tb/filelists/a2_round_robin.f}"
     ;;
   mock)
     design_define=""
@@ -59,6 +63,9 @@ if [[ -z "$SIMULATOR" ]]; then
 fi
 
 tests=(single simultaneous burst backpressure)
+if [[ "$design" == "a2_round_robin" ]]; then
+  tests+=(starvation)
+fi
 case "$SIMULATOR" in
   xrun)
     xrun_bin="${AER_XRUN_BIN:-xrun}"
