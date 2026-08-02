@@ -1,12 +1,12 @@
 # AI-semi Progress
 
-최종 갱신: 2026-08-01
+최종 갱신: 2026-08-02
 
 ## 프로젝트 상태
 
 - 대회: 2026 전국 대학생 AI 반도체 회로 설계 경진대회
 - 트랙: **Digital 확정**
-- 현재 단계: baseline/improved 구현·검증·동일 조건 PPA 비교 완료 → baseline 최종 채택
+- 현재 단계: EE430 기반 A23 기능·stress·Genus PPA gate 완료 → 내부 최종 후보 확정
 - 1차 결과 제출: **2026-08-28**
 - 2차 최종 제출: **2026-10-30**
 - 발표·시상: **2026-11-28**, 곤지암리조트
@@ -30,6 +30,12 @@
 - [x] buffered round-robin improved RTL 구현 및 기능 검증
 - [x] 동일 snapshot·SDC·Liberty·PVT 조건의 Genus PPA 비교
 - [x] improved 방식 기각 및 baseline을 main의 유일한 활성 설계로 확정
+- [x] FIFO-free rotating round-robin A2와 bubble-free TX A3 독립 검증
+- [x] A2/A3를 결합한 A23 EE430 코어 구현
+- [x] A23 committed RTL 기능 회귀 18/18 통과
+- [x] A23 독립 stress 회귀 120/120 통과
+- [x] baseline/A2/A3/A23 Genus 비교 12/12 유효 run 확보
+- [x] A23를 현재 내부 최종 후보로 선정
 
 ## 설계 환경 접속 상태
 
@@ -64,19 +70,22 @@ Bio-mimic Neuron을 위한 AER(Address-Event Representation) 통신 방식을 �
 
 ## 현재 설계 전략
 
-최종 채택 설계는 fixed-priority baseline이다. buffered round-robin 방식은
-기능·공정성은 개선됐지만 동일 조건의 탐색 합성에서 PPA가 모두 악화되어 기각했다.
+현재 내부 최종 후보는 FIFO를 추가하지 않은 A23 EE430 코어다. 기존의 큰 source별 FIFO
+round-robin 실험은 기각 상태를 유지하지만, A23는 rotating round-robin pointer와
+same-edge TX refill만 추가해 bounded fairness와 정상상태 1 event/cycle을 함께 달성한다.
 
-| 지표 | baseline | improved | 판정 |
-| --- | ---: | ---: | --- |
-| Cell area | 432.288 um2 | 2805.084 um2 | baseline 채택 |
-| Fmax | 762.485703 MHz | 368.405541 MHz | baseline 채택 |
-| Total power | 0.053546900 mW | 0.175754000 mW | baseline 채택 |
-| TNS | 0 ns | 0 ns | 동률 |
+| 지표 | baseline | A3 bubble-free | A23 combined |
+| --- | ---: | ---: | ---: |
+| Cell area | 432.288 um2 | 433.656 um2 | 478.458 um2 |
+| 추정 Fmax | 762.486 MHz | 752.615 MHz | 670.961 MHz |
+| Vectorless power | 0.0535469 mW | 0.0620979 mW | 0.0700068 mW |
+| 정상상태 throughput | 0.5 event/cycle | 1.0 event/cycle | 1.0 event/cycle |
 
-측정 run은 `ppa-20260801-pvt0p9v125c-5ns`, integration snapshot은
-`22dab24d81572814514f069359b2029a288d6019`이다. improved 소스는 `a2` 브랜치와
-Git 이력에 보존하고, 측정 과정과 기각 근거는 `docs/tasks/a2.md`에 보존한다.
+A23는 baseline 대비 raw area 10.68%, vectorless power 30.74%가 증가하지만 두 배의
+처리율을 반영하면 area/event-cycle은 44.66%, power/event-cycle은 34.63% 감소한다.
+A3가 순수 PPA는 더 좋지만 fixed priority starvation bound가 없어서 bounded fairness까지
+포함하는 현재 목표에는 A23를 선택한다. 상세 근거는
+`docs/experiments/a23-final-candidate.md`에 보존한다.
 
 ## 다음 작업
 
@@ -109,6 +118,10 @@ Git 이력에 보존하고, 측정 과정과 기각 근거는 `docs/tasks/a2.md`
 - [x] 기준/개선 설계 합성
 - [x] PPA 및 최대 주파수 비교
 - [x] 결과 분석과 baseline 선택
+- [x] 저비용 RR 및 bubble-free 구조 독립 구현·검증
+- [x] A23 통합과 동일 조건 4-way PPA 비교
+- [x] 기능·stress·PPA qualification 완료
+- [ ] 공식 workload 수령 후 shared 1~2 entry buffer의 필요성 재평가
 
 ## 아직 확인되지 않은 사항
 
@@ -124,6 +137,7 @@ Git 이력에 보존하고, 측정 과정과 기각 근거는 `docs/tasks/a2.md`
 파악하려면 먼저 아래 문서를 읽는다.
 
 - [`docs/TEAM_HANDOFF_WORKLOAD.md`](docs/TEAM_HANDOFF_WORKLOAD.md)
+- [`docs/experiments/a23-final-candidate.md`](docs/experiments/a23-final-candidate.md)
 
 장기 프로젝트 자료는 Windows 로컬 경로에 보관한다.
 

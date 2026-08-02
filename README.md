@@ -1,26 +1,28 @@
 # AI-semi
 
-Digital AER RTL project. The fixed-priority baseline is the selected design.
-The buffered round-robin experiment was rejected after the normalized Genus
-comparison increased area and power while reducing maximum frequency. Its
-implementation and measurements remain available in Git history and the `a2`
-branch; the decision record remains under `docs/`.
+Digital AER RTL project. The current internal final candidate is the FIFO-free
+A23 EE430 core: rotating round-robin arbitration, bubble-free TX refill, and an
+elastic RX. Its qualification and limitations are recorded in
+[`docs/experiments/a23-final-candidate.md`](docs/experiments/a23-final-candidate.md).
+The fixed-priority baseline remains the comparison reference.
 
 팀 작업 경위, 서버 제공물, 자체 workload와 공식/비공식 평가 조건의 구분은
 [`docs/TEAM_HANDOFF_WORKLOAD.md`](docs/TEAM_HANDOFF_WORKLOAD.md)를 먼저 읽는다.
 
-Active RTL and file list:
+Candidate RTL and file list:
 
 ```text
-rtl/baseline/
-tb/filelists/baseline.f
+rtl/experiments/a23_ee430/
+tb/filelists/a23_ee430.f
 ```
 
-Run the selected design with:
+Run candidate verification with:
 
 ```bash
-scripts/run_sim.sh baseline
-scripts/run_ppa.sh scripts/config.ppa.sh
+scripts/run_sim.sh a23-ee430
+scripts/run_a23_ee430_checks.sh
+scripts/run_a23_functional_checks.sh
+scripts/run_a23_stress.sh
 ```
 
 ## Parallel agent workflow

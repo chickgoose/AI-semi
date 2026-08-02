@@ -1,11 +1,13 @@
 # AI-semi Digital AER 작업 인수인계 및 workload 정의
 
-최종 갱신: 2026-08-01
+최종 갱신: 2026-08-02
 
 대상 독자: 팀원 3명, 이후 설계·검증·제출 담당자
 
-현재 결론: buffered round-robin 실험은 기각했고 `main`의 활성 RTL은 fixed-priority
-baseline 하나다.
+현재 결론: 기존 buffered round-robin 실험은 기각 상태지만, 이후 FIFO-free
+round-robin과 bubble-free TX를 결합한 A23가 기능·stress·Genus PPA gate를 통과해
+내부 최종 후보가 됐다. 최신 판정은
+[`docs/experiments/a23-final-candidate.md`](experiments/a23-final-candidate.md)를 우선한다.
 
 ## 1. 먼저 알아야 할 결론
 
