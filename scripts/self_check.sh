@@ -11,6 +11,11 @@ done
 required=(
   tb/aer_if.sv tb/dut_adapter.sv tb/aer_protocol_assertions.sv
   tb/aer_scoreboard.sv tb/aer_tb.sv tb/filelists/baseline.f
+  tb/filelists/a23_ee430.f
+  tests/a23/a23_ee430_stream_tb.sv
+  tests/a23/a23_ee430_contention_tb.sv
+  scripts/run_a23_ee430_checks.sh
+  docs/experiments/a23-ee430-core.md
   scripts/drivers/genus.sh
   scripts/drivers/genus_synth.tcl scripts/drivers/extract_genus_metrics.sh
   scripts/config.ppa.sh
@@ -28,6 +33,14 @@ if rg -n '\bsequence\b' "$PROJECT_ROOT/tb/aer_tb.sv"; then
 fi
 rg -qx 'rtl/baseline/aer_baseline_core.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
 rg -qx 'rtl/baseline/aer_dut.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
+rg -qx 'rtl/experiments/a23_ee430/a23_ee430_dut.sv' \
+  "$PROJECT_ROOT/tb/filelists/a23_ee430.f"
+rg -qx 'rtl/baseline/aer_rx.sv' "$PROJECT_ROOT/tb/filelists/a23_ee430.f"
+if rg -n 'aer_sync_fifo|FIFO_DEPTH|occupancy|quota_q|aging_q' \
+  "$PROJECT_ROOT/rtl/experiments/a23_ee430"; then
+  printf 'forbidden buffering or scheduling state found in A23 experiment\n' >&2
+  exit 1
+fi
 if rg -q 'aer_baseline_top.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"; then
   printf 'legacy aer_baseline_top.sv remains in comparison file list\n' >&2
   exit 1
