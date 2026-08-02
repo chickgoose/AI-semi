@@ -11,6 +11,11 @@ done
 required=(
   tb/aer_if.sv tb/dut_adapter.sv tb/aer_protocol_assertions.sv
   tb/aer_scoreboard.sv tb/aer_tb.sv tb/filelists/baseline.f
+  tb/filelists/a3_bubble_free.f
+  tb/filelists/a3_bubble_free_compare.f
+  tests/a3/a3_bubble_free_compare_tb.sv
+  scripts/run_a3_bubble_free_compare.sh
+  docs/tasks/a3-bubble-free-tx.md
   scripts/drivers/genus.sh
   scripts/drivers/genus_synth.tcl scripts/drivers/extract_genus_metrics.sh
   scripts/config.ppa.sh
@@ -28,6 +33,10 @@ if rg -n '\bsequence\b' "$PROJECT_ROOT/tb/aer_tb.sv"; then
 fi
 rg -qx 'rtl/baseline/aer_baseline_core.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
 rg -qx 'rtl/baseline/aer_dut.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
+rg -qx 'rtl/experiments/a3_bubble_free/a3_bubble_free_dut.sv' \
+  "$PROJECT_ROOT/tb/filelists/a3_bubble_free.f"
+rg -qx 'rtl/baseline/fixed_priority_arbiter.sv' \
+  "$PROJECT_ROOT/tb/filelists/a3_bubble_free.f"
 if rg -q 'aer_baseline_top.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"; then
   printf 'legacy aer_baseline_top.sv remains in comparison file list\n' >&2
   exit 1

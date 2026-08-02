@@ -35,6 +35,7 @@ module aer_tb;
   integer metrics_fd;
   integer timeout;
   integer i;
+  logic backpressure_active;
 
   function automatic logic [ADDR_WIDTH-1:0] make_event(input integer source,
                                                         input integer event_sequence);
@@ -72,6 +73,7 @@ module aer_tb;
       bus.rst_n = 1'b0;
       bus.in_valid = '0;
       bus.out_ready = 1'b0;
+      backpressure_active = 1'b0;
       for (i = 0; i < NUM_SOURCES; i = i + 1)
         bus.in_addr[i] = '0;
       repeat (4) @(posedge clk);
@@ -111,7 +113,7 @@ module aer_tb;
 
   task automatic apply_backpressure();
     begin
-      while (bus.rst_n) begin
+      while (bus.rst_n && backpressure_active) begin
         repeat (2) @(negedge clk) bus.out_ready = 1'b1;
         repeat (3) @(negedge clk) bus.out_ready = 1'b0;
       end
@@ -120,7 +122,8 @@ module aer_tb;
 
   task automatic run_backpressure();
     begin
-      fork : bp_workers
+      backpressure_active = 1'b1;
+      fork
         apply_backpressure();
         begin
           fork
@@ -129,9 +132,9 @@ module aer_tb;
             send_burst(2, EVENTS_PER_SOURCE);
             send_burst(3, EVENTS_PER_SOURCE);
           join
+          backpressure_active = 1'b0;
         end
-      join_any
-      disable bp_workers;
+      join
       @(negedge clk) bus.out_ready = 1'b1;
     end
   endtask

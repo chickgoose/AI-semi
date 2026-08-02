@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s <baseline|mock> [--config FILE] [--filelist FILE]\n' "$0" >&2
+  printf 'usage: %s <baseline|a3-bubble-free|mock> [--config FILE] [--filelist FILE]\n' "$0" >&2
   exit 2
 }
 
@@ -29,6 +29,10 @@ case "$design" in
   baseline)
     design_define="AER_DUT_BASELINE"
     design_filelist="${filelist_override:-$AER_BASELINE_FILELIST}"
+    ;;
+  a3-bubble-free)
+    design_define="AER_DUT_A3_BUBBLE_FREE"
+    design_filelist="${filelist_override:-$AER_A3_BUBBLE_FREE_FILELIST}"
     ;;
   mock)
     design_define=""

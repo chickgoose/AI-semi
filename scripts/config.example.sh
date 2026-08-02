@@ -5,6 +5,7 @@
 export AER_BASELINE_NAME="${AER_BASELINE_NAME:-baseline}"
 export AER_BASELINE_TOP="${AER_BASELINE_TOP:-aer_dut}"
 export AER_BASELINE_FILELIST="${AER_BASELINE_FILELIST:-tb/filelists/baseline.f}"
+export AER_A3_BUBBLE_FREE_FILELIST="${AER_A3_BUBBLE_FREE_FILELIST:-tb/filelists/a3_bubble_free.f}"
 
 export AER_NUM_SOURCES="${AER_NUM_SOURCES:-4}"
 export AER_ADDR_WIDTH="${AER_ADDR_WIDTH:-16}"
