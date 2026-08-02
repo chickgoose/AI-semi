@@ -1,0 +1,13 @@
+sources	design	status	cell_area_um2	seq_cells	comb_cells	wns_ns	fmax_mhz	total_power_mw	dynamic_power_mw	leakage_power_mw	throughput	area_per_event_cycle	power_per_event_cycle	throughput_per_area	critical_startpoint	critical_endpoint	latch_cells	latch_warnings	logic_loops	multi_drivers	unresolved	empty_modules	error_fatal_lines
+4	baseline	PASS	432.288	38	79	3.688500	762.485703	0.053546900	0.053537400	0.000009512	0.5	864.576000	0.107093800	0.001156636	(F) in_valid[0]	(R) u_core/u_tx/addr_q_reg[2]/D	0	0	0	0	0	0	0
+4	a2-round-robin	PASS	481.946	40	99	3.645400	738.225306	0.060075100	0.060064500	0.000010674	0.5	963.892000	0.120150200	0.001037461	(F) in_valid[2]	(R) in_ready[0]	0	0	0	0	0	0	0
+4	a3-bubble-free	PASS	433.656	38	77	3.671300	752.615338	0.062097900	0.062088400	0.000009525	1.0	433.656000	0.062097900	0.002305975	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_tx/addr_q_reg[12]/SE	0	0	0	0	0	0	0
+4	a23-ee430	PASS	478.458	40	95	3.509600	670.960816	0.070006800	0.069996200	0.000010563	1.0	478.458000	0.070006800	0.002090048	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_tx/full_q_reg/SE	0	0	0	0	0	0	0
+1	baseline	PASS	313.614	34	27	3.846800	867.152272	0.039630700	0.039623950	0.000006750	0.5	627.228000	0.079261400	0.001594317	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_rx/addr_q_reg[4]/SE	0	0	0	0	0	0	0
+1	a2-round-robin	PASS	313.614	34	27	3.846800	867.152272	0.039630700	0.039623950	0.000006750	0.5	627.228000	0.079261400	0.001594317	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_rx/addr_q_reg[4]/SE	0	0	0	0	0	0	0
+1	a3-bubble-free	PASS	312.930	34	24	3.674100	754.204691	0.043365800	0.043359260	0.000006527	1.0	312.930000	0.043365800	0.003195603	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_tx/addr_q_reg[4]/SE	0	0	0	0	0	0	0
+1	a23-ee430	PASS	312.930	34	24	3.674100	754.204691	0.043365800	0.043359260	0.000006527	1.0	312.930000	0.043365800	0.003195603	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_tx/addr_q_reg[4]/SE	0	0	0	0	0	0	0
+3	baseline	PASS	396.378	38	49	3.774000	815.660685	0.049649200	0.049640600	0.000008468	0.5	792.756000	0.099298400	0.001261422	(F) in_valid[1]	(R) u_core/u_tx/busy_q_reg/D	0	0	0	0	0	0	0
+3	a2-round-robin	PASS	437.760	40	69	3.718400	780.274657	0.057525100	0.057515600	0.000009486	0.5	875.520000	0.115050200	0.001142178	(R) u_core/u_arbiter_priority_q_reg[0]/CK	(R) in_ready[2]	0	0	0	0	0	0	0
+3	a3-bubble-free	PASS	395.352	38	48	3.682100	758.782912	0.055479700	0.055471300	0.000008435	1.0	395.352000	0.055479700	0.002529392	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_tx/addr_q_reg[12]/SE	0	0	0	0	0	0	0
+3	a23-ee430	PASS	436.050	40	66	3.515000	673.400673	0.066259200	0.066250000	0.000009274	1.0	436.050000	0.066259200	0.002293315	(R) u_core/u_rx/full_q_reg/CK	(F) u_core/u_tx/full_q_reg/SE	0	0	0	0	0	0	0

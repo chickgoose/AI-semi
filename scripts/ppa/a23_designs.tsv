@@ -1,0 +1,5 @@
+design	commit	top	filelist	throughput
+baseline	9c0d0448a49e9fdb00cddd34ada5bdbf6a898dc4	aer_dut	tb/filelists/baseline.f	0.5
+a2-round-robin	856b7f974260549b50763e05a5981ebf63767255	aer_a2_round_robin_dut	tb/filelists/a2_round_robin.f	0.5
+a3-bubble-free	c8f422d7221d263bdfaecba82ad6000d3e10726e	a3_bubble_free_dut	tb/filelists/a3_bubble_free.f	1.0
+a23-ee430	57d17e6f6b811079e247aef357da466f73d84af4	a23_ee430_dut	tb/filelists/a23_ee430.f	1.0
