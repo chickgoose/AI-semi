@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "description": "Clean-slate deterministic AER benchmark suite",
+  "runs": [
+    {
+      "name": "basic_sparse",
+      "workload": "basic_sparse",
+      "seed": 1001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.01,
+      "stim_cycles": 128,
+      "parameters": {"event_count": 8, "deadline_slack": 32}
+    },
+    {
+      "name": "basic_simultaneous",
+      "workload": "basic_simultaneous",
+      "seed": 1002,
+      "geometry": {"width": 8, "height": 8},
+      "load": 8.0,
+      "stim_cycles": 128,
+      "parameters": {"simultaneous_count": 8, "occurrence_cycle": 32}
+    },
+    {
+      "name": "uniform_load_0p10",
+      "workload": "uniform",
+      "seed": 2001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.10,
+      "stim_cycles": 512
+    },
+    {
+      "name": "uniform_load_0p50",
+      "workload": "uniform",
+      "seed": 2001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.50,
+      "stim_cycles": 512
+    },
+    {
+      "name": "uniform_load_1p00",
+      "workload": "uniform",
+      "seed": 2001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 1.00,
+      "stim_cycles": 512
+    },
+    {
+      "name": "elephant_mouse",
+      "workload": "elephant_mouse",
+      "seed": 3001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.75,
+      "stim_cycles": 512,
+      "parameters": {"elephant_source": 27, "elephant_share": 0.8}
+    },
+    {
+      "name": "global_fanin",
+      "workload": "global_fanin",
+      "seed": 4001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 1.25,
+      "stim_cycles": 512,
+      "parameters": {"target_x": 4, "target_y": 4}
+    },
+    {
+      "name": "local_cluster",
+      "workload": "local_cluster",
+      "seed": 5001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.75,
+      "stim_cycles": 512,
+      "parameters": {"center_x": 4, "center_y": 4, "radius": 1}
+    },
+    {
+      "name": "distributed_burst",
+      "workload": "distributed_burst",
+      "seed": 6001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 2.0,
+      "stim_cycles": 512,
+      "parameters": {"burst_count": 4, "burst_length": 24}
+    },
+    {
+      "name": "retrigger",
+      "workload": "retrigger",
+      "seed": 7001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.20,
+      "stim_cycles": 512,
+      "parameters": {"trigger_count": 16, "repeats": 4, "retrigger_interval": 1}
+    },
+    {
+      "name": "timing_pair",
+      "workload": "timing_pair",
+      "seed": 8001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.20,
+      "stim_cycles": 512,
+      "parameters": {"pair_count": 24, "pair_gap": 2, "pair_deadline_slack": 4}
+    },
+    {
+      "name": "backpressure_shock",
+      "workload": "backpressure_shock",
+      "seed": 9001,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.50,
+      "stim_cycles": 512,
+      "parameters": {
+        "background_load": 0.05,
+        "shock_start": 192,
+        "shock_cycles": 96,
+        "shock_load": 3.0,
+        "shock_deadline_slack": 8
+      }
+    }
+  ]
+}
