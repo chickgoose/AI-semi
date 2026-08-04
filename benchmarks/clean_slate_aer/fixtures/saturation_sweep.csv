@@ -1,0 +1,7 @@
+test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error
+baseline,1,3,1000,1000,0,1000,1000,0,2000,4,10,2,2,0.50,0.99,4,0.10,0.50
+baseline,2,3,1000,1000,0,1000,1000,0,2020,5,12,2,2,0.49,0.98,5,0.20,0.60
+baseline,1,6,1000,2000,0,1990,1990,0,2050,9,30,2,2,0.97,0.99,12,0.30,1.00
+baseline,2,6,1000,2000,0,1990,1990,0,2060,11,35,2,2,0.96,0.98,14,0.40,1.20
+baseline,1,15,1000,5000,1500,3500,3500,0,3600,100,500,2,2,0.98,0.95,200,5.00,20.00
+baseline,2,15,1000,5000,1500,3500,3500,0,3650,110,550,2,2,0.97,0.94,220,6.00,25.00
