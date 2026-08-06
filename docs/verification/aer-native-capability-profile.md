@@ -140,7 +140,7 @@ The checked profiles describe native interfaces; they are not score claims.
 
 | Candidate profile | Native sources/protocol | Core N=16 | Backpressure | Polarity/type | Multi-lane |
 | --- | --- | --- | --- | --- | --- |
-| `ganghee_trad_rowcol_fovea` | fixed 16, level request and ROW/COL serial stream, source-observable, one lane | RUN | SKIP | SKIP | SKIP |
+| `ganghee_trad_rowcol_fovea` | fixed 16, level request input and `valid + addr[3:0]` direct-coordinate output, source-observable, one lane | RUN | SKIP | SKIP | SKIP |
 | `baseline` | parameterized per-source ready/valid, source sideband, one retire lane | RUN | RUN | SKIP | SKIP |
 | `a23-ee430` | parameterized per-source ready/valid, source sideband, one retire lane | RUN | RUN | SKIP | SKIP |
 
@@ -150,6 +150,11 @@ field. Baseline's fairness capability means its fixed-priority service can be
 measured; it does not convert the policy into bounded fairness. Ganghee's profile
 uses the supplied fixed N=16 native contract and does not add ready, FIFO, event
 type, or parallel retire hardware.
+
+The `rowcol_fovea` name describes internal row/column arbitration. It does not
+make the native output a physical ROW/COL serial protocol: the connected
+`aer_tx16_trad_rowcol_fovea` boundary emits a direct four-bit coordinate with
+`valid` and has no `addr_type` output.
 
 ## Pre-run decisions and exit status
 
