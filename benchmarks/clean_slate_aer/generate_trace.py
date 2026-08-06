@@ -496,7 +496,6 @@ def generate_run(config: RunConfig, output_dir: Path) -> dict[str, Any]:
     metadata_path.write_text(
         json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
         encoding="utf-8",
-        newline="\n",
     )
     return metadata
 
@@ -514,7 +513,6 @@ def generate_manifest(manifest_path: Path, output_dir: Path) -> list[dict[str, A
     (output_dir / "generation-index.json").write_text(
         json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
         encoding="utf-8",
-        newline="\n",
     )
     return results
 
