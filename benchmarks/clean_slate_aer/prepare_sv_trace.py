@@ -188,8 +188,8 @@ def prepare_trace(trace_path: Path, manifest_path: Path, output_path: Path, addr
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with temporary.open("w", encoding="ascii", newline="\n") as output:
         output.write(
-            f"2 {len(encoded)} {run['stim_cycles']} {source_count} {int(load_milli)} "
-            f"{sink_mode} {sink_arg0} {sink_arg1}\n"
+            f"3 {len(encoded)} {run['stim_cycles']} {source_count} {int(load_milli)} "
+            f"{sink_mode} {sink_arg0} {sink_arg1} {run['seed']}\n"
         )
         for occurrence, trace_id, source, address, deadline in encoded:
             output.write(f"{occurrence} {trace_id} {source} {address} {deadline}\n")

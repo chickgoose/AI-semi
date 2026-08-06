@@ -33,8 +33,11 @@ module aer_clean_tb;
 
   string test_name;
   string metrics_path;
+  string event_metrics_path;
+  string seed_name;
   string trace_file_path;
   integer metrics_fd;
+  integer event_metrics_fd;
   integer trace_fd;
   integer trace_mode;
   integer trace_version;
@@ -46,6 +49,7 @@ module aer_clean_tb;
   integer trace_sink_mode;
   integer trace_sink_arg0;
   integer trace_sink_arg1;
+  string trace_seed_name;
   integer trace_scan_count;
   integer stim_cycles;
   integer load_pct;
@@ -245,12 +249,13 @@ module aer_clean_tb;
       trace_fd = $fopen(trace_file_path, "r");
       if (trace_fd == 0)
         $fatal(1, "CLEAN_TRACE cannot open %s", trace_file_path);
-      trace_scan_count = $fscanf(trace_fd, "%d %d %d %d %d %d %d %d\n",
+      trace_scan_count = $fscanf(trace_fd, "%d %d %d %d %d %d %d %d %s\n",
         trace_version, trace_count, trace_stim_cycles, trace_source_count,
-        trace_load_milli, trace_sink_mode, trace_sink_arg0, trace_sink_arg1);
-      if (trace_scan_count != 8)
+        trace_load_milli, trace_sink_mode, trace_sink_arg0, trace_sink_arg1,
+        trace_seed_name);
+      if (trace_scan_count != 9)
         $fatal(1, "CLEAN_TRACE malformed header in %s", trace_file_path);
-      if (trace_version != 2)
+      if (trace_version != 3)
         $fatal(1, "CLEAN_TRACE unsupported version=%0d", trace_version);
       if ((trace_count < 0) || (trace_count > MAX_EVENTS))
         $fatal(1, "CLEAN_TRACE invalid event count=%0d", trace_count);
@@ -298,6 +303,7 @@ module aer_clean_tb;
       // Trace load is aggregate events/cycle.  Preserve the legacy CSV column
       // as service-normalized percent until the frozen schema renames it.
       load_pct = (trace_load_milli + 5) / 10;
+      seed_name = trace_seed_name;
       trace_cursor = 0;
       $display("CLEAN_TRACE_LOADED file=%s events=%0d stim_cycles=%0d sources=%0d load_pct=%0d sink_mode=%0d",
         trace_file_path, trace_count, stim_cycles, trace_source_count, load_pct,
@@ -536,8 +542,8 @@ module aer_clean_tb;
         $fdisplay(metrics_fd,
           "test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error");
         $fdisplay(metrics_fd,
-          "%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0.6f,%0d,%0.6f,%0d,%0.6f,%0.6f,%0d,%0.6f,%0d",
-          test_name, seed, load_pct, stim_cycles, generated_count,
+          "%s,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0.6f,%0d,%0.6f,%0d,%0.6f,%0.6f,%0d,%0.6f,%0d",
+          test_name, seed_name, load_pct, stim_cycles, generated_count,
           source_overrun_count, accepted_count, delivered_count, error_count,
           cycle_count, average_e2e_latency(), max_e2e_latency,
           average_internal_latency(), max_internal_latency, throughput(),
@@ -546,11 +552,49 @@ module aer_clean_tb;
         $fclose(metrics_fd);
       end
 
-      $display("AER_CLEAN_METRICS test=%s seed=%0d load_pct=%0d generated=%0d overrun=%0d accepted=%0d delivered=%0d errors=%0d throughput=%0.6f avg_e2e=%0.4f max_e2e=%0d fairness=%0.6f max_wait=%0d avg_timing_error=%0.4f",
-        test_name, seed, load_pct, generated_count, source_overrun_count,
+      $display("AER_CLEAN_METRICS test=%s seed=%s load_pct=%0d generated=%0d overrun=%0d accepted=%0d delivered=%0d errors=%0d throughput=%0.6f avg_e2e=%0.4f max_e2e=%0d fairness=%0.6f max_wait=%0d avg_timing_error=%0.4f",
+        test_name, seed_name, load_pct, generated_count, source_overrun_count,
         accepted_count, delivered_count, error_count, throughput(),
         average_e2e_latency(), max_e2e_latency, fairness_index(),
         max_request_wait, average_timing_error());
+    end
+  endtask
+
+  task automatic write_event_metrics();
+    integer record_index;
+    string accept_text;
+    string delivery_text;
+    string state_text;
+    begin
+      event_metrics_fd = $fopen(event_metrics_path, "w");
+      if (event_metrics_fd == 0) begin
+        $error("Cannot open clean benchmark event metrics path: %s",
+               event_metrics_path);
+        error_count = error_count + 1;
+      end else begin
+        $fdisplay(event_metrics_fd,
+          "test,seed,load_pct,tb_only_event_id,logical_source,source_count,occurrence_cycle,accept_cycle,delivery_cycle,deadline_cycle,observation_end_cycle,event_state");
+        for (record_index = 0; record_index < generated_count;
+             record_index = record_index + 1) begin
+          accept_text = (record_accept[record_index] >= 0) ?
+            $sformatf("%0d", record_accept[record_index]) : "";
+          delivery_text = (record_delivery[record_index] >= 0) ?
+            $sformatf("%0d", record_delivery[record_index]) : "";
+          case (record_state[record_index])
+            1: state_text = "source_overrun";
+            2: state_text = "accepted";
+            3: state_text = "delivered";
+            default: state_text = "pending";
+          endcase
+          $fdisplay(event_metrics_fd,
+            "%s,%s,%0d,%0d,%0d,%0d,%0d,%s,%s,%0d,%0d,%s",
+            test_name, seed_name, load_pct, record_trace_id[record_index],
+            record_source[record_index], NUM_SOURCES,
+            record_occurrence[record_index], accept_text, delivery_text,
+            record_deadline[record_index], cycle_count, state_text);
+        end
+        $fclose(event_metrics_fd);
+      end
     end
   endtask
 
@@ -559,12 +603,15 @@ module aer_clean_tb;
       test_name = "basic_single";
     if (!$value$plusargs("METRICS=%s", metrics_path))
       metrics_path = "aer_clean_metrics.csv";
+    if (!$value$plusargs("EVENT_METRICS=%s", event_metrics_path))
+      event_metrics_path = "aer_clean_events.csv";
     if (!$value$plusargs("STIM_CYCLES=%d", stim_cycles))
       stim_cycles = DEFAULT_STIM_CYCLES;
     if (!$value$plusargs("LOAD_PCT=%d", load_pct))
       load_pct = 3;
     if (!$value$plusargs("SEED=%d", seed))
       seed = 1;
+    seed_name = $sformatf("%0d", seed);
     if (!$value$plusargs("BURST_PERIOD=%d", burst_period))
       burst_period = 16;
     trace_mode = $value$plusargs("TRACE_FILE=%s", trace_file_path);
@@ -623,6 +670,7 @@ module aer_clean_tb;
       error_count = error_count + 1;
     end
 
+    write_event_metrics();
     write_metrics();
     if (error_count == 0)
       $display("AER_CLEAN_TEST_PASS %s", test_name);

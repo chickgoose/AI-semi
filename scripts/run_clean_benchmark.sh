@@ -108,6 +108,7 @@ case "$SIMULATOR" in
       run_command=(xrun -64bit -R -snapshot "$snapshot"
         -xmlibdirname "$out_dir/xcelium.d"
         "+CLEAN_TEST=$test_name" "+METRICS=$out_dir/$test_name.csv"
+        "+EVENT_METRICS=$out_dir/$test_name.events.csv"
         "+STIM_CYCLES=$STIM_CYCLES" "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED"
         -l "$out_dir/$test_name.log")
       run_command+=("${trace_args[@]}")
@@ -136,6 +137,7 @@ case "$SIMULATOR" in
     for test_name in "${tests[@]}"; do
       vvp "$out_dir/aer_clean.vvp" "+CLEAN_TEST=$test_name" \
         "+METRICS=$out_dir/$test_name.csv" "+STIM_CYCLES=$STIM_CYCLES" \
+        "+EVENT_METRICS=$out_dir/$test_name.events.csv" \
         "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED" "${trace_args[@]}" | \
         tee "$out_dir/$test_name.log"
     done
