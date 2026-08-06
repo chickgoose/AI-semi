@@ -24,6 +24,9 @@ required=(
   docs/tasks/a3.md
   docs/verification/aer-clean-benchmark-spec.md
   docs/verification/aer-clean-benchmark-results.md
+  docs/verification/aer-trace-loader.md
+  benchmarks/clean_slate_aer/prepare_sv_trace.py
+  benchmarks/clean_slate_aer/manifest.smoke.json
   tb/clean/aer_bench_if.sv
   tb/clean/aer_clean_mock_candidate.sv
   tb/clean/aer_legacy_candidate_adapter.sv

@@ -20,6 +20,8 @@ RETIRE_LANES="${AER_RETIRE_LANES:-2}"
 STIM_CYCLES="${AER_STIM_CYCLES:-256}"
 LOAD_PCT="${AER_LOAD_PCT:-3}"
 SEED="${AER_SEED:-1}"
+TRACE_JSONL="${AER_TRACE_JSONL:-}"
+TRACE_MANIFEST="${AER_TRACE_MANIFEST:-}"
 
 design_define=""
 design_filelist=""
@@ -36,7 +38,17 @@ case "$design" in
   *) usage ;;
 esac
 
-if [[ $# -gt 0 ]]; then
+if [[ -n "$TRACE_JSONL" || -n "$TRACE_MANIFEST" ]]; then
+  [[ -n "$TRACE_JSONL" && -n "$TRACE_MANIFEST" ]] || {
+    printf 'AER_TRACE_JSONL and AER_TRACE_MANIFEST must be set together\n' >&2
+    exit 2
+  }
+  [[ $# -eq 0 ]] || {
+    printf 'explicit synthetic tests cannot be combined with trace mode\n' >&2
+    exit 2
+  }
+  tests=(trace)
+elif [[ $# -gt 0 ]]; then
   tests=("$@")
 else
   tests=(
@@ -60,6 +72,17 @@ fi
 
 out_dir="$OUT_ROOT/$design-n${NUM_SOURCES}-seed${SEED}"
 mkdir -p "$out_dir"
+
+trace_args=()
+if [[ -n "$TRACE_JSONL" ]]; then
+  trace_stem="$(basename "$TRACE_JSONL")"
+  trace_stem="${trace_stem%.events.jsonl}"
+  prepared_trace="$out_dir/$trace_stem.svtrace"
+  python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/prepare_sv_trace.py" \
+    --trace "$TRACE_JSONL" --run-manifest "$TRACE_MANIFEST" \
+    --output "$prepared_trace" --addr-width "$ADDR_WIDTH"
+  trace_args=("+TRACE_FILE=$prepared_trace" "+TRACE_NAME=$trace_stem")
+fi
 
 common_params=(
   "aer_clean_tb.NUM_SOURCES=$NUM_SOURCES"
@@ -87,6 +110,7 @@ case "$SIMULATOR" in
         "+CLEAN_TEST=$test_name" "+METRICS=$out_dir/$test_name.csv"
         "+STIM_CYCLES=$STIM_CYCLES" "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED"
         -l "$out_dir/$test_name.log")
+      run_command+=("${trace_args[@]}")
       if ! (cd "$PROJECT_ROOT" && "${run_command[@]}"); then
         # Retry only Xcelium's transient shared-server snapshot setup race.
         # Functional failures and all other setup errors remain fatal.
@@ -112,7 +136,8 @@ case "$SIMULATOR" in
     for test_name in "${tests[@]}"; do
       vvp "$out_dir/aer_clean.vvp" "+CLEAN_TEST=$test_name" \
         "+METRICS=$out_dir/$test_name.csv" "+STIM_CYCLES=$STIM_CYCLES" \
-        "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED" | tee "$out_dir/$test_name.log"
+        "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED" "${trace_args[@]}" | \
+        tee "$out_dir/$test_name.log"
     done
     ;;
   *)

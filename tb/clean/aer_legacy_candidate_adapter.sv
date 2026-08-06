@@ -36,23 +36,16 @@ module aer_legacy_candidate_adapter #(
     bench.source_ready = legacy_bus.in_ready;
 
     bench.retire_valid = '0;
-    for (lane = 0; lane < RETIRE_LANES; lane = lane + 1)
+    for (lane = 0; lane < RETIRE_LANES; lane = lane + 1) begin
       bench.retire_event[lane] = '0;
+      bench.retire_source[lane] = '0;
+    end
     bench.retire_valid[0] = legacy_bus.out_valid;
     bench.retire_event[0] = legacy_bus.out_addr;
+    bench.retire_source[0] = legacy_bus.out_src;
     legacy_bus.out_ready = bench.retire_ready[0];
   end
 
-  // The legacy source tag is redundant in the AER-aligned benchmark: source
-  // coordinate is encoded in event_addr.  Check that the adapter has not hidden
-  // a disagreement between the two representations.
-  always @(posedge bench.clk) begin
-    if (bench.rst_n && legacy_bus.out_valid &&
-        (legacy_bus.out_src !==
-         SOURCE_WIDTH'(legacy_bus.out_addr[ADDR_WIDTH-1:1])))
-      $error("LEGACY_ADAPTER source/address identity mismatch src=%0d event=0x%0h",
-             legacy_bus.out_src, legacy_bus.out_addr);
-  end
 `else
   aer_clean_mock_candidate #(
     .NUM_SOURCES(NUM_SOURCES),

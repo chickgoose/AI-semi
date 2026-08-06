@@ -58,9 +58,9 @@
       "workload": "global_fanin",
       "seed": 4001,
       "geometry": {"width": 8, "height": 8},
-      "load": 1.25,
+      "load": 1.00,
       "stim_cycles": 512,
-      "parameters": {"target_x": 4, "target_y": 4}
+      "parameters": {"fan_in_count": 64, "burst_period": 64}
     },
     {
       "name": "local_cluster",

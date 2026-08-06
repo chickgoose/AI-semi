@@ -33,7 +33,17 @@ module aer_clean_tb;
 
   string test_name;
   string metrics_path;
+  string trace_file_path;
   integer metrics_fd;
+  integer trace_fd;
+  integer trace_mode;
+  integer trace_version;
+  integer trace_count;
+  integer trace_cursor;
+  integer trace_stim_cycles;
+  integer trace_source_count;
+  integer trace_load_milli;
+  integer trace_scan_count;
   integer stim_cycles;
   integer load_pct;
   integer seed;
@@ -46,12 +56,20 @@ module aer_clean_tb;
   integer request_wait [NUM_SOURCES];
 
   integer record_source [MAX_EVENTS];
+  integer record_trace_id [MAX_EVENTS];
   integer record_sequence [MAX_EVENTS];
   integer record_occurrence [MAX_EVENTS];
+  integer record_deadline [MAX_EVENTS];
   integer record_accept [MAX_EVENTS];
   integer record_delivery [MAX_EVENTS];
   logic [ADDR_WIDTH-1:0] record_event [MAX_EVENTS];
   integer record_state [MAX_EVENTS]; // 0=offered, 1=overrun, 2=accepted, 3=delivered
+
+  integer trace_occurrence [MAX_EVENTS];
+  integer trace_event_id [MAX_EVENTS];
+  integer trace_source [MAX_EVENTS];
+  integer trace_address [MAX_EVENTS];
+  integer trace_deadline [MAX_EVENTS];
 
   integer accepted_fifo [NUM_SOURCES][MAX_EVENTS];
   integer accepted_head [NUM_SOURCES];
@@ -173,6 +191,19 @@ module aer_clean_tb;
   endfunction
 
   task automatic offer_event(input integer source_index);
+    logic [ADDR_WIDTH-1:0] synthetic_event;
+    begin
+      synthetic_event = make_event(source_index, source_sequence[source_index]);
+      offer_event_record(source_index, generated_count, synthetic_event, 32);
+    end
+  endtask
+
+  task automatic offer_event_record(
+    input integer source_index,
+    input integer trace_id,
+    input logic [ADDR_WIDTH-1:0] event_value,
+    input integer deadline_slack
+  );
     integer new_event_id;
     begin
       if (generated_count >= MAX_EVENTS)
@@ -181,12 +212,13 @@ module aer_clean_tb;
       new_event_id = generated_count;
       generated_count = generated_count + 1;
       record_source[new_event_id] = source_index;
+      record_trace_id[new_event_id] = trace_id;
       record_sequence[new_event_id] = source_sequence[source_index];
       record_occurrence[new_event_id] = cycle_count;
+      record_deadline[new_event_id] = cycle_count + deadline_slack;
       record_accept[new_event_id] = -1;
       record_delivery[new_event_id] = -1;
-      record_event[new_event_id] =
-        make_event(source_index, source_sequence[source_index]);
+      record_event[new_event_id] = event_value;
       record_state[new_event_id] = 0;
       source_sequence[source_index] = source_sequence[source_index] + 1;
 
@@ -204,6 +236,59 @@ module aer_clean_tb;
     end
   endtask
 
+  task automatic load_prepared_trace();
+    integer trace_index;
+    begin
+      trace_fd = $fopen(trace_file_path, "r");
+      if (trace_fd == 0)
+        $fatal(1, "CLEAN_TRACE cannot open %s", trace_file_path);
+      trace_scan_count = $fscanf(trace_fd, "%d %d %d %d %d\n",
+        trace_version, trace_count, trace_stim_cycles, trace_source_count,
+        trace_load_milli);
+      if (trace_scan_count != 5)
+        $fatal(1, "CLEAN_TRACE malformed header in %s", trace_file_path);
+      if (trace_version != 1)
+        $fatal(1, "CLEAN_TRACE unsupported version=%0d", trace_version);
+      if ((trace_count < 0) || (trace_count > MAX_EVENTS))
+        $fatal(1, "CLEAN_TRACE invalid event count=%0d", trace_count);
+      if (trace_source_count != NUM_SOURCES)
+        $fatal(1, "CLEAN_TRACE source mismatch trace=%0d DUT=%0d",
+               trace_source_count, NUM_SOURCES);
+
+      for (trace_index = 0; trace_index < trace_count;
+           trace_index = trace_index + 1) begin
+        trace_scan_count = $fscanf(trace_fd, "%d %d %d %d %d\n",
+          trace_occurrence[trace_index], trace_event_id[trace_index],
+          trace_source[trace_index], trace_address[trace_index],
+          trace_deadline[trace_index]);
+        if (trace_scan_count != 5)
+          $fatal(1, "CLEAN_TRACE malformed event row=%0d", trace_index);
+        if (trace_event_id[trace_index] != trace_index)
+          $fatal(1, "CLEAN_TRACE non-contiguous event id row=%0d id=%0d",
+                 trace_index, trace_event_id[trace_index]);
+        if ((trace_source[trace_index] < 0) ||
+            (trace_source[trace_index] >= NUM_SOURCES))
+          $fatal(1, "CLEAN_TRACE illegal source row=%0d source=%0d",
+                 trace_index, trace_source[trace_index]);
+        if ((trace_occurrence[trace_index] < 0) ||
+            (trace_occurrence[trace_index] >= trace_stim_cycles))
+          $fatal(1, "CLEAN_TRACE illegal occurrence row=%0d cycle=%0d",
+                 trace_index, trace_occurrence[trace_index]);
+        if ((trace_index > 0) &&
+            (trace_occurrence[trace_index] < trace_occurrence[trace_index-1]))
+          $fatal(1, "CLEAN_TRACE occurrence order error row=%0d", trace_index);
+      end
+      $fclose(trace_fd);
+      stim_cycles = trace_stim_cycles;
+      // Trace load is aggregate events/cycle.  Preserve the legacy CSV column
+      // as service-normalized percent until the frozen schema renames it.
+      load_pct = (trace_load_milli + 5) / 10;
+      trace_cursor = 0;
+      $display("CLEAN_TRACE_LOADED file=%s events=%0d stim_cycles=%0d sources=%0d load_pct=%0d",
+        trace_file_path, trace_count, stim_cycles, trace_source_count, load_pct);
+    end
+  endtask
+
   task automatic seeded_offer(input integer source_index, input integer percentage);
     integer draw;
     begin
@@ -218,7 +303,19 @@ module aer_clean_tb;
     integer cluster_size;
     integer stimulus_source;
     begin
-      if (test_name == "basic_single") begin
+      if (trace_mode != 0) begin
+        while ((trace_cursor < trace_count) &&
+               (trace_occurrence[trace_cursor] == local_cycle)) begin
+          offer_event_record(
+            trace_source[trace_cursor], trace_event_id[trace_cursor],
+            ADDR_WIDTH'(trace_address[trace_cursor]),
+            trace_deadline[trace_cursor] - trace_occurrence[trace_cursor]);
+          trace_cursor = trace_cursor + 1;
+        end
+        if ((trace_cursor < trace_count) &&
+            (trace_occurrence[trace_cursor] < local_cycle))
+          $fatal(1, "CLEAN_TRACE missed occurrence row=%0d", trace_cursor);
+      end else if (test_name == "basic_single") begin
         if ((local_cycle < 64) && ((local_cycle % 4) == 0) && !pending[0])
           offer_event(0);
       end else if (test_name == "basic_sparse") begin
@@ -346,14 +443,16 @@ module aer_clean_tb;
            monitor_lane = monitor_lane + 1) begin
         if (bench.retire_valid[monitor_lane] &&
             bench.retire_ready[monitor_lane]) begin
-          decoded_source = integer'(bench.retire_event[monitor_lane] >> 1);
-          if ($isunknown(bench.retire_event[monitor_lane])) begin
+          if ($isunknown({bench.retire_event[monitor_lane],
+                          bench.retire_source[monitor_lane]})) begin
             $error("CLEAN_SCOREBOARD unknown completed event lane=%0d",
                    monitor_lane);
             error_count = error_count + 1;
-          end else if ((decoded_source < 0) || (decoded_source >= NUM_SOURCES)) begin
-            $error("CLEAN_SCOREBOARD illegal event address=0x%0h",
-                   bench.retire_event[monitor_lane]);
+          end else begin
+            decoded_source = integer'(bench.retire_source[monitor_lane]);
+          if ((decoded_source < 0) || (decoded_source >= NUM_SOURCES)) begin
+            $error("CLEAN_SCOREBOARD illegal normalized source=%0d event=0x%0h",
+                   decoded_source, bench.retire_event[monitor_lane]);
             error_count = error_count + 1;
           end else if (accepted_head[decoded_source] >= accepted_tail[decoded_source]) begin
             $error("CLEAN_SCOREBOARD phantom/duplicate event source=%0d event=0x%0h",
@@ -397,6 +496,7 @@ module aer_clean_tb;
             end
             last_delivered_occurrence[decoded_source] = record_occurrence[event_id];
             last_delivered_cycle[decoded_source] = cycle_count;
+          end
           end
         end
       end
@@ -444,6 +544,12 @@ module aer_clean_tb;
       seed = 1;
     if (!$value$plusargs("BURST_PERIOD=%d", burst_period))
       burst_period = 16;
+    trace_mode = $value$plusargs("TRACE_FILE=%s", trace_file_path);
+    if (trace_mode != 0) begin
+      load_prepared_trace();
+      if (!$value$plusargs("TRACE_NAME=%s", test_name))
+        test_name = "trace";
+    end
 
     generated_count = 0;
     source_overrun_count = 0;
@@ -467,6 +573,11 @@ module aer_clean_tb;
       @(negedge clk);
       drive_sink_ready(stim_cycle);
       generate_workload(stim_cycle);
+    end
+    if ((trace_mode != 0) && (trace_cursor != trace_count)) begin
+      $error("CLEAN_TRACE not fully consumed cursor=%0d count=%0d",
+             trace_cursor, trace_count);
+      error_count = error_count + 1;
     end
 
     @(negedge clk);

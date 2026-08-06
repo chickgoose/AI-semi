@@ -15,7 +15,7 @@ from typing import Any, Callable, Iterable
 
 
 SCHEMA_VERSION = 1
-GENERATOR_VERSION = "1.0"
+GENERATOR_VERSION = "1.1"
 WORKLOADS = (
     "basic_sparse",
     "basic_simultaneous",
@@ -206,7 +206,7 @@ def generate_basic_sparse(builder: TraceBuilder) -> None:
     sources = evenly_spaced_sources(count, config.source_count)
     for index, source in enumerate(sources, start=1):
         cycle = (index * config.stim_cycles) // (count + 1)
-        builder.add(cycle, source, event_type="basic_sparse")
+        builder.add(cycle, source)
 
 
 def generate_basic_simultaneous(builder: TraceBuilder) -> None:
@@ -217,14 +217,14 @@ def generate_basic_simultaneous(builder: TraceBuilder) -> None:
     )
     cycle = integer_parameter(config, "occurrence_cycle", config.stim_cycles // 2, 0)
     for source in evenly_spaced_sources(count, config.source_count):
-        builder.add(cycle, source, event_type="basic_simultaneous")
+        builder.add(cycle, source)
 
 
 def generate_uniform(builder: TraceBuilder) -> None:
     for cycle in range(builder.config.stim_cycles):
         for _ in range(builder.events_per_cycle()):
             source = builder.random_source()
-            builder.add(cycle, source, event_type="uniform")
+            builder.add(cycle, source)
 
 
 def generate_elephant_mouse(builder: TraceBuilder) -> None:
@@ -239,28 +239,22 @@ def generate_elephant_mouse(builder: TraceBuilder) -> None:
         for _ in range(builder.events_per_cycle()):
             if builder.rng.probability(share):
                 source = hot_source
-                event_type = "elephant"
             else:
                 source = builder.random_source(excluded=hot_source)
-                event_type = "mouse"
-            builder.add(cycle, source, event_type=event_type)
+            builder.add(cycle, source)
 
 
 def generate_global_fanin(builder: TraceBuilder) -> None:
     config = builder.config
-    target_x = integer_parameter(config, "target_x", config.width // 2, 0)
-    target_y = integer_parameter(config, "target_y", config.height // 2, 0)
-    if target_x >= config.width or target_y >= config.height:
-        raise ManifestError(f"{config.name} fanin target is outside geometry")
-    for cycle in range(config.stim_cycles):
-        for _ in range(builder.events_per_cycle()):
-            builder.add(
-                cycle,
-                builder.random_source(),
-                target_x,
-                target_y,
-                event_type="global_fanin",
-            )
+    count = min(
+        integer_parameter(config, "fan_in_count", config.source_count, 1),
+        config.source_count,
+    )
+    period = integer_parameter(config, "burst_period", 64, 1)
+    sources = evenly_spaced_sources(count, config.source_count)
+    for cycle in range(0, config.stim_cycles, period):
+        for source in sources:
+            builder.add(cycle, source)
 
 
 def generate_local_cluster(builder: TraceBuilder) -> None:
@@ -278,7 +272,7 @@ def generate_local_cluster(builder: TraceBuilder) -> None:
     for cycle in range(config.stim_cycles):
         for _ in range(builder.events_per_cycle()):
             x, y = coordinates[builder.rng.randbelow(len(coordinates))]
-            builder.add(cycle, y * config.width + x, x, y, event_type="local_cluster")
+            builder.add(cycle, y * config.width + x, x, y)
 
 
 def generate_distributed_burst(builder: TraceBuilder) -> None:
@@ -298,7 +292,7 @@ def generate_distributed_burst(builder: TraceBuilder) -> None:
             for _ in range(builder.events_per_cycle()):
                 x = x0 + builder.rng.randbelow(max(1, x1 - x0))
                 y = y0 + builder.rng.randbelow(max(1, y1 - y0))
-                builder.add(cycle, y * config.width + x, x, y, event_type="distributed_burst")
+                builder.add(cycle, y * config.width + x, x, y)
 
 
 def generate_retrigger(builder: TraceBuilder) -> None:
@@ -315,7 +309,6 @@ def generate_retrigger(builder: TraceBuilder) -> None:
             builder.add(
                 start + repeat_index * interval,
                 source,
-                event_type="retrigger",
             )
 
 
@@ -333,11 +326,11 @@ def generate_timing_pair(builder: TraceBuilder) -> None:
         start = min(usable_cycles - 1, (pair + 1) * spacing)
         source_a = builder.random_source()
         source_b = builder.random_source(excluded=source_a)
-        builder.add(start, source_a, event_type="timing_pair_a", deadline_slack=tight_slack)
+        builder.add(start, source_a, event_type="timing_a", deadline_slack=tight_slack)
         builder.add(
             start + pair_gap,
             source_b,
-            event_type="timing_pair_b",
+            event_type="timing_b",
             deadline_slack=tight_slack,
         )
 
@@ -356,7 +349,6 @@ def generate_backpressure_shock(builder: TraceBuilder) -> None:
             builder.add(
                 cycle,
                 builder.random_source(),
-                event_type="backpressure_shock" if in_shock else "background",
                 deadline_slack=shock_slack if in_shock else None,
             )
 

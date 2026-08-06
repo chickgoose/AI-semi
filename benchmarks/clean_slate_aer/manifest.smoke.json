@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "description": "Small 2x2 trace-loader regression",
+  "runs": [
+    {
+      "name": "trace_smoke",
+      "workload": "uniform",
+      "seed": 42,
+      "geometry": {"width": 2, "height": 2},
+      "load": 0.75,
+      "stim_cycles": 64,
+      "parameters": {"deadline_slack": 12}
+    }
+  ]
+}

@@ -47,6 +47,7 @@ def check_trace(output: Path, metadata: dict[str, object]) -> None:
         assert 0 <= event["logical_source"] < geometry["width"] * geometry["height"]
         assert 0 <= event["x"] < geometry["width"]
         assert 0 <= event["y"] < geometry["height"]
+        assert event["logical_source"] == event["y"] * geometry["width"] + event["x"]
         assert event["polarity"] in (-1, 1)
         assert isinstance(event["event_type"], str) and event["event_type"]
         assert event["deadline"] >= event["occurrence_cycle"]
@@ -57,8 +58,10 @@ def check_workload_signatures(output: Path) -> None:
     assert len({event["occurrence_cycle"] for event in simultaneous}) == 1
 
     fanin = read_events(output / "global_fanin.events.jsonl")
-    assert len({(event["x"], event["y"]) for event in fanin}) == 1
-    assert len({event["logical_source"] for event in fanin}) > 1
+    first_cycle = min(event["occurrence_cycle"] for event in fanin)
+    first_burst = [event for event in fanin if event["occurrence_cycle"] == first_cycle]
+    assert len(first_burst) == 64
+    assert len({event["logical_source"] for event in first_burst}) == 64
 
     cluster = read_events(output / "local_cluster.events.jsonl")
     assert all(abs(event["x"] - 4) <= 1 and abs(event["y"] - 4) <= 1 for event in cluster)
@@ -74,11 +77,11 @@ def check_workload_signatures(output: Path) -> None:
 
     pairs = read_events(output / "timing_pair.events.jsonl")
     type_counts = Counter(event["event_type"] for event in pairs)
-    assert type_counts["timing_pair_a"] == type_counts["timing_pair_b"] == 24
+    assert type_counts["timing_a"] == type_counts["timing_b"] == 24
 
     shock = read_events(output / "backpressure_shock.events.jsonl")
-    shock_count = sum(event["event_type"] == "backpressure_shock" for event in shock)
-    background_count = sum(event["event_type"] == "background" for event in shock)
+    shock_count = sum(192 <= event["occurrence_cycle"] < 288 for event in shock)
+    background_count = len(shock) - shock_count
     assert shock_count > background_count
 
 
