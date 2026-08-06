@@ -51,33 +51,33 @@ for path in "${required[@]}"; do
   [[ -f "$PROJECT_ROOT/$path" ]] || { printf 'missing %s\n' "$path" >&2; exit 1; }
 done
 
-if rg -n '\bsequence\b' "$PROJECT_ROOT/tb/aer_tb.sv"; then
+if grep -En '\bsequence\b' "$PROJECT_ROOT/tb/aer_tb.sv"; then
   printf 'Xcelium-reserved identifier sequence remains in aer_tb.sv\n' >&2
   exit 1
 fi
-rg -qx 'rtl/baseline/aer_baseline_core.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
-rg -qx 'rtl/baseline/aer_dut.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
-rg -qx 'rtl/experiments/a23_ee430/a23_ee430_dut.sv' \
+grep -Eqx 'rtl/baseline/aer_baseline_core.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
+grep -Eqx 'rtl/baseline/aer_dut.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"
+grep -Eqx 'rtl/experiments/a23_ee430/a23_ee430_dut.sv' \
   "$PROJECT_ROOT/tb/filelists/a23_ee430.f"
-rg -qx 'rtl/baseline/aer_rx.sv' "$PROJECT_ROOT/tb/filelists/a23_ee430.f"
-if rg -n 'aer_sync_fifo|FIFO_DEPTH|occupancy|quota_q|aging_q' \
+grep -Eqx 'rtl/baseline/aer_rx.sv' "$PROJECT_ROOT/tb/filelists/a23_ee430.f"
+if grep -ERn 'aer_sync_fifo|FIFO_DEPTH|occupancy|quota_q|aging_q' \
   "$PROJECT_ROOT/rtl/experiments/a23_ee430"; then
   printf 'forbidden buffering or scheduling state found in A23 experiment\n' >&2
   exit 1
 fi
-if rg -q 'aer_baseline_top.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"; then
+if grep -Eq 'aer_baseline_top.sv' "$PROJECT_ROOT/tb/filelists/baseline.f"; then
   printf 'legacy aer_baseline_top.sv remains in comparison file list\n' >&2
   exit 1
 fi
-rg -q 'set parameters \[list \$sources \$addr_w\]' "$PROJECT_ROOT/scripts/drivers/genus_synth.tcl" || {
+grep -Eq 'set parameters \[list \$sources \$addr_w\]' "$PROJECT_ROOT/scripts/drivers/genus_synth.tcl" || {
   printf 'Genus top parameters must use positional source/address values\n' >&2
   exit 1
 }
-if rg -q 'git -C' "$PROJECT_ROOT/scripts/lib/common.sh"; then
+if grep -Eq 'git -C' "$PROJECT_ROOT/scripts/lib/common.sh"; then
   printf 'manifest commit lookup must support old Git without -C\n' >&2
   exit 1
 fi
-rg -q 'command=.*-timescale 1ns/1ps' "$PROJECT_ROOT/scripts/run_sim.sh" || {
+grep -Eq 'command=.*-timescale 1ns/1ps' "$PROJECT_ROOT/scripts/run_sim.sh" || {
   printf 'Xcelium command must set -timescale 1ns/1ps\n' >&2
   exit 1
 }
