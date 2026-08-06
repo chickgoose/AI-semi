@@ -36,9 +36,13 @@ OUTPUT_COLUMNS = (
     "candidate",
     "workload",
     "suite",
+    "source_count",
+    "native_protocol",
+    "native_retire_lanes",
     "decision",
     "unsupported_core",
     "unsupported_optional",
+    "unsupported_profile",
     "reason",
 )
 
@@ -54,15 +58,46 @@ class Capability:
 
 
 @dataclass(frozen=True)
+class SourceCount:
+    kind: str
+    value: int | None
+    minimum: int | None
+    maximum: int | None
+
+    def supports(self, requested: int) -> bool:
+        if self.kind == "fixed":
+            return requested == self.value
+        return requested >= int(self.minimum) and (
+            self.maximum is None or requested <= self.maximum
+        )
+
+    def describe(self) -> str:
+        if self.kind == "fixed":
+            return f"fixed at {self.value}"
+        upper = "unbounded" if self.maximum is None else str(self.maximum)
+        return f"parameterized range [{self.minimum}, {upper}]"
+
+
+@dataclass(frozen=True)
+class NativeInterface:
+    protocol: str
+    source_count: SourceCount
+    source_observable: bool
+    retire_lanes: int
+
+
+@dataclass(frozen=True)
 class Profile:
     candidate: str
     capabilities: dict[str, Capability]
+    native_interface: NativeInterface
 
 
 @dataclass(frozen=True)
 class Workload:
     name: str
     suite: str
+    source_count: int
     required_capabilities: tuple[str, ...]
 
 
@@ -91,6 +126,67 @@ def _nonempty_string(value: object, location: str) -> str:
 def _schema_version(document: dict[str, object], location: str) -> None:
     if document.get("schema_version") != 1:
         raise ContractError(f"{location}.schema_version must be 1")
+
+
+def _positive_int(value: object, location: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ContractError(f"{location} must be a positive integer")
+    return value
+
+
+def _load_native_interface(
+    value: object, location: str, capabilities: dict[str, Capability]
+) -> NativeInterface:
+    native = _object(value, location)
+    protocol = _nonempty_string(native.get("protocol"), f"{location}.protocol")
+    source_observable = native.get("source_observable")
+    if not isinstance(source_observable, bool):
+        raise ContractError(f"{location}.source_observable must be boolean")
+    retire_lanes = _positive_int(native.get("retire_lanes"), f"{location}.retire_lanes")
+
+    count_location = f"{location}.source_count"
+    count = _object(native.get("source_count"), count_location)
+    kind = _nonempty_string(count.get("kind"), f"{count_location}.kind")
+    if kind == "fixed":
+        source_count = SourceCount(
+            kind=kind,
+            value=_positive_int(count.get("value"), f"{count_location}.value"),
+            minimum=None,
+            maximum=None,
+        )
+    elif kind == "parameterized":
+        minimum = _positive_int(count.get("minimum"), f"{count_location}.minimum")
+        maximum_value = count.get("maximum")
+        maximum = (
+            _positive_int(maximum_value, f"{count_location}.maximum")
+            if maximum_value is not None
+            else None
+        )
+        if maximum is not None and maximum < minimum:
+            raise ContractError(f"{count_location}.maximum must be >= minimum")
+        source_count = SourceCount(
+            kind=kind,
+            value=None,
+            minimum=minimum,
+            maximum=maximum,
+        )
+    else:
+        raise ContractError(f"{count_location}.kind must be fixed or parameterized")
+
+    if capabilities["fairness"].supported and not source_observable:
+        raise ContractError(
+            f"{location}: fairness support requires source_observable=true"
+        )
+    if capabilities["multi_lane_retirement"].supported != (retire_lanes > 1):
+        raise ContractError(
+            f"{location}: multi_lane_retirement must match retire_lanes > 1"
+        )
+    return NativeInterface(
+        protocol=protocol,
+        source_count=source_count,
+        source_observable=source_observable,
+        retire_lanes=retire_lanes,
+    )
 
 
 def load_profile(path: Path) -> Profile:
@@ -122,7 +218,16 @@ def load_profile(path: Path) -> Profile:
                 f"{location}.reason is required when capability is unsupported"
             )
         capabilities[name] = Capability(supported=supported, reason=reason)
-    return Profile(candidate=candidate, capabilities=capabilities)
+    native_interface = _load_native_interface(
+        document.get("native_interface"),
+        f"{path}.native_interface",
+        capabilities,
+    )
+    return Profile(
+        candidate=candidate,
+        capabilities=capabilities,
+        native_interface=native_interface,
+    )
 
 
 def load_workloads(path: Path) -> list[Workload]:
@@ -144,6 +249,9 @@ def load_workloads(path: Path) -> list[Workload]:
         suite = _nonempty_string(entry.get("suite"), f"{location}.suite")
         if suite not in {"core", "optional"}:
             raise ContractError(f"{location}.suite must be core or optional")
+        source_count = _positive_int(
+            entry.get("source_count"), f"{location}.source_count"
+        )
         raw_required = entry.get("required_capabilities")
         if not isinstance(raw_required, list) or not raw_required:
             raise ContractError(
@@ -174,6 +282,7 @@ def load_workloads(path: Path) -> list[Workload]:
             Workload(
                 name=name,
                 suite=suite,
+                source_count=source_count,
                 required_capabilities=required,
             )
         )
@@ -204,9 +313,13 @@ def evaluate(profile: Profile, workloads: Sequence[Workload]) -> list[dict[str, 
         unsupported_optional = [
             name for name in unsupported if name in OPTIONAL_CAPABILITIES
         ]
+        source_count_supported = profile.native_interface.source_count.supports(
+            workload.source_count
+        )
+        unsupported_profile = "" if source_count_supported else "source_count"
         if unsupported_core:
             decision = DECISION_HARD_FAIL
-        elif unsupported_optional:
+        elif unsupported_optional or unsupported_profile:
             decision = DECISION_SKIP
         else:
             decision = DECISION_RUN
@@ -214,14 +327,24 @@ def evaluate(profile: Profile, workloads: Sequence[Workload]) -> list[dict[str, 
         reasons = [
             f"{name}: {profile.capabilities[name].reason}" for name in unsupported
         ]
+        if unsupported_profile:
+            reasons.append(
+                f"source_count: workload requires {workload.source_count}; "
+                f"native profile is "
+                f"{profile.native_interface.source_count.describe()}"
+            )
         decisions.append(
             {
                 "candidate": profile.candidate,
                 "workload": workload.name,
                 "suite": workload.suite,
+                "source_count": str(workload.source_count),
+                "native_protocol": profile.native_interface.protocol,
+                "native_retire_lanes": str(profile.native_interface.retire_lanes),
                 "decision": decision,
                 "unsupported_core": ";".join(unsupported_core),
                 "unsupported_optional": ";".join(unsupported_optional),
+                "unsupported_profile": unsupported_profile,
                 "reason": " | ".join(reasons),
             }
         )
@@ -246,7 +369,13 @@ def write_json(decisions: Sequence[dict[str, str]], stream: TextIO) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", required=True, type=Path)
+    parser.add_argument(
+        "--profile",
+        required=True,
+        action="append",
+        type=Path,
+        help="candidate profile; repeat to compare candidates",
+    )
     parser.add_argument("--workloads", required=True, type=Path)
     parser.add_argument("--format", choices=("csv", "json"), default="csv")
     parser.add_argument("-o", "--output", type=Path, help="output path (default stdout)")
@@ -256,7 +385,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        decisions = evaluate(load_profile(args.profile), load_workloads(args.workloads))
+        profiles = [load_profile(path) for path in args.profile]
+        candidates = [profile.candidate for profile in profiles]
+        if len(candidates) != len(set(candidates)):
+            raise ContractError("duplicate candidate profile")
+        workloads = load_workloads(args.workloads)
+        decisions = [
+            decision
+            for profile in profiles
+            for decision in evaluate(profile, workloads)
+        ]
     except ContractError as exc:
         print(f"capability contract error: {exc}", file=sys.stderr)
         return 3

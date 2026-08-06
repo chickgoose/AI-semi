@@ -73,12 +73,19 @@ counts. No adapter or FIFO is required to eliminate it.
 ## Profile and workload schemas
 
 Both files are JSON with `schema_version: 1`. A profile declares every known
-capability explicitly:
+capability explicitly and records its native protocol, source-count shape,
+source observability, and physical retire lanes:
 
 ```json
 {
   "schema_version": 1,
   "candidate": "native_candidate_id",
+  "native_interface": {
+    "protocol": "candidate_native_protocol",
+    "source_count": {"kind": "fixed", "value": 16},
+    "source_observable": true,
+    "retire_lanes": 1
+  },
   "capabilities": {
     "sink_always_ready": {"supported": true},
     "address_event_correctness": {"supported": true},
@@ -99,12 +106,13 @@ capability explicitly:
 ```
 
 Unsupported declarations require a non-empty reason. A workload entry names its
-suite and requirements:
+suite, logical source count, and requirements:
 
 ```json
 {
   "name": "optional_output_backpressure",
   "suite": "optional",
+  "source_count": 16,
   "required_capabilities": [
     "address_event_correctness",
     "loss_duplicate_phantom",
@@ -119,6 +127,30 @@ duplicate declarations are contract errors, not SKIPs. Across all entries, the
 core suite must cover every mandatory core capability; omission from the
 workload file cannot be used to hide a core incompatibility.
 
+`source_count.kind` is either `fixed` with one positive `value`, or
+`parameterized` with a positive `minimum` and optional `maximum`. A source-count
+mismatch is `SKIP_UNSUPPORTED`, not a fabricated core correctness failure. The
+profile's `multi_lane_retirement` declaration must agree with whether native
+`retire_lanes` is greater than one, and fairness support requires
+`source_observable=true`.
+
+## Repository candidate profiles
+
+The checked profiles describe native interfaces; they are not score claims.
+
+| Candidate profile | Native sources/protocol | Core N=16 | Backpressure | Polarity/type | Multi-lane |
+| --- | --- | --- | --- | --- | --- |
+| `ganghee_trad_rowcol_fovea` | fixed 16, level request and ROW/COL serial stream, source-observable, one lane | RUN | SKIP | SKIP | SKIP |
+| `baseline` | parameterized per-source ready/valid, source sideband, one retire lane | RUN | RUN | SKIP | SKIP |
+| `a23-ee430` | parameterized per-source ready/valid, source sideband, one retire lane | RUN | RUN | SKIP | SKIP |
+
+For baseline and A23, backpressure support comes from their native `out_ready`
+contract. Both native payloads carry address/source but no polarity or event-type
+field. Baseline's fairness capability means its fixed-priority service can be
+measured; it does not convert the policy into bounded fairness. Ganghee's profile
+uses the supplied fixed N=16 native contract and does not add ready, FIFO, event
+type, or parallel retire hardware.
+
 ## Pre-run decisions and exit status
 
 Decision precedence for each workload is:
@@ -128,9 +160,10 @@ Decision precedence for each workload is:
 3. otherwise: `RUN`.
 
 The validator emits candidate, workload, suite, decision, unsupported capability
-names, and profile reasons as CSV or JSON. Exit status is 0 for any mixture of
-RUN and optional SKIP, 2 when a core hard failure exists, and 3 for a malformed
-contract or I/O error.
+names, source-count mismatch, native protocol/retire width, and profile reasons
+as CSV or JSON. Exit status is 0 for any mixture of RUN and SKIP, 2 when a core
+hard failure exists, and 3 for a malformed contract or I/O error. Repeat
+`--profile` to compare candidates against the exact same workload file.
 
 ```sh
 python3 benchmarks/clean_slate_aer/capabilities.py \
@@ -140,6 +173,12 @@ python3 benchmarks/clean_slate_aer/capabilities.py \
 python3 benchmarks/clean_slate_aer/capabilities.py \
   --format json --output /tmp/capability-decisions.json \
   --profile candidate-profile.json --workloads workload-requirements.json
+
+python3 benchmarks/clean_slate_aer/capabilities.py --format json \
+  --workloads benchmarks/clean_slate_aer/fixtures/workload_capability_requirements.json \
+  --profile benchmarks/clean_slate_aer/fixtures/capability_profile_ganghee_trad_rowcol_fovea.json \
+  --profile benchmarks/clean_slate_aer/fixtures/capability_profile_baseline.json \
+  --profile benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
 ```
 
 Capability decisions must be stored beside the normal clean-benchmark result.
