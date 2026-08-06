@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "workloads": [
+    {
+      "name": "core_native_always_ready",
+      "suite": "core",
+      "required_capabilities": [
+        "sink_always_ready",
+        "address_event_correctness",
+        "occurrence_to_delivery_latency",
+        "loss_duplicate_phantom",
+        "fairness"
+      ]
+    },
+    {
+      "name": "optional_output_backpressure",
+      "suite": "optional",
+      "required_capabilities": [
+        "address_event_correctness",
+        "loss_duplicate_phantom",
+        "output_backpressure"
+      ]
+    },
+    {
+      "name": "optional_polarity_event_type",
+      "suite": "optional",
+      "required_capabilities": [
+        "address_event_correctness",
+        "loss_duplicate_phantom",
+        "polarity_event_type"
+      ]
+    },
+    {
+      "name": "optional_multi_lane_retirement",
+      "suite": "optional",
+      "required_capabilities": [
+        "address_event_correctness",
+        "loss_duplicate_phantom",
+        "multi_lane_retirement"
+      ]
+    }
+  ]
+}

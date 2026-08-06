@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "candidate": "native_full_feature_example",
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {"supported": true},
+    "polarity_event_type": {"supported": true},
+    "multi_lane_retirement": {"supported": true}
+  }
+}
