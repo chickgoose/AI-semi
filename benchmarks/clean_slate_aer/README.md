@@ -140,6 +140,97 @@ latency and timing error are weighted by delivered events. Average throughput,
 fairness, and request wait are arithmetic means across runs; their worst values
 are minimum throughput/fairness and maximum latency/wait/timing error.
 
+## Optional per-event result schema
+
+The summary CSV cannot recover latency distributions, deadline outcomes, or
+per-source service intervals. A benchmark may therefore emit an additional
+per-event CSV and pass it with `--events`. Its required header is:
+
+```text
+test,seed,load_pct,tb_only_event_id,logical_source,source_count,occurrence_cycle,accept_cycle,delivery_cycle,deadline_cycle,observation_end_cycle,event_state
+```
+
+`test`, `seed`, and `load_pct` form the run key and must match one summary row.
+There must be exactly one per-event row for every generated event in each run
+that supplies event detail. `tb_only_event_id` must be unique inside that run.
+It exists only for trace matching and scoreboarding and is never DUT payload.
+
+All time fields are integer cycles:
+
+- `occurrence_cycle` is when the trace event occurs, independent of source
+  readiness.
+- blank `accept_cycle`, `delivery_cycle`, or `deadline_cycle` means the
+  corresponding event did not occur or no deadline was assigned.
+- `observation_end_cycle` is the last cycle included by that run. It is
+  repeated on every row and must be constant within the run.
+- `logical_source` is in `[0, source_count)`. Repeating `source_count` makes
+  sources with no delivered event observable instead of silently dropping
+  them from fairness/service accounting.
+
+`event_state` is exactly one of:
+
+| State | Required cycles | Interpretation |
+| --- | --- | --- |
+| `source_overrun` | accept/delivery blank | terminal source-latch saturation loss |
+| `pending` | accept/delivery blank | retained but not accepted when observation ended |
+| `accepted` | accept present, delivery blank | accepted but not delivered when observation ended |
+| `delivered` | accept and delivery present | completed event |
+
+The aggregator validates per-run event counts and the overrun/accepted/
+delivered state counts against the summary row. Event files may cover only a
+subset of summary seeds; the output marks each `(test, load_pct)` group as
+`COMPLETE`, `PARTIAL`, or `NOT_PROVIDED` rather than silently treating missing
+detail as zero. The normal load summary pools event samples across supplied
+seeds. JSON also includes exact `(test, seed, load_pct)` records under
+`event_runs`; `--event-output` writes those same seed-specific records as CSV.
+
+### Tail latency and censoring
+
+End-to-end latency is `delivery_cycle - occurrence_cycle`; internal latency is
+`delivery_cycle - accept_cycle`. Only `delivered` rows are samples. `pending`
+and `accepted` rows are right-censored and are counted in
+`censored_event_rows`, but are not replaced with `observation_end_cycle` in a
+latency percentile. `source_overrun` is a terminal saturation loss, not a
+latency sample or a censored sample.
+
+P50/P95/P99 use the deterministic nearest-rank definition: sort `N` samples
+and select rank `ceil(percentile * N / 100)`, with ranks starting at one. An
+empty delivered sample set produces a blank percentile.
+
+### Deadlines
+
+A delivered event meets its deadline when `delivery_cycle <= deadline_cycle`;
+delivery one or more cycles later is a miss. A terminal `source_overrun` with a
+deadline is a miss. An undelivered `pending` or `accepted` event is a definite
+miss once `observation_end_cycle >= deadline_cycle`; before that boundary its
+deadline outcome is censored.
+
+`deadline_miss_ratio` is `deadline_misses / (deadline_events -
+deadline_censored)`. The censored count is reported alongside it so a short
+observation cannot appear as an artificially good result. Events with blank
+deadlines are excluded.
+
+### Source service gaps and sliding windows
+
+For every run and every source, delivered cycles are sorted. Consecutive
+differences form the service-gap samples used for P95, P99, and maximum service
+gap. A source with fewer than two deliveries contributes no fabricated gap;
+sources with no delivery are reported explicitly in
+`service_sources_unobserved`.
+
+`--service-window-cycles W` selects a cycle window (default 64). For each
+source, every full integer-cycle sliding window `[start, start + W)` from cycle
+zero through `observation_end_cycle` is evaluated. The aggregator reports:
+
+- total source-window pairs (`service_source_windows`);
+- the minimum delivered service in any source window;
+- the count and ratio of source windows with zero service.
+
+Runs shorter than one full window contribute zero windows and a blank minimum.
+These are offered-traffic observations, not a proof that a source requested
+continuously; bounded-arbitration claims still require request/handshake-aware
+verification.
+
 ## Verdict policy
 
 Correctness and capacity are separate axes.
@@ -187,6 +278,22 @@ python3 benchmarks/clean_slate_aer/aggregate.py \
   --format json --output /tmp/aer-summary.json run-*.csv
 ```
 
+Add optional per-event detail (repeat `--events` for multiple files):
+
+```sh
+python3 benchmarks/clean_slate_aer/aggregate.py \
+  run-summary.csv \
+  --events run-events.csv \
+  --service-window-cycles 64 \
+  --event-output /tmp/aer-event-runs.csv \
+  --output /tmp/aer-metrics-v2.csv
+```
+
+Every latency, deadline, gap, and window value emitted by this layer remains in
+cycles. The aggregator intentionally has no clock-frequency or nanosecond
+option. Cycle-to-nanosecond conversion belongs to the separate PPA layer that
+owns post-layout frequency and corner information.
+
 `--fail-on-correctness` returns exit status 2 for CI when any test has a real
 correctness failure. Saturation alone still returns success.
 
@@ -200,4 +307,7 @@ python3 -m unittest discover \
 The saturation fixture proves that 30% source overrun, a visible knee, and large
 tail latency remain a performance result rather than a correctness failure. A
 separate malformed result proves that explicit errors and impossible delivery
-counts are classified as correctness failures.
+counts are classified as correctness failures. Deterministic per-event
+fixtures lock nearest-rank percentiles, censored and terminal-loss handling,
+deadline equality, unobserved sources, consecutive service gaps, and exact
+sliding-window counts.
