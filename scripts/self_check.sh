@@ -22,6 +22,15 @@ required=(
   scripts/prepare_power_activity.sh
   constraints/aer_common.sdc results/README.md docs/server-environment.md
   docs/tasks/a3.md
+  docs/verification/aer-clean-benchmark-spec.md
+  docs/verification/aer-clean-benchmark-results.md
+  tb/clean/aer_bench_if.sv
+  tb/clean/aer_clean_mock_candidate.sv
+  tb/clean/aer_legacy_candidate_adapter.sv
+  tb/clean/aer_clean_assertions.sv
+  tb/clean/aer_clean_tb.sv
+  tb/clean/files.f
+  scripts/run_clean_benchmark.sh
 )
 for path in "${required[@]}"; do
   [[ -f "$PROJECT_ROOT/$path" ]] || { printf 'missing %s\n' "$path" >&2; exit 1; }

@@ -1,12 +1,17 @@
 # AI-semi
 
-Digital AER RTL project. The current internal final candidate is the FIFO-free
-A23 EE430 core: rotating round-robin arbitration, bubble-free TX refill, and an
-elastic RX. Its qualification and limitations are recorded in
+Digital AER RTL project. The active direction as of 2026-08-04 is clean-slate:
+freeze the AER event semantics, architecture-neutral workloads, scoreboard, and
+Cadence PPA boundary before writing a new candidate RTL. Ganghee's ROW/COL
+design, Junyoung's A23, and Hyeonsu's rotation-priority design are historical
+references and benchmark-calibration candidates, not the implementation base for
+the new architecture.
+
+The benchmark contract and the exact AER limitations it is intended to expose are
+recorded in
+[`docs/verification/aer-clean-benchmark-spec.md`](docs/verification/aer-clean-benchmark-spec.md).
+The earlier A23 qualification remains reproducible and is preserved in
 [`docs/experiments/a23-final-candidate.md`](docs/experiments/a23-final-candidate.md).
-The complete baseline-to-A23 design evolution and quantitative comparison are in
-[`docs/experiments/baseline-to-a23-improvements.md`](docs/experiments/baseline-to-a23-improvements.md).
-The fixed-priority baseline remains the comparison reference.
 
 팀 작업 경위, 서버 제공물, 자체 workload와 공식/비공식 평가 조건의 구분은
 [`docs/TEAM_HANDOFF_WORKLOAD.md`](docs/TEAM_HANDOFF_WORKLOAD.md)를 먼저 읽는다.
@@ -17,6 +22,18 @@ Candidate RTL and file list:
 rtl/experiments/a23_ee430/
 tb/filelists/a23_ee430.f
 ```
+
+Run the first clean benchmark calibration with:
+
+```bash
+scripts/run_clean_benchmark.sh mock
+scripts/run_clean_benchmark.sh baseline
+scripts/run_clean_benchmark.sh a23-ee430
+```
+
+Xcelium is the qualification simulator. The normalized benchmark interface can
+retire multiple logical events per cycle, while the legacy adapter maps existing
+single-lane ready/valid designs without adding storage.
 
 Run candidate verification with:
 

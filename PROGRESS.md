@@ -1,12 +1,12 @@
 # AI-semi Progress
 
-최종 갱신: 2026-08-02
+최종 갱신: 2026-08-04
 
 ## 프로젝트 상태
 
 - 대회: 2026 전국 대학생 AI 반도체 회로 설계 경진대회
 - 트랙: **Digital 확정**
-- 현재 단계: EE430 기반 A23 기능·stress·Genus PPA gate 완료 → 내부 최종 후보 확정
+- 현재 단계: 기존 후보 동결 → clean-slate AER workload/scoreboard 우선 정립
 - 1차 결과 제출: **2026-08-28**
 - 2차 최종 제출: **2026-10-30**
 - 발표·시상: **2026-11-28**, 곤지암리조트
@@ -36,6 +36,13 @@
 - [x] A23 독립 stress 회귀 120/120 통과
 - [x] baseline/A2/A3/A23 Genus 비교 12/12 유효 run 확보
 - [x] A23를 현재 내부 최종 후보로 선정
+- [x] AER를 arbitrary payload bus로 보던 기존 공통 가정의 한계 확인
+- [x] 기존 세 설계를 새 RTL의 base가 아닌 benchmark reference로 재분류
+- [x] AER 기본 기능군과 고질적 한계 노출군을 분리한 clean benchmark 명세 작성
+- [x] ready 독립 source occurrence와 1-entry source latch/overrun 모델 구현
+- [x] generated/accepted/delivered 및 occurrence 기반 latency/timing distortion 분리
+- [x] multi-event/cycle을 허용하는 normalized retire interface와 legacy adapter 구현
+- [x] Verilator smoke 12/12, 서버 Xcelium baseline 8/8 및 A23 8/8 correctness PASS
 
 ## 설계 환경 접속 상태
 
@@ -70,7 +77,17 @@ Bio-mimic Neuron을 위한 AER(Address-Event Representation) 통신 방식을 �
 
 ## 현재 설계 전략
 
-현재 내부 최종 후보는 FIFO를 추가하지 않은 A23 EE430 코어다. 기존의 큰 source별 FIFO
+### 2026-08-04 clean-slate 전환
+
+새 구조는 강희 ROW/COL, 준영 A23, 현수 rotation-priority 중 하나를 가져와 확장하지
+않는다. 세 설계는 기존 AER의 기능 및 한계를 교정하는 read-only reference로만 사용한다.
+먼저 주소=이벤트 의미, source occurrence, workload trace, scoreboard, pin/PPA 비용 경계를
+고정한 뒤 새 RTL을 처음부터 설계한다. 기준 문서는
+[`docs/verification/aer-clean-benchmark-spec.md`](docs/verification/aer-clean-benchmark-spec.md)다.
+
+아래 A23 결과는 clean-slate 전환 전까지 확보한 역사적 비교 기준이며 폐기하지 않는다.
+
+clean-slate 전환 전 내부 최종 후보였던 설계는 FIFO를 추가하지 않은 A23 EE430 코어다. 기존의 큰 source별 FIFO
 round-robin 실험은 기각 상태를 유지하지만, A23는 rotating round-robin pointer와
 same-edge TX refill만 추가해 bounded fairness와 정상상태 1 event/cycle을 함께 달성한다.
 
@@ -108,6 +125,11 @@ A3가 순수 PPA는 더 좋지만 fixed priority starvation bound가 없어서 b
 - [x] Fixed-priority arbiter 구현
 - [x] AER transmitter/receiver 구현
 - [x] Scoreboard 기반 self-checking testbench 구현
+- [x] 기존 ready/valid 계약을 AER 자체가 아닌 legacy adapter로 격리
+- [x] clean-slate logical event와 normalized completion 계약 초안 구현
+- [ ] deterministic trace 파일 loader와 run manifest를 공통 TB에 연결
+- [ ] p95/p99/deadline/sliding-window service-gap 지표 연결
+- [ ] fixed-pin serializer/decoder 포함 PPA benchmark 경계 구현
 
 ### P2 — 개선 및 측정
 

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  printf 'usage: %s <mock|baseline|a23-ee430> [test ...]\n' "$0" >&2
+  exit 2
+}
+
+[[ $# -ge 1 ]] || usage
+design="$1"
+shift
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+OUT_ROOT="${AER_CLEAN_OUT:-$PROJECT_ROOT/results/clean-benchmark}"
+SIMULATOR="${AER_SIMULATOR:-}"
+NUM_SOURCES="${AER_NUM_SOURCES:-4}"
+ADDR_WIDTH="${AER_ADDR_WIDTH:-16}"
+RETIRE_LANES="${AER_RETIRE_LANES:-2}"
+STIM_CYCLES="${AER_STIM_CYCLES:-256}"
+LOAD_PCT="${AER_LOAD_PCT:-3}"
+SEED="${AER_SEED:-1}"
+
+design_define=""
+design_filelist=""
+case "$design" in
+  mock) ;;
+  baseline)
+    design_define="AER_DUT_BASELINE"
+    design_filelist="$PROJECT_ROOT/tb/filelists/baseline.f"
+    ;;
+  a23-ee430)
+    design_define="AER_DUT_A23_EE430"
+    design_filelist="$PROJECT_ROOT/tb/filelists/a23_ee430.f"
+    ;;
+  *) usage ;;
+esac
+
+if [[ $# -gt 0 ]]; then
+  tests=("$@")
+else
+  tests=(
+    basic_single basic_sparse basic_simultaneous basic_backpressure
+    limit_load limit_elephant_mouse limit_global_fanin
+    limit_local_cluster limit_distributed_burst limit_retrigger
+    limit_timing_fidelity limit_backpressure_shock
+  )
+fi
+
+if [[ -z "$SIMULATOR" ]]; then
+  if command -v xrun >/dev/null 2>&1; then
+    SIMULATOR=xrun
+  elif command -v iverilog >/dev/null 2>&1; then
+    SIMULATOR=iverilog
+  else
+    printf 'no supported simulator found; set AER_SIMULATOR=xrun or iverilog\n' >&2
+    exit 1
+  fi
+fi
+
+out_dir="$OUT_ROOT/$design-n${NUM_SOURCES}-seed${SEED}"
+mkdir -p "$out_dir"
+
+common_params=(
+  "aer_clean_tb.NUM_SOURCES=$NUM_SOURCES"
+  "aer_clean_tb.ADDR_WIDTH=$ADDR_WIDTH"
+  "aer_clean_tb.RETIRE_LANES=$RETIRE_LANES"
+)
+
+case "$SIMULATOR" in
+  xrun)
+    snapshot_design="${design//-/_}"
+    snapshot="aer_clean_${snapshot_design}_n${NUM_SOURCES}"
+    command=(xrun -64bit -sv -timescale 1ns/1ps -top aer_clean_tb
+      -snapshot "$snapshot" -elaborate -xmlibdirname "$out_dir/xcelium.d")
+    for parameter in "${common_params[@]}"; do
+      command+=(-defparam "$parameter")
+    done
+    [[ -n "$design_define" ]] && command+=(-define "$design_define")
+    [[ -n "$design_filelist" ]] && command+=(-f "$design_filelist")
+    command+=(-f "$PROJECT_ROOT/tb/clean/files.f" -l "$out_dir/elaborate.log")
+    (cd "$PROJECT_ROOT" && "${command[@]}")
+
+    for test_name in "${tests[@]}"; do
+      run_command=(xrun -64bit -R -snapshot "$snapshot"
+        -xmlibdirname "$out_dir/xcelium.d"
+        "+CLEAN_TEST=$test_name" "+METRICS=$out_dir/$test_name.csv"
+        "+STIM_CYCLES=$STIM_CYCLES" "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED"
+        -l "$out_dir/$test_name.log")
+      if ! (cd "$PROJECT_ROOT" && "${run_command[@]}"); then
+        # Retry only Xcelium's transient shared-server snapshot setup race.
+        # Functional failures and all other setup errors remain fatal.
+        if grep -q 'NOSTUP' "$out_dir/$test_name.log"; then
+          sleep 1
+          (cd "$PROJECT_ROOT" && "${run_command[@]}")
+        else
+          exit 1
+        fi
+      fi
+    done
+    ;;
+  iverilog)
+    command=(iverilog -g2012 -Wall -s aer_clean_tb)
+    for parameter in "${common_params[@]}"; do
+      command+=(-P "$parameter")
+    done
+    [[ -n "$design_define" ]] && command+=("-D$design_define")
+    [[ -n "$design_filelist" ]] && command+=(-f "$design_filelist")
+    command+=(-f "$PROJECT_ROOT/tb/clean/files.f" -o "$out_dir/aer_clean.vvp")
+    (cd "$PROJECT_ROOT" && "${command[@]}")
+
+    for test_name in "${tests[@]}"; do
+      vvp "$out_dir/aer_clean.vvp" "+CLEAN_TEST=$test_name" \
+        "+METRICS=$out_dir/$test_name.csv" "+STIM_CYCLES=$STIM_CYCLES" \
+        "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED" | tee "$out_dir/$test_name.log"
+    done
+    ;;
+  *)
+    printf 'unsupported AER_SIMULATOR=%s\n' "$SIMULATOR" >&2
+    exit 1
+    ;;
+esac
+
+printf 'clean AER benchmark complete: %s\n' "$out_dir"
