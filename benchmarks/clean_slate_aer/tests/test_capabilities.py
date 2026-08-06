@@ -77,10 +77,15 @@ class CapabilityContractTest(unittest.TestCase):
         self.assertEqual([row["decision"] for row in baseline], expected_ready_valid)
         self.assertEqual([row["decision"] for row in a23], expected_ready_valid)
         profile = capabilities.load_profile(self.ganghee)
+        self.assertEqual(
+            profile.native_interface.protocol,
+            "level_req_direct_coordinate_always_ready",
+        )
         self.assertEqual(profile.native_interface.source_count.kind, "fixed")
         self.assertEqual(profile.native_interface.source_count.value, 16)
         self.assertTrue(profile.native_interface.source_observable)
         self.assertEqual(profile.native_interface.retire_lanes, 1)
+        self.assertNotIn("serial", " ".join(row["reason"] for row in ganghee))
 
     def test_cli_compares_multiple_actual_profiles_in_one_output(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "candidate": "ganghee_trad_rowcol_fovea",
   "native_interface": {
-    "protocol": "level_req_rowcol_serial_always_ready",
+    "protocol": "level_req_direct_coordinate_always_ready",
     "source_count": {"kind": "fixed", "value": 16},
     "source_observable": true,
     "retire_lanes": 1
@@ -15,15 +15,15 @@
     "fairness": {"supported": true},
     "output_backpressure": {
       "supported": false,
-      "reason": "native serial output has no sink backpressure input"
+      "reason": "native direct-coordinate output has no sink backpressure input"
     },
     "polarity_event_type": {
       "supported": false,
-      "reason": "native ROW/COL stream carries address without polarity or event type"
+      "reason": "native addr[3:0] direct-coordinate output carries no polarity or event type"
     },
     "multi_lane_retirement": {
       "supported": false,
-      "reason": "native ROW/COL stream retires through one serial lane"
+      "reason": "native output retires one direct coordinate through one output lane"
     }
   }
 }
