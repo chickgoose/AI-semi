@@ -1,0 +1,298 @@
+팀 공용 AER workload/testbench 안내
+최종 갱신: 2026-08-06
+
+1. 저장 위치
+
+서버 공용 폴더:
+  ~/AI-semi/integration
+
+전체 사용 안내:
+  ~/AI-semi/integration/docs/TEAM_COMMON_WORKLOAD_GUIDE.md
+
+공용 진행상황:
+  ~/TEAM_PROGRESS.md
+
+GitHub 브랜치:
+  integration/a23-final-candidate
+
+
+2. 개발 방향
+
+이번 공용 벤치는 강희 testbench를 그대로 수정한 것이 아니다.
+강희 RTL, 기존 testbench와 workload를 확인한 뒤 세 후보에 공통 적용할 수 있도록
+구조 독립적인 clean-slate benchmark로 새로 정립했다.
+
+강희 ROW/COL, 준영 A23, 현수 rotation-priority 중 어느 것도 새 RTL의 base로
+고정하지 않는다. 세 기존 설계는 공통 workload를 교정하고 기존 AER의 한계를
+측정하기 위한 read-only reference로 사용한다.
+
+공통 AER event는 다음처럼 정의한다.
+
+  source coordinate/address
+  optional polarity/event type
+  occurrence time
+
+TB-only event ID는 loss와 duplicate 추적에만 사용하며 DUT payload에는 넣지 않는다.
+
+
+3. 구현된 workload
+
+기본 기능 workload:
+
+  basic_single
+    한 source의 고립된 event를 사용해 기본 주소 전달, latency, loss/duplicate를 확인한다.
+
+  basic_sparse
+    여러 source에서 저빈도 event를 발생시켜 sparse AER 동작과 source-local ordering을 확인한다.
+
+  basic_simultaneous
+    모든 source가 같은 cycle에 요청하도록 하여 arbitration과 complete drain을 확인한다.
+
+  basic_backpressure
+    sparse 입력 중 output stall을 반복하여 stall 중 출력 안정성과 정상 복구를 확인한다.
+
+기존 AER 한계 노출 workload:
+
+  limit_load / uniform
+    sparse부터 overload까지 부하를 변화시켜 saturation knee, throughput plateau,
+    source overrun과 latency 증가를 측정한다.
+
+  limit_elephant_mouse
+    한 source는 계속 요청하고 저빈도 victim source는 가끔 요청하게 하여
+    starvation, victim wait와 fairness를 측정한다.
+
+  limit_global_fanin
+    모든 source가 동시에 요청하게 하여 fan-in 증가에 따른 arbitration/drain latency를 측정한다.
+
+  limit_local_cluster
+    인접 좌표에서 burst를 발생시켜 spatial locality 활용 가능성과 burst 효율을 측정한다.
+
+  limit_distributed_burst
+    떨어진 좌표에서 같은 크기의 burst를 발생시켜 locality에만 유리한 구조의 과적합을 확인한다.
+
+  limit_retrigger
+    동일 source가 service보다 빠르게 재발화하게 하여 source overrun과 입력 buffering 필요성을 측정한다.
+
+  limit_timing_fidelity / timing_pair
+    정확한 간격의 spike pair와 background traffic을 사용하여 inter-event timing distortion,
+    tail latency와 deadline miss를 측정한다.
+
+  limit_backpressure_shock
+    지속적인 traffic 중 긴 output stall을 삽입하여 finite storage 한계,
+    event loss와 stall 이후 recovery를 측정한다.
+
+결정론적 trace generator가 지원하는 workload 10종:
+
+  basic_sparse
+  basic_simultaneous
+  uniform
+  elephant_mouse
+  global_fanin
+  local_cluster
+  distributed_burst
+  retrigger
+  timing_pair
+  backpressure_shock
+
+최종 후보 비교에는 DUT ready를 확인하기 전에 전체 occurrence trace를 생성하는
+deterministic JSONL+manifest 경로를 사용한다. 이렇게 해야 DUT의 arbitration이나
+latency가 다음 입력 생성에 영향을 주지 않는다.
+
+
+4. 공통 testbench 동작
+
+source마다 정확히 1개의 pending latch를 둔다.
+해당 latch가 차 있는 동안 같은 source에서 event가 다시 발생하면 무제한 TB queue에
+저장하지 않고 source_overrun으로 기록한다.
+
+결과 흐름:
+
+  generated -> accepted -> delivered
+             \-> source_overrun
+
+hard correctness 오류:
+
+  phantom event
+  duplicate event
+  event/address corruption
+  source-local reorder
+  accepted event missing
+  unknown 또는 illegal source/event output
+  drain timeout
+  continuous stall 중 source payload 변경
+  continuous output stall 중 retire payload/source 변경
+
+최종 hard correctness 조건:
+
+  errors == 0
+  accepted == delivered
+
+source_overrun, 낮은 throughput, 긴 latency/wait, 낮은 fairness는 correctness FAIL이
+아니라 구조적 용량 및 성능 한계로 기록한다.
+
+
+5. 측정 지표
+
+각 실행의 summary CSV:
+
+  generated
+  source_overrun
+  accepted
+  delivered
+  average/maximum end-to-end latency
+  average/maximum internal latency
+  logical delivered events/cycle
+  Jain fairness
+  maximum request wait
+  average/maximum inter-event timing error
+
+per-event CSV와 aggregator의 추가 지표:
+
+  p50/p95/p99 latency
+  deadline miss와 deadline censoring
+  source별 service gap
+  service가 없었던 source
+  sliding-window zero-service 비율
+  acceptance/delivery/overrun ratio
+  load sweep saturation knee
+
+
+6. candidate 연결 원칙
+
+각 candidate는 native interface를 유지한다.
+TB binding이 FIFO, event storage, arbitration, retry, serializer, output backpressure,
+polarity field 또는 retire lane을 추가해서는 안 된다.
+
+없는 optional 기능은 SKIP_UNSUPPORTED로 표시하며 FAIL이나 0점으로 처리하지 않는다.
+
+현재 capability:
+
+  Ganghee direct-coordinate
+    always-ready core: RUN
+    output backpressure: SKIP
+    polarity/event type: SKIP
+    multi-lane: SKIP
+
+  legacy baseline
+    always-ready core: RUN
+    output backpressure: RUN
+    polarity/event type: SKIP
+    multi-lane: SKIP
+
+  A23 EE430
+    always-ready core: RUN
+    output backpressure: RUN
+    polarity/event type: SKIP
+    multi-lane: SKIP
+
+
+7. 강희 원본 검증 결과
+
+강희 원본 RTL과 testbench는 수정하지 않았다.
+storage-free direct-coordinate native binding으로 Xcelium 23.09에서
+always-ready 공통 workload 10/10을 통과했다.
+
+관측된 기존 single-lane/shared-channel 한계:
+
+  limit_elephant_mouse: 272 generated, 128 source overrun
+  limit_retrigger: 256 generated, 128 source overrun
+  basic_simultaneous: maximum end-to-end latency 17 cycles
+  limit_global_fanin: maximum end-to-end latency 17 cycles
+
+accepted event correctness는 PASS이며 위 수치는 구조적 capacity/latency 한계다.
+
+
+8. 공용 파일 구조
+
+  benchmarks/clean_slate_aer/
+    deterministic trace generator, manifest validator, result aggregator, unit tests
+
+  tb/clean/
+    common interface, source model, scoreboard, assertions
+
+  tb/clean/native/
+    storage-free native observation binding
+
+  tests/clean_native/
+    Ganghee binding protocol fixture
+
+  scripts/run_clean_benchmark.sh
+    mock, baseline, A23 공용 runner
+
+  scripts/run_ganghee_native_benchmark.sh
+    강희 native RTL 공용 runner
+
+  docs/verification/
+    benchmark specification, capability profile, 결과와 PPA 계약
+
+
+9. 기본 검증 명령
+
+  cd ~/AI-semi/integration
+
+  python3 benchmarks/clean_slate_aer/self_test.py
+  python3 -m unittest discover -s benchmarks/clean_slate_aer/tests -v
+  python3 -m unittest discover -s benchmarks/physical_ppa/tests -v
+  scripts/self_check.sh
+
+현재 결과:
+
+  deterministic workload self-test: 10 workloads PASS
+  clean benchmark Python tests: 25/25 PASS
+  physical-PPA tests: 7/7 PASS
+  structural self-check: PASS
+
+
+10. ready/valid 후보 실행
+
+  cd ~/AI-semi/integration
+
+  scripts/run_clean_benchmark.sh mock
+  scripts/run_clean_benchmark.sh baseline
+  scripts/run_clean_benchmark.sh a23-ee430
+
+결과 기본 위치:
+
+  results/clean-benchmark/
+
+
+11. 강희 native RTL 실행
+
+서버 csh에서:
+
+  cd ~/AI-semi/integration
+  setenv AER_GANGHEE_TOP aer_tx16_trad_rowcol_fovea
+  setenv AER_GANGHEE_FILELIST /absolute/path/to/ganghee-native.f
+  scripts/run_ganghee_native_benchmark.sh
+
+file list에는 강희 원본 top module과 arbiter dependency를 절대경로로 넣는다.
+Ganghee runner는 지원하지 않는 backpressure workload를 의도적으로 거부한다.
+
+
+12. deterministic trace 실행 예시
+
+  cd ~/AI-semi/integration
+
+  python3 benchmarks/clean_slate_aer/generate_trace.py \
+    --manifest benchmarks/clean_slate_aer/manifest.example.json \
+    --output-dir /tmp/aer-common-traces
+
+서버 csh에서는:
+
+  setenv AER_TRACE_JSONL /tmp/aer-common-traces/basic_sparse.events.jsonl
+  setenv AER_TRACE_MANIFEST /tmp/aer-common-traces/basic_sparse.manifest.json
+  scripts/run_clean_benchmark.sh baseline
+
+
+13. 아직 미완성인 항목
+
+다음 항목은 사양에는 정의되어 있지만 현재 공용 runner에서 완전히 구현되지 않았다.
+
+  basic_reset_drain
+  native basic_polarity
+  automatic 16/64/256-source limit_scale
+  fixed-pin limit_pin_budget
+  idle/sparse/burst/saturation/stall/recovery mixed-phase trace
+
+이 항목들은 아직 qualified 결과로 발표하면 안 된다.
+
