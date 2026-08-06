@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "candidate": "native_single_lane_example",
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {
+      "supported": false,
+      "reason": "native output has no sink-ready input"
+    },
+    "polarity_event_type": {
+      "supported": false,
+      "reason": "native event payload carries address only"
+    },
+    "multi_lane_retirement": {
+      "supported": false,
+      "reason": "native output retires one logical event at a time"
+    }
+  }
+}
