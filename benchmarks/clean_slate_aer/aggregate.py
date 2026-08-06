@@ -53,6 +53,7 @@ FLOAT_COLUMNS = tuple(
 )
 
 SUMMARY_COLUMNS = (
+    "candidate",
     "test",
     "load_pct",
     "runs",
@@ -136,6 +137,7 @@ EVENT_REQUIRED_COLUMNS = (
 EVENT_STATES = ("source_overrun", "pending", "accepted", "delivered")
 
 EVENT_RUN_COLUMNS = (
+    "candidate",
     "test",
     "seed",
     "load_pct",
@@ -174,6 +176,7 @@ class InputError(ValueError):
 
 @dataclass(frozen=True)
 class Run:
+    candidate: str
     test: str
     seed: str
     load_pct: float
@@ -197,6 +200,7 @@ class Run:
 
 @dataclass(frozen=True)
 class Event:
+    candidate: str
     test: str
     seed: str
     load_pct: float
@@ -211,8 +215,8 @@ class Event:
     event_state: str
 
     @property
-    def run_key(self) -> tuple[str, str, float]:
-        return (self.test, self.seed, self.load_pct)
+    def run_key(self) -> tuple[str, str, str, float]:
+        return (self.candidate, self.test, self.seed, self.load_pct)
 
 
 def _parse_nonnegative_int(value: str, column: str, location: str) -> int:
@@ -262,11 +266,18 @@ def read_runs(paths: Iterable[Path]) -> list[Run]:
                 location = f"{path}:{line_number}"
                 test = (row.get("test") or "").strip()
                 seed = (row.get("seed") or "").strip()
+                candidate = (row.get("candidate") or "unspecified").strip()
+                if not candidate:
+                    raise InputError(f"{location}: candidate must not be empty")
                 if not test:
                     raise InputError(f"{location}: test must not be empty")
                 if not seed:
                     raise InputError(f"{location}: seed must not be empty")
-                values: dict[str, object] = {"test": test, "seed": seed}
+                values: dict[str, object] = {
+                    "candidate": candidate,
+                    "test": test,
+                    "seed": seed,
+                }
                 for column in INTEGER_COLUMNS:
                     values[column] = _parse_nonnegative_int(row[column], column, location)
                 for column in FLOAT_COLUMNS:
@@ -314,8 +325,8 @@ def _validate_event(event: Event, location: str) -> None:
 
 def read_events(paths: Iterable[Path]) -> list[Event]:
     events: list[Event] = []
-    identities: set[tuple[str, str, float, int]] = set()
-    run_contracts: dict[tuple[str, str, float], tuple[int, int]] = {}
+    identities: set[tuple[str, str, str, float, int]] = set()
+    run_contracts: dict[tuple[str, str, str, float], tuple[int, int]] = {}
     for path in paths:
         try:
             stream = path.open(newline="", encoding="utf-8")
@@ -331,7 +342,10 @@ def read_events(paths: Iterable[Path]) -> list[Event]:
                 location = f"{path}:{line_number}"
                 test = (row.get("test") or "").strip()
                 seed = (row.get("seed") or "").strip()
+                candidate = (row.get("candidate") or "unspecified").strip()
                 state = (row.get("event_state") or "").strip()
+                if not candidate:
+                    raise InputError(f"{location}: candidate must not be empty")
                 if not test:
                     raise InputError(f"{location}: test must not be empty")
                 if not seed:
@@ -341,6 +355,7 @@ def read_events(paths: Iterable[Path]) -> list[Event]:
                         f"{location}: event_state must be one of: {', '.join(EVENT_STATES)}"
                     )
                 event = Event(
+                    candidate=candidate,
                     test=test,
                     seed=seed,
                     load_pct=_parse_finite_float(row["load_pct"], "load_pct", location),
@@ -413,7 +428,9 @@ def _correctness_issues(rows: Sequence[Run]) -> list[str]:
     return sorted(issues)
 
 
-def _aggregate_group(test: str, load_pct: float, rows: Sequence[Run]) -> dict[str, object]:
+def _aggregate_group(
+    candidate: str, test: str, load_pct: float, rows: Sequence[Run]
+) -> dict[str, object]:
     generated = sum(row.generated for row in rows)
     overrun = sum(row.source_overrun for row in rows)
     accepted = sum(row.accepted for row in rows)
@@ -421,6 +438,7 @@ def _aggregate_group(test: str, load_pct: float, rows: Sequence[Run]) -> dict[st
     retained = generated - overrun
     issues = _correctness_issues(rows)
     return {
+        "candidate": candidate,
         "test": test,
         "load_pct": load_pct,
         "runs": len(rows),
@@ -510,21 +528,23 @@ def _source_window_stats(
 
 
 def _validate_event_summary_contract(runs: Sequence[Run], events: Sequence[Event]) -> None:
-    runs_by_key: dict[tuple[str, str, float], Run] = {}
+    runs_by_key: dict[tuple[str, str, str, float], Run] = {}
     for run in runs:
-        key = (run.test, run.seed, run.load_pct)
+        key = (run.candidate, run.test, run.seed, run.load_pct)
         if key in runs_by_key:
             raise InputError(
-                "per-event input requires unique summary rows by (test, seed, load_pct)"
+                "per-event input requires unique summary rows by "
+                "(candidate, test, seed, load_pct)"
             )
         runs_by_key[key] = run
 
-    events_by_key: dict[tuple[str, str, float], list[Event]] = {}
+    events_by_key: dict[tuple[str, str, str, float], list[Event]] = {}
     for event in events:
         if event.run_key not in runs_by_key:
             raise InputError(
                 "per-event run has no matching summary row: "
-                f"test={event.test} seed={event.seed} load_pct={event.load_pct}"
+                f"candidate={event.candidate} test={event.test} "
+                f"seed={event.seed} load_pct={event.load_pct}"
             )
         events_by_key.setdefault(event.run_key, []).append(event)
 
@@ -550,7 +570,9 @@ def _event_metrics(
     *,
     service_window_cycles: int,
 ) -> dict[str, object]:
-    expected_run_keys = {(row.test, row.seed, row.load_pct) for row in summary_rows}
+    expected_run_keys = {
+        (row.candidate, row.test, row.seed, row.load_pct) for row in summary_rows
+    }
     observed_run_keys = {event.run_key for event in event_rows}
     if not event_rows:
         return {
@@ -591,7 +613,7 @@ def _event_metrics(
             deadline_censored += 1
     deadline_evaluable = deadline_events - deadline_censored
 
-    events_by_run: dict[tuple[str, str, float], list[Event]] = {}
+    events_by_run: dict[tuple[str, str, str, float], list[Event]] = {}
     for event in event_rows:
         events_by_run.setdefault(event.run_key, []).append(event)
     service_gaps: list[int] = []
@@ -687,19 +709,25 @@ def aggregate_runs(
         raise InputError("service_window_cycles must be positive")
     if events is not None:
         _validate_event_summary_contract(runs, events)
-    grouped: dict[tuple[str, float], list[Run]] = {}
+    grouped: dict[tuple[str, str, float], list[Run]] = {}
     for run in runs:
-        grouped.setdefault((run.test, run.load_pct), []).append(run)
+        grouped.setdefault((run.candidate, run.test, run.load_pct), []).append(run)
     summaries = [
-        _aggregate_group(test, load_pct, rows)
-        for (test, load_pct), rows in sorted(grouped.items())
+        _aggregate_group(candidate, test, load_pct, rows)
+        for (candidate, test, load_pct), rows in sorted(grouped.items())
     ]
-    event_groups: dict[tuple[str, float], list[Event]] = {}
+    event_groups: dict[tuple[str, str, float], list[Event]] = {}
     if events is not None:
         for event in events:
-            event_groups.setdefault((event.test, event.load_pct), []).append(event)
+            event_groups.setdefault(
+                (event.candidate, event.test, event.load_pct), []
+            ).append(event)
     for summary in summaries:
-        group_key = (str(summary["test"]), float(summary["load_pct"]))
+        group_key = (
+            str(summary["candidate"]),
+            str(summary["test"]),
+            float(summary["load_pct"]),
+        )
         summary.update(
             _event_metrics(
                 grouped[group_key],
@@ -709,9 +737,15 @@ def aggregate_runs(
         )
 
     test_reports: list[dict[str, object]] = []
-    tests = sorted({str(summary["test"]) for summary in summaries})
-    for test in tests:
-        sweep = [summary for summary in summaries if summary["test"] == test]
+    tests = sorted(
+        {(str(summary["candidate"]), str(summary["test"])) for summary in summaries}
+    )
+    for candidate, test in tests:
+        sweep = [
+            summary
+            for summary in summaries
+            if summary["candidate"] == candidate and summary["test"] == test
+        ]
         knee_index: int | None = None
         for index, summary in enumerate(sweep):
             if summary["performance_state"] == "CORRECTNESS_FAIL":
@@ -765,6 +799,7 @@ def aggregate_runs(
 
         test_reports.append(
             {
+                "candidate": candidate,
                 "test": test,
                 "knee_load_pct": knee_load,
                 "correctness": (
@@ -791,13 +826,15 @@ def summarize_event_runs(
     if service_window_cycles <= 0:
         raise InputError("service_window_cycles must be positive")
     _validate_event_summary_contract(runs, events)
-    runs_by_key = {(run.test, run.seed, run.load_pct): run for run in runs}
-    events_by_key: dict[tuple[str, str, float], list[Event]] = {}
+    runs_by_key = {
+        (run.candidate, run.test, run.seed, run.load_pct): run for run in runs
+    }
+    events_by_key: dict[tuple[str, str, str, float], list[Event]] = {}
     for event in events:
         events_by_key.setdefault(event.run_key, []).append(event)
     summaries: list[dict[str, object]] = []
-    for key in sorted(events_by_key, key=lambda item: (item[0], item[2], item[1])):
-        test, seed, load_pct = key
+    for key in sorted(events_by_key, key=lambda item: (item[0], item[1], item[3], item[2])):
+        candidate, test, seed, load_pct = key
         metrics = _event_metrics(
             [runs_by_key[key]],
             events_by_key[key],
@@ -805,6 +842,7 @@ def summarize_event_runs(
         )
         summaries.append(
             {
+                "candidate": candidate,
                 "test": test,
                 "seed": seed,
                 "load_pct": load_pct,
@@ -901,7 +939,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--event-output",
         type=Path,
-        help="optional exact per-(test,seed,load) event-metric CSV output",
+        help="optional exact per-(candidate,test,seed,load) event-metric CSV output",
     )
     parser.add_argument("--format", choices=("csv", "json"), default="csv")
     parser.add_argument("--acceptance-floor", type=_unit_interval, default=0.99)

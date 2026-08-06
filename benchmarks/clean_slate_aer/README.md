@@ -124,10 +124,16 @@ test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,error
 Additional columns are allowed and ignored. Counter fields must be nonnegative
 integers; load and measured metrics must be finite nonnegative numbers. `test`
 and `seed` are labels, so numeric and nonnumeric seed identifiers are accepted.
+An optional `candidate` column is strongly recommended and is emitted by the
+common runner.  It becomes part of every aggregation key so different DUTs that
+use the same test, seed, and load can never be pooled accidentally.  Older files
+without it are labeled `unspecified` for backward-compatible single-candidate
+analysis.
 
 ## Ratios and aggregation
 
-Rows are grouped by `(test, load_pct)` across every input file and seed.
+Rows are grouped by `(candidate, test, load_pct)` across every input file and
+seed. Files without `candidate` use the compatibility label `unspecified`.
 
 - `delivery_ratio = delivered / accepted`: post-accept transport delivery.
 - `acceptance_ratio = accepted / (generated - source_overrun)`: how many events
@@ -150,10 +156,14 @@ per-event CSV and pass it with `--events`. Its required header is:
 test,seed,load_pct,tb_only_event_id,logical_source,source_count,occurrence_cycle,accept_cycle,delivery_cycle,deadline_cycle,observation_end_cycle,event_state
 ```
 
-`test`, `seed`, and `load_pct` form the run key and must match one summary row.
+`candidate`, `test`, `seed`, and `load_pct` form the run key and must match one
+summary row. The compatibility label applies when both older files omit
+`candidate`.
 There must be exactly one per-event row for every generated event in each run
 that supplies event detail. `tb_only_event_id` must be unique inside that run.
 It exists only for trace matching and scoreboarding and is never DUT payload.
+If present, `candidate` is also part of the run key and must match the summary
+CSV.  Cross-candidate aggregation always remains separated.
 
 All time fields are integer cycles:
 
@@ -178,10 +188,10 @@ All time fields are integer cycles:
 
 The aggregator validates per-run event counts and the overrun/accepted/
 delivered state counts against the summary row. Event files may cover only a
-subset of summary seeds; the output marks each `(test, load_pct)` group as
+subset of summary seeds; the output marks each `(candidate, test, load_pct)` group as
 `COMPLETE`, `PARTIAL`, or `NOT_PROVIDED` rather than silently treating missing
 detail as zero. The normal load summary pools event samples across supplied
-seeds. JSON also includes exact `(test, seed, load_pct)` records under
+seeds. JSON also includes exact `(candidate, test, seed, load_pct)` records under
 `event_runs`; `--event-output` writes those same seed-specific records as CSV.
 
 ### Tail latency and censoring

@@ -10,6 +10,9 @@ the new architecture.
 The benchmark contract and the exact AER limitations it is intended to expose are
 recorded in
 [`docs/verification/aer-clean-benchmark-spec.md`](docs/verification/aer-clean-benchmark-spec.md).
+Deterministic trace injection and physical qualification are specified separately
+in [`docs/verification/aer-trace-loader.md`](docs/verification/aer-trace-loader.md)
+and [`docs/verification/aer-physical-ppa-contract.md`](docs/verification/aer-physical-ppa-contract.md).
 The earlier A23 qualification remains reproducible and is preserved in
 [`docs/experiments/a23-final-candidate.md`](docs/experiments/a23-final-candidate.md).
 

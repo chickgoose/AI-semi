@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 
@@ -50,6 +51,16 @@ class AggregateFixtureTest(unittest.TestCase):
         self.assertEqual(loads[0]["performance_state"], "CORRECTNESS_FAIL")
         self.assertIn("scoreboard_errors", loads[0]["correctness_issues"])
         self.assertIn("delivered_exceeds_accepted", loads[0]["correctness_issues"])
+
+    def test_candidates_are_never_merged_into_one_sweep(self):
+        original = aggregate.read_runs([self.saturation])
+        runs = [replace(run, candidate="candidate_a") for run in original]
+        runs += [replace(run, candidate="candidate_b") for run in original]
+        loads, reports = aggregate.aggregate_runs(runs)
+        self.assertEqual(len(loads), 6)
+        self.assertEqual(len(reports), 2)
+        self.assertEqual({row["candidate"] for row in loads},
+                         {"candidate_a", "candidate_b"})
 
     def test_cli_exit_status_distinguishes_saturation_and_failure(self):
         with tempfile.TemporaryDirectory() as directory:

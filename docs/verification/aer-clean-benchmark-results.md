@@ -27,7 +27,14 @@ The normative intent and PPA boundary are defined in
 - the normalized output has parameterized retire lanes, so a future packed or
   multi-lane candidate is not capped at one logical event/cycle;
 - TB-only event sequence is not transmitted as DUT payload;
-- the legacy adapter adds no buffering.
+- the legacy adapter adds no buffering;
+- validated JSONL/manifest traces drive both source occurrence and a manifest-bound
+  sink-ready schedule;
+- per-event rows provide percentile latency, deadline/censoring, service-gap, and
+  sliding-window fairness inputs;
+- candidate identity is part of every aggregation key;
+- physical qualification separates Genus screening from Innovus post-route timing
+  and reports a pass/fail frequency bracket rather than inventing an exact Fmax.
 
 ## Regression status
 
@@ -43,8 +50,19 @@ The independently developed benchmark utilities were merged after review:
 
 - the deterministic trace generator covers 10 workload families and passes its
   byte-for-byte reproducibility self-test;
-- the architecture-neutral aggregator passes 5/5 unit tests and keeps
-  `CORRECTNESS_FAIL` distinct from a valid but `SATURATED` result.
+- the integrated clean-benchmark Python suite passes 14/14 tests, including
+  candidate-key isolation, percentile/deadline/censoring, and service-gap checks;
+- the physical PPA qualification utility passes 7/7 tests and keeps fixed-netlist
+  diagnosis distinct from per-target re-synthesis.
+
+The deterministic 2x2, seed 42, 47-event trace was also run with Xcelium 23.09.
+These figures are calibration evidence only and do not select an architecture.
+
+| Candidate | Generated | Source overrun | Accepted/delivered | Throughput | Max E2E | Max request wait | Result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| clean mock | 47 | 0 | 47/47 | 0.712121 | 2 | 0 | PASS |
+| legacy baseline | 47 | 14 | 33/33 | 0.485294 | 31 | 28 | PASS |
+| legacy A23 | 47 | 0 | 47/47 | 0.701493 | 3 | 0 | PASS |
 
 The repository's old combinational `aer_mock_dut` was found to change its selected
 event when a new request arrived while the output was stalled. It was not changed.
@@ -74,12 +92,10 @@ that correctness and limit behavior are now reported separately.
 
 ## Remaining benchmark work
 
-1. connect the completed deterministic trace files and manifests to the SV source
-   model;
-2. extend the completed result aggregator with p50/p95/p99 latency, deadline miss,
-   and sliding-window service-gap inputs;
-3. run multi-seed offered-load sweeps and detect the saturation knee;
-4. add 16/64/256-source scaling runs;
-5. define a fixed physical pin budget and charge required serializers/decoders to
-   the candidate PPA boundary;
-6. freeze the benchmark before starting clean-slate candidate RTL.
+1. add deterministic reset/drain and polarity conformance controls to the trace
+   contract;
+2. run multi-seed offered-load sweeps and detect the saturation knee;
+3. add 16/64/256-source scaling runs;
+4. define a concrete fixed pin count and codec, then charge required
+   serializers/decoders to the candidate PPA boundary;
+5. freeze these remaining choices before starting clean-slate candidate RTL.

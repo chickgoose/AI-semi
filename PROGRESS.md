@@ -1,6 +1,6 @@
 # AI-semi Progress
 
-최종 갱신: 2026-08-04
+최종 갱신: 2026-08-06
 
 ## 프로젝트 상태
 
@@ -128,8 +128,9 @@ A3가 순수 PPA는 더 좋지만 fixed priority starvation bound가 없어서 b
 - [x] 기존 ready/valid 계약을 AER 자체가 아닌 legacy adapter로 격리
 - [x] clean-slate logical event와 normalized completion 계약 초안 구현
 - [x] deterministic JSONL+manifest를 검증·변환해 공통 SV source model에 연결
-- [ ] p95/p99/deadline/sliding-window service-gap 지표 연결
-- [ ] fixed-pin serializer/decoder 포함 PPA benchmark 경계 구현
+- [x] per-event p50/p95/p99/deadline/sliding-window service-gap 지표 연결
+- [x] Genus screening과 Innovus post-route를 분리한 PPA/Fmax 판정 계약 구현
+- [ ] fixed-pin serializer/decoder의 구체적 pin 수·codec PPA 조건 freeze
 
 ### P2 — 개선 및 측정
 

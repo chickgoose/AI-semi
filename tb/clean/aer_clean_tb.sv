@@ -32,6 +32,7 @@ module aer_clean_tb;
   ) assertions(bench);
 
   string test_name;
+  string candidate_name;
   string metrics_path;
   string event_metrics_path;
   string seed_name;
@@ -540,10 +541,10 @@ module aer_clean_tb;
         error_count = error_count + 1;
       end else begin
         $fdisplay(metrics_fd,
-          "test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error");
+          "candidate,test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error");
         $fdisplay(metrics_fd,
-          "%s,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0.6f,%0d,%0.6f,%0d,%0.6f,%0.6f,%0d,%0.6f,%0d",
-          test_name, seed_name, load_pct, stim_cycles, generated_count,
+          "%s,%s,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0.6f,%0d,%0.6f,%0d,%0.6f,%0.6f,%0d,%0.6f,%0d",
+          candidate_name, test_name, seed_name, load_pct, stim_cycles, generated_count,
           source_overrun_count, accepted_count, delivered_count, error_count,
           cycle_count, average_e2e_latency(), max_e2e_latency,
           average_internal_latency(), max_internal_latency, throughput(),
@@ -573,7 +574,7 @@ module aer_clean_tb;
         error_count = error_count + 1;
       end else begin
         $fdisplay(event_metrics_fd,
-          "test,seed,load_pct,tb_only_event_id,logical_source,source_count,occurrence_cycle,accept_cycle,delivery_cycle,deadline_cycle,observation_end_cycle,event_state");
+          "candidate,test,seed,load_pct,tb_only_event_id,logical_source,source_count,occurrence_cycle,accept_cycle,delivery_cycle,deadline_cycle,observation_end_cycle,event_state");
         for (record_index = 0; record_index < generated_count;
              record_index = record_index + 1) begin
           accept_text = (record_accept[record_index] >= 0) ?
@@ -587,8 +588,9 @@ module aer_clean_tb;
             default: state_text = "pending";
           endcase
           $fdisplay(event_metrics_fd,
-            "%s,%s,%0d,%0d,%0d,%0d,%0d,%s,%s,%0d,%0d,%s",
-            test_name, seed_name, load_pct, record_trace_id[record_index],
+            "%s,%s,%s,%0d,%0d,%0d,%0d,%0d,%s,%s,%0d,%0d,%s",
+            candidate_name, test_name, seed_name, load_pct,
+            record_trace_id[record_index],
             record_source[record_index], NUM_SOURCES,
             record_occurrence[record_index], accept_text, delivery_text,
             record_deadline[record_index], cycle_count, state_text);
@@ -601,6 +603,8 @@ module aer_clean_tb;
   initial begin
     if (!$value$plusargs("CLEAN_TEST=%s", test_name))
       test_name = "basic_single";
+    if (!$value$plusargs("CANDIDATE=%s", candidate_name))
+      candidate_name = "unspecified";
     if (!$value$plusargs("METRICS=%s", metrics_path))
       metrics_path = "aer_clean_metrics.csv";
     if (!$value$plusargs("EVENT_METRICS=%s", event_metrics_path))

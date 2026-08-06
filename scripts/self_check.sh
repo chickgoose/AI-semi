@@ -25,8 +25,11 @@ required=(
   docs/verification/aer-clean-benchmark-spec.md
   docs/verification/aer-clean-benchmark-results.md
   docs/verification/aer-trace-loader.md
+  docs/verification/aer-physical-ppa-contract.md
   benchmarks/clean_slate_aer/prepare_sv_trace.py
   benchmarks/clean_slate_aer/manifest.smoke.json
+  benchmarks/physical_ppa/bracket_fmax.py
+  benchmarks/physical_ppa/fixtures/ganghee_fixed_netlist_example.csv
   tb/clean/aer_bench_if.sv
   tb/clean/aer_clean_mock_candidate.sv
   tb/clean/aer_legacy_candidate_adapter.sv

@@ -37,3 +37,7 @@ The run manifest carries an `always`, `periodic`, or bounded `shock` sink-ready
 schedule, and the preparation step places that schedule in the validated numeric
 header.  Source occurrence and sink backpressure are therefore reproducible from
 one run description rather than selected from the DUT or a test-name heuristic.
+
+Every result row also carries a `candidate` identity supplied by the runner.
+The aggregator includes it in the run and sweep keys, so measurements from two
+implementations with the same workload, seed, and load cannot be merged.
