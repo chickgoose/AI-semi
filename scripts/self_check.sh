@@ -26,8 +26,14 @@ required=(
   docs/verification/aer-clean-benchmark-results.md
   docs/verification/aer-trace-loader.md
   docs/verification/aer-physical-ppa-contract.md
+  docs/verification/aer-native-capability-profile.md
+  docs/verification/aer-ganghee-native-binding.md
   benchmarks/clean_slate_aer/prepare_sv_trace.py
+  benchmarks/clean_slate_aer/capabilities.py
   benchmarks/clean_slate_aer/manifest.smoke.json
+  benchmarks/clean_slate_aer/fixtures/capability_profile_ganghee_trad_rowcol_fovea.json
+  benchmarks/clean_slate_aer/fixtures/capability_profile_baseline.json
+  benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
   benchmarks/physical_ppa/bracket_fmax.py
   benchmarks/physical_ppa/fixtures/ganghee_fixed_netlist_example.csv
   tb/clean/aer_bench_if.sv
@@ -35,8 +41,11 @@ required=(
   tb/clean/aer_legacy_candidate_adapter.sv
   tb/clean/aer_clean_assertions.sv
   tb/clean/aer_clean_tb.sv
+  tb/clean/native/aer_ganghee_native_binding.sv
   tb/clean/files.f
   scripts/run_clean_benchmark.sh
+  scripts/run_ganghee_native_benchmark.sh
+  tests/clean_native/run_binding_test.sh
 )
 for path in "${required[@]}"; do
   [[ -f "$PROJECT_ROOT/$path" ]] || { printf 'missing %s\n' "$path" >&2; exit 1; }

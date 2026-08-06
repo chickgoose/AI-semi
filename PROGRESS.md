@@ -43,6 +43,8 @@
 - [x] generated/accepted/delivered 및 occurrence 기반 latency/timing distortion 분리
 - [x] multi-event/cycle을 허용하는 normalized retire interface와 legacy adapter 구현
 - [x] Verilator smoke 12/12, 서버 Xcelium baseline 8/8 및 A23 8/8 correctness PASS
+- [x] native candidate capability profile과 저장 없는 강희 direct-coordinate TB binding 구현
+- [x] 강희 원본 무수정 상태로 서버 Xcelium 공용 always-ready core workload 10/10 PASS
 
 ## 설계 환경 접속 상태
 

@@ -4,9 +4,8 @@
 
 The common deterministic trace, source pending-latch model, scoreboard, and
 metrics remain unchanged. Ready/valid is not imposed as Ganghee's hardware
-interface. An Xcelium configuration replaces only the common TB's candidate
-cell with a TB-only normalizer that instantiates Ganghee RTL through its native
-ports exactly as published:
+interface. One compile-time TB selection point chooses a TB-only normalizer
+that instantiates Ganghee RTL through its native ports exactly as published:
 
 ```text
 input  clk
@@ -83,9 +82,10 @@ that latch is occupied remains `source_overrun`; the binding does not queue it.
 
 ## External RTL run
 
-Xcelium configuration binding is used so `tb/clean/aer_clean_tb.sv` remains
-byte-for-byte unchanged. Supply either a single source path or a file list and
-the actual native module name:
+Xcelium defines `AER_CLEAN_GANGHEE_NATIVE` at the common TB's candidate
+selection point. This changes only which native DUT is instantiated; it does
+not replace the workload, source model, or scoreboard. Supply either a single
+source path or a file list and the actual native module name:
 
 ```bash
 AER_GANGHEE_TOP=<native_module_name> \
@@ -132,14 +132,47 @@ supported sink-always-ready suite.
 | --- | --- |
 | edge-sampled native fixture | PASS: issued 5, acknowledgements 5, native results 5, masked sampling edges 5, duplicates 0 |
 | structural repository self-check | PASS |
-| clean-slate Python unit tests | PASS: 14/14 |
+| clean-slate Python unit tests | PASS: 25/25 |
 | deterministic trace-generator self-test | PASS: 10 workloads |
 | runner capability parsing | PASS: all 10 always-ready tests accepted |
 | unsupported capability guards | PASS: both backpressure tests rejected with exit 2 |
 
-The local host has no Xcelium executable and Ganghee's read-only original RTL
-was not supplied to this worktree. Therefore the external native RTL suite was
-not claimed as run. An attempted pre-existing Icarus common-mock regression
+## Server original-RTL qualification (2026-08-06)
+
+Xcelium 23.09 elaborated the read-only server sources directly through the
+native `clk/rst/req[15:0]/valid/addr[3:0]` boundary. All ten supported core
+workloads passed with zero scoreboard errors and `accepted == delivered`.
+
+| Workload | Generated | Overrun | Delivered | Throughput | Max E2E | Fairness |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `basic_single` | 16 | 0 | 16 | 0.253968 | 2 | 0.062500 |
+| `basic_sparse` | 32 | 0 | 32 | 0.127490 | 2 | 1.000000 |
+| `basic_simultaneous` | 32 | 0 | 32 | 0.640000 | 17 | 1.000000 |
+| `limit_load` | 117 | 7 | 110 | 0.429688 | 4 | 0.717505 |
+| `limit_elephant_mouse` | 272 | 128 | 144 | 0.558140 | 3 | 0.077885 |
+| `limit_global_fanin` | 256 | 8 | 248 | 0.964981 | 17 | 0.997405 |
+| `limit_local_cluster` | 64 | 0 | 64 | 0.260163 | 5 | 0.250000 |
+| `limit_distributed_burst` | 64 | 0 | 64 | 0.260163 | 5 | 0.250000 |
+| `limit_retrigger` | 256 | 128 | 128 | 0.498054 | 2 | 0.062500 |
+| `limit_timing_fidelity` | 155 | 8 | 147 | 0.569767 | 5 | 0.777526 |
+
+These results validate the common coordinate/source core projection. They do
+not claim native transport of polarity/event type or output backpressure.
+Source overrun is a measured saturation outcome, not a correctness failure.
+
+Original server files were unchanged. The before/after SHA256 values were:
+
+| Original file | SHA256 |
+| --- | --- |
+| `rtl/aer_tx16_trad_rowcol_fovea.v` | `353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e` |
+| `rtl/arbiter4_tree.v` | `108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31` |
+| `rtl/arbiter2.v` | `25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684` |
+| `tb/aer16_bench_core.vh` | `8f6da29830125e305e53f1fff9eb4c98adee630b87f51423165902bdde5f15c2` |
+| `tb/tb_aer16_bench_fovea.v` | `333c44243d80beb5328128718376e3906e3129a1e69084eff6a3964368e76534` |
+
+The local host has no Xcelium executable, so original-RTL qualification was run
+only on the assigned server from a `/tmp` benchmark copy. An attempted
+pre-existing Icarus common-mock regression
 stopped at elaboration because that Icarus build does not support the common
 interface-modport and concurrent-assertion constructs; it did not execute a
 DUT and is not a native-binding failure. The committed runner is the Xcelium

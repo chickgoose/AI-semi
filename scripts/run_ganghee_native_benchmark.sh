@@ -111,15 +111,15 @@ fi
 
 snapshot=aer_clean_ganghee_native_n16
 compile_command=(xrun -64bit -sv -timescale 1ns/1ps
-  -top aer_ganghee_native_config -snapshot "$snapshot" -elaborate
+  -top aer_clean_tb -snapshot "$snapshot" -elaborate
   -xmlibdirname "$out_dir/xcelium.d"
+  -define AER_CLEAN_GANGHEE_NATIVE
   -define "AER_GANGHEE_NATIVE_MODULE=$TOP"
   -defparam aer_clean_tb.NUM_SOURCES=16
   -defparam aer_clean_tb.ADDR_WIDTH=16
   -defparam aer_clean_tb.RETIRE_LANES=1
   -f "$PROJECT_ROOT/tb/clean/files.f"
-  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_native_binding.sv"
-  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_native_config.sv")
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_native_binding.sv")
 if [[ -n "$RTL" ]]; then
   compile_command+=("$RTL")
 else
@@ -135,7 +135,9 @@ for test_name in "${tests[@]}"; do
     "+METRICS=$out_dir/$test_name.csv"
     "+EVENT_METRICS=$out_dir/$test_name.events.csv"
     "+SEED=$SEED" -l "$out_dir/$test_name.log")
-  run_command+=("${trace_args[@]}")
+  if [[ -n "$TRACE_JSONL" ]]; then
+    run_command+=("${trace_args[@]}")
+  fi
   (cd "$PROJECT_ROOT" && "${run_command[@]}")
 done
 

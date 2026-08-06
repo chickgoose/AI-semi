@@ -18,12 +18,21 @@ module aer_clean_tb;
     .RETIRE_LANES(RETIRE_LANES)
   ) bench(clk);
 
+`ifdef AER_CLEAN_GANGHEE_NATIVE
+  aer_ganghee_native_binding #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES),
+    .FIFO_DEPTH(FIFO_DEPTH)
+  ) candidate(bench);
+`else
   aer_legacy_candidate_adapter #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
     .RETIRE_LANES(RETIRE_LANES),
     .FIFO_DEPTH(FIFO_DEPTH)
   ) candidate(bench);
+`endif
 
   aer_clean_assertions #(
     .NUM_SOURCES(NUM_SOURCES),
@@ -631,7 +640,13 @@ module aer_clean_tb;
     rng_state = seed;
     pending = '0;
     bench.rst_n = 1'b0;
+`ifdef AER_CLEAN_GANGHEE_NATIVE
+    // The native core suite has no sink stall capability. Keep the observation
+    // boundary ready before reset release as well as throughout every run.
+    bench.retire_ready = '1;
+`else
     bench.retire_ready = '0;
+`endif
     for (init_source = 0; init_source < NUM_SOURCES;
          init_source = init_source + 1) begin
       pending_event[init_source] = '0;

@@ -45,6 +45,13 @@ The normative intent and PPA boundary are defined in
 | Verilator 5.032 / legacy A23 | 8 | 8/8 PASS |
 | Xcelium 23.09 / legacy fixed-priority baseline | 8 | 8/8 PASS |
 | Xcelium 23.09 / legacy A23 | 8 | 8/8 PASS |
+| Xcelium 23.09 / Ganghee original native direct-coordinate | 10 | 10/10 core PASS |
+
+The Ganghee row/column name describes its internal arbitration. Its latest
+tested native output is `valid + addr[3:0]`, not the older `addr_type +
+addr[1:0]` serial boundary. The native run therefore validates coordinate/source
+core behavior only; unsupported backpressure, polarity/type, and multi-lane
+suites are reported as SKIP rather than repaired by a benchmark adapter.
 
 The independently developed benchmark utilities were merged after review:
 
