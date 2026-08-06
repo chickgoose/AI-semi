@@ -31,6 +31,7 @@ def read_events(path: Path) -> list[dict[str, object]]:
 def check_trace(output: Path, metadata: dict[str, object]) -> None:
     run = metadata["run"]
     geometry = run["geometry"]
+    assert run["sink"]["mode"] in {"always", "periodic", "shock"}
     events = read_events(output / metadata["trace_file"])
     assert len(events) == metadata["event_count"]
     assert metadata["event_schema"] == list(generate_trace.EVENT_FIELDS)

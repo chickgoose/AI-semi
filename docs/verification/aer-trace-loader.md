@@ -33,6 +33,7 @@ scripts/run_clean_benchmark.sh mock
 
 Trace mode and the older in-SV synthetic tests are both retained during
 calibration.  Benchmark-freeze reports must use the deterministic trace path.
-Sink-ready schedules are still controlled by the SV bench; moving them into the
-manifest is a remaining freeze item so source occurrence and sink backpressure
-are both completely reproducible from one run description.
+The run manifest carries an `always`, `periodic`, or bounded `shock` sink-ready
+schedule, and the preparation step places that schedule in the validated numeric
+header.  Source occurrence and sink backpressure are therefore reproducible from
+one run description rather than selected from the DUT or a test-name heuristic.

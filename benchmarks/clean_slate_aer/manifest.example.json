@@ -111,7 +111,8 @@
         "shock_cycles": 96,
         "shock_load": 3.0,
         "shock_deadline_slack": 8
-      }
+      },
+      "sink": {"mode": "shock", "start": 192, "cycles": 96}
     }
   ]
 }

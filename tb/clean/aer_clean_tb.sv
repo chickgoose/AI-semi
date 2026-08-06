@@ -43,6 +43,9 @@ module aer_clean_tb;
   integer trace_stim_cycles;
   integer trace_source_count;
   integer trace_load_milli;
+  integer trace_sink_mode;
+  integer trace_sink_arg0;
+  integer trace_sink_arg1;
   integer trace_scan_count;
   integer stim_cycles;
   integer load_pct;
@@ -242,18 +245,30 @@ module aer_clean_tb;
       trace_fd = $fopen(trace_file_path, "r");
       if (trace_fd == 0)
         $fatal(1, "CLEAN_TRACE cannot open %s", trace_file_path);
-      trace_scan_count = $fscanf(trace_fd, "%d %d %d %d %d\n",
+      trace_scan_count = $fscanf(trace_fd, "%d %d %d %d %d %d %d %d\n",
         trace_version, trace_count, trace_stim_cycles, trace_source_count,
-        trace_load_milli);
-      if (trace_scan_count != 5)
+        trace_load_milli, trace_sink_mode, trace_sink_arg0, trace_sink_arg1);
+      if (trace_scan_count != 8)
         $fatal(1, "CLEAN_TRACE malformed header in %s", trace_file_path);
-      if (trace_version != 1)
+      if (trace_version != 2)
         $fatal(1, "CLEAN_TRACE unsupported version=%0d", trace_version);
       if ((trace_count < 0) || (trace_count > MAX_EVENTS))
         $fatal(1, "CLEAN_TRACE invalid event count=%0d", trace_count);
       if (trace_source_count != NUM_SOURCES)
         $fatal(1, "CLEAN_TRACE source mismatch trace=%0d DUT=%0d",
                trace_source_count, NUM_SOURCES);
+      if ((trace_sink_mode < 0) || (trace_sink_mode > 2))
+        $fatal(1, "CLEAN_TRACE unsupported sink mode=%0d", trace_sink_mode);
+      if ((trace_sink_mode == 1) &&
+          ((trace_sink_arg0 <= 0) || (trace_sink_arg1 < 0) ||
+           (trace_sink_arg1 > trace_sink_arg0)))
+        $fatal(1, "CLEAN_TRACE invalid periodic sink args=%0d,%0d",
+               trace_sink_arg0, trace_sink_arg1);
+      if ((trace_sink_mode == 2) &&
+          ((trace_sink_arg0 < 0) || (trace_sink_arg1 <= 0) ||
+           (trace_sink_arg0 + trace_sink_arg1 > trace_stim_cycles)))
+        $fatal(1, "CLEAN_TRACE invalid shock sink args=%0d,%0d",
+               trace_sink_arg0, trace_sink_arg1);
 
       for (trace_index = 0; trace_index < trace_count;
            trace_index = trace_index + 1) begin
@@ -284,8 +299,9 @@ module aer_clean_tb;
       // as service-normalized percent until the frozen schema renames it.
       load_pct = (trace_load_milli + 5) / 10;
       trace_cursor = 0;
-      $display("CLEAN_TRACE_LOADED file=%s events=%0d stim_cycles=%0d sources=%0d load_pct=%0d",
-        trace_file_path, trace_count, stim_cycles, trace_source_count, load_pct);
+      $display("CLEAN_TRACE_LOADED file=%s events=%0d stim_cycles=%0d sources=%0d load_pct=%0d sink_mode=%0d",
+        trace_file_path, trace_count, stim_cycles, trace_source_count, load_pct,
+        trace_sink_mode);
     end
   endtask
 
@@ -379,7 +395,14 @@ module aer_clean_tb;
   task automatic drive_sink_ready(input integer local_cycle);
     begin
       bench.retire_ready = '1;
-      if (test_name == "basic_backpressure") begin
+      if ((trace_mode != 0) && (trace_sink_mode == 1)) begin
+        if ((local_cycle % trace_sink_arg0) >= trace_sink_arg1)
+          bench.retire_ready = '0;
+      end else if ((trace_mode != 0) && (trace_sink_mode == 2)) begin
+        if ((local_cycle >= trace_sink_arg0) &&
+            (local_cycle < trace_sink_arg0 + trace_sink_arg1))
+          bench.retire_ready = '0;
+      end else if (test_name == "basic_backpressure") begin
         if ((local_cycle % 5) >= 2)
           bench.retire_ready = '0;
       end else if (test_name == "limit_backpressure_shock") begin

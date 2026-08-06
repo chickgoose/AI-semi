@@ -41,7 +41,7 @@ class PrepareSvTraceTest(unittest.TestCase):
             self.assertEqual(result["source_count"], 4)
             self.assertEqual(result["load_milli"], 500)
             lines = output.read_text(encoding="ascii").splitlines()
-            self.assertEqual(lines[0], "1 3 8 4 500")
+            self.assertEqual(lines[0], "2 3 8 4 500 0 0 0")
             self.assertEqual([line.split()[:3] for line in lines[1:]],
                              [["1", "0", "0"], ["1", "1", "1"], ["7", "2", "3"]])
             self.assertNotEqual(lines[1].split()[3], lines[3].split()[3])
@@ -63,6 +63,20 @@ class PrepareSvTraceTest(unittest.TestCase):
             trace, manifest = self.make_fixture(directory)
             with self.assertRaisesRegex(TracePreparationError, "ADDR_WIDTH"):
                 prepare_trace(trace, manifest, directory / "out.svtrace", 2)
+
+    def test_encodes_sink_shock_from_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            trace, manifest = self.make_fixture(directory)
+            metadata = json.loads(manifest.read_text(encoding="utf-8"))
+            metadata["run"]["sink"] = {"mode": "shock", "start": 2, "cycles": 3}
+            manifest.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+            output = directory / "out.svtrace"
+            prepare_trace(trace, manifest, output, 8)
+            self.assertEqual(
+                output.read_text(encoding="ascii").splitlines()[0],
+                "2 3 8 4 500 2 2 3",
+            )
 
 
 if __name__ == "__main__":

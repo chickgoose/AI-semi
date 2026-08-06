@@ -86,6 +86,7 @@ class RunConfig:
     load: Decimal
     stim_cycles: int
     parameters: dict[str, Any]
+    sink: dict[str, Any]
 
     @property
     def source_count(self) -> int:
@@ -399,7 +400,33 @@ def parse_run(raw: Any, index: int) -> RunConfig:
     parameters = raw.get("parameters", {})
     if not isinstance(parameters, dict):
         raise ManifestError(f"{name}.parameters must be an object")
-    return RunConfig(name, workload, seed, width, height, load, stim_cycles, parameters)
+    sink = raw.get("sink", {"mode": "always"})
+    if not isinstance(sink, dict):
+        raise ManifestError(f"{name}.sink must be an object")
+    sink_mode = sink.get("mode")
+    if sink_mode not in {"always", "periodic", "shock"}:
+        raise ManifestError(f"{name}.sink.mode must be always, periodic, or shock")
+    if sink_mode == "periodic":
+        period = sink.get("period")
+        ready_cycles = sink.get("ready_cycles")
+        if (isinstance(period, bool) or not isinstance(period, int) or period <= 0 or
+                isinstance(ready_cycles, bool) or not isinstance(ready_cycles, int) or
+                not 0 <= ready_cycles <= period):
+            raise ManifestError(
+                f"{name}.sink periodic requires period > 0 and 0 <= ready_cycles <= period"
+            )
+    if sink_mode == "shock":
+        start = sink.get("start")
+        cycles = sink.get("cycles")
+        if (isinstance(start, bool) or not isinstance(start, int) or start < 0 or
+                isinstance(cycles, bool) or not isinstance(cycles, int) or cycles <= 0 or
+                start >= stim_cycles or start + cycles > stim_cycles):
+            raise ManifestError(
+                f"{name}.sink shock must fit inside the stimulus window"
+            )
+    return RunConfig(
+        name, workload, seed, width, height, load, stim_cycles, parameters, sink
+    )
 
 
 def load_manifest(path: Path) -> tuple[dict[str, Any], list[RunConfig]]:
@@ -428,6 +455,7 @@ def canonical_run_config(config: RunConfig) -> dict[str, Any]:
         "load": str(config.load),
         "stim_cycles": config.stim_cycles,
         "parameters": config.parameters,
+        "sink": config.sink,
     }
 
 

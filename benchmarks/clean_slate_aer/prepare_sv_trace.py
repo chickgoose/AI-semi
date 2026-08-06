@@ -139,6 +139,33 @@ def encode_events(
     return encoded, source_count
 
 
+def encode_sink(run: dict[str, Any]) -> tuple[int, int, int]:
+    sink = run.get("sink", {"mode": "always"})
+    if not isinstance(sink, dict):
+        raise TracePreparationError("run.sink must be an object")
+    mode = sink.get("mode")
+    if mode == "always":
+        return 0, 0, 0
+    if mode == "periodic":
+        period = sink.get("period")
+        ready_cycles = sink.get("ready_cycles")
+        if (isinstance(period, bool) or not isinstance(period, int) or period <= 0 or
+                isinstance(ready_cycles, bool) or not isinstance(ready_cycles, int) or
+                not 0 <= ready_cycles <= period):
+            raise TracePreparationError("invalid periodic sink schedule")
+        return 1, period, ready_cycles
+    if mode == "shock":
+        start = sink.get("start")
+        cycles = sink.get("cycles")
+        stim_cycles = run["stim_cycles"]
+        if (isinstance(start, bool) or not isinstance(start, int) or start < 0 or
+                isinstance(cycles, bool) or not isinstance(cycles, int) or cycles <= 0 or
+                start >= stim_cycles or start + cycles > stim_cycles):
+            raise TracePreparationError("invalid shock sink schedule")
+        return 2, start, cycles
+    raise TracePreparationError("sink mode must be always, periodic, or shock")
+
+
 def prepare_trace(trace_path: Path, manifest_path: Path, output_path: Path, addr_width: int) -> dict[str, Any]:
     if addr_width <= 0:
         raise TracePreparationError("addr_width must be positive")
@@ -156,11 +183,13 @@ def prepare_trace(trace_path: Path, manifest_path: Path, output_path: Path, addr
     if load_milli != load_milli.to_integral_value():
         raise TracePreparationError("run.load requires more than three decimal places")
 
+    sink_mode, sink_arg0, sink_arg1 = encode_sink(run)
     temporary = output_path.with_suffix(output_path.suffix + ".tmp")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with temporary.open("w", encoding="ascii", newline="\n") as output:
         output.write(
-            f"1 {len(encoded)} {run['stim_cycles']} {source_count} {int(load_milli)}\n"
+            f"2 {len(encoded)} {run['stim_cycles']} {source_count} {int(load_milli)} "
+            f"{sink_mode} {sink_arg0} {sink_arg1}\n"
         )
         for occurrence, trace_id, source, address, deadline in encoded:
             output.write(f"{occurrence} {trace_id} {source} {address} {deadline}\n")
@@ -171,6 +200,7 @@ def prepare_trace(trace_path: Path, manifest_path: Path, output_path: Path, addr
         "stim_cycles": run["stim_cycles"],
         "source_count": source_count,
         "load_milli": int(load_milli),
+        "sink_mode": sink_mode,
         "output": str(output_path),
     }
 
