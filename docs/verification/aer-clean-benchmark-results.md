@@ -39,6 +39,13 @@ The normative intent and PPA boundary are defined in
 | Xcelium 23.09 / legacy fixed-priority baseline | 8 | 8/8 PASS |
 | Xcelium 23.09 / legacy A23 | 8 | 8/8 PASS |
 
+The independently developed benchmark utilities were merged after review:
+
+- the deterministic trace generator covers 10 workload families and passes its
+  byte-for-byte reproducibility self-test;
+- the architecture-neutral aggregator passes 5/5 unit tests and keeps
+  `CORRECTNESS_FAIL` distinct from a valid but `SATURATED` result.
+
 The repository's old combinational `aer_mock_dut` was found to change its selected
 event when a new request arrived while the output was stalled. It was not changed.
 A separate stall-safe smoke candidate was added under `tb/clean/` so benchmark
@@ -67,8 +74,10 @@ that correctness and limit behavior are now reported separately.
 
 ## Remaining benchmark work
 
-1. connect deterministic trace files and manifests to the SV source model;
-2. add p50/p95/p99 latency, deadline miss, and sliding-window service-gap metrics;
+1. connect the completed deterministic trace files and manifests to the SV source
+   model;
+2. extend the completed result aggregator with p50/p95/p99 latency, deadline miss,
+   and sliding-window service-gap inputs;
 3. run multi-seed offered-load sweeps and detect the saturation knee;
 4. add 16/64/256-source scaling runs;
 5. define a fixed physical pin budget and charge required serializers/decoders to

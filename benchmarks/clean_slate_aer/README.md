@@ -31,10 +31,12 @@ The per-run output manifest repeats these classifications as
 may encode the DUT-visible fields to its native address format, but must keep
 `tb_only_event_id` exclusively in its reference/scoreboard state.
 
-When an event occurs while its source is not ready, a benchmark driver should
-place it in architecture-neutral pending stimulus state and present it under
-the DUT's normal ready/valid contract. It must not regenerate, discard, delay
-the occurrence timestamp, or consume random numbers based on `ready`.
+When an event occurs while its source is not ready, the benchmark driver places
+it in that source's single architecture-neutral pending latch and presents it
+under the DUT's normal ready/valid contract. A later occurrence at the same
+occupied source is counted as `source_overrun`; it is not hidden in an unbounded
+TB queue. The driver must not regenerate events, delay occurrence timestamps, or
+consume random numbers based on `ready`.
 
 ## Manifest format
 
