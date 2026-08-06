@@ -1,0 +1,2 @@
+test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error
+metrics,1,10,10,8,1,6,5,0,10,2,4,1.4,3,0.5,0.8,5,0,0
