@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "candidate": "native_single_lane_example",
+  "candidate": "ganghee_trad_rowcol_fovea",
   "native_interface": {
-    "protocol": "example_single_lane",
-    "source_count": {"kind": "parameterized", "minimum": 1},
+    "protocol": "level_req_rowcol_serial_always_ready",
+    "source_count": {"kind": "fixed", "value": 16},
     "source_observable": true,
     "retire_lanes": 1
   },
@@ -15,15 +15,15 @@
     "fairness": {"supported": true},
     "output_backpressure": {
       "supported": false,
-      "reason": "native output has no sink-ready input"
+      "reason": "native serial output has no sink backpressure input"
     },
     "polarity_event_type": {
       "supported": false,
-      "reason": "native event payload carries address only"
+      "reason": "native ROW/COL stream carries address without polarity or event type"
     },
     "multi_lane_retirement": {
       "supported": false,
-      "reason": "native output retires one logical event at a time"
+      "reason": "native ROW/COL stream retires through one serial lane"
     }
   }
 }

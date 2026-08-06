@@ -1,6 +1,12 @@
 {
   "schema_version": 1,
   "candidate": "native_full_feature_example",
+  "native_interface": {
+    "protocol": "example_multilane_ready_valid",
+    "source_count": {"kind": "parameterized", "minimum": 1},
+    "source_observable": true,
+    "retire_lanes": 2
+  },
   "capabilities": {
     "sink_always_ready": {"supported": true},
     "address_event_correctness": {"supported": true},

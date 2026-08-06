@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "candidate": "native_single_lane_example",
+  "candidate": "a23-ee430",
   "native_interface": {
-    "protocol": "example_single_lane",
+    "protocol": "per_source_ready_valid",
     "source_count": {"kind": "parameterized", "minimum": 1},
     "source_observable": true,
     "retire_lanes": 1
@@ -13,17 +13,14 @@
     "occurrence_to_delivery_latency": {"supported": true},
     "loss_duplicate_phantom": {"supported": true},
     "fairness": {"supported": true},
-    "output_backpressure": {
-      "supported": false,
-      "reason": "native output has no sink-ready input"
-    },
+    "output_backpressure": {"supported": true},
     "polarity_event_type": {
       "supported": false,
-      "reason": "native event payload carries address only"
+      "reason": "native payload contains address and source only"
     },
     "multi_lane_retirement": {
       "supported": false,
-      "reason": "native output retires one logical event at a time"
+      "reason": "native output has one ready/valid retire lane"
     }
   }
 }
