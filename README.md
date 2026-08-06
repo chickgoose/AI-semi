@@ -10,6 +10,8 @@ the new architecture.
 The benchmark contract and the exact AER limitations it is intended to expose are
 recorded in
 [`docs/verification/aer-clean-benchmark-spec.md`](docs/verification/aer-clean-benchmark-spec.md).
+Team members should start with the runnable package map and commands in
+[`docs/TEAM_COMMON_WORKLOAD_GUIDE.md`](docs/TEAM_COMMON_WORKLOAD_GUIDE.md).
 Deterministic trace injection and physical qualification are specified separately
 in [`docs/verification/aer-trace-loader.md`](docs/verification/aer-trace-loader.md)
 and [`docs/verification/aer-physical-ppa-contract.md`](docs/verification/aer-physical-ppa-contract.md).

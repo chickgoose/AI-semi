@@ -45,6 +45,26 @@
 - [x] Verilator smoke 12/12, 서버 Xcelium baseline 8/8 및 A23 8/8 correctness PASS
 - [x] native candidate capability profile과 저장 없는 강희 direct-coordinate TB binding 구현
 - [x] 강희 원본 무수정 상태로 서버 Xcelium 공용 always-ready core workload 10/10 PASS
+- [x] 팀 공용 workload/TB 사용법, workload별 검증 목적, RUN/SKIP 정책 문서화
+
+## 2026-08-06 공용 workload/TB 결론
+
+- 기존 shared-channel AER를 억지로 correctness FAIL시키지 않고, 기본 기능은 통과시킨
+  상태에서 bandwidth saturation, source overrun, arbitration latency, starvation,
+  timing distortion과 backpressure recovery를 별도 성능 축으로 노출한다.
+- 한계 노출의 중심 workload는 `limit_load`, `limit_elephant_mouse`,
+  `limit_global_fanin`, `limit_retrigger`, `limit_timing_fidelity`,
+  `limit_backpressure_shock`이며 local/distributed burst 쌍으로 locality 편향을 막는다.
+- hard correctness는 phantom/duplicate/corruption/missing/drain 실패로만 판정한다.
+  source overrun, throughput plateau, 긴 latency/wait와 낮은 fairness는 구조적 한계 수치다.
+- 후보는 native interface로 연결하고 TB binding은 저장·중재·retry·backpressure 기능을
+  추가하지 않는다. 없는 optional 기능은 `SKIP_UNSUPPORTED`로 분리한다.
+- 강희 원본 direct-coordinate RTL은 수정 없이 always-ready core 10/10 PASS했다.
+  `limit_elephant_mouse` 128/272 overrun, `limit_retrigger` 128/256 overrun,
+  simultaneous/global-fan-in 최대 latency 17 cycle로 기존 단일-lane 한계도 관측했다.
+- 최종 후보 비교는 DUT `ready`와 독립적으로 사전 생성되는 deterministic trace 경로를
+  사용한다. 사용법과 공용 파일 위치는
+  [`docs/TEAM_COMMON_WORKLOAD_GUIDE.md`](docs/TEAM_COMMON_WORKLOAD_GUIDE.md)에 정리했다.
 
 ## 설계 환경 접속 상태
 
