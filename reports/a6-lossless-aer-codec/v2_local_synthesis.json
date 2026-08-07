@@ -1,0 +1,10 @@
+{
+  "flow": "local Yosys 0.52 generic synth; no server or standard-cell PPA",
+  "top": "a6_v2_lossless_codec_top",
+  "encoder": {"generic_cells": 11765, "flip_flop_bits": 373},
+  "decoder": {"generic_cells": 4378, "flip_flop_bits": 251},
+  "codec_endpoints": {"generic_cells": 16143, "flip_flop_bits": 624},
+  "full_candidate": {"generic_cells": 16565, "flip_flop_bits": 628},
+  "measurement_observer_included": false,
+  "server_flow_run": false
+}

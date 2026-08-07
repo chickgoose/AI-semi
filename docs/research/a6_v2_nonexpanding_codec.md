@@ -1,6 +1,6 @@
 # A6 v2 Non-Expanding Block/Raw-Bypass Study
 
-Status: lower-bound gate passed for B=16 RTL exploration, 2026-08-07
+Status: RTL evaluated and rejected as an end-to-end candidate, 2026-08-07
 
 ## Requirement and frozen boundary
 
@@ -121,3 +121,111 @@ data-bit gains.
 Machine-readable evidence is in
 `reports/a6-lossless-aer-codec/v2_entropy_blocks.csv` and
 `reports/a6-lossless-aer-codec/v2_entropy_summary.json`.
+
+## Synthesizable implementation and exact gates
+
+The candidate RTL implements the frozen B=16 format in both directions. The
+encoder incrementally forms RAW and token streams while collecting the block
+dictionary; its choice is the fixed strict minimum of the three final lengths.
+It does not observe offered load or select a different datapath by workload. A
+constant 16-cycle idle timeout flushes the final partial block. The decoder
+classifies only at the charged delimiter, validates residue/footer/padding and
+dictionary bounds, parses one symbol per cycle, and retires every decoded
+occurrence separately.
+
+The finite storage bound is 64 raw bits, 64 retained token bits, 64 dictionary
+literal bits, 64 dictionary-index bits, and a 64-bit serializer at the encoder;
+the decoder has a 64-bit receive buffer, 64-bit decoded-output buffer, and
+64-bit dictionary store. Counters, history, arbiters, and error state are in
+addition. Local generic synthesis reports 624 endpoint flip-flop bits, which is
+consistent with these buffers and control state. This single-block
+implementation deasserts ingress while preparing, sending, parsing, and
+retiring; sustaining one accepted address/cycle would require ping-pong
+encoder and decoder buffers and would increase the state bound further.
+
+Two independent gates passed:
+
+- 320-event RTL round-trip with random source gaps and decoder backpressure;
+- malformed compressed `SAME` before history, which raises sticky
+  `decode_error` and emits no event.
+
+Across all 46 trace runs, an independent software decoder reconstructed the
+global accepted-address sequence from the observed RTL link: zero mismatch,
+zero expanding blocks, and 24,147 accepted equals 24,147 decoded. Reset clears
+both histories and discards an incomplete block. A delimiter restores block
+alignment, but a malformed block may invalidate inter-block history; sticky
+error therefore requires an external reset before normal service resumes. No
+silent automatic resynchronization is claimed.
+
+## Actual 46-trace link and system result
+
+The following numbers are measured from the candidate-only replacement and
+the unchanged common scoreboard. `b/e` counts data bits, `escape` is the RAW
+block fraction, `ev/pin-cycle` divides accepted events by five physical pins
+times data-plus-delimiter cycles, and toggles include both data and count/ready
+controls. A compact RAW comparator on the same two data pins takes two cycles
+per event, hence 0.100 event/pin-cycle; its sequence-dependent toggle proxy is
+shown separately.
+
+| Family | accepted/offered | overrun | b/e | escape | ev/pin-cycle | codec/raw toggle/e | avg latency | throughput |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| retrigger | 733/1,024 | 28.4% | 3.434 | 0.043 | 0.1104 | 1.842/2.014 | 88.7 | 0.179 |
+| local/dispersed | 1,404/4,608 | 69.5% | 3.566 | 0.033 | 0.1065 | 2.753/1.840 | 106.1 | 0.216 |
+| moving hotspot | 2,578/9,111 | 71.7% | 3.944 | 0.879 | 0.0981 | 2.258/1.996 | 108.1 | 0.238 |
+| elephant/mouse | 1,018/3,654 | 72.1% | 3.912 | 0.785 | 0.0987 | 2.188/2.018 | 100.2 | 0.238 |
+| timing pair | 1,029/2,538 | 59.5% | 3.854 | 0.600 | 0.0999 | 2.449/2.021 | 122.2 | 0.237 |
+| rate shape | 3,120/6,144 | 49.2% | 3.566 | 0.005 | 0.1066 | 2.616/2.004 | 129.4 | 0.246 |
+| uniform | 10,232/44,621 | 77.1% | 3.701 | 0.326 | 0.1025 | 2.547/2.002 | 122.7 | 0.223 |
+
+Overall accepted-stream data is 3.705 b/e with a 0.350 RAW-block fraction, but
+this number must not be mistaken for offered-stream compression: only 24,147
+of 87,000 offered occurrences were accepted and 62,853 overran at the frozen
+source boundary. In particular, the information-level arbitrary-uniform test
+is exactly 4.000 b/e and 100% RAW. The lower b/e seen for accepted high-load
+uniform traces is selection after 77.1% overrun, not a codec advantage and not
+evidence against the adversarial RAW bound.
+
+Delimiter cost reverses small bit savings: moving hotspot and elephant/mouse
+fall below 4 data b/e yet achieve less than the RAW comparator's 0.100
+event/pin-cycle. Toggle energy also usually worsens; only retrigger reduces the
+measured toggle proxy. Worst physical expansion is a one-event RAW partial
+block: two data cycles plus one delimiter versus two RAW cycles, or 1.5x link
+and pin cycles, even though its data length remains exactly four bits.
+
+## Endpoint cost and rejection
+
+Local Yosys 0.52 generic synthesis, used only as a structural screen, gives:
+
+| Boundary | generic cells | flip-flop bits |
+| --- | ---: | ---: |
+| encoder | 11,765 | 373 |
+| decoder | 4,378 | 251 |
+| encoder + decoder | 16,143 | 624 |
+| full candidate including RR ingress/binding top | 16,565 | 628 |
+
+This is roughly 12.5x the v1 full candidate's 1,330 generic cells. It includes
+both endpoints and all codec buffers; the passive measurement observer is
+excluded. These are not signoff PPA numbers. Per instruction, no server,
+Genus, Innovus, or remote synthesis was run.
+
+V2 is therefore **rejected** despite satisfying exact round-trip and the
+per-selected-block data non-expansion theorem. It misses the useful-candidate
+bar for three independent reasons: 72.2% aggregate overrun, 80--130-cycle
+typical latency from fill/serialize/parse/retire, and endpoint area/toggle cost
+far larger than the modest link savings. Hotspot also fails to beat RAW in
+fixed-pin throughput after delimiter cost.
+
+The measured break-even conditions for reconsideration are explicit: at least
+B=16 is needed for the tested local dictionary case; each full block must use
+at most 60 data bits to beat RAW's 32 two-bit cycles after one delimiter; one
+address/cycle ingress requires at least ping-pong 64-bit buffers at both
+endpoints; and either a separately budgeted framing pin or a delimiter is
+logically necessary for the no-expansion guarantee. A future implementation
+would additionally need a much smaller dictionary/index datapath and a
+decoupled decoder retirement path. Those changes expand the state/area budget
+and do not change the counting impossibility for a free in-band escape.
+
+Actual per-run evidence is in
+`reports/a6-lossless-aer-codec/v2_rtl_trace_metrics.csv`, aggregate evidence in
+`reports/a6-lossless-aer-codec/v2_rtl_summary.json`, and local synthesis counts
+in `reports/a6-lossless-aer-codec/v2_local_synthesis.json`.
