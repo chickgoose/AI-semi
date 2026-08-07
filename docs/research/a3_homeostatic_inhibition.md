@@ -1,6 +1,6 @@
 # A3 Bio-inspired Homeostatic Inhibition Arbiter
 
-Status: pre-RTL design record, 2026-08-07
+Status: second-pass RTL and counterevidence record, 2026-08-07
 
 ## 1. Research question and boundary
 
@@ -332,3 +332,131 @@ switching rises substantially.  There is not yet an approved same-condition
 cross-candidate comparison or physical PPA result, so no overall win, area win,
 power win, or final selection claim is made.  Server PPA was not run, per the
 head-approval gate.
+
+## 11. Second-pass toggle optimization and counterevidence
+
+### 11.1 RTL/VCD hotspot decomposition
+
+The first-pass corrected VCD counts for the three-seed uniform sweep decompose
+as follows.  These are registered value bit transitions, not write attempts or
+clock-tree power.
+
+| Load | Membrane | `h` | phase | retire valid | retire address | retire source | Total | Membrane share |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1.00 | 0 | 0 | 4,101 | 2 | 4,094 | 4,093 | 12,289 | 0.0% |
+| 1.25 | 13,003 | 157 | 4,345 | 2 | 4,343 | 4,342 | 26,192 | 49.6% |
+| 1.50 | 21,377 | 44 | 4,389 | 2 | 4,422 | 4,421 | 34,654 | 61.7% |
+| 2.00 | 32,409 | 44 | 4,355 | 2 | 4,400 | 4,399 | 45,609 | 71.1% |
+
+Below capacity, every request is normally selected while its membrane is still
+zero, so the membrane does not change value.  Above capacity, nonwinners charge
+and winners reset; this real value motion, rather than `h`, is the dominant
+hotspot.  Address/source output toggles are required one-lane event transport
+activity and were not relabeled as policy savings.
+
+### 11.2 Exact update suppression and equivalence
+
+The RTL now independently parameterizes:
+
+- `ENABLE_EXACT_CLOCK_ENABLE`: write a membrane register only when its exact
+  next value differs;
+- `SUPPRESS_INACTIVE_UPDATE`: suppress zero-to-zero inactive leakage writes;
+- `SUPPRESS_SATURATED_NOOP`: suppress active saturated-to-saturated writes.
+
+These are local clock-enable/write-enable conditions around the original
+per-cycle equations.  They do not introduce an epoch, bucket, queue, calendar,
+or a second arbitration policy.  All are enabled in the normal RTL; setting all
+three to zero reconstructs the original update style.
+
+The self-checking equivalence test instantiates original, each isolated option,
+and all-options variants on the same directed idle/fan-in/saturation/stall and
+random sequence.  For 1,400 cycles it checks every cycle's ready/grant, retire
+valid/address/source, all 16 membranes, `h`, and phase.  It passed with identical
+states and grant sequence.  Membrane write attempts were:
+
+| Variant | Write attempts | Reduction from original |
+| --- | ---: | ---: |
+| original | 22,400 | 0% |
+| inactive suppression only | 20,031 | 10.58% |
+| saturation suppression only | 20,943 | 6.50% |
+| exact clock-enable only | 18,574 | 17.08% |
+| all options | 18,574 | 17.08% |
+
+Exact clock-enable subsumes the two special no-op cases in this stimulus.  As
+required by equivalence, registered value-toggle counts are identical.  Thus a
+claim that no-op suppression alone fixes the original VCD value-toggle hotspot
+is false.  It can only reduce inferred data/clock-enable activity.  On the
+optimized frozen RTL, the fraction of 16 membrane registers enabled per sampled
+cycle is 0 at uniform load <=1.0, 19.7% at 1.25, 32.3% at 1.5, and 48.9% at
+2.0.  Physical clock-tree/power benefit remains unproved without approved PPA.
+
+### 11.3 Fixed-point Pareto sweep
+
+The frozen-trace model sweeps:
+
+```text
+URGENCY_WIDTH       = 5, 6, 7
+THRESHOLD_BASE      = 4, 8, 12
+THRESHOLD_SHIFT     = 0, 1
+LEAK                = 0, 1, 2
+INHIBIT_HIGH        = 1, 2, 3       (INHIBIT_LOW=max(0, high-1))
+GAIN_HIGH           = 4, 5, 6       (GAIN_LOW=high+1)
+```
+
+Of 486 tuples, 345 meet positive progress and threshold bit-fit; 141 are
+rejected analytically.  Eleven frozen traces cover sparse/simultaneous,
+uniform 0.9/1.25/2.0, 16-way shape, moving hotspot, rotating-victim identity and
+affine, phase transition, and elephant/mouse.  Every legal simulation asserts
+generated-event conservation and observed wait <= its analytical bound.  The
+front contains 41 parameter tuples; several are dynamically identical because
+only the net inhibited increment differs in the update equation.
+
+The model's chosen nonzero-leak point is:
+
+```text
+U=5, Theta(h)=4+h, L=1, I_low/high=1/2, G_low/high=6/5
+```
+
+| Metric over the 11-trace sweep | First-pass default | Chosen point |
+| --- | ---: | ---: |
+| analytical service bound | 35 | 26 |
+| policy state bits | 104 | 88 |
+| total source overrun | 3,945 | 3,943 |
+| worst request wait | 15 | 15 |
+| minimum DN fairness | 0.99778532 | 0.99778532 |
+| minimum source ratio | 0.46666667 | 0.46666667 |
+| model high-load state toggles/cycle | 10.338806 | 10.306946 |
+| model all-trace state toggles/cycle | 8.739596 | 8.532163 |
+
+The model's overrun, worst-wait, minimum fairness, and minimum ratio exactly
+cross-check the selected-point RTL aggregate within 1e-6.  This guards against
+choosing a model-only Pareto artifact.
+
+### 11.4 Full 46-run RTL countercheck and shortlist decision
+
+The chosen point passes all 46 frozen traces with `errors=0` and
+`accepted==delivered`.  Relative to the first-pass default:
+
+- all-run state-toggle sum falls 763,809 -> 756,632 (-0.940%);
+- the high-load family sum falls 446,188 -> 445,459 (-0.163%);
+- high-load membrane toggles fall 248,774 -> 248,372 (-0.162%);
+- total overrun falls 13,106 -> 13,104;
+- worst observed request wait remains 15 overall, but individual
+  rotating-victim/uniform/phase rows regress by one or two cycles; and
+- worst minimum-source ratio falls 0.465704 -> 0.464567.
+
+The strict requested existence test is met: there is a point with lower measured
+toggle, fewer state bits, and a valid (indeed smaller) bound.  Therefore A3 is
+not rejected under the literal “no such point” rule.  However, full RTL evidence
+shows that parameter tuning removes only 0.16% of high-load switching while
+slightly moving some fairness tails in the wrong direction.  The major
+high-load value-toggle risk is **not materially solved**.  The first-pass fixed
+point remains the default; the 5-bit point is retained as a Pareto experiment,
+not promoted silently.
+
+Accordingly A3 is at most a conditional, low-priority shortlist candidate:
+exact clock-enable is worthwhile for write activity, but A3 must not advance on
+a claimed high-load power win without head-approved physical power evidence.
+If the shortlist requires a material VCD reduction rather than merely a strict
+numeric reduction, A3 should be rejected for this power risk.  No server PPA was
+run in this second pass.
