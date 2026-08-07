@@ -6,16 +6,18 @@
   "parameters": {
     "NUM_SOURCES": 16,
     "ADDR_WIDTH": 16,
-    "RETIRE_LANES": [1, 2, 4]
+    "RETIRE_LANES": [1, 2, 4, 8]
   },
   "native_protocol": "per-source pending/ready plus independent registered retire ready/valid lanes",
   "source_model": "one outstanding event per source",
   "files": [
     "rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv",
-    "rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv"
+    "rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv",
+    "rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv"
   ],
   "normalization_rtl": [
-    "tb/clean/native/a7_parallel_event_compactor_binding.sv"
+    "tb/clean/native/a7_parallel_event_compactor_binding.sv",
+    "tb/clean/native/a7_replicated_selector_binding.sv"
   ],
   "candidate_test_cell": "tests/a7_parallel_event_compactor/a7_normalized_candidate_cell.sv",
   "capabilities": {
@@ -29,7 +31,8 @@
     "multi_lane_retirement": true
   },
   "qualification": {
-    "mandatory_frozen_suite": "46 N=16 always-ready traces",
+    "mandatory_frozen_suite": "46 N=16 always-ready traces at K=1/2/4",
+    "experimental_scaling": "candidate-only N=16/32/64 at K=1/2/4/8",
     "multi_lane_independent_stall": "candidate unit test only; common capability suite is not frozen",
     "server_ppa": "not run"
   }

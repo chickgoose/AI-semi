@@ -72,6 +72,17 @@ again, but the current offered-rate ceiling cannot establish a throughput
 break-even versus K=2. These are topology proxies, not standard-cell PPA.
 Server PPA was not run.
 
+### Second-round correction
+
+The analytical table above is retained as the predeclared model, not a measured
+area result.  A fair, equal-state replicated-selector implementation and common
+Yosys mapping subsequently falsified N=16/K=2 as an area break-even: prefix is
+4,299 generic gates at depth 133 versus 3,733 at depth 133.  N=16/K=4 is the
+first measured structural win, at 5,592 versus 6,729 gates and depth 139 versus
+248.  Same-K 46-trace performance and lane utilization are exactly identical,
+so the prefix claim is now limited to structural scaling at N=16/K>=4.  See
+`adversarial-scaling.md` and `adversarial-structural.csv`.
+
 ## Unit qualification
 
 K=1/2/4 each passed all 65,536 N=16 request bitmaps for every inclusive prefix
