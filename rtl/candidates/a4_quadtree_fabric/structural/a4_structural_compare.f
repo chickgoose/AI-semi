@@ -1,0 +1,1 @@
+rtl/candidates/a4_quadtree_fabric/structural/a4_structural_compare.sv

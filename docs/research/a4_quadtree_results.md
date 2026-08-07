@@ -14,6 +14,12 @@ The final local generic structural gate and physical-shortlist decision are in
 N=16 is `HOLD_FLAT`; N=64 is `CONDITIONAL_SHORTLIST` pending head-owned physical
 evidence.
 
+The immutable source/evidence identities, exact N=16/N=64 tops, stage ordering,
+and fail-closed head preflight are frozen in
+[`a4_physical_handoff.md`](a4_physical_handoff.md). The package authorizes no
+server run; N=16 remains `HOLD_FLAT`, while the N=64 scale study remains blocked
+until a new immutable common-TB-qualified commit exists.
+
 ## Evidence boundary
 
 No common SSH/tmux pane or server file was used after head execution control.

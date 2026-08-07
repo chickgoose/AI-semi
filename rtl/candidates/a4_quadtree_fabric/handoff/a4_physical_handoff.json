@@ -1,0 +1,249 @@
+{
+  "schema": "a4-immutable-physical-handoff-v1",
+  "candidate": "a4_distributed_quadtree",
+  "owner": "A4 / Junyoung clean-slate track",
+  "repo_url": "https://github.com/chickgoose/AI-semi.git",
+  "source_identity": {
+    "commit_sha": "5f07aee26a38e6369ce9b0265c58e1a89cae6034",
+    "tree_sha": "ec2d218ff879e794e03654ab4eef54d73277c271",
+    "branch_at_freeze": "agents/a4-quadtree-fabric",
+    "meaning": "last commit containing all RTL and measured local evidence before this handoff-only package"
+  },
+  "common_contract": {
+    "path": "docs/verification/aer-physical-ppa-contract.md",
+    "sha256": "9e3e2f2f755133282cd47f601d4e3853f81b9a685332245b08be72581d13bf2b",
+    "official_cross_candidate_sources": 16,
+    "scale_study_cannot_replace_official_n16": true
+  },
+  "common_constraints": {
+    "sdc": "constraints/aer_common.sdc",
+    "sdc_sha256": "3b0c8a54c03e56062a154951ffaa479d49fe6e1acaad1130632eca189324497a",
+    "clock_port": "clk",
+    "clock_edge": "posedge",
+    "reset_port": "rst_n",
+    "reset_polarity": "active_low",
+    "reset_style": "asynchronous_assertion_state_clear",
+    "reset_sdc_assumption": "false_path_from_reset",
+    "screening_period_ns": 5.0,
+    "period_policy": "explicit_per_run_no_implicit_default",
+    "input_delay_ns": 0.25,
+    "output_delay_ns": 0.25,
+    "clock_uncertainty_ns": 0.1,
+    "output_load_pf": 0.01,
+    "driver_cell": "",
+    "provisional_corner": "PVT_0P9V_125C",
+    "library_basename": "slow_vdd1v0_basicCells.lib",
+    "library_sha256": "PENDING_HEAD_COMMON_FLOW_FREEZE",
+    "rc_corner": "PENDING_HEAD_COMMON_FLOW_FREEZE",
+    "innovus_config_sha256": "PENDING_HEAD_COMMON_FLOW_FREEZE",
+    "genus_config_sha256": "PENDING_HEAD_COMMON_FLOW_FREEZE"
+  },
+  "stage_order": [
+    "xcelium_common_tb_eligibility",
+    "genus_common_screening",
+    "innovus_fixed_netlist_diagnostic",
+    "genus_plus_innovus_per_target_resynthesis"
+  ],
+  "head_stage_record_schema": {
+    "schema": "a4-head-stage-record-v1",
+    "required_identity_fields": [
+      "stage",
+      "profile",
+      "candidate_key",
+      "source_commit",
+      "top",
+      "filelist_sha256",
+      "status"
+    ],
+    "xcelium_extra_fields": [
+      "assertions_passed"
+    ],
+    "genus_extra_fields": [
+      "check_design_unresolved",
+      "empty_modules",
+      "period_ns",
+      "tool_config_sha256"
+    ]
+  },
+  "profiles": {
+    "n16": {
+      "candidate_key": "a4_quadtree_n16_native",
+      "scope": "official_n16_candidate_configuration",
+      "local_shortlist_decision": "HOLD_FLAT",
+      "physical_authorization": "HEAD_OVERRIDE_REQUIRED_AFTER_CROSS_CANDIDATE_REVIEW",
+      "synthesis_top": "a4_quadtree_fabric",
+      "synthesis_filelist": "rtl/candidates/a4_quadtree_fabric/a4_quadtree_fabric.f",
+      "synthesis_filelist_sha256": "f2603adc5785182fd0d0084b3d3e9cc7048c154991d0279b0f108da2901f8289",
+      "source_set_sha256": "701589376597fb1eeaf64a9b2d3b8acce41e130323ec3b792e5ee8cc2b6781fd",
+      "parameters": {
+        "NUM_SOURCES": 16,
+        "ADDR_WIDTH": 16,
+        "SOURCE_WIDTH": 4,
+        "AGE_WIDTH": 8
+      },
+      "genus_positional_parameters": [16, 16],
+      "defines": ["SYNTHESIS"],
+      "include_dirs": [],
+      "rtl_files": [
+        {
+          "path": "rtl/candidates/a4_quadtree_fabric/a4_quadtree_node.sv",
+          "sha256": "7e9f2030058fde38eec29cac3cf52e339e7a59e3b6e646909602b82d0550e732"
+        },
+        {
+          "path": "rtl/candidates/a4_quadtree_fabric/a4_quadtree_fabric.sv",
+          "sha256": "62aa0d3aacaf980166ae6d08c61bf8d044300add570779e34d0488c00298616b"
+        }
+      ],
+      "native_interface": {
+        "source_valid_bits": 16,
+        "source_ready_bits": 16,
+        "source_event": "16 unpacked elements x 16 bits",
+        "retire_valid_bits": 1,
+        "retire_ready_bits": 1,
+        "retire_event_bits": 16,
+        "retire_source_bits": 4,
+        "retire_lanes": 1,
+        "functional_pin_bits_excluding_clock_reset": 310
+      },
+      "boundary": {
+        "ingress_state": "none inside native top; common TB owns one pending latch per source outside PPA",
+        "internal_registers": "four 2x2 leaf slots plus one root/output slot",
+        "output_boundary": "root one-entry registered ready/valid event+source",
+        "pipeline_levels": 2,
+        "minimum_internal_transport_cycles": 2,
+        "normalization_rtl": "none in synthesis; tests/a4/aer_a4_clean_binding.sv is storage-free simulation-only pin mapping"
+      },
+      "xcelium": {
+        "top": "aer_clean_tb",
+        "tb_filelist": "tests/a4/clean_tb.f",
+        "tb_filelist_sha256": "cdee5badaefac16d2c1b877090409c384890759379abd8c038ef5f3653660e24",
+        "candidate_filelist": "tb/filelists/a4_quadtree_fabric.f",
+        "candidate_filelist_sha256": "8557eae98c543ee19e7f24802d4958e5588ef338318f179741f005e925e78114",
+        "properties": "tests/a4/a4_quadtree_properties.sv",
+        "properties_sha256": "7438d5a56aca17129cdaf0e62c50953f39a112f0083f56daf102325cb280fd17",
+        "trace_manifest": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+        "trace_manifest_sha256": "77da0c02a1db2755653195790a1af43f82e4f1be27be2f9570d9014f648b9726",
+        "status": "PENDING_HEAD_XCELIUM"
+      },
+      "capability_profile": {
+        "path": "tests/a4/capability_profile.json",
+        "sha256": "031e1b1be00d120d58000f43953d4f9e6c27eefc6df0a58b42977024dd950b07",
+        "unsupported": [
+          "multi_lane_retirement"
+        ],
+        "fixed_source_count": 16
+      },
+      "expected_assertions": [
+        "errors == 0",
+        "accepted == delivered after complete drain",
+        "no loss duplicate phantom corruption or source-local reorder",
+        "child_ready is onehot0",
+        "full stalled node acknowledges no child",
+        "retire valid event source and age remain stable under stall",
+        "reset produces no phantom retirement",
+        "all 46 frozen manifest runs emit PASS"
+      ]
+    },
+    "n64": {
+      "candidate_key": "a4_quadtree_n64_structural_scale",
+      "scope": "separate_scale_study_not_official_n16_table",
+      "local_shortlist_decision": "CONDITIONAL_SHORTLIST",
+      "physical_authorization": "BLOCKED_PENDING_N64_COMMON_TB_ELIGIBILITY_IN_NEW_IMMUTABLE_COMMIT",
+      "synthesis_top": "a4_struct_quadtree_top",
+      "synthesis_filelist": "rtl/candidates/a4_quadtree_fabric/structural/a4_structural_compare.f",
+      "synthesis_filelist_sha256": "52035f13dbcea95e0da6d5ff41716be5287c3bee4b2275e4c5bce08bb89e9e40",
+      "source_set_sha256": "d1db4d96aa6e6851f6dd6208eb2fd912fa9a6bad204185e6fad51ad349aba867",
+      "parameters": {
+        "NUM_SOURCES": 64,
+        "EVENT_WIDTH": 16,
+        "AGE_WIDTH": 8,
+        "SOURCE_WIDTH": 6
+      },
+      "derived_payload_width": 30,
+      "genus_positional_parameters": [64, 16],
+      "defines": ["SYNTHESIS"],
+      "include_dirs": [],
+      "rtl_files": [
+        {
+          "path": "rtl/candidates/a4_quadtree_fabric/structural/a4_structural_compare.sv",
+          "sha256": "495fcdbb71228a98b96d0a48c4a73ae895d05a28d5227bf6a86b5867bcf96cf8"
+        }
+      ],
+      "native_interface": {
+        "source_valid_bits": 64,
+        "source_ready_bits": 64,
+        "source_event": "one packed vector of 64 x 16 bits",
+        "retire_valid_bits": 1,
+        "retire_ready_bits": 1,
+        "retire_event_bits": 16,
+        "retire_source_bits": 6,
+        "retire_age_bits": 8,
+        "retire_lanes": 1,
+        "functional_pin_bits_excluding_clock_reset": 1184
+      },
+      "boundary": {
+        "ingress_state": "64 one-entry slots, each valid plus 16-bit event, inside PPA",
+        "internal_registers": "twenty-one radix-4 slots including registered root/output",
+        "output_boundary": "root one-entry registered ready/valid event+source+age",
+        "pipeline_levels_after_ingress": 3,
+        "minimum_internal_transport_cycles_after_ingress": 3,
+        "normalization_rtl": "none available for frozen common TB"
+      },
+      "xcelium": {
+        "status": "BLOCKED_NO_N64_COMMON_TB_BINDING_OR_QUALIFICATION",
+        "required_before_physical": "new immutable commit with storage-accounted binding, N64 trace manifest, assertions, and accepted==delivered evidence"
+      },
+      "capability_profile": {
+        "status": "NOT_QUALIFIED",
+        "unsupported_or_unproven": [
+          "frozen_common_tb_eligibility",
+          "N64 workload qualification",
+          "polarity_event_type interpretation",
+          "multi_lane_retirement"
+        ]
+      },
+      "expected_assertions_before_unblock": [
+        "errors == 0",
+        "accepted == delivered after complete drain",
+        "no loss duplicate phantom corruption or source-local reorder",
+        "all source and internal ready vectors are onehot0 per merge",
+        "every stalled registered boundary holds payload stable",
+        "empty or padded ports never accept or retire an event",
+        "bounded progress under continuous sink readiness"
+      ]
+    }
+  },
+  "measured_local_evidence": [
+    {
+      "path": "docs/research/results/a4_verilator_summary_all.csv",
+      "sha256": "9ee8638b11f54b66dc53e523569e3fe15e049d09c164e61c10937930ee5d7c0d",
+      "meaning": "N16 frozen-46 Verilator summaries"
+    },
+    {
+      "path": "docs/research/results/a4_verilator_events_all.csv.gz",
+      "sha256": "306b7dd66a2b508e1a3417fc6982cf39850fe277b6e062a36dc10687efbc0baa",
+      "meaning": "N16 87000-row event evidence archive"
+    },
+    {
+      "path": "docs/research/results/a4_local_structural_gate.csv",
+      "sha256": "9b216529c4fc792df40600fb8ba43fbf800c1497d30f0849ea08f513d40a17e8",
+      "meaning": "local Yosys and Verilator structural gate"
+    },
+    {
+      "path": "docs/research/results/a4_local_structural_comparison.csv",
+      "sha256": "2fe2501909701f30fee0e765770dd4b8aa995b0e852e6b0852c3652c05f4c9a7",
+      "meaning": "N16 HOLD_FLAT and N64 CONDITIONAL_SHORTLIST decision"
+    },
+    {
+      "path": "docs/research/results/a4_topology_mapping_bracket.csv",
+      "sha256": "79a5e089f5fb16481ffc1f71927bb9cd5917f7bfad9b0a07d6316ae5e3c6cf6c",
+      "meaning": "mapping sensitivity bracket"
+    }
+  ],
+  "immutable_package_state": {
+    "candidate_sources_and_local_evidence": "FROZEN_BY_SHA256",
+    "archive_bundle_sha256": "PENDING_HEAD_ARCHIVE_CREATION",
+    "common_tool_config": "NOT_FROZEN_UNTIL_HEAD_REGISTRY_ROW_ADDS_LIBRARY_RC_AND_FLOW_HASHES",
+    "official_run_status": "NOT_AUTHORIZED_BY_THIS_PACKAGE"
+  }
+}
