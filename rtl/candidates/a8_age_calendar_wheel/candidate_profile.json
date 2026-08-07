@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "candidate": "a8-age-calendar-wheel",
+  "native_interface": {
+    "protocol": "per_source_ready_valid_to_always_ready_single_retire",
+    "source_count": {"kind": "parameterized", "minimum": 1},
+    "source_observable": true,
+    "retire_lanes": 1
+  },
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {
+      "supported": false,
+      "reason": "native retire lane has no ready input; frozen core keeps the sink ready"
+    },
+    "polarity_event_type": {
+      "supported": false,
+      "reason": "native payload transports the common address-event identity only"
+    },
+    "multi_lane_retirement": {
+      "supported": false,
+      "reason": "native transport has one logical retire lane"
+    }
+  }
+}

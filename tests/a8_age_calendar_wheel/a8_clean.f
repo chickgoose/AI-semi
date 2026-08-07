@@ -1,0 +1,6 @@
+tb/clean/aer_bench_if.sv
+rtl/candidates/a8_age_calendar_wheel/a8_age_calendar_wheel_arbiter.sv
+rtl/candidates/a8_age_calendar_wheel/a8_age_calendar_wheel.sv
+tests/a8_age_calendar_wheel/a8_clean_binding.sv
+tb/clean/aer_clean_assertions.sv
+tb/clean/aer_clean_tb.sv
