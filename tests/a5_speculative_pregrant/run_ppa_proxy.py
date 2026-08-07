@@ -28,7 +28,8 @@ def main() -> int:
 
     project = Path(__file__).resolve().parents[2]
     rtl = project / "rtl/candidates/a5_speculative_pregrant"
-    sources = [rtl / "a5_transition_predictor.sv", rtl / "a5_speculative_pregrant_core.sv"]
+    sources = [rtl / "a5_transition_predictor.sv", rtl / "a5_last_successor_predictor.sv",
+               rtl / "a5_speculative_pregrant_core.sv"]
     args.output.mkdir(parents=True, exist_ok=True)
     configs = [
         ("fallback", 0, 4, 16, 2),

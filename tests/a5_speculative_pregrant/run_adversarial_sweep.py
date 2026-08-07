@@ -77,6 +77,7 @@ def main() -> int:
             "-P", f"a5_adversarial_tb.PRED_TABLE_ENTRIES={table_entries}",
             "-P", f"a5_adversarial_tb.PRED_CONF_WIDTH={conf_bits}",
             str(rtl / "a5_transition_predictor.sv"),
+            str(rtl / "a5_last_successor_predictor.sv"),
             str(rtl / "a5_speculative_pregrant_core.sv"),
             str(tb), "-o", str(executable),
         ]

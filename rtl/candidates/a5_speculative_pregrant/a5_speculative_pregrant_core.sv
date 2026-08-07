@@ -5,9 +5,13 @@ module a5_speculative_pregrant_core #(
   parameter int ADDR_WIDTH = 16,
   parameter int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES),
   parameter bit ENABLE_PREDICTOR = 1'b1,
+  // 1=confidence Markov (default), 2=per-context last successor,
+  // 3=oracle of the deterministic winner.  Style 3 is measurement-only.
+  parameter int PREDICTOR_STYLE = 1,
   parameter int PRED_HISTORY_BITS = SOURCE_WIDTH,
   parameter int PRED_TABLE_ENTRIES = NUM_SOURCES,
   parameter int PRED_CONF_WIDTH = 2,
+  parameter bit PRED_CONFIDENCE_GATE = 1'b1,
   parameter bit ENABLE_METRICS = 1'b1,
   parameter int MAX_PREDICT_STREAK = 3
 ) (
@@ -27,6 +31,7 @@ module a5_speculative_pregrant_core #(
   output logic [31:0] prediction_attempts,
   output logic [31:0] prediction_hits,
   output logic [31:0] prediction_misses,
+  output logic [31:0] prediction_bypass_hits,
   output logic [31:0] confidence_fallbacks,
   output logic [31:0] fairness_fallbacks
 );
@@ -59,6 +64,7 @@ module a5_speculative_pregrant_core #(
   integer event_source;
   integer scan_source;
   integer selected_source;
+  integer fallback_selected;
 
   always_comb begin
     for (event_source = 0; event_source < NUM_SOURCES;
@@ -74,8 +80,8 @@ module a5_speculative_pregrant_core #(
 
   assign slot_available = !output_valid || retire_ready;
   assign any_request = |source_valid;
-  assign prediction_allowed =
-    predict_streak < STREAK_WIDTH'(MAX_PREDICT_STREAK);
+  assign prediction_allowed = (PREDICTOR_STYLE == 3) ||
+    (predict_streak < STREAK_WIDTH'(MAX_PREDICT_STREAK));
   assign prediction_attempt = slot_available && any_request &&
                               predictor_valid && prediction_allowed;
   assign prediction_hit = prediction_attempt &&
@@ -89,22 +95,24 @@ module a5_speculative_pregrant_core #(
   assign bypass_hit = !output_valid && retire_ready && prediction_hit;
 
   always_comb begin
-    selected_source = -1;
+    fallback_selected = -1;
     scan_source = 0;
     offset = 0;
     if (slot_available && any_request) begin
-      if (prediction_hit) begin
-        selected_source = int'(predictor_target);
-      end else begin
-        for (offset = 0; offset < NUM_SOURCES; offset = offset + 1) begin
-          scan_source = int'(fallback_start) + offset;
-          if (scan_source >= NUM_SOURCES)
-            scan_source = scan_source - NUM_SOURCES;
-          if ((selected_source < 0) && source_valid[scan_source])
-            selected_source = scan_source;
-        end
+      for (offset = 0; offset < NUM_SOURCES; offset = offset + 1) begin
+        scan_source = int'(fallback_start) + offset;
+        if (scan_source >= NUM_SOURCES)
+          scan_source = scan_source - NUM_SOURCES;
+        if ((fallback_selected < 0) && source_valid[scan_source])
+          fallback_selected = scan_source;
       end
     end
+  end
+
+  always_comb begin
+    selected_source = fallback_selected;
+    if (prediction_hit)
+      selected_source = int'(predictor_target);
 
     source_ready = '0;
     if (selected_source >= 0)
@@ -126,13 +134,14 @@ module a5_speculative_pregrant_core #(
   assign predictor_update = (selected_source >= 0) && history_valid;
 
   generate
-    if (ENABLE_PREDICTOR) begin : predictor_enabled
+    if (ENABLE_PREDICTOR && (PREDICTOR_STYLE == 1)) begin : markov_enabled
       a5_transition_predictor #(
         .NUM_SOURCES(NUM_SOURCES),
         .SOURCE_WIDTH(SOURCE_WIDTH),
         .HISTORY_BITS(PRED_HISTORY_BITS),
         .TABLE_ENTRIES(PRED_TABLE_ENTRIES),
-        .CONF_WIDTH(PRED_CONF_WIDTH)
+        .CONF_WIDTH(PRED_CONF_WIDTH),
+        .ENABLE_CONFIDENCE_GATE(PRED_CONFIDENCE_GATE)
       ) predictor (
         .clk,
         .rst_n,
@@ -145,6 +154,30 @@ module a5_speculative_pregrant_core #(
         .update_context(history_source),
         .update_actual(SOURCE_WIDTH'(selected_source))
       );
+    end else if (ENABLE_PREDICTOR && (PREDICTOR_STYLE == 2)) begin : last_enabled
+      a5_last_successor_predictor #(
+        .NUM_SOURCES(NUM_SOURCES),
+        .SOURCE_WIDTH(SOURCE_WIDTH),
+        .HISTORY_BITS(PRED_HISTORY_BITS),
+        .TABLE_ENTRIES(PRED_TABLE_ENTRIES)
+      ) predictor (
+        .clk,
+        .rst_n,
+        .lookup_valid(history_valid),
+        .lookup_context(history_source),
+        .prediction_valid(predictor_valid),
+        .prediction_target(predictor_target),
+        .update_valid(predictor_update),
+        .update_context(history_source),
+        .update_actual(SOURCE_WIDTH'(selected_source))
+      );
+    end else if (ENABLE_PREDICTOR && (PREDICTOR_STYLE == 3)) begin : oracle_enabled
+      always_comb begin
+        predictor_valid = (fallback_selected >= 0);
+        predictor_target = '0;
+        if (fallback_selected >= 0)
+          predictor_target = SOURCE_WIDTH'(fallback_selected);
+      end
     end else begin : predictor_disabled
       always_comb begin
         predictor_valid = 1'b0;
@@ -160,6 +193,7 @@ module a5_speculative_pregrant_core #(
           prediction_attempts <= '0;
           prediction_hits <= '0;
           prediction_misses <= '0;
+          prediction_bypass_hits <= '0;
           confidence_fallbacks <= '0;
           fairness_fallbacks <= '0;
         end else begin
@@ -169,6 +203,8 @@ module a5_speculative_pregrant_core #(
             prediction_hits <= prediction_hits + 1'b1;
           if (prediction_miss)
             prediction_misses <= prediction_misses + 1'b1;
+          if (bypass_hit)
+            prediction_bypass_hits <= prediction_bypass_hits + 1'b1;
           if (confidence_fallback)
             confidence_fallbacks <= confidence_fallbacks + 1'b1;
           if (fairness_fallback)
@@ -180,11 +216,27 @@ module a5_speculative_pregrant_core #(
         prediction_attempts = '0;
         prediction_hits = '0;
         prediction_misses = '0;
+        prediction_bypass_hits = '0;
         confidence_fallbacks = '0;
         fairness_fallbacks = '0;
       end
     end
   endgenerate
+
+  // Prediction can only alter which currently valid source wins.  A miss is
+  // exactly the deterministic selection, and a grant is never fabricated.
+`ifndef A5_YOSYS_PROXY
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
+      assert ($onehot0(source_ready));
+      assert ((source_ready & ~source_valid) == '0);
+      if (prediction_miss)
+        assert (selected_source == fallback_selected);
+      if ((PREDICTOR_STYLE == 3) && prediction_hit)
+        assert (selected_source == fallback_selected);
+    end
+  end
+`endif
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin

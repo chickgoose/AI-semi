@@ -1,2 +1,3 @@
+rtl/candidates/a5_speculative_pregrant/a5_last_successor_predictor.sv
 rtl/candidates/a5_speculative_pregrant/a5_transition_predictor.sv
 rtl/candidates/a5_speculative_pregrant/a5_speculative_pregrant_core.sv

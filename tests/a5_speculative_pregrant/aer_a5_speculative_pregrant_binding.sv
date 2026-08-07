@@ -6,11 +6,17 @@
 `ifndef A5_BIND_HISTORY_BITS
 `define A5_BIND_HISTORY_BITS SOURCE_WIDTH
 `endif
+`ifndef A5_BIND_PREDICTOR_STYLE
+`define A5_BIND_PREDICTOR_STYLE 1
+`endif
 `ifndef A5_BIND_TABLE_ENTRIES
 `define A5_BIND_TABLE_ENTRIES NUM_SOURCES
 `endif
 `ifndef A5_BIND_CONF_WIDTH
 `define A5_BIND_CONF_WIDTH 2
+`endif
+`ifndef A5_BIND_CONFIDENCE_GATE
+`define A5_BIND_CONFIDENCE_GATE 1
 `endif
 
 // Candidate-only normalized binding.  It is a wire-level port map and adds no
@@ -30,6 +36,7 @@ module aer_ganghee_native_binding #(
   logic [31:0] prediction_attempts;
   logic [31:0] prediction_hits;
   logic [31:0] prediction_misses;
+  logic [31:0] prediction_bypass_hits;
   logic [31:0] confidence_fallbacks;
   logic [31:0] fairness_fallbacks;
   integer lane;
@@ -44,9 +51,11 @@ module aer_ganghee_native_binding #(
     .ADDR_WIDTH(ADDR_WIDTH),
     .SOURCE_WIDTH(SOURCE_WIDTH),
     .ENABLE_PREDICTOR(`A5_BIND_ENABLE_PREDICTOR),
+    .PREDICTOR_STYLE(`A5_BIND_PREDICTOR_STYLE),
     .PRED_HISTORY_BITS(`A5_BIND_HISTORY_BITS),
     .PRED_TABLE_ENTRIES(`A5_BIND_TABLE_ENTRIES),
     .PRED_CONF_WIDTH(`A5_BIND_CONF_WIDTH),
+    .PRED_CONFIDENCE_GATE(`A5_BIND_CONFIDENCE_GATE),
     .MAX_PREDICT_STREAK(3)
   ) candidate (
     .clk(bench.clk),
@@ -61,6 +70,7 @@ module aer_ganghee_native_binding #(
     .prediction_attempts,
     .prediction_hits,
     .prediction_misses,
+    .prediction_bypass_hits,
     .confidence_fallbacks,
     .fairness_fallbacks
   );
@@ -77,9 +87,9 @@ module aer_ganghee_native_binding #(
   end
 
   final begin
-    $display("A5_PREDICTOR_METRICS attempts=%0d hits=%0d misses=%0d confidence_fallbacks=%0d fairness_fallbacks=%0d",
+    $display("A5_PREDICTOR_METRICS attempts=%0d hits=%0d misses=%0d confidence_fallbacks=%0d fairness_fallbacks=%0d bypass_hits=%0d",
       prediction_attempts, prediction_hits, prediction_misses,
-      confidence_fallbacks, fairness_fallbacks);
+      confidence_fallbacks, fairness_fallbacks, prediction_bypass_hits);
   end
 endmodule
 /* verilator lint_on UNUSEDPARAM */

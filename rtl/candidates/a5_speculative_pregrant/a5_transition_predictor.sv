@@ -6,6 +6,7 @@ module a5_transition_predictor #(
   parameter int HISTORY_BITS = SOURCE_WIDTH,
   parameter int TABLE_ENTRIES = NUM_SOURCES,
   parameter int CONF_WIDTH = 2,
+  parameter bit ENABLE_CONFIDENCE_GATE = 1'b1,
   parameter logic [CONF_WIDTH-1:0] USE_THRESHOLD =
     (1 << (CONF_WIDTH-1))
 ) (
@@ -68,7 +69,8 @@ module a5_transition_predictor #(
       prediction_confidence = entry_confidence[lookup_index];
       prediction_valid = entry_valid[lookup_index] &&
                          (entry_tag[lookup_index] == lookup_tag) &&
-                         (entry_confidence[lookup_index] >= USE_THRESHOLD);
+                         (!ENABLE_CONFIDENCE_GATE ||
+                          (entry_confidence[lookup_index] >= USE_THRESHOLD));
     end
   end
 

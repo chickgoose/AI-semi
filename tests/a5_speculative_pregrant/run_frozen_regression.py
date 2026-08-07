@@ -16,7 +16,8 @@ import sys
 
 PREDICTOR_RE = re.compile(
     r"A5_PREDICTOR_METRICS attempts=(\d+) hits=(\d+) misses=(\d+) "
-    r"confidence_fallbacks=(\d+) fairness_fallbacks=(\d+)"
+    r"confidence_fallbacks=(\d+) fairness_fallbacks=(\d+) "
+    r"bypass_hits=(\d+)"
 )
 
 
@@ -62,6 +63,11 @@ def main() -> int:
     parser.add_argument("--trace-dir", type=Path, default=Path("/tmp/a5-frozen-traces"))
     parser.add_argument("--verilator", default=os.environ.get("VERILATOR", "verilator"))
     parser.add_argument("--predictor-enabled", choices=(0, 1), type=int, default=1)
+    parser.add_argument("--predictor-style", choices=(1, 2, 3), type=int, default=1)
+    parser.add_argument("--history-bits", choices=(1, 2, 3, 4), type=int, default=4)
+    parser.add_argument("--table-entries", choices=(1, 2, 4, 8, 16), type=int, default=16)
+    parser.add_argument("--confidence-bits", choices=(1, 2, 3), type=int, default=2)
+    parser.add_argument("--confidence-gated", choices=(0, 1), type=int, default=1)
     parser.add_argument("--skip-build", action="store_true")
     args = parser.parse_args()
 
@@ -92,6 +98,11 @@ def main() -> int:
                 "-Wno-PINCONNECTEMPTY", "--top-module", "aer_clean_tb",
                 "-DAER_CLEAN_GANGHEE_NATIVE", "-GNUM_SOURCES=16",
                 f"-DA5_BIND_ENABLE_PREDICTOR={args.predictor_enabled}",
+                f"-DA5_BIND_PREDICTOR_STYLE={args.predictor_style}",
+                f"-DA5_BIND_HISTORY_BITS={args.history_bits}",
+                f"-DA5_BIND_TABLE_ENTRIES={args.table_entries}",
+                f"-DA5_BIND_CONF_WIDTH={args.confidence_bits}",
+                f"-DA5_BIND_CONFIDENCE_GATE={args.confidence_gated}",
                 "-GADDR_WIDTH=16", "-GRETIRE_LANES=1",
                 "-f", str(project / "tb/clean/files.f"),
                 "-f", str(project / "rtl/candidates/a5_speculative_pregrant/a5_speculative_pregrant.f"),
@@ -141,7 +152,7 @@ def main() -> int:
         match = PREDICTOR_RE.search(output)
         if match is None:
             raise SystemExit(f"missing predictor metrics: {name}")
-        attempts, hits, misses, confidence, fairness = map(int, match.groups())
+        attempts, hits, misses, confidence, fairness, bypass_hits = map(int, match.groups())
         opportunities = attempts + confidence + fairness
         predictor_rows.append(
             {
@@ -155,6 +166,7 @@ def main() -> int:
                 "misses": misses,
                 "confidence_fallbacks": confidence,
                 "fairness_fallbacks": fairness,
+                "bypass_hits": bypass_hits,
                 "non_idle_opportunities": opportunities,
                 "accuracy": (hits / attempts) if attempts else "",
                 "coverage": (attempts / opportunities) if opportunities else "",

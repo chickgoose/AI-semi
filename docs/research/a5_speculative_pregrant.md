@@ -429,3 +429,225 @@ tests/a5_speculative_pregrant/run_frozen_regression.py \
   --predictor-enabled 0 --output /tmp/a5-frozen-fallback \
   --trace-dir /tmp/a5-frozen-traces
 ```
+
+## 12. Third-pass fundamental utility ceiling
+
+This section adds a ceiling experiment; it does not revise the second-pass
+measurements or decision.  The unchanged 46 trace SHAs were replayed through
+one retire lane for four selection policies:
+
+- **oracle next-source** predicts the source that deterministic round-robin
+  would select from the current active set.  It therefore never changes the
+  winner, fairness, or correctness.  Its zero-bit entry in the tables means
+  “unpriced ideal information,” not implementable hardware.
+- **last successor** stores the most recently observed successor separately
+  for each tagged source context.  It is not global last-grant priority.
+- **confidence Markov** is the existing tagged transition table with saturating
+  confidence and deterministic miss/cold/alias fallback.
+- **fallback** is predictor-disabled deterministic round-robin.
+
+All 874 runs (19 configurations times 46 traces) had zero scoreboard errors
+and `accepted == delivered`.  Oracle and fallback both delivered 73,878 events
+after drain and both had 13,122 source overruns.  The learned predictors may
+change arbitration order before deterministic recovery, so their accepted
+totals differ slightly: 73,882 for last-successor and 73,876 for H4/T16/C2.
+This is disclosed rather than treating dropped-at-source events as service.
+
+### Aggregate ceiling
+
+| Policy | State bits | Accuracy | Useful bypass / delivered | Weighted mean E2E | Gain vs fallback | Updates / useful bypass |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fallback | 0 | n/a | 0% | 4.077479 | 0 | infinity |
+| oracle deterministic winner | ideal/unpriced | 100% | 100% | 3.077479 | 1.000000 cycle | 1.00 |
+| per-context last-successor H4/T16 | 149 | 38.17% | 12.02% | 3.957175 | 0.120672 cycle | 8.32 |
+| gated Markov H4/T16/C2 | 181 | 75.86% | 11.67% | 3.965185 | 0.112358 cycle | 8.56 |
+
+Latency gain uses each fallback trace's delivered count as the common weight,
+so the learned policies' small accepted-count differences cannot inflate it.
+Thus the current Markov implementation captures only 11.24% of the oracle
+latency opportunity.  Its higher accuracy does not beat last-successor: the
+149-bit last-successor obtains slightly more latency benefit than the 181-bit
+Markov table.  Accuracy counts hits even while an output is already occupied;
+only `bypass_hit = hit && !output_valid && retire_ready` can remove the output
+register cycle.
+
+Across the fixed 103,680-cycle measurement windows, fallback delivered 73,800
+events and oracle delivered 73,826: throughput 0.711806 versus 0.712056.  The
+absolute oracle ceiling is only 26 events, or 0.0352% relative, and does not
+change the one-event/cycle single-lane service limit.  Last-successor delivered
+73,800, while H4/T16/C2 delivered 73,797.  Consequently no realizable policy
+demonstrates a suite-wide fixed-window throughput benefit.
+
+For critical path, same-cycle deterministic recovery imposes a harder bound.
+With predictor path delay `D_p` and fallback scan delay `D_f`, static timing is
+
+```
+D_cycle >= max(D_p, D_f)
+```
+
+for every learned predictor that can miss.  Prediction probability cannot
+remove `D_f` from worst-case timing; it can only reduce event latency.  The
+oracle marks 100% of events as theoretically eligible for an indexed fast
+path, but its RTL computes the oracle target with the deterministic scan and is
+not a physical implementation.  A real Fmax win would require isolating or
+pipelining the recovery path, at which point misses recover next cycle rather
+than through the present same-cycle path.
+
+### Area/toggle recovery boundary
+
+Let `N` be delivered events, `b` useful empty-slot bypasses, `u` predictor
+updates, `q=b/N`, `E_u` the switching energy of one table update, and `V_b` the
+value or energy saved by one bypass.  Ignoring leakage is already favorable to
+the predictor; it can recover dynamic update cost only if
+
+```
+b * V_b > u * E_u        or        V_b / E_u > u / b.
+```
+
+Adding area/leakage `P_A` over observation time `T` tightens this to
+
+```
+q * V_b > (u/N) * E_u + P_A * T / N.
+```
+
+H4/T16/C2 performs 73,830 update opportunities for 8,623 useful bypasses, so
+even before area it requires `V_b/E_u > 8.56`.  Last-successor requires 8.32.
+The high-accuracy overload boundary is more decisive: all three uniform-2.0
+traces have 81.9--84.0% Markov accuracy but zero useful bypasses, hence infinite
+update-cost payback.  Phase-transition seeds have 72.3--74.9% accuracy but only
+0.046--0.094% bypass coverage, requiring 2,150 and 1,060 update opportunities
+per useful bypass.  This is the measured workload boundary where accuracy is
+high but area and toggle activity cannot be recovered.
+
+Local generic Yosys/ABC and Verilator proxies confirm the cost trend:
+
+| Configuration | Predictor bits | NAND vs fallback | Depth | Weighted latency gain |
+| --- | ---: | ---: | ---: | ---: |
+| fallback | 0 | 990 / reference | 61 | 0 |
+| H4/T1/C2 gated | 16 | 1151 / +16.3% | 65 | 0.009813 |
+| H4/T4/C2 ungated | 49 | 1287 / +30.0% | 66 | 0.035959 |
+| H4/T8/C2 gated | 93 | 1468 / +48.3% | 60 | 0.062224 |
+| H4/T16/C1 gated | 165 | 1608 / +62.4% | 59 | 0.122366 |
+| H4/T16/C2 gated | 181 | 1799 / +81.7% | 62 | 0.112358 |
+| last-successor H4/T16 | 149 | 1434 / +44.8% | 67 | 0.120672 |
+
+The best generic depth proxy is only 3.3% shorter (59 versus 61) while adding
+62.4% NANDs, below the predeclared 10% Fmax/5% area break-even.  These are local
+generic proxies, not post-route claims; no server or physical flow was run.
+
+### Minimum Pareto search
+
+The sweep covered H1--H4, T1/2/4/8/16, C1/C2/C3, and confidence gating on/off.
+The useful state/gain frontier is:
+
+| Configuration | Bits | Gain cycles/event | Bypass coverage | Updates/bypass |
+| --- | ---: | ---: | ---: | ---: |
+| H4/T1/C2 gated | 16 | 0.009813 | 0.98% | 101.84 |
+| H1/T2/C2 gated | 21 | 0.017042 | 1.71% | 58.50 |
+| H2/T4/C2 gated | 41 | 0.031999 | 3.21% | 31.15 |
+| H4/T4/C1 ungated | 45 | 0.035526 | 3.16% | 31.67 |
+| H4/T4/C2 ungated | 49 | 0.035959 | 3.20% | 31.24 |
+| H3/T8/C2 gated | 85 | 0.061879 | 6.27% | 15.94 |
+| H4/T8/C2 gated | 93 | 0.062224 | 6.07% | 16.47 |
+| H4/T16/C1 gated | 165 | 0.122366 | 11.64% | 8.58 |
+
+C3 raises reported accuracy but loses latency utility.  Removing gating raises
+attempts while accuracy falls near 40%; at T4 it adds a small latency gain but
+still requires more than 31 table updates per useful bypass.  Across predictor
+families, last-successor is also Pareto-relevant: it nearly matches the best
+Markov gain with 16 fewer bits, though its depth proxy is worse.  No point meets
+the physical break-even gates.
+
+### Per-trace latency ceiling
+
+`bypass%` is useful empty-slot coverage, not raw prediction coverage.
+
+| Trace | Fallback L | Oracle L | Last L / bypass% | Markov L / bypass% |
+| --- | ---: | ---: | ---: | ---: |
+| core_sparse_identity | 2.0000 | 1.0000 | 2.0000 / 0.00% | 2.0000 / 0.00% |
+| core_sparse_rotate180 | 2.0000 | 1.0000 | 2.0000 / 0.00% | 2.0000 / 0.00% |
+| core_simultaneous_identity | 9.5000 | 8.5000 | 9.5000 / 0.00% | 9.5000 / 0.00% |
+| uniform_l0p125_s2001 | 2.0000 | 1.0000 | 1.9681 / 3.19% | 1.9960 / 0.40% |
+| uniform_l0p125_s2002 | 2.0000 | 1.0000 | 1.9425 / 5.75% | 2.0000 / 0.00% |
+| uniform_l0p125_s2003 | 2.0000 | 1.0000 | 1.9307 / 6.93% | 2.0000 / 0.00% |
+| uniform_l0p50_s2001 | 2.0000 | 1.0000 | 1.9511 / 4.89% | 1.9990 / 0.10% |
+| uniform_l0p50_s2002 | 2.0000 | 1.0000 | 1.9653 / 3.47% | 2.0000 / 0.00% |
+| uniform_l0p50_s2003 | 2.0000 | 1.0000 | 1.9709 / 2.91% | 1.9981 / 0.19% |
+| uniform_l0p90_s2001 | 2.0000 | 1.0000 | 1.9925 / 0.75% | 1.9995 / 0.05% |
+| uniform_l0p90_s2002 | 2.0000 | 1.0000 | 1.9919 / 0.81% | 2.0000 / 0.00% |
+| uniform_l0p90_s2003 | 2.0000 | 1.0000 | 1.9918 / 0.82% | 2.0000 / 0.00% |
+| uniform_l1p00_s2001 | 2.0000 | 1.0000 | 2.0000 / 0.00% | 2.0000 / 0.00% |
+| uniform_l1p00_s2002 | 2.0000 | 1.0000 | 2.0000 / 0.00% | 2.0000 / 0.00% |
+| uniform_l1p00_s2003 | 2.0000 | 1.0000 | 2.0000 / 0.00% | 2.0000 / 0.00% |
+| uniform_l1p25_s2001 | 5.1112 | 4.1112 | 4.9722 / 0.00% | 5.0580 / 0.00% |
+| uniform_l1p25_s2002 | 5.0702 | 4.0702 | 5.2815 / 0.00% | 5.1420 / 0.00% |
+| uniform_l1p25_s2003 | 5.2906 | 4.2906 | 5.2963 / 0.00% | 5.2675 / 0.00% |
+| uniform_l1p50_s2001 | 7.0054 | 6.0054 | 7.0487 / 0.00% | 7.0146 / 0.00% |
+| uniform_l1p50_s2002 | 7.2084 | 6.2084 | 7.1173 / 0.00% | 7.3247 / 0.00% |
+| uniform_l1p50_s2003 | 7.1408 | 6.1408 | 6.9810 / 0.00% | 7.1943 / 0.00% |
+| uniform_l2p00_s2001 | 10.2337 | 9.2337 | 9.9087 / 0.00% | 10.2337 / 0.00% |
+| uniform_l2p00_s2002 | 9.9037 | 8.9037 | 10.0228 / 0.00% | 9.9494 / 0.00% |
+| uniform_l2p00_s2003 | 9.7635 | 8.7635 | 9.9509 / 0.00% | 9.6900 / 0.00% |
+| shape_b1 | 2.0000 | 1.0000 | 1.0083 / 99.17% | 1.0161 / 98.39% |
+| shape_b4 | 3.5000 | 2.5000 | 2.7573 / 74.27% | 2.7632 / 73.68% |
+| shape_b16 | 9.5000 | 8.5000 | 9.3154 / 18.46% | 9.3169 / 18.31% |
+| spatial_local | 3.5000 | 2.5000 | 2.7539 / 74.61% | 2.7559 / 74.41% |
+| spatial_dispersed | 3.5000 | 2.5000 | 2.7539 / 74.61% | 2.7559 / 74.41% |
+| spatial_local_mirror | 3.5000 | 2.5000 | 2.7539 / 74.61% | 2.7559 / 74.41% |
+| moving_hotspot_single_s3301 | 2.0000 | 1.0000 | 1.8781 / 12.19% | 1.8572 / 14.28% |
+| moving_hotspot_single_s3302 | 2.0000 | 1.0000 | 1.8905 / 10.95% | 1.8812 / 11.88% |
+| moving_hotspot_multi_disperse_s3301 | 2.0000 | 1.0000 | 1.9791 / 2.09% | 1.9973 / 0.27% |
+| moving_hotspot_multi_row_s3301 | 2.0000 | 1.0000 | 1.9769 / 2.31% | 1.9967 / 0.33% |
+| moving_hotspot_multi_column_s3301 | 2.0000 | 1.0000 | 1.9802 / 1.98% | 1.9984 / 0.16% |
+| rotating_victim_identity | 2.9883 | 1.9883 | 2.9535 / 0.20% | 2.9915 / 0.02% |
+| rotating_victim_affine | 2.9333 | 1.9333 | 2.9186 / 0.05% | 2.9201 / 0.00% |
+| phase_transition_s3501 | 5.7314 | 4.7314 | 5.7320 / 1.08% | 5.8091 / 0.09% |
+| phase_transition_s3502 | 5.6825 | 4.6825 | 5.8731 / 0.79% | 5.6323 / 0.05% |
+| elephant_mouse_identity | 2.0000 | 1.0000 | 1.8478 / 15.22% | 1.8117 / 18.83% |
+| elephant_mouse_affine | 2.0000 | 1.0000 | 1.8478 / 15.22% | 1.8117 / 18.83% |
+| global_fanin_identity | 9.5000 | 8.5000 | 9.3242 / 17.58% | 9.3301 / 16.99% |
+| retrigger_identity | 2.0000 | 1.0000 | 1.9824 / 1.76% | 1.9824 / 1.76% |
+| retrigger_affine | 2.0000 | 1.0000 | 1.9824 / 1.76% | 1.9824 / 1.76% |
+| timing_pair_s3901 | 2.1971 | 1.1971 | 2.1724 / 2.55% | 2.1963 / 0.08% |
+| timing_pair_s3902 | 2.2358 | 1.2358 | 2.2159 / 2.21% | 2.2350 / 0.08% |
+
+Zero-bypass overload rows can still show small positive or negative mean
+changes because a correct prediction may reorder contending sources without
+removing the output-register cycle.  They are not counted as fast-path utility.
+
+### Correctness proof scope and final decision
+
+Clocked RTL assertions check that every grant is one-hot-or-zero, every granted
+source is currently valid, every miss selects exactly the deterministic
+fallback winner, and the oracle never changes that winner.  In addition, the
+candidate-only exhaustive model enumerates N=3, three-cycle sequences over all
+arrival masks, all retire-ready patterns, and all invalid/valid predictor
+targets: 262,144 cases.  It proves no fabricated or duplicated event and that
+the delivered ID set equals the accepted ID set after drain.  Prediction state
+therefore changes performance and ordering only; correctness never depends on
+prediction.
+
+**Decision: keep deterministic fallback and reject all measured predictor
+configurations.**  Promotion requires all of the following on unchanged traces:
+
+1. zero correctness errors and no unexplained overrun/fairness regression;
+2. at least 10% realizable critical-path/Fmax improvement with recovery timing
+   included, not oracle information or average hit-path timing;
+3. no more than 5% area growth and positive activity-based energy/event;
+4. positive fixed-window throughput or enough latency/tail gain to satisfy the
+   measured area/toggle inequality on the target workload.
+
+No measured point clears conditions 2--4.  The oracle establishes that the
+remaining algorithmic latency ceiling exists, but the same-cycle fallback and
+single-lane contract prevent the present table structures from monetizing it.
+
+Reproduction (local tools only):
+
+```bash
+python3 tests/a5_speculative_pregrant/exhaustive_small_n.py
+python3 tests/a5_speculative_pregrant/run_prediction_ceiling.py \
+  --output /tmp/a5-prediction-ceiling \
+  --trace-dir /tmp/a5-frozen-traces
+python3 tests/a5_speculative_pregrant/run_ceiling_ppa_proxy.py \
+  --output /tmp/a5-ceiling-ppa
+```
