@@ -1,0 +1,3 @@
+rtl/candidates/a4_quadtree_fabric/a4_quadtree_node.sv
+rtl/candidates/a4_quadtree_fabric/a4_quadtree_fabric.sv
+tests/a4/a4_quadtree_fabric_tb.sv
