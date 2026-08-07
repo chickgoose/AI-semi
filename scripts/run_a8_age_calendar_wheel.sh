@@ -13,6 +13,9 @@ TRACE_DIR="${A8_TRACE_OUT:-/tmp/a8-age-calendar-wheel-traces}"
 NUM_SOURCES="${A8_NUM_SOURCES:-16}"
 ADDR_WIDTH="${A8_ADDR_WIDTH:-16}"
 RETIRE_LANES="${A8_RETIRE_LANES:-2}"
+BUCKET_CYCLES="${A8_BUCKET_CYCLES:-4}"
+EPOCH_COUNT="${A8_EPOCH_COUNT:-8}"
+CANDIDATE_NAME="${A8_CANDIDATE_NAME:-a8-age-calendar-wheel}"
 
 manifest=""
 single_trace=""
@@ -49,6 +52,7 @@ verilator_command=("$VERILATOR" --binary --timing --assert -Wall -Wno-fatal
   --top-module aer_clean_tb
   -GNUM_SOURCES="$NUM_SOURCES" -GADDR_WIDTH="$ADDR_WIDTH"
   -GRETIRE_LANES="$RETIRE_LANES"
+  -DA8_BUCKET_CYCLES="$BUCKET_CYCLES" -DA8_EPOCH_COUNT="$EPOCH_COUNT"
   -f "$PROJECT_ROOT/tests/a8_age_calendar_wheel/a8_clean.f"
   --Mdir "$build_dir" -o a8_clean_sim)
 if [[ -n "$VERILATOR_ROOT_VALUE" ]]; then
@@ -62,8 +66,8 @@ fi
 if [[ -n "$manifest" ]]; then
   python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/generate_trace.py" \
     --manifest "$manifest" --output-dir "$TRACE_DIR"
-  mapfile -t run_names < <(python3 -c \
-    'import json,sys; print("\\n".join(r["name"] for r in json.load(open(sys.argv[1]))["runs"]))' \
+  mapfile -t run_names < <(python3 \
+    "$PROJECT_ROOT/tests/a8_age_calendar_wheel/manifest_run_names.py" \
     "$manifest")
 else
   run_names=("$(basename "$single_trace" .events.jsonl)")
@@ -83,7 +87,7 @@ for run_name in "${run_names[@]}"; do
   report_name="${prepare_output##*report_group=}"
   report_name="${report_name%% *}"
   "$build_dir/a8_clean_sim" \
-    +CLEAN_TEST=trace +CANDIDATE=a8-age-calendar-wheel \
+    +CLEAN_TEST=trace "+CANDIDATE=$CANDIDATE_NAME" \
     "+TRACE_FILE=$prepared" "+TRACE_NAME=$report_name" \
     "+METRICS=$OUT_DIR/$run_name.csv" \
     "+EVENT_METRICS=$OUT_DIR/$run_name.events.csv" \

@@ -1,5 +1,12 @@
 // Candidate-specific, storage-free shim for the fixed common-TB instantiation
 // seam. This file is compiled instead of tb/clean/aer_legacy_candidate_adapter.sv.
+`ifndef A8_BUCKET_CYCLES
+`define A8_BUCKET_CYCLES 4
+`endif
+`ifndef A8_EPOCH_COUNT
+`define A8_EPOCH_COUNT 8
+`endif
+
 module aer_legacy_candidate_adapter #(
   parameter int NUM_SOURCES  = 16,
   parameter int ADDR_WIDTH   = 16,
@@ -15,8 +22,8 @@ module aer_legacy_candidate_adapter #(
   a8_age_calendar_wheel #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
-    .BUCKET_CYCLES(4),
-    .EPOCH_COUNT(8),
+    .BUCKET_CYCLES(`A8_BUCKET_CYCLES),
+    .EPOCH_COUNT(`A8_EPOCH_COUNT),
     .SOURCE_WIDTH(SOURCE_WIDTH)
   ) candidate (
     .clk(bench.clk),
