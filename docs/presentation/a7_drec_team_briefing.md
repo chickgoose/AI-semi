@@ -125,6 +125,11 @@ N=16/K=4에서는 replicated reference 대비 generic gates가 16.9% 적고,
 generic topological depth가 44.0% 낮다. 그러나 이는 Yosys `techmap; opt`
 이후의 1-bit generic cell/depth proxy이며 standard-cell area/Fmax가 아니다.
 
+별도의 Yosys/ABC generic mapping에서도 DREC 5,272 combinational cells/depth
+113, replicated 5,542/depth 161로 방향이 유지됐다. 효과 크기는 각각 4.9%,
+29.8%로 줄었으므로 발표에서는 이를 “두 mapper에서 유지된 구조 가설”로만
+설명하고 Genus 결과로 표현하지 않는다.
+
 ### workload 수치와 올바른 해석
 
 | K | uniform 2.0 throughput | lane utilization | 해석 |

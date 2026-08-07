@@ -148,6 +148,9 @@
   4,299 gate로 replicated 3,733보다 커서 기각했고, K=4에서 처음으로 prefix
   5,592/depth 139 대 replicated 6,729/depth 248의 crossover가 나타났다. 동일 state는
   104 bit다. 이는 generic proxy이며 standard-cell PPA 승리가 아니다.
+- 독립적인 Yosys/ABC fast generic mapping에서도 K=4 DREC 5,272 combinational
+  cells/depth 113 대 replicated 5,542/depth 161로 crossover 방향이 유지됐다. 효과가
+  4.9%/29.8%로 줄었으므로 특정 mapper 착시 가능성은 낮아졌지만 Genus 대체값은 아니다.
 - 별도 branch `integration/a7-k4-physical-candidate`, commit `1cdb1da`를 원격에 보존했다.
   발표 자료는 `docs/presentation/a7_drec_team_briefing.md`, 검증 기록은
   `docs/experiments/a7-drec-qualification.md`다.
