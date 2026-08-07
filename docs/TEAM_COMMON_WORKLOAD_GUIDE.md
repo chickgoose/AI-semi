@@ -1,12 +1,14 @@
 # Team Common AER Workload and Testbench Guide
 
-Status: shared team baseline, 2026-08-06
+Status: shared team baseline, 2026-08-07
 
 ## 1. Purpose and boundary
 
 This package freezes the workload, logical AER event meaning, source model,
 scoreboard, and result schema before the team selects a new RTL architecture.
 It does not select Ganghee, Junyoung, or Hyeonsu's RTL as the new design base.
+The existing baseline and A23 profiles are historical benchmark-calibration
+fixtures, not active final candidates or a starting point for Junyoung's new RTL.
 
 The common logical event is `(source coordinate/address, optional polarity or
 event type, occurrence time)`. A TB-only event ID tracks loss and duplication
@@ -82,8 +84,8 @@ RUN. The checked profiles currently classify:
 | Candidate | Always-ready core | Backpressure | Polarity/type | Multi-lane |
 | --- | --- | --- | --- | --- |
 | Ganghee direct-coordinate | RUN, fixed N=16 | SKIP | SKIP | SKIP |
-| legacy baseline | RUN | RUN | SKIP | SKIP |
-| A23 EE430 | RUN | RUN | SKIP | SKIP |
+| legacy baseline (historical calibration) | RUN | RUN | SKIP | SKIP |
+| A23 EE430 (historical calibration) | RUN | RUN | SKIP | SKIP |
 
 Ganghee's original RTL was not modified. Its Xcelium 23.09 qualification passed
 all 10 supported always-ready workloads. The run exposed capacity limitations,
@@ -99,7 +101,7 @@ benchmarks/clean_slate_aer/       trace generator, validator, aggregator, tests
 tb/clean/                         common interface, source model, scoreboard
 tb/clean/native/                  storage-free native observation bindings
 tests/clean_native/               Ganghee binding protocol fixture
-scripts/run_clean_benchmark.sh    mock/baseline/A23 runner
+scripts/run_clean_benchmark.sh    mock and historical calibration runner
 scripts/run_ganghee_native_benchmark.sh
 docs/verification/               specification, profiles, results, PPA contract
 ```
@@ -114,7 +116,7 @@ python3 -m unittest discover -s benchmarks/clean_slate_aer/tests -v
 tests/clean_native/run_binding_test.sh
 ```
 
-Run the built-in common suite for existing ready/valid candidates:
+Reproduce the built-in mock and historical ready/valid calibration runs:
 
 ```bash
 scripts/run_clean_benchmark.sh mock
@@ -163,3 +165,18 @@ trace. Do not claim these as qualified results. The old in-SV `limit_load` uses
 a per-source probability; frozen comparisons should use the deterministic trace
 generator, whose `load` is aggregate offered events/cycle.
 
+The final cross-candidate evaluation layer is also not yet implemented. Before
+ranking Ganghee fovea, Hyeonsu's frozen final RTL, and Junyoung's new clean-slate
+RTL, the team must still:
+
+- freeze each candidate's commit SHA, top, file list, parameters, native pins,
+  source count, retire lanes, and capability profile;
+- qualify the first controlled comparison at N=16;
+- export measured events/cycle and a common activity window from the same
+  deterministic trace instead of assigning throughput by candidate name;
+- add the frozen candidates to an architecture-neutral Genus screening runner;
+- run identical Innovus fixed-netlist diagnostics and final per-target
+  resynthesis P&R; and
+- report same-frequency area/power/energy-per-event separately from each
+  candidate's demonstrated post-route frequency bracket, events/s, and
+  events/pin-cycle.
