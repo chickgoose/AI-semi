@@ -50,7 +50,9 @@ For a block of `n<=16` addresses:
 4. Each compressed payload appends `p` zero bits and a two-bit `p`, choosing
    `p in 0..3` so total compressed length is `1 mod 4`.
 5. The encoder selects the shortest candidate only when its final padded length
-   is strictly less than 4n; otherwise it sends RAW.
+   is strictly less than 4n; otherwise it sends RAW. Token subtype uses `0` for
+   one occurrence equal to previous, `101aaaa` RAW, and `110`/`111` for checked
+   non-wrapping +/-1. Repeated occurrences remain individual decoded events.
 
 On the delimiter, length `0 mod 4` is RAW and determines `n=length/4`; length
 `1 mod 4` is compressed.  A compressed decoder reads the final two-bit pad
@@ -79,9 +81,9 @@ ideal model, not a promise that this small codec reaches it.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | uniform | 3.989 | 3.799 | 0.054 | 4.000 | 1.000 |
 | matched spatial | 2.000 | 0.811 | 0.000 | 3.562 | 0.000 |
-| moving hotspot | 3.997 | 3.008 | 0.338 | 3.703 | 0.715 |
-| retrigger | 3.910 | 1.439 | 0.756 | 3.359 | 0.000 |
-| elephant/mouse | 1.521 | 1.443 | 0.635 | 3.138 | 0.300 |
+| moving hotspot | 3.997 | 3.008 | 0.338 | 3.665 | 0.684 |
+| retrigger | 3.910 | 1.439 | 0.756 | 2.656 | 0.000 |
+| elephant/mouse | 1.521 | 1.443 | 0.635 | 3.097 | 0.222 |
 | timing pair | 3.993 | 3.856 | 0.055 | 4.000 | 1.000 |
 | phase transition | 3.997 | 3.938 | 0.043 | 4.000 | 1.000 |
 
@@ -98,10 +100,10 @@ the separately charged one-cycle delimiter.
 
 | B | all-trace weighted b/e | RAW-block ratio | retrigger | matched spatial | moving hotspot |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 4 | 3.939 | 0.953 | 3.227 | 4.000 | 3.752 |
-| 8 | 3.907 | 0.905 | 3.094 | 4.000 | 3.681 |
-| 16 | 3.868 | 0.799 | 3.359 | 3.562 | 3.703 |
-| 32 | 3.821 | 0.794 | 3.227 | 2.781 | 3.721 |
+| 4 | 3.929 | 0.943 | 3.117 | 4.000 | 3.708 |
+| 8 | 3.903 | 0.894 | 2.961 | 4.000 | 3.668 |
+| 16 | 3.854 | 0.792 | 2.656 | 3.562 | 3.665 |
+| 32 | 3.801 | 0.784 | 2.500 | 2.781 | 3.668 |
 
 B=8 cannot improve the required local control. B=32 improves local coding but
 doubles core block storage for only 0.047 weighted b/e beyond B=16 and slightly

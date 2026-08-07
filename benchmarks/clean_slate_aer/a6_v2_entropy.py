@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from statistics import fmean
 
-from a6_codec import encode
+from a6_v2_codec import encode_block
 
 
 def entropy(counts: Counter) -> float:
@@ -54,33 +54,15 @@ def block_result(addresses: list[int], block_size: int) -> dict[str, float | int
     blocks = 0
     for start in range(0, len(addresses), block_size):
         block = addresses[start:start + block_size]
-        candidate = encode(block, initial_previous=previous)
         raw_length = 4 * len(block)
-        token_payload = 1 + len(candidate.bits)  # compressed subtype 0
-        dictionary = list(dict.fromkeys(block))
-        index_width = (len(dictionary) - 1).bit_length()
-        dictionary_payload = 1 + 4 + 4 * len(dictionary) + index_width * len(block)
-        # Compressed blocks end in [0..3 zero pad bits][2-bit pad count] and
-        # are forced to length == 1 (mod 4). Raw blocks are exactly 4*n bits.
-        # The receiver therefore distinguishes modes from framed data length.
-        def framed_length(payload_length: int) -> int:
-            pad = (1 - (payload_length + 2)) % 4
-            return payload_length + pad + 2
-
-        token_length = framed_length(token_payload)
-        # Dictionary blocks imply exactly BLOCK_SIZE events. Partial flushes
-        # use token/raw mode, avoiding an event-count header.
-        dictionary_length = (framed_length(dictionary_payload)
-                             if len(block) == block_size else raw_length + 1)
-        # External block framing makes length itself the mode.  Compressed mode
-        # is selected only for a strict saving; otherwise raw identity is sent.
-        selected = min(raw_length, token_length, dictionary_length)
+        encoded = encode_block(block, previous, block_size)
+        selected = len(encoded.bits)
         if selected > raw_length:
             raise AssertionError("raw-bypass expansion")
         if selected < raw_length:
             compressed_blocks += 1
             saved += raw_length - selected
-            if token_length <= dictionary_length:
+            if encoded.mode == "token":
                 token_blocks += 1
             else:
                 dictionary_blocks += 1
@@ -153,7 +135,7 @@ def main() -> int:
         raise ValueError("expected all 46 frozen traces")
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
     with args.output_csv.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(output[0]))
+        writer = csv.DictWriter(stream, fieldnames=list(output[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(output)
 
