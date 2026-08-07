@@ -1,0 +1,86 @@
+{
+  "schema": "a9-optional-physical-handoff-v2",
+  "candidate": {
+    "key": "a9_h2_n64_asymmetric_stall_conditional",
+    "status": "DIAGNOSTIC_ONLY_NOT_N16_SHORTLIST",
+    "capability": "PERSISTENT_ASYMMETRIC_STALL_WITH_IDLE_PARTNER_ONLY",
+    "decision": "zero always-ready gain; conditional only for persistent independent lane stall"
+  },
+  "package_commit": "0fea910e652040ec6e97dd6b3a130da3d73bb7b7",
+  "rtl": {
+    "top": "a9_h2_n64_asymmetric_stall_top",
+    "top_file": "rtl/candidates/a9_distributed_token_fabric/physical/a9_h2_n64_asymmetric_stall_top.sv"
+  },
+  "contract": {
+    "parameters": {"NUM_SOURCES": 64, "RETIRE_LANES": 8, "ADDR_WIDTH": 16, "SOURCE_WIDTH": 6},
+    "port_bits": {"functional_total": 1344, "functional_inputs": 1096, "functional_outputs": 248, "retire_lanes": 8},
+    "boundary": "PHASE4_REGISTERED_INGRESS_READY_EGRESS_V1",
+    "normalization": "WIRE_ONLY_PACK_UNPACK",
+    "clock": {"port": "clk_i", "edge": "rising", "period_ns": 5.0, "uncertainty_ns": 0.1},
+    "reset": {"port": "rst_ni", "active": "low", "assertion": "asynchronous", "deassertion_contract": "synchronous_to_clk_i"},
+    "io": {"input_delay_ns": 0.25, "output_delay_ns": 0.25, "output_load_pf": 0.01},
+    "unsupported": ["N16_SHORTLIST", "ALWAYS_READY_GAIN", "BUSY_PARTNER_ESCAPE", "PINNED_HEAD_ESCAPE", "ASYNC_INGRESS", "MULTICAST", "GLOBAL_REMAP", "FIXED_STRIPE_BALANCE", "SIGNED_OFF_PPA"],
+    "stall_diagnostic": {"measured_cycles": 1000, "offered_events_per_cycle": 1, "rotating_sources": [0, 1, 2, 3, 4, 5, 6, 7], "stalled_lane": 0, "idle_ready_partner_lane": 1, "stall_percent": [0, 25, 50, 75, 100], "required_reports": ["migration_coverage", "delivered_gain", "added_toggles_per_event", "ready_to_valid_path"]}
+  },
+  "synthesis": {
+    "filelist": "rtl/candidates/a9_distributed_token_fabric/physical/h2_n64_asymmetric_stall.f",
+    "ordered_sources": [
+      "rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv",
+      "rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv",
+      "rtl/candidates/a9_distributed_token_fabric/a9_neighbor_handoff_fabric.sv",
+      "rtl/candidates/a9_distributed_token_fabric/a9_phase4_synth_top.sv",
+      "rtl/candidates/a9_distributed_token_fabric/physical/a9_h2_n64_asymmetric_stall_top.sv"
+    ],
+    "defines": ["A9_YOSYS", "A9_PHASE4_DIFFUSIVE"],
+    "site_binding": "UNBOUND_REQUIRES_HEAD_APPROVED_SITE_FREEZE"
+  },
+  "xcelium": {
+    "eligibility": "BLOCKED_UNTIL_HEAD_APPROVED_EXTERNAL_EVIDENCE",
+    "common_n16_gate": {
+      "role": "ARCHITECTURAL_ELIGIBILITY_ONLY_NOT_SHORTLIST",
+      "top": "aer_clean_tb",
+      "parameters": {"NUM_SOURCES": 16, "RETIRE_LANES": 4, "ADDR_WIDTH": 16},
+      "implementation": "diffusive",
+      "filelist": "tests/a9/physical/xcelium_common_n16_h2.f",
+      "ordered_sources": [
+        "tb/clean/aer_bench_if.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_neighbor_handoff_fabric.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_centralized_reference.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv",
+        "tb/clean/aer_clean_assertions.sv",
+        "tb/clean/aer_clean_tb.sv"
+      ],
+      "defines": ["A9_NEIGHBOR_HANDOFF"],
+      "trace_manifest": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+      "expected_runs": ["core_sparse_identity", "core_sparse_rotate180", "core_simultaneous_identity", "uniform_l0p125_s2001", "uniform_l0p125_s2002", "uniform_l0p125_s2003", "uniform_l0p50_s2001", "uniform_l0p50_s2002", "uniform_l0p50_s2003", "uniform_l0p90_s2001", "uniform_l0p90_s2002", "uniform_l0p90_s2003", "uniform_l1p00_s2001", "uniform_l1p00_s2002", "uniform_l1p00_s2003", "uniform_l1p25_s2001", "uniform_l1p25_s2002", "uniform_l1p25_s2003", "uniform_l1p50_s2001", "uniform_l1p50_s2002", "uniform_l1p50_s2003", "uniform_l2p00_s2001", "uniform_l2p00_s2002", "uniform_l2p00_s2003", "shape_b1", "shape_b4", "shape_b16", "spatial_local", "spatial_dispersed", "spatial_local_mirror", "moving_hotspot_single_s3301", "moving_hotspot_single_s3302", "moving_hotspot_multi_disperse_s3301", "moving_hotspot_multi_row_s3301", "moving_hotspot_multi_column_s3301", "rotating_victim_identity", "rotating_victim_affine", "phase_transition_s3501", "phase_transition_s3502", "elephant_mouse_identity", "elephant_mouse_affine", "global_fanin_identity", "retrigger_identity", "retrigger_affine", "timing_pair_s3901", "timing_pair_s3902"],
+      "command": "AER_SIMULATOR=xrun AER_NUM_SOURCES=16 AER_ADDR_WIDTH=16 AER_RETIRE_LANES=4 AER_A9_IMPLEMENTATION=diffusive AER_A9_TRACE_DIR=${TRACE_DIR} AER_A9_OUT=${COMMON_OUT} scripts/run_a9_benchmark.sh"
+    },
+    "profile_elaboration": {
+      "top": "a9_h2_n64_asymmetric_stall_top",
+      "defines": ["A9_YOSYS", "A9_PHASE4_DIFFUSIVE"],
+      "command": "xrun -64bit -sv -elaborate -top a9_h2_n64_asymmetric_stall_top -define A9_YOSYS -define A9_PHASE4_DIFFUSIVE -f rtl/candidates/a9_distributed_token_fabric/physical/h2_n64_asymmetric_stall.f -snapshot a9_h2_n64_asymmetric_stall -xmlibdirname ${PROFILE_XCELIUM_DIR} -l ${EVIDENCE_DIR}/profile_elaboration.log && printf 'A9_PROFILE_ELAB_PASS a9_h2_n64_asymmetric_stall_top\\n' >> ${EVIDENCE_DIR}/profile_elaboration.log"
+    }
+  },
+  "locked_files": [
+    {"path": "benchmarks/clean_slate_aer/generate_trace.py", "sha256": "43291096d99cec90de6ed74b8f07da10a859db2291ebbc758f2aaf28c4a05ed6"},
+    {"path": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json", "sha256": "77da0c02a1db2755653195790a1af43f82e4f1be27be2f9570d9014f648b9726"},
+    {"path": "benchmarks/clean_slate_aer/prepare_sv_trace.py", "sha256": "f7ba35972e67249fd74112f9ab9ea71838ed1b5d593b5ab2043de7f349987f93"},
+    {"path": "docs/research/a9_optional_physical_handoff.md", "sha256": "ce88cc8800dd3c9b970f39d32096ededde21c2f06b17cfc53c648f9f19a593e0"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/a9_centralized_reference.sv", "sha256": "bdf4ad724095301c16f9ac3f756c3fa1fb739685faa49f62a4489201ddad2d2a"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv", "sha256": "67d2834273a630b1fb9b853d60cf07dcbf73d3199b3261c07d1a0003336afa2f"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv", "sha256": "94a194881fa8ab4d9d766e6498f1e796638d2876dd0c2906970a871ee55dddc1"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv", "sha256": "0c8c9f861d14d24149bcf7f21ec4e8d168a09f93ebdc32cfed77760deab1b843"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/a9_neighbor_handoff_fabric.sv", "sha256": "9b1a7c79ed07f50ccb9ba29a5dbe3a760be56abd2c60179eadc3d49d7cbfbd4f"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/a9_phase4_synth_top.sv", "sha256": "eaf3dbc0c60725bce9f8e179745fe2616183dd6a220c5ca75141d5b9d75b7028"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/physical/a9_h2_n64_asymmetric_stall_top.sv", "sha256": "6ae253f05cec3464344fbe5ffdb417d169ecc48dad7e415d2be577ae6ddbc322"},
+    {"path": "rtl/candidates/a9_distributed_token_fabric/physical/h2_n64_asymmetric_stall.f", "sha256": "5de21a3348fe2663182fb27a9debe0abf50e3298b243ec0034faa73ac1590105"},
+    {"path": "scripts/a9_physical_handoff_preflight.py", "sha256": "4a740990df34ed8caa41529d24e53ac7a515ca1a4fb226d2c1008cc943a9b152"},
+    {"path": "scripts/run_a9_benchmark.sh", "sha256": "c4e8fd88610ef6777e4dc6e05189314522d89ea68c7c6fe96402ac01685b80c4"},
+    {"path": "tb/clean/aer_bench_if.sv", "sha256": "beb820213b9e47b89460ecb30494b62e5e37190bc4406d183c1379edd335c9d5"},
+    {"path": "tb/clean/aer_clean_assertions.sv", "sha256": "fb60bf796ce00022208959dd9e7f6b1b915b3d846acda6f8f04fe61e4c394907"},
+    {"path": "tb/clean/aer_clean_tb.sv", "sha256": "a60932ebab82eba403e5a61a5eb38a33554ead4713ae37cf7394699105e26b66"},
+    {"path": "tests/a9/physical/xcelium_common_n16_h2.f", "sha256": "0175119312e354e6c49a8359eb7c24022f737a049d511ab47e01db54585724bb"}
+  ]
+}
