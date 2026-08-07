@@ -1,0 +1,2 @@
+rtl/candidates/a3_refractory_wta/a3_refractory_wta.sv
+tests/a3_refractory_wta/a3_refractory_wta_tb.sv
