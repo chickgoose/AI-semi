@@ -18,7 +18,11 @@ def _raw(address: int, address_width: int) -> str:
     return "101" + format(address, f"0{address_width}b")
 
 
-def encode(addresses: Iterable[int], address_width: int = 4) -> EncodedStream:
+def encode(
+    addresses: Iterable[int],
+    address_width: int = 4,
+    initial_previous: int | None = None,
+) -> EncodedStream:
     """Encode addresses in order; every input item is one occurrence."""
     if address_width < 1:
         raise ValueError("address_width must be positive")
@@ -29,7 +33,9 @@ def encode(addresses: Iterable[int], address_width: int = 4) -> EncodedStream:
 
     pieces: list[str] = []
     tokens: Counter = Counter()
-    previous: int | None = None
+    if initial_previous is not None and not 0 <= initial_previous < limit:
+        raise ValueError("initial history outside configured width")
+    previous: int | None = initial_previous
 
     def emit_repeat(count: int) -> None:
         while count:

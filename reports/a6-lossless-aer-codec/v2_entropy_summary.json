@@ -1,0 +1,469 @@
+{
+  "block_sizes": {
+    "16": {
+      "families": {
+        "basic_simultaneous": {
+          "mean_bits_per_event": 3.5625,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "basic_sparse": {
+          "mean_bits_per_event": 3.5625,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 2
+        },
+        "elephant_mouse": {
+          "mean_bits_per_event": 3.1376573617952928,
+          "mean_inband_header_bits_per_event": 0.06294471811713191,
+          "mean_raw_bypass_ratio": 0.3,
+          "mean_repeat_fraction": 0.6354679802955665,
+          "mean_transition_entropy": 1.4425720657191072,
+          "mean_zero_order_entropy": 1.5212592099226558,
+          "runs": 2
+        },
+        "global_fanin": {
+          "mean_bits_per_event": 3.5625,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "matched_spatial": {
+          "mean_bits_per_event": 3.5625,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.8105000254380154,
+          "mean_zero_order_entropy": 2.0,
+          "runs": 3
+        },
+        "moving_hotspot": {
+          "mean_bits_per_event": 3.703431684173603,
+          "mean_inband_header_bits_per_event": 0.06267131594632588,
+          "mean_raw_bypass_ratio": 0.7153012967200609,
+          "mean_repeat_fraction": 0.33796998888176527,
+          "mean_transition_entropy": 3.0083780687158876,
+          "mean_zero_order_entropy": 3.9967316744789487,
+          "runs": 5
+        },
+        "phase_transition": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.06263928757989594,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.042808759856568845,
+          "mean_transition_entropy": 3.9383898254067207,
+          "mean_zero_order_entropy": 3.99651171408851,
+          "runs": 2
+        },
+        "rate_shape": {
+          "mean_bits_per_event": 3.564453125,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 3
+        },
+        "retrigger": {
+          "mean_bits_per_event": 3.359375,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.755859375,
+          "mean_transition_entropy": 1.4394355877790599,
+          "mean_zero_order_entropy": 3.909961225776698,
+          "runs": 2
+        },
+        "rotating_victim": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.06260374673938819,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.045292862224330044,
+          "mean_transition_entropy": 3.9596933010414657,
+          "mean_zero_order_entropy": 3.9984279678168275,
+          "runs": 2
+        },
+        "timing_pair": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.06264853958457667,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.05473677869612442,
+          "mean_transition_entropy": 3.856231104446163,
+          "mean_zero_order_entropy": 3.9925359349938168,
+          "runs": 2
+        },
+        "uniform": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.06292378386760905,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.05393980520401996,
+          "mean_transition_entropy": 3.7994488199548404,
+          "mean_zero_order_entropy": 3.9887309959862867,
+          "runs": 21
+        }
+      },
+      "inband_mode_header_bits_per_event": 0.06263218390804598,
+      "raw_bypass_ratio": 0.7990456964580657,
+      "weighted_bits_per_event_without_framing": 3.8684022988505746,
+      "weighted_compression_ratio_without_framing": 1.0340186182777646
+    },
+    "32": {
+      "families": {
+        "basic_simultaneous": {
+          "mean_bits_per_event": 3.5625,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "basic_sparse": {
+          "mean_bits_per_event": 3.5625,
+          "mean_inband_header_bits_per_event": 0.0625,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 2
+        },
+        "elephant_mouse": {
+          "mean_bits_per_event": 3.2624521072796933,
+          "mean_inband_header_bits_per_event": 0.031746031746031744,
+          "mean_raw_bypass_ratio": 0.23275862068965517,
+          "mean_repeat_fraction": 0.6354679802955665,
+          "mean_transition_entropy": 1.4425720657191072,
+          "mean_zero_order_entropy": 1.5212592099226558,
+          "runs": 2
+        },
+        "global_fanin": {
+          "mean_bits_per_event": 3.40625,
+          "mean_inband_header_bits_per_event": 0.03125,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "matched_spatial": {
+          "mean_bits_per_event": 2.78125,
+          "mean_inband_header_bits_per_event": 0.03125,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.8105000254380154,
+          "mean_zero_order_entropy": 2.0,
+          "runs": 3
+        },
+        "moving_hotspot": {
+          "mean_bits_per_event": 3.7205463715149563,
+          "mean_inband_header_bits_per_event": 0.031390392510656104,
+          "mean_raw_bypass_ratio": 0.6975801572897762,
+          "mean_repeat_fraction": 0.33796998888176527,
+          "mean_transition_entropy": 3.0083780687158876,
+          "mean_zero_order_entropy": 3.9967316744789487,
+          "runs": 5
+        },
+        "phase_transition": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.03139928698841882,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.042808759856568845,
+          "mean_transition_entropy": 3.9383898254067207,
+          "mean_zero_order_entropy": 3.99651171408851,
+          "runs": 2
+        },
+        "rate_shape": {
+          "mean_bits_per_event": 3.408203125,
+          "mean_inband_header_bits_per_event": 0.03125,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 3
+        },
+        "retrigger": {
+          "mean_bits_per_event": 3.2265625,
+          "mean_inband_header_bits_per_event": 0.03125,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.755859375,
+          "mean_transition_entropy": 1.4394355877790599,
+          "mean_zero_order_entropy": 3.909961225776698,
+          "runs": 2
+        },
+        "rotating_victim": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.031301873369694096,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.045292862224330044,
+          "mean_transition_entropy": 3.9596933010414657,
+          "mean_zero_order_entropy": 3.9984279678168275,
+          "runs": 2
+        },
+        "timing_pair": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.031522840086172364,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.05473677869612442,
+          "mean_transition_entropy": 3.856231104446163,
+          "mean_zero_order_entropy": 3.9925359349938168,
+          "runs": 2
+        },
+        "uniform": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.03175436175375734,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.05393980520401996,
+          "mean_transition_entropy": 3.7994488199548404,
+          "mean_zero_order_entropy": 3.9887309959862867,
+          "runs": 21
+        }
+      },
+      "inband_mode_header_bits_per_event": 0.03141379310344827,
+      "raw_bypass_ratio": 0.7939992682034395,
+      "weighted_bits_per_event_without_framing": 3.8205402298850575,
+      "weighted_compression_ratio_without_framing": 1.0469723545144665
+    },
+    "4": {
+      "families": {
+        "basic_simultaneous": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.25,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "basic_sparse": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.25,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 2
+        },
+        "elephant_mouse": {
+          "mean_bits_per_event": 3.397099069512863,
+          "mean_inband_header_bits_per_event": 0.2501368363437329,
+          "mean_raw_bypass_ratio": 0.587527352297593,
+          "mean_repeat_fraction": 0.6354679802955665,
+          "mean_transition_entropy": 1.4425720657191072,
+          "mean_zero_order_entropy": 1.5212592099226558,
+          "runs": 2
+        },
+        "global_fanin": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.25,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "matched_spatial": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.25,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.8105000254380154,
+          "mean_zero_order_entropy": 2.0,
+          "runs": 3
+        },
+        "moving_hotspot": {
+          "mean_bits_per_event": 3.7517533537302894,
+          "mean_inband_header_bits_per_event": 0.25035685656034457,
+          "mean_raw_bypass_ratio": 0.8282554032784368,
+          "mean_repeat_fraction": 0.33796998888176527,
+          "mean_transition_entropy": 3.0083780687158876,
+          "mean_zero_order_entropy": 3.9967316744789487,
+          "runs": 5
+        },
+        "phase_transition": {
+          "mean_bits_per_event": 3.999522140809175,
+          "mean_inband_header_bits_per_event": 0.25007929112875865,
+          "mean_raw_bypass_ratio": 0.9993630573248408,
+          "mean_repeat_fraction": 0.042808759856568845,
+          "mean_transition_entropy": 3.9383898254067207,
+          "mean_zero_order_entropy": 3.99651171408851,
+          "runs": 2
+        },
+        "rate_shape": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.25,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 3
+        },
+        "retrigger": {
+          "mean_bits_per_event": 3.2265625,
+          "mean_inband_header_bits_per_event": 0.25,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.755859375,
+          "mean_transition_entropy": 1.4394355877790599,
+          "mean_zero_order_entropy": 3.909961225776698,
+          "runs": 2
+        },
+        "rotating_victim": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.2501778515532369,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.045292862224330044,
+          "mean_transition_entropy": 3.9596933010414657,
+          "mean_zero_order_entropy": 3.9984279678168275,
+          "runs": 2
+        },
+        "timing_pair": {
+          "mean_bits_per_event": 3.9988272087568415,
+          "mean_inband_header_bits_per_event": 0.2501970177505386,
+          "mean_raw_bypass_ratio": 0.9984375,
+          "mean_repeat_fraction": 0.05473677869612442,
+          "mean_transition_entropy": 3.856231104446163,
+          "mean_zero_order_entropy": 3.9925359349938168,
+          "runs": 2
+        },
+        "uniform": {
+          "mean_bits_per_event": 3.999775888817338,
+          "mean_inband_header_bits_per_event": 0.2503507870625437,
+          "mean_raw_bypass_ratio": 0.9997012962177311,
+          "mean_repeat_fraction": 0.05393980520401996,
+          "mean_transition_entropy": 3.7994488199548404,
+          "mean_zero_order_entropy": 3.9887309959862867,
+          "runs": 21
+        }
+      },
+      "inband_mode_header_bits_per_event": 0.2501379310344828,
+      "raw_bypass_ratio": 0.9526238397206139,
+      "weighted_bits_per_event_without_framing": 3.939344827586207,
+      "weighted_compression_ratio_without_framing": 1.0153972741835242
+    },
+    "8": {
+      "families": {
+        "basic_simultaneous": {
+          "mean_bits_per_event": 3.8125,
+          "mean_inband_header_bits_per_event": 0.125,
+          "mean_raw_bypass_ratio": 0.5,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "basic_sparse": {
+          "mean_bits_per_event": 3.8125,
+          "mean_inband_header_bits_per_event": 0.125,
+          "mean_raw_bypass_ratio": 0.5,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 2
+        },
+        "elephant_mouse": {
+          "mean_bits_per_event": 3.171319102353585,
+          "mean_inband_header_bits_per_event": 0.12534209085933223,
+          "mean_raw_bypass_ratio": 0.4759825327510917,
+          "mean_repeat_fraction": 0.6354679802955665,
+          "mean_transition_entropy": 1.4425720657191072,
+          "mean_zero_order_entropy": 1.5212592099226558,
+          "runs": 2
+        },
+        "global_fanin": {
+          "mean_bits_per_event": 3.8125,
+          "mean_inband_header_bits_per_event": 0.125,
+          "mean_raw_bypass_ratio": 0.5,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 1
+        },
+        "matched_spatial": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.125,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.8105000254380154,
+          "mean_zero_order_entropy": 2.0,
+          "runs": 3
+        },
+        "moving_hotspot": {
+          "mean_bits_per_event": 3.6807218105860384,
+          "mean_inband_header_bits_per_event": 0.12523316281766544,
+          "mean_raw_bypass_ratio": 0.782923465869915,
+          "mean_repeat_fraction": 0.33796998888176527,
+          "mean_transition_entropy": 3.0083780687158876,
+          "mean_zero_order_entropy": 3.9967316744789487,
+          "runs": 5
+        },
+        "phase_transition": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.12511928876285017,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.042808759856568845,
+          "mean_transition_entropy": 3.9383898254067207,
+          "mean_zero_order_entropy": 3.99651171408851,
+          "runs": 2
+        },
+        "rate_shape": {
+          "mean_bits_per_event": 3.81396484375,
+          "mean_inband_header_bits_per_event": 0.125,
+          "mean_raw_bypass_ratio": 0.50390625,
+          "mean_repeat_fraction": 0.0,
+          "mean_transition_entropy": 0.0,
+          "mean_zero_order_entropy": 4.0,
+          "runs": 3
+        },
+        "retrigger": {
+          "mean_bits_per_event": 3.09375,
+          "mean_inband_header_bits_per_event": 0.125,
+          "mean_raw_bypass_ratio": 0.0,
+          "mean_repeat_fraction": 0.755859375,
+          "mean_transition_entropy": 1.4394355877790599,
+          "mean_zero_order_entropy": 3.909961225776698,
+          "runs": 2
+        },
+        "rotating_victim": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.12520749347877638,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.045292862224330044,
+          "mean_transition_entropy": 3.9596933010414657,
+          "mean_zero_order_entropy": 3.9984279678168275,
+          "runs": 2
+        },
+        "timing_pair": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.12529707916915334,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.05473677869612442,
+          "mean_transition_entropy": 3.856231104446163,
+          "mean_zero_order_entropy": 3.9925359349938168,
+          "runs": 2
+        },
+        "uniform": {
+          "mean_bits_per_event": 4.0,
+          "mean_inband_header_bits_per_event": 0.12529586124948894,
+          "mean_raw_bypass_ratio": 1.0,
+          "mean_repeat_fraction": 0.05393980520401996,
+          "mean_transition_entropy": 3.7994488199548404,
+          "mean_zero_order_entropy": 3.9887309959862867,
+          "runs": 21
+        }
+      },
+      "inband_mode_header_bits_per_event": 0.1251264367816092,
+      "raw_bypass_ratio": 0.9051993386000368,
+      "weighted_bits_per_event_without_framing": 3.9067126436781607,
+      "weighted_compression_ratio_without_framing": 1.0238787350978569
+    }
+  },
+  "runs": 46
+}
