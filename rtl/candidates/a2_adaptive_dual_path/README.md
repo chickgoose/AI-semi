@@ -25,3 +25,9 @@ The binding is a combinational port map only. The candidate profile deliberately
 marks output backpressure unsupported: queued heads are stall-stable, but the
 initial zero-queue bypass is qualified only under the mandatory always-ready
 contract.
+
+Phase-3 local physical proxies use `a2_phase3_physical_wrapper.sv` to give A2,
+flat RR, and equal-capacity always-buffered cores identical elastic ingress and
+registered retire boundaries. `tests/a2/run_phase3_physical_proxy.sh` performs
+candidate-only Yosys 4-LUT mapping, functional/VCD regression, and keep/reject
+analysis; all generated artifacts default to `/tmp`.
