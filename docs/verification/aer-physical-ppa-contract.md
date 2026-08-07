@@ -27,22 +27,27 @@ Pre-layout synthesis and post-route qualification answer different questions:
 The observed Ganghee flow illustrates why this separation matters. Genus used a
 1.2 ns target (833.3 MHz), while post-route observations were:
 
-| Period | Frequency | Setup WNS | Observed result |
+| Period | Frequency | Setup WNS | Setup-only observation |
 | ---: | ---: | ---: | --- |
-| 2.0 ns | 500 MHz | +0.007 ns | PASS |
-| 1.5 ns | 666.7 MHz | -0.066 ns | FAIL |
+| 2.0 ns | 500 MHz | +0.007 ns | SETUP PASS |
+| 1.5 ns | 666.7 MHz | -0.066 ns | SETUP FAIL |
 
-The supported conclusion is therefore a **demonstrated 500 MHz lower bound with
-Fmax bracket `[500, 666.7) MHz`**, not an assertion that the exact Fmax is 500
-MHz. Those runs changed the period SDC while reusing the same existing netlist,
-so this is a fixed-netlist post-route achieved-Fmax diagnostic. It is not an
-absolute Fmax obtained by resynthesizing independently for every target.
+These setup observations support only a **provisional setup-only fixed-netlist
+interval `[500, 666.7) MHz`**. They do not establish 500 MHz as a qualified
+demonstrated lower bound or establish a formal Fmax bracket. Qualification
+requires the original reports to confirm hold WNS >= 0, successful detailed
+route completion, and zero unconstrained paths at the declared corner. The runs
+changed the period SDC while reusing the same existing netlist, so even after
+those checks this remains a fixed-netlist diagnostic, not a per-target optimized
+or absolute Fmax result.
 
 The repository fixture preserves those period/setup observations only as a tool
 example. The numeric hold WNS was not present in the supplied observation; the
-fixture uses zero solely to encode the stated overall PASS/FAIL boundary. It must
-not be cited as measured hold evidence, an official external-candidate score, or
-a decision to adopt that candidate.
+fixture uses zero solely as a placeholder that lets the bracket utility exercise
+the provisional setup-only interval. Neither that placeholder nor the utility's
+fixture output is qualification evidence. They must not be cited as measured
+hold evidence, a qualified demonstrated lower bound, a formal Fmax bracket, an
+official external-candidate score, or a decision to adopt that candidate.
 
 ## Candidate-equivalence contract
 
