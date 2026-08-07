@@ -98,7 +98,7 @@ source width S=`ceil(log2(N))`, planned state is:
 - burst mode and quiet counter: `1 + ceil(log2(QUIET_CYCLES+1))` bits.
 
 For N=16, A=16, D=8, and quiet dwell 3, this is 160 payload bits and
-approximately 19 control bits (179 explicit state bits total). No per-source
+21 control bits (181 explicit state bits total). No per-source
 queue, predictor table, neural score, timestamp, sequence tag, or replay state
 is present.
 
@@ -251,7 +251,7 @@ A2 is rejected or reduced if any of these occurs:
 - rotating-victim minimum service ratio or maximum wait materially regresses;
 - post-overload sparse probes remain on the queued path beyond the declared
   hysteresis window after occupancy reaches the exit region;
-- the 179-bit nominal state plus selection/mux cost is not justified by measured
+- the 181-bit nominal state plus selection/mux cost is not justified by measured
   gains;
 - benefits appear only on local spatial placement and disappear under matched
   dispersed/relabelled controls; or

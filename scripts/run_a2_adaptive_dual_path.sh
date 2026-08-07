@@ -115,17 +115,26 @@ case "$SIMULATOR" in
     done
     ;;
   verilator)
-    verilator_obj="$out_dir/verilator-obj"
-    mkdir -p "$verilator_obj"
-    (cd "$PROJECT_ROOT" && verilator --binary --timing -Wno-fatal \
-      -Wno-TIMESCALEMOD -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC \
-      -Wno-BLKSEQ -Wno-SYNCASYNCNET --top-module aer_clean_tb \
-      "-GNUM_SOURCES=$NUM_SOURCES" "-GADDR_WIDTH=$ADDR_WIDTH" \
-      "-GRETIRE_LANES=$RETIRE_LANES" \
-      -f rtl/candidates/a2_adaptive_dual_path/a2_benchmark.f \
-      --Mdir "$verilator_obj" -o aer_clean_a2)
+    verilator_binary="${A2_VERILATOR_BINARY:-}"
+    if [[ -n "$verilator_binary" ]]; then
+      [[ -x "$verilator_binary" ]] || {
+        printf 'A2_VERILATOR_BINARY is not executable: %s\n' "$verilator_binary" >&2
+        exit 2
+      }
+    else
+      verilator_obj="$out_dir/verilator-obj"
+      mkdir -p "$verilator_obj"
+      (cd "$PROJECT_ROOT" && verilator --binary --timing -Wno-fatal \
+        -Wno-TIMESCALEMOD -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC \
+        -Wno-BLKSEQ -Wno-SYNCASYNCNET --top-module aer_clean_tb \
+        "-GNUM_SOURCES=$NUM_SOURCES" "-GADDR_WIDTH=$ADDR_WIDTH" \
+        "-GRETIRE_LANES=$RETIRE_LANES" \
+        -f rtl/candidates/a2_adaptive_dual_path/a2_benchmark.f \
+        --Mdir "$verilator_obj" -o aer_clean_a2)
+      verilator_binary="$verilator_obj/aer_clean_a2"
+    fi
     for test_name in "${tests[@]}"; do
-      "$verilator_obj/aer_clean_a2" "+CLEAN_TEST=$test_name" \
+      "$verilator_binary" "+CLEAN_TEST=$test_name" \
         "+CANDIDATE=$CANDIDATE" \
         "+METRICS=$out_dir/$test_name.csv" "+STIM_CYCLES=$STIM_CYCLES" \
         "+EVENT_METRICS=$out_dir/$test_name.events.csv" \
