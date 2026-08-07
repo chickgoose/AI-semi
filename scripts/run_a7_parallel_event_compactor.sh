@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s <1|2|4> [synthetic-test ...]\n' "$0" >&2
+  printf 'usage: %s <1|2|4|8> [synthetic-test ...]\n' "$0" >&2
   printf 'or set AER_TRACE_JSONL and AER_TRACE_MANIFEST for one frozen trace\n' >&2
   exit 2
 }
@@ -10,7 +10,7 @@ usage() {
 [[ $# -ge 1 ]] || usage
 retire_lanes="$1"
 shift
-case "$retire_lanes" in 1|2|4) ;; *) usage ;; esac
+case "$retire_lanes" in 1|2|4|8) ;; *) usage ;; esac
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
@@ -23,6 +23,8 @@ load_pct="${AER_LOAD_PCT:-3}"
 seed="${AER_SEED:-1}"
 trace_jsonl="${AER_TRACE_JSONL:-}"
 trace_manifest="${AER_TRACE_MANIFEST:-}"
+implementation="${AER_A7_IMPL:-prefix}"
+case "$implementation" in prefix|replicated) ;; *) usage ;; esac
 
 if [[ -n "$trace_jsonl" || -n "$trace_manifest" ]]; then
   [[ -n "$trace_jsonl" && -n "$trace_manifest" && $# -eq 0 ]] || usage
@@ -46,8 +48,8 @@ trace_args=()
 if [[ -n "$trace_jsonl" ]]; then
   trace_stem="$(basename "$trace_jsonl" .events.jsonl)"
 fi
-out_dir="$out_root/k$retire_lanes/$trace_stem"
-build_dir="$out_root/k$retire_lanes/build"
+out_dir="$out_root/$implementation/k$retire_lanes/$trace_stem"
+build_dir="$out_root/$implementation/k$retire_lanes/build"
 mkdir -p "$out_dir"
 mkdir -p "$build_dir"
 
@@ -69,19 +71,29 @@ candidate_files=(
   "$project_root/tb/clean/aer_bench_if.sv"
   "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv"
   "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv"
+  "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv"
   "$project_root/tb/clean/native/a7_parallel_event_compactor_binding.sv"
+  "$project_root/tb/clean/native/a7_replicated_selector_binding.sv"
   "$project_root/tests/a7_parallel_event_compactor/a7_normalized_candidate_cell.sv"
   "$project_root/tb/clean/aer_clean_assertions.sv"
   "$project_root/tb/clean/aer_clean_tb.sv"
 )
-candidate_name="a7_parallel_compactor_k$retire_lanes"
+candidate_name="a7_${implementation}_k$retire_lanes"
+verilator_define=()
+iverilog_define=()
+xrun_define=()
+if [[ "$implementation" == replicated ]]; then
+  verilator_define=(-DAER_A7_REPLICATED_REFERENCE)
+  iverilog_define=(-DAER_A7_REPLICATED_REFERENCE)
+  xrun_define=(-define AER_A7_REPLICATED_REFERENCE)
+fi
 
 case "$simulator" in
   verilator)
     verilator --binary --timing -Wno-fatal --top-module aer_clean_tb \
       -GNUM_SOURCES="$num_sources" -GADDR_WIDTH="$addr_width" \
       -GRETIRE_LANES="$retire_lanes" --Mdir "$build_dir/obj" \
-      -o a7_clean "${candidate_files[@]}"
+      -o a7_clean "${verilator_define[@]}" "${candidate_files[@]}"
     for test_name in "${tests[@]}"; do
       "$build_dir/obj/a7_clean" "+CLEAN_TEST=$test_name" \
         "+CANDIDATE=$candidate_name" "+METRICS=$out_dir/$test_name.csv" \
@@ -91,7 +103,7 @@ case "$simulator" in
     done
     ;;
   iverilog)
-    iverilog -g2012 -Wall -s aer_clean_tb \
+    iverilog -g2012 -Wall -s aer_clean_tb "${iverilog_define[@]}" \
       -P "aer_clean_tb.NUM_SOURCES=$num_sources" \
       -P "aer_clean_tb.ADDR_WIDTH=$addr_width" \
       -P "aer_clean_tb.RETIRE_LANES=$retire_lanes" \
@@ -111,6 +123,7 @@ case "$simulator" in
       -defparam "aer_clean_tb.NUM_SOURCES=$num_sources" \
       -defparam "aer_clean_tb.ADDR_WIDTH=$addr_width" \
       -defparam "aer_clean_tb.RETIRE_LANES=$retire_lanes" \
+      "${xrun_define[@]}" \
       "${candidate_files[@]}" -l "$build_dir/elaborate.log"
     for test_name in "${tests[@]}"; do
       xrun -64bit -R -snapshot "$snapshot" -xmlibdirname "$build_dir/xcelium.d" \

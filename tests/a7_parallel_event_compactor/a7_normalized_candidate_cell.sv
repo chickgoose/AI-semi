@@ -10,10 +10,19 @@ module aer_legacy_candidate_adapter #(
   parameter int FIFO_DEPTH   = 4,
   parameter int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES)
 ) (aer_bench_if.candidate bench);
+`ifdef AER_A7_REPLICATED_REFERENCE
+  a7_replicated_selector_binding #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES),
+    .SOURCE_WIDTH(SOURCE_WIDTH)
+  ) a7_binding(bench);
+`else
   a7_parallel_event_compactor_binding #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
     .RETIRE_LANES(RETIRE_LANES),
     .SOURCE_WIDTH(SOURCE_WIDTH)
   ) a7_binding(bench);
+`endif
 endmodule

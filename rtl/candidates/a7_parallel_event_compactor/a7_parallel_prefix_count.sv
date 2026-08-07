@@ -5,7 +5,7 @@ module a7_parallel_prefix_count #(
   parameter int COUNT_WIDTH = $clog2(NUM_SOURCES + 1)
 ) (
   input  logic [NUM_SOURCES-1:0] request,
-  output logic [COUNT_WIDTH-1:0] inclusive_count [NUM_SOURCES],
+  output logic [NUM_SOURCES-1:0][COUNT_WIDTH-1:0] inclusive_count,
   output logic [COUNT_WIDTH-1:0] total_count
 );
   wire [COUNT_WIDTH-1:0] stage0 [NUM_SOURCES];
@@ -13,6 +13,8 @@ module a7_parallel_prefix_count #(
   wire [COUNT_WIDTH-1:0] stage2 [NUM_SOURCES];
   wire [COUNT_WIDTH-1:0] stage3 [NUM_SOURCES];
   wire [COUNT_WIDTH-1:0] stage4 [NUM_SOURCES];
+  wire [COUNT_WIDTH-1:0] stage5 [NUM_SOURCES];
+  wire [COUNT_WIDTH-1:0] stage6 [NUM_SOURCES];
 
   genvar source;
   generate
@@ -34,21 +36,39 @@ module a7_parallel_prefix_count #(
         assign stage4[source] = stage3[source] + stage3[source-8];
       else
         assign stage4[source] = stage3[source];
+      if (source >= 16)
+        assign stage5[source] = stage4[source] + stage4[source-16];
+      else
+        assign stage5[source] = stage4[source];
+      if (source >= 32)
+        assign stage6[source] = stage5[source] + stage5[source-32];
+      else
+        assign stage6[source] = stage5[source];
     end
   endgenerate
 
   generate
     for (source = 0; source < NUM_SOURCES; source = source + 1) begin : output_stage
-      assign inclusive_count[source] = stage4[source];
+      if (NUM_SOURCES <= 16)
+        assign inclusive_count[source] = stage4[source];
+      else if (NUM_SOURCES <= 32)
+        assign inclusive_count[source] = stage5[source];
+      else
+        assign inclusive_count[source] = stage6[source];
     end
   endgenerate
 
-  assign total_count = stage4[NUM_SOURCES-1];
+  if (NUM_SOURCES <= 16)
+    assign total_count = stage4[NUM_SOURCES-1];
+  else if (NUM_SOURCES <= 32)
+    assign total_count = stage5[NUM_SOURCES-1];
+  else
+    assign total_count = stage6[NUM_SOURCES-1];
 
   initial begin
     if (NUM_SOURCES < 1)
       $fatal(1, "A7 prefix requires NUM_SOURCES >= 1");
-    if (NUM_SOURCES > 16)
-      $fatal(1, "A7 frozen prefix implementation supports NUM_SOURCES <= 16");
+    if (NUM_SOURCES > 64)
+      $fatal(1, "A7 scaling prefix implementation supports NUM_SOURCES <= 64");
   end
 endmodule
