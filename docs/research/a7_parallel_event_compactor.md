@@ -1,6 +1,6 @@
 # A7 GPU-style Parallel Prefix Event Compactor
 
-Status: pre-RTL architecture record, 2026-08-07
+Status: implemented; second-round structural hypothesis narrowed, 2026-08-07
 
 ## 1. Hypothesis and boundary
 
@@ -189,3 +189,21 @@ over K=2 on B16/global fan-in/2.0-load traffic, if rotating-victim persistent
 wait violates the stated bound in directed tests, or if the declared
 logic-plus-register proxy grows as badly as replicated K-way selection.  Final
 area/Fmax break-even is deliberately deferred until server PPA is approved.
+
+## 9. Second-round falsification result
+
+The required equal-contract replicated-selector reference disproved the broad
+N=16/K=2 area-efficiency hypothesis.  After common Yosys generic mapping,
+prefix K=2 is 4,299 gates at depth 133 versus 3,733 gates at depth 133 for the
+replicated reference.  Because the always-ready 46-trace results are identical
+at the same K, there is no performance term that rescues that configuration.
+N=16/K=2 is rejected as a prefix break-even point.
+
+N=16/K=4 is the first observed point that wins both structural proxies: 5,592
+versus 6,729 generic gates and depth 139 versus 248.  The crossover moves to
+K=2 at N=32 and N=64.  Therefore the supported claim is conditional, not
+universal: shared prefix metadata amortizes at sufficiently large K or N, with
+the frozen N=16 design requiring K>=4.  Full tables, adversarial independent
+ready results, methods, and reproduction commands are in
+`reports/a7-parallel-event-compactor/adversarial-scaling.md`.  These remain
+technology-independent Yosys structural proxies; server PPA was not run.
