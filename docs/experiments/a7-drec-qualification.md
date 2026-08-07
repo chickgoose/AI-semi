@@ -46,6 +46,19 @@ Yosys structural mapping was rerun.  The decisive N=16 rows reproduced exactly:
 At K=4 the generic proxy is 16.9% smaller and 44.0% shallower than this exact
 replicated reference.  This is a crossover, not proof of area or Fmax.
 
+As a mapper-sensitivity check, a separate Yosys `abc -fast` generic flow was
+also run at N=16/K=4.  It produced 5,272 combinational cells and depth 113 for
+the shared prefix versus 5,542 and depth 161 for the replicated reference:
+4.9% fewer combinational cells and 29.8% lower generic depth.  The benefit is
+weaker than the first proxy but retains the same direction.  This check reduces
+the chance of a single-mapper artifact; it is still not a standard-cell result.
+
+```bash
+tests/a7_parallel_event_compactor/abc_sensitivity_compare.py \
+  --yosys /absolute/path/to/yosys \
+  --output reports/a7-parallel-event-compactor/abc-fast-sensitivity.csv
+```
+
 ## Physical bundle
 
 Build an immutable comparison bundle only from a committed tree:

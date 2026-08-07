@@ -1,0 +1,3 @@
+implementation,n,k,mapping,total_cells,sequential_cells,combinational_cells,depth_generic_gates,register_bits
+prefix-k4,16,4,yosys_abc_fast_default_generic,5378,104,5272,113,104
+replicated-k4,16,4,yosys_abc_fast_default_generic,5651,104,5542,161,104
