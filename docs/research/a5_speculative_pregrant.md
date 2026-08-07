@@ -96,14 +96,16 @@ Accuracy is `hits / (hits + misses)`, and coverage is
 `(hits + misses) / non_idle_opportunities`.  Both counters must be reported;
 accuracy without coverage can hide a predictor that almost never acts.
 
-On a hit, the target source directly drives the grant and event-select mux.  On
-a miss or confidence fallback, the rotating deterministic arbiter selects the
-first pending source at or after `fallback_rr`.  The chosen source is accepted
-only after checking its current `source_valid`; no predicted payload is stored
-or fabricated.  Recovery is same-cycle in the functional reference RTL.  A
-future timing-pipelined fallback may defer acceptance by one cycle only if the
-common source latch remains unacknowledged and stable, giving identical event
-conservation.
+On a hit, the target source directly drives the grant and event-select mux.  If
+the registered output slot is empty and the sink is ready, that validated event
+also bypasses to the retire seam in the same cycle; otherwise it is captured in
+the ordinary stable output register.  On a miss or confidence fallback, the
+rotating deterministic arbiter selects the first pending source at or after
+`fallback_rr`.  The chosen source is accepted only after checking its current
+`source_valid`; no predicted payload is stored or fabricated.  Recovery is
+same-cycle in the functional reference RTL.  A future timing-pipelined fallback
+may defer acceptance by one cycle only if the common source latch remains
+unacknowledged and stable, giving identical event conservation.
 
 ## 5. Correctness invariants
 
@@ -140,7 +142,8 @@ A5 confident-hit path:
 ```text
 registered history -> direct-mapped target/confidence read
                    -> target valid check -> indexed event select
-                   -> output-register D / onehot source_ready
+                   -> same-cycle retire bypass or output-register D
+                   -> onehot source_ready
 ```
 
 Fallback still contains the full scan, but it is selected only on miss/cold.
@@ -207,3 +210,82 @@ each group it reports attempts, hits, misses, accuracy, coverage, fixed-window
 throughput, p95/p99 end-to-end latency, source overrun, demand-normalized
 delivery fairness, and correctness.  Predictor accuracy is supporting evidence,
 not the outcome metric.
+
+## 10. Local 46-trace result (2026-08-07)
+
+The candidate-only runner replayed the unchanged manifest with local Verilator
+5.032.  The manifest SHA-256 was
+`77da0c02a1db2755653195790a1af43f82e4f1be27be2f9570d9014f648b9726`.
+All 46 exact generated traces passed: every run had zero scoreboard errors and
+`accepted == delivered` after drain.  These are cycle-level functional results,
+not server PPA evidence.  No server synthesis, place-and-route, or power run was
+started.
+
+### Required event metrics and prediction behavior
+
+| Frozen group | Predictor accuracy / coverage | Fixed-window throughput | p95 / p99 E2E latency | Source overrun | Demand-normalized delivery fairness |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| core sparse identity + rotate180 | no attempt / 0% | 0.03125 | 2 / 2 | 0 | 1.000000 |
+| moving hotspot, single (2 seeds) | 73.5% / 66.1% | 0.890137 mean | 2 / 2 | 0 | 1.000000 |
+| moving hotspot, three multi-hot layouts | 20.6% / 10.6% | 0.888672 each | 2 / 2 | 0 | 1.000000 |
+| elephant/mouse identity + affine | 79.5% / 78.7% | 0.891602 each | 2 / 2 | 0 | 1.000000 |
+| rotating victim identity | 26.7% / 11.2% | 0.976074 | 6 / 7 | 216 | 0.999821 |
+| rotating victim affine | 20.9% / 9.6% | 0.976807 | 5 / 7 | 214 | 0.999821 |
+| timing pair, 2 seeds | 9.6% / 4.6% | 0.615234 mean | 3 / 4 | 17 | 0.999900 |
+| rate-shape B1 | 100% / 98.4% | 0.500000 | 1 / 2 | 0 | 1.000000 |
+| rate-shape B4 | 100% / 73.8% | 0.500000 | 5 / 5 | 0 | 1.000000 |
+| rate-shape B16 | 100% / 73.8% | 0.500000 | 17 / 17 | 0 | 1.000000 |
+
+The confident same-cycle bypass changes real event latency where idle output
+slots coincide with a hit: mean E2E latency was 1.811713 cycles for both
+elephant/mouse mappings, 1.869243 cycles for the two single-hotspot seeds, and
+1.016113 cycles for rate-shape B1.  The tail remains governed by contention and
+fallback, which is why moving-hotspot p99 stays at two cycles and B16 stays at
+17 cycles.  Core sparse makes no prediction attempt because each context is
+cold; its two-cycle latency is therefore neither improved nor harmed.
+
+Timing-pair relation analysis found 253 evaluable pairs out of 256: three pairs
+were dropped by source overrun, none were censored, mean pair-gap error was
+0.452381/0.425197 cycles for seeds 3901/3902, p95 was two cycles for both, and
+p99 was three/two cycles.  Thus low predictor accuracy in this workload did not
+become a correctness failure, but it also produced no material tail win.
+
+### Uniform sweep
+
+| Declared load | Accuracy / coverage | Throughput | Mean E2E | p95 / p99 | Overrun | Delivery fairness |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.125 | 3.8% / 3.5% | 0.120931 | 1.998654 | 2 / 2 | 0 | 1.000000 |
+| 0.50 | 3.8% / 3.5% | 0.496582 | 1.999017 | 2 / 2 | 0 | 1.000000 |
+| 0.90 | 8.0% / 3.6% | 0.903808 | 1.999820 | 2 / 2 | 0 | 1.000000 |
+| 1.00 | 8.8% / 3.5% | 0.999512 | 2.000000 | 2 / 2 | 0 | 1.000000 |
+| 1.25 | 41.1% / 31.6% | 0.999512 | 5.155859 | 10 / 12 | 1507 | 0.998502 |
+| 1.50 | 60.9% / 62.0% | 0.999512 | 7.177893 | 12 / 18 | 3017 | 0.998070 |
+| 2.00 | 82.7% / 76.9% | 0.999512 | 9.957847 | 15 / 16 | 6120 | 0.997713 |
+
+The one-lane service ceiling remains approximately one event/cycle; higher
+prediction accuracy under overload does not increase that capacity.  Overrun
+and latency-tail growth beyond load 1.0 are therefore disclosed rather than
+misrepresented as predictor gains.
+
+### Affine relabel and decision status
+
+Elephant/mouse identity and affine runs are exactly equal in throughput,
+latency tail, overrun, fairness, attempts, hits, and misses.  Retrigger identity
+and affine are also equal.  Rotating-victim relabeling changes throughput by
+0.000733 event/cycle and overrun by two events while p99 and fairness remain
+equal; this is small but not hidden.
+
+The local result clears correctness and fairness gates.  It does **not** clear
+the physical break-even gate: same-cycle event latency improves on correlated
+traces, but the functional clock does not measure area, energy, or achievable
+frequency.  A5 remains a research candidate pending approved, identical-flow
+PPA.  It must be rejected if that later run fails the predeclared 10% Fmax / 5%
+area conditions or shows no energy/event benefit.
+
+Reproduction:
+
+```bash
+tests/a5_speculative_pregrant/run_frozen_regression.py \
+  --output /tmp/a5-frozen-regression \
+  --trace-dir /tmp/a5-frozen-traces
+```
