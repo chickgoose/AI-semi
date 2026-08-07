@@ -117,21 +117,36 @@ abs((delivery_2 - delivery_1) - (occurrence_2 - occurrence_1))
 
 ## 5. Test suites
 
-### 5.1 Conformance suite: all candidates must pass
+### 5.1 Conformance and capability suite
 
-| Test | Stimulus | Hard checks |
+| Test | Status | Stimulus and hard checks |
 | --- | --- | --- |
-| `basic_single` | isolated events from one source | exact address/type, no loss/duplicate |
-| `basic_sparse` | low-rate uniform events across all sources | exact reconstruction and source-local order |
-| `basic_simultaneous` | one event from every source on the same occurrence cycle | legal arbitration and complete drain |
-| `basic_backpressure` | sparse input with a repeating sink stall | stable pending output and complete recovery |
-| `basic_reset_drain` | reset, traffic, drain, reset again | no phantom event and clean state |
-| `basic_polarity` | alternating event type/polarity | type is part of the event identity |
+| `core_sparse_*` | frozen mandatory core | isolated coordinate spikes, exact address, no loss/duplicate, source-local order |
+| `core_simultaneous_identity` | frozen mandatory core | one event from every source on one cycle, legal arbitration, complete drain |
+| conservation/quiet guard | frozen mandatory core | generated/overrun/pending/accepted/delivered conservation and no late phantom |
+| `basic_reset_drain` | target mandatory; implementation pending | reset, traffic, drain, reset again with clean state |
+| `basic_backpressure` | optional capability | stable output during a sink stall and complete recovery |
+| `basic_polarity` | optional capability | preserve declared polarity/event type when the native contract carries it |
 
-Conformance requires zero phantom, duplicate, corrupt, or missing accepted event.
-It also requires stable output while a physical or normalized output is stalled.
+Mandatory conformance requires zero phantom, duplicate, corrupt, or missing
+accepted event. Output stability during a stall is required only when that
+candidate declares the optional backpressure capability as RUN.
+
+Implementation status matters: the exact N=16 coordinate-spike core currently
+qualifies sparse/simultaneous/event-conservation behavior. Output backpressure
+and polarity/type are capability-gated because the candidates do not share
+those physical contracts, and `basic_reset_drain` still needs an implemented
+common regression. Therefore an older “10/10 core PASS” must not be described
+as passing every row in this target conformance table.
 
 ### 5.2 Limit-exposure suite: scored, not architecture-specific
+
+Every frozen N=16 sink-always-ready trace is a mandatory capacity run for the
+common screening table. Capacity degradation is reported, not converted into a
+functional error. Backpressure is optional RUN/SKIP. `limit_scale` and
+`limit_pin_budget` are separate finalist physical-evidence gates, not missing
+zero-valued workload rows and not tie-break points for optional capability
+coverage.
 
 | Test | Stimulus | Primary problem and metrics |
 | --- | --- | --- |
@@ -143,6 +158,11 @@ It also requires stable output while a physical or normalized output is stalled.
 | `limit_retrigger` | one source refires faster than service time | source overrun and required buffering |
 | `limit_timing_fidelity` | precise event pairs under independent background traffic | interval distortion, tail latency, deadline misses |
 | `limit_backpressure_shock` | long sink stall inserted into sustained traffic | finite storage, recovery time, loss |
+| `limit_rate_shape` | same event count/source histogram at 1-, 4-, and 16-event bursts | temporal correlation sensitivity at fixed mean load |
+| `limit_matched_spatial` | identical event times and demand-by-rank placed locally or dispersed | genuine locality benefit versus input mismatch |
+| `limit_moving_hotspot` | one or more hot regions move at frozen dwell boundaries | adaptation delay, hotspot handoff, dynamic congestion |
+| `limit_rotating_victim` | every source becomes a low-rate victim under aggressor load | fixed-priority sensitivity, starvation, HOL effects |
+| `limit_phase_transition` | sparse, near-saturation, overload, post-sparse probe, then zero-injection drain | backlog growth, hysteresis, sparse-latency recovery, recovery-to-zero |
 | `limit_scale` | identical normalized profiles at 16, 64, and 256 sources | area/Fmax/power and latency scaling |
 | `limit_pin_budget` | fixed physical data/control pin budget | events/pin-cycle and codec PPA |
 
@@ -150,6 +170,12 @@ It also requires stable output while a physical or normalized output is stalled.
 row/column implementation.  `limit_distributed_burst` is mandatory so that a
 row-local, bitmap, or compression proposal cannot win solely because all traces
 match its preferred encoding.
+
+These tests are not removed when an existing candidate performs well on them.
+That result is a valid candidate advantage. Architecture-neutrality instead
+requires coverage of orthogonal bottlenecks, identical offered traces, and
+paired address/spatial controls. The implementation-backed coverage and known
+gaps are tracked in `aer-bottleneck-coverage-audit.md`.
 
 ### 5.3 Mixed-phase regression
 

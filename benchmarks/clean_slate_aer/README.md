@@ -24,6 +24,7 @@ Each output `*.events.jsonl` file contains one JSON object per line, ordered by
 | `x`, `y` | Event coordinate within the declared geometry | DUT payload |
 | `polarity` | Signed event polarity, exactly `-1` or `1` | DUT payload |
 | `event_type` | Semantic type string | DUT payload or adapter mapping |
+| `relation_id`, `relation_role` | Optional timing-pair/group relation | TB only; never encode in DUT payload |
 | `deadline` | Absolute cycle for deadline analysis | TB only |
 
 The per-run output manifest repeats these classifications as
@@ -69,12 +70,28 @@ load sweep:
 - `basic_simultaneous`: several sources with the exact same occurrence cycle.
 - `uniform`: uniform random sources at the requested aggregate load.
 - `elephant_mouse`: a configurable hot source plus uniformly selected mice.
-- `global_fanin`: many logical sources mapped to one target coordinate.
+- `global_fanin`: many distinct source coordinates occurring on the same cycle.
 - `local_cluster`: traffic constrained to a square neighborhood.
 - `distributed_burst`: temporally separated bursts rotating across quadrants.
 - `retrigger`: repeated events from one logical source at a fixed interval.
 - `timing_pair`: typed A/B pairs with a controlled cycle gap and deadline.
 - `backpressure_shock`: low background traffic plus a high-rate shock window.
+- `rate_shape`: the same event count and source histogram with only temporal
+  burst size changed.
+- `matched_spatial`: local and dispersed placements with identical occurrence
+  cycles and demand-by-rank.
+- `moving_hotspot`: one or more nonstationary hot sources with a fixed dwell.
+- `rotating_victim`: every source becomes the low-rate victim in turn while
+  aggressor traffic remains active.
+- `phase_transition`: sparse, near-saturation, overload, post-overload sparse
+  probes, and a zero-injection drain phase in one trace.
+
+`source_permutation` is a generator-level metamorphic control, not a candidate
+feature. It supports identity, affine bijections, mirror, rotate, transpose,
+and bit-reversal mappings. Event times and TB identities remain unchanged;
+only the AER source/address labels move. A candidate is allowed to benefit from
+spatial locality. The paired mapping runs merely distinguish that legitimate
+benefit from accidental dependence on fixed row-major source numbers.
 
 Optional parameters are validated when used. Common `deadline_slack` defaults
 to 32 cycles. See [manifest.example.json](manifest.example.json) for workload-
@@ -92,20 +109,75 @@ python3 benchmarks/clean_slate_aer/generate_trace.py \
 
 The output directory receives, for each run, an event JSONL file and a run
 manifest containing the seed, geometry, requested load, stimulus cycles,
-event count, and trace SHA256. `generation-index.json` summarizes the complete
+event count, declared/actual mean load, peak events/cycle, report group, and
+trace SHA256. `generation-index.json` summarizes the complete
 invocation. Generated traces are outputs and should not be committed here.
+
+The committed `fixtures/neutrality_n16_golden.json` freezes all 46 expected
+event counts, achieved loads, peak rates, report groups, and SHA256 values. The
+neutrality self-test fails if a generator change silently changes any official
+trace.
 
 List workload identifiers or run the self-test with:
 
 ```bash
 python3 benchmarks/clean_slate_aer/generate_trace.py --list-workloads
 python3 benchmarks/clean_slate_aer/self_test.py
+python3 benchmarks/clean_slate_aer/neutrality_self_test.py
 ```
 
 The self-test generates the full example suite twice in temporary directories,
 requires byte-identical results, validates every event and DUT/TB field
 classification, checks workload-specific signatures, and confirms that a seed
 change changes a stochastic trace.
+
+## Frozen N=16 candidate-neutral suite
+
+[manifest.neutrality-n16.json](manifest.neutrality-n16.json) is the common
+exact-trace suite for candidate comparison. It has 46 sink-always-ready runs,
+uses the shared N=16 geometry supported by the current candidates, fixes the
+logical event to a coordinate-address spike, and never emits two occurrences
+from the same logical source in one cycle. It includes:
+
+- a 0.125 through 2.0 event/cycle uniform sweep with three fixed seeds;
+- matched 1/4/16-event temporal bursts at the same 0.5 event/cycle mean;
+- matched local/dispersed spatial traffic;
+- single and multiple moving hotspots;
+- rotating starvation victims under identity and affine address mappings;
+- sparse-to-overload-to-post-sparse-to-drain phase transitions;
+- cross-source timing pairs under independent background traffic;
+- legacy AER fan-in, elephant/mouse, and retrigger bottlenecks with relabeling
+  controls.
+
+Every candidate must consume the generated JSONL with the same recorded SHA.
+The built-in SystemVerilog `limit_*` tests remain smoke/calibration tests and
+must not be used for final cross-candidate ranking. Results are reported by
+bottleneck family first; a candidate winning its natural workload is a valid
+architectural advantage, not benchmark bias. Bias means omitting other major
+AER bottlenecks, changing offered traffic, or giving a candidate free adapter
+functionality.
+
+For a `phase_transition` run, derive phase-local completion rate, p95 latency,
+backlog peak/end, and recovery-to-zero directly from the exact trace and the
+candidate's per-event CSV:
+
+```bash
+python3 benchmarks/clean_slate_aer/phase_metrics.py \
+  --trace generated/phase_transition_s3501.events.jsonl \
+  --run-manifest generated/phase_transition_s3501.manifest.json \
+  --events results/phase_transition_s3501.events.csv \
+  -o results/phase_transition_s3501.phases.json
+```
+
+The analyzer joins on the TB-only event ID and verifies the simulator's cycle
+offset, so phase boundaries come from the frozen trace rather than being guessed
+from candidate-dependent delivery time.
+
+`timing_pair` events similarly carry TB-only `relation_id` and `relation_role`
+fields. They never enter the DUT payload. Use `timing_pair_metrics.py` with the
+same `--trace`, `--run-manifest`, and `--events` arguments to calculate the
+cross-source A/B gap error, including dropped and censored pairs. This replaces
+the old same-source consecutive-delivery approximation for timing-pair claims.
 
 ## Architecture-neutral result aggregator
 
@@ -145,6 +217,21 @@ Ratios use summed counters, not an unweighted mean of seed ratios. Average
 latency and timing error are weighted by delivered events. Average throughput,
 fairness, and request wait are arithmetic means across runs; their worst values
 are minimum throughput/fairness and maximum latency/wait/timing error.
+`throughput_stddev` is also emitted across runs. It does not replace publishing
+the individual seed rows or a confidence interval when making a saturation
+claim.
+
+The common SV runner defines `throughput` as normalized deliveries completed
+during the fixed `stim_cycles` measurement window divided by `stim_cycles`.
+Candidate-dependent drain cycles are excluded. Total delivered count and drain
+completion remain separate correctness/capacity observations. Sustainable
+throughput is inferred from the plateau of the frozen multi-load sweep, never
+from one sparse trace or from a hard-coded lane count.
+New runner CSV files also include `measurement_delivered` and
+`measurement_cycles`; the aggregator rejects a row when these counters disagree
+with its throughput value. On a multi-load sweep, a fixed-window completion
+ratio below `--completion-floor` (default 0.95) can mark saturation even when a
+deep buffer postpones visible loss until drain.
 
 ## Optional per-event result schema
 
@@ -241,6 +328,16 @@ These are offered-traffic observations, not a proof that a source requested
 continuously; bounded-arbitration claims still require request/handshake-aware
 verification.
 
+For candidate ranking, use the demand-conditioned fields rather than the legacy
+raw Jain field. `demand_normalized_acceptance_fairness` and
+`demand_normalized_delivery_fairness` first divide each active source's service
+by that source's generated demand, then apply Jain's index. Never-offered
+sources are excluded. `zero_demand_service_source_window_ratio` evaluates only
+windows overlapping a live occurrence-to-delivery demand interval. The raw
+`fairness` column from the SV summary is retained for compatibility; on an
+elephant/mouse trace it mostly describes the intentionally unequal traffic
+distribution and is not arbitration fairness.
+
 ## Verdict policy
 
 Correctness and capacity are separate axes.
@@ -251,10 +348,13 @@ greater than accepted. Source overrun, reduced acceptance, a throughput plateau,
 high latency, or long request waits do not become correctness failures by
 themselves.
 
-The default saturation knee is the first increasing load where either:
+The default saturation knee is the first increasing load where any of these
+hold:
 
 - aggregate acceptance ratio falls below 0.99; or
-- aggregate source-overrun ratio exceeds 0.01.
+- aggregate source-overrun ratio exceeds 0.01; or
+- in a sweep containing at least three loads, fixed-window completions divided
+  by declared offered events fall below 0.95.
 
 That load and all following loads are labeled `SATURATED`. Tail degradation is
 reported when mean end-to-end latency, mean per-run maximum request wait, or

@@ -88,6 +88,36 @@
 - 공식 배점이 나오기 전에는 임의의 단일 가중합 점수를 만들지 않고 correctness gate 이후
   throughput, latency, area, power, energy/event, pin 효율의 Pareto 비교로 선택한다.
 
+## 2026-08-07 AER 병목 coverage 재감사 및 A2–A9 공통 기준
+
+- “특정 구조가 어떤 workload에서 잘 나온다”는 사실은 편향이 아니라 정당한 구조적 장점이다.
+  편향은 다른 중요한 AER 병목을 누락하거나, 후보별 입력/측정 경계가 다르거나, adapter가
+  후보 기능을 공짜로 대신할 때 발생한다.
+- 기존 spatial locality, global fan-in, elephant/mouse, retrigger 시험은 유지하고 다음의
+  독립 병목을 추가했다: same-mean 1/4/16-way temporal burst, matched local/dispersed 4-way
+  contention, moving single/multiple hotspot, row/column/dispersed hotspot layout, rotating
+  victim, sparse→near-saturation→overload→post-sparse→drain, cross-source timing pair,
+  0.125~2.0 event/cycle load sweep.
+- 공통 screening 입력은 `manifest.neutrality-n16.json`의 exact N=16 always-ready 46 traces다.
+  built-in SV test는 smoke/calibration으로만 사용하며 최종 후보 순위 근거로 쓰지 않는다.
+- 46개 trace의 event count, achieved mean load, peak events/cycle, report group, SHA256를
+  `fixtures/neutrality_n16_golden.json`에 동결했다. generator가 한 trace라도 바꾸면
+  neutrality self-test가 실패한다.
+- 각 trace는 같은 source/cycle 중복을 generator 단계에서 금지한다. local/dispersed pair는
+  event 시각·개수·rank 수요가 같고 peak 4-way contention만 공간 배치가 다르다.
+- throughput은 candidate-dependent drain을 제외한 고정 stimulus window completion/cycle이다.
+  CSV에 measurement count/window를 함께 기록하고 aggregator가 계산 일치를 검증한다.
+- raw delivered-count Jain fairness는 ranking에서 제외했다. active offered source별 demand-
+  normalized service fairness, minimum source ratio, live-demand zero-service window를 사용하며
+  모두 무서비스이면 fairness는 1.0이 아니라 N/A다.
+- phase와 timing pair는 TB-only trace relation으로 별도 분석한다. overrun이 있는 recovery는
+  lossless recovery와 구분하고 backlog와 cumulative loss를 함께 보고한다.
+- 이 suite는 8개 clean-slate architecture agent의 공통 screening 기준으로 사용할 수 있다.
+  다만 최종 심사용 완전 freeze 전에는 reset regression, multi-lane positive fixture,
+  12~16 seed finalist saturation confidence, fixed-pin PPA, 실제 후보별 Xcelium 실행이 남아 있다.
+- 상세 근거: `docs/verification/aer-bottleneck-coverage-audit.md`,
+  `docs/TEAM_COMMON_WORKLOAD_GUIDE.md`.
+
 ## 설계 환경 접속 상태
 
 - 서버: `210.126.11.79`
@@ -173,6 +203,8 @@ A3가 순수 PPA는 더 좋지만 fixed priority starvation bound가 없어서 b
 - [x] clean-slate logical event와 normalized completion 계약 초안 구현
 - [x] deterministic JSONL+manifest를 검증·변환해 공통 SV source model에 연결
 - [x] per-event p50/p95/p99/deadline/sliding-window service-gap 지표 연결
+- [x] 46-run N=16 병목 coverage/anti-specialization exact-trace suite와 golden SHA 동결
+- [x] demand-normalized fairness, fixed-window throughput, phase/timing analyzer 구현
 - [x] Genus screening과 Innovus post-route를 분리한 PPA/Fmax 판정 계약 구현
 - [ ] 세 최종 후보의 SHA/top/filelist/parameter/native-interface manifest 동결
 - [ ] 공용 TB에 동일 trace 기반 activity window와 후보 중립 성능 결과 export 연결

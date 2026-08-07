@@ -153,6 +153,95 @@ class AggregateFixtureTest(unittest.TestCase):
         self.assertEqual(row["min_service_per_source_window"], 0)
         self.assertEqual(row["zero_service_source_windows"], 10)
         self.assertAlmostEqual(row["zero_service_source_window_ratio"], 10 / 21)
+        self.assertEqual(row["active_offered_sources"], 3)
+        self.assertAlmostEqual(row["demand_normalized_acceptance_fairness"], 2 / 3)
+        self.assertAlmostEqual(
+            row["demand_normalized_delivery_fairness"],
+            ((1 + (2 / 3)) ** 2) / (3 * (1 + (2 / 3) ** 2)),
+        )
+        self.assertEqual(row["min_source_acceptance_ratio"], 0.0)
+        self.assertEqual(row["min_source_delivery_ratio"], 0.0)
+        self.assertGreater(row["demand_service_source_windows"], 0)
+
+    def test_never_offered_sources_do_not_reduce_demand_fairness(self):
+        runs = aggregate.read_runs([self.event_summary])
+        events = [
+            replace(event, source_count=16)
+            for event in aggregate.read_events([self.events])
+        ]
+        loads, _ = aggregate.aggregate_runs(runs, events=events, service_window_cycles=4)
+        self.assertEqual(loads[0]["active_offered_sources"], 3)
+        self.assertEqual(loads[0]["service_sources_expected"], 3)
+
+    def test_terminal_overrun_is_not_live_demand_until_observation_end(self):
+        original_run = aggregate.read_runs([self.event_summary])[0]
+        original_events = aggregate.read_events([self.events])
+        overrun = next(event for event in original_events if event.event_state == "source_overrun")
+        run = replace(
+            original_run,
+            generated=1,
+            source_overrun=1,
+            accepted=0,
+            delivered=0,
+            errors=0,
+        )
+        loads, _ = aggregate.aggregate_runs([run], events=[overrun], service_window_cycles=4)
+        self.assertEqual(loads[0]["active_offered_sources"], 1)
+        self.assertEqual(loads[0]["demand_service_source_windows"], 0)
+        self.assertEqual(loads[0]["zero_demand_service_source_windows"], 0)
+        self.assertIsNone(loads[0]["demand_normalized_acceptance_fairness"])
+        self.assertIsNone(loads[0]["demand_normalized_delivery_fairness"])
+
+    def test_jain_zero_service_is_undefined(self):
+        self.assertIsNone(aggregate._jain_index([0.0, 0.0]))
+        self.assertEqual(aggregate._jain_index([1.0, 1.0]), 1.0)
+        self.assertEqual(aggregate._jain_index([1.0, 0.0]), 0.5)
+
+    def test_frozen_measurement_counters_validate_throughput(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "measured.csv"
+            header = list(aggregate.REQUIRED_COLUMNS) + [
+                "measurement_delivered", "measurement_cycles"
+            ]
+            values = {
+                "test": "uniform", "seed": "1", "load_pct": "50",
+                "stim_cycles": "10", "generated": "5", "source_overrun": "0",
+                "accepted": "5", "delivered": "5", "errors": "0",
+                "total_cycles": "12", "avg_e2e_latency": "1",
+                "max_e2e_latency": "1", "avg_internal_latency": "1",
+                "max_internal_latency": "1", "throughput": "0.5",
+                "fairness": "1", "max_request_wait": "0",
+                "avg_timing_error": "0", "max_timing_error": "0",
+                "measurement_delivered": "5", "measurement_cycles": "10",
+            }
+            with path.open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(stream, fieldnames=header)
+                writer.writeheader()
+                writer.writerow(values)
+            run = aggregate.read_runs([path])[0]
+            self.assertEqual(run.measurement_delivered, 5)
+            values["throughput"] = "0.4"
+            with path.open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(stream, fieldnames=header)
+                writer.writeheader()
+                writer.writerow(values)
+            with self.assertRaisesRegex(aggregate.InputError, "throughput disagrees"):
+                aggregate.read_runs([path])
+
+    def test_completion_plateau_can_define_saturation_knee(self):
+        base = aggregate.read_runs([self.saturation])[0]
+        runs = [
+            replace(base, test="uniform", seed=str(index), load_pct=load,
+                    generated=100, source_overrun=0, accepted=100, delivered=100,
+                    throughput=throughput, errors=0)
+            for index, (load, throughput) in enumerate(
+                ((50.0, 0.49), (100.0, 0.94), (150.0, 0.95)), start=1
+            )
+        ]
+        _, reports = aggregate.aggregate_runs(
+            runs, completion_floor=0.95, acceptance_floor=0.99, overrun_ceiling=0.01
+        )
+        self.assertEqual(reports[0]["knee_load_pct"], 100.0)
 
     def test_per_event_cli_and_cycle_only_json_policy(self):
         with tempfile.TemporaryDirectory() as directory:

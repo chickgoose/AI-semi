@@ -99,6 +99,56 @@
       "parameters": {"pair_count": 24, "pair_gap": 2, "pair_deadline_slack": 4}
     },
     {
+      "name": "rate_shape",
+      "workload": "rate_shape",
+      "seed": 8101,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.50,
+      "stim_cycles": 512,
+      "parameters": {"event_count": 256, "shape": "bursty", "burst_size": 8}
+    },
+    {
+      "name": "matched_spatial",
+      "workload": "matched_spatial",
+      "seed": 8201,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.75,
+      "stim_cycles": 512,
+      "parameters": {"placement": "local", "active_sources": 8}
+    },
+    {
+      "name": "moving_hotspot",
+      "workload": "moving_hotspot",
+      "seed": 8301,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.90,
+      "stim_cycles": 512,
+      "parameters": {"dwell_cycles": 32, "hotspot_count": 2, "hot_share": 0.8}
+    },
+    {
+      "name": "rotating_victim",
+      "workload": "rotating_victim",
+      "seed": 8401,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.90,
+      "stim_cycles": 1024,
+      "parameters": {"epoch_cycles": 16, "victim_period": 8, "background_load": 0.9}
+    },
+    {
+      "name": "phase_transition",
+      "workload": "phase_transition",
+      "seed": 8501,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.90,
+      "stim_cycles": 1024,
+      "parameters": {
+        "sparse_load": 0.1,
+        "near_load": 0.9,
+        "overload_load": 1.5,
+        "recovery_load": 0.0
+      }
+    },
+    {
       "name": "backpressure_shock",
       "workload": "backpressure_shock",
       "seed": 9001,

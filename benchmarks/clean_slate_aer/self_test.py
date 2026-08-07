@@ -51,6 +51,10 @@ def check_trace(output: Path, metadata: dict[str, object]) -> None:
         assert event["logical_source"] == event["y"] * geometry["width"] + event["x"]
         assert event["polarity"] in (-1, 1)
         assert isinstance(event["event_type"], str) and event["event_type"]
+        assert (event["relation_id"] is None) == (event["relation_role"] is None)
+        if event["relation_id"] is not None:
+            assert event["relation_id"] >= 0
+            assert event["relation_role"] in {"a", "b"}
         assert event["deadline"] >= event["occurrence_cycle"]
 
 
@@ -79,11 +83,103 @@ def check_workload_signatures(output: Path) -> None:
     pairs = read_events(output / "timing_pair.events.jsonl")
     type_counts = Counter(event["event_type"] for event in pairs)
     assert type_counts["timing_a"] == type_counts["timing_b"] == 24
+    relation_counts = Counter(event["relation_id"] for event in pairs)
+    assert set(relation_counts.values()) == {2}
 
     shock = read_events(output / "backpressure_shock.events.jsonl")
     shock_count = sum(192 <= event["occurrence_cycle"] < 288 for event in shock)
     background_count = len(shock) - shock_count
     assert shock_count > background_count
+
+    rate_shape = read_events(output / "rate_shape.events.jsonl")
+    assert len(rate_shape) == 256
+    assert max(Counter(event["occurrence_cycle"] for event in rate_shape).values()) == 8
+
+    matched = read_events(output / "matched_spatial.events.jsonl")
+    assert len({event["logical_source"] for event in matched}) <= 8
+
+    moving = read_events(output / "moving_hotspot.events.jsonl")
+    assert len({event["logical_source"] for event in moving}) > 8
+
+    rotating = read_events(output / "rotating_victim.events.jsonl")
+    assert len({event["logical_source"] for event in rotating}) == 64
+
+    phases = read_events(output / "phase_transition.events.jsonl")
+    phase_counts = Counter((event["occurrence_cycle"] * 8) // 1024 for event in phases)
+    assert sum(phase_counts[index] for index in (4, 5)) > sum(
+        phase_counts[index] for index in (2, 3)
+    ) > sum(phase_counts[index] for index in (0, 1))
+    assert sum(phase_counts[index] for index in (6,)) > sum(
+        phase_counts[index] for index in (7,)
+    )
+
+
+def check_metamorphic_pairs(root: Path) -> None:
+    common = {
+        "seed": 77,
+        "geometry": {"width": 4, "height": 4},
+        "load": 0.5,
+        "stim_cycles": 128,
+    }
+    runs = [
+        dict(common, name="smooth", workload="rate_shape",
+             parameters={"event_count": 64, "shape": "smooth", "burst_size": 8}),
+        dict(common, name="bursty", workload="rate_shape",
+             parameters={"event_count": 64, "shape": "bursty", "burst_size": 8}),
+        dict(common, name="local", workload="matched_spatial",
+             parameters={"placement": "local", "active_sources": 4}),
+        dict(common, name="dispersed", workload="matched_spatial",
+             parameters={"placement": "dispersed", "active_sources": 4}),
+        dict(common, name="identity", workload="uniform", parameters={}),
+        dict(common, name="permuted", workload="uniform",
+             parameters={"source_permutation": {
+                 "mode": "affine", "multiplier": 5, "offset": 3
+             }}),
+    ]
+    manifest = root / "metamorphic.json"
+    manifest.write_text(json.dumps({"schema_version": 1, "runs": runs}), encoding="utf-8")
+    output = root / "metamorphic"
+    generate_trace.generate_manifest(manifest, output)
+
+    smooth = read_events(output / "smooth.events.jsonl")
+    bursty = read_events(output / "bursty.events.jsonl")
+    assert Counter(event["logical_source"] for event in smooth) == Counter(
+        event["logical_source"] for event in bursty
+    )
+    assert [event["occurrence_cycle"] for event in smooth] != [
+        event["occurrence_cycle"] for event in bursty
+    ]
+
+    local = read_events(output / "local.events.jsonl")
+    dispersed = read_events(output / "dispersed.events.jsonl")
+    assert [event["occurrence_cycle"] for event in local] == [
+        event["occurrence_cycle"] for event in dispersed
+    ]
+    assert [event["logical_source"] for event in local] != [
+        event["logical_source"] for event in dispersed
+    ]
+
+    identity = read_events(output / "identity.events.jsonl")
+    permuted = read_events(output / "permuted.events.jsonl")
+    assert [event["occurrence_cycle"] for event in identity] == [
+        event["occurrence_cycle"] for event in permuted
+    ]
+    assert [event["logical_source"] for event in permuted] == [
+        (5 * event["logical_source"] + 3) % 16 for event in identity
+    ]
+
+    collision_config = generate_trace.RunConfig(
+        "collision", "basic_sparse", 1, 2, 2,
+        generate_trace.Decimal("0.1"), 8, {}, {"mode": "always"},
+    )
+    collision_builder = generate_trace.TraceBuilder(collision_config)
+    collision_builder.add(1, 0)
+    try:
+        collision_builder.add(1, 0)
+    except generate_trace.ManifestError:
+        pass
+    else:
+        raise AssertionError("same-source/same-cycle collision was not rejected")
 
 
 def check_seed_sensitivity(root: Path) -> None:
@@ -117,6 +213,7 @@ def main() -> int:
             check_trace(first, metadata)
         check_workload_signatures(first)
         check_seed_sensitivity(root)
+        check_metamorphic_pairs(root)
     print(f"SELF_TEST_PASS workloads={len(generate_trace.WORKLOADS)} deterministic=1")
     return 0
 

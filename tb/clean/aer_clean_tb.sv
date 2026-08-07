@@ -8,6 +8,7 @@ module aer_clean_tb;
   parameter int DEFAULT_STIM_CYCLES = 256;
   parameter int TIMEOUT_CYCLES = 20000;
   parameter int MAX_EVENTS = 131072;
+  parameter int QUIET_GUARD_CYCLES = 8;
 
   logic clk = 1'b0;
   always #5 clk = ~clk;
@@ -99,6 +100,7 @@ module aer_clean_tb;
   integer source_overrun_count;
   integer accepted_count;
   integer delivered_count;
+  integer delivered_in_measurement;
   integer error_count;
   integer cycle_count;
   integer first_occurrence_cycle;
@@ -124,6 +126,7 @@ module aer_clean_tb;
   integer timeout;
   integer stim_cycle;
   logic [ADDR_WIDTH-1:0] expected_event;
+  logic measurement_active;
 
   always_comb begin
     bench.source_valid = pending;
@@ -157,6 +160,16 @@ module aer_clean_tb;
     end
   endfunction
 
+  function automatic integer pending_count();
+    integer i;
+    begin
+      pending_count = 0;
+      for (i = 0; i < NUM_SOURCES; i = i + 1)
+        if (pending[i])
+          pending_count = pending_count + 1;
+    end
+  endfunction
+
   function automatic real average_e2e_latency();
     if (delivered_count == 0)
       average_e2e_latency = 0.0;
@@ -179,13 +192,11 @@ module aer_clean_tb;
   endfunction
 
   function automatic real throughput();
-    integer span;
     begin
-      span = last_delivery_cycle - first_occurrence_cycle + 1;
-      if ((delivered_count == 0) || (span <= 0))
+      if (stim_cycles <= 0)
         throughput = 0.0;
       else
-        throughput = real'(delivered_count) / span;
+        throughput = real'(delivered_in_measurement) / stim_cycles;
     end
   endfunction
 
@@ -433,6 +444,7 @@ module aer_clean_tb;
       cycle_count = 0;
       accepted_count = 0;
       delivered_count = 0;
+      delivered_in_measurement = 0;
       error_count = 0;
       e2e_latency_sum = 0;
       internal_latency_sum = 0;
@@ -512,6 +524,8 @@ module aer_clean_tb;
             delivered_by_source[decoded_source] =
               delivered_by_source[decoded_source] + 1;
             delivered_count = delivered_count + 1;
+            if (measurement_active)
+              delivered_in_measurement = delivered_in_measurement + 1;
             last_delivery_cycle = cycle_count;
 
             e2e_latency = cycle_count - record_occurrence[event_id];
@@ -550,21 +564,22 @@ module aer_clean_tb;
         error_count = error_count + 1;
       end else begin
         $fdisplay(metrics_fd,
-          "candidate,test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error");
+          "candidate,test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error,measurement_delivered,measurement_cycles");
         $fdisplay(metrics_fd,
-          "%s,%s,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0.6f,%0d,%0.6f,%0d,%0.6f,%0.6f,%0d,%0.6f,%0d",
+          "%s,%s,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0.6f,%0d,%0.6f,%0d,%0.6f,%0.6f,%0d,%0.6f,%0d,%0d,%0d",
           candidate_name, test_name, seed_name, load_pct, stim_cycles, generated_count,
           source_overrun_count, accepted_count, delivered_count, error_count,
           cycle_count, average_e2e_latency(), max_e2e_latency,
           average_internal_latency(), max_internal_latency, throughput(),
           fairness_index(), max_request_wait, average_timing_error(),
-          max_timing_error);
+          max_timing_error, delivered_in_measurement, stim_cycles);
         $fclose(metrics_fd);
       end
 
-      $display("AER_CLEAN_METRICS test=%s seed=%s load_pct=%0d generated=%0d overrun=%0d accepted=%0d delivered=%0d errors=%0d throughput=%0.6f avg_e2e=%0.4f max_e2e=%0d fairness=%0.6f max_wait=%0d avg_timing_error=%0.4f",
+      $display("AER_CLEAN_METRICS test=%s seed=%s load_pct=%0d generated=%0d overrun=%0d accepted=%0d delivered=%0d measured_delivered=%0d measured_cycles=%0d errors=%0d throughput=%0.6f avg_e2e=%0.4f max_e2e=%0d fairness=%0.6f max_wait=%0d avg_timing_error=%0.4f",
         test_name, seed_name, load_pct, generated_count, source_overrun_count,
-        accepted_count, delivered_count, error_count, throughput(),
+        accepted_count, delivered_count, delivered_in_measurement, stim_cycles,
+        error_count, throughput(),
         average_e2e_latency(), max_e2e_latency, fairness_index(),
         max_request_wait, average_timing_error());
     end
@@ -639,6 +654,7 @@ module aer_clean_tb;
     first_occurrence_cycle = -1;
     rng_state = seed;
     pending = '0;
+    measurement_active = 1'b0;
     bench.rst_n = 1'b0;
 `ifdef AER_CLEAN_GANGHEE_NATIVE
     // The native core suite has no sink stall capability. Keep the observation
@@ -657,12 +673,17 @@ module aer_clean_tb;
     repeat (4) @(posedge clk);
     @(negedge clk);
     bench.rst_n = 1'b1;
+    measurement_active = 1'b1;
 
     for (stim_cycle = 0; stim_cycle < stim_cycles; stim_cycle = stim_cycle + 1) begin
       @(negedge clk);
       drive_sink_ready(stim_cycle);
       generate_workload(stim_cycle);
     end
+    // Include the service edge following the final offered occurrence, then
+    // freeze the throughput window before candidate-dependent drain time.
+    @(negedge clk);
+    measurement_active = 1'b0;
     if ((trace_mode != 0) && (trace_cursor != trace_count)) begin
       $error("CLEAN_TRACE not fully consumed cursor=%0d count=%0d",
              trace_cursor, trace_count);
@@ -687,6 +708,23 @@ module aer_clean_tb;
       $error("CLEAN_SCOREBOARD missing accepted events accepted=%0d delivered=%0d",
              accepted_count, delivered_count);
       error_count = error_count + 1;
+    end
+    if (generated_count != source_overrun_count + pending_count() + accepted_count) begin
+      $error("CLEAN_SCOREBOARD generation conservation failed generated=%0d overrun=%0d pending=%0d accepted=%0d",
+             generated_count, source_overrun_count, pending_count(), accepted_count);
+      error_count = error_count + 1;
+    end
+    if (accepted_count != delivered_count + outstanding_count()) begin
+      $error("CLEAN_SCOREBOARD transport conservation failed accepted=%0d delivered=%0d outstanding=%0d",
+             accepted_count, delivered_count, outstanding_count());
+      error_count = error_count + 1;
+    end
+
+    // A candidate must stay quiet after drain.  This catches delayed phantom
+    // completions that would otherwise appear after the test ends.
+    repeat (QUIET_GUARD_CYCLES) begin
+      @(negedge clk);
+      bench.retire_ready = '1;
     end
 
     write_event_metrics();

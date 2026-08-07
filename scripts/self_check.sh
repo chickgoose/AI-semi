@@ -31,6 +31,11 @@ required=(
   benchmarks/clean_slate_aer/prepare_sv_trace.py
   benchmarks/clean_slate_aer/capabilities.py
   benchmarks/clean_slate_aer/manifest.smoke.json
+  benchmarks/clean_slate_aer/manifest.neutrality-n16.json
+  benchmarks/clean_slate_aer/neutrality_self_test.py
+  benchmarks/clean_slate_aer/phase_metrics.py
+  benchmarks/clean_slate_aer/timing_pair_metrics.py
+  benchmarks/clean_slate_aer/fixtures/neutrality_n16_golden.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_ganghee_trad_rowcol_fovea.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_baseline.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
@@ -91,4 +96,10 @@ frozen="$(AER_LIBRARY_FILE=/tmp/slow_vdd1v0_basicCells.lib bash -c 'source "$1";
   printf 'frozen PPA configuration changed: %s\n' "$frozen" >&2
   exit 1
 }
+PYTHONDONTWRITEBYTECODE=1 python3 \
+  "$PROJECT_ROOT/benchmarks/clean_slate_aer/self_test.py"
+PYTHONDONTWRITEBYTECODE=1 python3 \
+  "$PROJECT_ROOT/benchmarks/clean_slate_aer/neutrality_self_test.py"
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+  -s "$PROJECT_ROOT/benchmarks/clean_slate_aer/tests"
 printf 'structural self-check passed\n'

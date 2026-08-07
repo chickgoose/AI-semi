@@ -91,6 +91,9 @@ mkdir -p "$out_dir"
 if [[ -n "$TRACE_JSONL" ]]; then
   trace_stem="$(basename "$TRACE_JSONL")"
   trace_stem="${trace_stem%.events.jsonl}"
+  trace_report_name="${AER_TRACE_NAME:-$(python3 -c \
+    'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("report_group", "trace"))' \
+    "$TRACE_MANIFEST")}"
   prepared_trace="$out_dir/$trace_stem.svtrace"
   python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/prepare_sv_trace.py" \
     --trace "$TRACE_JSONL" --run-manifest "$TRACE_MANIFEST" \
@@ -106,7 +109,7 @@ if [[ -n "$TRACE_JSONL" ]]; then
     printf 'Ganghee native binding supports sink-always-ready traces only\n' >&2
     exit 2
   }
-  trace_args=("+TRACE_FILE=$prepared_trace" "+TRACE_NAME=$trace_stem")
+  trace_args=("+TRACE_FILE=$prepared_trace" "+TRACE_NAME=$trace_report_name")
 fi
 
 snapshot=aer_clean_ganghee_native_n16

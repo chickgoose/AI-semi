@@ -37,12 +37,26 @@ the candidate and its PPA boundary.
 | `limit_retrigger` | one source refires faster than service | How much source overrun occurs and what buffering/acceptance rate is needed? |
 | `limit_timing_fidelity` / trace `timing_pair` | precise pairs under background traffic | How much does transport distort inter-event timing and deadlines? |
 | `limit_backpressure_shock` | sustained traffic plus a long sink stall | What finite-storage limit, loss, and recovery behavior appear? |
+| trace `rate_shape` | same source histogram at 1/4/16-event bursts and equal mean rate | Does temporal correlation expose queueing hidden by a mean-load test? |
+| trace `matched_spatial` | identical event times placed locally or dispersed | Is the measured gain a real locality benefit? |
+| trace `moving_hotspot` | one or several hot sources move by phase | Can the design track nonstationary congestion without starving mice? |
+| trace `rotating_victim` | every source becomes the low-rate victim in turn | Is service sensitive to address/priority position? |
+| trace `phase_transition` | sparse, near-saturation, overload, post-sparse probe, zero-injection drain | How fast do backlog and normal sparse latency recover? |
 
 The deterministic generator also supports manifest-controlled `basic_sparse`,
 `basic_simultaneous`, `uniform`, `elephant_mouse`, `global_fanin`,
-`local_cluster`, `distributed_burst`, `retrigger`, `timing_pair`, and
-`backpressure_shock`. Use this trace path for final cross-candidate comparisons:
+`local_cluster`, `distributed_burst`, `retrigger`, `timing_pair`,
+`backpressure_shock`, `rate_shape`, `matched_spatial`, `moving_hotspot`,
+`rotating_victim`, and `phase_transition`. Use this trace path for final
+cross-candidate comparisons:
 the complete occurrence stream is generated before any DUT `ready` is observed.
+
+The official screening input is the 46-run N=16
+`manifest.neutrality-n16.json`, not the fixed-source built-in SV tests. It keeps
+locality workloads because a spatial design winning them is a legitimate
+advantage, while adding orthogonal temporal, dynamic-hotspot, recovery,
+starvation, relabeling, and above-one-event/cycle cases so that one solved
+bottleneck cannot stand in for all AER bottlenecks.
 
 ## 3. What the common testbench checks
 
@@ -68,7 +82,15 @@ Each run writes summary and per-event CSV files. Available measurements include:
 - Jain fairness and maximum request wait;
 - average/maximum inter-event timing error; and
 - through the aggregator, p50/p95/p99 latency, deadline misses/censoring,
-  service gaps, zero-service windows, correctness, and saturation knee.
+  service gaps, demand-conditioned zero-service windows, demand-normalized
+  fairness, correctness, and saturation knee;
+- phase-local completion/latency/backlog and recovery-to-zero; and
+- actual cross-source A/B timing-gap distortion through TB-only relation IDs.
+
+The legacy raw Jain value is not the ranking fairness metric because unequal
+offered traffic intentionally makes it low. Never-offered sources are excluded
+from demand-normalized fairness. Common throughput counts deliveries only in
+the fixed stimulus window; candidate-dependent drain time is separate.
 
 ## 4. Candidate capability policy
 
@@ -112,6 +134,7 @@ Run Python/trace self-checks:
 
 ```bash
 python3 benchmarks/clean_slate_aer/self_test.py
+python3 benchmarks/clean_slate_aer/neutrality_self_test.py
 python3 -m unittest discover -s benchmarks/clean_slate_aer/tests -v
 tests/clean_native/run_binding_test.sh
 ```
@@ -128,7 +151,7 @@ Generate a deterministic manifest suite and run one trace:
 
 ```bash
 python3 benchmarks/clean_slate_aer/generate_trace.py \
-  --manifest benchmarks/clean_slate_aer/manifest.example.json \
+  --manifest benchmarks/clean_slate_aer/manifest.neutrality-n16.json \
   --output-dir /tmp/aer-common-traces
 
 AER_TRACE_JSONL=/tmp/aer-common-traces/basic_sparse.events.jsonl \
@@ -160,8 +183,8 @@ python3 benchmarks/clean_slate_aer/aggregate.py \
 
 The written specification includes, but the current common runner does not yet
 fully implement, `basic_reset_drain`, native `basic_polarity`, automatic
-16/64/256 `limit_scale`, fixed-pin `limit_pin_budget`, and a complete mixed-phase
-trace. Do not claim these as qualified results. The old in-SV `limit_load` uses
+16/64/256 `limit_scale`, fixed-pin `limit_pin_budget`, and independent multi-lane
+stall qualification. Do not claim these as qualified results. The old in-SV `limit_load` uses
 a per-source probability; frozen comparisons should use the deterministic trace
 generator, whose `load` is aggregate offered events/cycle.
 
@@ -180,3 +203,10 @@ RTL, the team must still:
 - report same-frequency area/power/energy-per-event separately from each
   candidate's demonstrated post-route frequency bracket, events/s, and
   events/pin-cycle.
+
+The three-seed N=16 uniform sweep is a screening gate for the upcoming parallel
+architecture search. Finalist saturation claims must use a larger predeclared
+seed set and publish uncertainty. Multi-hop routing/multicast, asynchronous CDC,
+and native multiple-occurrences-per-source-per-cycle are not silently claimed by
+this one-hop synchronous core; they require separately frozen capability suites
+and all required hardware must remain inside candidate PPA.

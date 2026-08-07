@@ -71,6 +71,10 @@ SUMMARY_COLUMNS = (
     "avg_total_cycles",
     "avg_throughput",
     "worst_throughput",
+    "throughput_stddev",
+    "measurement_delivered",
+    "measurement_cycles",
+    "window_completion_ratio",
     "avg_e2e_latency",
     "worst_e2e_latency",
     "avg_internal_latency",
@@ -117,6 +121,14 @@ SUMMARY_COLUMNS = (
     "min_service_per_source_window",
     "zero_service_source_windows",
     "zero_service_source_window_ratio",
+    "active_offered_sources",
+    "demand_normalized_acceptance_fairness",
+    "demand_normalized_delivery_fairness",
+    "min_source_acceptance_ratio",
+    "min_source_delivery_ratio",
+    "demand_service_source_windows",
+    "zero_demand_service_source_windows",
+    "zero_demand_service_source_window_ratio",
 )
 
 EVENT_REQUIRED_COLUMNS = (
@@ -167,6 +179,14 @@ EVENT_RUN_COLUMNS = (
     "min_service_per_source_window",
     "zero_service_source_windows",
     "zero_service_source_window_ratio",
+    "active_offered_sources",
+    "demand_normalized_acceptance_fairness",
+    "demand_normalized_delivery_fairness",
+    "min_source_acceptance_ratio",
+    "min_source_delivery_ratio",
+    "demand_service_source_windows",
+    "zero_demand_service_source_windows",
+    "zero_demand_service_source_window_ratio",
 )
 
 
@@ -196,6 +216,8 @@ class Run:
     max_request_wait: float
     avg_timing_error: float
     max_timing_error: float
+    measurement_delivered: int | None = None
+    measurement_cycles: int | None = None
 
 
 @dataclass(frozen=True)
@@ -262,6 +284,11 @@ def read_runs(paths: Iterable[Path]) -> list[Run]:
             missing = [column for column in REQUIRED_COLUMNS if column not in columns]
             if missing:
                 raise InputError(f"{path}: missing columns: {', '.join(missing)}")
+            measurement_columns = {"measurement_delivered", "measurement_cycles"}
+            if columns.intersection(measurement_columns) not in (set(), measurement_columns):
+                raise InputError(
+                    f"{path}: measurement_delivered and measurement_cycles must appear together"
+                )
             for line_number, row in enumerate(reader, start=2):
                 location = f"{path}:{line_number}"
                 test = (row.get("test") or "").strip()
@@ -282,6 +309,29 @@ def read_runs(paths: Iterable[Path]) -> list[Run]:
                     values[column] = _parse_nonnegative_int(row[column], column, location)
                 for column in FLOAT_COLUMNS:
                     values[column] = _parse_finite_float(row[column], column, location)
+                if measurement_columns <= columns:
+                    measured = _parse_nonnegative_int(
+                        row["measurement_delivered"], "measurement_delivered", location
+                    )
+                    cycles = _parse_nonnegative_int(
+                        row["measurement_cycles"], "measurement_cycles", location
+                    )
+                    if cycles == 0:
+                        raise InputError(f"{location}: measurement_cycles must be positive")
+                    if measured > int(values["delivered"]):
+                        raise InputError(
+                            f"{location}: measurement_delivered exceeds total delivered"
+                        )
+                    expected_throughput = measured / cycles
+                    if not math.isclose(
+                        float(values["throughput"]), expected_throughput,
+                        rel_tol=1e-6, abs_tol=1e-6,
+                    ):
+                        raise InputError(
+                            f"{location}: throughput disagrees with frozen measurement counters"
+                        )
+                    values["measurement_delivered"] = measured
+                    values["measurement_cycles"] = cycles
                 runs.append(Run(**values))
     if not runs:
         raise InputError("no benchmark rows found")
@@ -437,6 +487,21 @@ def _aggregate_group(
     delivered = sum(row.delivered for row in rows)
     retained = generated - overrun
     issues = _correctness_issues(rows)
+    has_measurement = all(
+        row.measurement_delivered is not None and row.measurement_cycles is not None
+        for row in rows
+    )
+    measurement_delivered = (
+        sum(int(row.measurement_delivered) for row in rows) if has_measurement else None
+    )
+    measurement_cycles = (
+        sum(int(row.measurement_cycles) for row in rows) if has_measurement else None
+    )
+    offered_per_cycle = load_pct / 100.0
+    measured_throughput = (
+        measurement_delivered / measurement_cycles
+        if measurement_cycles else statistics.fmean(row.throughput for row in rows)
+    )
     return {
         "candidate": candidate,
         "test": test,
@@ -459,6 +524,12 @@ def _aggregate_group(
         "avg_total_cycles": statistics.fmean(row.total_cycles for row in rows),
         "avg_throughput": statistics.fmean(row.throughput for row in rows),
         "worst_throughput": min(row.throughput for row in rows),
+        "throughput_stddev": statistics.pstdev(row.throughput for row in rows),
+        "measurement_delivered": measurement_delivered,
+        "measurement_cycles": measurement_cycles,
+        "window_completion_ratio": (
+            measured_throughput / offered_per_cycle if offered_per_cycle else None
+        ),
         "avg_e2e_latency": _weighted_mean(rows, "avg_e2e_latency"),
         "worst_e2e_latency": max(row.max_e2e_latency for row in rows),
         "avg_internal_latency": _weighted_mean(rows, "avg_internal_latency"),
@@ -525,6 +596,66 @@ def _source_window_stats(
         if current == 0:
             zero_windows += segment_length
     return window_starts, minimum, zero_windows
+
+
+def _jain_index(values: Sequence[float]) -> float | None:
+    if not values:
+        return None
+    square_sum = sum(value * value for value in values)
+    if square_sum == 0.0:
+        return None
+    total = sum(values)
+    return (total * total) / (len(values) * square_sum)
+
+
+def _demand_window_stats(
+    events: Sequence[Event], *, window_cycles: int, observation_end_cycle: int
+) -> tuple[int, int | None, int]:
+    """Service only in sliding windows where this source has live demand.
+
+    A demand interval starts at occurrence and ends at delivery, or at the
+    observation boundary for an undelivered event.  A window is eligible when
+    it overlaps at least one such interval.  This prevents never-requesting or
+    long-idle sources from manufacturing zero-service windows.
+    """
+    observation_cycles = observation_end_cycle + 1
+    if not events or observation_cycles < window_cycles:
+        return 0, None, 0
+    window_count = observation_cycles - window_cycles + 1
+    active_delta = [0] * (window_count + 1)
+    service_delta = [0] * (window_count + 1)
+    for event in events:
+        demand_end = (
+            event.delivery_cycle
+            if event.delivery_cycle is not None
+            else observation_end_cycle
+        )
+        first = max(0, event.occurrence_cycle - window_cycles + 1)
+        last = min(demand_end, window_count - 1)
+        if first <= last:
+            active_delta[first] += 1
+            active_delta[last + 1] -= 1
+        if event.delivery_cycle is not None:
+            first = max(0, event.delivery_cycle - window_cycles + 1)
+            last = min(event.delivery_cycle, window_count - 1)
+            if first <= last:
+                service_delta[first] += 1
+                service_delta[last + 1] -= 1
+
+    active = 0
+    service = 0
+    eligible = 0
+    zero = 0
+    minimum: int | None = None
+    for index in range(window_count):
+        active += active_delta[index]
+        service += service_delta[index]
+        if active > 0:
+            eligible += 1
+            minimum = service if minimum is None else min(minimum, service)
+            if service == 0:
+                zero += 1
+    return eligible, minimum, zero
 
 
 def _validate_event_summary_contract(runs: Sequence[Run], events: Sequence[Event]) -> None:
@@ -622,20 +753,32 @@ def _event_metrics(
     source_windows = 0
     zero_source_windows = 0
     minimum_window_service: int | None = None
+    demand_source_windows = 0
+    zero_demand_source_windows = 0
+    active_offered_sources = 0
+    acceptance_ratios: list[float] = []
+    delivery_ratios: list[float] = []
     for run_events in events_by_run.values():
-        source_count = run_events[0].source_count
         observation_end = run_events[0].observation_end_cycle
-        delivery_by_source: dict[int, list[int]] = {
-            source: [] for source in range(source_count)
-        }
+        events_by_source: dict[int, list[Event]] = {}
         for event in run_events:
-            if event.delivery_cycle is not None:
-                delivery_by_source[event.logical_source].append(event.delivery_cycle)
-        expected_sources += source_count
-        for cycles in delivery_by_source.values():
+            events_by_source.setdefault(event.logical_source, []).append(event)
+        expected_sources += len(events_by_source)
+        active_offered_sources += len(events_by_source)
+        for source_events in events_by_source.values():
+            cycles = [
+                event.delivery_cycle
+                for event in source_events
+                if event.delivery_cycle is not None
+            ]
             cycles.sort()
             if cycles:
                 delivered_sources += 1
+            acceptance_ratios.append(
+                sum(event.accept_cycle is not None for event in source_events)
+                / len(source_events)
+            )
+            delivery_ratios.append(len(cycles) / len(source_events))
             service_gaps.extend(right - left for left, right in zip(cycles, cycles[1:]))
             windows, source_minimum, source_zero = _source_window_stats(
                 cycles,
@@ -650,6 +793,16 @@ def _event_metrics(
                     if minimum_window_service is None
                     else min(minimum_window_service, source_minimum)
                 )
+            demand_windows, _, demand_zero = _demand_window_stats(
+                [
+                    event for event in source_events
+                    if event.event_state != "source_overrun"
+                ],
+                window_cycles=service_window_cycles,
+                observation_end_cycle=observation_end,
+            )
+            demand_source_windows += demand_windows
+            zero_demand_source_windows += demand_zero
 
     return {
         "event_metrics_state": (
@@ -687,6 +840,17 @@ def _event_metrics(
         "zero_service_source_window_ratio": (
             zero_source_windows / source_windows if source_windows else None
         ),
+        "active_offered_sources": active_offered_sources,
+        "demand_normalized_acceptance_fairness": _jain_index(acceptance_ratios),
+        "demand_normalized_delivery_fairness": _jain_index(delivery_ratios),
+        "min_source_acceptance_ratio": min(acceptance_ratios) if acceptance_ratios else None,
+        "min_source_delivery_ratio": min(delivery_ratios) if delivery_ratios else None,
+        "demand_service_source_windows": demand_source_windows,
+        "zero_demand_service_source_windows": zero_demand_source_windows,
+        "zero_demand_service_source_window_ratio": (
+            zero_demand_source_windows / demand_source_windows
+            if demand_source_windows else None
+        ),
     }
 
 
@@ -703,6 +867,7 @@ def aggregate_runs(
     service_window_cycles: int = 64,
     acceptance_floor: float = 0.99,
     overrun_ceiling: float = 0.01,
+    completion_floor: float = 0.95,
     tail_factor: float = 1.5,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     if service_window_cycles <= 0:
@@ -753,6 +918,11 @@ def aggregate_runs(
             if (
                 float(summary["acceptance_ratio"]) < acceptance_floor
                 or float(summary["overrun_ratio"]) > overrun_ceiling
+                or (
+                    len(sweep) >= 3
+                    and summary["window_completion_ratio"] is not None
+                    and float(summary["window_completion_ratio"]) < completion_floor
+                )
             ):
                 knee_index = index
                 break
@@ -883,6 +1053,7 @@ def write_json(
     overrun_ceiling: float,
     tail_factor: float,
     service_window_cycles: int = 64,
+    completion_floor: float = 0.95,
     event_runs: Sequence[dict[str, object]] = (),
 ) -> None:
     payload = {
@@ -891,6 +1062,7 @@ def write_json(
             "overrun_ceiling": overrun_ceiling,
             "tail_factor": tail_factor,
             "service_window_cycles": service_window_cycles,
+            "completion_floor": completion_floor,
         },
         "tests": list(tests),
         "loads": list(summaries),
@@ -944,6 +1116,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=("csv", "json"), default="csv")
     parser.add_argument("--acceptance-floor", type=_unit_interval, default=0.99)
     parser.add_argument("--overrun-ceiling", type=_unit_interval, default=0.01)
+    parser.add_argument("--completion-floor", type=_unit_interval, default=0.95)
     parser.add_argument("--tail-factor", type=_positive_float, default=1.5)
     parser.add_argument(
         "--service-window-cycles",
@@ -973,6 +1146,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             service_window_cycles=args.service_window_cycles,
             acceptance_floor=args.acceptance_floor,
             overrun_ceiling=args.overrun_ceiling,
+            completion_floor=args.completion_floor,
             tail_factor=args.tail_factor,
         )
         event_run_summaries = (
@@ -1001,6 +1175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 overrun_ceiling=args.overrun_ceiling,
                 tail_factor=args.tail_factor,
                 service_window_cycles=args.service_window_cycles,
+                completion_floor=args.completion_floor,
                 event_runs=event_run_summaries,
             )
         else:

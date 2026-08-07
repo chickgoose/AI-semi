@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "description": "Frozen N=16 always-ready anti-overfit suite for candidate-neutral AER evaluation",
+  "policy": {
+    "ranking_input": "exact generated JSONL trace SHA, never built-in synthetic test names",
+    "logical_event": "one coordinate-address spike; polarity and event type are fixed",
+    "source_rule": "at most one occurrence per logical source per cycle",
+    "load_rule": "load is the declared grouping/target mean; generated metadata records achieved mean and peak",
+    "uniform_seed_rule": "same seed at different loads is an independent realization, not a nested common-random trace",
+    "measurement": "report every workload family separately before any aggregate score"
+  },
+  "runs": [
+    {"name":"core_sparse_identity","workload":"basic_sparse","seed":1001,"geometry":{"width":4,"height":4},"load":0.031,"stim_cycles":512,"parameters":{"event_count":16,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"core_sparse_rotate180","workload":"basic_sparse","seed":1001,"geometry":{"width":4,"height":4},"load":0.031,"stim_cycles":512,"parameters":{"event_count":16,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":"rotate_180"}},
+    {"name":"core_simultaneous_identity","workload":"basic_simultaneous","seed":1002,"geometry":{"width":4,"height":4},"load":0.063,"stim_cycles":256,"parameters":{"simultaneous_count":16,"occurrence_cycle":64,"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"uniform_l0p125_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":0.125,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p125_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":0.125,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p125_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":0.125,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p50_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p50_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p50_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p90_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p90_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l0p90_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p00_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p00_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p00_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p25_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":1.25,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p25_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":1.25,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p25_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":1.25,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p50_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":1.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p50_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":1.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p50_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":1.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l2p00_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":2.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l2p00_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":2.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l2p00_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":2.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"shape_b1","workload":"rate_shape","seed":3101,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":4096,"parameters":{"event_count":2048,"shape":"bursty","burst_size":1,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"shape_b4","workload":"rate_shape","seed":3101,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":4096,"parameters":{"event_count":2048,"shape":"bursty","burst_size":4,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"shape_b16","workload":"rate_shape","seed":3101,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":4096,"parameters":{"event_count":2048,"shape":"bursty","burst_size":16,"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"spatial_local","workload":"matched_spatial","seed":3201,"geometry":{"width":4,"height":4},"load":0.75,"stim_cycles":2048,"parameters":{"placement":"local","active_sources":4,"burst_size":4,"center_x":1,"center_y":1,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"spatial_dispersed","workload":"matched_spatial","seed":3201,"geometry":{"width":4,"height":4},"load":0.75,"stim_cycles":2048,"parameters":{"placement":"dispersed","active_sources":4,"burst_size":4,"center_x":1,"center_y":1,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"spatial_local_mirror","workload":"matched_spatial","seed":3201,"geometry":{"width":4,"height":4},"load":0.75,"stim_cycles":2048,"parameters":{"placement":"local","active_sources":4,"burst_size":4,"center_x":1,"center_y":1,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":"mirror_x"}},
+
+    {"name":"moving_hotspot_single_s3301","workload":"moving_hotspot","seed":3301,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"dwell_cycles":128,"hotspot_count":1,"hot_share":0.8,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"moving_hotspot_single_s3302","workload":"moving_hotspot","seed":3302,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"dwell_cycles":128,"hotspot_count":1,"hot_share":0.8,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"moving_hotspot_multi_disperse_s3301","workload":"moving_hotspot","seed":3301,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"dwell_cycles":128,"hotspot_count":4,"hotspot_layout":"dispersed","hot_share":0.8,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"moving_hotspot_multi_row_s3301","workload":"moving_hotspot","seed":3301,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"dwell_cycles":128,"hotspot_count":4,"hotspot_layout":"row","hot_share":0.8,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"moving_hotspot_multi_column_s3301","workload":"moving_hotspot","seed":3301,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"dwell_cycles":128,"hotspot_count":4,"hotspot_layout":"column","hot_share":0.8,"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"rotating_victim_identity","workload":"rotating_victim","seed":3401,"geometry":{"width":4,"height":4},"load":1.025,"stim_cycles":4096,"parameters":{"epoch_cycles":256,"victim_period":8,"background_load":0.9,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"rotating_victim_affine","workload":"rotating_victim","seed":3401,"geometry":{"width":4,"height":4},"load":1.025,"stim_cycles":4096,"parameters":{"epoch_cycles":256,"victim_period":8,"background_load":0.9,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":{"mode":"affine","multiplier":5,"offset":3}}},
+
+    {"name":"phase_transition_s3501","workload":"phase_transition","seed":3501,"geometry":{"width":4,"height":4},"load":0.769,"stim_cycles":4096,"parameters":{"sparse_load":0.125,"near_load":0.9,"overload_load":2.0,"post_load":0.1,"recovery_load":0.0,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"phase_transition_s3502","workload":"phase_transition","seed":3502,"geometry":{"width":4,"height":4},"load":0.769,"stim_cycles":4096,"parameters":{"sparse_load":0.125,"near_load":0.9,"overload_load":2.0,"post_load":0.1,"recovery_load":0.0,"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"elephant_mouse_identity","workload":"elephant_mouse","seed":3601,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"elephant_source":0,"elephant_share":0.8,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"elephant_mouse_affine","workload":"elephant_mouse","seed":3601,"geometry":{"width":4,"height":4},"load":0.9,"stim_cycles":2048,"parameters":{"elephant_source":0,"elephant_share":0.8,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":{"mode":"affine","multiplier":5,"offset":3}}},
+    {"name":"global_fanin_identity","workload":"global_fanin","seed":3701,"geometry":{"width":4,"height":4},"load":0.25,"stim_cycles":2048,"parameters":{"fan_in_count":16,"burst_period":64,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"retrigger_identity","workload":"retrigger","seed":3801,"geometry":{"width":4,"height":4},"load":0.25,"stim_cycles":2048,"parameters":{"trigger_count":128,"repeats":4,"retrigger_interval":1,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"retrigger_affine","workload":"retrigger","seed":3801,"geometry":{"width":4,"height":4},"load":0.25,"stim_cycles":2048,"parameters":{"trigger_count":128,"repeats":4,"retrigger_interval":1,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":{"mode":"affine","multiplier":5,"offset":3}}},
+    {"name":"timing_pair_s3901","workload":"timing_pair","seed":3901,"geometry":{"width":4,"height":4},"load":0.625,"stim_cycles":2048,"parameters":{"pair_count":128,"pair_gap":2,"pair_deadline_slack":16,"background_load":0.5,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"timing_pair_s3902","workload":"timing_pair","seed":3902,"geometry":{"width":4,"height":4},"load":0.625,"stim_cycles":2048,"parameters":{"pair_count":128,"pair_gap":2,"pair_deadline_slack":16,"background_load":0.5,"fixed_polarity":1,"fixed_event_type":"spike"}}
+  ]
+}
