@@ -23,6 +23,15 @@ PARAMETERS = {"NUM_SOURCES": 64, "RETIRE_LANES": 8,
               "ADDR_WIDTH": 16, "SOURCE_WIDTH": 6}
 PORT_BITS = {"functional_total": 1344, "functional_inputs": 1096,
              "functional_outputs": 248, "retire_lanes": 8}
+BLOCKED_RELEASE_GATE = {
+    "disposition": "NOT_ELIGIBLE",
+    "blocked_stages": ["XCELIUM", "GENUS", "INNOVUS"],
+    "open_findings": ["B2", "B5"],
+    "current_a9_xcelium_eligibility_pass_sufficient": False,
+    "release_condition":
+        "CANONICAL_TRACE_REPLAY_THROUGH_EXACT_REGISTERED_PHYSICAL_BOUNDARY_"
+        "PLUS_HARDENED_EVIDENCE_BINDING_PLUS_INDEPENDENT_REREVIEW",
+}
 PROFILES = {
     "a9_static_n64_timing_diagnostic": {
         "top": "a9_static_n64_timing_top",
@@ -137,7 +146,7 @@ def verify_lock(entry: dict[str, Any], commit: str) -> None:
 
 
 def verify_package(path: Path, manifest: dict[str, Any]) -> str:
-    keys(manifest, ["schema", "candidate", "package_commit", "rtl",
+    keys(manifest, ["schema", "candidate", "release_gate", "package_commit", "rtl",
                     "contract", "synthesis", "xcelium", "locked_files"],
          "manifest")
     need(manifest["schema"], "a9-optional-physical-handoff-v2", "schema")
@@ -148,6 +157,7 @@ def verify_package(path: Path, manifest: dict[str, Any]) -> str:
     profile = PROFILES[candidate["key"]]
     need(candidate["status"], "DIAGNOSTIC_ONLY_NOT_N16_SHORTLIST", "status")
     need(candidate["capability"], profile["capability"], "capability")
+    need(manifest["release_gate"], BLOCKED_RELEASE_GATE, "release gate")
     need(manifest["rtl"]["top"], profile["top"], "top")
     need(manifest["rtl"]["top_file"], profile["top_file"], "top file")
     need(manifest["contract"]["parameters"], PARAMETERS, "parameters")
@@ -371,6 +381,14 @@ def main() -> int:
         if args.stage == "package":
             print(f"A9_PACKAGE_LOCK_PASS {manifest['candidate']['key']}")
             return 0
+        raise Blocked(
+            "FINAL_HEAD_NOT_ELIGIBLE: B2/B5 remain open; canonical trace must "
+            "be replayed through the exact registered physical boundary, "
+            "evidence binding hardened, and independent re-review completed"
+        )
+        # Deliberately unreachable while release_gate is NOT_ELIGIBLE.  Keep
+        # the evidence validators as preserved history for a future reviewed
+        # manifest/schema revision; do not weaken this gate in place.
         directory = evidence_dir(args.evidence_dir)
         if args.stage == "xcelium":
             verify_xcelium(directory, manifest, mhash)

@@ -146,3 +146,21 @@ must live outside the repository so it cannot masquerade as a manifest input.
 `--stage innovus` additionally requires exact Genus evidence. This repository
 intentionally contains no server result and no common-flow adapter. The package
 is an optional handoff, not authorization to run it.
+
+## Final HEAD disposition: blocked
+
+A4 final re-review leaves B2 and B5 open. Both static and H2 are therefore
+`NOT_ELIGIBLE` for Xcelium, Genus, and Innovus. The canonical common replacement
+path PASS and separate physical-top elaboration do not prove equivalent replay
+through the registered physical boundary. A forged or weak evidence record also
+remains outside the accepted trust boundary. Consequently the existing
+`A9_XCELIUM_ELIGIBILITY_PASS` interpretation is insufficient and must not be
+used to advance either profile.
+
+The candidate-owned manifests carry this disposition as a machine-checked
+`release_gate`. The preflight still permits immutable package auditing, but it
+unconditionally exits 3 for every Xcelium/Genus/Innovus stage before inspecting
+claimed evidence. Eligibility may be reconsidered only after all canonical
+traces are replayed through the exact registered physical top, evidence binding
+is hardened against the reviewed weakness, and a new independent re-review
+explicitly releases B2/B5. No architecture change is authorized by this note.
