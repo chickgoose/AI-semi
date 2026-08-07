@@ -13,6 +13,8 @@ module aer_legacy_candidate_adapter #(
 ) (aer_bench_if bench);
 `ifdef A9_CENTRALIZED_REFERENCE
   a9_centralized_reference #(
+`elsif A9_NEIGHBOR_HANDOFF
+  a9_neighbor_handoff_fabric #(
 `else
   a9_distributed_token_fabric #(
 `endif

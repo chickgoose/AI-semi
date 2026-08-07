@@ -23,8 +23,13 @@ case "$IMPLEMENTATION" in
     implementation_verilator=(-DA9_CENTRALIZED_REFERENCE)
     implementation_xrun=(-define A9_CENTRALIZED_REFERENCE)
     ;;
+  diffusive)
+    candidate_name="a9-neighbor-handoff-l${RETIRE_LANES}"
+    implementation_verilator=(-DA9_NEIGHBOR_HANDOFF)
+    implementation_xrun=(-define A9_NEIGHBOR_HANDOFF)
+    ;;
   *)
-    printf 'AER_A9_IMPLEMENTATION must be distributed or centralized\n' >&2
+    printf 'AER_A9_IMPLEMENTATION must be distributed, diffusive, or centralized\n' >&2
     exit 2
     ;;
 esac
@@ -80,6 +85,7 @@ case "$SIMULATOR" in
       "$PROJECT_ROOT/tb/clean/aer_bench_if.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv"
+      "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_neighbor_handoff_fabric.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_centralized_reference.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv"
       "$PROJECT_ROOT/tb/clean/aer_clean_assertions.sv"
@@ -99,6 +105,7 @@ case "$SIMULATOR" in
       "$PROJECT_ROOT/tb/clean/aer_bench_if.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv"
+      "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_neighbor_handoff_fabric.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_centralized_reference.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv"
       "$PROJECT_ROOT/tb/clean/aer_clean_assertions.sv"

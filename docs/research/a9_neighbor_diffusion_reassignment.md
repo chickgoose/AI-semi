@@ -140,3 +140,120 @@ stronger genuinely local rule.
    or if its stall benefit does not justify the mailbox/fence/toggle cost.  Do
    not add a global remapper, crossbar, request scan, tree, or reservoir to hide
    a negative result.
+
+## H1 review and H2 refinement
+
+H1 as written above is rejected before RTL.  If a native head has already been
+visible during `valid && !ready`, moving it into a mailbox when the neighbor
+later becomes idle makes the home output disappear under continuous stall.
+That violates output stability even though event conservation still holds.
+
+H2 permits handoff only for a fresh, unpinned head.  If its home lane is stalled
+while the paired lane is ready and has no native head, the event is driven to
+the paired lane and retires on that same edge.  Otherwise it is presented at
+home; observing one stalled home cycle sets a one-bit pin which forbids later
+migration until that head retires at home.  A direct migrant is never stored,
+never re-migrates, and cannot be duplicated.  Because the destination is ready
+and empty by predicate, no mailbox arbitration or source fence is necessary.
+
+H2 adds one pin bit per lane and a local neighbor-valid/ready check.  It adds a
+ready-to-valid/control path across one stripe-pair endpoint but zero migration
+pipeline cycles.  It still cannot increase an always-ready congested stripe's
+one-head-per-cycle dequeue rate.  The exhaustive model and any RTL variant use
+H2; H1 remains documented as the discovered counterexample.
+
+## Bounded-state result
+
+`scripts/explore_a9_neighbor_handoff.py` enumerates every abstract H2 state
+with a two-entry ordered lane queue, fresh/pinned head state, every injection
+mask, every retire-ready mask, and reset.  A direct migration is counted as one
+retirement, never as a second stored copy.
+
+| Bound | Abstract states | One-cycle transitions | Transitions containing migration | Result |
+| --- | ---: | ---: | ---: | --- |
+| N=2 | 25 | 400 | 16 | PASS |
+| N=4 | 625 | 160,000 | 12,800 | PASS |
+
+The checks cover `next_occupancy = occupancy + accepted - retired`, queue
+bounds, at most one migrant per pair, empty/ready neighbor preconditions,
+pinned-head immobility, reset from every state, and immediate progress whenever
+an occupied home lane is ready.  FIFO head-only retirement supplies ordering;
+H2 creates no second copy or alternate stored path.  Under weak lane fairness
+and stopped injection, every pinned head eventually sees its home ready and
+every fresh head either retires home or at its one neighbor.  This is exhaustive
+for the stated bounded abstract model, not an unbounded formal proof of the
+entire N=16 RTL.
+
+## RTL and directed assertion result
+
+The gated H2 rule is implemented in `a9_neighbor_handoff_fabric.sv` as a wrapper
+around the unchanged static fabric.  The common binding selects it only with
+`A9_NEIGHBOR_HANDOFF`; it cannot become a fallback.  Assertions check stalled
+output stability, pinned non-migration, neighbor emptiness, and destination
+readiness.  The N=4 RTL test covers the four requested traffic shapes plus
+rotating asymmetric stalls and reset.
+
+In the single-stripe asymmetric-stall case, six of eight source-0 events retired
+on neighbor lane 1; the final two retired natively after the test released all
+lanes for drain.  In the pin counterexample test, a source-0 head was first
+presented with all lanes stalled.  Making only neighbor lane 1 ready for five
+cycles produced neither migration nor retirement; it retired exactly once when
+home lane 0 became ready.  Moving/alternating stalls and all-stripe saturation
+then drained without loss, duplication, corruption, or source reorder.  Reset
+from occupied/pinned state produced no phantom.
+
+## Static, H2, and same-L centralized comparison
+
+The comparison uses N=16, L=4, 128 fixed stimulus cycles, the same one-entry
+source occurrence model, always-ready retire lanes, and drain-after-measurement.
+`throughput` counts completions during the 128-cycle measurement window;
+accepted/delivered include drain.  The four phase-3 workloads are deliberately
+more concentrated than the frozen suite but do not replace it.
+
+| Workload | Implementation | overrun | accepted=delivered | event/cycle | average / max latency |
+| --- | --- | ---: | ---: | ---: | ---: |
+| single-stripe hotspot | static | 374 | 138 | 0.976562 | 13.514 / 42 |
+|  | H2 diffusive | 374 | 138 | 0.976562 | 13.514 / 42 |
+|  | centralized L4 | 378 | 134 | 0.976562 | 8.821 / 9 |
+| moving hotspot | static | 304 | 208 | 1.523438 | 10.885 / 23 |
+|  | H2 diffusive | 304 | 208 | 1.523438 | 10.885 / 23 |
+|  | centralized L4 | 336 | 176 | 1.304688 | 7.909 / 9 |
+| alternating stripe 0/1 | static | 236 | 276 | 1.945312 | 12.529 / 41 |
+|  | H2 diffusive | 236 | 276 | 1.945312 | 12.529 / 41 |
+|  | centralized L4 | 246 | 266 | 1.945312 | 8.308 / 9 |
+| all-stripe saturation | static | 1,496 | 552 | 3.906250 | 13.514 / 42 |
+|  | H2 diffusive | 1,496 | 552 | 3.906250 | 13.514 / 42 |
+|  | centralized L4 | 1,512 | 536 | 3.906250 | 8.821 / 9 |
+
+H2 records zero migrations and zero pin-block cycles in all four always-ready
+runs, as required by its predicate.  Static and H2 are exactly equal in every
+reported value.  The distributed designs sometimes accept more of these short
+bursts because they contain more transport storage; this is not extra steady
+service bandwidth.  The centralized reference has lower latency and reaches
+the same per-active-lane steady completion limit.
+
+Four high-risk frozen traces were also rerun through the common binding.  All
+passed with zero correctness errors and zero migrations, exactly reproducing
+the static `cd6ba55` numbers: elephant/mouse affine 27 overruns and 0.877441
+event/cycle; moving multi-row 9 and 0.883301; rotating-victim affine 2 and
+1.027832; uniform-2.00 s2001 11 and 1.991211.  Thus the phase-3 wrapper does not
+silently perturb the frozen always-ready result.
+
+## Cost and verdict
+
+H2 adds `L` synthesized pin bits: four bits at N=16 L4.  It adds no mailbox,
+source fence, migration toggle, global state, or extra event payload register.
+Migration toggle cost is therefore zero bits and a successful direct migration
+adds zero registered latency cycles.  The nonzero cost is a local paired-lane
+mux plus a neighbor `valid/ready` control path; no physical timing/PPA claim is
+made because server tools remain prohibited.  At N=16 L4 the previous 960-bit
+static state proxy becomes 964 bits; the local output decision now includes the
+paired neighbor predicate but its fan-in remains independent of N.
+
+Verdict: **safe local-handoff variant, rejected as a fixed-stripe imbalance
+solution**.  It can recover a fresh head from an asymmetrically stalled output,
+but cannot change any always-ready hotspot, alternating-stripe, or saturation
+result.  A stronger mid-stripe migration would need stored alternate paths and
+per-source route acknowledgment to preserve ordering under arbitrary stalls;
+that complexity is outside the accepted minimal A9 protocol.  No global scan,
+central encoder, tree, reservoir, remapper, or crossbar was introduced.
