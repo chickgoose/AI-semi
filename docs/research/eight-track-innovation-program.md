@@ -83,3 +83,9 @@ reports, the head selects independent Pareto winners.  At most two compatible
 mechanisms are combined in a new integration branch, and that combined design
 must repeat the entire correctness and 46-trace screening gates.  Negative
 results remain valuable evidence and are preserved on their original branch.
+
+## Wave-1 closure
+
+The completed architectural, falsification, independent-review, and shortlist
+results are consolidated in
+[`wave1-eight-track-final-report.md`](wave1-eight-track-final-report.md).
