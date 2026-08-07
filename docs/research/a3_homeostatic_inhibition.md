@@ -205,3 +205,130 @@ Reject or substantially redesign A3 if any of the following occurs:
    benefit; or
 8. the result wins only one workload or one seed.  No aggregate victory is
    claimed from a single favorable trace.
+
+## 9. Frozen N=16 measured results
+
+Run date: 2026-08-07.  Candidate RTL identity: commit `2b70eb3`.  The run used
+Verilator 5.032 with the frozen 46-run
+`manifest.neutrality-n16.json`; generated trace SHA values matched the checked
+golden fixture.  The common TB, trace generator, golden file, and A1/public
+benchmark assets were not edited.  `scripts/run_a3_homeostatic_benchmark.sh`
+reproduces the run and uses the repository aggregator with
+`--fail-on-correctness`.
+
+All 46 runs have `errors=0` and `accepted==delivered` after drain.  This is an
+accepted-event correctness result, not a lossless-offered-traffic claim:
+overload still causes source-latch overrun as required by the common model.
+
+### 9.1 Uniform load and sparse latency
+
+The throughput column is fixed-window completed event/cycle.  Overrun is summed
+over the three frozen seeds; tail/fairness columns show the seed range.
+
+| Offered event/cycle | Mean throughput | Overrun, 3 seeds | p99 E2E cycles | Demand-normalized delivery fairness | Min source delivery ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.125 | 0.120931 | 0 | 2 | 1.000000 | 1.000000 |
+| 0.50 | 0.496582 | 0 | 2 | 1.000000 | 1.000000 |
+| 0.90 | 0.903808 | 0 | 2 | 1.000000 | 1.000000 |
+| 1.00 | 0.999512 | 0 | 2 | 1.000000 | 1.000000 |
+| 1.25 | 0.999512 | 1509 | 8 | 0.998641..0.998937 | 0.754601..0.762821 |
+| 1.50 | 0.999512 | 3021 | 11 | 0.997344..0.998943 | 0.617512..0.634146 |
+| 2.00 | 0.999512 | 6119 | 13..14 | 0.997785..0.998989 | 0.465704..0.468504 |
+
+The isolated sparse identity and rotate-180 controls are identical: 16/16
+delivered, zero overrun, p95/p99 E2E 2 cycles, throughput 0.03125, and
+demand-normalized fairness/min-source ratio 1.0.  Simultaneous N=16 fan-in has
+p99/max E2E 17 cycles and maximum request wait 15, the expected serialization
+tail of a one-lane design.  The saturation knee is therefore one logical event
+per cycle; A3 does not claim a bandwidth improvement above one event/cycle.
+
+### 9.2 Hotspots, victims, permutation, and burst shape
+
+| Frozen control | Overrun | Throughput | p99 E2E | Worst request wait | DN delivery fairness | Min source ratio | Demand zero-window ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| elephant/mouse identity | 0 | 0.891602 | 2 | 0 | 1.000000 | 1.000000 | 0.017571 |
+| elephant/mouse affine | 0 | 0.891602 | 2 | 0 | 1.000000 | 1.000000 | 0.017571 |
+| rotating victim identity | 202 | 0.979736 | 6 | 5 | 0.999834 | 0.928315 | 0.002741 |
+| rotating victim affine | 201 | 0.979980 | 6 | 6 | 0.999850 | 0.930314 | 0.002741 |
+| moving hotspot single, two seeds | 0 | 0.888672..0.891602 | 2 | 0 | 1.000000 | 1.000000 | 0.017629..0.017676 |
+| moving hotspot multi, 3 layouts | 0 | 0.888672 | 2 | 0 | 1.000000 | 1.000000 | 0.010922..0.011368 |
+
+Elephant/mouse is below link capacity and presents no overlap after immediate
+acceptance, so its perfect ratio is a weak test for this one-lane candidate; it
+must not be used alone as a fairness victory.  Rotating victim is the meaningful
+overloaded fairness result.  Identity/affine differences are small but nonzero
+(one overrun, 0.000244 event/cycle, and 0.0020 min-ratio), consistent with an
+initial phase transient; they are disclosed rather than rounded away.
+Retrigger identity/affine are exactly equal (zero overrun, throughput 0.25,
+p99 E2E 2), as are sparse identity/rotate-180 and local/mirror controls.
+
+Equal-mean burst shape exposes serialization rather than loss: `shape_b1/b4/b16`
+all deliver 2048/2048 at 0.5 event/cycle with zero overrun and fairness 1.0, but
+p99 E2E rises 2 -> 5 -> 17 cycles and maximum request wait rises 0 -> 3 -> 15.
+Local, dispersed, and mirrored four-way bursts are also identical at throughput
+0.75, p99 E2E 5, zero overrun, and fairness/min ratio 1.0.  This candidate has no
+locality optimization and claims none.
+
+### 9.3 Phase transition and timing tail
+
+For phase-transition seeds 3501/3502, sparse and near-saturation p95 E2E remain
+2 cycles.  During the 2.0-event/cycle overload phase, backlog peaks at 14,
+accepted throughput is 1.0/cycle, p95 E2E is 12, and source overrun is 1017 in
+each seed.  The post-overload sparse phase returns to p95 E2E 2; backlog reaches
+zero before the explicit drain, giving `recovery_to_zero_cycles=0`.  One seed
+has one post-sparse source overrun.  `recovery_lossless=false` refers to the
+already-counted source overruns, not loss of accepted events.
+
+Timing-pair seeds deliver 1254/1254 and 1265/1265 accepted events, with 5 and 14
+source overruns.  Of 128 pairs, 126 and 124 are evaluable; 2 and 4 are dropped
+because an endpoint overran at the source.  Pair timing-error p95 is 1 cycle,
+p99 is 1/2 cycles, maximum is 2, and no accepted pair is censored.
+
+### 9.4 Toggle proxy and counterexample search
+
+The candidate-only VCD analyzer counts bit transitions only in the 96 membrane
+bits, 4-bit `h`, 4-bit phase, and candidate-owned retire register.  It excludes
+combinational temporaries and all common-TB state.  It is a switching proxy, not
+power or energy:
+
+| Workload/load | State toggles/cycle | State toggles/delivered event |
+| --- | ---: | ---: |
+| core sparse identity | 0.2246 | 7.1875 |
+| uniform 0.125, 3-seed mean | 0.9279 | 7.6760 |
+| uniform 0.50, 3-seed mean | 3.4834 | 7.0124 |
+| uniform 0.90, 3-seed mean | 5.6421 | 6.2391 |
+| uniform 1.00, 3-seed mean | 6.0007 | 6.0007 |
+| uniform 1.25, 3-seed mean | 12.7889 | 12.7743 |
+| uniform 1.50, 3-seed mean | 16.9209 | 16.8852 |
+| uniform 2.00, 3-seed mean | 22.2700 | 22.1798 |
+
+The sharp post-saturation increase is the cost of membrane/inhibition dynamics
+and is a power-risk flag.  It is not hidden by reporting only sparse activity.
+
+The stability sweep covers 108 parameter combinations and four deterministic
+patterns (permanent fan-in, elephant/mouse, moving hotspot, and randomized
+persistent-victim adversary) for 4096 cycles each: 432 rows total.  Of these,
+360 satisfy positive progress and threshold bit-fit; none violates its computed
+bound.  The other 72 are rejected before evidence because the proof assumptions
+fail.  For the RTL defaults, the maximum observed victim wait is 16 under fan-in,
+2 under elephant/mouse and moving hotspot, and 13 under the randomized adversary,
+all below the analytical bound of 35.  Across all legal grid rows the largest
+observed/bound ratio is 0.8571.  This search increases confidence but does not
+replace the proof or constitute formal verification.
+
+Reproducibility hashes for the generated aggregate, corrected state-only
+activity table, and sweep table are respectively
+`1666cba620aeb6a3ad27783124dbe33e1cd939ab237b90f399c7de4686d0e0b2`,
+`6b8366d912ff774ce24b1e28c22965833897df416150a8e5e51b49959b8d6d07`, and
+`1c833be50791f29f472d53d9e2460ac7fea22853e11a410923c606a9f3caf950`.
+
+## 10. Current decision
+
+A3 passes the frozen functional gate and shows strong demand-normalized service
+balance in the overloaded victim and uniform families, with rapid post-overload
+sparse-latency recovery.  It does not increase single-lane bandwidth, cannot
+remove common source-latch overrun above capacity, and its high-load state
+switching rises substantially.  There is not yet an approved same-condition
+cross-candidate comparison or physical PPA result, so no overall win, area win,
+power win, or final selection claim is made.  Server PPA was not run, per the
+head-approval gate.
