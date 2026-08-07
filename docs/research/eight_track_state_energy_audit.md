@@ -13,17 +13,20 @@ no synthesis or simulation was rerun. The snapshots are:
 | Track | HEAD | Committed evidence used |
 | --- | --- | --- |
 | A2 | `0cf40b8` | `a2_phase2_pareto_results.md`, phase-2 proxy code, phase-3 gate preregistration |
-| A3 | `6bad03a` | `a3_homeostatic_inhibition.md` sections 9--14 |
+| A3 | `77bf691` | `a3_homeostatic_inhibition.md` sections 9--14; committed devil's-advocate audit |
 | A4 | `5f07aee` | `a4_quadtree_structural_shortlist.md`, committed structural CSVs |
-| A5 | `66c76c3` | `a5_speculative_pregrant.md` sections 10--12 |
-| A6 | `c5f8a39` | `a6_v2_nonexpanding_codec.md`, committed v2 synthesis/RTL JSON |
-| A7 | `cc7c8c5` | `adversarial-scaling.md`, `adversarial-structural.csv` |
+| A5 | `991f164` | `a5_speculative_pregrant.md` sections 10--12; committed capacity/latency audit |
+| A6 | `3d65dae` | v2 synthesis/RTL JSON and final v3 storage-only break-even matrix |
+| A7 | `2859ed7` | `adversarial-scaling.md`, `adversarial-structural.csv`; rescue RTL has no committed result report |
 | A8 | `4b92f59` | frozen B8 scaling, toggle, and local Yosys proxy report |
-| A9 | `d3a386d` | distributed-token results and analytic scaling table |
+| A9 | `e571e67` | distributed-token results and phase-4 equal-shell Yosys/stall gate |
 
-In particular, uncommitted A2 physical wrappers, A6 v3 outputs, A7 rescue RTL,
-and A9 phase-4 Yosys work visible in their worktrees were ignored. A3's
-untracked cross-track audit was also ignored.
+In particular, uncommitted A2 physical wrappers were ignored. A6's v3 matrix,
+A7's rescue RTL, and A9's phase-4 gate became committed while this audit was in
+progress; the final snapshot above was re-read after those commits. A6 v3 has
+no RTL/synthesis/activity result, A7 rescue has no committed result report, and
+neither is silently substituted for the last measured implementation. A3/A5
+cross-track audits are context, not new state or physical measurements.
 
 The common clean benchmark places one source latch outside the candidate. It
 is therefore absent from most candidate state counts. A4's structural pair
@@ -58,6 +61,8 @@ support the number. A dagger is a formula extrapolation, not an N=64 RTL run.
 |  | 64 | 0 | 333 | 1 × 23 | — | **356** | candidate-owned scaling RTL proxy |
 | A9 static distributed | 16 | 272 local ingress + 640 FIFO payload + 32 occupancy | 16 local toggles | 4 lanes; tail FIFO state already counted | — | **960** | lane count and storage topology are the mechanism |
 |  | 64 | 1,088 + 2,816 + 128 | 64 | 8 lanes; embedded | — | **4,096** | analytic square L=D=8 point, not synthesis |
+| A9 phase-4 equal-shell static | 16 | core categories optimized together | not separable after mapping | shell has 4 × 21 output bits | — | **1,305 mapped Q = 376 shell + 929 core** | shell also registers ingress, ready, and source-ready |
+|  | 64 | core categories optimized together | not separable after mapping | shell has 8 × 23 output bits | — | **5,213 mapped Q = 1,344 shell + 3,869 core** | equal-shell structural comparison only |
 
 There is one report/code discrepancy worth preserving. A2's committed table
 states 345/379 bits, while the committed `proxy()` expression evaluates to
@@ -80,6 +85,10 @@ Useful state comparisons are consequently limited:
   pin count, or stall semantics.
 - A6's 624 bits are two codec endpoints and their block buffers. Subtracting an
   arbiter output register cannot turn that endpoint cost into scheduler state.
+  The final v3 model charges codec and RAW the same 74/138/266/522 storage bits
+  at B=4/8/16/32, but it is explicitly an optimistic storage-only model with no
+  v3 RTL, mapped logic, or activity. It does not replace the 624-bit v2 endpoint
+  measurement.
 
 ## 3. Synthesis and depth evidence
 
@@ -95,13 +104,15 @@ column is part of every number and prevents a false global ranking.
 | A6 v2 full candidate | 16,565 / — | — | local Yosys generic cells; endpoints 16,143 cells, 628 FF | endpoint-vs-RAW study only; no depth reported |
 | A7 prefix K4 | 5,592 comb gates / 139 | 33,105 / 398 | post-`techmap` one-bit generic combinational gates; Q bits separate | valid against equal-state replicated K4 only (6,729/248; 72,845/836) |
 | A8 B8 | 981 RTLIL cells / 177 | 6,993 / 693 | `proc; flatten; opt; stat; ltp -noff`, without techmap/ABC | word/operator-cell proxy; **not mapped gates** |
-| A9 static | — / local 2:1 claim | — / local 2:1 claim | analytic state/channel/fan-in model | no mapped cells or numeric gate depth |
+| A9 static, equal shell | 3,660 / 10 | 15,272 / 10 | Yosys 0.52 `techmap`, ABC `simple`; total includes 376/1,344-bit shell | valid against same-shell central only (1,658/20; 6,580/29) |
 
-A4, A5, and A7 all used Yosys 0.52 locally, but that alone does not make their
-cell counts comparable. A4 maps to ABC's `simple` gate set, A5 maps to a
+A4, A5, A7, and A9 used Yosys 0.52 locally, but that alone does not make their
+cell counts comparable. A4 and A9 both use ABC's `simple` set, yet their shells,
+payload fields, lane counts, and registered boundaries differ. A5 maps to a
 NAND/NOT basis, and A7 reports post-techmap one-bit gates. A8 stops at RTLIL
-operators. Their `ltp` lengths therefore have different cell alphabets. Only
-same-flow, same-wrapper, same-N/K comparisons within each report are defensible.
+operators. Their `ltp` lengths therefore have different cell alphabets or
+boundaries. Only same-flow, same-wrapper, same-N/K comparisons within each
+report are defensible.
 
 ## 4. Toggle measurements and normalization limits
 
@@ -120,7 +131,8 @@ Values are reproduced without merging them into a synthetic “energy score.”
 | A7 | 16/64 | — | — | no committed toggle proxy |
 | A8 B8 | 16 deterministic 1.25 proxy | 11.6370 | 11.6370 | scheduler sequential state + output valid/source; event payload fixed zero |
 |  | 64 deterministic 1.25 proxy | 15.5483 | 15.5483 | same 4,096-cycle proxy; one delivery/cycle |
-| A9 | 16/64 | — | — | occupancy and lane-utilization counters only, not bit transitions |
+| A9 static | 16/64 | — | — | no committed whole-fabric state-transition count |
+| A9 H2 added logic | 16 favorable 25/50/75% lane stalls | — | 0.020121 | sampled added pin bits + migration predicate only; not total H2/static activity |
 
 The denominators also differ. A2 reports per delivered model event but not
 cycles. A3 uses frozen/common-like workloads and counts actual sequential VCD
@@ -144,7 +156,7 @@ ready masks fixed.
 | Quantity | Comparable now | Not comparable now |
 | --- | --- | --- |
 | State bits | exact formula/mapped Q within a declared wrapper; policy/transport/output decomposition above | raw totals across different ingress storage, lane count, synthetic age, or codec endpoints |
-| Mapped cells | candidate vs its own reference under the same committed flow (A4, A5, A7) | A4 vs A5 vs A7; any of them vs A2/A8 operator proxies or A9 analytics |
+| Mapped cells | candidate vs its own reference under the same committed flow (A4, A5, A7, A9) | absolute ranking across those unequal wrappers; any mapped result vs A2/A8 operator proxies |
 | Depth | same cell alphabet and register boundary within one structural study | numeric `ltp` across ABC-simple, NAND, techmap, and RTLIL; analytic depth mixed with mapped depth |
 | Toggles/cycle | same stimulus, hierarchy, reset/drain window, and bit set | A2 model vs A3 VCD vs A5 output-control vs A6 pins vs A8 sequential proxy |
 | Toggles/event | same accepted/delivered population and toggle boundary | different overrun, lane width, serialization, or output utilization |
