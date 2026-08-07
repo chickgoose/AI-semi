@@ -1,0 +1,3 @@
+rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv
+rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv
+rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv
