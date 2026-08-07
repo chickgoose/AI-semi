@@ -42,11 +42,22 @@ class PrepareSvTraceTest(unittest.TestCase):
             result = prepare_trace(trace, manifest, output, 8)
             self.assertEqual(result["source_count"], 4)
             self.assertEqual(result["load_milli"], 500)
+            self.assertEqual(result["report_group"], "tiny")
             lines = output.read_text(encoding="ascii").splitlines()
             self.assertEqual(lines[0], "3 3 8 4 500 0 0 0 9")
             self.assertEqual([line.split()[:3] for line in lines[1:]],
                              [["1", "0", "0"], ["1", "1", "1"], ["7", "2", "3"]])
             self.assertNotEqual(lines[1].split()[3], lines[3].split()[3])
+
+    def test_returns_explicit_report_group(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            trace, manifest = self.make_fixture(directory)
+            metadata = json.loads(manifest.read_text(encoding="utf-8"))
+            metadata["report_group"] = "uniform"
+            manifest.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+            result = prepare_trace(trace, manifest, directory / "out.svtrace", 8)
+            self.assertEqual(result["report_group"], "uniform")
 
     def test_rejects_tampered_trace(self):
         with tempfile.TemporaryDirectory() as temporary:

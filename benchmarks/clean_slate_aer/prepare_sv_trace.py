@@ -179,6 +179,10 @@ def prepare_trace(trace_path: Path, manifest_path: Path, output_path: Path, addr
         raise TracePreparationError("event_count does not match run manifest")
     encoded, source_count = encode_events(metadata, events, addr_width)
     run = metadata["run"]
+    report_group = metadata.get("report_group", run.get("name"))
+    if (not isinstance(report_group, str) or not report_group or
+            any(character.isspace() for character in report_group)):
+        raise TracePreparationError("report_group must be a non-empty token")
     load_milli = Decimal(str(run["load"])) * 1000
     if load_milli != load_milli.to_integral_value():
         raise TracePreparationError("run.load requires more than three decimal places")
@@ -201,6 +205,7 @@ def prepare_trace(trace_path: Path, manifest_path: Path, output_path: Path, addr
         "source_count": source_count,
         "load_milli": int(load_milli),
         "sink_mode": sink_mode,
+        "report_group": report_group,
         "output": str(output_path),
     }
 

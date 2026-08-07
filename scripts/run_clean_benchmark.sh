@@ -77,13 +77,16 @@ trace_args=()
 if [[ -n "$TRACE_JSONL" ]]; then
   trace_stem="$(basename "$TRACE_JSONL")"
   trace_stem="${trace_stem%.events.jsonl}"
-  trace_report_name="${AER_TRACE_NAME:-$(python3 -c \
-    'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("report_group", "trace"))' \
-    "$TRACE_MANIFEST")}"
   prepared_trace="$out_dir/$trace_stem.svtrace"
-  python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/prepare_sv_trace.py" \
+  prepare_output="$(python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/prepare_sv_trace.py" \
     --trace "$TRACE_JSONL" --run-manifest "$TRACE_MANIFEST" \
-    --output "$prepared_trace" --addr-width "$ADDR_WIDTH"
+    --output "$prepared_trace" --addr-width "$ADDR_WIDTH")"
+  printf '%s\n' "$prepare_output"
+  trace_report_name="${AER_TRACE_NAME:-}"
+  if [[ -z "$trace_report_name" ]]; then
+    trace_report_name="${prepare_output##*report_group=}"
+    trace_report_name="${trace_report_name%% *}"
+  fi
   trace_args=("+TRACE_FILE=$prepared_trace" "+TRACE_NAME=$trace_report_name")
 fi
 

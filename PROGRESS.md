@@ -112,6 +112,13 @@
   모두 무서비스이면 fairness는 1.0이 아니라 N/A다.
 - phase와 timing pair는 TB-only trace relation으로 별도 분석한다. overrun이 있는 recovery는
   lossless recovery와 구분하고 backlog와 cumulative loss를 함께 보고한다.
+- 서버 Xcelium 23.09에서 common mock binding으로 실제 trace 경로를 재검증했다. sparse는
+  16/16 delivery·0 error, phase transition은 3139 generated·1017 overrun·0 transport error와
+  `recovery_lossless=false`, timing pair는 1259 generated·6 overrun·2 dropped pair와 평균
+  0.4603 cycle pair-gap error를 보고했다. CSV fixed-window counter와 aggregator도 일치했다.
+- 서버의 Siemens Python wrapper가 `python3 -c` 문자열의 따옴표를 제거하는 문제를 발견해
+  두 runner의 inline Python을 제거했다. 검증된 trace 변환기 출력에서 report group을 받아
+  별도 `AER_TRACE_NAME` 우회 없이 Xcelium PASS를 재확인했다.
 - 이 suite는 8개 clean-slate architecture agent의 공통 screening 기준으로 사용할 수 있다.
   다만 최종 심사용 완전 freeze 전에는 reset regression, multi-lane positive fixture,
   12~16 seed finalist saturation confidence, fixed-pin PPA, 실제 후보별 Xcelium 실행이 남아 있다.

@@ -91,13 +91,16 @@ mkdir -p "$out_dir"
 if [[ -n "$TRACE_JSONL" ]]; then
   trace_stem="$(basename "$TRACE_JSONL")"
   trace_stem="${trace_stem%.events.jsonl}"
-  trace_report_name="${AER_TRACE_NAME:-$(python3 -c \
-    'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("report_group", "trace"))' \
-    "$TRACE_MANIFEST")}"
   prepared_trace="$out_dir/$trace_stem.svtrace"
-  python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/prepare_sv_trace.py" \
+  prepare_output="$(python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/prepare_sv_trace.py" \
     --trace "$TRACE_JSONL" --run-manifest "$TRACE_MANIFEST" \
-    --output "$prepared_trace" --addr-width 16
+    --output "$prepared_trace" --addr-width 16)"
+  printf '%s\n' "$prepare_output"
+  trace_report_name="${AER_TRACE_NAME:-}"
+  if [[ -z "$trace_report_name" ]]; then
+    trace_report_name="${prepare_output##*report_group=}"
+    trace_report_name="${trace_report_name%% *}"
+  fi
   read -r trace_version trace_count trace_stim_cycles trace_source_count \
     trace_load_milli trace_sink_mode trace_sink_arg0 trace_sink_arg1 \
     trace_seed_name < "$prepared_trace"
