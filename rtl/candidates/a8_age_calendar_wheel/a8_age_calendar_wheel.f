@@ -2,4 +2,5 @@ rtl/candidates/a8_age_calendar_wheel/a8_age_calendar_wheel_arbiter.sv
 rtl/candidates/a8_age_calendar_wheel/a8_age_calendar_wheel.sv
 rtl/candidates/a8_age_calendar_wheel/a8_exact_age_reference_arbiter.sv
 rtl/candidates/a8_age_calendar_wheel/a8_exact_age_reference.sv
+rtl/candidates/a8_age_calendar_wheel/a8_rr_reference_arbiter.sv
 rtl/candidates/a8_age_calendar_wheel/a8_rr_reference.sv
