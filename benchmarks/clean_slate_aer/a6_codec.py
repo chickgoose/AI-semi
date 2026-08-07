@@ -70,7 +70,7 @@ def encode(addresses: Iterable[int], address_width: int = 4) -> EncodedStream:
     return EncodedStream("".join(pieces), tokens)
 
 
-def decode(bits: str, address_width: int = 4) -> list[int]:
+def decode_with_tokens(bits: str, address_width: int = 4) -> tuple[list[int], Counter]:
     """Strictly decode a complete stream, rejecting truncation/illegal history."""
     if address_width < 1:
         raise ValueError("address_width must be positive")
@@ -78,6 +78,7 @@ def decode(bits: str, address_width: int = 4) -> list[int]:
         raise ValueError("bitstream must contain only zero and one")
 
     output: list[int] = []
+    tokens: Counter = Counter()
     previous: int | None = None
     cursor = 0
 
@@ -95,6 +96,7 @@ def decode(bits: str, address_width: int = 4) -> list[int]:
             if previous is None:
                 raise ValueError("SAME before RAW history")
             output.append(previous)
+            tokens["same"] += 1
             continue
 
         suffix = require(2)
@@ -103,20 +105,28 @@ def decode(bits: str, address_width: int = 4) -> list[int]:
                 raise ValueError("RUN before RAW history")
             count = int(require(3), 2) + 2
             output.extend([previous] * count)
+            tokens["run"] += 1
         elif suffix == "01":
             previous = int(require(address_width), 2)
             output.append(previous)
+            tokens["raw"] += 1
         elif suffix == "10":
             if previous is None or previous == (1 << address_width) - 1:
                 raise ValueError("illegal DELTA+1")
             previous += 1
             output.append(previous)
+            tokens["delta_plus"] += 1
         else:
             if previous is None or previous == 0:
                 raise ValueError("illegal DELTA-1")
             previous -= 1
             output.append(previous)
-    return output
+            tokens["delta_minus"] += 1
+    return output, tokens
+
+
+def decode(bits: str, address_width: int = 4) -> list[int]:
+    return decode_with_tokens(bits, address_width)[0]
 
 
 def serialize_cycles(bits: str, data_width: int = 2) -> list[tuple[int, int]]:
@@ -163,4 +173,3 @@ def link_metrics(bits: str, events: int, data_width: int = 2) -> dict[str, float
 
 def raw_bits(addresses: Sequence[int], address_width: int = 4) -> str:
     return "".join(format(address, f"0{address_width}b") for address in addresses)
-

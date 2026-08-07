@@ -1,0 +1,36 @@
+{
+  "phase_transition": {
+    "phase_transition_s3501": {
+      "overrun": 2468,
+      "generated": 3139,
+      "post_sparse_p95_e2e_cycles": 43,
+      "recovery_to_zero_cycles": 4,
+      "recovery_lossless": false
+    },
+    "phase_transition_s3502": {
+      "overrun": 2474,
+      "generated": 3167,
+      "post_sparse_p95_e2e_cycles": 38,
+      "recovery_to_zero_cycles": 0,
+      "recovery_lossless": false
+    }
+  },
+  "timing_pair": {
+    "timing_pair_s3901": {
+      "pair_count": 128,
+      "evaluable_pairs": 22,
+      "dropped_pairs": 106,
+      "mean_error_cycles": 16.363636363636363,
+      "p95_error_cycles": 38,
+      "max_error_cycles": 48
+    },
+    "timing_pair_s3902": {
+      "pair_count": 128,
+      "evaluable_pairs": 16,
+      "dropped_pairs": 112,
+      "mean_error_cycles": 19.75,
+      "p95_error_cycles": 48,
+      "max_error_cycles": 48
+    }
+  }
+}

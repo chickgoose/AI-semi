@@ -115,10 +115,12 @@ delta is 3 bits/event.  A RAW event is 7 bits/event, so worst-case expansion is
 why uniform random is a mandatory reject/control family.  A first non-repeated
 run with repeats costs `7 + repeat-token bits`; no hidden end marker is charged.
 
-The encoder owns one current `(address,count)` run (8 state bits at N=16), one
-previous address plus valid bit, and a bounded 13-bit token serializer (worst
-compound token: 7-bit RAW plus 6-bit RUN).  The decoder owns a bounded prefix
-buffer, previous address/valid, and a four-bit remaining-multiplicity counter.
+The encoder owns one current `(valid,address,count)` run (9 state bits at N=16),
+one previous address plus valid bit, and a bounded 13-bit token serializer plus
+four-bit length (worst compound token: 7-bit RAW plus 6-bit RUN): 31 flops in
+the mapped RTL.  The decoder owns a 16-bit prefix buffer, five-bit fill count,
+previous address/valid, a four-bit remaining-multiplicity counter, and the
+registered one-event output: 35 flops.
 The top-level one-lane retire register supplies output stability.  There is no
 unbounded TB or RTL queue.  Backpressure propagates from decoder to link to
 encoder; a full run/serializer deasserts only the selected source's acceptance.
@@ -140,6 +142,13 @@ will give endpoint register bits and local open-source synthesis cell counts.
 Server Genus/Innovus PPA is explicitly not run without approval.  Final physical
 comparison must include encoder **and** decoder, not quote compression logic
 alone, and must compare the same clock/load/activity window.
+
+Local Yosys 0.52 generic mapping (not the approved server flow) gives 319 cells
+for the encoder and 591 for the decoder, hence 910 cells/66 flops for the two
+codec endpoints.  The simple round-robin selection and top-level glue bring the
+complete candidate to 1,330 generic cells/70 flops.  There are no inferred
+memories or latches and `check` reports zero problems.  These counts are
+structural screening evidence only; no Genus/Innovus PPA was run.
 
 ## Metrics and fixed-pin comparison
 
@@ -167,3 +176,63 @@ codec candidate if any of the following holds after all 46 traces are reported:
   end-to-end tail latency without a compensating link-energy/throughput gain;
 - encoder plus decoder exceeds the candidate PPA boundary agreed for the
   clean-slate screen, or fails timing in the common flow.
+
+## Frozen 46-trace result
+
+The exact generated trace set passed its committed SHA gate (46 runs, 87,000
+offered occurrences).  The candidate-only replacement cell elaborates the
+unchanged common TB; the common source model, scoreboard, and trace loader are
+byte-identical to `ad96895`.  Across the suite, 22,821 occurrences were accepted
+and all 22,821 were retired individually with zero scoreboard errors.  The
+remaining 64,179 are explicitly reported `source_overrun`, not compressed-away
+events.  Thus the lossless transport invariant holds **after acceptance**, but
+the candidate has poor capacity.
+
+The passive candidate-link observer records every actually transferred bit and
+the two data, two count, and ready pin transitions.  `offered b/e` below applies
+the exact format to the frozen occurrence order before DUT backpressure;
+`link b/e` is decoded from the physical RTL stream for accepted occurrences.
+The latter can look better under overload because arbitration/overrun heavily
+selects the stream; it is not evidence that discarded offered traffic was
+compressed.
+
+| Family | Runs | Offered b/e | Actual link b/e | RAW escape/event | event/pin-cycle | toggle/event | Overrun | Throughput | worst p99 E2E |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| uniform random | 21 | 6.216 | 3.809 | 0.206 | 0.0858 | 9.823 | 78.17% | 0.2205 | 77 |
+| rate shape b1/b4/b16 | 3 | 3.252 | 3.260 | 0.065 | 0.0939 | 9.875 | 51.14% | 0.2413 | 75 |
+| matched local/dispersed | 3 | 6.000 | 5.670 | 0.667 | 0.0611 | 9.665 | 74.59% | 0.1882 | 37 |
+| moving hotspot | 5 | 4.653 | 4.669 | 0.424 | 0.0712 | 9.767 | 76.17% | 0.2081 | 73 |
+| elephant/mouse | 2 | 3.148 | 5.161 | 0.587 | 0.0661 | 9.099 | 77.07% | 0.2012 | 59 |
+| retrigger | 2 | 3.064 | 3.100 | 0.217 | 0.1196 | 3.688 | 0% | 0.2500 | 15 |
+| timing pair | 2 | 6.208 | 3.573 | 0.143 | 0.0875 | 9.894 | 61.47% | 0.2327 | 76 |
+| phase transition | 2 | 6.258 | 4.032 | 0.265 | 0.0797 | 9.797 | 78.37% | 0.1665 | 77 |
+
+The matched control exposes the locality limit directly: `spatial_local` is
+5.5 offered b/e, 0.0666 event/pin-cycle, 73.11% overrun and p99 31 cycles;
+`spatial_dispersed` hits the 7-bit RAW worst case, 0.05 event/pin-cycle, 77.54%
+overrun and p99 37.  In contrast, retrigger preserves all 1,024 occurrences and
+beats the ideal raw two-data-pin active-cycle efficiency (0.1196 versus 0.1
+event/pin-cycle), but its charged 3.688 toggle/event still exceeds raw's 2.012.
+
+Timing-pair analysis reports only 22/128 and 16/128 evaluable pairs for seeds
+3901/3902 because 106 and 112 pairs overrun.  Their mean gap errors are 16.36
+and 19.75 cycles, p95 38 and 48, and maximum 48.  Phase-transition recovery to
+zero is 4 and 0 cycles after injection ends, but recovery is not lossless:
+overrun is 2,468/3,139 and 2,474/3,167, with post-sparse p95 latency 43/38.
+
+The full offered stream is 5.673 b/e weighted (geometric mean across runs
+5.106), or compression ratio 0.705 relative to four raw address bits.  The
+accepted physical stream is 3.797 b/e, but carries only 26.23% of generated
+occurrences because of visible source overrun.  An ideal raw fixed-pin control
+is 0.1 event/pin-cycle; A6 exceeds it only on retrigger.  Charged toggle/event
+also regresses in every reported family because variable-length count/ready
+activity dominates any data-bit reduction.
+
+Therefore this implementation meets exact decode/conservation but triggers the
+predeclared usefulness rejection criteria: offered geometric-mean size exceeds
+four bits, uniform random expands, most favorable families fail fixed-pin
+efficiency/toggle improvement, and codec service saturates near 0.24 event/cycle.
+The negative result is retained rather than hiding random traffic or treating
+overrun-induced selection as compression gain.  Per-run evidence is in
+`reports/a6-lossless-aer-codec/trace_metrics.csv` and the family aggregate in
+`reports/a6-lossless-aer-codec/summary.json`.
