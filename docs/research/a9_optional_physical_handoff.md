@@ -81,11 +81,13 @@ check, not a substitute for the common scoreboard. H2's 25--100% asymmetric
 stall results remain the already frozen local phase-4 diagnostic; because that
 workload is not a frozen common trace, it cannot independently open Genus.
 
-A head-approved environment must archive tool version, both exact commands,
-the N=64 elaboration log, and all 46 common logs with SHA256 in
+A head-approved environment must archive tool version, both exact commands and
+their command logs, the N=64 elaboration log, and all 46 common logs with SHA256 in
 `xcelium_eligibility.json`. The preflight opens every log, requires the actual
 `AER_CLEAN_TEST_PASS <run>` marker, and rejects fatal/fail/nonzero-error text;
-it does not trust a JSON `pass_marker` field. The elaboration log must contain
+it also hashes each prepared trace, per-run manifest, metrics CSV, and
+event-metrics CSV, then parses the metrics scoreboard's `errors=0`. It does not
+trust a JSON `pass_marker` field. The elaboration log must contain
 `A9_PROFILE_ELAB_PASS <top>` and no Xcelium error. Evidence from the other
 profile, another command, or an in-repository untracked path is rejected.
 
@@ -102,7 +104,8 @@ Before any Genus invocation, the preflight requires:
    commit, and both committed-blob and working-file SHA256 match;
 2. exact-top Xcelium eligibility with zero errors and the expected pass marker;
 3. explicit head approval plus SHA256 locks for Genus version, run Tcl, SDC,
-   every timing library, and the named PVT corner;
+   every timing library, the named PVT corner, and an exact copy of the
+   manifest clock/reset/IO/load contract;
 4. the manifest clock/reset/IO delay/output load applied without wildcard
    broadening; and
 5. a separate same-boundary, same-L centralized reference lock before any
@@ -119,7 +122,7 @@ workload rather than vectorless power as an official result.
 
 Innovus is ineligible until the exact Genus evidence passes. The head-approved
 site freeze must additionally lock the Innovus version, run Tcl, constraint
-file, timing/LEF libraries, RC corner, floorplan/core dimensions, utilization,
+file, timing/LEF libraries, PVT/RC corner, floorplan/core dimensions, utilization,
 aspect ratio, pin placement, power grid, CTS, routing, extraction, and output
 load interpretation. Netlist and SDC hashes must match Genus evidence. Any
 period, corner, utilization, floorplan, source, or top change is a new run

@@ -8,6 +8,7 @@ profile is committed and clean, then verifies externally produced evidence.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import re
@@ -245,7 +246,8 @@ def verify_xcelium(directory: Path, manifest: dict[str, Any], mhash: str) -> Non
     record = load_json(directory / "xcelium_eligibility.json")
     keys(record, ["package_commit", "manifest_sha256", "head_approved",
                   "tool", "common_command", "profile_elaboration_command",
-                  "common_logs", "profile_elaboration_log"], "Xcelium record")
+                  "common_command_log", "common_logs",
+                  "profile_elaboration_log"], "Xcelium record")
     need(record["package_commit"], manifest["package_commit"], "Xcelium package")
     need(record["manifest_sha256"], mhash, "Xcelium manifest")
     need(record["head_approved"], True, "Xcelium head approval")
@@ -257,20 +259,38 @@ def verify_xcelium(directory: Path, manifest: dict[str, Any], mhash: str) -> Non
     profile = manifest["xcelium"]["profile_elaboration"]
     need(record["profile_elaboration_command"], profile["command"],
          "profile elaboration command")
+    command_log = external_file(directory, record["common_command_log"])
+    command_text = command_log.read_text(encoding="utf-8", errors="replace")
+    if common["command"] not in command_text:
+        raise Blocked("common command is absent from locked command log")
     logs = record["common_logs"]
     need([item["run"] for item in logs], common["expected_runs"],
          "common evidence run order")
     forbidden = re.compile(r"AER_CLEAN_TEST_FAIL|\$fatal|errors=[1-9][0-9]*|\*E,")
     for item in logs:
+        keys(item, ["run", "path", "sha256", "metrics", "event_metrics",
+                    "prepared_trace", "run_manifest"], "common run evidence")
         path = external_file(directory, item)
         text = path.read_text(encoding="utf-8", errors="replace")
         marker = f"AER_CLEAN_TEST_PASS {item['run']}"
         if marker not in text or forbidden.search(text):
             raise Blocked(f"common log lacks clean PASS: {item['run']}")
+        metrics = external_file(directory, item["metrics"])
+        external_file(directory, item["event_metrics"])
+        external_file(directory, item["prepared_trace"])
+        external_file(directory, item["run_manifest"])
+        try:
+            rows = list(csv.DictReader(metrics.open(newline="")))
+        except OSError as exc:
+            raise Blocked(f"cannot parse metrics for {item['run']}: {exc}") from exc
+        if len(rows) != 1 or rows[0].get("test") != item["run"] or \
+                rows[0].get("errors") != "0":
+            raise Blocked(f"metrics scoreboard is not clean: {item['run']}")
     elab_log = external_file(directory, record["profile_elaboration_log"])
     text = elab_log.read_text(encoding="utf-8", errors="replace")
     marker = f"A9_PROFILE_ELAB_PASS {manifest['rtl']['top']}"
-    if marker not in text or re.search(r"\*E,|xrun: \*E|FAILED", text):
+    if profile["command"] not in text or marker not in text or \
+            re.search(r"\*E,|xrun: \*E|FAILED", text):
         raise Blocked("profile elaboration log lacks clean PASS")
 
 
@@ -278,18 +298,33 @@ def verify_site(directory: Path, manifest: dict[str, Any], mhash: str,
                 tool_name: str) -> None:
     freeze = load_json(directory / "site_freeze.json")
     keys(freeze, ["package_commit", "manifest_sha256", "approved_by_head",
-                  "genus", "innovus"], "site freeze")
+                  "constraint_contract", "genus", "innovus"], "site freeze")
     need(freeze["package_commit"], manifest["package_commit"], "site package")
     need(freeze["manifest_sha256"], mhash, "site manifest")
     need(freeze["approved_by_head"], True, "physical head approval")
+    need(freeze["constraint_contract"],
+         {"clock": manifest["contract"]["clock"],
+          "reset": manifest["contract"]["reset"],
+          "io": manifest["contract"]["io"]}, "site constraint contract")
     tool = freeze[tool_name]
-    keys(tool, ["version", "run_tcl", "constraints", "libraries"], tool_name)
+    keys(tool, ["version", "run_tcl", "constraints", "libraries",
+                "pvt_corner"], tool_name)
     if not tool["version"] or not tool["libraries"]:
         raise Blocked(f"{tool_name} version/libraries missing")
     external_file(directory, tool["run_tcl"])
     external_file(directory, tool["constraints"])
     for entry in tool["libraries"]:
         external_file(directory, entry)
+    if not tool["pvt_corner"]:
+        raise Blocked(f"{tool_name} PVT corner missing")
+    if tool_name == "innovus":
+        keys(tool, ["rc_corner", "floorplan", "target_utilization",
+                    "aspect_ratio", "pin_placement", "power_grid", "cts",
+                    "routing", "extraction"], "innovus physical freeze")
+        if any(tool[field] in (None, "", {}) for field in
+               ("rc_corner", "floorplan", "target_utilization", "aspect_ratio",
+                "pin_placement", "power_grid", "cts", "routing", "extraction")):
+            raise Blocked("Innovus physical/RC settings are incomplete")
 
 
 def verify_genus(directory: Path, manifest: dict[str, Any], mhash: str) -> None:
