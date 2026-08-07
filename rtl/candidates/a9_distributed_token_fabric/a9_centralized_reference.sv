@@ -15,11 +15,20 @@ module a9_centralized_reference #(
   input  logic                     rst_ni,
   input  logic [NUM_SOURCES-1:0]   source_valid_i,
   output logic [NUM_SOURCES-1:0]   source_ready_o,
+`ifdef A9_YOSYS
+  input  logic [NUM_SOURCES-1:0][ADDR_WIDTH-1:0] source_event_i,
+`else
   input  logic [ADDR_WIDTH-1:0]    source_event_i [NUM_SOURCES],
+`endif
   output logic [RETIRE_LANES-1:0]  retire_valid_o,
   input  logic [RETIRE_LANES-1:0]  retire_ready_i,
+`ifdef A9_YOSYS
+  output logic [RETIRE_LANES-1:0][ADDR_WIDTH-1:0] retire_event_o,
+  output logic [RETIRE_LANES-1:0][SOURCE_WIDTH-1:0] retire_source_o
+`else
   output logic [ADDR_WIDTH-1:0]    retire_event_o [RETIRE_LANES],
   output logic [SOURCE_WIDTH-1:0]  retire_source_o [RETIRE_LANES]
+`endif
 );
   logic [NUM_SOURCES-1:0] ingress_valid_q;
   logic [ADDR_WIDTH-1:0] ingress_event_q [NUM_SOURCES];
@@ -41,7 +50,11 @@ module a9_centralized_reference #(
       $fatal(1, "A9_CENTRAL_REFERENCE requires equal stripes");
   end
 
+`ifdef A9_YOSYS
+  always @* begin
+`else
   always_comb begin
+`endif
     source_ready_o = ~ingress_valid_q;
     candidate_position = 0;
     candidate_source = 0;

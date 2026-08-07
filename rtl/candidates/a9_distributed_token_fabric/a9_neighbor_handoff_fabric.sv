@@ -10,16 +10,30 @@ module a9_neighbor_handoff_fabric #(
   input  logic                     rst_ni,
   input  logic [NUM_SOURCES-1:0]   source_valid_i,
   output logic [NUM_SOURCES-1:0]   source_ready_o,
+`ifdef A9_YOSYS
+  input  logic [NUM_SOURCES-1:0][ADDR_WIDTH-1:0] source_event_i,
+`else
   input  logic [ADDR_WIDTH-1:0]    source_event_i [NUM_SOURCES],
+`endif
   output logic [RETIRE_LANES-1:0]  retire_valid_o,
   input  logic [RETIRE_LANES-1:0]  retire_ready_i,
+`ifdef A9_YOSYS
+  output logic [RETIRE_LANES-1:0][ADDR_WIDTH-1:0] retire_event_o,
+  output logic [RETIRE_LANES-1:0][SOURCE_WIDTH-1:0] retire_source_o
+`else
   output logic [ADDR_WIDTH-1:0]    retire_event_o [RETIRE_LANES],
   output logic [SOURCE_WIDTH-1:0]  retire_source_o [RETIRE_LANES]
+`endif
 );
   logic [RETIRE_LANES-1:0] base_valid;
   logic [RETIRE_LANES-1:0] base_ready;
+`ifdef A9_YOSYS
+  logic [RETIRE_LANES-1:0][ADDR_WIDTH-1:0] base_event;
+  logic [RETIRE_LANES-1:0][SOURCE_WIDTH-1:0] base_source;
+`else
   logic [ADDR_WIDTH-1:0] base_event [RETIRE_LANES];
   logic [SOURCE_WIDTH-1:0] base_source [RETIRE_LANES];
+`endif
   logic [RETIRE_LANES-1:0] migrate;
   logic [RETIRE_LANES-1:0] pinned_q;
 
