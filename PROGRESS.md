@@ -125,6 +125,40 @@
 - 상세 근거: `docs/verification/aer-bottleneck-coverage-audit.md`,
   `docs/TEAM_COMMON_WORKLOAD_GUIDE.md`.
 
+## 2026-08-07 clean-slate wave 1 및 DREC 대표 후보
+
+- 서로 겹치지 않는 8개 구조를 동일한 frozen workload/TB와 사전 stop/go 기준으로
+  검토했다. 실패 결과도 삭제하지 않고 각 agent branch와
+  `docs/research/wave1-eight-track-final-report.md`에 보존했다.
+- N=16 공통 조건에서 물리 screening 자격을 얻은 유일한 후보는 A7 original
+  shared-prefix K=4이다. 발표명은 **DREC (Dual-Rank Elastic AER Compactor)**로 정했다.
+- DREC는 source pending bitmap을 한 번 cyclic rank로 만들고, ready/empty output lane도
+  별도로 rank화한 뒤 같은 rank끼리 연결한다. stalled lane은 보존하면서 나머지 lane은
+  독립적으로 retire/refill한다.
+- 선행 prefix scan, parallel-prefix/m-select round robin, elastic register 자체를 새 발명으로
+  주장하지 않는다. 기여 범위는 cyclic source rank와 available-lane rank를 independent-ready
+  AER transport에 결합하고 동일 상태량 reference로 손익분기점을 검증한 것이다.
+- 로컬 재검증:
+  - N=16 request bitmap 65,536개를 K=1/2/4 각각 전수 PASS
+  - K=4 prefix/reference independent-stall PASS, 다른 lane 671회 진행
+  - randomized cycle-lockstep PASS: 1,223 cycle, accepted=delivered=3,761, drain=6
+  - common 46-trace aggregate 87개 row가 same-K prefix/reference에서 동일
+  - common workload/TB frozen 4개 파일은 base `ad96895`와 byte-identical
+- Yosys generic 구조 합성은 기존 결과를 정확히 재현했다. N=16/K=2는 prefix가
+  4,299 gate로 replicated 3,733보다 커서 기각했고, K=4에서 처음으로 prefix
+  5,592/depth 139 대 replicated 6,729/depth 248의 crossover가 나타났다. 동일 state는
+  104 bit다. 이는 generic proxy이며 standard-cell PPA 승리가 아니다.
+- 별도 branch `integration/a7-k4-physical-candidate`, commit `1cdb1da`를 원격에 보존했다.
+  발표 자료는 `docs/presentation/a7_drec_team_briefing.md`, 검증 기록은
+  `docs/experiments/a7-drec-qualification.md`다.
+- immutable Genus bundle과 전체 source archive를 `/tmp`에 생성·재추출 검증했다.
+  서버는 공개키 비대화형 인증이 거부되어 Xcelium/Genus 실행이 남아 있다. 비밀번호나
+  라이선스 정보는 저장하지 않았다.
+- 다음 gate: 서버 Xcelium → 동일 Liberty/PVT/SDC Genus. standard-cell crossover가
+  유지될 때만 4 endpoints와 88 retire signals를 모두 포함해 Innovus P&R한다. 실패하면
+  A7을 무기한 보완하지 않고 A4 N=64 scaling 또는 신규 hierarchical K-grant merge를
+  별도 가설로 검토한다.
+
 ## 설계 환경 접속 상태
 
 - 서버: `210.126.11.79`
