@@ -1,6 +1,6 @@
 # A8 O(1) Age Calendar-Wheel Scheduler
 
-Status: pre-RTL research hypothesis, 2026-08-07
+Status: phase-2 RTL/scaling audit complete, 2026-08-07
 
 ## 1. 연구 질문과 경계
 
@@ -177,10 +177,10 @@ ADDR_WIDTH=16일 때 scheduler-owned state 추정은 다음과 같다.
 | output valid + 16-bit event + 4-bit source | 21 |
 | 합계 | 94 |
 
-비교 대상인 exact per-source age counter가 8 bit라면 age state만 128 bit이고 16개
-incrementer/toggle cone이 매 cycle 동작한다. A8 age state는 `16 + 48 + 5 = 69`
-bit이며 pending source의 tag는 삽입 때만 바뀐다. 단, 이 표는 합성 결과가 아닌
-RTL bit accounting이다.
+실제 calibration reference는 N=16에서 `AGE_WIDTH=clog2(2N)=5`이므로 전체 상태가
+121 bit이고, tracked source의 counter incrementer/toggle cone이 매 cycle 동작한다.
+A8 B4의 age-related state는 `16 + 48 + 5 = 69` bit이며 pending source의 tag는
+삽입 때만 바뀐다. 단, 이 표는 합성 결과가 아닌 RTL bit accounting이다.
 
 예상 critical path는 `tag/fresh -> bucket_nonempty decode -> rotated oldest-bucket
 priority -> in-bucket source select -> ready/event mux`다. global age update는 O(1)이지만
@@ -218,3 +218,36 @@ wheel unit/counterexample test는 다음을 직접 검사한다.
 timing pair, rotating victim, elephant/mouse, phase transition, retrigger, moving
 hotspot, uniform family의 max wait, zero-service window, demand-normalized fairness,
 pair gap p95/p99, E2E tail, overrun, event/cycle을 함께 보고 내린다.
+
+## 10. Phase-2 판정
+
+B1/B2/B4/B8, exact counter, RR을 같은 one-entry/source, single-lane,
+registered-output 조건에서 비교했다. 46-trace 공식 N=16 회귀는 여섯 구조 모두
+correctness issue 0이었고, N=16/32/64의 11-trace scaling matrix는 198/198 PASS였다.
+adversarial test는 wrap 직전/직후 ordering, 명시적 same-bucket inversion, 8-cycle
+연속 stall, unsafe horizon elaboration rejection을 포함한다.
+
+global aging transition 가설 자체는 부분적으로 확인됐다. B8 sequential-state
+toggle은 N=16/32/64에서 11.64/14.04/15.55 bit-flip/cycle로 완만하게 증가한 반면
+exact counter는 16.18/29.66/59.58이었다. 그러나 현재의 unrolled oldest-bucket와
+source priority scan이 이 state 이득을 조합 논리 이득으로 바꾸지 못했다. local
+Yosys generic proxy에서 B8은 exact보다 모든 N에서 cell 수와 최장 위상 경로가
+컸다. 이는 technology PPA/Fmax가 아니라 `proc; flatten; opt; stat; ltp -noff`
+결과이며, loop-variable 오검출을 피하기 위해 `read_verilog -nolatches`를 썼다.
+
+현재 RTL은 advancement shortlist에서 제외한다. B8은 state/toggle Pareto 연구점은
+남기지만, N=16 공식 phase-transition max wait가 exact 12 대비 18, uniform-1.25
+max wait가 exact 9 대비 16이었고, local depth proxy도 177 대 163으로 나빴다.
+B4는 N=16 절충점이지만 N=64 toggle이 78.31로 exact 59.58을 넘어 scaling 실패다.
+B1은 exact ordering control과 동일한 tail을 보이지만 tag rewrite 때문에 toggle과
+depth가 exact보다 훨씬 크다. 따라서 승인 없는 server PPA로 넘어갈 근거가 없다.
+
+후속 구현이 shortlist로 복귀하려면 다른 트랙 원리를 쓰지 않은 채 다음을 모두
+만족해야 한다.
+
+1. 198-run correctness와 bounded-stall/wrap tests를 그대로 PASS할 것;
+2. B8 수준의 N=64 state/toggle scaling을 유지할 것;
+3. exact 대비 phase/uniform max-wait 증가를 각각 2 cycle 이내로 줄일 것;
+4. exact 대비 timing-pair p99를 악화시키지 않을 것;
+5. 동일 local proxy에서 exact보다 generic cell 또는 logic depth 중 적어도 하나를
+   개선하고 다른 하나의 악화를 5% 이내로 제한할 것.

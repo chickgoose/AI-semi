@@ -1,6 +1,6 @@
 # A8 Age Calendar-Wheel Functional Results
 
-Status: local functional screening complete, 2026-08-07
+Status: phase-2 quantization/scaling screening complete, 2026-08-07
 
 ## Configuration and gates
 
@@ -147,6 +147,98 @@ ADDR_WIDTH=16. The extra 33 bits are chiefly two additional tag bits per source;
 the combinational oldest-bucket search also grows from 8 to 32 entries. These
 are structural counts and path expectations, not synthesis/PPA measurements.
 
+## Phase-2 official 46-trace Pareto (N=16)
+
+All B1/B2/B4/B8 wheels, the exact per-source counter reference, and RR passed
+46/46 with zero correctness issues. The table uses uniform load 1.25 and the
+identity rotating-victim row; pair p95/p99 is the worse of seeds 3901/3902.
+`state` includes tracked/tag-or-age/tie/global state and the same
+valid/event/source output register.
+
+| Arch | state (bit) | uniform maxwait / p99 | uniform overrun / zero-window / DN fairness | rotating maxwait / p99 | pair p95 / p99 | phase maxwait |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| RR | 25 | 12 / 11 | 0.196867 / 0.001768 / 0.998862 | 10 / 7 | 2 / 3 | 15 |
+| exact | 121 | 9 / 8 | 0.196997 / 0.002209 / 0.998669 | 4 / 5 | 2 / 2 | 12 |
+| B1 | 127 | 9 / 8 | 0.196997 / 0.002177 / 0.998748 | 4 / 5 | 1 / 2 | 12 |
+| B2 | 110 | 9 / 9 | 0.196867 / 0.002020 / 0.998648 | 4 / 5 | 2 / 2 | 13 |
+| B4 | 94 | 10 / 10 | 0.196867 / 0.001978 / 0.999022 | 7 / 6 | 2 / 3 | 14 |
+| B8 | 78 | 16 / 12 | 0.196736 / 0.002313 / 0.999031 | 8 / 7 | 2 / 3 | 18 |
+
+Sparse p99 stayed 2 cycles for every architecture. Elephant/mouse, retrigger,
+and moving-hotspot max wait stayed zero because those frozen instances did not
+produce live same-cycle contention at this seam. Throughput at uniform 1.25
+remained the single lane's 0.999512 event/cycle; the approximately 0.197
+overrun is not a scheduler throughput win and is kept explicit.
+
+## N=16/32/64 scaling matrix
+
+The candidate-owned scaling manifests add sparse, simultaneous, two uniform
+seeds at 0.9 and 1.25, rotating victim, timing pair, elephant/mouse, moving
+hotspot, and retrigger at each N. Six architectures by three N values by eleven
+runs produced 198/198 PASS. The compact table reports structural state,
+uniform-1.25 max wait/p99, rotating max wait/p99, and timing-pair gap p99.
+
+| N | Arch | state | uniform wait/p99 | rotating wait/p99 | pair p99 |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 16 | RR / exact / B1 / B2 / B4 / B8 | 25 / 121 / 127 / 110 / 94 / 78 | 13/12 · 8/8 · 8/8 · 9/9 · 11/10 · 13/12 | 8/7 · 4/6 · 4/6 · 6/6 · 7/7 · 9/7 | 2 / 2 / 2 / 2 / 2 / 2 |
+| 32 | RR / exact / B1 / B2 / B4 / B8 | 27 / 251 / 258 / 225 / 193 / 161 | 21/19 · 14/13 · 14/13 · 13/14 · 15/14 · 20/17 | 12/9 · 6/7 · 6/7 · 7/7 · 9/8 · 10/9 | 4 / 2 / 2 / 2 / 4 / 4 |
+| 64 | RR / exact / B1 / B2 / B4 / B8 | 29 / 541 / 549 / 484 / 420 / 356 | 36/32 · 20/21 · 20/21 · 21/21 · 22/21 · 26/25 | 13/11 · 8/9 · 8/9 · 9/10 · 9/10 · 13/11 | 3 / 2 / 2 / 2 / 2 / 3 |
+
+Uniform overrun stayed in 0.19798--0.20167 across the matrix. At N=64 its
+zero-service ratio was 0.08682 for RR and 0.09239--0.09252 for the wheels/exact;
+DN fairness was 0.99494--0.99551. Rotating-victim zero-service at N=64 was
+0.03763--0.04260 and DN fairness 0.99946--0.99955. These small differences do
+not justify hiding the clear B8 wait-tail loss. Simultaneous max wait was always
+N-1 and sparse p99 always 2, as expected.
+
+## Sequential toggle and local Yosys proxies
+
+The Verilator activity proxy drives the six designs together for 4,096 cycles
+at 1.25 offered occurrences/cycle. It counts Hamming changes in scheduler
+sequential state plus output valid/source; the 16-bit event is held at zero, so
+its storage is counted above but contributes no artificial payload toggles.
+This is not SAIF power and excludes combinational glitches.
+
+| N | exact toggles/cycle | B1 | B2 | B4 | B8 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 16.18 | 42.67 | 27.88 | 13.35 | 11.64 |
+| 32 | 29.66 | 90.49 | 60.50 | 30.43 | 14.04 |
+| 64 | 59.58 | 199.87 | 139.57 | 78.31 | 15.55 |
+
+B8 validates the intended O(1)-global-aging activity trend. B1 does not:
+frequent full-width epoch movement and source retagging cost more transitions
+than incrementing the exact tracked counters. B4 crosses above exact by N=64.
+
+Local Yosys 0.52 was run from `/tmp`, without a server or technology library.
+The generic `stat` cells and FF-excluding `ltp` length are structural proxies;
+the procedural scans synthesize as unbalanced priority chains.
+
+| N | exact cells/depth | B1 | B2 | B4 | B8 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 906 / 163 | 1229 / 261 | 1088 / 213 | 1017 / 189 | 981 / 177 |
+| 32 | 2330 / 323 | 2973 / 517 | 2688 / 421 | 2545 / 373 | 2473 / 349 |
+| 64 | 6714 / 643 | 7997 / 1029 | 7424 / 837 | 7137 / 741 | 6993 / 693 |
+
+State savings therefore do not become an area or select-depth proxy win in the
+current RTL. No server PPA was run.
+
+## Adversarial bounds and shortlist decision
+
+The strengthened test crossed the modulo boundary, held valid before ready,
+created a same-bucket later-arrival win, stalled service continuously for eight
+cycles, and then drained all sources. B1 matched exact cycle-by-cycle in the
+wrap sequence; observed max wait was 8, within the configured proof bound 11.
+An equality horizon (`HORIZON == N-1+MAX_STALL_CYCLES`) is rejected at
+elaboration, preventing an old/new modulo alias.
+
+The current candidate is **not shortlisted for advancement or server PPA**.
+B8 remains the only compelling state/activity research point (N=64: 356 bits
+and 15.55 toggles/cycle versus exact 541 and 59.58), but its official N=16
+phase max wait is 18 versus exact 12 and its uniform max wait is 16 versus 9.
+It also has worse local cells/depth. B4's N=16 balance does not scale in toggle,
+and B1/B2 do not beat exact activity or depth. This is a transparent negative
+result rather than an efficiency claim based only on state bits.
+
 ## Reproduction
 
 ```bash
@@ -164,9 +256,19 @@ A8_BUCKET_CYCLES=1 A8_EPOCH_COUNT=32 \
   A8_CLEAN_OUT=/tmp/a8-age-calendar-wheel-b1-regression \
   scripts/run_a8_age_calendar_wheel.sh \
   --manifest benchmarks/clean_slate_aer/manifest.neutrality-n16.json
+
+scripts/run_a8_quantization_matrix.sh
+scripts/summarize_a8_quantization_matrix.sh
+scripts/run_a8_toggle_proxy.sh
+python3 scripts/run_a8_yosys_proxy.py --output-dir /tmp/a8-yosys-proxy
+scripts/summarize_a8_official_pareto.sh
 ```
 
 The runner invokes only file-based Python helpers. It does not use inline
 `python3 -c`, so the command arguments are identical under the local Python and
 the server's Python wrapper. Generated traces, simulator builds, logs, and CSVs
 remain under `/tmp`; only this summary and candidate-owned source are committed.
+The 198-run matrix keeps aggregate/event-aggregate/timing summaries, generated
+trace manifests, and a SHA256 manifest. After checksum validation, exactly 198
+regenerable raw `*.events.csv` files were gzip-compressed; active RTL, trace,
+Yosys, and Verilator inputs were not touched.
