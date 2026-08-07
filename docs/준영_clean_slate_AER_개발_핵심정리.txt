@@ -1,0 +1,200 @@
+준영 clean-slate AER 개발 핵심정리
+작성 기준: 2026-08-07
+
+1. 현재 결론
+
+기존 공용 workload와 testbench는 유지한다. 새로 만드는 것은 특정 기존
+설계의 개선판이 아니라, 같은 workload에서 더 높은 유효 event service를
+더 적은 area와 power로 제공하기 위한 clean-slate AER RTL이다.
+
+A23, 강희 fovea, 현수 rotation-priority 구조는 새 RTL의 base가 아니다.
+기존 설계에서 유지하는 것은 공용 검증 자산과 Xcelium/Genus/Innovus
+호환성 틀뿐이다.
+
+
+2. 유지하는 공용 TB/workload
+
+- 논리 event 의미:
+  (source coordinate/address, optional polarity/event type, occurrence time)
+- DUT ready와 무관하게 먼저 생성되는 deterministic occurrence trace
+- source별 one-entry pending latch와 source_overrun 계측
+- generated, accepted, delivered, source_overrun을 분리하는 계수 방식
+- loss, duplicate, phantom, corruption, source-local ordering scoreboard
+- latency, throughput, fairness, service gap, timing distortion 계측
+- 후보의 native port를 공용 계측 interface에 연결하는 storage-free binding
+
+TB-only event ID와 occurrence time은 DUT payload가 아니다. TB binding은
+FIFO, retry, arbitration, serializer, backpressure 또는 추가 retire lane을
+공짜로 제공하면 안 된다. 실제 동작에 필요한 회로는 모두 candidate RTL과
+PPA 경계 안에 들어가야 한다.
+
+
+3. 새 RTL이 해야 하는 역할
+
+새 RTL은 발생한 address-event를 제한된 저장공간과 물리 링크 안에서 받아
+수신 경계까지 정확히 전달하는 AER transport다. 최소 기능은 다음과 같다.
+
+1) 동시에 pending된 source 중 인수할 event를 합법적으로 선택한다.
+2) source별 인수 가능 여부를 source_ready로 나타낸다.
+3) 한번 인수한 event의 source/address를 완료할 때까지 보존한다.
+4) 완료 event와 원 source를 scoreboard가 관찰할 수 있게 한다.
+5) 저장공간이 차면 새 인수를 멈추고, 이미 인수한 event를 덮어쓰거나
+   버리지 않는다.
+6) 입력 traffic이 멈추면 인수한 모든 event를 유한 시간 안에 drain한다.
+7) reset 후 이전 event를 phantom completion으로 내보내지 않는다.
+
+Arbiter 종류, FIFO 깊이, ROW/COL 여부, encoding, physical link 폭,
+pipeline 단계와 retire lane 수는 미리 정해진 답이 아니다. 공용 계약을
+만족하면서 area, power, throughput, latency를 개선하도록 새로 선택한다.
+한 cycle에 여러 event를 실제로 완료하는 구조라면 event/cycle은 1보다
+높아도 된다. 이 경우 각 논리 event가 별도 completion으로 관찰돼야 한다.
+
+
+4. 반드시 통과해야 하는 correctness
+
+모든 후보의 우선 통과 조건은 다음과 같다.
+
+  errors == 0
+  accepted == delivered after complete drain
+
+이는 다음을 뜻한다.
+
+- unknown 또는 illegal event/source가 없음
+- phantom, duplicate, corrupt completion이 없음
+- 같은 source 안에서 event 순서가 바뀌지 않음
+- 인수한 event가 drain 후 누락되지 않음
+- source/output stall 동안 valid event 정보가 바뀌지 않음
+- drain timeout이 없음
+
+source_overrun, 낮은 throughput, 긴 latency, 낮은 fairness와 deadline miss는
+그 자체로 correctness FAIL이 아니다. 이것들은 기존 AER의 용량·성능 한계를
+드러내는 수치다. 새 구조는 기존 구조를 억지로 FAIL시키는 것이 아니라,
+같은 correctness를 지키면서 이 수치를 개선해야 한다.
+
+
+5. workload별 시험 목적
+
+[기본 기능]
+
+- basic_single
+  고립 event의 인수, identity 보존, 전달과 drain을 확인한다.
+
+- basic_sparse
+  여러 source의 저율 event와 source-local ordering을 확인한다. 일반적인
+  sparse AER 동작의 latency와 power 기준점이다.
+
+- basic_simultaneous
+  모든 source가 함께 요청할 때 합법적으로 중재하고 전부 drain하는지 본다.
+  동시 요청의 max wait와 burst drain latency를 측정한다.
+
+[기존 AER 한계 노출]
+
+- limit_load (deterministic trace 이름: uniform)
+  sparse부터 overload까지 부하를 올려 sustainable event/cycle,
+  saturation knee, overrun과 p95/p99 latency를 찾는다.
+
+- limit_elephant_mouse
+  hot source와 저율 victim을 함께 넣어 starvation, victim max wait,
+  zero-service window와 fairness를 측정한다.
+
+- limit_global_fanin
+  많은 source의 동시 요청으로 arbitration fan-in, burst drain latency와
+  source 수 증가에 따른 area/Fmax 부담을 드러낸다.
+
+- limit_local_cluster
+  인접 coordinate burst에서 locality 활용, event/pin-cycle, latency와
+  energy/event 개선 가능성을 본다.
+
+- limit_distributed_burst
+  같은 양의 event를 멀리 떨어진 source에 분산해 local traffic에만 유리한
+  구조인지 확인한다. local_cluster와 반드시 함께 비교한다.
+
+- limit_retrigger
+  같은 source가 service보다 빨리 재발화할 때 source_overrun과 실질적인
+  acceptance/storage 한계를 측정한다.
+
+- limit_timing_fidelity (deterministic trace 이름: timing_pair)
+  정확한 간격의 event pair를 넣어 queueing이 spike 간 시간 정보를 얼마나
+  왜곡하는지 interval error와 deadline miss로 확인한다.
+
+[선택 기능]
+
+- basic_backpressure
+  반복 sink stall 중 출력 안정성과 complete recovery를 확인한다.
+
+- limit_backpressure_shock
+  지속 traffic 중 긴 sink stall을 넣어 유한 저장공간, recovery time과
+  tail latency를 측정한다.
+
+Native output-ready가 없는 후보는 backpressure 두 시험을
+SKIP_UNSUPPORTED로 남긴다. TB FIFO를 붙여 억지로 통과시키지 않는다.
+reset_drain, polarity/type, 자동 N=16/64/256 scale, fixed-pin budget와
+mixed-phase trace는 아직 완전 자격 검증되지 않았으므로 PASS라고 발표하지
+않는다.
+
+
+6. 평가방식
+
+모든 후보는 같은 trace, seed, source 수, 측정 window와 물리 조건을 사용한다.
+첫 공통 비교점은 native fovea와 맞출 수 있는 N=16이다. 후보의 commit SHA,
+top, file list, parameter, native interface와 retire lane을 먼저 동결한다.
+
+성능 수치는 구조 이름으로 미리 0.5 또는 1.0이라고 정하지 않고 공용 TB가
+완료 event에서 직접 측정한다.
+
+- generated / source_overrun / accepted / delivered
+- logical event/cycle과 saturation knee
+- occurrence-to-delivery 및 acceptance-to-delivery latency
+- p50/p95/p99 latency와 deadline miss
+- max request wait, Jain fairness, service gap, zero-service window
+- timing interval error
+- events/pin-cycle, events/s, area, power, energy/event
+
+Sparse와 near-saturation activity를 분리한다. 단일 임의 가중합 점수를 먼저
+만들지 않고 correctness gate를 통과한 후보들의 Pareto 관계를 비교한다.
+
+PPA는 다음 단계로 구분한다.
+
+1) Genus: 빠른 area/power/timing screening이다. 최종 Fmax 증거가 아니다.
+2) Innovus fixed-netlist sweep: 한 합성 netlist의 timing bracket을 찾는 진단이다.
+3) period별 Genus 재합성 + 전체 Innovus P&R: 최종 구조 비교에 사용하는
+   per-target-resynthesis 결과다.
+
+최종 timing PASS에는 post-route setup/hold WNS >= 0, route 완료,
+unconstrained path 0이 모두 필요하다. Fmax는 exact 숫자로 단정하지 않고
+[가장 빠른 PASS, 그보다 빠른 첫 FAIL) bracket으로 보고한다. 동일 주파수의
+area/power/energy 효율 표와 후보별 demonstrated bracket 및 events/s 표를
+분리한다. 전력은 같은 trace와 window의 activity-annotated post-route 값을
+최종 비교에 사용하며 vectorless 값은 screening으로만 표시한다.
+
+
+7. 권장 구현 순서
+
+1) N=16, always-ready, one-retire-lane 최소 native top과 storage-free binding을
+   만든다.
+2) basic_single, basic_sparse, basic_simultaneous correctness를 먼저 통과한다.
+3) limit_load와 complete drain으로 overwrite/drop 없는 지속 동작을 확인한다.
+4) elephant_mouse, global_fanin, retrigger로 arbitration과 storage 병목을 잰다.
+5) local_cluster와 distributed_burst를 함께 돌려 locality 과적합을 막는다.
+6) timing_fidelity로 spike 시간 정보 보존을 확인한다.
+7) 공용 결과가 안정된 뒤에만 backpressure, event type, multi-lane 같은 선택
+   기능을 추가하고 해당 회로 비용을 PPA에 포함한다.
+8) 기능 gate를 통과한 revision을 동결한 뒤 후보중립 Genus screening과
+   Innovus P&R 비교를 수행한다.
+
+최소 개발 산출물은 synthesizable native top, storage-free TB binding,
+candidate capability profile, top/filelist/parameter manifest, candidate 이름과
+commit SHA가 포함된 결과다.
+
+
+8. A23의 위치
+
+A23는 clean-slate RTL의 출발점도, 현재 최종 후보도 아니다. 기존 기능 회귀와
+Genus 결과는 공용 TB가 기존 설계의 correctness와 한계를 함께 구분해 보여주는
+historical benchmark-calibration 자료로만 보존한다. 새 설계의 architecture,
+hard-coded throughput 또는 최종 PPA 판단을 A23 결과에서 가져오지 않는다.
+
+현재 목표는 sparse AER의 기본 기능을 그대로 유지하면서 shared transport의
+bandwidth, arbitration, fairness, overrun, timing-distortion 한계 중 하나 이상을
+더 낮은 area/power 비용 대비 더 높은 유효 event service 방향으로 이동시키는
+새 구조를 처음부터 만드는 것이다.
