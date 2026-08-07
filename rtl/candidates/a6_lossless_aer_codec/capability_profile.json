@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "candidate": "a6-lossless-codec",
+  "native_interface": {
+    "protocol": "two-data-pin-counted-prefix-stream",
+    "source_count": {"kind": "fixed", "value": 16},
+    "source_observable": true,
+    "retire_lanes": 1
+  },
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {"supported": true},
+    "polarity_event_type": {
+      "supported": false,
+      "reason": "frozen N=16 codec carries source address; optional type field is not encoded"
+    },
+    "multi_lane_retirement": {
+      "supported": false,
+      "reason": "decoder normalizes exactly one occurrence per retire cycle"
+    }
+  }
+}

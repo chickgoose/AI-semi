@@ -1,0 +1,4 @@
+rtl/candidates/a6_lossless_aer_codec/a6_codec_encoder.sv
+rtl/candidates/a6_lossless_aer_codec/a6_codec_decoder.sv
+rtl/candidates/a6_lossless_aer_codec/a6_lossless_aer_codec_top.sv
+
