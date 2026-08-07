@@ -6,7 +6,14 @@
     "capability": "N64_TIMING_DIAGNOSTIC_ONLY",
     "decision": "always-ready rejected; retain only if same-L central misses physical timing"
   },
-  "package_commit": "b438d6bc65ef21e0baf7edb798a0fd8663d140b1",
+  "release_gate": {
+    "disposition": "NOT_ELIGIBLE",
+    "blocked_stages": ["XCELIUM", "GENUS", "INNOVUS"],
+    "open_findings": ["B2", "B5"],
+    "current_a9_xcelium_eligibility_pass_sufficient": false,
+    "release_condition": "CANONICAL_TRACE_REPLAY_THROUGH_EXACT_REGISTERED_PHYSICAL_BOUNDARY_PLUS_HARDENED_EVIDENCE_BINDING_PLUS_INDEPENDENT_REREVIEW"
+  },
+  "package_commit": "8c9c7134a533ef5a136dc9d47f5c53c4453a6cdb",
   "rtl": {
     "top": "a9_static_n64_timing_top",
     "top_file": "rtl/candidates/a9_distributed_token_fabric/physical/a9_static_n64_timing_top.sv"
@@ -33,7 +40,7 @@
     "site_binding": "UNBOUND_REQUIRES_HEAD_APPROVED_SITE_FREEZE"
   },
   "xcelium": {
-    "eligibility": "BLOCKED_UNTIL_HEAD_APPROVED_EXTERNAL_EVIDENCE",
+    "eligibility": "NOT_ELIGIBLE_FINAL_HEAD_B2_B5_OPEN",
     "common_n16_gate": {
       "role": "ARCHITECTURAL_ELIGIBILITY_ONLY_NOT_SHORTLIST",
       "top": "aer_clean_tb",
@@ -65,7 +72,7 @@
     {"path": "benchmarks/clean_slate_aer/generate_trace.py", "sha256": "43291096d99cec90de6ed74b8f07da10a859db2291ebbc758f2aaf28c4a05ed6"},
     {"path": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json", "sha256": "77da0c02a1db2755653195790a1af43f82e4f1be27be2f9570d9014f648b9726"},
     {"path": "benchmarks/clean_slate_aer/prepare_sv_trace.py", "sha256": "f7ba35972e67249fd74112f9ab9ea71838ed1b5d593b5ab2043de7f349987f93"},
-    {"path": "docs/research/a9_optional_physical_handoff.md", "sha256": "e70679aaf8de22bcc99b6212b72a65ce50aa322c19bcb75f12582b25781a53ce"},
+    {"path": "docs/research/a9_optional_physical_handoff.md", "sha256": "fe71174f1a8e726314be0ea1c48897c95c7b7b53e372cb5336dc8d64f0dd5d7e"},
     {"path": "rtl/candidates/a9_distributed_token_fabric/a9_centralized_reference.sv", "sha256": "bdf4ad724095301c16f9ac3f756c3fa1fb739685faa49f62a4489201ddad2d2a"},
     {"path": "rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv", "sha256": "67d2834273a630b1fb9b853d60cf07dcbf73d3199b3261c07d1a0003336afa2f"},
     {"path": "rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv", "sha256": "94a194881fa8ab4d9d766e6498f1e796638d2876dd0c2906970a871ee55dddc1"},
@@ -74,7 +81,7 @@
     {"path": "rtl/candidates/a9_distributed_token_fabric/a9_phase4_synth_top.sv", "sha256": "eaf3dbc0c60725bce9f8e179745fe2616183dd6a220c5ca75141d5b9d75b7028"},
     {"path": "rtl/candidates/a9_distributed_token_fabric/physical/a9_static_n64_timing_top.sv", "sha256": "6d4f33f53f50284fb640589a3b4ecc7ab479e20412ecafc729b71ae153c0a068"},
     {"path": "rtl/candidates/a9_distributed_token_fabric/physical/static_n64_timing.f", "sha256": "721280b7b4842c5d0ec918fa0967da8cfadf472dcf13350a9317785448e0049d"},
-    {"path": "scripts/a9_physical_handoff_preflight.py", "sha256": "43af82fda26d12787287a1322b9e8df9924c6480a872cd6a1a033adea2965b18"},
+    {"path": "scripts/a9_physical_handoff_preflight.py", "sha256": "c5095769c2c5bd1c0c3c5b644ed57ca50f15b5f26464e19f7c2dfba99b886011"},
     {"path": "scripts/run_a9_benchmark.sh", "sha256": "c4e8fd88610ef6777e4dc6e05189314522d89ea68c7c6fe96402ac01685b80c4"},
     {"path": "tb/clean/aer_bench_if.sv", "sha256": "beb820213b9e47b89460ecb30494b62e5e37190bc4406d183c1379edd335c9d5"},
     {"path": "tb/clean/aer_clean_assertions.sv", "sha256": "fb60bf796ce00022208959dd9e7f6b1b915b3d846acda6f8f04fe61e4c394907"},
