@@ -1,12 +1,19 @@
 # Architecture-Neutral AER Physical PPA/Fmax Contract
 
-Status: discussion freeze candidate, 2026-08-06
+Status: candidate-neutral comparison freeze candidate, 2026-08-07
 
 ## Purpose and evidence boundary
 
 This contract compares physical implementations of candidates that implement the
 same logical AER job. It does not select an RTL base and it does not turn an
 external candidate's exploratory run into an official team score.
+
+The intended final-candidate set is Ganghee's fovea design, Hyeonsu's final
+design, and Junyoung's new clean-slate design. A23 and its baseline/A2/A3
+experiments are historical evidence only: their scripts, fixed throughput
+constants, and earlier Genus table are not the final comparison pipeline. A
+newly written minimal conventional AER may be reported as a reference, but it is
+not one of the three team candidates.
 
 Pre-layout synthesis and post-route qualification answer different questions:
 
@@ -63,6 +70,106 @@ flow/configuration identity outside the minimal CSV when any item above differs.
 Numbers with mismatched boundaries may be shown side by side as diagnostics but
 must not be ranked as a controlled architecture comparison.
 
+## Immutable candidate registry
+
+Do not start an official run from a moving personal worktree. Copy or check out
+an immutable candidate bundle and freeze one registry row before simulation or
+synthesis. At minimum, each row records:
+
+| Field | Required meaning |
+| --- | --- |
+| `candidate` | Stable result key, independent of directory nickname |
+| `owner` | Ganghee, Hyeonsu, or Junyoung |
+| `repo_url` and `commit_sha` | Repository identity and full immutable commit |
+| `bundle_sha256` | Hash of the archived source bundle when the source is copied |
+| `top` and `filelist` | Exact synthesizable top and ordered RTL/filelist inputs |
+| `parameters` | Complete elaboration parameter map, including source count and widths |
+| `defines` and `include_dirs` | Compile-time choices that can change hardware |
+| `clock_reset` | Clock/reset ports, edge, polarity, and reset timing assumptions |
+| `native_interface` | Protocol, physical input/output widths, and retire-lane count |
+| `capability_profile` | Frozen common-benchmark capability profile and checksum |
+| `normalization_rtl` | Any synthesizable codec/serializer/decoder charged to PPA |
+| `tool_config_sha256` | Hash of common SDC, library, Genus, and Innovus configuration |
+
+The first official comparison uses `N=16`, because all three candidates must be
+compared at a source count supported by the fixed-N fovea implementation. Scale
+studies at other source counts are separate evidence and must not replace the
+N=16 table. A missing SHA, top, filelist, parameter map, or physical-boundary
+declaration makes the candidate `NOT_FROZEN`, not zero-scoring.
+
+The registry contains exactly these final-candidate identities once their rows
+are complete:
+
+| Candidate key | Role before freeze |
+| --- | --- |
+| `ganghee_fovea_final` | final candidate; immutable identity pending registry |
+| `hyeonsu_final` | final candidate; immutable identity pending registry |
+| `junyoung_clean_slate` | final candidate; register only after new RTL exists |
+
+No compatibility wrapper may silently select obsolete RTL. A wrapper is allowed
+only when its source and cost are frozen in `normalization_rtl`; behavioral
+testbench pin mapping remains outside PPA only when it adds no storage, retry,
+arbitration, coding, or protocol capability.
+
+## Evaluation stages
+
+All candidates advance through the same ordered stages:
+
+1. **Common-TB eligibility gate:** run the unchanged architecture-neutral
+   conformance and workload contract through the candidate's native binding.
+   Accepted events must drain without loss, duplication, corruption, or phantom
+   output. Unsupported optional capabilities remain explicit SKIPs.
+2. **Genus screening:** synthesize with the common libraries, PVT, SDC, effort,
+   clock-gating policy, loads, and reset exceptions. This stage finds structural
+   errors and removes clearly infeasible targets; it does not demonstrate Fmax.
+3. **Innovus fixed-netlist diagnostic:** reuse one mapped netlist across a period
+   sweep to locate likely timing limits cheaply. Keep these results diagnostic.
+4. **Per-target resynthesis final P&R:** rerun Genus and the complete Innovus flow
+   independently for every candidate and every target period. Only this stage
+   supplies the final structural comparison and demonstrated Fmax bracket.
+
+A candidate must not receive extra optimization effort, a different
+clock-gating setting, or a hand-tuned exception unless the same declared policy
+is available to every candidate. Candidate-specific syntax needed to elaborate
+equivalent hardware is configuration, not permission to change the contract.
+
+## Common functional metrics used by PPA
+
+Throughput is never a manifest constant or a value inferred from RTL structure.
+Import it from the common deterministic workload result for the frozen candidate
+and configuration. Retain the workload version, trace hash, seed, source count,
+stimulus interval, measurement interval, drain rule, and result checksum beside
+each PPA row.
+
+At minimum, use these measured values:
+
+- sustainable completed logical events/cycle and the saturation knee;
+- occurrence-to-delivery and acceptance-to-delivery average, p95, p99, and
+  maximum latency in cycles;
+- maximum request wait, fairness, source overrun, and timing-error metrics;
+- the number of completed logical events in the activity-power window.
+
+The throughput numerator counts normalized completed logical events, not output
+words. Packed or multi-lane output may therefore exceed one event/cycle. The
+denominator is the frozen measurement window; reset, warm-up, and drain cycles
+must either be excluded identically or reported as a separate end-to-end view.
+Do not substitute the historical A23 table's hardcoded `0.5` or `1.0` values.
+
+For physical-interface efficiency, define `functional_pin_bits` as every
+non-clock, non-reset, non-power signal bit crossing the frozen candidate PPA
+boundary, including address/data, request/valid, ready/acknowledge, lane, type,
+and other required controls. Count a bidirectional bit once and disclose the
+input/output split. Then:
+
+```text
+events_per_pin_cycle = completed_events /
+                       (measurement_cycles * functional_pin_bits)
+```
+
+If the competition later fixes a particular off-chip link boundary, report its
+link-only pin metric additionally; do not replace or silently redefine the
+whole-boundary metric after candidate results are known.
+
 ## Physical PPA report fields
 
 Frequency is only one axis. For every qualified implementation, retain at least:
@@ -79,6 +186,60 @@ Activity-annotated post-route power is the comparison result. Vectorless power i
 screening evidence and must remain visibly labeled. Do not combine area, power,
 frequency, or events/pin-cycle into a single PPA score unless the weighting and
 normalization rule was frozen before seeing candidate results.
+
+Use the identical deterministic trace and identical cycle-indexed activity
+window for all candidates. Report at least one sparse operating point and one
+near-saturation operating point; idle-heavy sparse power must not hide saturated
+transport cost, and saturation-only power must not hide normal AER efficiency.
+For each window, compute energy from delivered logical work:
+
+```text
+energy_per_event = average_power * elapsed_window_time / completed_events
+energy_nJ_per_event = power_mW / (clock_MHz * events_per_cycle)
+```
+
+The second form is valid only when power and measured events/cycle refer to the
+same window and clock. A window with zero completed events reports energy/event
+as undefined, never zero.
+
+## Required final report views
+
+Publish two separate tables; neither may be reconstructed by mixing rows from
+different netlists or flow modes.
+
+### Same-frequency efficiency table
+
+Choose and freeze one frequency that all three candidates pass under
+`per_target_resynthesis` (provisionally 200 MHz until the controlled sweep says
+otherwise). Use the same workload points and activity windows. Required columns
+are:
+
+| Identity/timing | Function | Physical efficiency |
+| --- | --- | --- |
+| candidate, SHA, frequency, corner, setup/hold WNS | correctness, measured events/cycle, saturation knee, average/p95/p99/max latency | post-route area, total/dynamic/leakage power, energy/event, functional pins, events/pin-cycle |
+
+This is the primary low-area/low-power efficiency comparison because clock rate
+is held constant. Report sparse and near-saturation power/energy as distinct
+rows or distinct labeled column groups.
+
+### Maximum-demonstrated bracket table
+
+Use only `per_target_resynthesis` bracket points. Required columns are:
+
+| Provenance | Demonstrated timing | Useful-rate lower bound |
+| --- | --- | --- |
+| candidate, SHA, corner, flow-config hash | last-PASS period/frequency, first higher-frequency FAIL, setup/hold/route/unconstrained/DRC/antenna evidence | measured events/cycle, demonstrated logical Mevents/s, events/pin-cycle |
+
+Compute the useful-rate lower bound as:
+
+```text
+demonstrated_Mevents_per_s = measured_events_per_cycle *
+                             last_PASS_frequency_MHz
+```
+
+This is a lower bound tied to the named workload and clean last-PASS
+implementation, not an exact application rate. If there is no higher-frequency
+FAIL, show `>= last_PASS` rather than inventing a closed bracket.
 
 ## Two required sweep modes
 
@@ -153,6 +314,8 @@ python3 benchmarks/physical_ppa/bracket_fmax.py \
 
 Before combining physical results with the existing clean benchmark:
 
+- [ ] final candidate registry rows contain immutable SHA/bundle hash, top,
+      filelist, parameters, native interface, normalization RTL, and flow hash;
 - [ ] conformance tests pass and accepted events fully drain without corruption;
 - [ ] workload, seed, source count, offered load, and activity window match;
 - [ ] logical retire width matches, or serializer/decoder costs and pin-cycle
@@ -171,6 +334,10 @@ Before combining physical results with the existing clean benchmark:
       point, while DRC and antenna status are explicitly disclosed;
 - [ ] power uses the same trace and measurement window, with vectorless estimates
       visibly separated from activity-annotated results;
+- [ ] throughput and latency are imported from measured common-TB results, not
+      hardcoded architecture expectations;
+- [ ] same-frequency efficiency and maximum-demonstrated bracket results are
+      published as separate tables;
 - [ ] the report states the last-PASS/first-FAIL bracket and does not replace it
       with an unsupported exact Fmax;
 - [ ] any external result remains calibration evidence, not an official score or
