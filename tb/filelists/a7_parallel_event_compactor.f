@@ -1,0 +1,4 @@
+rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv
+rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv
+tb/clean/native/a7_parallel_event_compactor_binding.sv
+tests/a7_parallel_event_compactor/a7_normalized_candidate_cell.sv
