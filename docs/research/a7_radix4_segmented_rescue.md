@@ -1,6 +1,6 @@
 # A7 radix-4 segmented-prefix rescue hypothesis
 
-Status: pre-RTL falsification plan, 2026-08-07
+Status: implemented; K2 rescue rejected, 2026-08-07
 
 ## Fixed baseline and scope
 
@@ -79,3 +79,12 @@ If it fails, the K=2 rescue is rejected regardless of results at larger N.
 The allowed A7 application condition remains N=16/K>=4, and K=4 is retained
 only where the measured segmented or original prefix beats the equal-state
 reference without changing functional behavior.
+
+## Result
+
+The rescue failed exactly on depth.  At N=16/K=2, segmented uses 3,307 generic
+gates versus 4,299 original and 3,733 replicated, but depth is 149 versus
+133/133.  All implementations retain 62 register bits.  N=16 exhaustive
+bitmap/rotation index equivalence and six N/K random full-candidate equivalence
+runs passed.  The full scaling/fanout table and reproduction record are in
+`reports/a7-parallel-event-compactor/radix4-rescue.md`.
