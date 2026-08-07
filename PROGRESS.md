@@ -1,12 +1,12 @@
 # AI-semi Progress
 
-최종 갱신: 2026-08-06
+최종 갱신: 2026-08-07
 
 ## 프로젝트 상태
 
 - 대회: 2026 전국 대학생 AI 반도체 회로 설계 경진대회
 - 트랙: **Digital 확정**
-- 현재 단계: 기존 후보 동결 → clean-slate AER workload/scoreboard 우선 정립
+- 현재 단계: 공용 AER workload/TB 유지 → 후보 중립 평가 규격 동결 → clean-slate RTL 착수
 - 1차 결과 제출: **2026-08-28**
 - 2차 최종 제출: **2026-10-30**
 - 발표·시상: **2026-11-28**, 곤지암리조트
@@ -35,7 +35,7 @@
 - [x] A23 committed RTL 기능 회귀 18/18 통과
 - [x] A23 독립 stress 회귀 120/120 통과
 - [x] baseline/A2/A3/A23 Genus 비교 12/12 유효 run 확보
-- [x] A23를 현재 내부 최종 후보로 선정
+- [x] A23를 clean-slate 전환 전 당시 내부 최종 후보로 선정하고 역사적 reference로 동결
 - [x] AER를 arbitrary payload bus로 보던 기존 공통 가정의 한계 확인
 - [x] 기존 세 설계를 새 RTL의 base가 아닌 benchmark reference로 재분류
 - [x] AER 기본 기능군과 고질적 한계 노출군을 분리한 clean benchmark 명세 작성
@@ -65,6 +65,28 @@
 - 최종 후보 비교는 DUT `ready`와 독립적으로 사전 생성되는 deterministic trace 경로를
   사용한다. 사용법과 공용 파일 위치는
   [`docs/TEAM_COMMON_WORKLOAD_GUIDE.md`](docs/TEAM_COMMON_WORKLOAD_GUIDE.md)에 정리했다.
+
+## 2026-08-07 평가 방식 결론
+
+- 위 공용 workload, logical event 의미, 1-entry source model, scoreboard와 hard correctness
+  판정은 유지한다. 특정 후보를 유리하게 만들기 위해 trace나 PASS/FAIL 의미를 바꾸지 않는다.
+- A23 전용 `baseline/A2/A3/A23` Genus 표는 과거 내부 실험으로만 보존한다. 새 공식 비교의
+  후보는 강희 fovea, 현수 최종 RTL, 준영 clean-slate RTL이며 A23는 최종 P&R 대상이 아니다.
+- 후보별 SHA, top, filelist, 파라미터, source 수, native pin, retire lane과 지원 capability를
+  먼저 동결한다. 기능을 보충하는 synthesizable adapter가 필요하면 후보 RTL과 PPA 경계에
+  포함한다.
+- 성능 수치는 RTL 이름에 따라 상수로 넣지 않고 동일 deterministic trace에서 실제
+  event/cycle, latency tail, fairness, timing error와 saturation knee를 측정한다.
+- PPA는 동일 library/PVT/RC/SDC, clock-gating 정책, I/O delay/load, floorplan/utilization,
+  tool effort와 activity window로 비교한다. Genus는 screening, Innovus fixed-netlist sweep은
+  진단, period별 재합성+P&R만 최종 구조 비교로 구분한다.
+- 결과는 (1) 동일 주파수에서 area/power/energy per event 효율과 (2) 후보별 post-route
+  demonstrated Fmax bracket 및 `event/cycle x clock`을 나눠 보고한다. native link 폭이 다르면
+  event/pin-cycle도 함께 보고한다.
+- 강희의 현재 `2.0 ns PASS, 1.5 ns FAIL` 결과는 fixed-netlist post-route 기준
+  `[500, 666.7) MHz` 진단 bracket이다. exact 500 MHz 또는 세 후보 공통 최종 점수로 쓰지 않는다.
+- 공식 배점이 나오기 전에는 임의의 단일 가중합 점수를 만들지 않고 correctness gate 이후
+  throughput, latency, area, power, energy/event, pin 효율의 Pareto 비교로 선택한다.
 
 ## 설계 환경 접속 상태
 
@@ -152,6 +174,8 @@ A3가 순수 PPA는 더 좋지만 fixed priority starvation bound가 없어서 b
 - [x] deterministic JSONL+manifest를 검증·변환해 공통 SV source model에 연결
 - [x] per-event p50/p95/p99/deadline/sliding-window service-gap 지표 연결
 - [x] Genus screening과 Innovus post-route를 분리한 PPA/Fmax 판정 계약 구현
+- [ ] 세 최종 후보의 SHA/top/filelist/parameter/native-interface manifest 동결
+- [ ] 공용 TB에 동일 trace 기반 activity window와 후보 중립 성능 결과 export 연결
 - [ ] fixed-pin serializer/decoder의 구체적 pin 수·codec PPA 조건 freeze
 
 ### P2 — 개선 및 측정
@@ -166,6 +190,9 @@ A3가 순수 PPA는 더 좋지만 fixed priority starvation bound가 없어서 b
 - [x] 저비용 RR 및 bubble-free 구조 독립 구현·검증
 - [x] A23 통합과 동일 조건 4-way PPA 비교
 - [x] 기능·stress·PPA qualification 완료
+- [ ] 강희 fovea와 현수 최종 RTL을 동일 N=16 후보 중립 Genus screening에 등록
+- [ ] 세 최종 후보를 동일 조건의 period별 재합성+Innovus P&R로 비교
+- [ ] 준영 clean-slate RTL을 공용 correctness gate부터 처음부터 구현
 - [ ] 공식 workload 수령 후 shared 1~2 entry buffer의 필요성 재평가
 
 ## 아직 확인되지 않은 사항
