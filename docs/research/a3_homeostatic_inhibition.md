@@ -746,3 +746,120 @@ The salvage is rejected if any of the following holds:
 Passing transport correctness alone is insufficient.  Sparse, persistent
 contention, elephant/mouse, rotating victim, and asymmetric rate-step controls
 must be compared against the same fixed and RR models before a keep decision.
+
+## 14. Fourth-pass salvage result and immediate rejection
+
+The Section 13 hypothesis was implemented as a separate candidate; the rejected
+membrane RTL and Section 12 decision were not changed.  The head gate was then
+clarified: a permanent N=4 starvation counterexample is a hard viability
+failure, so the frozen 46-run suite must not be run merely to decorate the
+result.  This section therefore reports directed RTL, exhaustive small-N, and
+the required model controls, then stops before frozen-trace execution.
+
+### 14.1 RTL and exhaustive correctness
+
+The RTL policy state is exactly `last_valid`, `last_winner`, and one global
+`refractory` bit.  It contains no per-source sequential state and the binding
+adds no storage.  The directed Verilator test passes isolated-source
+work-conservation, registered output stall hold, and the predicted N=4 sequence:
+
+```text
+refractory WTA: 0 1 0 1 0 1 0 1
+RR:             0 1 2 3 0 1 2 3
+```
+
+The test asserts that sources 2 and 3 receive no grant in this permanent-fan-in
+window.  Thus the candidate is demonstrably not RR with biological labels, but
+its distinct behavior is already the hard counterexample.
+
+The Python executable specification includes the same source one-entry latches
+and registered output slot.  At N=4 it checks all 16 occurrence masks for eight
+cycles with state merging: 3,248 transitions and 31 reachable states.  Every
+state satisfies generated/delivered/overrun/outstanding conservation, grant
+only from pending, and drains within four cycles under zero new arrivals.  A
+token-ID search separately covers all 1,048,576 length-five input sequences
+(1,118,480 transitions) with no loss, duplicate, phantom, or source-local
+reorder.
+
+Joint exhaustive comparison over 1,696 request/state transitions finds 557
+grant differences from RR.  Consequently `rr_rename=false` is supported by
+state-transition evidence, not just the permanent-fan-in example.
+
+### 14.2 Fixed/RR control results
+
+All controls use N=16, 512 cycles, identical one-entry source latches, and one
+grant per cycle.  Jain fairness is over per-source `served/generated`; max wait
+includes a pending request's right-censored age.  Rate-step settling requires a
+32-cycle demand-normalized Jain window of at least 0.90.  Policy toggles exclude
+common transport.
+
+| Workload | Policy | Jain DN | Min ratio | Max wait | Zero-service | Settle | Toggles/cycle |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sparse | refractory WTA | 1.000000 | 1.000000 | 0 | 0 | 0 | 0.115234 |
+|  | RR | 1.000000 | 1.000000 | 0 | 0 | 0 | 0.058594 |
+|  | fixed | 1.000000 | 1.000000 | 0 | 0 | 0 | 0 |
+| persistent contention | refractory WTA | 0.125000 | 0 | 512 | 14 | 0 | 1.001953 |
+|  | RR | 1.000000 | 0.062500 | 15 | 0 | 0 | 1.875000 |
+|  | fixed | 0.062500 | 0 | 512 | 15 | 0 | 0 |
+| elephant/mouse | refractory WTA | 0.775512 | 0 | 499 | 3 | 0 | 1.753906 |
+|  | RR | 0.975923 | 0.376953 | 15 | 0 | 0 | 1.806641 |
+|  | fixed | 0.062500 | 0 | 511 | 15 | 0 | 0 |
+| rotating victim | refractory WTA | 0.136957 | 0 | 512 | 13 | 0 | 1.044922 |
+|  | RR | 0.999999 | 0.065979 | 15 | 0 | 0 | 1.875000 |
+|  | fixed | 0.069437 | 0 | 512 | 14 | 0 | 0 |
+| asymmetric rate step | refractory WTA | 0.818238 | 0.076923 | 384 | 0 | -- | 1.220703 |
+|  | RR | 0.926588 | 0.188776 | 15 | 0 | 32 | 1.779297 |
+|  | fixed | 0.765796 | 0.040000 | 384 | 0 | -- | 0 |
+
+Sparse traffic has no fairness distinction, and refractory state decay makes
+the salvage toggle almost twice as much as RR.  Under persistent and rotating
+contention it toggles about 46.6% and 44.3% less than RR, respectively, but does
+so by repeatedly selecting only the first two fixed-priority contenders.  The
+rate-step's 14 fewer source overruns than RR are not a latency win: they are 14
+requests still pending at the right edge, reflected in max wait 384 versus 15.
+
+### 14.3 State/depth cost and why it cannot salvage fairness
+
+At N=16 the policy-state counts are refractory WTA 6 bits, RR 4 bits, fixed
+zero, and rejected membrane A3 104 bits.  The salvage is 94.2% smaller than the
+old A3 but is 50% larger than RR.  A synthesis-independent balanced-operator
+depth proxy is 6 for refractory WTA (decode/mask/priority/mux), 12 for a
+rotate/priority/unrotate RR reference, and 4 for fixed priority.  This is a
+logic-structure estimate, not timing or PPA.
+
+The depth and high-contention toggle reductions cannot compensate for
+starvation.  A single refractory ID records only who must not win next; it does
+not record which of the remaining N-1 sources has already been bypassed.  The
+fixed WTA encoder therefore returns to source zero after source one.  Supplying
+the missing history by making `last_winner+1` the scan origin exactly recovers
+RR-like rotation; retaining a longer winner set adds per-source/history state;
+holding a winner for K grants creates the forbidden quota/quantum mechanism.
+The cheap result is therefore inseparable from the viability failure under the
+allowed design space.
+
+### 14.4 Reproduction, head gate, and decision
+
+Run:
+
+```sh
+"${A3R_VERILATOR:-verilator}" --binary --timing --assert \
+  -Wno-fatal --top-module a3_refractory_wta_tb \
+  -f tests/a3_refractory_wta/files.f \
+  --Mdir /tmp/a3r-rtl-obj -o /tmp/a3r-rtl-tb
+/tmp/a3r-rtl-tb
+python3 tests/a3_refractory_wta/exhaustive_compare.py \
+  --output-dir /tmp/a3r-salvage
+```
+
+The exhaustive JSON and comparison CSV SHA-256 hashes are respectively
+`139ccc279f5a8a6b4784d41a94e347d1d5d89709ef37de51e457cde879d8c6c9`
+and `d8db8f070310ac651bfeb85e040b46133368ed27c39abae60dc747b87c27a582`.
+
+**Decision: reject the refractory-WTA salvage immediately.**  It passes
+deterministic transport correctness and is genuinely non-RR, but permanent N=4
+already violates the hard starvation gate; N=16 controls show the failure grows
+to 14 zero-service sources.  Its only notable advantages are relative to the
+already-rejected 104-bit membrane design or an abstract RR depth/toggle proxy,
+not a viable scheduler.  Per head direction, no frozen subset or 46-run full
+regression was executed after this counterexample.  No common file, frozen
+trace, server job, or server PPA was changed or invoked.
