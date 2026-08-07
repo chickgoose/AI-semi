@@ -4,6 +4,11 @@ Status: first-pass reference-model evidence; RTL metrics are superseded by
 [`a4_quadtree_verilator_qualification.md`](a4_quadtree_verilator_qualification.md).
 Server qualification remains `PENDING_HEAD_XCELIUM`, 2026-08-07
 
+The subsequent candidate-only topology/mapping falsification is reported in
+[`a4_quadtree_mapping_sensitivity.md`](a4_quadtree_mapping_sensitivity.md). It
+does not alter or supersede the frozen-46 RTL qualification; it rejects broad
+mapping-neutrality claims and defines placement/padding rejection conditions.
+
 ## Evidence boundary
 
 No common SSH/tmux pane or server file was used after head execution control.

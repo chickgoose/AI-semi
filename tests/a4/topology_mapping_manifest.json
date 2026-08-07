@@ -1,0 +1,15 @@
+{
+  "schema": "a4-topology-mapping-v1",
+  "stim_cycles": 2048,
+  "random_mapping_samples": 32,
+  "runs": [
+    {"name": "n16_boundary_move", "sources": 16, "workload": "quadrant_boundary_move", "seed": 4101},
+    {"name": "n16_single_quadrant", "sources": 16, "workload": "single_quadrant_overload", "seed": 4102},
+    {"name": "n16_all_quadrants", "sources": 16, "workload": "all_quadrants_equal", "seed": 4103},
+    {"name": "n64_boundary_move", "sources": 64, "workload": "quadrant_boundary_move", "seed": 6401},
+    {"name": "n64_single_quadrant", "sources": 64, "workload": "single_quadrant_overload", "seed": 6402},
+    {"name": "n64_all_quadrants", "sources": 64, "workload": "all_quadrants_equal", "seed": 6403},
+    {"name": "n18_padded_uniform", "sources": 18, "workload": "padded_uniform", "seed": 1801},
+    {"name": "n48_padded_uniform", "sources": 48, "workload": "padded_uniform", "seed": 4801}
+  ]
+}
