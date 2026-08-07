@@ -17,6 +17,11 @@ RETIRE_LANES="${AER_RETIRE_LANES:-1}"
 STIM_CYCLES="${AER_STIM_CYCLES:-256}"
 LOAD_PCT="${AER_LOAD_PCT:-3}"
 SEED="${AER_SEED:-1}"
+A2_RESERVOIR_DEPTH="${A2_RESERVOIR_DEPTH:-8}"
+A2_BANK_COUNT="${A2_BANK_COUNT:-2}"
+A2_ENTER_LEVEL="${A2_ENTER_LEVEL:-4}"
+A2_EXIT_LEVEL="${A2_EXIT_LEVEL:-1}"
+A2_QUIET_CYCLES="${A2_QUIET_CYCLES:-3}"
 TRACE_JSONL="${AER_TRACE_JSONL:-}"
 TRACE_MANIFEST="${AER_TRACE_MANIFEST:-}"
 CANDIDATE="a2-adaptive-dual-path"
@@ -85,9 +90,14 @@ common_params=(
 
 case "$SIMULATOR" in
   xrun)
-    snapshot="aer_clean_a2_n${NUM_SOURCES}"
+    snapshot="aer_clean_a2_n${NUM_SOURCES}_b${A2_BANK_COUNT}_d${A2_RESERVOIR_DEPTH}"
     command=(xrun -64bit -sv -timescale 1ns/1ps -top aer_clean_tb
-      -snapshot "$snapshot" -elaborate -xmlibdirname "$out_dir/xcelium.d")
+      -snapshot "$snapshot" -elaborate -xmlibdirname "$out_dir/xcelium.d"
+      "+define+A2_RESERVOIR_DEPTH=$A2_RESERVOIR_DEPTH"
+      "+define+A2_BANK_COUNT=$A2_BANK_COUNT"
+      "+define+A2_ENTER_LEVEL=$A2_ENTER_LEVEL"
+      "+define+A2_EXIT_LEVEL=$A2_EXIT_LEVEL"
+      "+define+A2_QUIET_CYCLES=$A2_QUIET_CYCLES")
     for parameter in "${common_params[@]}"; do
       command+=(-defparam "$parameter")
     done
@@ -129,6 +139,11 @@ case "$SIMULATOR" in
         -Wno-BLKSEQ -Wno-SYNCASYNCNET --top-module aer_clean_tb \
         "-GNUM_SOURCES=$NUM_SOURCES" "-GADDR_WIDTH=$ADDR_WIDTH" \
         "-GRETIRE_LANES=$RETIRE_LANES" \
+        "-DA2_RESERVOIR_DEPTH=$A2_RESERVOIR_DEPTH" \
+        "-DA2_BANK_COUNT=$A2_BANK_COUNT" \
+        "-DA2_ENTER_LEVEL=$A2_ENTER_LEVEL" \
+        "-DA2_EXIT_LEVEL=$A2_EXIT_LEVEL" \
+        "-DA2_QUIET_CYCLES=$A2_QUIET_CYCLES" \
         -f rtl/candidates/a2_adaptive_dual_path/a2_benchmark.f \
         --Mdir "$verilator_obj" -o aer_clean_a2)
       verilator_binary="$verilator_obj/aer_clean_a2"
