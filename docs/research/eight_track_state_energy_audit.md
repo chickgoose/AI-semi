@@ -13,7 +13,7 @@ no synthesis or simulation was rerun. The snapshots are:
 | Track | HEAD | Committed evidence used |
 | --- | --- | --- |
 | A2 | `0cf40b8` | `a2_phase2_pareto_results.md`, phase-2 proxy code, phase-3 gate preregistration |
-| A3 | `77bf691` | `a3_homeostatic_inhibition.md` sections 9--14; committed devil's-advocate audit |
+| A3 | `92cb9b7` | `a3_homeostatic_inhibition.md` sections 9--14; later audit-only commits add no state/physical measurement |
 | A4 | `5f07aee` | `a4_quadtree_structural_shortlist.md`, committed structural CSVs |
 | A5 | `991f164` | `a5_speculative_pregrant.md` sections 10--12; committed capacity/latency audit |
 | A6 | `3d65dae` | v2 synthesis/RTL JSON and final v3 storage-only break-even matrix |
