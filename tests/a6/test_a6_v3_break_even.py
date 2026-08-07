@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "benchmarks/clean_slate_aer"))
 
 from a6_v3_break_even import (  # noqa: E402
-    Event, charged_storage_bits, encode_length, physical_pins, simulate,
+    Event, charged_storage_bits, encode_length, ideal_one_lane_acceptance,
+    physical_pins, simulate,
 )
 
 
@@ -34,6 +35,11 @@ class A6V3BreakEvenTest(unittest.TestCase):
                 self.assertGreaterEqual(codec.accepted, raw.accepted)
                 self.assertEqual(codec.offered, codec.accepted + codec.overrun)
                 self.assertEqual(codec.accepted, codec.delivered)
+
+    def test_ideal_lane_exposes_same_source_overrun(self):
+        events = [Event(0, 3), Event(0, 3), Event(0, 4)]
+        accepted, overrun = ideal_one_lane_acceptance(events, 1)
+        self.assertEqual((accepted, overrun), (2, 1))
 
 
 if __name__ == "__main__":

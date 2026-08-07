@@ -86,6 +86,32 @@ def choose_pending(pending: dict[int, Event], rr_start: int) -> int | None:
     return None
 
 
+def ideal_one_lane_acceptance(events: list[Event], stim_cycles: int) -> tuple[int, int]:
+    """Upper bound with an always-available one-event/cycle transport."""
+    arrivals: dict[int, list[Event]] = defaultdict(list)
+    for event in events:
+        arrivals[event.occurrence].append(event)
+    pending: dict[int, Event] = {}
+    rr_start = 0
+    accepted = overrun = 0
+    for cycle in range(stim_cycles + 32):
+        for event in arrivals.get(cycle, []):
+            if event.source in pending:
+                overrun += 1
+            else:
+                pending[event.source] = event
+        selected = choose_pending(pending, rr_start)
+        if selected is not None:
+            del pending[selected]
+            accepted += 1
+            rr_start = (selected + 1) % 16
+        if cycle >= stim_cycles and not pending:
+            break
+    if accepted + overrun != len(events):
+        raise AssertionError("ideal one-lane conservation failed")
+    return accepted, overrun
+
+
 def simulate(events: list[Event], stim_cycles: int, block_size: int,
              width: int, codec: bool) -> PointResult:
     arrivals: dict[int, list[Event]] = defaultdict(list)
@@ -244,8 +270,17 @@ def main() -> int:
         raise ValueError("expected exactly 46 frozen manifests")
 
     detail: list[dict[str, object]] = []
+    ideal_rows: list[dict[str, int | str]] = []
     for manifest in manifests:
         metadata, events = load_trace(manifest)
+        ideal_accepted, ideal_overrun = ideal_one_lane_acceptance(
+            events, metadata["run"]["stim_cycles"])
+        ideal_rows.append({
+            "name": metadata["run"]["name"],
+            "workload": metadata["run"]["workload"],
+            "offered": len(events), "accepted": ideal_accepted,
+            "overrun": ideal_overrun,
+        })
         for block_size in BLOCK_SIZES:
             for width in LINK_WIDTHS:
                 for codec in (False, True):
@@ -276,7 +311,18 @@ def main() -> int:
         writer.writeheader()
         writer.writerows(detail)
 
-    matrix: dict[str, object] = {"runs": 46, "points": {}}
+    ideal_offered = sum(int(row["offered"]) for row in ideal_rows)
+    ideal_accepted = sum(int(row["accepted"]) for row in ideal_rows)
+    matrix: dict[str, object] = {
+        "runs": 46,
+        "ideal_one_lane_upper_bound": {
+            "offered": ideal_offered,
+            "accepted": ideal_accepted,
+            "overrun": ideal_offered - ideal_accepted,
+            "overrun_ratio": (ideal_offered - ideal_accepted) / ideal_offered,
+        },
+        "points": {},
+    }
     for block_size in BLOCK_SIZES:
         for width in LINK_WIDTHS:
             key = f"B{block_size}_W{width}"
@@ -301,12 +347,40 @@ def main() -> int:
                 "sustained_one_event_per_cycle_raw_possible": full_raw_cycles <= block_size,
                 "codec_full_block_bit_break_even": width * (block_size - 1),
                 "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
-                "simultaneous_pareto_pass": (
+                "link_latency_overrun_pass": (
                     codec["events_per_pin_cycle"] > raw["events_per_pin_cycle"] and
                     codec["average_latency"] <= raw["average_latency"] and
-                    codec["overrun"] <= raw["overrun"] and False
+                    codec["overrun"] <= raw["overrun"]
                 ),
+                "simultaneous_pareto_pass_including_endpoint_cost": False,
             }
+    point_items = list(matrix["points"].items())
+    frontier = []
+    for key, point in point_items:
+        candidate = point["codec"]
+        dominated = False
+        for other_key, other_point in point_items:
+            if other_key == key:
+                continue
+            other = other_point["codec"]
+            no_worse = (
+                other["events_per_pin_cycle"] >= candidate["events_per_pin_cycle"] and
+                other["average_latency"] <= candidate["average_latency"] and
+                other_point["charged_storage_bits_each"] <= point["charged_storage_bits_each"]
+            )
+            strictly_better = (
+                other["events_per_pin_cycle"] > candidate["events_per_pin_cycle"] or
+                other["average_latency"] < candidate["average_latency"] or
+                other_point["charged_storage_bits_each"] < point["charged_storage_bits_each"]
+            )
+            if no_worse and strictly_better:
+                dominated = True
+                break
+        if not dominated:
+            frontier.append(key)
+    matrix["codec_storage_latency_pin_frontier"] = sorted(frontier)
+    matrix["rtl_variant_added"] = False
+    matrix["decision"] = "reject_no_simultaneous_pin_latency_endpoint_cost_pass"
     args.matrix_json.write_text(json.dumps(matrix, indent=2, sort_keys=True) + "\n")
     print("A6_V3_MATRIX_PASS runs=46 points=12 nonexpanding=1")
     return 0

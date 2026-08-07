@@ -1,0 +1,4519 @@
+{
+  "codec_storage_latency_pin_frontier": [
+    "B16_W4",
+    "B32_W4",
+    "B4_W4",
+    "B8_W4"
+  ],
+  "decision": "reject_no_simultaneous_pin_latency_endpoint_cost_pass",
+  "ideal_one_lane_upper_bound": {
+    "accepted": 73878,
+    "offered": 87000,
+    "overrun": 13122,
+    "overrun_ratio": 0.15082758620689654
+  },
+  "points": {
+    "B16_W1": {
+      "block_size": 16,
+      "charged_storage_bits_each": 266,
+      "codec": {
+        "accepted": 26445,
+        "average_latency": 147.56857629041406,
+        "bits_per_event": 3.680582340707128,
+        "delivered": 26445,
+        "events_per_pin_cycle": 0.08894247747429598,
+        "max_latency": 194,
+        "offered": 87000,
+        "overrun": 60555,
+        "overrun_ratio": 0.6960344827586207,
+        "raw_bypass_ratio": 0.3688063063063063,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 15,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 80.5,
+            "bits_per_event": 3.5625,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.09195402298850575,
+            "max_latency": 88,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 87.5,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.08205128205128205,
+            "max_latency": 95,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 21.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 21,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 21.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 21,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 1090,
+            "average_latency": 138.46238532110092,
+            "bits_per_event": 3.858715596330275,
+            "delivered": 1090,
+            "events_per_pin_cycle": 0.08499025341130605,
+            "max_latency": 190,
+            "offered": 3654,
+            "overrun": 2564,
+            "overrun_ratio": 0.7016967706622879,
+            "raw_bypass_ratio": 0.7391304347826086,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1056,
+            "average_latency": 143.66382575757575,
+            "bits_per_event": 4.0,
+            "delivered": 1056,
+            "events_per_pin_cycle": 0.08205128205128205,
+            "max_latency": 189,
+            "offered": 3654,
+            "overrun": 2598,
+            "overrun_ratio": 0.7110016420361248,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 80.5,
+            "bits_per_event": 3.5625,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.09195402298850575,
+            "max_latency": 88,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 103.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.08205128205128205,
+            "max_latency": 126,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 1740,
+            "average_latency": 123.64137931034483,
+            "bits_per_event": 3.56551724137931,
+            "delivered": 1740,
+            "events_per_pin_cycle": 0.09184481393507522,
+            "max_latency": 158,
+            "offered": 4608,
+            "overrun": 2868,
+            "overrun_ratio": 0.6223958333333334,
+            "raw_bypass_ratio": 0.02702702702702703,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 1557,
+            "average_latency": 138.63005780346822,
+            "bits_per_event": 4.0,
+            "delivered": 1557,
+            "events_per_pin_cycle": 0.0820293978188715,
+            "max_latency": 179,
+            "offered": 4608,
+            "overrun": 3051,
+            "overrun_ratio": 0.662109375,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 2679,
+            "average_latency": 149.25307950727884,
+            "bits_per_event": 3.950354609929078,
+            "delivered": 2679,
+            "events_per_pin_cycle": 0.08304659164884218,
+            "max_latency": 193,
+            "offered": 9111,
+            "overrun": 6432,
+            "overrun_ratio": 0.7059598287783997,
+            "raw_bypass_ratio": 0.9117647058823529,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 2650,
+            "average_latency": 151.21320754716982,
+            "bits_per_event": 4.0,
+            "delivered": 2650,
+            "events_per_pin_cycle": 0.08202556721453555,
+            "max_latency": 193,
+            "offered": 9111,
+            "overrun": 6461,
+            "overrun_ratio": 0.7091427944243223,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 1495,
+            "average_latency": 146.53110367892975,
+            "bits_per_event": 3.74314381270903,
+            "delivered": 1495,
+            "events_per_pin_cycle": 0.08718217867972941,
+            "max_latency": 190,
+            "offered": 6306,
+            "overrun": 4811,
+            "overrun_ratio": 0.7629241991753886,
+            "raw_bypass_ratio": 0.5,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1412,
+            "average_latency": 157.54249291784703,
+            "bits_per_event": 4.0,
+            "delivered": 1412,
+            "events_per_pin_cycle": 0.08168460025454125,
+            "max_latency": 203,
+            "offered": 6306,
+            "overrun": 4894,
+            "overrun_ratio": 0.7760862670472566,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 3456,
+            "average_latency": 155.63715277777777,
+            "bits_per_event": 3.5677083333333335,
+            "delivered": 3456,
+            "events_per_pin_cycle": 0.09182209469153516,
+            "max_latency": 176,
+            "offered": 6144,
+            "overrun": 2688,
+            "overrun_ratio": 0.4375,
+            "raw_bypass_ratio": 0.009259259259259259,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 3096,
+            "average_latency": 175.78036175710594,
+            "bits_per_event": 4.0,
+            "delivered": 3096,
+            "events_per_pin_cycle": 0.0820480203529973,
+            "max_latency": 194,
+            "offered": 6144,
+            "overrun": 3048,
+            "overrun_ratio": 0.49609375,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 75.0,
+            "bits_per_event": 2.65625,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.12260536398467432,
+            "max_latency": 94,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 954,
+            "average_latency": 110.35220125786164,
+            "bits_per_event": 4.0,
+            "delivered": 954,
+            "events_per_pin_cycle": 0.08204334365325078,
+            "max_latency": 146,
+            "offered": 1024,
+            "overrun": 70,
+            "overrun_ratio": 0.068359375,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 2238,
+            "average_latency": 162.3704200178731,
+            "bits_per_event": 3.7042001787310097,
+            "delivered": 2238,
+            "events_per_pin_cycle": 0.08849347568208778,
+            "max_latency": 190,
+            "offered": 8434,
+            "overrun": 6196,
+            "overrun_ratio": 0.7346454825705477,
+            "raw_bypass_ratio": 0.21428571428571427,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2078,
+            "average_latency": 176.10009624639076,
+            "bits_per_event": 4.0,
+            "delivered": 2078,
+            "events_per_pin_cycle": 0.082050067124694,
+            "max_latency": 194,
+            "offered": 8434,
+            "overrun": 6356,
+            "overrun_ratio": 0.7536163149158169,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 1090,
+            "average_latency": 158.29174311926604,
+            "bits_per_event": 3.853211009174312,
+            "delivered": 1090,
+            "events_per_pin_cycle": 0.08510970562973375,
+            "max_latency": 194,
+            "offered": 2538,
+            "overrun": 1448,
+            "overrun_ratio": 0.570527974783294,
+            "raw_bypass_ratio": 0.5942028985507246,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1051,
+            "average_latency": 164.64034253092294,
+            "bits_per_event": 4.0,
+            "delivered": 1051,
+            "events_per_pin_cycle": 0.08204527712724434,
+            "max_latency": 194,
+            "offered": 2538,
+            "overrun": 1487,
+            "overrun_ratio": 0.5858944050433412,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 11073,
+            "average_latency": 155.66666666666666,
+            "bits_per_event": 3.7203106655829496,
+            "delivered": 11073,
+            "events_per_pin_cycle": 0.08799198989200659,
+            "max_latency": 192,
+            "offered": 44621,
+            "overrun": 33548,
+            "overrun_ratio": 0.7518433024808946,
+            "raw_bypass_ratio": 0.37367021276595747,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 10360,
+            "average_latency": 167.6761583011583,
+            "bits_per_event": 4.0,
+            "delivered": 10360,
+            "events_per_pin_cycle": 0.08192767273216135,
+            "max_latency": 194,
+            "offered": 44621,
+            "overrun": 34261,
+            "overrun_ratio": 0.767822325810717,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 1,
+      "pins": 3,
+      "raw": {
+        "accepted": 24774,
+        "average_latency": 160.29381609752159,
+        "bits_per_event": 4.0,
+        "delivered": 24774,
+        "events_per_pin_cycle": 0.08194899275578049,
+        "max_latency": 203,
+        "offered": 87000,
+        "overrun": 62226,
+        "overrun_ratio": 0.7152413793103448,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B16_W2": {
+      "block_size": 16,
+      "charged_storage_bits_each": 266,
+      "codec": {
+        "accepted": 46348,
+        "average_latency": 71.977280573056,
+        "bits_per_event": 3.7841330801760593,
+        "delivered": 46348,
+        "events_per_pin_cycle": 0.10142460117732018,
+        "max_latency": 149,
+        "offered": 87000,
+        "overrun": 40652,
+        "overrun_ratio": 0.46726436781609193,
+        "raw_bypass_ratio": 0.5566193463189172,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 30,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 52.5,
+            "bits_per_event": 3.5625,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.10666666666666667,
+            "max_latency": 60,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 55.5,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 63,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 19.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 19,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 19.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 19,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 2186,
+            "average_latency": 61.79597438243367,
+            "bits_per_event": 3.6001829826166514,
+            "delivered": 2186,
+            "events_per_pin_cycle": 0.10642648490749756,
+            "max_latency": 88,
+            "offered": 3654,
+            "overrun": 1468,
+            "overrun_ratio": 0.4017515051997811,
+            "raw_bypass_ratio": 0.4927536231884058,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2018,
+            "average_latency": 68.01783944499505,
+            "bits_per_event": 4.0,
+            "delivered": 2018,
+            "events_per_pin_cycle": 0.09692603266090298,
+            "max_latency": 88,
+            "offered": 3654,
+            "overrun": 1636,
+            "overrun_ratio": 0.44772851669403396,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 52.5,
+            "bits_per_event": 3.5625,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.10666666666666667,
+            "max_latency": 60,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 55.5,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 63,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 3297,
+            "average_latency": 62.0400363967243,
+            "bits_per_event": 3.56687898089172,
+            "delivered": 3297,
+            "events_per_pin_cycle": 0.10654386815317499,
+            "max_latency": 74,
+            "offered": 4608,
+            "overrun": 1311,
+            "overrun_ratio": 0.2845052083333333,
+            "raw_bypass_ratio": 0.014492753623188406,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 3000,
+            "average_latency": 68.638,
+            "bits_per_event": 4.0,
+            "delivered": 3000,
+            "events_per_pin_cycle": 0.09694619486185167,
+            "max_latency": 83,
+            "offered": 4608,
+            "overrun": 1608,
+            "overrun_ratio": 0.3489583333333333,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 5201,
+            "average_latency": 68.35089405883484,
+            "bits_per_event": 3.862526437223611,
+            "delivered": 5201,
+            "events_per_pin_cycle": 0.0999615606380934,
+            "max_latency": 93,
+            "offered": 9111,
+            "overrun": 3910,
+            "overrun_ratio": 0.42915157501920753,
+            "raw_bypass_ratio": 0.8024316109422492,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 5053,
+            "average_latency": 70.60755986542648,
+            "bits_per_event": 4.0,
+            "delivered": 5053,
+            "events_per_pin_cycle": 0.09693075004795704,
+            "max_latency": 93,
+            "offered": 9111,
+            "overrun": 4058,
+            "overrun_ratio": 0.445395675557019,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 2461,
+            "average_latency": 79.93864282811865,
+            "bits_per_event": 3.8415278342137342,
+            "delivered": 2461,
+            "events_per_pin_cycle": 0.09959530554431405,
+            "max_latency": 149,
+            "offered": 6306,
+            "overrun": 3845,
+            "overrun_ratio": 0.6097367586425626,
+            "raw_bypass_ratio": 0.6373626373626373,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2387,
+            "average_latency": 82.56807708420611,
+            "bits_per_event": 4.0,
+            "delivered": 2387,
+            "events_per_pin_cycle": 0.09642496465360534,
+            "max_latency": 149,
+            "offered": 6306,
+            "overrun": 3919,
+            "overrun_ratio": 0.6214716143355534,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 6144,
+            "average_latency": 59.330729166666664,
+            "bits_per_event": 3.66455078125,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.10423275935193825,
+            "max_latency": 90,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.23177083333333334,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 5978,
+            "average_latency": 79.63466042154566,
+            "bits_per_event": 4.0,
+            "delivered": 5978,
+            "events_per_pin_cycle": 0.09696674776966747,
+            "max_latency": 98,
+            "offered": 6144,
+            "overrun": 166,
+            "overrun_ratio": 0.027018229166666668,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 54.25,
+            "bits_per_event": 2.65625,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.14065934065934066,
+            "max_latency": 72,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 64.5,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 81,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 4054,
+            "average_latency": 81.744449925999,
+            "bits_per_event": 3.9484459792797235,
+            "delivered": 4054,
+            "events_per_pin_cycle": 0.09788723892309549,
+            "max_latency": 97,
+            "offered": 8434,
+            "overrun": 4380,
+            "overrun_ratio": 0.5193265354517429,
+            "raw_bypass_ratio": 0.7992125984251969,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 4016,
+            "average_latency": 82.53535856573706,
+            "bits_per_event": 4.0,
+            "delivered": 4016,
+            "events_per_pin_cycle": 0.0969579913085466,
+            "max_latency": 98,
+            "offered": 8434,
+            "overrun": 4418,
+            "overrun_ratio": 0.5238321081337444,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 1992,
+            "average_latency": 72.98192771084338,
+            "bits_per_event": 4.0,
+            "delivered": 1992,
+            "events_per_pin_cycle": 0.09693430656934307,
+            "max_latency": 94,
+            "offered": 2538,
+            "overrun": 546,
+            "overrun_ratio": 0.21513002364066194,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1992,
+            "average_latency": 72.98192771084338,
+            "bits_per_event": 4.0,
+            "delivered": 1992,
+            "events_per_pin_cycle": 0.09693430656934307,
+            "max_latency": 94,
+            "offered": 2538,
+            "overrun": 546,
+            "overrun_ratio": 0.21513002364066194,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 19429,
+            "average_latency": 78.18050337124916,
+            "bits_per_event": 3.8599516187142933,
+            "delivered": 19429,
+            "events_per_pin_cycle": 0.09957206918641896,
+            "max_latency": 149,
+            "offered": 44621,
+            "overrun": 25192,
+            "overrun_ratio": 0.5645772170054458,
+            "raw_bypass_ratio": 0.61328125,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 18914,
+            "average_latency": 80.68795601142011,
+            "bits_per_event": 4.0,
+            "delivered": 18914,
+            "events_per_pin_cycle": 0.096808701215611,
+            "max_latency": 149,
+            "offered": 44621,
+            "overrun": 25707,
+            "overrun_ratio": 0.5761188677976737,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 2,
+      "pins": 5,
+      "raw": {
+        "accepted": 44942,
+        "average_latency": 77.25588536335722,
+        "bits_per_event": 4.0,
+        "delivered": 44942,
+        "events_per_pin_cycle": 0.0968306293495357,
+        "max_latency": 149,
+        "offered": 87000,
+        "overrun": 42058,
+        "overrun_ratio": 0.48342528735632184,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B16_W4": {
+      "block_size": 16,
+      "charged_storage_bits_each": 266,
+      "codec": {
+        "accepted": 72056,
+        "average_latency": 36.87443099811258,
+        "bits_per_event": 3.8267042300433,
+        "delivered": 72056,
+        "events_per_pin_cycle": 0.12098539900869075,
+        "max_latency": 136,
+        "offered": 87000,
+        "overrun": 14944,
+        "overrun_ratio": 0.17177011494252872,
+        "raw_bypass_ratio": 0.7478429680759275,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 60,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 38.5,
+            "bits_per_event": 3.5625,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.125,
+            "max_latency": 46,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 39.5,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 47,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 18.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.0625,
+            "max_latency": 18,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 18.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.0625,
+            "max_latency": 18,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 3653,
+            "average_latency": 31.313441007391184,
+            "bits_per_event": 3.0897892143443744,
+            "delivered": 3653,
+            "events_per_pin_cycle": 0.14332234777150032,
+            "max_latency": 38,
+            "offered": 3654,
+            "overrun": 1,
+            "overrun_ratio": 0.0002736726874657909,
+            "raw_bypass_ratio": 0.2217391304347826,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3648,
+            "average_latency": 33.15899122807018,
+            "bits_per_event": 4.0,
+            "delivered": 3648,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 38,
+            "offered": 3654,
+            "overrun": 6,
+            "overrun_ratio": 0.0016420361247947454,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 38.5,
+            "bits_per_event": 3.5625,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.125,
+            "max_latency": 46,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 39.5,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 47,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 4608,
+            "average_latency": 34.5,
+            "bits_per_event": 3.5625,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.125,
+            "max_latency": 38,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 4608,
+            "average_latency": 35.5,
+            "bits_per_event": 4.0,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 39,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 9091,
+            "average_latency": 32.47816521834782,
+            "bits_per_event": 3.6669233307666924,
+            "delivered": 9091,
+            "events_per_pin_cycle": 0.1257469292906938,
+            "max_latency": 40,
+            "offered": 9111,
+            "overrun": 20,
+            "overrun_ratio": 0.0021951487213258698,
+            "raw_bypass_ratio": 0.691768826619965,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 9079,
+            "average_latency": 33.26985350809561,
+            "bits_per_event": 4.0,
+            "delivered": 9079,
+            "events_per_pin_cycle": 0.11761581511037414,
+            "max_latency": 40,
+            "offered": 9111,
+            "overrun": 32,
+            "overrun_ratio": 0.003512237954121392,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 4160,
+            "average_latency": 39.61466346153846,
+            "bits_per_event": 3.9555288461538463,
+            "delivered": 4160,
+            "events_per_pin_cycle": 0.11724915445321307,
+            "max_latency": 133,
+            "offered": 6306,
+            "overrun": 2146,
+            "overrun_ratio": 0.3403108150967333,
+            "raw_bypass_ratio": 0.8512110726643599,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 4147,
+            "average_latency": 39.82927417410176,
+            "bits_per_event": 4.0,
+            "delivered": 4147,
+            "events_per_pin_cycle": 0.11690911141181777,
+            "max_latency": 133,
+            "offered": 6306,
+            "overrun": 2159,
+            "overrun_ratio": 0.342372343799556,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 6144,
+            "average_latency": 38.8359375,
+            "bits_per_event": 3.708984375,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.12242945958871354,
+            "max_latency": 47,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.3333333333333333,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 6144,
+            "average_latency": 39.5,
+            "bits_per_event": 4.0,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 47,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 43.875,
+            "bits_per_event": 2.65625,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.16161616161616163,
+            "max_latency": 61,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 48.5,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 65,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 7714,
+            "average_latency": 35.6764324604615,
+            "bits_per_event": 4.0,
+            "delivered": 7714,
+            "events_per_pin_cycle": 0.117620151256404,
+            "max_latency": 44,
+            "offered": 8434,
+            "overrun": 720,
+            "overrun_ratio": 0.08536874555371117,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 7714,
+            "average_latency": 35.6764324604615,
+            "bits_per_event": 4.0,
+            "delivered": 7714,
+            "events_per_pin_cycle": 0.117620151256404,
+            "max_latency": 44,
+            "offered": 8434,
+            "overrun": 720,
+            "overrun_ratio": 0.08536874555371117,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 2521,
+            "average_latency": 36.77746925823086,
+            "bits_per_event": 4.0,
+            "delivered": 2521,
+            "events_per_pin_cycle": 0.1175839552238806,
+            "max_latency": 52,
+            "offered": 2538,
+            "overrun": 17,
+            "overrun_ratio": 0.006698187549251379,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2521,
+            "average_latency": 36.77746925823086,
+            "bits_per_event": 4.0,
+            "delivered": 2521,
+            "events_per_pin_cycle": 0.1175839552238806,
+            "max_latency": 52,
+            "offered": 2538,
+            "overrun": 17,
+            "overrun_ratio": 0.006698187549251379,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 32581,
+            "average_latency": 38.40397777845984,
+            "bits_per_event": 3.983487308554065,
+            "delivered": 32581,
+            "events_per_pin_cycle": 0.11754964498066155,
+            "max_latency": 136,
+            "offered": 44621,
+            "overrun": 12040,
+            "overrun_ratio": 0.2698281078415993,
+            "raw_bypass_ratio": 0.9381541389153187,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 32548,
+            "average_latency": 38.46460612019172,
+            "bits_per_event": 4.0,
+            "delivered": 32548,
+            "events_per_pin_cycle": 0.11742380512583699,
+            "max_latency": 136,
+            "offered": 44621,
+            "overrun": 12073,
+            "overrun_ratio": 0.2705676699311983,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 4,
+      "pins": 8,
+      "raw": {
+        "accepted": 71993,
+        "average_latency": 37.301279291042185,
+        "bits_per_event": 4.0,
+        "delivered": 71993,
+        "events_per_pin_cycle": 0.11744831771553862,
+        "max_latency": 136,
+        "offered": 87000,
+        "overrun": 15007,
+        "overrun_ratio": 0.1724942528735632,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B32_W1": {
+      "block_size": 32,
+      "charged_storage_bits_each": 522,
+      "codec": {
+        "accepted": 26935,
+        "average_latency": 262.24069055132725,
+        "bits_per_event": 3.7166140709114535,
+        "delivered": 26935,
+        "events_per_pin_cycle": 0.08889614975874109,
+        "max_latency": 540,
+        "offered": 87000,
+        "overrun": 60065,
+        "overrun_ratio": 0.6904022988505747,
+        "raw_bypass_ratio": 0.5387205387205387,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 31,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 112.5,
+            "bits_per_event": 3.5625,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.09195402298850575,
+            "max_latency": 120,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 119.5,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.08205128205128205,
+            "max_latency": 127,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 322.0,
+            "bits_per_event": 3.5625,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.09195402298850575,
+            "max_latency": 540,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 329.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.08205128205128205,
+            "max_latency": 547,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 1191,
+            "average_latency": 246.46179680940386,
+            "bits_per_event": 3.649874055415617,
+            "delivered": 1191,
+            "events_per_pin_cycle": 0.09053591790193842,
+            "max_latency": 367,
+            "offered": 3654,
+            "overrun": 2463,
+            "overrun_ratio": 0.674055829228243,
+            "raw_bypass_ratio": 0.39473684210526316,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1100,
+            "average_latency": 272.3,
+            "bits_per_event": 4.0,
+            "delivered": 1100,
+            "events_per_pin_cycle": 0.0826570483919447,
+            "max_latency": 367,
+            "offered": 3654,
+            "overrun": 2554,
+            "overrun_ratio": 0.69896004378763,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 112.5,
+            "bits_per_event": 3.5625,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.09195402298850575,
+            "max_latency": 120,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 135.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.08205128205128205,
+            "max_latency": 158,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 2259,
+            "average_latency": 180.43957503320053,
+            "bits_per_event": 2.808764940239044,
+            "delivered": 2259,
+            "events_per_pin_cycle": 0.11734455352968677,
+            "max_latency": 232,
+            "offered": 4608,
+            "overrun": 2349,
+            "overrun_ratio": 0.509765625,
+            "raw_bypass_ratio": 0.041666666666666664,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 1644,
+            "average_latency": 259.5109489051095,
+            "bits_per_event": 4.0,
+            "delivered": 1644,
+            "events_per_pin_cycle": 0.08265460030165912,
+            "max_latency": 349,
+            "offered": 4608,
+            "overrun": 2964,
+            "overrun_ratio": 0.6432291666666666,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 2866,
+            "average_latency": 267.58722958827633,
+            "bits_per_event": 3.856245638520586,
+            "delivered": 2866,
+            "events_per_pin_cycle": 0.0857185583968895,
+            "max_latency": 368,
+            "offered": 9111,
+            "overrun": 6245,
+            "overrun_ratio": 0.6854351882340028,
+            "raw_bypass_ratio": 0.6989247311827957,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 2770,
+            "average_latency": 278.29530685920577,
+            "bits_per_event": 4.0,
+            "delivered": 2770,
+            "events_per_pin_cycle": 0.0826618919725455,
+            "max_latency": 369,
+            "offered": 9111,
+            "overrun": 6341,
+            "overrun_ratio": 0.6959719020963671,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 1483,
+            "average_latency": 279.67026298044505,
+            "bits_per_event": 3.858395144976399,
+            "delivered": 1483,
+            "events_per_pin_cycle": 0.08562850049079046,
+            "max_latency": 422,
+            "offered": 6306,
+            "overrun": 4823,
+            "overrun_ratio": 0.7648271487472249,
+            "raw_bypass_ratio": 0.6470588235294118,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1432,
+            "average_latency": 289.42388268156424,
+            "bits_per_event": 4.0,
+            "delivered": 1432,
+            "events_per_pin_cycle": 0.08262650741445964,
+            "max_latency": 422,
+            "offered": 6306,
+            "overrun": 4874,
+            "overrun_ratio": 0.7729146844275293,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 3433,
+            "average_latency": 264.72065249053304,
+            "bits_per_event": 3.6382173026507427,
+            "delivered": 3433,
+            "events_per_pin_cycle": 0.09083452399851828,
+            "max_latency": 351,
+            "offered": 6144,
+            "overrun": 2711,
+            "overrun_ratio": 0.4412434895833333,
+            "raw_bypass_ratio": 0.05555555555555555,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 3142,
+            "average_latency": 292.1021642266073,
+            "bits_per_event": 4.0,
+            "delivered": 3142,
+            "events_per_pin_cycle": 0.08268203468329781,
+            "max_latency": 360,
+            "offered": 6144,
+            "overrun": 3002,
+            "overrun_ratio": 0.4886067708333333,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 150.5,
+            "bits_per_event": 2.5,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.13168724279835392,
+            "max_latency": 194,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 962,
+            "average_latency": 215.9106029106029,
+            "bits_per_event": 4.0,
+            "delivered": 962,
+            "events_per_pin_cycle": 0.08264604810996563,
+            "max_latency": 277,
+            "offered": 1024,
+            "overrun": 62,
+            "overrun_ratio": 0.060546875,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 2142,
+            "average_latency": 300.0999066293184,
+            "bits_per_event": 3.9859943977591037,
+            "delivered": 2142,
+            "events_per_pin_cycle": 0.08296537299558447,
+            "max_latency": 370,
+            "offered": 8434,
+            "overrun": 6292,
+            "overrun_ratio": 0.7460279819777093,
+            "raw_bypass_ratio": 0.9117647058823529,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2142,
+            "average_latency": 301.00560224089634,
+            "bits_per_event": 4.0,
+            "delivered": 2142,
+            "events_per_pin_cycle": 0.08267716535433071,
+            "max_latency": 370,
+            "offered": 8434,
+            "overrun": 6292,
+            "overrun_ratio": 0.7460279819777093,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 1095,
+            "average_latency": 284.5643835616438,
+            "bits_per_event": 4.0,
+            "delivered": 1095,
+            "events_per_pin_cycle": 0.08267270668176671,
+            "max_latency": 369,
+            "offered": 2538,
+            "overrun": 1443,
+            "overrun_ratio": 0.5685579196217494,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1095,
+            "average_latency": 284.5643835616438,
+            "bits_per_event": 4.0,
+            "delivered": 1095,
+            "events_per_pin_cycle": 0.08267270668176671,
+            "max_latency": 369,
+            "offered": 2538,
+            "overrun": 1443,
+            "overrun_ratio": 0.5685579196217494,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 10882,
+            "average_latency": 284.28910126814924,
+            "bits_per_event": 3.9218893585737917,
+            "delivered": 10882,
+            "events_per_pin_cycle": 0.08428406564893774,
+            "max_latency": 423,
+            "offered": 44621,
+            "overrun": 33739,
+            "overrun_ratio": 0.7561237982116044,
+            "raw_bypass_ratio": 0.7270194986072424,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 10777,
+            "average_latency": 289.77507655191613,
+            "bits_per_event": 4.0,
+            "delivered": 10777,
+            "events_per_pin_cycle": 0.08265077612123443,
+            "max_latency": 423,
+            "offered": 44621,
+            "overrun": 33844,
+            "overrun_ratio": 0.7584769503148742,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 1,
+      "pins": 3,
+      "raw": {
+        "accepted": 25624,
+        "average_latency": 280.90103028410863,
+        "bits_per_event": 4.0,
+        "delivered": 25624,
+        "events_per_pin_cycle": 0.08264473472020642,
+        "max_latency": 547,
+        "offered": 87000,
+        "overrun": 61376,
+        "overrun_ratio": 0.705471264367816,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B32_W2": {
+      "block_size": 32,
+      "charged_storage_bits_each": 522,
+      "codec": {
+        "accepted": 48039,
+        "average_latency": 129.41162388892357,
+        "bits_per_event": 3.716355461187785,
+        "delivered": 48039,
+        "events_per_pin_cycle": 0.105403003740963,
+        "max_latency": 512,
+        "offered": 87000,
+        "overrun": 38961,
+        "overrun_ratio": 0.44782758620689656,
+        "raw_bypass_ratio": 0.5654416505480335,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 62,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 84.5,
+            "bits_per_event": 3.5625,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.10666666666666667,
+            "max_latency": 92,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 87.5,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 95,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 294.0,
+            "bits_per_event": 3.5625,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.10666666666666667,
+            "max_latency": 512,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 297.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 515,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 2339,
+            "average_latency": 114.68362548097477,
+            "bits_per_event": 3.4775545104745618,
+            "delivered": 2339,
+            "events_per_pin_cycle": 0.11215535842723567,
+            "max_latency": 167,
+            "offered": 3654,
+            "overrun": 1315,
+            "overrun_ratio": 0.3598795840175151,
+            "raw_bypass_ratio": 0.22666666666666666,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2058,
+            "average_latency": 131.56219630709427,
+            "bits_per_event": 4.0,
+            "delivered": 2058,
+            "events_per_pin_cycle": 0.09842180774748924,
+            "max_latency": 170,
+            "offered": 3654,
+            "overrun": 1596,
+            "overrun_ratio": 0.4367816091954023,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 84.5,
+            "bits_per_event": 3.5625,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.10666666666666667,
+            "max_latency": 92,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 87.5,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 95,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 4281,
+            "average_latency": 89.66292922214436,
+            "bits_per_event": 2.797477224947442,
+            "delivered": 4281,
+            "events_per_pin_cycle": 0.13834222006786234,
+            "max_latency": 100,
+            "offered": 4608,
+            "overrun": 327,
+            "overrun_ratio": 0.07096354166666667,
+            "raw_bypass_ratio": 0.022222222222222223,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 3084,
+            "average_latency": 129.22081712062257,
+            "bits_per_event": 4.0,
+            "delivered": 3084,
+            "events_per_pin_cycle": 0.0984202967927238,
+            "max_latency": 157,
+            "offered": 4608,
+            "overrun": 1524,
+            "overrun_ratio": 0.3307291666666667,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 5387,
+            "average_latency": 128.46890662706517,
+            "bits_per_event": 3.8199368850937443,
+            "delivered": 5387,
+            "events_per_pin_cycle": 0.10278572791452013,
+            "max_latency": 174,
+            "offered": 9111,
+            "overrun": 3724,
+            "overrun_ratio": 0.40873669191087697,
+            "raw_bypass_ratio": 0.7558139534883721,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 5164,
+            "average_latency": 134.5056158017041,
+            "bits_per_event": 4.0,
+            "delivered": 5164,
+            "events_per_pin_cycle": 0.09842752311064519,
+            "max_latency": 174,
+            "offered": 9111,
+            "overrun": 3947,
+            "overrun_ratio": 0.4332126001536604,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 2493,
+            "average_latency": 150.77777777777777,
+            "bits_per_event": 3.8800641797031687,
+            "delivered": 2493,
+            "events_per_pin_cycle": 0.10107439691871073,
+            "max_latency": 378,
+            "offered": 6306,
+            "overrun": 3813,
+            "overrun_ratio": 0.6046622264509991,
+            "raw_bypass_ratio": 0.6463414634146342,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2427,
+            "average_latency": 154.5863205603626,
+            "bits_per_event": 4.0,
+            "delivered": 2427,
+            "events_per_pin_cycle": 0.09835866261398177,
+            "max_latency": 368,
+            "offered": 6306,
+            "overrun": 3879,
+            "overrun_ratio": 0.615128449096099,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 6143,
+            "average_latency": 111.92169949536057,
+            "bits_per_event": 3.5831027185414293,
+            "delivered": 6143,
+            "events_per_pin_cycle": 0.1088894797482939,
+            "max_latency": 161,
+            "offered": 6144,
+            "overrun": 1,
+            "overrun_ratio": 0.00016276041666666666,
+            "raw_bypass_ratio": 0.109375,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 6071,
+            "average_latency": 132.6768242464174,
+            "bits_per_event": 4.0,
+            "delivered": 6071,
+            "events_per_pin_cycle": 0.09845130949485122,
+            "max_latency": 163,
+            "offered": 6144,
+            "overrun": 73,
+            "overrun_ratio": 0.011881510416666666,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 111.0,
+            "bits_per_event": 2.5,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.15421686746987953,
+            "max_latency": 152,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 134.5,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.09846153846153846,
+            "max_latency": 173,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 4105,
+            "average_latency": 145.74762484774666,
+            "bits_per_event": 4.0,
+            "delivered": 4105,
+            "events_per_pin_cycle": 0.09844124700239808,
+            "max_latency": 178,
+            "offered": 8434,
+            "overrun": 4329,
+            "overrun_ratio": 0.5132795826416884,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 4105,
+            "average_latency": 145.74762484774666,
+            "bits_per_event": 4.0,
+            "delivered": 4105,
+            "events_per_pin_cycle": 0.09844124700239808,
+            "max_latency": 178,
+            "offered": 8434,
+            "overrun": 4329,
+            "overrun_ratio": 0.5132795826416884,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 2034,
+            "average_latency": 132.44985250737463,
+            "bits_per_event": 4.0,
+            "delivered": 2034,
+            "events_per_pin_cycle": 0.0984511132623427,
+            "max_latency": 174,
+            "offered": 2538,
+            "overrun": 504,
+            "overrun_ratio": 0.19858156028368795,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2034,
+            "average_latency": 132.44985250737463,
+            "bits_per_event": 4.0,
+            "delivered": 2034,
+            "events_per_pin_cycle": 0.0984511132623427,
+            "max_latency": 174,
+            "offered": 2538,
+            "overrun": 504,
+            "overrun_ratio": 0.19858156028368795,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 19673,
+            "average_latency": 140.99740761449704,
+            "bits_per_event": 3.9163828597570274,
+            "delivered": 19673,
+            "events_per_pin_cycle": 0.10025735762517518,
+            "max_latency": 359,
+            "offered": 44621,
+            "overrun": 24948,
+            "overrun_ratio": 0.5591089397368952,
+            "raw_bypass_ratio": 0.7239747634069401,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 19294,
+            "average_latency": 143.69897377423032,
+            "bits_per_event": 4.0,
+            "delivered": 19294,
+            "events_per_pin_cycle": 0.09841366998214741,
+            "max_latency": 359,
+            "offered": 44621,
+            "overrun": 25327,
+            "overrun_ratio": 0.5676026982810785,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 2,
+      "pins": 5,
+      "raw": {
+        "accepted": 45821,
+        "average_latency": 139.19770410946947,
+        "bits_per_event": 4.0,
+        "delivered": 45821,
+        "events_per_pin_cycle": 0.09840540337388727,
+        "max_latency": 515,
+        "offered": 87000,
+        "overrun": 41179,
+        "overrun_ratio": 0.47332183908045977,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B32_W4": {
+      "block_size": 32,
+      "charged_storage_bits_each": 522,
+      "codec": {
+        "accepted": 73106,
+        "average_latency": 70.39881815446064,
+        "bits_per_event": 3.770962711678932,
+        "delivered": 73106,
+        "events_per_pin_cycle": 0.12738189827011806,
+        "max_latency": 498,
+        "offered": 87000,
+        "overrun": 13894,
+        "overrun_ratio": 0.15970114942528735,
+        "raw_bypass_ratio": 0.7222460351478782,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 124,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 70.5,
+            "bits_per_event": 3.5625,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.125,
+            "max_latency": 78,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 71.5,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 79,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 280.0,
+            "bits_per_event": 3.5625,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.125,
+            "max_latency": 498,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 281.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 499,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 3654,
+            "average_latency": 61.19376026272578,
+            "bits_per_event": 3.1423097974822114,
+            "delivered": 3654,
+            "events_per_pin_cycle": 0.1491185112634672,
+            "max_latency": 73,
+            "offered": 3654,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.1206896551724138,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3654,
+            "average_latency": 65.95511767925561,
+            "bits_per_event": 4.0,
+            "delivered": 3654,
+            "events_per_pin_cycle": 0.12115384615384615,
+            "max_latency": 76,
+            "offered": 3654,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 70.5,
+            "bits_per_event": 3.5625,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.125,
+            "max_latency": 78,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 71.5,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.11764705882352941,
+            "max_latency": 79,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 4608,
+            "average_latency": 61.166666666666664,
+            "bits_per_event": 2.78125,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.16666666666666666,
+            "max_latency": 68,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 4608,
+            "average_latency": 70.16666666666667,
+            "bits_per_event": 4.0,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.12121212121212122,
+            "max_latency": 77,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 9111,
+            "average_latency": 64.16309954999451,
+            "bits_per_event": 3.6674349687191308,
+            "delivered": 9111,
+            "events_per_pin_cycle": 0.13066486920605783,
+            "max_latency": 74,
+            "offered": 9111,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.6433566433566433,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 9111,
+            "average_latency": 66.03128086927889,
+            "bits_per_event": 4.0,
+            "delivered": 9111,
+            "events_per_pin_cycle": 0.1211955943386187,
+            "max_latency": 74,
+            "offered": 9111,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 4223,
+            "average_latency": 77.92280369405636,
+            "bits_per_event": 3.962112242481648,
+            "delivered": 4223,
+            "events_per_pin_cycle": 0.12168626094974642,
+            "max_latency": 359,
+            "offered": 6306,
+            "overrun": 2083,
+            "overrun_ratio": 0.3303203298445925,
+            "raw_bypass_ratio": 0.8248175182481752,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 4211,
+            "average_latency": 78.08976490144859,
+            "bits_per_event": 4.0,
+            "delivered": 4211,
+            "events_per_pin_cycle": 0.12108925695882218,
+            "max_latency": 329,
+            "offered": 6306,
+            "overrun": 2095,
+            "overrun_ratio": 0.3322232794164288,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 6144,
+            "average_latency": 76.83854166666667,
+            "bits_per_event": 3.6048177083333335,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.13184549356223177,
+            "max_latency": 95,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.3333333333333333,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 6144,
+            "average_latency": 79.5,
+            "bits_per_event": 4.0,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.12121212121212122,
+            "max_latency": 95,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 91.25,
+            "bits_per_event": 2.5,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.1839080459770115,
+            "max_latency": 131,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 102.5,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.12121212121212122,
+            "max_latency": 141,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 7932,
+            "average_latency": 66.74621785173979,
+            "bits_per_event": 4.0,
+            "delivered": 7932,
+            "events_per_pin_cycle": 0.12121026894865526,
+            "max_latency": 76,
+            "offered": 8434,
+            "overrun": 502,
+            "overrun_ratio": 0.059520986483281954,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 7932,
+            "average_latency": 66.74621785173979,
+            "bits_per_event": 4.0,
+            "delivered": 7932,
+            "events_per_pin_cycle": 0.12121026894865526,
+            "max_latency": 76,
+            "offered": 8434,
+            "overrun": 502,
+            "overrun_ratio": 0.059520986483281954,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 2521,
+            "average_latency": 73.6501388337961,
+            "bits_per_event": 4.0,
+            "delivered": 2521,
+            "events_per_pin_cycle": 0.12115532487504806,
+            "max_latency": 100,
+            "offered": 2538,
+            "overrun": 17,
+            "overrun_ratio": 0.006698187549251379,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2521,
+            "average_latency": 73.6501388337961,
+            "bits_per_event": 4.0,
+            "delivered": 2521,
+            "events_per_pin_cycle": 0.12115532487504806,
+            "max_latency": 100,
+            "offered": 2538,
+            "overrun": 17,
+            "overrun_ratio": 0.006698187549251379,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 33329,
+            "average_latency": 72.0284737015812,
+            "bits_per_event": 3.9821476791982957,
+            "delivered": 33329,
+            "events_per_pin_cycle": 0.1214472073227612,
+            "max_latency": 327,
+            "offered": 44621,
+            "overrun": 11292,
+            "overrun_ratio": 0.2530647004773537,
+            "raw_bypass_ratio": 0.9238005644402634,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 33261,
+            "average_latency": 72.19665674513695,
+            "bits_per_event": 4.0,
+            "delivered": 33261,
+            "events_per_pin_cycle": 0.12113586038109667,
+            "max_latency": 327,
+            "offered": 44621,
+            "overrun": 11360,
+            "overrun_ratio": 0.25458864660137603,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 4,
+      "pins": 8,
+      "raw": {
+        "accepted": 73026,
+        "average_latency": 71.91086736230932,
+        "bits_per_event": 4.0,
+        "delivered": 73026,
+        "events_per_pin_cycle": 0.12113501247412282,
+        "max_latency": 499,
+        "offered": 87000,
+        "overrun": 13974,
+        "overrun_ratio": 0.16062068965517243,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B4_W1": {
+      "block_size": 4,
+      "charged_storage_bits_each": 74,
+      "codec": {
+        "accepted": 23428,
+        "average_latency": 70.25187809458767,
+        "bits_per_event": 3.958041659552672,
+        "delivered": 23428,
+        "events_per_pin_cycle": 0.07886303657025906,
+        "max_latency": 101,
+        "offered": 87000,
+        "overrun": 63572,
+        "overrun_ratio": 0.7307126436781609,
+        "raw_bypass_ratio": 0.9566322478157268,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 3,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 47.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.0784313725490196,
+            "max_latency": 74,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 47.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.0784313725490196,
+            "max_latency": 74,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 9.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 9,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 9.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 9,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 989,
+            "average_latency": 43.591506572295245,
+            "bits_per_event": 3.949443882709808,
+            "delivered": 989,
+            "events_per_pin_cycle": 0.079361258225004,
+            "max_latency": 81,
+            "offered": 3654,
+            "overrun": 2665,
+            "overrun_ratio": 0.7293377120963328,
+            "raw_bypass_ratio": 0.9596774193548387,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 978,
+            "average_latency": 44.57566462167689,
+            "bits_per_event": 4.0,
+            "delivered": 978,
+            "events_per_pin_cycle": 0.0784030784030784,
+            "max_latency": 81,
+            "offered": 3654,
+            "overrun": 2676,
+            "overrun_ratio": 0.7323481116584565,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 488,
+            "average_latency": 67.04918032786885,
+            "bits_per_event": 4.0,
+            "delivered": 488,
+            "events_per_pin_cycle": 0.0784313725490196,
+            "max_latency": 101,
+            "offered": 512,
+            "overrun": 24,
+            "overrun_ratio": 0.046875,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 488,
+            "average_latency": 67.04918032786885,
+            "bits_per_event": 4.0,
+            "delivered": 488,
+            "events_per_pin_cycle": 0.0784313725490196,
+            "max_latency": 101,
+            "offered": 512,
+            "overrun": 24,
+            "overrun_ratio": 0.046875,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 1464,
+            "average_latency": 47.44467213114754,
+            "bits_per_event": 4.0,
+            "delivered": 1464,
+            "events_per_pin_cycle": 0.0784313725490196,
+            "max_latency": 50,
+            "offered": 4608,
+            "overrun": 3144,
+            "overrun_ratio": 0.6822916666666666,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 1464,
+            "average_latency": 47.44467213114754,
+            "bits_per_event": 4.0,
+            "delivered": 1464,
+            "events_per_pin_cycle": 0.0784313725490196,
+            "max_latency": 50,
+            "offered": 4608,
+            "overrun": 3144,
+            "overrun_ratio": 0.6822916666666666,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 2471,
+            "average_latency": 56.212464589235125,
+            "bits_per_event": 3.988263860785107,
+            "delivered": 2471,
+            "events_per_pin_cycle": 0.07863166268894192,
+            "max_latency": 100,
+            "offered": 9111,
+            "overrun": 6640,
+            "overrun_ratio": 0.7287893754801887,
+            "raw_bypass_ratio": 0.9887096774193549,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 2466,
+            "average_latency": 56.3463098134631,
+            "bits_per_event": 4.0,
+            "delivered": 2466,
+            "events_per_pin_cycle": 0.07842014882655982,
+            "max_latency": 100,
+            "offered": 9111,
+            "overrun": 6645,
+            "overrun_ratio": 0.7293381626605202,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 1354,
+            "average_latency": 68.86041358936484,
+            "bits_per_event": 4.0,
+            "delivered": 1354,
+            "events_per_pin_cycle": 0.07678348644663718,
+            "max_latency": 101,
+            "offered": 6306,
+            "overrun": 4952,
+            "overrun_ratio": 0.7852838566444655,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1354,
+            "average_latency": 68.86041358936484,
+            "bits_per_event": 4.0,
+            "delivered": 1354,
+            "events_per_pin_cycle": 0.07678348644663718,
+            "max_latency": 101,
+            "offered": 6306,
+            "overrun": 4952,
+            "overrun_ratio": 0.7852838566444655,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 2929,
+            "average_latency": 84.57664731990441,
+            "bits_per_event": 4.0,
+            "delivered": 2929,
+            "events_per_pin_cycle": 0.07842664738800975,
+            "max_latency": 101,
+            "offered": 6144,
+            "overrun": 3215,
+            "overrun_ratio": 0.5232747395833334,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 2929,
+            "average_latency": 84.57664731990441,
+            "bits_per_event": 4.0,
+            "delivered": 2929,
+            "events_per_pin_cycle": 0.07842664738800975,
+            "max_latency": 101,
+            "offered": 6144,
+            "overrun": 3215,
+            "overrun_ratio": 0.5232747395833334,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 16.46875,
+            "bits_per_event": 3.1171875,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.09899458623356536,
+            "max_latency": 17,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 904,
+            "average_latency": 26.761061946902654,
+            "bits_per_event": 4.0,
+            "delivered": 904,
+            "events_per_pin_cycle": 0.07782369146005509,
+            "max_latency": 34,
+            "offered": 1024,
+            "overrun": 120,
+            "overrun_ratio": 0.1171875,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 1959,
+            "average_latency": 84.97243491577335,
+            "bits_per_event": 4.0,
+            "delivered": 1959,
+            "events_per_pin_cycle": 0.07842901753543118,
+            "max_latency": 101,
+            "offered": 8434,
+            "overrun": 6475,
+            "overrun_ratio": 0.7677258714726108,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1959,
+            "average_latency": 84.97243491577335,
+            "bits_per_event": 4.0,
+            "delivered": 1959,
+            "events_per_pin_cycle": 0.07842901753543118,
+            "max_latency": 101,
+            "offered": 8434,
+            "overrun": 6475,
+            "overrun_ratio": 0.7677258714726108,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 987,
+            "average_latency": 74.9918946301925,
+            "bits_per_event": 4.0,
+            "delivered": 987,
+            "events_per_pin_cycle": 0.07840800762631077,
+            "max_latency": 101,
+            "offered": 2538,
+            "overrun": 1551,
+            "overrun_ratio": 0.6111111111111112,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 987,
+            "average_latency": 74.9918946301925,
+            "bits_per_event": 4.0,
+            "delivered": 987,
+            "events_per_pin_cycle": 0.07840800762631077,
+            "max_latency": 101,
+            "offered": 2538,
+            "overrun": 1551,
+            "overrun_ratio": 0.6111111111111112,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 9715,
+            "average_latency": 78.46886258363355,
+            "bits_per_event": 4.0,
+            "delivered": 9715,
+            "events_per_pin_cycle": 0.07789323455364731,
+            "max_latency": 101,
+            "offered": 44621,
+            "overrun": 34906,
+            "overrun_ratio": 0.7822774030165169,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 9715,
+            "average_latency": 78.46886258363355,
+            "bits_per_event": 4.0,
+            "delivered": 9715,
+            "events_per_pin_cycle": 0.07789323455364731,
+            "max_latency": 101,
+            "offered": 44621,
+            "overrun": 34906,
+            "overrun_ratio": 0.7822774030165169,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 1,
+      "pins": 3,
+      "raw": {
+        "accepted": 23292,
+        "average_latency": 70.99952773484458,
+        "bits_per_event": 4.0,
+        "delivered": 23292,
+        "events_per_pin_cycle": 0.07806231713570416,
+        "max_latency": 101,
+        "offered": 87000,
+        "overrun": 63708,
+        "overrun_ratio": 0.7322758620689656,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B4_W2": {
+      "block_size": 4,
+      "charged_storage_bits_each": 74,
+      "codec": {
+        "accepted": 41418,
+        "average_latency": 32.16401081655319,
+        "bits_per_event": 3.9506253319812643,
+        "delivered": 41418,
+        "events_per_pin_cycle": 0.08918028551127188,
+        "max_latency": 53,
+        "offered": 87000,
+        "overrun": 45582,
+        "overrun_ratio": 0.5239310344827586,
+        "raw_bypass_ratio": 0.9565377872104827,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 6,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 27.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 42,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 27.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 42,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 7.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 7,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 7.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 7,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 1948,
+            "average_latency": 18.7541067761807,
+            "bits_per_event": 3.666324435318275,
+            "delivered": 1948,
+            "events_per_pin_cycle": 0.09460903351141331,
+            "max_latency": 32,
+            "offered": 3654,
+            "overrun": 1706,
+            "overrun_ratio": 0.4668856048166393,
+            "raw_bypass_ratio": 0.7581967213114754,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1828,
+            "average_latency": 20.265317286652078,
+            "bits_per_event": 4.0,
+            "delivered": 1828,
+            "events_per_pin_cycle": 0.08886728245017016,
+            "max_latency": 33,
+            "offered": 3654,
+            "overrun": 1826,
+            "overrun_ratio": 0.4997263273125342,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 27.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 42,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 27.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 42,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 2736,
+            "average_latency": 23.74451754385965,
+            "bits_per_event": 4.0,
+            "delivered": 2736,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 26,
+            "offered": 4608,
+            "overrun": 1872,
+            "overrun_ratio": 0.40625,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 2736,
+            "average_latency": 23.74451754385965,
+            "bits_per_event": 4.0,
+            "delivered": 2736,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 26,
+            "offered": 4608,
+            "overrun": 1872,
+            "overrun_ratio": 0.40625,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 4673,
+            "average_latency": 23.4491761181254,
+            "bits_per_event": 3.894928311577145,
+            "delivered": 4673,
+            "events_per_pin_cycle": 0.09057079174338599,
+            "max_latency": 43,
+            "offered": 9111,
+            "overrun": 4438,
+            "overrun_ratio": 0.4871035012622105,
+            "raw_bypass_ratio": 0.917094017094017,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 4586,
+            "average_latency": 23.984736153510685,
+            "bits_per_event": 4.0,
+            "delivered": 4586,
+            "events_per_pin_cycle": 0.08887596899224806,
+            "max_latency": 43,
+            "offered": 9111,
+            "overrun": 4525,
+            "overrun_ratio": 0.49665239819997803,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 2214,
+            "average_latency": 35.775519421860885,
+            "bits_per_event": 4.0,
+            "delivered": 2214,
+            "events_per_pin_cycle": 0.08656891495601172,
+            "max_latency": 53,
+            "offered": 6306,
+            "overrun": 4092,
+            "overrun_ratio": 0.6489058039961941,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2214,
+            "average_latency": 35.775519421860885,
+            "bits_per_event": 4.0,
+            "delivered": 2214,
+            "events_per_pin_cycle": 0.08656891495601172,
+            "max_latency": 53,
+            "offered": 6306,
+            "overrun": 4092,
+            "overrun_ratio": 0.6489058039961941,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 5470,
+            "average_latency": 37.058866544789765,
+            "bits_per_event": 4.0,
+            "delivered": 5470,
+            "events_per_pin_cycle": 0.0888852778680533,
+            "max_latency": 53,
+            "offered": 6144,
+            "overrun": 674,
+            "overrun_ratio": 0.10970052083333333,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 5470,
+            "average_latency": 37.058866544789765,
+            "bits_per_event": 4.0,
+            "delivered": 5470,
+            "events_per_pin_cycle": 0.0888852778680533,
+            "max_latency": 53,
+            "offered": 6144,
+            "overrun": 674,
+            "overrun_ratio": 0.10970052083333333,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 10.734375,
+            "bits_per_event": 3.1171875,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.10343434343434343,
+            "max_latency": 11,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 12.0,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 12,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 3669,
+            "average_latency": 37.51485418370128,
+            "bits_per_event": 4.0,
+            "delivered": 3669,
+            "events_per_pin_cycle": 0.08888081395348837,
+            "max_latency": 53,
+            "offered": 8434,
+            "overrun": 4765,
+            "overrun_ratio": 0.5649751007825469,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3669,
+            "average_latency": 37.51485418370128,
+            "bits_per_event": 4.0,
+            "delivered": 3669,
+            "events_per_pin_cycle": 0.08888081395348837,
+            "max_latency": 53,
+            "offered": 8434,
+            "overrun": 4765,
+            "overrun_ratio": 0.5649751007825469,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 1820,
+            "average_latency": 28.365934065934066,
+            "bits_per_event": 4.0,
+            "delivered": 1820,
+            "events_per_pin_cycle": 0.08884549670490603,
+            "max_latency": 50,
+            "offered": 2538,
+            "overrun": 718,
+            "overrun_ratio": 0.28289992119779356,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1820,
+            "average_latency": 28.365934065934066,
+            "bits_per_event": 4.0,
+            "delivered": 1820,
+            "events_per_pin_cycle": 0.08884549670490603,
+            "max_latency": 50,
+            "offered": 2538,
+            "overrun": 718,
+            "overrun_ratio": 0.28289992119779356,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 17304,
+            "average_latency": 36.08610725843736,
+            "bits_per_event": 4.0,
+            "delivered": 17304,
+            "events_per_pin_cycle": 0.08816650956614781,
+            "max_latency": 53,
+            "offered": 44621,
+            "overrun": 27317,
+            "overrun_ratio": 0.6122005333811434,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 17304,
+            "average_latency": 36.08610725843736,
+            "bits_per_event": 4.0,
+            "delivered": 17304,
+            "events_per_pin_cycle": 0.08816650956614781,
+            "max_latency": 53,
+            "offered": 44621,
+            "overrun": 27317,
+            "overrun_ratio": 0.6122005333811434,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 2,
+      "pins": 5,
+      "raw": {
+        "accepted": 41211,
+        "average_latency": 32.37953459027929,
+        "bits_per_event": 4.0,
+        "delivered": 41211,
+        "events_per_pin_cycle": 0.08842898065595932,
+        "max_latency": 53,
+        "offered": 87000,
+        "overrun": 45789,
+        "overrun_ratio": 0.5263103448275862,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B4_W4": {
+      "block_size": 4,
+      "charged_storage_bits_each": 74,
+      "codec": {
+        "accepted": 65345,
+        "average_latency": 13.448741296197108,
+        "bits_per_event": 3.9146223888591325,
+        "delivered": 65345,
+        "events_per_pin_cycle": 0.10000887675392414,
+        "max_latency": 29,
+        "offered": 87000,
+        "overrun": 21655,
+        "overrun_ratio": 0.2489080459770115,
+        "raw_bypass_ratio": 0.9353407477520114,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 12,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 17.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 26,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 17.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 26,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 6.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.0625,
+            "max_latency": 6,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 6.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.0625,
+            "max_latency": 6,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 3438,
+            "average_latency": 9.005817335660268,
+            "bits_per_event": 3.318499127399651,
+            "delivered": 3438,
+            "events_per_pin_cycle": 0.10679671968190854,
+            "max_latency": 13,
+            "offered": 3654,
+            "overrun": 216,
+            "overrun_ratio": 0.059113300492610835,
+            "raw_bypass_ratio": 0.5208816705336426,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3268,
+            "average_latency": 9.949816401468789,
+            "bits_per_event": 4.0,
+            "delivered": 3268,
+            "events_per_pin_cycle": 0.09997552618697993,
+            "max_latency": 13,
+            "offered": 3654,
+            "overrun": 386,
+            "overrun_ratio": 0.1056376573617953,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 17.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 26,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 17.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 26,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 4608,
+            "average_latency": 9.5,
+            "bits_per_event": 4.0,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 11,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 4608,
+            "average_latency": 9.5,
+            "bits_per_event": 4.0,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 11,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 8339,
+            "average_latency": 10.056241755606187,
+            "bits_per_event": 3.7210696726226167,
+            "delivered": 8339,
+            "events_per_pin_cycle": 0.10258586753272315,
+            "max_latency": 18,
+            "offered": 9111,
+            "overrun": 772,
+            "overrun_ratio": 0.08473274064317858,
+            "raw_bypass_ratio": 0.7977958792525156,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 8175,
+            "average_latency": 10.397186544342508,
+            "bits_per_event": 4.0,
+            "delivered": 8175,
+            "events_per_pin_cycle": 0.09997798649838567,
+            "max_latency": 18,
+            "offered": 9111,
+            "overrun": 936,
+            "overrun_ratio": 0.10273296015805071,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 3662,
+            "average_latency": 16.055161114145275,
+            "bits_per_event": 4.0,
+            "delivered": 3662,
+            "events_per_pin_cycle": 0.09708377518557794,
+            "max_latency": 29,
+            "offered": 6306,
+            "overrun": 2644,
+            "overrun_ratio": 0.41928322232794163,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3662,
+            "average_latency": 16.055161114145275,
+            "bits_per_event": 4.0,
+            "delivered": 3662,
+            "events_per_pin_cycle": 0.09708377518557794,
+            "max_latency": 29,
+            "offered": 6306,
+            "overrun": 2644,
+            "overrun_ratio": 0.41928322232794163,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 6144,
+            "average_latency": 12.0,
+            "bits_per_event": 4.0,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 26,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 6144,
+            "average_latency": 12.0,
+            "bits_per_event": 4.0,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 26,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 7.8671875,
+            "bits_per_event": 3.1171875,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.10272873194221509,
+            "max_latency": 8,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 8.0,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 8,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 6566,
+            "average_latency": 14.835211696618947,
+            "bits_per_event": 4.0,
+            "delivered": 6566,
+            "events_per_pin_cycle": 0.09999390838206627,
+            "max_latency": 26,
+            "offered": 8434,
+            "overrun": 1868,
+            "overrun_ratio": 0.2214844676310173,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 6566,
+            "average_latency": 14.835211696618947,
+            "bits_per_event": 4.0,
+            "delivered": 6566,
+            "events_per_pin_cycle": 0.09999390838206627,
+            "max_latency": 26,
+            "offered": 8434,
+            "overrun": 1868,
+            "overrun_ratio": 0.2214844676310173,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 2518,
+            "average_latency": 9.308975377283558,
+            "bits_per_event": 4.0,
+            "delivered": 2518,
+            "events_per_pin_cycle": 0.09900912236552376,
+            "max_latency": 16,
+            "offered": 2538,
+            "overrun": 20,
+            "overrun_ratio": 0.007880220646178092,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2518,
+            "average_latency": 9.308975377283558,
+            "bits_per_event": 4.0,
+            "delivered": 2518,
+            "events_per_pin_cycle": 0.09900912236552376,
+            "max_latency": 16,
+            "offered": 2538,
+            "overrun": 20,
+            "overrun_ratio": 0.007880220646178092,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 28486,
+            "average_latency": 15.783788527697816,
+            "bits_per_event": 3.9997893702169485,
+            "delivered": 28486,
+            "events_per_pin_cycle": 0.09897295494343608,
+            "max_latency": 29,
+            "offered": 44621,
+            "overrun": 16135,
+            "overrun_ratio": 0.3616010398691199,
+            "raw_bypass_ratio": 0.999733012948872,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 28486,
+            "average_latency": 15.783788527697816,
+            "bits_per_event": 4.0,
+            "delivered": 28486,
+            "events_per_pin_cycle": 0.09897295494343608,
+            "max_latency": 29,
+            "offered": 44621,
+            "overrun": 16135,
+            "overrun_ratio": 0.3616010398691199,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 4,
+      "pins": 8,
+      "raw": {
+        "accepted": 65011,
+        "average_latency": 13.561335773945947,
+        "bits_per_event": 4.0,
+        "delivered": 65011,
+        "events_per_pin_cycle": 0.09930801661982158,
+        "max_latency": 29,
+        "offered": 87000,
+        "overrun": 21989,
+        "overrun_ratio": 0.2527471264367816,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B8_W1": {
+      "block_size": 8,
+      "charged_storage_bits_each": 138,
+      "codec": {
+        "accepted": 24832,
+        "average_latency": 95.13192654639175,
+        "bits_per_event": 3.8532941365979383,
+        "delivered": 24832,
+        "events_per_pin_cycle": 0.08342320006181488,
+        "max_latency": 131,
+        "offered": 87000,
+        "overrun": 62168,
+        "overrun_ratio": 0.7145747126436781,
+        "raw_bypass_ratio": 0.6761877828054299,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 7,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 58.5,
+            "bits_per_event": 3.8125,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.08465608465608465,
+            "max_latency": 77,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.5,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 60.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.08080808080808081,
+            "max_latency": 80,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 13.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 13,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 13.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 13,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 1034,
+            "average_latency": 75.39941972920697,
+            "bits_per_event": 3.9332688588007736,
+            "delivered": 1034,
+            "events_per_pin_cycle": 0.08212215074259392,
+            "max_latency": 125,
+            "offered": 3654,
+            "overrun": 2620,
+            "overrun_ratio": 0.7170224411603722,
+            "raw_bypass_ratio": 0.9461538461538461,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1018,
+            "average_latency": 76.6090373280943,
+            "bits_per_event": 4.0,
+            "delivered": 1018,
+            "events_per_pin_cycle": 0.08079365079365079,
+            "max_latency": 124,
+            "offered": 3654,
+            "overrun": 2636,
+            "overrun_ratio": 0.7214012041598249,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 58.5,
+            "bits_per_event": 3.8125,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.08465608465608465,
+            "max_latency": 77,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.5,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 504,
+            "average_latency": 87.1984126984127,
+            "bits_per_event": 4.0,
+            "delivered": 504,
+            "events_per_pin_cycle": 0.08080808080808081,
+            "max_latency": 131,
+            "offered": 512,
+            "overrun": 8,
+            "overrun_ratio": 0.015625,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 1524,
+            "average_latency": 77.73818897637796,
+            "bits_per_event": 4.0,
+            "delivered": 1524,
+            "events_per_pin_cycle": 0.08078880407124682,
+            "max_latency": 93,
+            "offered": 4608,
+            "overrun": 3084,
+            "overrun_ratio": 0.6692708333333334,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 1524,
+            "average_latency": 77.73818897637796,
+            "bits_per_event": 4.0,
+            "delivered": 1524,
+            "events_per_pin_cycle": 0.08078880407124682,
+            "max_latency": 93,
+            "offered": 4608,
+            "overrun": 3084,
+            "overrun_ratio": 0.6692708333333334,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 2572,
+            "average_latency": 86.50505443234837,
+            "bits_per_event": 3.97900466562986,
+            "delivered": 2572,
+            "events_per_pin_cycle": 0.08119455756542601,
+            "max_latency": 129,
+            "offered": 9111,
+            "overrun": 6539,
+            "overrun_ratio": 0.7177038744374932,
+            "raw_bypass_ratio": 0.9692307692307692,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 2558,
+            "average_latency": 87.09304143862393,
+            "bits_per_event": 4.0,
+            "delivered": 2558,
+            "events_per_pin_cycle": 0.08078319911574293,
+            "max_latency": 130,
+            "offered": 9111,
+            "overrun": 6553,
+            "overrun_ratio": 0.7192404785424212,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 1430,
+            "average_latency": 92.36993006993006,
+            "bits_per_event": 3.8783216783216785,
+            "delivered": 1430,
+            "events_per_pin_cycle": 0.08204245553643144,
+            "max_latency": 129,
+            "offered": 6306,
+            "overrun": 4876,
+            "overrun_ratio": 0.7732318426895021,
+            "raw_bypass_ratio": 0.7803030303030303,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1386,
+            "average_latency": 95.68831168831169,
+            "bits_per_event": 4.0,
+            "delivered": 1386,
+            "events_per_pin_cycle": 0.07961399276236429,
+            "max_latency": 131,
+            "offered": 6306,
+            "overrun": 4920,
+            "overrun_ratio": 0.780209324452902,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 3160,
+            "average_latency": 108.31708860759494,
+            "bits_per_event": 3.8167721518987343,
+            "delivered": 3160,
+            "events_per_pin_cycle": 0.08456433311924641,
+            "max_latency": 127,
+            "offered": 6144,
+            "overrun": 2984,
+            "overrun_ratio": 0.4856770833333333,
+            "raw_bypass_ratio": 0.5113924050632911,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 3018,
+            "average_latency": 114.33200795228628,
+            "bits_per_event": 4.0,
+            "delivered": 3018,
+            "events_per_pin_cycle": 0.08080321285140563,
+            "max_latency": 131,
+            "offered": 6144,
+            "overrun": 3126,
+            "overrun_ratio": 0.5087890625,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 24.46875,
+            "bits_per_event": 3.1171875,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.09899458623356536,
+            "max_latency": 25,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 814,
+            "average_latency": 29.877149877149876,
+            "bits_per_event": 4.0,
+            "delivered": 814,
+            "events_per_pin_cycle": 0.0772589217919514,
+            "max_latency": 34,
+            "offered": 1024,
+            "overrun": 210,
+            "overrun_ratio": 0.205078125,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 2106,
+            "average_latency": 109.6025641025641,
+            "bits_per_event": 3.8504273504273505,
+            "delivered": 2106,
+            "events_per_pin_cycle": 0.08384091723396632,
+            "max_latency": 130,
+            "offered": 8434,
+            "overrun": 6328,
+            "overrun_ratio": 0.7502964192553948,
+            "raw_bypass_ratio": 0.6022727272727273,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2029,
+            "average_latency": 114.66239526860522,
+            "bits_per_event": 4.0,
+            "delivered": 2029,
+            "events_per_pin_cycle": 0.08080446037435285,
+            "max_latency": 131,
+            "offered": 8434,
+            "overrun": 6405,
+            "overrun_ratio": 0.7594261323215556,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 1041,
+            "average_latency": 102.81268011527378,
+            "bits_per_event": 3.9279538904899134,
+            "delivered": 1041,
+            "events_per_pin_cycle": 0.08222748815165877,
+            "max_latency": 130,
+            "offered": 2538,
+            "overrun": 1497,
+            "overrun_ratio": 0.5898345153664303,
+            "raw_bypass_ratio": 0.8091603053435115,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1026,
+            "average_latency": 104.453216374269,
+            "bits_per_event": 4.0,
+            "delivered": 1026,
+            "events_per_pin_cycle": 0.08079376328844791,
+            "max_latency": 131,
+            "offered": 2538,
+            "overrun": 1512,
+            "overrun_ratio": 0.5957446808510638,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 10381,
+            "average_latency": 103.535979192756,
+            "bits_per_event": 3.8676428089779407,
+            "delivered": 10381,
+            "events_per_pin_cycle": 0.08311914999239349,
+            "max_latency": 131,
+            "offered": 44621,
+            "overrun": 34240,
+            "overrun_ratio": 0.767351695390063,
+            "raw_bypass_ratio": 0.6907494935854153,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 10063,
+            "average_latency": 107.42710921196462,
+            "bits_per_event": 4.0,
+            "delivered": 10063,
+            "events_per_pin_cycle": 0.08045508330934792,
+            "max_latency": 131,
+            "offered": 44621,
+            "overrun": 34558,
+            "overrun_ratio": 0.7744783846171085,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 1,
+      "pins": 3,
+      "raw": {
+        "accepted": 23988,
+        "average_latency": 99.52580456895114,
+        "bits_per_event": 4.0,
+        "delivered": 23988,
+        "events_per_pin_cycle": 0.0804361821986158,
+        "max_latency": 131,
+        "offered": 87000,
+        "overrun": 63012,
+        "overrun_ratio": 0.7242758620689655,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B8_W2": {
+      "block_size": 8,
+      "charged_storage_bits_each": 138,
+      "codec": {
+        "accepted": 44223,
+        "average_latency": 45.45915021595098,
+        "bits_per_event": 3.8834316984374646,
+        "delivered": 44223,
+        "events_per_pin_cycle": 0.09556564019448946,
+        "max_latency": 67,
+        "offered": 87000,
+        "overrun": 42777,
+        "overrun_ratio": 0.4916896551724138,
+        "raw_bypass_ratio": 0.7657582344089617,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 14,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 35.5,
+            "bits_per_event": 3.8125,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 47,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.5,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 36.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.09411764705882353,
+            "max_latency": 48,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 11.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 11,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 11.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.06666666666666667,
+            "max_latency": 11,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 2095,
+            "average_latency": 33.07350835322196,
+            "bits_per_event": 3.636276849642005,
+            "delivered": 2095,
+            "events_per_pin_cycle": 0.10167435088570735,
+            "max_latency": 47,
+            "offered": 3654,
+            "overrun": 1559,
+            "overrun_ratio": 0.42665571975916805,
+            "raw_bypass_ratio": 0.6273764258555133,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1942,
+            "average_latency": 35.911431513903196,
+            "bits_per_event": 4.0,
+            "delivered": 1942,
+            "events_per_pin_cycle": 0.0940891472868217,
+            "max_latency": 48,
+            "offered": 3654,
+            "overrun": 1712,
+            "overrun_ratio": 0.46852764094143406,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 35.5,
+            "bits_per_event": 3.8125,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.09696969696969697,
+            "max_latency": 47,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.5,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 36.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.09411764705882353,
+            "max_latency": 48,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 2907,
+            "average_latency": 38.52115583075335,
+            "bits_per_event": 4.0,
+            "delivered": 2907,
+            "events_per_pin_cycle": 0.09407766990291262,
+            "max_latency": 45,
+            "offered": 4608,
+            "overrun": 1701,
+            "overrun_ratio": 0.369140625,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 2907,
+            "average_latency": 38.52115583075335,
+            "bits_per_event": 4.0,
+            "delivered": 2907,
+            "events_per_pin_cycle": 0.09407766990291262,
+            "max_latency": 45,
+            "offered": 4608,
+            "overrun": 1701,
+            "overrun_ratio": 0.369140625,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 4987,
+            "average_latency": 38.20633647483457,
+            "bits_per_event": 3.881491878885101,
+            "delivered": 4987,
+            "events_per_pin_cycle": 0.09642304717710751,
+            "max_latency": 62,
+            "offered": 9111,
+            "overrun": 4124,
+            "overrun_ratio": 0.45263966633739433,
+            "raw_bypass_ratio": 0.8704,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 4866,
+            "average_latency": 39.19482120838471,
+            "bits_per_event": 4.0,
+            "delivered": 4866,
+            "events_per_pin_cycle": 0.09410172113711081,
+            "max_latency": 62,
+            "offered": 9111,
+            "overrun": 4245,
+            "overrun_ratio": 0.4659203161014159,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 2357,
+            "average_latency": 48.843020789138734,
+            "bits_per_event": 3.9134492999575734,
+            "delivered": 2357,
+            "events_per_pin_cycle": 0.09366183190939797,
+            "max_latency": 66,
+            "offered": 6306,
+            "overrun": 3949,
+            "overrun_ratio": 0.6262289882651443,
+            "raw_bypass_ratio": 0.8242894056847545,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2323,
+            "average_latency": 49.773999139044335,
+            "bits_per_event": 4.0,
+            "delivered": 2323,
+            "events_per_pin_cycle": 0.09238417180353947,
+            "max_latency": 67,
+            "offered": 6306,
+            "overrun": 3983,
+            "overrun_ratio": 0.6316206787186807,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 5961,
+            "average_latency": 48.6064418721691,
+            "bits_per_event": 3.821338701560141,
+            "delivered": 5961,
+            "events_per_pin_cycle": 0.09682449443677414,
+            "max_latency": 65,
+            "offered": 6144,
+            "overrun": 183,
+            "overrun_ratio": 0.02978515625,
+            "raw_bypass_ratio": 0.5241286863270778,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 5794,
+            "average_latency": 50.5015533310321,
+            "bits_per_event": 4.0,
+            "delivered": 5794,
+            "events_per_pin_cycle": 0.0941119142369853,
+            "max_latency": 67,
+            "offered": 6144,
+            "overrun": 350,
+            "overrun_ratio": 0.056966145833333336,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 18.734375,
+            "bits_per_event": 3.1171875,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.10343434343434343,
+            "max_latency": 19,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 20.0,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.08888888888888889,
+            "max_latency": 20,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 3909,
+            "average_latency": 51.28114607316449,
+            "bits_per_event": 3.9593246354566385,
+            "delivered": 3909,
+            "events_per_pin_cycle": 0.09471771262418222,
+            "max_latency": 67,
+            "offered": 8434,
+            "overrun": 4525,
+            "overrun_ratio": 0.5365188522646431,
+            "raw_bypass_ratio": 0.8916155419222904,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3888,
+            "average_latency": 51.63065843621399,
+            "bits_per_event": 4.0,
+            "delivered": 3888,
+            "events_per_pin_cycle": 0.09410625680745492,
+            "max_latency": 67,
+            "offered": 8434,
+            "overrun": 4546,
+            "overrun_ratio": 0.5390087740099597,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 1929,
+            "average_latency": 42.13841368584759,
+            "bits_per_event": 4.0,
+            "delivered": 1929,
+            "events_per_pin_cycle": 0.09409756097560976,
+            "max_latency": 63,
+            "offered": 2538,
+            "overrun": 609,
+            "overrun_ratio": 0.23995271867612294,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1929,
+            "average_latency": 42.13841368584759,
+            "bits_per_event": 4.0,
+            "delivered": 1929,
+            "events_per_pin_cycle": 0.09409756097560976,
+            "max_latency": 63,
+            "offered": 2538,
+            "overrun": 609,
+            "overrun_ratio": 0.23995271867612294,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 18494,
+            "average_latency": 49.402292635449335,
+            "bits_per_event": 3.9258678490321186,
+            "delivered": 18494,
+            "events_per_pin_cycle": 0.0947438524590164,
+            "max_latency": 67,
+            "offered": 44621,
+            "overrun": 26127,
+            "overrun_ratio": 0.5855314762107527,
+            "raw_bypass_ratio": 0.8178557194101236,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 18286,
+            "average_latency": 50.04019468445806,
+            "bits_per_event": 4.0,
+            "delivered": 18286,
+            "events_per_pin_cycle": 0.09364469708608593,
+            "max_latency": 67,
+            "offered": 44621,
+            "overrun": 26335,
+            "overrun_ratio": 0.5901929584724681,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 2,
+      "pins": 5,
+      "raw": {
+        "accepted": 43519,
+        "average_latency": 46.36076196603782,
+        "bits_per_event": 4.0,
+        "delivered": 43519,
+        "events_per_pin_cycle": 0.09365873605147905,
+        "max_latency": 67,
+        "offered": 87000,
+        "overrun": 43481,
+        "overrun_ratio": 0.4997816091954023,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    },
+    "B8_W4": {
+      "block_size": 8,
+      "charged_storage_bits_each": 138,
+      "codec": {
+        "accepted": 69890,
+        "average_latency": 20.591744169409072,
+        "bits_per_event": 3.8818858205751896,
+        "delivered": 69890,
+        "events_per_pin_cycle": 0.11202187544077859,
+        "max_latency": 49,
+        "offered": 87000,
+        "overrun": 17110,
+        "overrun_ratio": 0.19666666666666666,
+        "raw_bypass_ratio": 0.858837614279495,
+        "runs": 46
+      },
+      "codec_full_block_bit_break_even": 28,
+      "endpoint_logic_cost_relation": "codec_strict_superset_of_raw",
+      "families": {
+        "basic_simultaneous": {
+          "codec": {
+            "accepted": 16,
+            "average_latency": 24.0,
+            "bits_per_event": 3.8125,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 32,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.5,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 16,
+            "average_latency": 24.0,
+            "bits_per_event": 4.0,
+            "delivered": 16,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 32,
+            "offered": 16,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "basic_sparse": {
+          "codec": {
+            "accepted": 32,
+            "average_latency": 10.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.0625,
+            "max_latency": 10,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 32,
+            "average_latency": 10.0,
+            "bits_per_event": 4.0,
+            "delivered": 32,
+            "events_per_pin_cycle": 0.0625,
+            "max_latency": 10,
+            "offered": 32,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "elephant_mouse": {
+          "codec": {
+            "accepted": 3638,
+            "average_latency": 15.993677844969763,
+            "bits_per_event": 3.166025288620121,
+            "delivered": 3638,
+            "events_per_pin_cycle": 0.1280985915492958,
+            "max_latency": 21,
+            "offered": 3654,
+            "overrun": 16,
+            "overrun_ratio": 0.004378762999452655,
+            "raw_bypass_ratio": 0.37280701754385964,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3578,
+            "average_latency": 17.289267747344887,
+            "bits_per_event": 4.0,
+            "delivered": 3578,
+            "events_per_pin_cycle": 0.11109041231992052,
+            "max_latency": 22,
+            "offered": 3654,
+            "overrun": 76,
+            "overrun_ratio": 0.02079912424740011,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "global_fanin": {
+          "codec": {
+            "accepted": 512,
+            "average_latency": 24.0,
+            "bits_per_event": 3.8125,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 32,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.5,
+            "runs": 1
+          },
+          "raw": {
+            "accepted": 512,
+            "average_latency": 24.0,
+            "bits_per_event": 4.0,
+            "delivered": 512,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 32,
+            "offered": 512,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 1
+          }
+        },
+        "matched_spatial": {
+          "codec": {
+            "accepted": 4608,
+            "average_latency": 18.166666666666668,
+            "bits_per_event": 4.0,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 21,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 4608,
+            "average_latency": 18.166666666666668,
+            "bits_per_event": 4.0,
+            "delivered": 4608,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 21,
+            "offered": 4608,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "moving_hotspot": {
+          "codec": {
+            "accepted": 8978,
+            "average_latency": 16.953664513254623,
+            "bits_per_event": 3.6742036088215637,
+            "delivered": 8978,
+            "events_per_pin_cycle": 0.11702294056308654,
+            "max_latency": 23,
+            "offered": 9111,
+            "overrun": 133,
+            "overrun_ratio": 0.014597738996817034,
+            "raw_bypass_ratio": 0.7413333333333333,
+            "runs": 5
+          },
+          "raw": {
+            "accepted": 8896,
+            "average_latency": 17.468637589928058,
+            "bits_per_event": 4.0,
+            "delivered": 8896,
+            "events_per_pin_cycle": 0.11108891108891109,
+            "max_latency": 23,
+            "offered": 9111,
+            "overrun": 215,
+            "overrun_ratio": 0.023597848754253102,
+            "raw_bypass_ratio": 1.0,
+            "runs": 5
+          }
+        },
+        "phase_transition": {
+          "codec": {
+            "accepted": 3998,
+            "average_latency": 22.498999499749875,
+            "bits_per_event": 3.974487243621811,
+            "delivered": 3998,
+            "events_per_pin_cycle": 0.10885428011326509,
+            "max_latency": 44,
+            "offered": 6306,
+            "overrun": 2308,
+            "overrun_ratio": 0.36600063431652397,
+            "raw_bypass_ratio": 0.9426644182124789,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 3998,
+            "average_latency": 22.498999499749875,
+            "bits_per_event": 4.0,
+            "delivered": 3998,
+            "events_per_pin_cycle": 0.10885428011326509,
+            "max_latency": 44,
+            "offered": 6306,
+            "overrun": 2308,
+            "overrun_ratio": 0.36600063431652397,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rate_shape": {
+          "codec": {
+            "accepted": 6144,
+            "average_latency": 21.0,
+            "bits_per_event": 3.87548828125,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 32,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.66796875,
+            "runs": 3
+          },
+          "raw": {
+            "accepted": 6144,
+            "average_latency": 21.0,
+            "bits_per_event": 4.0,
+            "delivered": 6144,
+            "events_per_pin_cycle": 0.1111111111111111,
+            "max_latency": 32,
+            "offered": 6144,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 3
+          }
+        },
+        "retrigger": {
+          "codec": {
+            "accepted": 1024,
+            "average_latency": 15.8671875,
+            "bits_per_event": 3.1171875,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.10272873194221509,
+            "max_latency": 16,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 0.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 1024,
+            "average_latency": 16.0,
+            "bits_per_event": 4.0,
+            "delivered": 1024,
+            "events_per_pin_cycle": 0.1,
+            "max_latency": 16,
+            "offered": 1024,
+            "overrun": 0,
+            "overrun_ratio": 0.0,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "rotating_victim": {
+          "codec": {
+            "accepted": 7292,
+            "average_latency": 20.847778387273724,
+            "bits_per_event": 4.0,
+            "delivered": 7292,
+            "events_per_pin_cycle": 0.11110433934666017,
+            "max_latency": 30,
+            "offered": 8434,
+            "overrun": 1142,
+            "overrun_ratio": 0.13540431586435855,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 7292,
+            "average_latency": 20.847778387273724,
+            "bits_per_event": 4.0,
+            "delivered": 7292,
+            "events_per_pin_cycle": 0.11110433934666017,
+            "max_latency": 30,
+            "offered": 8434,
+            "overrun": 1142,
+            "overrun_ratio": 0.13540431586435855,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "timing_pair": {
+          "codec": {
+            "accepted": 2521,
+            "average_latency": 18.396271320904404,
+            "bits_per_event": 4.0,
+            "delivered": 2521,
+            "events_per_pin_cycle": 0.1110768417342263,
+            "max_latency": 30,
+            "offered": 2538,
+            "overrun": 17,
+            "overrun_ratio": 0.006698187549251379,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          },
+          "raw": {
+            "accepted": 2521,
+            "average_latency": 18.396271320904404,
+            "bits_per_event": 4.0,
+            "delivered": 2521,
+            "events_per_pin_cycle": 0.1110768417342263,
+            "max_latency": 30,
+            "offered": 2538,
+            "overrun": 17,
+            "overrun_ratio": 0.006698187549251379,
+            "raw_bypass_ratio": 1.0,
+            "runs": 2
+          }
+        },
+        "uniform": {
+          "codec": {
+            "accepted": 31127,
+            "average_latency": 22.438269026889838,
+            "bits_per_event": 3.9863141324252256,
+            "delivered": 31127,
+            "events_per_pin_cycle": 0.11048913815135596,
+            "max_latency": 49,
+            "offered": 44621,
+            "overrun": 13494,
+            "overrun_ratio": 0.3024136617287824,
+            "raw_bypass_ratio": 0.9652641878669276,
+            "runs": 21
+          },
+          "raw": {
+            "accepted": 31127,
+            "average_latency": 22.438269026889838,
+            "bits_per_event": 4.0,
+            "delivered": 31127,
+            "events_per_pin_cycle": 0.11048913815135596,
+            "max_latency": 49,
+            "offered": 44621,
+            "overrun": 13494,
+            "overrun_ratio": 0.3024136617287824,
+            "raw_bypass_ratio": 1.0,
+            "runs": 21
+          }
+        }
+      },
+      "link_latency_overrun_pass": true,
+      "link_width": 4,
+      "pins": 8,
+      "raw": {
+        "accepted": 69748,
+        "average_latency": 20.734071227848826,
+        "bits_per_event": 4.0,
+        "delivered": 69748,
+        "events_per_pin_cycle": 0.11047683008730692,
+        "max_latency": 49,
+        "offered": 87000,
+        "overrun": 17252,
+        "overrun_ratio": 0.19829885057471264,
+        "raw_bypass_ratio": 1.0,
+        "runs": 46
+      },
+      "simultaneous_pareto_pass_including_endpoint_cost": false,
+      "sustained_one_event_per_cycle_raw_possible": false
+    }
+  },
+  "rtl_variant_added": false,
+  "runs": 46
+}
