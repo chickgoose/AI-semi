@@ -19,6 +19,37 @@ module aer_legacy_candidate_adapter #(
   logic [SOURCE_WIDTH-1:0] native_retire_source;
   integer lane;
 
+`ifdef A8_REFERENCE_EXACT
+  a8_exact_age_reference #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .SOURCE_WIDTH(SOURCE_WIDTH)
+  ) candidate (
+    .clk(bench.clk),
+    .rst_n(bench.rst_n),
+    .source_valid(bench.source_valid),
+    .source_event(bench.source_event),
+    .source_ready(bench.source_ready),
+    .retire_valid(native_retire_valid),
+    .retire_event(native_retire_event),
+    .retire_source(native_retire_source)
+  );
+`elsif A8_REFERENCE_RR
+  a8_rr_reference #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .SOURCE_WIDTH(SOURCE_WIDTH)
+  ) candidate (
+    .clk(bench.clk),
+    .rst_n(bench.rst_n),
+    .source_valid(bench.source_valid),
+    .source_event(bench.source_event),
+    .source_ready(bench.source_ready),
+    .retire_valid(native_retire_valid),
+    .retire_event(native_retire_event),
+    .retire_source(native_retire_source)
+  );
+`else
   a8_age_calendar_wheel #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
@@ -35,6 +66,7 @@ module aer_legacy_candidate_adapter #(
     .retire_event(native_retire_event),
     .retire_source(native_retire_source)
   );
+`endif
 
   always_comb begin
     bench.retire_valid = '0;

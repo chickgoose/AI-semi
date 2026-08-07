@@ -16,6 +16,7 @@ RETIRE_LANES="${A8_RETIRE_LANES:-2}"
 BUCKET_CYCLES="${A8_BUCKET_CYCLES:-4}"
 EPOCH_COUNT="${A8_EPOCH_COUNT:-8}"
 CANDIDATE_NAME="${A8_CANDIDATE_NAME:-a8-age-calendar-wheel}"
+ARCH="${A8_ARCH:-wheel}"
 
 manifest=""
 single_trace=""
@@ -55,6 +56,15 @@ verilator_command=("$VERILATOR" --binary --timing --assert -Wall -Wno-fatal
   -DA8_BUCKET_CYCLES="$BUCKET_CYCLES" -DA8_EPOCH_COUNT="$EPOCH_COUNT"
   -f "$PROJECT_ROOT/tests/a8_age_calendar_wheel/a8_clean.f"
   --Mdir "$build_dir" -o a8_clean_sim)
+case "$ARCH" in
+  wheel) ;;
+  exact) verilator_command+=(-DA8_REFERENCE_EXACT) ;;
+  rr) verilator_command+=(-DA8_REFERENCE_RR) ;;
+  *)
+    printf 'unsupported A8_ARCH=%s (expected wheel, exact, or rr)\n' "$ARCH" >&2
+    exit 2
+    ;;
+esac
 if [[ -n "$VERILATOR_ROOT_VALUE" ]]; then
   (cd "$PROJECT_ROOT" && VERILATOR_ROOT="$VERILATOR_ROOT_VALUE" \
     "${verilator_command[@]}") > "$OUT_DIR/build.log" 2>&1

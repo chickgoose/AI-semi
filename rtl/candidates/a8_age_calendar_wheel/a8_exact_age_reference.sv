@@ -1,13 +1,10 @@
 `timescale 1ns/1ps
 
-module a8_age_calendar_wheel #(
-  parameter int NUM_SOURCES   = 16,
-  parameter int ADDR_WIDTH    = 16,
-  parameter int BUCKET_CYCLES = 4,
-  parameter int EPOCH_COUNT   = 8,
-  parameter int MAX_STALL_CYCLES = 0,
-  parameter int SOURCE_WIDTH  = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES),
-  parameter int EPOCH_WIDTH   = (EPOCH_COUNT <= 1) ? 1 : $clog2(EPOCH_COUNT)
+module a8_exact_age_reference #(
+  parameter int NUM_SOURCES  = 16,
+  parameter int ADDR_WIDTH   = 16,
+  parameter int AGE_WIDTH    = $clog2(2 * NUM_SOURCES),
+  parameter int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES)
 ) (
   input  logic                    clk,
   input  logic                    rst_n,
@@ -20,30 +17,21 @@ module a8_age_calendar_wheel #(
 );
   logic [NUM_SOURCES-1:0] grant;
   logic [NUM_SOURCES-1:0] tracked_unused;
-  logic [EPOCH_WIDTH-1:0] epoch_unused;
   logic [SOURCE_WIDTH-1:0] selected_source;
   integer source_index;
 
-  a8_age_calendar_wheel_arbiter #(
+  a8_exact_age_reference_arbiter #(
     .NUM_SOURCES(NUM_SOURCES),
-    .BUCKET_CYCLES(BUCKET_CYCLES),
-    .EPOCH_COUNT(EPOCH_COUNT),
-    .MAX_STALL_CYCLES(MAX_STALL_CYCLES),
-    .SOURCE_WIDTH(SOURCE_WIDTH),
-    .EPOCH_WIDTH(EPOCH_WIDTH)
+    .AGE_WIDTH(AGE_WIDTH),
+    .SOURCE_WIDTH(SOURCE_WIDTH)
   ) scheduler (
-    .clk(clk),
-    .rst_n(rst_n),
-    .request(source_valid),
-    .advance(1'b1),
-    .grant(grant),
-    .tracked_debug(tracked_unused),
-    .epoch_debug(epoch_unused)
+    .clk(clk), .rst_n(rst_n), .request(source_valid), .advance(1'b1),
+    .grant(grant), .tracked_debug(tracked_unused)
   );
 
   always_comb begin
     source_ready = grant;
-    selected_source = 0;
+    selected_source = '0;
     for (source_index = 0; source_index < NUM_SOURCES;
          source_index = source_index + 1)
       if (grant[source_index])
@@ -59,7 +47,7 @@ module a8_age_calendar_wheel #(
       retire_valid <= |grant;
       if (|grant) begin
         retire_event <= source_event[selected_source];
-        retire_source <= SOURCE_WIDTH'(selected_source);
+        retire_source <= selected_source;
       end
     end
   end

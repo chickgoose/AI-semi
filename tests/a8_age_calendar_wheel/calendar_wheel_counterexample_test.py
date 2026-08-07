@@ -52,8 +52,24 @@ def assert_quantization_loss_exists() -> None:
     assert older_cycle // bucket_cycles == younger_cycle // bucket_cycles
 
 
+def assert_stall_bound_is_part_of_horizon() -> None:
+    sources = 16
+    stall_bound = 12
+    unsafe_horizon = 16
+    safe_horizon = 32
+    assert unsafe_horizon <= sources - 1 + stall_bound
+    assert safe_horizon > sources - 1 + stall_bound
+
+    # An old request and a request exactly one horizon younger have identical
+    # modulo tags. Without the stall term, both can remain live together.
+    old_absolute_age = unsafe_horizon
+    young_absolute_age = 0
+    assert old_absolute_age % unsafe_horizon == young_absolute_age
+
+
 if __name__ == "__main__":
     assert_wrap_counterexample()
     assert_safe_horizon_orders_all_live_sets()
     assert_quantization_loss_exists()
+    assert_stall_bound_is_part_of_horizon()
     print("A8_WHEEL_COUNTEREXAMPLE_PASS")

@@ -4,6 +4,7 @@ module a8_age_calendar_wheel_arbiter #(
   parameter int NUM_SOURCES   = 16,
   parameter int BUCKET_CYCLES = 4,
   parameter int EPOCH_COUNT   = 8,
+  parameter int MAX_STALL_CYCLES = 0,
   parameter int SOURCE_WIDTH  = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES),
   parameter int EPOCH_WIDTH   = (EPOCH_COUNT <= 1) ? 1 : $clog2(EPOCH_COUNT),
   parameter int PHASE_WIDTH   = (BUCKET_CYCLES <= 1) ? 1 : $clog2(BUCKET_CYCLES)
@@ -40,8 +41,11 @@ module a8_age_calendar_wheel_arbiter #(
       $fatal(1, "A8 BUCKET_CYCLES must be positive");
     if ((EPOCH_COUNT < 2) || ((EPOCH_COUNT & (EPOCH_COUNT - 1)) != 0))
       $fatal(1, "A8 EPOCH_COUNT must be a power of two >= 2");
-    if ((EPOCH_COUNT * BUCKET_CYCLES) <= (NUM_SOURCES - 1))
-      $fatal(1, "A8 wheel horizon must exceed NUM_SOURCES-1");
+    if (MAX_STALL_CYCLES < 0)
+      $fatal(1, "A8 MAX_STALL_CYCLES must be nonnegative");
+    if ((EPOCH_COUNT * BUCKET_CYCLES) <=
+        (NUM_SOURCES - 1 + MAX_STALL_CYCLES))
+      $fatal(1, "A8 wheel horizon must exceed NUM_SOURCES-1+MAX_STALL_CYCLES");
   end
 
   always_comb begin
