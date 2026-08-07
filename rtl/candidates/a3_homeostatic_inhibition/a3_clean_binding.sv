@@ -1,6 +1,31 @@
 // Candidate-only storage-free binding.  The frozen common TB instantiates its
 // replaceable cell using this compatibility module name.  All sequential state,
 // output holding, and arbitration live in a3_homeostatic_inhibition.
+`ifndef A3_URGENCY_WIDTH
+`define A3_URGENCY_WIDTH 6
+`endif
+`ifndef A3_LEAK
+`define A3_LEAK 1
+`endif
+`ifndef A3_GAIN_LOW
+`define A3_GAIN_LOW 6
+`endif
+`ifndef A3_GAIN_HIGH
+`define A3_GAIN_HIGH 5
+`endif
+`ifndef A3_INHIBIT_LOW
+`define A3_INHIBIT_LOW 1
+`endif
+`ifndef A3_INHIBIT_HIGH
+`define A3_INHIBIT_HIGH 2
+`endif
+`ifndef A3_THRESHOLD_BASE
+`define A3_THRESHOLD_BASE 8
+`endif
+`ifndef A3_THRESHOLD_SHIFT
+`define A3_THRESHOLD_SHIFT 1
+`endif
+
 module aer_legacy_candidate_adapter #(
   parameter int NUM_SOURCES  = 16,
   parameter int ADDR_WIDTH   = 16,
@@ -16,7 +41,15 @@ module aer_legacy_candidate_adapter #(
   a3_homeostatic_inhibition #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
-    .SOURCE_WIDTH(SOURCE_WIDTH)
+    .SOURCE_WIDTH(SOURCE_WIDTH),
+    .URGENCY_WIDTH(`A3_URGENCY_WIDTH),
+    .LEAK(`A3_LEAK),
+    .GAIN_LOW_ACTIVITY(`A3_GAIN_LOW),
+    .GAIN_HIGH_ACTIVITY(`A3_GAIN_HIGH),
+    .INHIBIT_LOW(`A3_INHIBIT_LOW),
+    .INHIBIT_HIGH(`A3_INHIBIT_HIGH),
+    .THRESHOLD_BASE(`A3_THRESHOLD_BASE),
+    .THRESHOLD_SHIFT(`A3_THRESHOLD_SHIFT)
   ) native_candidate (
     .clk(bench.clk),
     .rst_n(bench.rst_n),
@@ -53,3 +86,12 @@ module aer_legacy_candidate_adapter #(
   // FIFO_DEPTH is inherited from the replaceable common cell signature and is
   // intentionally unused: this binding adds no free candidate storage.
 endmodule
+
+`undef A3_URGENCY_WIDTH
+`undef A3_LEAK
+`undef A3_GAIN_LOW
+`undef A3_GAIN_HIGH
+`undef A3_INHIBIT_LOW
+`undef A3_INHIBIT_HIGH
+`undef A3_THRESHOLD_BASE
+`undef A3_THRESHOLD_SHIFT

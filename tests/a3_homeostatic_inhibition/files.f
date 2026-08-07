@@ -1,2 +1,3 @@
 rtl/candidates/a3_homeostatic_inhibition/a3_homeostatic_inhibition.sv
 tests/a3_homeostatic_inhibition/a3_homeostatic_inhibition_tb.sv
+tests/a3_homeostatic_inhibition/a3_update_equivalence_tb.sv

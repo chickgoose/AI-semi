@@ -14,7 +14,12 @@ module a3_homeostatic_inhibition #(
   parameter int HOME_LOW_ACTIVE   = 2,
   parameter int HOME_HIGH_ACTIVE  = 4,
   parameter int THRESHOLD_BASE    = 8,
-  parameter int THRESHOLD_SHIFT   = 1
+  parameter int THRESHOLD_SHIFT   = 1,
+  // All three options are exact-state-update suppressions.  They must not
+  // alter membrane next values, arbitration decisions, or grant order.
+  parameter bit ENABLE_EXACT_CLOCK_ENABLE = 1'b1,
+  parameter bit SUPPRESS_INACTIVE_UPDATE  = 1'b1,
+  parameter bit SUPPRESS_SATURATED_NOOP   = 1'b1
 ) (
   input  logic                         clk,
   input  logic                         rst_n,
@@ -34,8 +39,12 @@ module a3_homeostatic_inhibition #(
   // These state names are intentionally visible to the candidate-only
   // activity testbench.  They are not functional/debug output ports.
   logic [URGENCY_WIDTH-1:0] membrane [NUM_SOURCES];
+  logic [URGENCY_WIDTH-1:0] membrane_next [NUM_SOURCES];
+  logic [NUM_SOURCES-1:0] membrane_write_enable;
   logic [HOME_WIDTH-1:0] homeostasis;
   logic [SOURCE_WIDTH-1:0] phase;
+  logic homeostasis_write_enable;
+  logic phase_write_enable;
 
   integer active_count;
   integer excitation_gain;
@@ -132,6 +141,39 @@ module a3_homeostatic_inhibition #(
     source_ready = '0;
     if (grant_valid)
       source_ready[selected_source] = 1'b1;
+
+    homeostasis_write_enable =
+      ((active_count > HOME_HIGH_ACTIVE) &&
+       (homeostasis != HOME_WIDTH'(HOME_MAX))) ||
+      ((active_count < HOME_LOW_ACTIVE) && (homeostasis != 0));
+    phase_write_enable = grant_valid;
+
+    for (source_index = 0; source_index < NUM_SOURCES;
+         source_index = source_index + 1) begin
+      if (grant_valid && (source_index == selected_source)) begin
+        membrane_next[source_index] = '0;
+      end else if (source_valid[source_index]) begin
+        membrane_next[source_index] = clamp_membrane(
+          integer'(membrane[source_index]) + excitation_gain - LEAK -
+          (grant_valid ? inhibition_pulse : 0));
+      end else begin
+        membrane_next[source_index] = clamp_membrane(
+          integer'(membrane[source_index]) - LEAK);
+      end
+
+      membrane_write_enable[source_index] = 1'b1;
+      if (SUPPRESS_INACTIVE_UPDATE && !source_valid[source_index] &&
+          (membrane[source_index] == 0))
+        membrane_write_enable[source_index] = 1'b0;
+      if (SUPPRESS_SATURATED_NOOP && source_valid[source_index] &&
+          !(grant_valid && (source_index == selected_source)) &&
+          (membrane[source_index] == URGENCY_WIDTH'(URGENCY_MAX)) &&
+          (membrane_next[source_index] == membrane[source_index]))
+        membrane_write_enable[source_index] = 1'b0;
+      if (ENABLE_EXACT_CLOCK_ENABLE &&
+          (membrane_next[source_index] == membrane[source_index]))
+        membrane_write_enable[source_index] = 1'b0;
+    end
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -145,11 +187,10 @@ module a3_homeostatic_inhibition #(
            source_index = source_index + 1)
         membrane[source_index] <= '0;
     end else begin
-      if (active_count > HOME_HIGH_ACTIVE) begin
-        if (homeostasis != HOME_WIDTH'(HOME_MAX))
+      if (homeostasis_write_enable) begin
+        if (active_count > HOME_HIGH_ACTIVE)
           homeostasis <= homeostasis + 1'b1;
-      end else if (active_count < HOME_LOW_ACTIVE) begin
-        if (homeostasis != 0)
+        else
           homeostasis <= homeostasis - 1'b1;
       end
 
@@ -158,10 +199,12 @@ module a3_homeostatic_inhibition #(
           retire_valid <= 1'b1;
           retire_event <= source_event[selected_source];
           retire_source <= SOURCE_WIDTH'(selected_source);
-          if (selected_source == NUM_SOURCES-1)
-            phase <= '0;
-          else
-            phase <= SOURCE_WIDTH'(selected_source + 1);
+          if (phase_write_enable) begin
+            if (selected_source == NUM_SOURCES-1)
+              phase <= '0;
+            else
+              phase <= SOURCE_WIDTH'(selected_source + 1);
+          end
         end else begin
           retire_valid <= 1'b0;
         end
@@ -169,19 +212,8 @@ module a3_homeostatic_inhibition #(
 
       for (source_index = 0; source_index < NUM_SOURCES;
            source_index = source_index + 1) begin
-        if (grant_valid && (source_index == selected_source)) begin
-          membrane[source_index] <= '0;
-        end else if (source_valid[source_index]) begin
-          membrane[source_index] <= clamp_membrane(
-            integer'(membrane[source_index]) + excitation_gain - LEAK -
-            (grant_valid ? inhibition_pulse : 0));
-        end else begin
-          if (integer'(membrane[source_index]) > LEAK)
-            membrane[source_index] <= clamp_membrane(
-              integer'(membrane[source_index]) - LEAK);
-          else
-            membrane[source_index] <= '0;
-        end
+        if (membrane_write_enable[source_index])
+          membrane[source_index] <= membrane_next[source_index];
       end
     end
   end
