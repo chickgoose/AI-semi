@@ -31,7 +31,7 @@ module a5_transition_predictor #(
     prediction_valid = 1'b0;
     prediction_target = '0;
     prediction_confidence = '0;
-    if (lookup_valid && (lookup_context < NUM_SOURCES)) begin
+    if (lookup_valid && (int'(lookup_context) < NUM_SOURCES)) begin
       prediction_target = entry_target[lookup_context];
       prediction_confidence = entry_confidence[lookup_context];
       prediction_valid = entry_valid[lookup_context] &&
@@ -47,8 +47,8 @@ module a5_transition_predictor #(
         entry_target[reset_index] <= '0;
         entry_confidence[reset_index] <= '0;
       end
-    end else if (update_valid && (update_context < NUM_SOURCES) &&
-                 (update_actual < NUM_SOURCES)) begin
+    end else if (update_valid && (int'(update_context) < NUM_SOURCES) &&
+                 (int'(update_actual) < NUM_SOURCES)) begin
       if (!entry_valid[update_context]) begin
         entry_valid[update_context] <= 1'b1;
         entry_target[update_context] <= update_actual;
