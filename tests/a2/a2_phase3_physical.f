@@ -1,0 +1,4 @@
+rtl/candidates/a2_adaptive_dual_path/a2_phase3_selected_packed_core.sv
+rtl/candidates/a2_adaptive_dual_path/a2_phase3_reference_cores.sv
+rtl/candidates/a2_adaptive_dual_path/a2_phase3_physical_wrapper.sv
+tests/a2/a2_phase3_physical_tb.sv

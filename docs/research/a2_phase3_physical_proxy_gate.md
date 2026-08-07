@@ -25,7 +25,7 @@ cells and their activity remain included in all physical proxies.
 ## Frozen local flow
 
 Yosys 0.52 performs `proc`, `memory_map`, `flatten`, `techmap`, and generic ABC
-mapping. There is no liberty file and no timing claim. The resulting JSON is
+4-LUT mapping. There is no liberty file and no timing claim. The resulting JSON is
 used to count generic cells, sequential Q bits, maximum combinational cell
 depth, and maximum net sink fanout.
 
