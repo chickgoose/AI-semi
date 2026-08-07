@@ -17,6 +17,14 @@ always-ready suite and four completion lanes.  Independent lane backpressure,
 polarity/type, asynchronous ingress, multicast, and more than one occurrence
 per source per cycle are not claimed by that result.
 
+The four retire stripes are an implementation point, not the novelty claim.
+A9 is not A7's global K-lane prefix scan/compactor: it never computes a global
+selected set and never dynamically packs arbitrary winners into K output lanes.
+Every source remains on one fixed physical stripe and an event advances only by
+neighbor credit/empty-slot transfers.  The claimed contribution is removal of
+the central grant vector, conservation of locally propagated slots, bounded
+local fan-in, and the resulting wire/critical-path scaling.
+
 ## 2. Prior art and the exact borrowing boundary
 
 | Primary source or open design | URL | Borrowed point | A9 difference |
@@ -64,6 +72,8 @@ one cell boundary per transfer.
 The source-to-stripe mapping is static.  Consequently all events of one source
 take one ordered FIFO path and cannot overtake.  Parallelism comes from stripes,
 not from sending consecutive events of one source down paths of unequal length.
+There is deliberately no global remapper, crossbar, work-stealing compactor, or
+dynamic lane assignment to conceal stripe imbalance.
 
 ## 4. Cell transition and work conservation
 
@@ -229,8 +239,15 @@ Reject or redesign A9 if any of the following occurs:
 - uniform sustained throughput does not exceed the one-lane central baseline
   while paying four retire lanes;
 - local versus dispersed, row versus column, affine relabeling, or moving
-  hotspot produces an unexplained correctness difference or severe service
+hotspot produces an unexplained correctness difference or severe service
   collapse;
+- the apparent improvement against a one-lane baseline disappears against a
+  centralized reference with the same `RETIRE_LANES`, or A9 L=1 fails to show
+  the expected wire/fan-in/critical-path distinction against a central L=1
+  reference; simple four-lane bandwidth is not an A9 result;
+- fixed source-to-stripe mapping produces hotspot, row/column, or affine-
+  permutation imbalance beyond the disclosed threshold; this must trigger a
+  rejection/redesign discussion, not a hidden global remap or crossbar;
 - p99 sparse latency or post-overload recovery grows without the predicted
   `O(sqrt(N))` path bound;
 - proxy or later approved PPA shows that local registers/wires cost more than
@@ -246,5 +263,12 @@ Reject or redesign A9 if any of the following occurs:
 3. Frozen 46-trace correctness and metrics: global fan-in, matched spatial,
    moving hotspot, rotating victim, phase transition, rate shape, uniform sweep,
    sparse, elephant/mouse, retrigger, and timing pairs.
-4. Central baseline comparison and analytic N=16/64/256 state/wire/throughput
-   scaling.  Physical server PPA remains prohibited until head approval.
+4. Compare A9 L=4 with a centralized L=4 reference under identical retire-lane
+   pins, and A9 L=1 with centralized L=1.  Separately report raw throughput,
+   throughput/lane, utilization/lane, and event/pin-cycle so no K-lane gain is
+   attributed to distributed arbitration.
+5. Report per-stripe offered/accepted/delivered load and the max/min stripe
+   ratio for stationary/moving hotspots, row/column layouts, and affine source
+   permutations.  Do not repair an unfavorable result with global remapping.
+6. Compute analytic N=16/64/256 state/wire/throughput and control-path scaling.
+   Physical server PPA remains prohibited until head approval.
