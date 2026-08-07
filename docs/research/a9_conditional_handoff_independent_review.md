@@ -282,3 +282,206 @@ Until B1--B5 are resolved and independently re-reviewed, neither profile is
 eligible for head Xcelium, Genus, or Innovus execution.  The static and H2
 source structures may be retained as conditional experiments, but they must
 not appear in the N16 default shortlist or any controlled PPA ranking.
+
+---
+
+## 9. Addendum — committed-package re-review
+
+Re-review date: 2026-08-07 (Asia/Seoul)
+
+A9 review object: `f1467a83a949b129e86dfced161d74f8a2cb7094`
+
+A9 branch: `agents/a9-distributed-token-fabric`
+
+A9 worktree at start and finish: clean
+
+Disposition: **two critical OPEN items; do not advance to physical execution**
+
+This addendum supersedes the initial live-worktree observations only where a
+blocker is explicitly marked `FIXED`.  No A9 file was modified and no server,
+Xcelium, Genus, or Innovus process was run.
+
+### 9.1 Blocker status
+
+| Original blocker | Status | Re-review finding |
+| --- | --- | --- |
+| B1 — immutable package commit | **FIXED** | Both package manifests pass independent package preflight. Every declared synthesis/common source and supporting generator/TB/runner/preflight/doc is checked against both the clean working file and its blob in package commit `b438d6bc65ef21e0baf7edb798a0fd8663d140b1`; each manifest is tracked and byte-identical to A9 HEAD. |
+| B2 — executable common-workload eligibility | **OPEN — CRITICAL** | The unchanged common N16 TB/assertions/scoreboard and all 46 run names are now selected, but evidence is not bound to canonical frozen trace contents, and the common gate bypasses the registered physical shell. Details are in §9.4. |
+| B3 — profile/capability lock | **FIXED** | Static and H2 have distinct candidate keys, capabilities, tops, synthesis filelists/defines, common implementations/defines, unsupported cases, and fixed N64/L8/A16/S6 identities. Preflight rejects an unknown/cross-profile identity and generic N16 use is explicitly diagnostic-only. |
+| B4 — physical boundary freeze/equality | **FIXED** | Both N64 tops now instantiate the same `a9_phase4_synth_top` registered shell and only add identical wire-only packing. Port/lane/register/clock/reset/IO assumptions are locked. This is a deliberate new identity relative to the zero-shell-register wrappers in the initial review. |
+| B5 — fail-closed evidence validation | **OPEN — CRITICAL** | Commit/source closure, profile schema, exact commands, per-run PASS markers, metrics `errors=0`, external evidence location, and default blocking are improved. Nevertheless, a fully fabricated evidence directory with non-trace payloads is accepted as Xcelium PASS because submitted artifact hashes are self-authenticating rather than canonical. |
+
+Overall status remains `BLOCK`.  B1, B3, and B4 are closed; B2 and B5 must be
+closed before either candidate is eligible for Genus or Innovus.  A genuine
+head-run Xcelium log would be useful evidence, but the current verifier cannot
+distinguish it from the counterexample below and therefore cannot authorize the
+next stage.
+
+### 9.2 Package locks and committed-source/hash checks
+
+The two current manifest hashes are:
+
+```text
+static manifest SHA256:
+b9a156d63faf0e41dde61c3db8348d75453e9bf990c7e22fa0f62c12807367fd
+
+H2 manifest SHA256:
+512da47c6634f3d5bb95082c4b129852705f9b1e8dade9024ed11be9028b29ff
+```
+
+Both manifests name source-package commit
+`b438d6bc65ef21e0baf7edb798a0fd8663d140b1`, which is an ancestor of reviewed
+HEAD `f1467a83...`.  This is coherent: `b438d6b` freezes the source/doc/preflight
+closure, while the later `f1467a8` commit relocks the two manifests to those
+committed blob hashes.  The manifests themselves are not circularly included in
+their `locked_files`; instead preflight requires each selected manifest to be a
+tracked file matching its HEAD blob.
+
+Independent executions produced:
+
+```text
+A9_PACKAGE_LOCK_PASS a9_static_n64_timing_diagnostic
+A9_PACKAGE_LOCK_PASS a9_h2_n64_asymmetric_stall_conditional
+```
+
+The package verifier checks a set-equal complete closure, rejects duplicate
+paths, hashes every working file, retrieves the same path from the named commit,
+and hashes that committed blob.  As a spot check, the current and committed
+`a9_phase4_synth_top.sv` both hash to:
+
+```text
+eaf3dbc0c60725bce9f8e179745fe2616183dd6a220c5ca75141d5b9d75b7028
+```
+
+This resolves the initial untracked-source and stale-commit defect.
+
+### 9.3 External boundary equality
+
+Both fixed physical tops expose exactly:
+
+```text
+N=64, retire lanes=8, address width=16, source width=6
+functional inputs=1096, functional outputs=248, total functional pins=1344
+clk_i rising edge; rst_ni asynchronous assertion/synchronous-deassert contract
+period=5.0 ns, uncertainty=0.1 ns
+input/output delay=0.25 ns, output load=0.01 pF
+```
+
+Both instantiate `a9_phase4_synth_top` with identical parameters. Static selects
+the distributed core with `A9_YOSYS`; H2 additionally selects the diffusive core
+with `A9_PHASE4_DIFFUSIVE`. The outer wrappers only unpack/pack source/lane bits.
+The common registered shell contains 1,344 boundary state bits:
+
+```text
+ingress: source_valid 64 + source_event 1024 + retire_ready 8 = 1096
+egress:  source_ready 64 + retire_valid 8 + retire_event 128
+         + retire_source 48 = 248
+```
+
+This establishes static/H2 physical-boundary equality. It does **not** by itself
+establish ready/valid functional correctness of that shell; that remains part
+of B2.
+
+### 9.4 Critical OPEN B2 — common eligibility does not prove the frozen job
+
+The new common gate is materially better than the old directed TB. It fixes the
+top at `aer_clean_tb`, N16/L4/A16, uses the unchanged common interface,
+assertions and scoreboard, and locks all 46 names from
+`manifest.neutrality-n16.json`. Static selects `distributed`; H2 selects
+`diffusive` with `A9_NEIGHBOR_HANDOFF`. The verifier requires one log and
+metrics/event-metrics/prepared-trace/run-manifest set per expected run.
+
+Two independent gaps remain.
+
+First, the verifier hashes each `prepared_trace` and per-run manifest only
+against the SHA written in the submitted `xcelium_eligibility.json`. It neither
+regenerates canonical traces from the locked generator+suite manifest nor
+parses the per-run manifest to compare its trace SHA/configuration with the
+frozen run. It also does not compare prepared-trace contents to a canonical
+hash. Therefore the asserted run name and a clean scoreboard result do not
+prove that the named frozen workload was executed.
+
+Second, the common scoreboard compiles `a9_clean_binding.sv`, which instantiates
+the direct core. The physical synthesis closure instead instantiates the
+stateful `a9_phase4_synth_top`. The N64 physical profile receives elaboration
+only; no scoreboard drives its registered ready/valid boundary. The phase-4
+source itself labels that shell “Structural-comparison shell only.” Its ingress,
+ready and egress registers can change handshake timing and backpressure
+behavior, so direct-core common PASS plus physical-top elaboration is not a
+functional equivalence proof.
+
+B2 closes only when both conditions are met:
+
+1. regenerate every run from the locked manifest/generator in a temporary
+   verifier-owned directory and compare canonical run-manifest, trace, and
+   prepared-trace SHA/content (or validate equivalent frozen canonical hashes);
+2. run the common scoreboard through the exact registered boundary used for
+   physical synthesis at a supported parameterization, or supply a checked
+   formal/sequential equivalence proof that covers ready/valid stalls, loss,
+   duplicate, ordering, reset, and added latency.
+
+### 9.5 Critical OPEN B5 — accepted forged-evidence counterexample
+
+A local adversarial evidence directory was generated outside the repository.
+For every one of the 46 exact run names it contained:
+
+```text
+log:            AER_CLEAN_TEST_PASS <expected-name>
+metrics CSV:    test=<expected-name>, errors=0
+event CSV:      literal NOT_A_REAL_EVENT_CSV
+prepared trace: literal NOT_A_FROZEN_TRACE
+run manifest:   {}
+```
+
+The JSON record contained the hashes of those bogus files, the manifest's exact
+command strings, `head_approved=true`, and a nonempty claimed Xcelium version.
+No simulator was invoked. Both current profile validators accepted it:
+
+```text
+static forged evidence exit=0: A9_XCELIUM_ELIGIBILITY_PASS
+H2 forged evidence exit=0:     A9_XCELIUM_ELIGIBILITY_PASS
+```
+
+This is a direct falsification of fail-closed workload evidence, not merely a
+theoretical concern. The verifier proves internal consistency of claimant-
+supplied hashes, not provenance or frozen-trace identity.
+
+The narrower PASS-marker hardening does work. After replacing the first log by
+`AER_CLEAN_TEST_PASS_WRONG_NAME`, recomputing its submitted SHA, and rerunning
+preflight, it correctly returned exit 3:
+
+```text
+A9_PREFLIGHT_BLOCKED: common log lacks clean PASS: core_sparse_identity
+```
+
+Thus “log PASS-marker validation” is `FIXED`, while B5 as a whole remains
+`OPEN — CRITICAL` because a marker plus self-authenticated artifacts is still
+accepted without actual workload provenance. In addition to the B2 remedies,
+the evidence schema should bind an exit status and tool invocation transcript
+to each run and validate result/event CSV schemas rather than only their
+existence.
+
+### 9.6 Blocked-by-default behavior
+
+For both manifests, package-only validation exits 0. Explicit Xcelium and Genus
+stages without an external evidence directory both fail closed with exit 3:
+
+```text
+A9_PREFLIGHT_BLOCKED: --evidence-dir is required; no run is authorized
+```
+
+`--stage genus` additionally re-runs Xcelium evidence validation and requires a
+head-approved external `site_freeze.json` whose constraint contract exactly
+matches the manifest, with hashed run Tcl, constraints, libraries, tool version,
+and PVT corner. Innovus further requires Genus evidence and the physical/RC
+freeze. This default-blocking behavior is `FIXED`.
+
+It does not mitigate the forged-evidence counterexample: once the weak Xcelium
+record is accepted, only the separate site-freeze check stands between it and
+Genus eligibility. Therefore the required immediate head action is:
+
+```text
+KEEP A9 STATIC/H2 GENUS AND INNOVUS BLOCKED.
+DO NOT TREAT CURRENT A9_XCELIUM_ELIGIBILITY_PASS AS SUFFICIENT EVIDENCE.
+RE-REVIEW AFTER B2/B5 CANONICAL-TRACE AND REGISTERED-BOUNDARY FIXES.
+```
