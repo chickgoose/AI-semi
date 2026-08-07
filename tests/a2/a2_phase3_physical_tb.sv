@@ -69,7 +69,7 @@ module a2_phase3_physical_tb #(
     integer encoded;
     begin
       generated_count = generated_count + 1;
-      if (!source_ready[selected_source]) begin
+      if (source_valid[selected_source] || !source_ready[selected_source]) begin
         overrun_count = overrun_count + 1;
       end else begin
         encoded = (selected_source << 10) | source_sequence[selected_source];

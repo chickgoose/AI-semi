@@ -237,6 +237,8 @@ def main() -> int:
         gates = {
             "functional": all(int(row["errors"]) == 0 and
                               int(row["accepted"]) == int(row["delivered"])
+                              and int(row["generated"]) ==
+                              int(row["accepted"]) + int(row["overrun"])
                               for row in activity if int(row["n"]) == sources),
             "pressure_overrun": sum(int(row["overrun"]) for row in a2_rows) <=
                                 sum(int(row["overrun"]) for row in always_rows),
