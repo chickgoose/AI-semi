@@ -1,0 +1,222 @@
+강희 클코 지적사항 공식 대응 정리
+작성 기준: 2026-08-07
+
+이 문서는 세 후보 중 하나를 최종 제출하기 위해, 현재 기능 검증과 PPA
+비교의 상태를 정확히 정리하고 앞으로의 공통 평가 절차를 합의하기 위한
+팀 공유용 문서다.
+
+
+1. 강희 측 지적 요약
+
+1) 팀은 강희, 현수, 준영의 설계 중 하나를 골라 제출하기로 했다.
+   따라서 세 후보를 같은 기능·성능·물리 조건에서 비교해야 한다.
+
+2) correctness 측면에서는 강희 fovea를 포함한 후보가 준영의 공용 AER
+   workload/testbench로 교차 검증됐다. fovea는 지원하는 always-ready core
+   workload에서 accepted event의 loss, duplicate, phantom, corruption 없이
+   통과했다. 즉 공용 correctness 검증에 들어올 수 있는 상태다.
+
+3) 기존 준영 PPA 비교 flow는 baseline, A2, A3, A23의 내부 실험을 비교하는
+   용도였다. 강희 fovea와 현수 최종 설계가 같은 flow에 포함되지 않았으므로,
+   그 표만으로 세 사람의 최종 후보를 공정하게 순위화할 수 없다.
+
+4) Genus 합성 결과의 slack이나 역산 Fmax는 pre-layout 추정치다. 배치,
+   clock tree, routing과 배선 기생성분을 반영하면 결과가 달라질 수 있으므로
+   Genus 숫자만으로 최종 동작 주파수를 확정하면 안 된다. 강희 측이 경험한
+   큰 차이는 이 위험을 실제로 보여주는 사례다. 다만 특정 설계에서 본
+   차이를 모든 설계에 적용되는 고정 "40% 오차" 규칙으로 일반화하지는 않는다.
+
+5) 강희 fovea에는 Innovus placement, CTS, routing을 수행한 관측 결과가 있다.
+   따라서 다른 후보도 Genus 수준에만 머물지 말고 같은 P&R 검증 수준까지
+   올려야 한다는 요구는 타당하다.
+
+
+2. 우리 판단과 필요한 기술적 정정
+
+강희 측 문제 제기의 방향은 타당하다. 최종 후보를 하나 고르려면 세 후보의
+correctness뿐 아니라 area, power, frequency, throughput과 latency를 공통
+경계에서 비교해야 한다. 기존 A23 전용 Genus 표에 fovea와 현수 설계의 숫자만
+추가하는 것으로는 충분하지 않다.
+
+다만 fovea의 현재 P&R 관측은 다음과 같이 표현해야 정확하다.
+
+- 2.0 ns, 500 MHz: setup WNS +0.007 ns로 PASS 관측
+- 1.5 ns, 666.7 MHz: setup WNS -0.066 ns로 FAIL 관측
+- 지원되는 결론: demonstrated lower bound 500 MHz,
+  fixed-netlist diagnostic Fmax bracket [500, 666.7) MHz
+
+이는 exact Fmax가 500 MHz라는 뜻이 아니다. 또한 현재 관측은 같은 합성
+netlist를 사용하고 Innovus의 period 제약을 바꾼 fixed-netlist sweep이므로,
+각 period에서 다시 합성해 최적화한 최종 구조 비교와도 구분해야 한다.
+보고된 자료에 hold WNS, unconstrained path, DRC와 antenna 상태가 모두 포함됐는지도
+공통 qualification 단계에서 다시 확인해야 한다.
+
+현재 세 사람의 기존 숫자는 다음 조건이 완전히 같지 않다.
+
+- input/output delay, clock uncertainty와 output load
+- clock-gating 적용 정책
+- 합성 effort와 target period
+- source 수, parameter와 native interface 경계
+- floorplan utilization, power grid, RC corner와 P&R 절차
+- vectorless 또는 VCD/SAIF activity power와 측정 window
+- fixed-netlist P&R 또는 period별 재합성 P&R 여부
+
+따라서 기존 결과는 각자 설계 내부의 탐색·진단 자료로는 유효하지만, 서로를
+직접 순위화하는 공식 팀 표로 사용하면 안 된다.
+
+
+3. 이번 결론에 따라 변경한 방향
+
+1) 공용 AER workload와 testbench는 유지한다.
+   동일 logical event trace, source model, scoreboard와 metric을 사용해야 후보별
+   차이가 RTL 차이에서 나오기 때문이다. 후보 native port에는 저장과 기능을
+   추가하지 않는 최소 binding만 사용한다.
+
+2) A23는 현재 최종 후보와 최종 P&R 투자 대상에서 제외한다.
+   A23의 RTL, 회귀와 Genus 결과는 공용 TB의 동작을 확인한 historical
+   benchmark-calibration/reference로만 보존한다. 새 준영 설계의 base로 사용하지 않는다.
+
+3) 최종 비교 대상은 다음 세 후보로 다시 정의한다.
+
+   - 강희 fovea 최종 RTL
+   - 현수 final RTL
+   - 준영 clean-slate 신규 RTL
+
+4) 첫 공통 비교 규모는 N=16으로 한다.
+   강희 fovea의 native source 수가 16으로 고정돼 있으므로 세 후보가 실제로
+   같은 source population을 처리하는 첫 비교점을 N=16으로 맞춘다. 추가 N
+   sweep은 지원 가능한 후보에 대해 별도 scaling 결과로 보고한다.
+
+5) 후보 registry를 만든다.
+   각 결과에는 candidate ID, commit SHA, top module, file list, parameter 방법,
+   source 수, native protocol, clock/reset port, retire lane, 지원 capability와
+   사용한 flow/config identity를 함께 기록한다.
+
+6) 기존 PPA 표의 hard-coded 0.5 또는 1.0 event/cycle을 제거한다.
+   throughput은 동일 deterministic trace에서 공용 TB가 완료한 logical event를
+   직접 세어 측정한다. multi-lane 구조라면 실제 완료 수만큼 1 event/cycle을
+   넘을 수 있다.
+
+7) power activity를 통일한다.
+   같은 trace, seed, simulation interval과 sparse/near-saturation 측정 window로
+   VCD/SAIF를 만들고 activity-annotated power를 비교한다. vectorless power는
+   screening 수치로만 별도 표시한다.
+
+
+4. 앞으로의 공통 평가 방식
+
+[A. Correctness gate]
+
+모든 후보는 먼저 native RTL과 storage-free binding으로 공용 test를 실행한다.
+최소 통과 조건은 다음과 같다.
+
+  errors == 0
+  accepted == delivered after complete drain
+
+phantom, duplicate, corruption, source-local reorder, accepted-event missing과
+drain timeout은 허용하지 않는다. source_overrun, 긴 latency와 낮은 fairness는
+correctness를 조작해 만든 FAIL이 아니라 비교해야 할 capacity/성능 결과다.
+지원하지 않는 optional backpressure, polarity/type, multi-lane suite는
+SKIP_UNSUPPORTED로 분리하고 TB가 기능을 보충하지 않는다.
+
+[B. 후보중립 Genus screening]
+
+세 후보를 같은 Liberty/PVT, clock, uncertainty, I/O delay, load, reset 처리,
+clock-gating 정책과 synthesis effort로 합성한다. 이 단계는 면적, vectorless 또는
+초기 activity power, critical path와 명백히 불리한 구조를 빠르게 보는 용도다.
+Genus slack 역산값을 최종 Fmax로 발표하지 않는다.
+
+[C. Fixed-netlist Innovus diagnostic]
+
+각 후보를 한 번 합성한 뒤 같은 netlist에서 period를 바꿔 P&R timing bracket을
+빠르게 찾는다. 이는 다음 최종 sweep의 period 범위를 정하고 constraint 또는
+physical-flow 문제를 찾는 진단 단계다. 결과에는 fixed_netlist라고 명시한다.
+
+[D. Period별 재합성 + 전체 Innovus P&R]
+
+최종 구조 비교에서는 tested period마다 Genus를 다시 실행하고, 그 netlist로
+floorplan, placement, CTS, routing, parasitic extraction과 timing 분석을 끝까지
+수행한다. setup/hold WNS >= 0, detailed route 완료, unconstrained path 0을 timing
+PASS 조건으로 사용하고 DRC/antenna 상태도 별도 공개한다.
+
+Fmax는 가장 빠른 qualified PASS를 lower bound로, 그보다 빠른 가장 가까운
+FAIL을 exclusive upper bound로 하여 [last PASS, first FAIL)로 보고한다.
+
+[E. 최종 비교표]
+
+최종 결과는 한 표에 무리하게 섞지 않고 두 관점으로 나눈다.
+
+1) 같은 주파수 효율 표
+   동일 clock과 activity에서 area, total power, energy/event, measured
+   event/cycle, latency tail과 fairness를 비교한다.
+
+2) 후보별 최대 demonstrated 성능 표
+   per-target-resynthesis P&R bracket, measured event/cycle과
+   events/s = event/cycle x demonstrated clock lower bound를 보고한다.
+
+Native link 폭이나 retire lane이 다르면 events/pin-cycle을 함께 보고하고,
+필요한 serializer, decoder, buffer와 codec은 후보 PPA 경계에 포함한다.
+
+공식 배점이 없는 현재는 임의의 단일 가중합 점수를 만들지 않는다. correctness
+gate를 통과한 뒤 area, power, energy/event, throughput, latency, fairness,
+timing fidelity와 pin efficiency의 Pareto 관계를 보고 최종 후보를 선택한다.
+
+
+5. 팀원에게 요청할 정보
+
+[강희 fovea]
+
+- 최종 commit SHA 또는 수정 불가능한 RTL snapshot
+- top module, 전체 file list, N=16 parameter와 native port 설명
+- 공용 TB를 실행한 정확한 명령, trace/seed와 결과 파일
+- Genus/Innovus Tcl, SDC, MMMC, library/RC corner와 tool version
+- fixed-netlist sweep에 사용한 원 netlist와 period별 setup/hold timing report
+- route 완료, unconstrained path, DRC, antenna와 power report
+- activity가 있다면 VCD/SAIF와 정확한 측정 window
+
+[현수 final]
+
+- 최종 commit SHA 또는 RTL snapshot, top/file list와 N=16 설정
+- ARB_MODE/TX_MODE 등 실제 최종 parameter 조합
+- native interface/capability와 공용 TB 결과 원본
+- 현재 Genus script, SDC, area/timing/power 원본 report
+- 공용 activity trace용 VCD/SAIF 생성 방법
+- 동일 Innovus P&R flow를 수행하기 위해 필요한 netlist/SDC 정보
+
+[준영 clean-slate]
+
+- 신규 RTL의 candidate ID, commit SHA, top/file list와 N=16 설정
+- native binding과 capability profile
+- 공용 correctness/metric 결과와 동일 activity 파일
+- 같은 공통 Genus/Innovus flow에서 사용하는 manifest
+
+[팀 공통으로 확정할 항목]
+
+- 공식 제약이 나오기 전 사용할 Liberty/PVT/RC corner와 tool version
+- clock period 후보군, uncertainty, I/O delay, output load와 reset policy
+- clock-gating 정책, synthesis/P&R effort, floorplan/utilization와 power grid
+- 공통 deterministic trace, seed, sparse/near-saturation activity window
+- physical pin/link 비교 경계와 serializer/decoder 비용 포함 원칙
+
+
+6. 권장 실행 순서
+
+1) 기존 결과는 모두 exploratory/reference로 라벨하고 덮어쓰지 않는다.
+2) 세 후보의 SHA, top, file list, parameter와 native interface를 registry에 동결한다.
+3) N=16 동일 deterministic trace로 correctness를 다시 확인한다.
+4) 같은 run에서 measured event/cycle, latency, fairness, overrun과 activity를 만든다.
+5) 완전히 같은 조건의 candidate-neutral Genus screening을 세 후보에 실행한다.
+6) 공통 Innovus fixed-netlist sweep으로 각 후보의 진단 bracket을 찾는다.
+7) 선택한 period마다 재합성하고 전체 P&R을 수행해 최종 bracket을 만든다.
+8) same-frequency efficiency 표와 max-demonstrated performance 표를 작성한다.
+9) 결과 출처와 qualification 상태를 확인한 뒤 Pareto 비교로 한 후보를 선정한다.
+
+
+7. 최종 답변
+
+강희 측의 "세 후보를 같은 PPA 기준으로 비교해야 한다"는 지적은 맞다.
+따라서 강희와 현수 설계를 과거 A23 Genus 표에 단순 추가하는 것이 아니라,
+공용 workload/TB 위에 후보중립 Genus와 Innovus 평가 flow를 새로 구축한다.
+동시에 fovea의 현재 500 MHz 관측은 정확한 Fmax가 아니라 fixed-netlist
+[500, 666.7) MHz 진단 bracket으로 표현한다. 세 후보 모두 같은 계약의
+per-target-resynthesis P&R까지 완료한 뒤에야 공정한 최종 선택이 가능하다.
