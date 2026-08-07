@@ -1,0 +1,4 @@
+rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv
+rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv
+rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv
+tests/a7_parallel_event_compactor/a7_structural_wrappers.sv
