@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "candidate": "a2-adaptive-dual-path",
+  "native_interface": {
+    "protocol": "adaptive_sparse_bypass_banked_reservoir",
+    "source_count": {"kind": "parameterized", "minimum": 1},
+    "source_observable": true,
+    "retire_lanes": 1
+  },
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {
+      "supported": false,
+      "reason": "the initial combinational sparse bypass is qualified only with an always-ready sink"
+    },
+    "polarity_event_type": {
+      "supported": false,
+      "reason": "the candidate transports the mandatory address-only spike identity"
+    },
+    "multi_lane_retirement": {
+      "supported": false,
+      "reason": "the candidate has one logical retire lane"
+    }
+  }
+}

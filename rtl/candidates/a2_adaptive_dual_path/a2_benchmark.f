@@ -1,0 +1,6 @@
+tb/clean/aer_bench_if.sv
+rtl/candidates/a2_adaptive_dual_path/a2_adaptive_dual_path_core.sv
+rtl/candidates/a2_adaptive_dual_path/a2_adaptive_dual_path_binding.sv
+rtl/candidates/a2_adaptive_dual_path/a2_clean_replacement_cell.sv
+tb/clean/aer_clean_assertions.sv
+tb/clean/aer_clean_tb.sv

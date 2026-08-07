@@ -1,0 +1,2 @@
+rtl/candidates/a2_adaptive_dual_path/a2_adaptive_dual_path_core.sv
+rtl/candidates/a2_adaptive_dual_path/a2_adaptive_dual_path_binding.sv
