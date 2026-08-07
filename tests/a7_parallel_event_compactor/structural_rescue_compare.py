@@ -16,14 +16,16 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCES = [
+FROZEN_SOURCES = [
     ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv",
-    ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_prefix_count.sv",
-    ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_shared_rank_index_select.sv",
-    ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_event_compactor.sv",
     ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv",
     ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv",
     ROOT / "tests/a7_parallel_event_compactor/a7_structural_wrappers.sv",
+]
+SEGMENTED_SOURCES = [
+    ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_prefix_count.sv",
+    ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_shared_rank_index_select.sv",
+    ROOT / "rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_event_compactor.sv",
     ROOT / "tests/a7_parallel_event_compactor/a7_rescue_structural_wrapper.sv",
 ]
 CONFIGS = [(n, k) for n in (16, 32, 64) for k in (2, 4)]
@@ -65,8 +67,13 @@ def run_one(yosys: str, implementation: str, n: int, k: int) -> dict[str, object
         operator_stat = work / "operator-stat.json"
         gate_stat = work / "gate-stat.json"
         gate_netlist = work / "gate-netlist.json"
+        sources = (
+            SEGMENTED_SOURCES
+            if implementation == "segmented"
+            else FROZEN_SOURCES
+        )
         command = (
-            "read_verilog -sv " + " ".join(str(path) for path in SOURCES) + "; "
+            "read_verilog -sv " + " ".join(str(path) for path in sources) + "; "
             f"hierarchy -top {TOPS[implementation]} -chparam N {n} -chparam K {k}; "
             "proc; flatten; opt; "
             f"tee -o {operator_stat} stat -json -width; ltp -noff; "

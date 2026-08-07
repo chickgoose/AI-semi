@@ -83,6 +83,16 @@ first measured structural win, at 5,592 versus 6,729 gates and depth 139 versus
 so the prefix claim is now limited to structural scaling at N=16/K>=4.  See
 `adversarial-scaling.md` and `adversarial-structural.csv`.
 
+### Third-round K2 rescue result
+
+A radix-4 segmented shared-prefix/local-rank candidate reduced N=16/K=2 to
+3,307 generic gates, below both original 4,299 and replicated 3,733.  It did
+not rescue K2 because depth increased to 149 versus 133 for both references;
+maximum structural fanout also rose from original 85 to 131.  Exact-index
+exhaustive and full-candidate random equivalence passed.  A7 remains an
+N=16/K>=4-only mechanism, with segmented K4 usable only as an area/depth
+trade-off.  See `radix4-rescue.md` and `radix4-rescue-structural.csv`.
+
 ## Unit qualification
 
 K=1/2/4 each passed all 65,536 N=16 request bitmaps for every inclusive prefix
