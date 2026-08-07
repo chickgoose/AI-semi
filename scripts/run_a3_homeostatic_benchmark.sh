@@ -6,6 +6,14 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST="${A3_MANIFEST:-$PROJECT_ROOT/benchmarks/clean_slate_aer/manifest.neutrality-n16.json}"
 OUT_DIR="${A3_OUT:-$PROJECT_ROOT/results/a3-homeostatic-inhibition}"
 VERILATOR="${A3_VERILATOR:-$(command -v verilator || true)}"
+A3_URGENCY_WIDTH_VALUE="${A3_URGENCY_WIDTH:-6}"
+A3_LEAK_VALUE="${A3_LEAK:-1}"
+A3_GAIN_LOW_VALUE="${A3_GAIN_LOW:-6}"
+A3_GAIN_HIGH_VALUE="${A3_GAIN_HIGH:-5}"
+A3_INHIBIT_LOW_VALUE="${A3_INHIBIT_LOW:-1}"
+A3_INHIBIT_HIGH_VALUE="${A3_INHIBIT_HIGH:-2}"
+A3_THRESHOLD_BASE_VALUE="${A3_THRESHOLD_BASE:-8}"
+A3_THRESHOLD_SHIFT_VALUE="${A3_THRESHOLD_SHIFT:-1}"
 
 if [[ -z "$VERILATOR" ]]; then
   printf 'verilator is required; set A3_VERILATOR\n' >&2
@@ -20,6 +28,14 @@ python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/generate_trace.py" \
 "$VERILATOR" --binary --timing --assert --trace -Wno-fatal \
   -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-BLKSEQ \
   --top-module aer_clean_tb -GNUM_SOURCES=16 -GADDR_WIDTH=16 -GRETIRE_LANES=1 \
+  "-DA3_URGENCY_WIDTH=$A3_URGENCY_WIDTH_VALUE" \
+  "-DA3_LEAK=$A3_LEAK_VALUE" \
+  "-DA3_GAIN_LOW=$A3_GAIN_LOW_VALUE" \
+  "-DA3_GAIN_HIGH=$A3_GAIN_HIGH_VALUE" \
+  "-DA3_INHIBIT_LOW=$A3_INHIBIT_LOW_VALUE" \
+  "-DA3_INHIBIT_HIGH=$A3_INHIBIT_HIGH_VALUE" \
+  "-DA3_THRESHOLD_BASE=$A3_THRESHOLD_BASE_VALUE" \
+  "-DA3_THRESHOLD_SHIFT=$A3_THRESHOLD_SHIFT_VALUE" \
   -f "$PROJECT_ROOT/rtl/candidates/a3_homeostatic_inhibition/files.f" \
   --Mdir "$OUT_DIR/build/obj" -o "$OUT_DIR/build/a3-clean-sim"
 
