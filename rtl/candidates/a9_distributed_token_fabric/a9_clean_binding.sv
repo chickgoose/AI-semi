@@ -1,7 +1,8 @@
 // A9-only compile target replacement for the historical adapter module name
 // instantiated by the frozen common TB.  The A9 runner excludes the historical
 // adapter definition.  This module is strictly a wire-only binding: all event
-// storage and arbitration are inside a9_distributed_token_fabric.
+// storage and selection are inside the selected distributed candidate or the
+// measurement-only centralized reference.
 /* verilator lint_off DECLFILENAME */
 module aer_legacy_candidate_adapter #(
   parameter int NUM_SOURCES  = 16,
@@ -10,7 +11,11 @@ module aer_legacy_candidate_adapter #(
   parameter int FIFO_DEPTH   = 4,
   parameter int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES)
 ) (aer_bench_if bench);
+`ifdef A9_CENTRALIZED_REFERENCE
+  a9_centralized_reference #(
+`else
   a9_distributed_token_fabric #(
+`endif
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
     .RETIRE_LANES(RETIRE_LANES),

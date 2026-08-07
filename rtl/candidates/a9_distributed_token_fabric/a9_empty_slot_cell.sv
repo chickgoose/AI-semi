@@ -20,7 +20,8 @@ module a9_empty_slot_cell #(
   output logic                    downstream_valid_o,
   input  logic                    downstream_ready_i,
   output logic [ADDR_WIDTH-1:0]   downstream_event_o,
-  output logic [SOURCE_WIDTH-1:0] downstream_source_o
+  output logic [SOURCE_WIDTH-1:0] downstream_source_o,
+  output logic [1:0]              transport_occupancy_o
 );
   logic ingress_valid_q;
   logic [ADDR_WIDTH-1:0] ingress_event_q;
@@ -45,6 +46,7 @@ module a9_empty_slot_cell #(
   assign downstream_valid_o = (fifo_count_q != 0);
   assign downstream_event_o = fifo_event_q[0];
   assign downstream_source_o = fifo_source_q[0];
+  assign transport_occupancy_o = fifo_count_q;
   assign send_head = downstream_valid_o && downstream_ready_i;
 
   // Conservative credit deliberately depends only on registered occupancy.

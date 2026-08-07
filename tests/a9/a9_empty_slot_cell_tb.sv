@@ -18,6 +18,7 @@ module a9_empty_slot_cell_tb;
   logic downstream_ready;
   logic [ADDR_WIDTH-1:0] downstream_event;
   logic [SOURCE_WIDTH-1:0] downstream_source;
+  logic [1:0] transport_occupancy;
 
   integer accepted_local;
   integer accepted_upstream;
@@ -43,7 +44,8 @@ module a9_empty_slot_cell_tb;
     .downstream_valid_o(downstream_valid),
     .downstream_ready_i(downstream_ready),
     .downstream_event_o(downstream_event),
-    .downstream_source_o(downstream_source)
+    .downstream_source_o(downstream_source),
+    .transport_occupancy_o(transport_occupancy)
   );
 
   always #5 clk = ~clk;

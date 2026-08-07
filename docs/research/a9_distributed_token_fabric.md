@@ -199,13 +199,14 @@ utilization indicates bubble/merge inefficiency rather than useful buffering.
 
 ## 9. State, wire, and PPA proxy model
 
-Let address width be `A` and source width `S=ceil(log2(N))`.  Ignoring reset and
-small control constants, A9 registered bits are approximately:
+Let address width be `A` and source width `S=ceil(log2(N))`.  Counting the RTL
+registers exactly (but not clock/reset implementation overhead), A9 bits are:
 
 ```text
 B_A9 = N*(1 + A)                    local ingress
-     + 2N*(1 + A + S)               transport slots
-     + N*(2 + 1)                     occupancy and toggle
+     + 2N*(A + S)                   transport payloads
+     + N*(2 + 1)                    occupancy count and toggle
+     = N*(4 + 3A + 2S)
 ```
 
 Nearest-neighbor internal channel bits are approximately
@@ -272,3 +273,6 @@ hotspot produces an unexplained correctness difference or severe service
    permutations.  Do not repair an unfavorable result with global remapping.
 6. Compute analytic N=16/64/256 state/wire/throughput and control-path scaling.
    Physical server PPA remains prohibited until head approval.
+
+The completed N=16 evidence and current rejection assessment are in
+[`a9_distributed_token_fabric_results.md`](a9_distributed_token_fabric_results.md).

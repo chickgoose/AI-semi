@@ -26,6 +26,7 @@ module a9_distributed_token_fabric #(
   logic cell_local_ready [RETIRE_LANES][STRIPE_DEPTH];
   logic [ADDR_WIDTH-1:0] cell_local_event [RETIRE_LANES][STRIPE_DEPTH];
   logic [SOURCE_WIDTH-1:0] cell_local_source [RETIRE_LANES][STRIPE_DEPTH];
+  logic [1:0] cell_transport_occupancy [RETIRE_LANES][STRIPE_DEPTH];
 
   initial begin
     if (RETIRE_LANES <= 0)
@@ -77,9 +78,64 @@ module a9_distributed_token_fabric #(
           .downstream_valid_o(link_valid[lane][position+1]),
           .downstream_ready_i(link_ready[lane][position+1]),
           .downstream_event_o(link_event[lane][position+1]),
-          .downstream_source_o(link_source[lane][position+1])
+          .downstream_source_o(link_source[lane][position+1]),
+          .transport_occupancy_o(
+            cell_transport_occupancy[lane][position])
         );
       end
     end
   endgenerate
+
+`ifndef SYNTHESIS
+  integer debug_cycle_occupancy;
+  integer debug_retire_transfers_cycle;
+  integer debug_lane_index;
+  integer debug_position_index;
+  integer debug_cycles_q;
+  integer debug_occupied_slot_cycles_q;
+  integer debug_retire_transfers_q;
+
+  always_comb begin
+    debug_cycle_occupancy = 0;
+    debug_retire_transfers_cycle = 0;
+    for (debug_lane_index = 0; debug_lane_index < RETIRE_LANES;
+         debug_lane_index = debug_lane_index + 1) begin
+      if (retire_valid_o[debug_lane_index] &&
+          retire_ready_i[debug_lane_index])
+        debug_retire_transfers_cycle = debug_retire_transfers_cycle + 1;
+      for (debug_position_index = 0; debug_position_index < STRIPE_DEPTH;
+           debug_position_index = debug_position_index + 1)
+        debug_cycle_occupancy = debug_cycle_occupancy +
+          cell_transport_occupancy[debug_lane_index][debug_position_index];
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      debug_cycles_q <= 0;
+      debug_occupied_slot_cycles_q <= 0;
+      debug_retire_transfers_q <= 0;
+    end else begin
+      debug_cycles_q <= debug_cycles_q + 1;
+      debug_occupied_slot_cycles_q <=
+        debug_occupied_slot_cycles_q + debug_cycle_occupancy;
+      debug_retire_transfers_q <=
+        debug_retire_transfers_q + debug_retire_transfers_cycle;
+    end
+  end
+
+  final begin
+    $display("A9_TOKEN_METRICS cycles=%0d occupied_slot_cycles=%0d slot_capacity_cycles=%0d token_occupancy_util=%0.6f retire_transfers=%0d lane_service_util=%0.6f empty_slot_rtt_bound=%0d",
+      debug_cycles_q, debug_occupied_slot_cycles_q,
+      debug_cycles_q * 2 * NUM_SOURCES,
+      (debug_cycles_q == 0) ? 0.0 :
+        real'(debug_occupied_slot_cycles_q) /
+        real'(debug_cycles_q * 2 * NUM_SOURCES),
+      debug_retire_transfers_q,
+      (debug_cycles_q == 0) ? 0.0 :
+        real'(debug_retire_transfers_q) /
+        real'(debug_cycles_q * RETIRE_LANES),
+      STRIPE_DEPTH);
+  end
+`endif
 endmodule

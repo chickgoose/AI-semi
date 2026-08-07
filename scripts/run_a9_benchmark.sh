@@ -10,6 +10,24 @@ SIMULATOR="${AER_SIMULATOR:-}"
 NUM_SOURCES="${AER_NUM_SOURCES:-16}"
 ADDR_WIDTH="${AER_ADDR_WIDTH:-16}"
 RETIRE_LANES="${AER_RETIRE_LANES:-4}"
+IMPLEMENTATION="${AER_A9_IMPLEMENTATION:-distributed}"
+
+case "$IMPLEMENTATION" in
+  distributed)
+    candidate_name="a9-distributed-token-fabric-l${RETIRE_LANES}"
+    implementation_verilator=()
+    implementation_xrun=()
+    ;;
+  centralized)
+    candidate_name="a9-centralized-reference-l${RETIRE_LANES}"
+    implementation_verilator=(-DA9_CENTRALIZED_REFERENCE)
+    implementation_xrun=(-define A9_CENTRALIZED_REFERENCE)
+    ;;
+  *)
+    printf 'AER_A9_IMPLEMENTATION must be distributed or centralized\n' >&2
+    exit 2
+    ;;
+esac
 
 if [[ "$NUM_SOURCES" != 16 ]]; then
   printf 'frozen A9 benchmark binding requires AER_NUM_SOURCES=16\n' >&2
@@ -54,12 +72,15 @@ case "$SIMULATOR" in
     VERILATOR_BIN="${VERILATOR:-verilator}"
     compile=("$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal
       -Wno-BLKSEQ -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND
+      -Wno-SYNCASYNCNET -Wno-UNUSEDSIGNAL
       --top-module aer_clean_tb --Mdir "$OUT_DIR/obj"
       "-GNUM_SOURCES=$NUM_SOURCES" "-GADDR_WIDTH=$ADDR_WIDTH"
       "-GRETIRE_LANES=$RETIRE_LANES"
+      "${implementation_verilator[@]}"
       "$PROJECT_ROOT/tb/clean/aer_bench_if.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv"
+      "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_centralized_reference.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv"
       "$PROJECT_ROOT/tb/clean/aer_clean_assertions.sv"
       "$PROJECT_ROOT/tb/clean/aer_clean_tb.sv"
@@ -74,9 +95,11 @@ case "$SIMULATOR" in
       compile+=(-defparam "$parameter")
     done
     compile+=(
+      "${implementation_xrun[@]}"
       "$PROJECT_ROOT/tb/clean/aer_bench_if.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv"
+      "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_centralized_reference.sv"
       "$PROJECT_ROOT/rtl/candidates/a9_distributed_token_fabric/a9_clean_binding.sv"
       "$PROJECT_ROOT/tb/clean/aer_clean_assertions.sv"
       "$PROJECT_ROOT/tb/clean/aer_clean_tb.sv"
@@ -110,7 +133,7 @@ for run_name in "${runs[@]}"; do
     verilator)
       "$OUT_DIR/obj/Vaer_clean_tb" \
         "+CLEAN_TEST=trace" "+TRACE_NAME=$report_name" \
-        "+TRACE_FILE=$prepared_trace" "+CANDIDATE=a9-distributed-token-fabric-l${RETIRE_LANES}" \
+        "+TRACE_FILE=$prepared_trace" "+CANDIDATE=$candidate_name" \
         "+METRICS=$OUT_DIR/$run_name.csv" \
         "+EVENT_METRICS=$OUT_DIR/$run_name.events.csv" \
         | tee "$OUT_DIR/$run_name.log"
@@ -119,7 +142,7 @@ for run_name in "${runs[@]}"; do
       xrun -64bit -R -snapshot "$snapshot" \
         -xmlibdirname "$OUT_DIR/xcelium.d" \
         "+CLEAN_TEST=trace" "+TRACE_NAME=$report_name" \
-        "+TRACE_FILE=$prepared_trace" "+CANDIDATE=a9-distributed-token-fabric-l${RETIRE_LANES}" \
+        "+TRACE_FILE=$prepared_trace" "+CANDIDATE=$candidate_name" \
         "+METRICS=$OUT_DIR/$run_name.csv" \
         "+EVENT_METRICS=$OUT_DIR/$run_name.events.csv" \
         -l "$OUT_DIR/$run_name.log"
