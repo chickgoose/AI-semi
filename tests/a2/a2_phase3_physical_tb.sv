@@ -10,6 +10,7 @@ module a2_phase3_physical_tb #(
   logic clk = 1'b0;
   logic rst_n;
   logic [NUM_SOURCES-1:0] source_valid;
+  logic [NUM_SOURCES-1:0] offered_this_cycle;
   logic [NUM_SOURCES-1:0] source_ready;
   logic [NUM_SOURCES*ADDR_WIDTH-1:0] source_event;
   logic retire_valid;
@@ -26,6 +27,8 @@ module a2_phase3_physical_tb #(
   integer latencies [MAX_EVENTS];
   integer generated_count;
   integer overrun_count;
+  integer duplicate_overrun_count;
+  integer backpressure_overrun_count;
   integer accepted_count;
   integer delivered_count;
   integer fixed_delivered;
@@ -69,15 +72,22 @@ module a2_phase3_physical_tb #(
     integer encoded;
     begin
       generated_count = generated_count + 1;
-      if (source_valid[selected_source] || !source_ready[selected_source]) begin
+      if (offered_this_cycle[selected_source]) begin
         overrun_count = overrun_count + 1;
+        duplicate_overrun_count = duplicate_overrun_count + 1;
       end else begin
-        encoded = (selected_source << 10) | source_sequence[selected_source];
-        source_valid[selected_source] = 1'b1;
-        source_event[selected_source*ADDR_WIDTH +: ADDR_WIDTH] =
-          ADDR_WIDTH'(encoded);
-        pending_occurrence[selected_source] = clock_cycle;
-        source_sequence[selected_source] = source_sequence[selected_source] + 1;
+        offered_this_cycle[selected_source] = 1'b1;
+        if (!source_ready[selected_source]) begin
+          overrun_count = overrun_count + 1;
+          backpressure_overrun_count = backpressure_overrun_count + 1;
+        end else begin
+          encoded = (selected_source << 10) | source_sequence[selected_source];
+          source_valid[selected_source] = 1'b1;
+          source_event[selected_source*ADDR_WIDTH +: ADDR_WIDTH] =
+            ADDR_WIDTH'(encoded);
+          pending_occurrence[selected_source] = clock_cycle;
+          source_sequence[selected_source] = source_sequence[selected_source] + 1;
+        end
       end
     end
   endtask
@@ -151,9 +161,12 @@ module a2_phase3_physical_tb #(
     rst_n = 1'b0;
     retire_ready = 1'b1;
     source_valid = '0;
+    offered_this_cycle = '0;
     stimulus_active = 1'b0;
     generated_count = 0;
     overrun_count = 0;
+    duplicate_overrun_count = 0;
+    backpressure_overrun_count = 0;
     error_count = 0;
     source_event = '0;
     for (source = 0; source < NUM_SOURCES; source = source + 1) begin
@@ -179,6 +192,7 @@ module a2_phase3_physical_tb #(
          stim_cycle = stim_cycle + 1) begin
       @(negedge clk);
       source_valid = '0;
+      offered_this_cycle = '0;
       if (workload == "sparse") begin
         if ((stim_cycle >= 8) && (stim_cycle < 256) &&
             ((stim_cycle % 8) == 0))
@@ -244,10 +258,10 @@ module a2_phase3_physical_tb #(
     p99 = latencies[((latency_count*99 + 99)/100)-1];
 
     if (error_count == 0) begin
-      $display("A2_PHASE3_METRIC design=%s n=%0d workload=%s generated=%0d overrun=%0d accepted=%0d delivered=%0d fixed_delivered=%0d stim_cycles=%0d p95=%0d p99=%0d drain=%0d errors=0",
+      $display("A2_PHASE3_METRIC design=%s n=%0d workload=%s generated=%0d overrun=%0d duplicate_overrun=%0d backpressure_overrun=%0d accepted=%0d delivered=%0d fixed_delivered=%0d stim_cycles=%0d p95=%0d p99=%0d drain=%0d errors=0",
         design_name, NUM_SOURCES, workload, generated_count, overrun_count,
-        accepted_count, delivered_count, fixed_delivered, stim_cycles, p95, p99,
-        watchdog);
+        duplicate_overrun_count, backpressure_overrun_count, accepted_count,
+        delivered_count, fixed_delivered, stim_cycles, p95, p99, watchdog);
       $finish;
     end
     $fatal(1, "A2_PHASE3_FAIL errors=%0d", error_count);

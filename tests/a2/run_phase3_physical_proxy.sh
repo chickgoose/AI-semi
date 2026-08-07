@@ -7,12 +7,18 @@ OUT_DIR="${A2_PHASE3_OUT:-/tmp/a2-phase3-physical}"
 IVERILOG="${A2_IVERILOG:-iverilog}"
 VVP="${A2_VVP:-vvp}"
 YOSYS="${A2_YOSYS:-yosys}"
-SKIP_YOSYS="${A2_PHASE3_SKIP_YOSYS:-0}"
+
+if [[ "${A2_PHASE3_SKIP_YOSYS:-0}" != "0" ]]; then
+  printf 'A2_PHASE3_SKIP_YOSYS was removed: cached JSON is not self-authenticating.\n' >&2
+  printf 'Run the full flow, or invoke scripts/a2_phase3_physical_proxy.py directly for manual diagnostics.\n' >&2
+  exit 2
+fi
 
 command -v "$IVERILOG" >/dev/null 2>&1
 command -v "$VVP" >/dev/null 2>&1
 command -v "$YOSYS" >/dev/null 2>&1
 mkdir -p "$OUT_DIR"
+python3 "$PROJECT_ROOT/tests/a2/test_phase3_vcd_alias_filter.py"
 
 for sources in 16 64; do
   equiv_binary="$OUT_DIR/packed-equiv-n$sources.vvp"
@@ -43,11 +49,7 @@ for sources in 16 64; do
     json="$OUT_DIR/$design-n$sources.json"
     yosys_log="$OUT_DIR/$design-n$sources.yosys.log"
     yosys_script="read_verilog -sv -DSYNTHESIS ${rtl_files[*]}; hierarchy -top a2_phase3_physical_wrapper -chparam NUM_SOURCES $sources -chparam MODEL $model; proc; flatten; opt; memory_map; opt; techmap; opt; abc -fast -lut 4; clean; write_json $json"
-    if [[ "$SKIP_YOSYS" == "1" && -s "$json" ]]; then
-      :
-    else
-      (cd "$PROJECT_ROOT" && "$YOSYS" -q -p "$yosys_script") >"$yosys_log" 2>&1
-    fi
+    (cd "$PROJECT_ROOT" && "$YOSYS" -q -p "$yosys_script") >"$yosys_log" 2>&1
 
     binary="$OUT_DIR/$design-n$sources.vvp"
     (cd "$PROJECT_ROOT" && "$IVERILOG" -g2012 -Wall \

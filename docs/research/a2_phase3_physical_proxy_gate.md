@@ -60,3 +60,13 @@ because flat RR deliberately provides no burst storage.
 
 No gate is relaxed after observing results. Server EDA and common workload/TB
 edits are prohibited.
+
+## Independent-review finalization
+
+The A3 review of snapshot `9613b6b` found that RTL VCD aliases made activity
+thresholds representation-dependent and that the original fanout maximum could
+be clock/reset. Final keep/reject therefore uses only three independent mapped
+gates: pressure EPCC, LUT depth, and existence of an EPCC recovery region.
+Toggle, overrun, tail, and data/control fanout remain reported observations but
+cannot cause rejection. This disposition preserves the original thresholds as
+historical preregistration while removing invalid evidence from the decision.

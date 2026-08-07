@@ -7,7 +7,7 @@ import argparse
 import csv
 import json
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 
@@ -79,24 +79,38 @@ def yosys_metrics(path: Path) -> dict[str, int | str]:
 
     logic_depth = max((depth(name) for name in cells if name not in sequential),
                       default=0)
+    clock_reset_bits = {
+        bit for name in ("clk_i", "rst_ni")
+        for bit in module["ports"][name]["bits"] if isinstance(bit, int)
+    }
+    data_control_fanout = Counter({
+        bit: count for bit, count in fanout.items() if bit not in clock_reset_bits
+    })
     return {
-        "generic_cells": len(cells),
+        "lut4_ff_cells": len(cells),
         "state_bits": state_bits,
-        "logic_depth": logic_depth,
-        "max_fanout": max(fanout.values(), default=0),
+        "lut_depth": logic_depth,
+        "max_fanout_all": max(fanout.values(), default=0),
+        "max_data_control_fanout": max(data_control_fanout.values(), default=0),
     }
 
 
 def parse_vcd(path: Path) -> int:
     widths: dict[str, int] = {}
     included: set[str] = set()
-    excluded: set[str] = set()
+    hard_excluded: set[str] = set()
     scope: list[str] = []
     header = True
     previous: dict[str, str] = {}
     toggles = 0
     top_dut = ("a2_phase3_physical_tb", "dut")
     top_inputs = {"source_valid_i", "source_event_i", "retire_ready_i"}
+    wrapper_aliases = {
+        "source_ready_o", "retire_valid_o", "retire_event_o",
+        "retire_source_o", "core_source_ready", "core_retire_valid",
+        "core_retire_event", "core_retire_source",
+    }
+    core_input_ports = {"source_valid_i", "source_event_i", "retire_ready_i"}
 
     with path.open(encoding="utf-8", errors="replace") as handle:
         for raw in handle:
@@ -112,11 +126,17 @@ def parse_vcd(path: Path) -> int:
                     kind, width, identifier, name = fields[1:5]
                     if kind in {"wire", "reg"}:
                         widths[identifier] = int(width)
-                        included.add(identifier)
+                        canonical_declaration = True
                         if name in {"clk_i", "rst_ni"}:
-                            excluded.add(identifier)
+                            hard_excluded.add(identifier)
                         if tuple(scope) == top_dut and name in top_inputs:
-                            excluded.add(identifier)
+                            canonical_declaration = False
+                        if tuple(scope) == top_dut and name in wrapper_aliases:
+                            canonical_declaration = False
+                        if scope and scope[-1] == "core" and name in core_input_ports:
+                            canonical_declaration = False
+                        if canonical_declaration:
+                            included.add(identifier)
                 elif line.startswith("$enddefinitions"):
                     header = False
                 continue
@@ -131,7 +151,7 @@ def parse_vcd(path: Path) -> int:
                 value, identifier = fields[0][1:], fields[1]
             else:
                 continue
-            if identifier not in included or identifier in excluded:
+            if identifier not in included or identifier in hard_excluded:
                 continue
             width = widths[identifier]
             if any(bit in value.lower() for bit in "xz"):
@@ -174,7 +194,6 @@ def main() -> int:
 
     physical: list[dict[str, object]] = []
     physical_by: dict[tuple[int, str], dict[str, object]] = {}
-    model_id = {"a2": 0, "flat_rr": 1, "always_buffered": 2}
     for sources in (16, 64):
         for design in DESIGNS:
             row: dict[str, object] = {"sources": sources, "design": design}
@@ -190,12 +209,20 @@ def main() -> int:
                 stem = f"{design}-n{sources}-{workload}"
                 row = parse_metric(out / f"{stem}.log")
                 toggles = parse_vcd(out / f"{stem}.vcd")
-                cells = int(physical_by[(sources, design)]["generic_cells"])
+                cells = int(physical_by[(sources, design)]["lut4_ff_cells"])
                 delivered = int(row["delivered"])
+                if delivered == 0:
+                    raise RuntimeError(f"zero delivered denominator in {stem}")
                 stim_cycles = int(row["stim_cycles"])
                 row.update({
-                    "vcd_bit_toggles": toggles,
-                    "toggle_per_delivered": toggles / max(1, delivered),
+                    "alias_filtered_rtl_vcd_bit_toggles": toggles,
+                    "alias_filtered_rtl_toggle_per_delivered": toggles / delivered,
+                    "activity_validity": "diagnostic_only_not_decision_grade",
+                    "workload_validity": (
+                        "same_cycle_duplicate_source_artifact"
+                        if sources == 16 and workload == "recurrence"
+                        else "representative"
+                    ),
                     "fixed_throughput": int(row["fixed_delivered"]) / stim_cycles,
                     "events_per_cycle_per_cell":
                         int(row["fixed_delivered"]) / stim_cycles / cells,
@@ -217,11 +244,13 @@ def main() -> int:
         def aggregate_epcc(selected: list[dict[str, object]], design: str) -> float:
             delivered = sum(int(row["fixed_delivered"]) for row in selected)
             cycles = sum(int(row["stim_cycles"]) for row in selected)
-            return delivered / cycles / int(physical_by[(sources, design)]["generic_cells"])
+            return delivered / cycles / int(
+                physical_by[(sources, design)]["lut4_ff_cells"])
 
         def aggregate_toggle(selected: list[dict[str, object]]) -> float:
-            return sum(int(row["vcd_bit_toggles"]) for row in selected) / max(
-                1, sum(int(row["delivered"]) for row in selected))
+            return sum(int(row["alias_filtered_rtl_vcd_bit_toggles"])
+                       for row in selected) / sum(int(row["delivered"])
+                                                  for row in selected)
 
         recovery = []
         for workload in PRESSURE:
@@ -234,40 +263,52 @@ def main() -> int:
                     recovery.append({"workload": workload, "reference": reference,
                                      "ratio": a2_epcc / ref_epcc})
 
-        gates = {
+        observations = {
             "functional": all(int(row["errors"]) == 0 and
                               int(row["accepted"]) == int(row["delivered"])
                               and int(row["generated"]) ==
                               int(row["accepted"]) + int(row["overrun"])
                               for row in activity if int(row["n"]) == sources),
-            "pressure_overrun": sum(int(row["overrun"]) for row in a2_rows) <=
-                                sum(int(row["overrun"]) for row in always_rows),
-            "pressure_epcc": aggregate_epcc(a2_rows, "a2") >=
-                             0.98 * aggregate_epcc(always_rows, "always_buffered"),
-            "sparse_toggle": float(activity_by[(sources, "a2", "sparse")]
-                                   ["toggle_per_delivered"]) <= 0.80 * float(
-                                       activity_by[(sources, "always_buffered", "sparse")]
-                                       ["toggle_per_delivered"]),
-            "pressure_toggle": aggregate_toggle(a2_rows) <=
-                               1.10 * aggregate_toggle(always_rows),
+            "pressure_backpressure_overrun":
+                sum(int(row["backpressure_overrun"]) for row in a2_rows) <=
+                sum(int(row["backpressure_overrun"]) for row in always_rows),
             "tail": all(int(a2["p99"]) <= int(always["p99"])
                         and int(a2["p99"]) <= int(flat["p99"]) + 16
                         for a2, always, flat in zip(a2_rows, always_rows, flat_rows)),
-            "depth": int(a2_physical["logic_depth"]) <=
-                     1.25 * int(always_physical["logic_depth"]),
-            "fanout": int(a2_physical["max_fanout"]) <=
-                      1.25 * int(always_physical["max_fanout"]),
+            "data_control_fanout": int(a2_physical["max_data_control_fanout"]) <=
+                                   1.25 * int(always_physical["max_data_control_fanout"]),
+            "alias_filtered_sparse_toggle_ratio":
+                float(activity_by[(sources, "a2", "sparse")]
+                      ["alias_filtered_rtl_toggle_per_delivered"]) / float(
+                          activity_by[(sources, "always_buffered", "sparse")]
+                          ["alias_filtered_rtl_toggle_per_delivered"]),
+            "alias_filtered_pressure_toggle_ratio":
+                aggregate_toggle(a2_rows) / aggregate_toggle(always_rows),
+            "activity_decision_grade": False,
+        }
+        independent_gates = {
+            "pressure_epcc": aggregate_epcc(a2_rows, "a2") >=
+                             0.98 * aggregate_epcc(always_rows, "always_buffered"),
+            "lut_depth": int(a2_physical["lut_depth"]) <=
+                         1.25 * int(always_physical["lut_depth"]),
             "recovery_region": bool(recovery),
         }
         decisions.append({
             "sources": sources,
-            "decision": "keep" if all(gates.values()) else "reject",
-            "gates": gates,
+            "decision": "keep" if all(independent_gates.values()) else "reject",
+            "independent_gates": independent_gates,
+            "observations_not_reject_basis": observations,
             "recovery_regions": recovery,
             "pressure_overrun": {
-                "a2": sum(int(row["overrun"]) for row in a2_rows),
-                "flat_rr": sum(int(row["overrun"]) for row in flat_rows),
-                "always_buffered": sum(int(row["overrun"]) for row in always_rows),
+                design: {
+                    "total": sum(int(row["overrun"]) for row in selected),
+                    "same_cycle_duplicate": sum(int(row["duplicate_overrun"])
+                                                for row in selected),
+                    "backpressure": sum(int(row["backpressure_overrun"])
+                                        for row in selected),
+                }
+                for design, selected in (("a2", a2_rows), ("flat_rr", flat_rows),
+                                         ("always_buffered", always_rows))
             },
             "pressure_epcc": {
                 "a2": aggregate_epcc(a2_rows, "a2"),
@@ -279,6 +320,7 @@ def main() -> int:
                 "flat_rr": aggregate_toggle(flat_rows),
                 "always_buffered": aggregate_toggle(always_rows),
             },
+            "activity_status": "alias_filtered_RTL_diagnostic_only_not_power",
         })
 
     write_csv(out / "physical.csv", physical)

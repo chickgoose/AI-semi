@@ -30,4 +30,6 @@ Phase-3 local physical proxies use `a2_phase3_physical_wrapper.sv` to give A2,
 flat RR, and equal-capacity always-buffered cores identical elastic ingress and
 registered retire boundaries. `tests/a2/run_phase3_physical_proxy.sh` performs
 candidate-only Yosys 4-LUT mapping, functional/VCD regression, and keep/reject
-analysis; all generated artifacts default to `/tmp`.
+analysis; all generated artifacts default to `/tmp`. RTL VCD activity is an
+alias-filtered diagnostic and never a decision/power metric. Cached-Yosys reuse
+is intentionally unsupported because the JSON artifacts are not self-authenticating.
