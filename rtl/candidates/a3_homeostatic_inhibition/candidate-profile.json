@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "candidate": "a3-homeostatic-inhibition",
+  "native_interface": {
+    "protocol": "synchronous_source_valid_ready_registered_retire",
+    "source_count": {"kind": "fixed", "value": 16},
+    "source_observable": true,
+    "retire_lanes": 1
+  },
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {"supported": true},
+    "polarity_event_type": {"supported": false, "reason": "fixed coordinate-spike core only"},
+    "multi_lane_retirement": {"supported": false, "reason": "one native retire lane"}
+  }
+}
