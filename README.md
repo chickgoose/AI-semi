@@ -21,7 +21,8 @@ The earlier A23 qualification remains reproducible and is preserved in
 팀 작업 경위, 서버 제공물, 자체 workload와 공식/비공식 평가 조건의 구분은
 [`docs/TEAM_HANDOFF_WORKLOAD.md`](docs/TEAM_HANDOFF_WORKLOAD.md)를 먼저 읽는다.
 
-Candidate RTL and file list:
+Historical A23 benchmark-calibration RTL and file list (not the active design
+base or a current final candidate):
 
 ```text
 rtl/experiments/a23_ee430/
@@ -40,7 +41,7 @@ Xcelium is the qualification simulator. The normalized benchmark interface can
 retire multiple logical events per cycle, while the legacy adapter maps existing
 single-lane ready/valid designs without adding storage.
 
-Run candidate verification with:
+Reproduce the historical A23 calibration verification with:
 
 ```bash
 scripts/run_sim.sh a23-ee430

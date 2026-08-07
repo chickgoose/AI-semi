@@ -4,6 +4,14 @@
 
 대상 독자: 팀원 3명, 이후 설계·검증·제출 담당자
 
+> **Historical handoff through 2026-08-02.** 이 문서의 A23 내부 최종 후보
+> 결정은 2026-08-04 clean-slate 전환으로 폐기됐다. 과거 수치와 실험 경위는
+> 재현용 기록으로만 유지한다. 현재 workload/TB와 평가 기준은
+> [`TEAM_COMMON_WORKLOAD_GUIDE.md`](TEAM_COMMON_WORKLOAD_GUIDE.md),
+> [`verification/aer-clean-benchmark-spec.md`](verification/aer-clean-benchmark-spec.md),
+> [`verification/aer-physical-ppa-contract.md`](verification/aer-physical-ppa-contract.md)를
+> 따른다.
+
 현재 결론: 기존 buffered round-robin 실험은 기각 상태지만, 이후 FIFO-free
 round-robin과 bubble-free TX를 결합한 A23가 기능·stress·Genus PPA gate를 통과해
 내부 최종 후보가 됐다. 최신 판정은
