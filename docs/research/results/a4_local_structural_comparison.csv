@@ -1,0 +1,3 @@
+sources,tree_mapped_cells,flat_mapped_cells,mapped_cells_delta_percent,comb_cells_delta_percent,state_bits_delta_percent,logic_depth_delta_percent,max_fanout_delta_percent,full_wire_delta_percent,internal_links_delta_percent,tree_extra_sparse_latency_cycles,local_break_even_gate,shortlist_decision
+16,2059,3220,-36.055901,-44.013722,40.0,-44.186047,-54.901961,-25.0,25.0,1,FAIL,HOLD_FLAT
+64,9705,15485,-37.326445,-44.818942,58.311111,-76.315789,-88.175047,-56.25,31.25,2,PASS,CONDITIONAL_SHORTLIST

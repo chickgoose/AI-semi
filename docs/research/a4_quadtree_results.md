@@ -9,6 +9,11 @@ The subsequent candidate-only topology/mapping falsification is reported in
 does not alter or supersede the frozen-46 RTL qualification; it rejects broad
 mapping-neutrality claims and defines placement/padding rejection conditions.
 
+The final local generic structural gate and physical-shortlist decision are in
+[`a4_quadtree_structural_shortlist.md`](a4_quadtree_structural_shortlist.md):
+N=16 is `HOLD_FLAT`; N=64 is `CONDITIONAL_SHORTLIST` pending head-owned physical
+evidence.
+
 ## Evidence boundary
 
 No common SSH/tmux pane or server file was used after head execution control.
