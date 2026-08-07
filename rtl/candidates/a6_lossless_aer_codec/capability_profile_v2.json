@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "candidate": "a6-v2-lossless-codec",
+  "native_interface": {
+    "protocol": "two-data-pin-framed-block-stream",
+    "physical_pins": 5,
+    "source_count": {"kind": "fixed", "value": 16},
+    "source_observable": true,
+    "retire_lanes": 1
+  },
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {"supported": true},
+    "per_block_nonexpansion": {"supported": true, "raw_bits_per_event": 4},
+    "polarity_event_type": {
+      "supported": false,
+      "reason": "The frozen N=16 codec carries the source address; event type is reconstructed as the frozen normalized value."
+    },
+    "multi_lane_retirement": {
+      "supported": false,
+      "reason": "The decoder retires each preserved occurrence on one lane."
+    }
+  }
+}

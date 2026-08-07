@@ -1,0 +1,7 @@
+rtl/candidates/a6_lossless_aer_codec/a6_v2_block_encoder.sv
+rtl/candidates/a6_lossless_aer_codec/a6_v2_block_decoder.sv
+rtl/candidates/a6_lossless_aer_codec/a6_v2_lossless_codec_top.sv
+tb/clean/aer_bench_if.sv
+rtl/candidates/a6_lossless_aer_codec/a6_v2_candidate_replacement.sv
+tb/clean/aer_clean_assertions.sv
+tb/clean/aer_clean_tb.sv
