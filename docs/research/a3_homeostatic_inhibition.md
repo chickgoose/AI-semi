@@ -650,3 +650,99 @@ high-activity state switching and a large forced `H` limit cycle.  The A3 RTL
 and research remain useful as a negative bio-homeostatic result; they should
 not be promoted as a power-competitive candidate.  No common files, frozen
 traces, server runs, or server PPA were modified or invoked in this pass.
+
+## 13. Fourth-pass salvage hypothesis: global refractory WTA
+
+This section does not revise or soften the Section 12 rejection.  It defines a
+separate, deliberately cheaper experiment on the same biological competition
+axis.  The original membrane candidate remains rejected regardless of the
+salvage outcome.
+
+### 13.1 Primary research basis and what is changed
+
+- Lazzaro, Ryckebusch, Mahowald, and Mead's fabricated
+  [O(N) WTA circuit](https://papers.nips.cc/paper/1988/file/a8f15eda80c50adb0e71943adc8015cf-Paper.pdf)
+  uses a shared global inhibition signal and local competition.  The salvage
+  borrows only the global winner/inhibition abstraction.  Binary requests have
+  no analog magnitude, so equal inputs use an explicit deterministic encoder.
+- Douglas and Liu's
+  [spiking WTA analysis](https://doi.org/10.1162/neco.2009.07-08-829)
+  treats recurrent WTA as a decision element and explicitly connects it to
+  neuromorphic address-event communication.  The salvage borrows persistent
+  winner identity, but replaces recurrent analog excitation with one stored
+  `last_winner` ID.
+- Shpiro, Curtu, Rinzel, and Rubin's
+  [neuronal competition study](https://doi.org/10.1152/jn.00604.2006)
+  compares WTA, release, and escape behavior with slow adaptation.  Curtu et
+  al. subsequently analyze
+  [slow negative feedback and escape/release](https://doi.org/10.1137/070705842).
+  The salvage discretizes the escape idea into a one-grant absolute refractory
+  exclusion.  It does not claim to reproduce their continuous population model
+  or its time constants.
+
+The proposed state is only
+
+```text
+last_valid                 1 bit
+last_winner                ceil(log2(N)) bits
+refractory                 1 bit
+```
+
+There is no per-source membrane, age, deficit, quota, epoch, bucket, queue, or
+prediction state.  Let `R` be the request mask and `onehot(last)` the stored
+winner bit.  The combinational law is
+
+```text
+A = R & ~onehot(last_winner)
+escape = last_valid & refractory & R[last_winner] & (A != 0)
+eligible = escape ? A : R
+winner = fixed_first(eligible)
+```
+
+After a successful grant, `last_winner=winner`, `last_valid=1`, and
+`refractory=1`.  An idle grant opportunity clears `refractory`; downstream
+stall holds all state and output.  If the refractory source is the only active
+requester it remains serviceable, preserving work conservation.  This is a
+global one-winner refractory escape, not a programmable burst quota.  Extending
+the refractory interval or preserving a winner for K grants would become a
+quantum/quota scheduler and is outside this experiment.
+
+### 13.2 RR-renaming test and predicted failure mode
+
+This structure is not cyclic RR: with N=4 permanent requests, RR grants
+`0,1,2,3,...`, while the refractory WTA predicts `0,1,0,1,...`.  Its fixed
+encoder is not rotated by `last_winner`; the stored ID only removes one
+temporarily inhibited competitor.  Exhaustive grant-sequence comparison must
+find such divergence before any originality claim is allowed.
+
+That difference also predicts the central counterexample.  With three or more
+persistent equal requesters, fixed WTA plus one-winner refractory can alternate
+between the first two and give zero service to the rest.  Avoiding this without
+per-source state requires using `last_winner+1` as a rotating scan origin,
+which is structurally RR, or retaining a multi-winner history, which violates
+the cheap-state premise.  The RTL and exhaustive search are retained to measure
+this boundary rather than relabel it as fairness.
+
+### 13.3 Cost hypothesis and rejection gates
+
+At N=16 the policy state hypothesis is six bits, versus 104 bits for rejected
+A3 and four bits for an RR pointer.  Combinational arbitration is one last-ID
+decoder, an alternative mask, a fixed priority encoder, and an escape mux.  Its
+logical depth should exceed fixed priority and may be comparable to or below a
+rotate/priority/unrotate RR implementation; synthesis-independent operator
+depth and state/toggle proxies will be reported, not called physical PPA.
+
+The salvage is rejected if any of the following holds:
+
+1. accepted-event loss, duplicate, phantom, source-order, or stall-hold failure;
+2. zero-service persistent source or no finite persistent-contention max-wait;
+3. exact RR grant-sequence equivalence, meaning the biological name adds no
+   distinct policy;
+4. no material state/toggle/depth advantage that compensates for measured
+   fairness and latency loss versus RR; or
+5. any benefit depends on one favorable address identity and disappears under
+   the frozen affine/permutation controls.
+
+Passing transport correctness alone is insufficient.  Sparse, persistent
+contention, elephant/mouse, rotating victim, and asymmetric rate-step controls
+must be compared against the same fixed and RR models before a keep decision.
