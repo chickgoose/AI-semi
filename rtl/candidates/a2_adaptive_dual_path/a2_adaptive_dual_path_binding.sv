@@ -7,6 +7,10 @@ module a2_adaptive_dual_path_binding #(
   parameter int ADDR_WIDTH = 16,
   parameter int RETIRE_LANES = 2,
   parameter int RESERVOIR_DEPTH = 8,
+  parameter int BANK_COUNT = 2,
+  parameter int ENTER_LEVEL = 4,
+  parameter int EXIT_LEVEL = 1,
+  parameter int QUIET_CYCLES = 3,
   parameter int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES)
 ) (aer_bench_if bench);
   logic native_retire_valid;
@@ -17,7 +21,11 @@ module a2_adaptive_dual_path_binding #(
   a2_adaptive_dual_path_core #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
-    .RESERVOIR_DEPTH(RESERVOIR_DEPTH)
+    .RESERVOIR_DEPTH(RESERVOIR_DEPTH),
+    .BANK_COUNT(BANK_COUNT),
+    .ENTER_LEVEL(ENTER_LEVEL),
+    .EXIT_LEVEL(EXIT_LEVEL),
+    .QUIET_CYCLES(QUIET_CYCLES)
   ) core (
     .clk_i(bench.clk),
     .rst_ni(bench.rst_n),

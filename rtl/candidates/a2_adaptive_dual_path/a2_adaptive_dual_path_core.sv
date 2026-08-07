@@ -4,6 +4,7 @@ module a2_adaptive_dual_path_core #(
   parameter int NUM_SOURCES = 16,
   parameter int ADDR_WIDTH = 16,
   parameter int RESERVOIR_DEPTH = 8,
+  parameter int BANK_COUNT = 2,
   parameter int ENTER_LEVEL = 4,
   parameter int EXIT_LEVEL = 1,
   parameter int QUIET_CYCLES = 3,
@@ -22,13 +23,14 @@ module a2_adaptive_dual_path_core #(
   output logic [ADDR_WIDTH-1:0] retire_event_o,
   output logic [SOURCE_WIDTH-1:0] retire_source_o
 );
-  localparam int BANK_DEPTH = RESERVOIR_DEPTH / 2;
+  localparam int BANK_DEPTH = RESERVOIR_DEPTH / BANK_COUNT;
+  localparam int BANK_WIDTH = (BANK_COUNT <= 1) ? 1 : $clog2(BANK_COUNT);
   localparam int ROW_WIDTH = (BANK_DEPTH <= 1) ? 1 : $clog2(BANK_DEPTH);
 
-  logic [ADDR_WIDTH-1:0] bank0_event [BANK_DEPTH];
-  logic [ADDR_WIDTH-1:0] bank1_event [BANK_DEPTH];
-  logic [SOURCE_WIDTH-1:0] bank0_source [BANK_DEPTH];
-  logic [SOURCE_WIDTH-1:0] bank1_source [BANK_DEPTH];
+  // Consecutive global FIFO locations are striped across banks. Source number
+  // never chooses a bank, preventing fixed source-to-bank hotspot conflicts.
+  logic [ADDR_WIDTH-1:0] bank_event [BANK_COUNT][BANK_DEPTH];
+  logic [SOURCE_WIDTH-1:0] bank_source [BANK_COUNT][BANK_DEPTH];
 
   logic [PTR_WIDTH-1:0] read_pointer;
   logic [PTR_WIDTH-1:0] write_pointer;
@@ -40,24 +42,24 @@ module a2_adaptive_dual_path_core #(
 
   logic queue_pop;
   logic wide_admission;
-  logic enqueue0_valid;
-  logic enqueue1_valid;
-  logic [ADDR_WIDTH-1:0] enqueue0_event;
-  logic [ADDR_WIDTH-1:0] enqueue1_event;
-  logic [SOURCE_WIDTH-1:0] enqueue0_source;
-  logic [SOURCE_WIDTH-1:0] enqueue1_source;
-  logic [PTR_WIDTH-1:0] write_pointer_one;
+  logic enqueue_valid [BANK_COUNT];
+  logic [ADDR_WIDTH-1:0] enqueue_event [BANK_COUNT];
+  logic [SOURCE_WIDTH-1:0] enqueue_source [BANK_COUNT];
+  logic [PTR_WIDTH-1:0] lane_write_pointer [BANK_COUNT];
+  logic [BANK_WIDTH-1:0] lane_write_bank [BANK_COUNT];
+  logic [ROW_WIDTH-1:0] lane_write_row [BANK_COUNT];
+  logic [BANK_WIDTH-1:0] read_bank;
   logic [ROW_WIDTH-1:0] read_row;
-  logic [ROW_WIDTH-1:0] write_row_zero;
-  logic [ROW_WIDTH-1:0] write_row_one;
+  integer enqueue_index [BANK_COUNT];
   integer valid_count;
   integer free_slots;
   integer queue_accept_limit;
   integer direct_source;
-  integer enqueue0_index;
-  integer enqueue1_index;
   integer scan_offset;
   integer scan_source;
+  integer lane;
+  integer write_lane;
+  integer assertion_lane;
   integer lane_count;
   integer enqueue_count;
   integer next_occupancy;
@@ -69,10 +71,16 @@ module a2_adaptive_dual_path_core #(
         valid_count = valid_count + 1;
 
     queue_pop = (reservoir_count != 0) && retire_ready_i;
-    write_pointer_one = write_pointer + PTR_WIDTH'(1);
-    read_row = ROW_WIDTH'(read_pointer >> 1);
-    write_row_zero = ROW_WIDTH'(write_pointer >> 1);
-    write_row_one = ROW_WIDTH'(write_pointer_one >> 1);
+    read_bank = BANK_WIDTH'(integer'(read_pointer) % BANK_COUNT);
+    read_row = ROW_WIDTH'(integer'(read_pointer) / BANK_COUNT);
+    for (lane = 0; lane < BANK_COUNT; lane = lane + 1) begin
+      lane_write_pointer[lane] = write_pointer + PTR_WIDTH'(lane);
+      lane_write_bank[lane] =
+        BANK_WIDTH'(integer'(lane_write_pointer[lane]) % BANK_COUNT);
+      lane_write_row[lane] =
+        ROW_WIDTH'(integer'(lane_write_pointer[lane]) / BANK_COUNT);
+    end
+
     free_slots = RESERVOIR_DEPTH - integer'(reservoir_count);
     if (queue_pop)
       free_slots = free_slots + 1;
@@ -88,23 +96,27 @@ module a2_adaptive_dual_path_core #(
       end
     end
 
-    queue_accept_limit = 0;
     wide_admission = burst_mode || (valid_count >= 2) ||
                      (reservoir_count > previous_count) ||
                      (integer'(reservoir_count) >= ENTER_LEVEL);
+    queue_accept_limit = 0;
     if (reservoir_count != 0) begin
       if (wide_admission)
-        queue_accept_limit = (free_slots >= 2) ? 2 : free_slots;
+        queue_accept_limit = (free_slots >= BANK_COUNT) ? BANK_COUNT : free_slots;
       else
         queue_accept_limit = (free_slots >= 1) ? 1 : 0;
     end else if ((direct_source >= 0) && retire_ready_i && (valid_count >= 2)) begin
-      // Immediate fan-in activates the reservoir without waiting for the mode
-      // register. The bypassed event is older than both queued selections.
-      queue_accept_limit = (free_slots >= 2) ? 2 : free_slots;
+      // Immediate fan-in activates all available banks before registered mode
+      // state changes; the direct event remains older than every enqueue.
+      queue_accept_limit = (free_slots >= BANK_COUNT) ? BANK_COUNT : free_slots;
     end
 
-    enqueue0_index = -1;
-    enqueue1_index = -1;
+    for (lane = 0; lane < BANK_COUNT; lane = lane + 1) begin
+      enqueue_index[lane] = -1;
+      enqueue_valid[lane] = 1'b0;
+      enqueue_event[lane] = '0;
+      enqueue_source[lane] = '0;
+    end
     lane_count = 0;
     for (scan_offset = 0; scan_offset < NUM_SOURCES; scan_offset = scan_offset + 1) begin
       scan_source = integer'(rotate_base) + scan_offset;
@@ -112,49 +124,32 @@ module a2_adaptive_dual_path_core #(
         scan_source = scan_source - NUM_SOURCES;
       if (source_valid_i[scan_source] && (scan_source != direct_source) &&
           (lane_count < queue_accept_limit)) begin
-        if (lane_count == 0)
-          enqueue0_index = scan_source;
-        else
-          enqueue1_index = scan_source;
+        enqueue_index[lane_count] = scan_source;
         lane_count = lane_count + 1;
       end
     end
-
-    enqueue0_valid = enqueue0_index >= 0;
-    enqueue1_valid = enqueue1_index >= 0;
-    enqueue0_event = '0;
-    enqueue1_event = '0;
-    enqueue0_source = '0;
-    enqueue1_source = '0;
-    if (enqueue0_valid) begin
-      enqueue0_event = source_event_i[enqueue0_index];
-      enqueue0_source = SOURCE_WIDTH'(enqueue0_index);
-    end
-    if (enqueue1_valid) begin
-      enqueue1_event = source_event_i[enqueue1_index];
-      enqueue1_source = SOURCE_WIDTH'(enqueue1_index);
+    for (lane = 0; lane < BANK_COUNT; lane = lane + 1) begin
+      enqueue_valid[lane] = enqueue_index[lane] >= 0;
+      if (enqueue_valid[lane]) begin
+        enqueue_event[lane] = source_event_i[enqueue_index[lane]];
+        enqueue_source[lane] = SOURCE_WIDTH'(enqueue_index[lane]);
+      end
     end
 
     source_ready_o = '0;
     if ((direct_source >= 0) && retire_ready_i)
       source_ready_o[direct_source] = 1'b1;
-    if (enqueue0_valid)
-      source_ready_o[enqueue0_index] = 1'b1;
-    if (enqueue1_valid)
-      source_ready_o[enqueue1_index] = 1'b1;
+    for (lane = 0; lane < BANK_COUNT; lane = lane + 1)
+      if (enqueue_valid[lane])
+        source_ready_o[enqueue_index[lane]] = 1'b1;
 
     retire_valid_o = 1'b0;
     retire_event_o = '0;
     retire_source_o = '0;
     if (reservoir_count != 0) begin
       retire_valid_o = 1'b1;
-      if (read_pointer[0] == 1'b0) begin
-        retire_event_o = bank0_event[read_row];
-        retire_source_o = bank0_source[read_row];
-      end else begin
-        retire_event_o = bank1_event[read_row];
-        retire_source_o = bank1_source[read_row];
-      end
+      retire_event_o = bank_event[read_bank][read_row];
+      retire_source_o = bank_source[read_bank][read_row];
     end else if (direct_source >= 0) begin
       retire_valid_o = 1'b1;
       retire_event_o = source_event_i[direct_source];
@@ -162,10 +157,9 @@ module a2_adaptive_dual_path_core #(
     end
 
     enqueue_count = 0;
-    if (enqueue0_valid)
-      enqueue_count = enqueue_count + 1;
-    if (enqueue1_valid)
-      enqueue_count = enqueue_count + 1;
+    for (lane = 0; lane < BANK_COUNT; lane = lane + 1)
+      if (enqueue_valid[lane])
+        enqueue_count = enqueue_count + 1;
     next_occupancy = integer'(reservoir_count) + enqueue_count;
     if (queue_pop)
       next_occupancy = next_occupancy - 1;
@@ -184,22 +178,13 @@ module a2_adaptive_dual_path_core #(
       if (queue_pop)
         read_pointer <= read_pointer + PTR_WIDTH'(1);
 
-      if (enqueue0_valid) begin
-        if (write_pointer[0] == 1'b0) begin
-          bank0_event[write_row_zero] <= enqueue0_event;
-          bank0_source[write_row_zero] <= enqueue0_source;
-        end else begin
-          bank1_event[write_row_zero] <= enqueue0_event;
-          bank1_source[write_row_zero] <= enqueue0_source;
-        end
-      end
-      if (enqueue1_valid) begin
-        if (write_pointer_one[0] == 1'b0) begin
-          bank0_event[write_row_one] <= enqueue1_event;
-          bank0_source[write_row_one] <= enqueue1_source;
-        end else begin
-          bank1_event[write_row_one] <= enqueue1_event;
-          bank1_source[write_row_one] <= enqueue1_source;
+      for (write_lane = 0; write_lane < BANK_COUNT;
+           write_lane = write_lane + 1) begin
+        if (enqueue_valid[write_lane]) begin
+          bank_event[lane_write_bank[write_lane]][lane_write_row[write_lane]] <=
+            enqueue_event[write_lane];
+          bank_source[lane_write_bank[write_lane]][lane_write_row[write_lane]] <=
+            enqueue_source[write_lane];
         end
       end
       if (enqueue_count != 0)
@@ -208,16 +193,11 @@ module a2_adaptive_dual_path_core #(
       reservoir_count <= COUNT_WIDTH'(next_occupancy);
       previous_count <= reservoir_count;
 
-      if (enqueue1_valid) begin
-        if (enqueue1_index == NUM_SOURCES-1)
+      if (enqueue_count != 0) begin
+        if (enqueue_index[enqueue_count-1] == NUM_SOURCES-1)
           rotate_base <= '0;
         else
-          rotate_base <= SOURCE_WIDTH'(enqueue1_index + 1);
-      end else if (enqueue0_valid) begin
-        if (enqueue0_index == NUM_SOURCES-1)
-          rotate_base <= '0;
-        else
-          rotate_base <= SOURCE_WIDTH'(enqueue0_index + 1);
+          rotate_base <= SOURCE_WIDTH'(enqueue_index[enqueue_count-1] + 1);
       end else if ((direct_source >= 0) && retire_ready_i) begin
         if (direct_source == NUM_SOURCES-1)
           rotate_base <= '0;
@@ -251,21 +231,31 @@ module a2_adaptive_dual_path_core #(
       $fatal(1, "A2 NUM_SOURCES must be positive");
     if ((RESERVOIR_DEPTH < 2) ||
         ((RESERVOIR_DEPTH & (RESERVOIR_DEPTH-1)) != 0))
-      $fatal(1, "A2 RESERVOIR_DEPTH must be an even power of two");
+      $fatal(1, "A2 RESERVOIR_DEPTH must be a power of two");
+    if ((BANK_COUNT < 1) || ((BANK_COUNT & (BANK_COUNT-1)) != 0) ||
+        (BANK_COUNT > RESERVOIR_DEPTH) ||
+        ((RESERVOIR_DEPTH % BANK_COUNT) != 0))
+      $fatal(1, "A2 BANK_COUNT must be a power-of-two divisor of depth");
     if ((ENTER_LEVEL > RESERVOIR_DEPTH) || (EXIT_LEVEL >= ENTER_LEVEL))
       $fatal(1, "A2 hysteresis levels are invalid");
     if (QUIET_CYCLES < 1)
       $fatal(1, "A2 QUIET_CYCLES must be positive");
   end
 
-  always_ff @(posedge clk_i) begin
+  always @(posedge clk_i or negedge rst_ni) begin
     if (rst_ni) begin
       if (integer'(reservoir_count) > RESERVOIR_DEPTH)
         $error("A2 reservoir overflow count=%0d", reservoir_count);
       if ((source_ready_o & ~source_valid_i) != '0)
         $error("A2 ready without a valid source");
-      if ($countones(source_ready_o) > 3)
-        $error("A2 accepted more than direct plus two bank writes");
+      if ($countones(source_ready_o) > BANK_COUNT + 1)
+        $error("A2 accepted more than direct plus bank writes");
+      for (assertion_lane = 1; assertion_lane < BANK_COUNT;
+           assertion_lane = assertion_lane + 1)
+        if (enqueue_valid[assertion_lane] && enqueue_valid[assertion_lane-1] &&
+            (lane_write_bank[assertion_lane] ==
+             lane_write_bank[assertion_lane-1]))
+          $error("A2 tail striping generated a bank conflict");
     end
   end
 `endif
