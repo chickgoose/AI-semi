@@ -40,7 +40,7 @@ module a4_quadtree_node #(
     slot_available = !slot_valid || out_ready;
     selected_child = -1;
     for (offset = 0; offset < RADIX; offset = offset + 1) begin
-      candidate_child = rr_phase + offset;
+      candidate_child = int'(rr_phase) + offset;
       if (candidate_child >= RADIX)
         candidate_child = candidate_child - RADIX;
       if ((selected_child < 0) && child_valid[candidate_child])

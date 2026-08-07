@@ -1,7 +1,8 @@
 # A4 quadtree local verification and frozen-trace results
 
-Status: local evidence complete; server qualification `PENDING_HEAD_XCELIUM`,
-2026-08-07
+Status: first-pass reference-model evidence; RTL metrics are superseded by
+[`a4_quadtree_verilator_qualification.md`](a4_quadtree_verilator_qualification.md).
+Server qualification remains `PENDING_HEAD_XCELIUM`, 2026-08-07
 
 ## Evidence boundary
 

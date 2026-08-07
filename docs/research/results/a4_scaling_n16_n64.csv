@@ -1,0 +1,5 @@
+candidate,sources,source_width,quadtree_levels,registered_stages,merge_nodes,state_bits,merge_fanin,balanced_mux_depth_per_stage,longest_local_wire_grid,control_wire_bit_grid,full_channel_bit_grid
+a4_quadtree,16,4,2,2,5,155,4,2,2,48,720
+flat_one_slot_rr,16,4,0,1,1,25,16,4,3,64,704
+a4_quadtree,64,6,3,3,21,693,4,2,4,224,3584
+flat_one_slot_rr,64,6,0,1,1,29,64,6,7,512,6144
