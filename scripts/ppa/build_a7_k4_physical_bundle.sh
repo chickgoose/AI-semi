@@ -48,7 +48,9 @@ chmod +x "$bundle_dir/run_comparison.sh" \
   "$bundle_dir/common/extract_genus_metrics.sh" \
   "$bundle_dir/common/parse_genus_detail.sh"
 
-find "$bundle_dir" -type f ! -name bundle-files.sha256 \
-  -exec sha256sum {} \; | sort \
-  > "$bundle_dir/bundle-files.sha256"
+(
+  cd "$bundle_dir"
+  find . -type f ! -name bundle-files.sha256 -exec sha256sum {} \; | sort \
+    > bundle-files.sha256
+)
 printf 'built A7 K4 physical bundle: %s\n' "$bundle_dir"
