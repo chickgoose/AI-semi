@@ -1,5 +1,18 @@
 `timescale 1ns/1ps
 
+`ifndef A5_BIND_ENABLE_PREDICTOR
+`define A5_BIND_ENABLE_PREDICTOR 1
+`endif
+`ifndef A5_BIND_HISTORY_BITS
+`define A5_BIND_HISTORY_BITS SOURCE_WIDTH
+`endif
+`ifndef A5_BIND_TABLE_ENTRIES
+`define A5_BIND_TABLE_ENTRIES NUM_SOURCES
+`endif
+`ifndef A5_BIND_CONF_WIDTH
+`define A5_BIND_CONF_WIDTH 2
+`endif
+
 // Candidate-only normalized binding.  It is a wire-level port map and adds no
 // arbitration, buffering, retry, or event reconstruction outside the DUT.
 /* verilator lint_off DECLFILENAME */
@@ -30,6 +43,10 @@ module aer_ganghee_native_binding #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
     .SOURCE_WIDTH(SOURCE_WIDTH),
+    .ENABLE_PREDICTOR(`A5_BIND_ENABLE_PREDICTOR),
+    .PRED_HISTORY_BITS(`A5_BIND_HISTORY_BITS),
+    .PRED_TABLE_ENTRIES(`A5_BIND_TABLE_ENTRIES),
+    .PRED_CONF_WIDTH(`A5_BIND_CONF_WIDTH),
     .MAX_PREDICT_STREAK(3)
   ) candidate (
     .clk(bench.clk),

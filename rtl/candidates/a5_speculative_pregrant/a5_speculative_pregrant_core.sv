@@ -4,12 +4,21 @@ module a5_speculative_pregrant_core #(
   parameter int NUM_SOURCES = 16,
   parameter int ADDR_WIDTH = 16,
   parameter int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES),
+  parameter bit ENABLE_PREDICTOR = 1'b1,
+  parameter int PRED_HISTORY_BITS = SOURCE_WIDTH,
+  parameter int PRED_TABLE_ENTRIES = NUM_SOURCES,
+  parameter int PRED_CONF_WIDTH = 2,
+  parameter bit ENABLE_METRICS = 1'b1,
   parameter int MAX_PREDICT_STREAK = 3
 ) (
   input  logic clk,
   input  logic rst_n,
   input  logic [NUM_SOURCES-1:0] source_valid,
+`ifdef A5_YOSYS_PROXY
+  input  logic [NUM_SOURCES*ADDR_WIDTH-1:0] source_event_flat,
+`else
   input  logic [ADDR_WIDTH-1:0] source_event [NUM_SOURCES],
+`endif
   output logic [NUM_SOURCES-1:0] source_ready,
   output logic retire_valid,
   input  logic retire_ready,
@@ -25,6 +34,7 @@ module a5_speculative_pregrant_core #(
     (MAX_PREDICT_STREAK <= 1) ? 1 : $clog2(MAX_PREDICT_STREAK + 1);
 
   logic [SOURCE_WIDTH-1:0] fallback_start;
+  logic [ADDR_WIDTH-1:0] source_event_local [NUM_SOURCES];
   logic output_valid;
   logic [ADDR_WIDTH-1:0] output_event;
   logic [SOURCE_WIDTH-1:0] output_source;
@@ -46,8 +56,21 @@ module a5_speculative_pregrant_core #(
   logic confidence_fallback;
   logic bypass_hit;
   integer offset;
+  integer event_source;
   integer scan_source;
   integer selected_source;
+
+  always_comb begin
+    for (event_source = 0; event_source < NUM_SOURCES;
+         event_source = event_source + 1) begin
+`ifdef A5_YOSYS_PROXY
+      source_event_local[event_source] =
+        source_event_flat[event_source*ADDR_WIDTH +: ADDR_WIDTH];
+`else
+      source_event_local[event_source] = source_event[event_source];
+`endif
+    end
+  end
 
   assign slot_available = !output_valid || retire_ready;
   assign any_request = |source_valid;
@@ -68,6 +91,7 @@ module a5_speculative_pregrant_core #(
   always_comb begin
     selected_source = -1;
     scan_source = 0;
+    offset = 0;
     if (slot_available && any_request) begin
       if (prediction_hit) begin
         selected_source = int'(predictor_target);
@@ -91,7 +115,7 @@ module a5_speculative_pregrant_core #(
       retire_event = output_event;
       retire_source = output_source;
     end else if (bypass_hit) begin
-      retire_event = source_event[selected_source];
+      retire_event = source_event_local[selected_source];
       retire_source = SOURCE_WIDTH'(selected_source);
     end else begin
       retire_event = '0;
@@ -101,23 +125,66 @@ module a5_speculative_pregrant_core #(
 
   assign predictor_update = (selected_source >= 0) && history_valid;
 
-  a5_transition_predictor #(
-    .NUM_SOURCES(NUM_SOURCES),
-    .SOURCE_WIDTH(SOURCE_WIDTH),
-    .CONF_WIDTH(2),
-    .USE_THRESHOLD(2)
-  ) predictor (
-    .clk,
-    .rst_n,
-    .lookup_valid(history_valid),
-    .lookup_context(history_source),
-    .prediction_valid(predictor_valid),
-    .prediction_target(predictor_target),
-    .prediction_confidence(),
-    .update_valid(predictor_update),
-    .update_context(history_source),
-    .update_actual(SOURCE_WIDTH'(selected_source))
-  );
+  generate
+    if (ENABLE_PREDICTOR) begin : predictor_enabled
+      a5_transition_predictor #(
+        .NUM_SOURCES(NUM_SOURCES),
+        .SOURCE_WIDTH(SOURCE_WIDTH),
+        .HISTORY_BITS(PRED_HISTORY_BITS),
+        .TABLE_ENTRIES(PRED_TABLE_ENTRIES),
+        .CONF_WIDTH(PRED_CONF_WIDTH)
+      ) predictor (
+        .clk,
+        .rst_n,
+        .lookup_valid(history_valid),
+        .lookup_context(history_source),
+        .prediction_valid(predictor_valid),
+        .prediction_target(predictor_target),
+        .prediction_confidence(),
+        .update_valid(predictor_update),
+        .update_context(history_source),
+        .update_actual(SOURCE_WIDTH'(selected_source))
+      );
+    end else begin : predictor_disabled
+      always_comb begin
+        predictor_valid = 1'b0;
+        predictor_target = '0;
+      end
+    end
+  endgenerate
+
+  generate
+    if (ENABLE_METRICS) begin : metrics_enabled
+      always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+          prediction_attempts <= '0;
+          prediction_hits <= '0;
+          prediction_misses <= '0;
+          confidence_fallbacks <= '0;
+          fairness_fallbacks <= '0;
+        end else begin
+          if (prediction_attempt)
+            prediction_attempts <= prediction_attempts + 1'b1;
+          if (prediction_hit)
+            prediction_hits <= prediction_hits + 1'b1;
+          if (prediction_miss)
+            prediction_misses <= prediction_misses + 1'b1;
+          if (confidence_fallback)
+            confidence_fallbacks <= confidence_fallbacks + 1'b1;
+          if (fairness_fallback)
+            fairness_fallbacks <= fairness_fallbacks + 1'b1;
+        end
+      end
+    end else begin : metrics_disabled
+      always_comb begin
+        prediction_attempts = '0;
+        prediction_hits = '0;
+        prediction_misses = '0;
+        confidence_fallbacks = '0;
+        fairness_fallbacks = '0;
+      end
+    end
+  endgenerate
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -128,11 +195,6 @@ module a5_speculative_pregrant_core #(
       history_valid <= 1'b0;
       history_source <= '0;
       predict_streak <= '0;
-      prediction_attempts <= '0;
-      prediction_hits <= '0;
-      prediction_misses <= '0;
-      confidence_fallbacks <= '0;
-      fairness_fallbacks <= '0;
     end else begin
       if (slot_available) begin
         if (selected_source >= 0) begin
@@ -140,7 +202,7 @@ module a5_speculative_pregrant_core #(
             output_valid <= 1'b0;
           end else begin
             output_valid <= 1'b1;
-            output_event <= source_event[selected_source];
+            output_event <= source_event_local[selected_source];
             output_source <= SOURCE_WIDTH'(selected_source);
           end
           history_valid <= 1'b1;
@@ -158,17 +220,6 @@ module a5_speculative_pregrant_core #(
           predict_streak <= '0;
         end
       end
-
-      if (prediction_attempt)
-        prediction_attempts <= prediction_attempts + 1'b1;
-      if (prediction_hit)
-        prediction_hits <= prediction_hits + 1'b1;
-      if (prediction_miss)
-        prediction_misses <= prediction_misses + 1'b1;
-      if (confidence_fallback)
-        confidence_fallbacks <= confidence_fallbacks + 1'b1;
-      if (fairness_fallback)
-        fairness_fallbacks <= fairness_fallbacks + 1'b1;
     end
   end
 endmodule

@@ -42,27 +42,28 @@ arbitration off the hit path while retaining a non-speculative recovery path.
 
 ## 3. Predictor state and bit budget
 
-Let `N = NUM_SOURCES`, `S = ceil(log2(N))`, and confidence width `C = 2`.
-There are `N` direct-mapped transition entries indexed by the previously
-accepted source:
+Let `N = NUM_SOURCES`, `S = ceil(log2(N))`, compact context width `H`, table
+entries `T`, and confidence width `C`.  Entries are indexed by the low `H` bits
+of the previously accepted source modulo `T`:
 
 ```text
-entry[context] = {valid:1, target:S, confidence:C}
+entry[index]   = {valid:1, tag:H, target:S, confidence:C}
 history        = {valid:1, last_accepted_source:S}
 fallback_rr    = S bits
 ```
 
-The predictor-only budget is `N * (1 + S + C) + 1 + S` bits.  The complete
-A5 arbitration state adds the `S`-bit deterministic fallback pointer and the
-ordinary one-event output register (`valid + S + ADDR_WIDTH`), which is
-transport state rather than predictor state.
+The predictor-only raw budget is `T * (1 + H + S + C) + 1 + S` bits.  The
+complete enabled A5 state additionally has the `S`-bit deterministic fallback
+pointer, `ceil(log2(MAX_PREDICT_STREAK+1))` streak bits, and the ordinary
+one-event output register (`valid + S + ADDR_WIDTH`).
 
-For the frozen `N=16`, `S=4`: predictor state is `16*(1+4+2)+1+4 = 117`
-bits; including the fallback pointer it is 121 bits.  There are no tags because
-the context space is exactly the source-ID space, so N=16 has no index aliasing.
-If a future implementation uses fewer than N physical entries, modulo indexing
-is permitted only with an explicit partial tag; a tag mismatch is cold/
-low-confidence and cannot issue a speculative grant.
+For the default `N=16, S=4, H=4, T=16, C=2`, predictor state is
+`16*(1+4+4+2)+1+4 = 181` bits and complete algorithm/transport state is 208
+bits.  Tags were added during adversarial falsification.  If two compact
+contexts map to one table entry, a tag mismatch is cold/low-confidence and
+cannot issue a speculative grant.  If `H<S`, distinct full source histories may
+still intentionally alias before tagging; current validity checking makes that
+a performance loss, never a correctness dependency.
 
 ### Update rule
 
@@ -287,5 +288,144 @@ Reproduction:
 ```bash
 tests/a5_speculative_pregrant/run_frozen_regression.py \
   --output /tmp/a5-frozen-regression \
+  --trace-dir /tmp/a5-frozen-traces
+```
+
+## 11. Second-pass adversarial falsification and PPA proxy
+
+### Directed sequences and recovery
+
+The candidate-only test uses the same one-pending-event-per-source semantics,
+one retire lane, and a two-cycle occurrence gap.  Predictor-disabled and
+predictor-enabled runs receive the exact same deterministic sequence.  Every
+one of the 81 parameter/workload runs had zero errors, zero overrun, and
+`accepted == delivered`.  Fixed-window throughput was 0.500000 for every
+enabled/disabled pair; prediction produced no throughput gain in this regime.
+
+Default `H4/T16/C2` results:
+
+| Directed case | Attempts/hits/misses | Accuracy / coverage | Mean E2E, enabled / fallback | Recovery |
+| --- | ---: | ---: | ---: | ---: |
+| alternating A/B | 123/123/0 | 100% / 96.1% | 1.039062 / 2.000000 | no miss |
+| anti-correlated A/B/A/C | 59/59/0 | 100% / 46.1% | 1.539062 / 2.000000 | ambiguity suppresses attempts |
+| cold, 16 unique sources | 0/0/0 | no attempt / 0% | 2.000000 / 2.000000 | deterministic cold fallback |
+| moving hotspot dwell 1 | 119/119/0 | 100% / 93.0% | 1.070312 / 2.000000 | no miss |
+| moving hotspot dwell 2 | 0/0/0 | no attempt / 0% | 2.000000 / 2.000000 | confidence never reaches threshold |
+| moving hotspot dwell 4 | 119/88/31 | 73.9% / 93.0% | 1.312500 / 2.000000 | 31/31 same-cycle, 0-cycle penalty |
+| moving hotspot dwell 8 | 119/104/15 | 87.4% / 93.0% | 1.187500 / 2.000000 | 15/15 same-cycle, 0-cycle penalty |
+| dwell 4, affine `(5s+3)%16` | 119/88/31 | 73.9% / 93.0% | 1.312500 / 2.000000 | 31/31 same-cycle |
+
+The anti-correlated sequence is an important accuracy caveat: confidence
+hysteresis avoids wrong attempts for the ambiguous `A` context, so apparent
+100% accuracy covers only 46.1% of opportunities.  Dwell 2 is a harder
+falsification: its repeated source lasts too briefly to train, producing zero
+coverage and zero latency benefit.
+
+For an explicit collision, `H4/T2/C2` runs the repeating `0,1,2,3` sequence.
+Contexts 0/2 and 1/3 collide.  Tags prevent a stale target from issuing:
+coverage is zero, all 128 events use deterministic fallback, mean latency is two
+cycles, and correctness is preserved.  The full 16-entry table learns the same
+sequence with 119/119 hits and 1.070312-cycle mean latency.  Aliasing therefore
+degrades performance rather than correctness.
+
+### State/latency sweep
+
+Raw bits count declared RTL state; Yosys FFs show state remaining after
+unreachable table entries and unused metric outputs are optimized.  Test-only
+five 32-bit counters are disabled for synthesis.
+
+| Configuration | Raw predictor / total bits | Yosys FF | Sparse alternating gain | Dwell-4 / dwell-8 gain | NAND proxy | Depth |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| fallback only | 0 / 25 | 25 | 0% | 0% / 0% | 984 | 61 |
+| H1/T16/C2 | 133 / 160 | 44 | 48.05% | 6.25% / 20.31% | 1187 | 62 |
+| H2/T16/C2 | 149 / 176 | 66 | 48.05% | 34.38% / 40.63% | 1261 | 64 |
+| H4/T2/C2 | 27 / 54 | 52 | 48.05% | 12.50% / 31.25% | 1204 | 63 |
+| H4/T4/C2 | 49 / 76 | 76 | 48.05% | 34.38% / 40.63% | 1284 | 64 |
+| H4/T8/C2 | 93 / 120 | 120 | 48.05% | 34.38% / 40.63% | 1471 | 62 |
+| H4/T16/C1 | 165 / 192 | 192 | 48.83% | 25.00% / 37.50% | 1602 | 60 |
+| H4/T16/C2 | 181 / 208 | 208 | 48.05% | 34.38% / 40.63% | 1801 | 62 |
+| H4/T16/C3 | 197 / 224 | 224 | 46.48% | 29.69% / 37.50% | 1853 | 62 |
+
+Only `2^H` contexts are reachable, so Yosys trims most of nominal T16 when
+H=1/2.  H4/T4/C2 matches the larger tables on these four-source directed
+patterns with 76 total bits, but this is not evidence that it matches the
+frozen 16-source distribution.  One-bit confidence has the only nominal depth
+improvement (61 to 60) but gives up dwell-4 latency and still adds 63% NANDs.
+
+The cycle-level toggle proxy counts transitions on source-ready and normalized
+retire control/payload, not hidden internal table writes.  Relative to fallback,
+default H4/T16/C2 is +6 toggles on alternating, unchanged on cold/dwell-2,
+-348 on dwell-4, -156 on dwell-8, and -446 on affine dwell-4.  These values
+suggest less output/control switching on longer dwell but are not a power
+estimate; post-route activity-annotated power remains required.
+
+### Frozen 46-trace predictor/fallback A/B
+
+Both variants replayed all 46 unchanged trace SHAs and passed correctness.
+Prediction did not improve fixed-window throughput in any aggregate group.
+
+| Frozen group | Predictor throughput / fallback | Mean E2E predictor / fallback | p99 predictor / fallback | Other delta |
+| --- | ---: | ---: | ---: | ---: |
+| core sparse | 0.031250 / 0.031250 | 2.000000 / 2.000000 | 2 / 2 | none |
+| single moving hotspot | 0.890137 / 0.890137 | 1.869243 / 2.000000 | 2 / 2 | none |
+| elephant/mouse | 0.891602 / 0.891602 | 1.811713 / 2.000000 | 2 / 2 | none |
+| rate-shape B1 | 0.500000 / 0.500000 | 1.016113 / 2.000000 | 2 / 2 | none |
+| timing pair | 0.615234 / 0.615234 | 2.215788 / 2.216581 | 4 / 4 | none |
+| rotating victim identity | 0.976074 / 0.976318 | 2.991502 / 2.988256 | 7 / 7 | predictor +1 overrun |
+| phase transition | 0.521606 / 0.521606 | 5.720103 / 5.706763 | 16 / 16 | predictor fairness -0.000404 |
+| uniform 1.50 | 0.999512 / 0.999512 | 7.177893 / 7.118163 | 18 / 14 | same overrun |
+
+This separates the genuine result: speculative bypass improves mean latency on
+correlated traffic, especially burst-size one, but does not move the one-lane
+capacity limit and can worsen an overload latency tail.
+
+### Local structural proxy and decision
+
+Verilator 5.032 lint passes all nine elaborated parameter points.  Yosys 0.52
+plus generic NAND/NOT ABC mapping reports default H4/T16/C2 at 208 FF, 1801
+NAND, 834 NOT, 2844 total cells, and topological depth 62.  Fallback is 25 FF,
+984 NAND, 432 NOT, 1441 cells, and depth 61.  This generic mapping is not a
+standard-cell area/Fmax result, but it falsifies the expected critical-path
+improvement at proxy level while showing roughly 2x generic cell count.
+
+**Decision: reject the current predictor-enabled H4/T16/C2 as the A5 physical
+candidate and retain deterministic fallback as the reference.**  H4/T4/C2 is
+the directed-trace state Pareto point, but its depth proxy is worse (64) and it
+has no demonstrated fixed-window gain, so it is not promoted either.  A future
+revision would need a genuinely pipelined recovery path or a different physical
+lookup implementation, still within the speculative-pregrant axis, before
+requesting expensive physical qualification.
+
+No Genus/Innovus server job was run.  If HEAD later overrides this rejection,
+the exact available Genus screening command is recorded as:
+
+```bash
+# PENDING_HEAD_PPA (requires explicit approval and immutable HEAD registration)
+env AER_PROJECT_ROOT="$PWD" \
+  AER_TOP=a5_speculative_pregrant_ppa_top \
+  AER_RTL_FILELIST="$PWD/rtl/candidates/a5_speculative_pregrant/a5_speculative_pregrant_ppa.f" \
+  AER_SDC="$PWD/constraints/aer_common.sdc" \
+  AER_OUTPUT_DIR="$PWD/results/runs/a5-head-pending/n16/genus" \
+  AER_LIBRARY_FILE=/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib \
+  AER_CLOCK_PERIOD_NS=5.000 AER_CLOCK_PORT=clk AER_RESET_PORT=rst_n \
+  AER_INPUT_DELAY_NS=0.250 AER_OUTPUT_DELAY_NS=0.250 \
+  AER_CLOCK_UNCERTAINTY_NS=0.100 AER_LOAD_PF=0.010 \
+  AER_NUM_SOURCES=16 AER_ADDR_WIDTH=16 AER_GENUS_BIN=genus \
+  scripts/drivers/genus.sh
+```
+
+`PENDING_HEAD_PPA_POST_ROUTE` is deliberately not fabricated: this repository
+has no architecture-neutral Innovus driver or frozen candidate registry entry.
+Before any post-route command exists, HEAD must supply both under the physical
+PPA contract, including per-target resynthesis, CTS/route/extraction, setup and
+hold, unconstrained-path, DRC, and activity-annotated power checks.
+
+Reproduction:
+
+```bash
+tests/a5_speculative_pregrant/run_adversarial_sweep.py --output /tmp/a5-adversarial
+tests/a5_speculative_pregrant/run_ppa_proxy.py --output /tmp/a5-ppa-proxy
+tests/a5_speculative_pregrant/run_frozen_regression.py \
+  --predictor-enabled 0 --output /tmp/a5-frozen-fallback \
   --trace-dir /tmp/a5-frozen-traces
 ```

@@ -61,6 +61,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("/tmp/a5-frozen-regression"))
     parser.add_argument("--trace-dir", type=Path, default=Path("/tmp/a5-frozen-traces"))
     parser.add_argument("--verilator", default=os.environ.get("VERILATOR", "verilator"))
+    parser.add_argument("--predictor-enabled", choices=(0, 1), type=int, default=1)
     parser.add_argument("--skip-build", action="store_true")
     args = parser.parse_args()
 
@@ -90,6 +91,7 @@ def main() -> int:
                 "-Wno-TIMESCALEMOD", "-Wno-BLKSEQ", "-Wno-UNUSEDSIGNAL",
                 "-Wno-PINCONNECTEMPTY", "--top-module", "aer_clean_tb",
                 "-DAER_CLEAN_GANGHEE_NATIVE", "-GNUM_SOURCES=16",
+                f"-DA5_BIND_ENABLE_PREDICTOR={args.predictor_enabled}",
                 "-GADDR_WIDTH=16", "-GRETIRE_LANES=1",
                 "-f", str(project / "tb/clean/files.f"),
                 "-f", str(project / "rtl/candidates/a5_speculative_pregrant/a5_speculative_pregrant.f"),
@@ -124,7 +126,10 @@ def main() -> int:
         output = run(
             [
                 str(executable), f"+CLEAN_TEST={metadata['report_group']}",
-                "+CANDIDATE=a5_speculative_pregrant",
+                "+CANDIDATE=" + (
+                    "a5_speculative_pregrant" if args.predictor_enabled
+                    else "a5_deterministic_fallback"
+                ),
                 f"+METRICS={summary}", f"+EVENT_METRICS={events}",
                 f"+TRACE_FILE={prepared}", f"+TRACE_NAME={metadata['report_group']}",
             ],
