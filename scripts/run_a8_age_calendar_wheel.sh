@@ -48,7 +48,19 @@ if [[ -z "$VERILATOR" ]]; then
   fi
 fi
 
-build_dir="$OUT_DIR/verilator-build"
+if [[ "${A8_KEEP_BUILD:-0}" == "1" ]]; then
+  build_dir="$OUT_DIR/verilator-build"
+else
+  build_dir="$(mktemp -d /tmp/a8-verilator-build.XXXXXXXX)"
+  cleanup_build() {
+    if [[ "$build_dir" != /tmp/a8-verilator-build.* ]]; then
+      printf 'refusing to clean unexpected build path: %s\n' "$build_dir" >&2
+      return 1
+    fi
+    rm -rf -- "$build_dir"
+  }
+  trap cleanup_build EXIT
+fi
 verilator_command=("$VERILATOR" --binary --timing --assert -Wall -Wno-fatal
   --top-module aer_clean_tb
   -GNUM_SOURCES="$NUM_SOURCES" -GADDR_WIDTH="$ADDR_WIDTH"
