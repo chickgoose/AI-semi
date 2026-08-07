@@ -1,4 +1,7 @@
 rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv
+rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_prefix_count.sv
+rtl/candidates/a7_parallel_event_compactor/a7_shared_rank_index_select.sv
+rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_event_compactor.sv
 rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv
 rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv
 tb/clean/native/a7_parallel_event_compactor_binding.sv

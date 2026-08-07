@@ -70,6 +70,9 @@ fi
 candidate_files=(
   "$project_root/tb/clean/aer_bench_if.sv"
   "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv"
+  "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_prefix_count.sv"
+  "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_shared_rank_index_select.sv"
+  "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_event_compactor.sv"
   "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv"
   "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv"
   "$project_root/tb/clean/native/a7_parallel_event_compactor_binding.sv"

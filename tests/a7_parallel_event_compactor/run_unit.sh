@@ -15,6 +15,9 @@ for lanes in 1 2 4; do
         --top-module a7_parallel_event_compactor_tb -GK="$lanes" \
         --Mdir "$out_dir/obj" -o unit \
         "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv" \
+        "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_prefix_count.sv" \
+        "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_shared_rank_index_select.sv" \
+        "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_radix4_segmented_event_compactor.sv" \
         "$project_root/rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv" \
         "$test_dir/a7_parallel_event_compactor_tb.sv"
       "$out_dir/obj/unit" | tee "$out_dir/unit.log"

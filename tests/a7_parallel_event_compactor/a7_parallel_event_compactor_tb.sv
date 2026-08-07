@@ -21,9 +21,23 @@ module a7_parallel_event_compactor_tb;
   logic [N-1:0] prefix_request;
   logic [N-1:0][CW-1:0] prefix_count;
   logic [CW-1:0] prefix_total;
+  logic [N-1:0][CW-1:0] segmented_count;
+  logic [CW-1:0] segmented_total;
+  logic [SW-1:0] select_rotation;
+  logic [K-1:0] exhaustive_selected_valid;
+  logic [K-1:0][SW-1:0] exhaustive_selected_index;
+  logic [N-1:0] exhaustive_selected_onehot;
+  logic [N-1:0] segmented_source_ready;
+  logic [K-1:0] segmented_retire_valid;
+  logic [K-1:0][AW-1:0] segmented_retire_event;
+  logic [K-1:0][SW-1:0] segmented_retire_source;
   integer mask;
   integer source;
   integer lane;
+  integer rotation;
+  integer offset;
+  integer physical;
+  integer expected_slot;
   integer expected;
   integer grants;
   integer cycles_since_service [N];
@@ -36,12 +50,51 @@ module a7_parallel_event_compactor_tb;
     .total_count(prefix_total)
   );
 
+  a7_radix4_segmented_prefix_count #(.NUM_SOURCES(N)) segmented_prefix_dut (
+    .request(prefix_request), .inclusive_count(segmented_count),
+    .total_count(segmented_total)
+  );
+
+  a7_shared_rank_index_select #(
+    .NUM_SOURCES(N), .SELECT_LANES(K)
+  ) exhaustive_index_dut (
+    .request(prefix_request), .inclusive_count(segmented_count),
+    .total_count(segmented_total), .rotation_base(select_rotation),
+    .select_limit(CW'(K)), .selected_valid(exhaustive_selected_valid),
+    .selected_index(exhaustive_selected_index),
+    .selected_onehot(exhaustive_selected_onehot)
+  );
+
   a7_parallel_event_compactor #(
     .NUM_SOURCES(N), .ADDR_WIDTH(AW), .RETIRE_LANES(K)
   ) dut (
     .clk, .rst_n, .source_valid, .source_event, .source_ready,
     .retire_valid, .retire_event, .retire_source, .retire_ready
   );
+
+  a7_radix4_segmented_event_compactor #(
+    .NUM_SOURCES(N), .ADDR_WIDTH(AW), .RETIRE_LANES(K)
+  ) segmented_dut (
+    .clk, .rst_n, .source_valid, .source_event,
+    .source_ready(segmented_source_ready),
+    .retire_valid(segmented_retire_valid),
+    .retire_event(segmented_retire_event),
+    .retire_source(segmented_retire_source), .retire_ready
+  );
+
+  task automatic check_segmented_equivalence;
+    begin
+      if (segmented_source_ready !== source_ready)
+        $fatal(1, "segmented source_ready mismatch K=%0d", K);
+      if (segmented_retire_valid !== retire_valid)
+        $fatal(1, "segmented retire_valid mismatch K=%0d", K);
+      for (lane = 0; lane < K; lane = lane + 1)
+        if (retire_valid[lane] &&
+            ((segmented_retire_event[lane] !== retire_event[lane]) ||
+             (segmented_retire_source[lane] !== retire_source[lane])))
+          $fatal(1, "segmented retire payload mismatch lane=%0d K=%0d", lane, K);
+    end
+  endtask
 
   task automatic check_grants;
     begin
@@ -67,6 +120,7 @@ module a7_parallel_event_compactor_tb;
   initial begin
     // Exhaust all N=16 bitmap values and validate every shared prefix output.
     prefix_request = '0;
+    select_rotation = '0;
     for (mask = 0; mask < (1 << N); mask = mask + 1) begin
       prefix_request = N'(mask);
       #1;
@@ -76,8 +130,34 @@ module a7_parallel_event_compactor_tb;
         if (prefix_count[source] != expected)
           $fatal(1, "prefix mismatch mask=%0h source=%0d got=%0d expected=%0d",
                  mask, source, prefix_count[source], expected);
+        if (segmented_count[source] != prefix_count[source])
+          $fatal(1, "segmented prefix mismatch mask=%0h source=%0d", mask, source);
       end
       if (prefix_total != expected) $fatal(1, "total mismatch mask=%0h", mask);
+      if (segmented_total != prefix_total)
+        $fatal(1, "segmented total mismatch mask=%0h", mask);
+      for (rotation = 0; rotation < N; rotation = rotation + 1) begin
+        select_rotation = SW'(rotation);
+        #1;
+        expected_slot = 0;
+        for (offset = 0; offset < N; offset = offset + 1) begin
+          physical = rotation + offset;
+          if (physical >= N) physical = physical - N;
+          if (prefix_request[physical]) begin
+            if (expected_slot < K) begin
+              if (!exhaustive_selected_valid[expected_slot] ||
+                  (exhaustive_selected_index[expected_slot] != SW'(physical)))
+                $fatal(1, "index mismatch mask=%0h rotation=%0d slot=%0d",
+                       mask, rotation, expected_slot);
+            end
+            expected_slot = expected_slot + 1;
+          end
+        end
+        for (lane = 0; lane < K; lane = lane + 1)
+          if (exhaustive_selected_valid[lane] != (lane < expected_slot))
+            $fatal(1, "index valid mismatch mask=%0h rotation=%0d slot=%0d",
+                   mask, rotation, lane);
+      end
     end
 
     rst_n = 0;
@@ -94,6 +174,7 @@ module a7_parallel_event_compactor_tb;
     // Persistent contention checks K limit, uniqueness, refill, and RR bound.
     repeat (3*((N+K-1)/K)+3) begin
       @(negedge clk);
+      check_segmented_equivalence();
       check_grants();
     end
 
@@ -106,6 +187,7 @@ module a7_parallel_event_compactor_tb;
     held_source = retire_source[0];
     repeat (6) begin
       @(negedge clk);
+      check_segmented_equivalence();
       if (!retire_valid[0] || retire_event[0] != held_event ||
           retire_source[0] != held_source)
         $fatal(1, "stalled lane changed K=%0d", K);
@@ -115,7 +197,8 @@ module a7_parallel_event_compactor_tb;
     end
     retire_ready = '1;
     repeat (3) @(posedge clk);
-    $display("A7_UNIT_PASS N=%0d K=%0d exhaustive_masks=%0d", N, K, (1 << N));
+    $display("A7_UNIT_PASS N=%0d K=%0d exhaustive_masks=%0d rotations=%0d",
+             N, K, (1 << N), N);
     $finish;
   end
 endmodule
