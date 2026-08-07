@@ -1,6 +1,39 @@
 `timescale 1ns/1ps
 
-module a7_parallel_event_compactor #(
+// One conventional rotation-aware priority selector. The K-lane reference
+// instantiates K copies and masks each earlier winner from the next copy.
+module a7_rotating_priority_selector #(
+  parameter int NUM_SOURCES = 16,
+  parameter int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES)
+) (
+  input  logic [NUM_SOURCES-1:0] request,
+  input  logic [SOURCE_WIDTH-1:0] rotation_base,
+  output logic selected_valid,
+  output logic [SOURCE_WIDTH-1:0] selected_source,
+  output logic [NUM_SOURCES-1:0] selected_onehot
+);
+  logic [2*NUM_SOURCES-1:0] doubled_request;
+  logic [2*NUM_SOURCES-1:0] shifted_request;
+  logic [NUM_SOURCES-1:0] rotated_request;
+  integer offset;
+  always_comb begin
+    doubled_request = {request, request};
+    shifted_request = doubled_request >> rotation_base;
+    rotated_request = shifted_request[NUM_SOURCES-1:0];
+    selected_valid = 1'b0;
+    selected_source = '0;
+    selected_onehot = '0;
+    for (offset = 0; offset < NUM_SOURCES; offset = offset + 1) begin
+      if (!selected_valid && rotated_request[offset]) begin
+        selected_valid = 1'b1;
+        selected_source = rotation_base + SOURCE_WIDTH'(offset);
+        selected_onehot[rotation_base + SOURCE_WIDTH'(offset)] = 1'b1;
+      end
+    end
+  end
+endmodule
+
+module a7_replicated_selector_reference #(
   parameter int NUM_SOURCES = 16,
   parameter int ADDR_WIDTH = 16,
   parameter int RETIRE_LANES = 4,
@@ -22,38 +55,46 @@ module a7_parallel_event_compactor #(
   logic [RETIRE_LANES-1:0] lane_valid;
   logic [RETIRE_LANES-1:0][ADDR_WIDTH-1:0] lane_event;
   logic [RETIRE_LANES-1:0][SOURCE_WIDTH-1:0] lane_source;
-
   logic [NUM_SOURCES-1:0] retiring_source;
   logic [NUM_SOURCES-1:0] eligible_request;
-  logic [NUM_SOURCES-1:0][COUNT_WIDTH-1:0] prefix_count;
-  logic [COUNT_WIDTH-1:0] total_count;
-  logic [NUM_SOURCES-1:0][COUNT_WIDTH-1:0] cyclic_rank;
-  logic [COUNT_WIDTH-1:0] base_before;
-  logic [COUNT_WIDTH-1:0] available_count;
-  logic [RETIRE_LANES-1:0][COUNT_WIDTH-1:0] available_rank;
+  /* verilator lint_off UNOPTFLAT */
+  wire [RETIRE_LANES:0][NUM_SOURCES-1:0] residual_request;
+  /* verilator lint_on UNOPTFLAT */
+  wire [RETIRE_LANES-1:0] selected_valid;
+  wire [RETIRE_LANES-1:0][SOURCE_WIDTH-1:0] selected_source;
+  wire [RETIRE_LANES-1:0][NUM_SOURCES-1:0] selected_onehot;
   logic [RETIRE_LANES-1:0] lane_available;
+  logic [RETIRE_LANES-1:0][COUNT_WIDTH-1:0] available_rank;
+  logic [COUNT_WIDTH-1:0] available_count;
   logic [RETIRE_LANES-1:0] fill_found;
   logic [RETIRE_LANES-1:0][ADDR_WIDTH-1:0] fill_event;
   logic [RETIRE_LANES-1:0][SOURCE_WIDTH-1:0] fill_source;
   logic [NUM_SOURCES-1:0] inflight_next;
   logic [SOURCE_WIDTH-1:0] last_selected_source;
   logic any_selected;
-
-  integer source;
-  integer lane;
   integer lane_output;
+  integer lane;
   integer lane_seq;
+  integer slot;
   integer running_available;
   integer selected_count;
 
-  a7_parallel_prefix_count #(
-    .NUM_SOURCES(NUM_SOURCES),
-    .COUNT_WIDTH(COUNT_WIDTH)
-  ) request_scan (
-    .request(eligible_request),
-    .inclusive_count(prefix_count),
-    .total_count(total_count)
-  );
+  assign residual_request[0] = eligible_request;
+  genvar selector;
+  generate
+    for (selector = 0; selector < RETIRE_LANES; selector = selector + 1) begin : selectors
+      a7_rotating_priority_selector #(
+        .NUM_SOURCES(NUM_SOURCES), .SOURCE_WIDTH(SOURCE_WIDTH)
+      ) selector_i (
+        .request(residual_request[selector]), .rotation_base(rotation_base),
+        .selected_valid(selected_valid[selector]),
+        .selected_source(selected_source[selector]),
+        .selected_onehot(selected_onehot[selector])
+      );
+      assign residual_request[selector+1] =
+        residual_request[selector] & ~selected_onehot[selector];
+    end
+  endgenerate
 
   always_comb begin
     retire_valid = lane_valid;
@@ -62,7 +103,6 @@ module a7_parallel_event_compactor #(
       retire_event[lane_output] = lane_event[lane_output];
       retire_source[lane_output] = lane_source[lane_output];
     end
-
     retiring_source = '0;
     for (lane_output = 0; lane_output < RETIRE_LANES;
          lane_output = lane_output + 1)
@@ -70,8 +110,6 @@ module a7_parallel_event_compactor #(
         retiring_source[lane_source[lane_output]] = 1'b1;
   end
 
-  // A source with a stalled older event cannot be admitted into another lane.
-  // Same-cycle retire/refill remains legal and preserves source-local order.
   always_comb eligible_request =
     source_valid & (~source_inflight | retiring_source);
 
@@ -81,33 +119,15 @@ module a7_parallel_event_compactor #(
     for (lane = 0; lane < RETIRE_LANES; lane = lane + 1) begin
       lane_available[lane] = !lane_valid[lane] || retire_ready[lane];
       available_rank[lane] = COUNT_WIDTH'(running_available);
-      if (lane_available[lane])
-        running_available = running_available + 1;
+      if (lane_available[lane]) running_available = running_available + 1;
     end
     available_count = COUNT_WIDTH'(running_available);
 
-    if (rotation_base == '0)
-      base_before = '0;
-    else
-      base_before = prefix_count[rotation_base-1];
-
-    for (source = 0; source < NUM_SOURCES; source = source + 1) begin
-      if (SOURCE_WIDTH'(source) >= rotation_base)
-        cyclic_rank[source] =
-          (prefix_count[source] - COUNT_WIDTH'(eligible_request[source])) -
-          base_before;
-      else
-        cyclic_rank[source] =
-          (total_count - base_before) +
-          (prefix_count[source] - COUNT_WIDTH'(eligible_request[source]));
-    end
-
     source_ready = '0;
     selected_count = 0;
-    for (source = 0; source < NUM_SOURCES; source = source + 1) begin
-      if (eligible_request[source] &&
-          (cyclic_rank[source] < available_count)) begin
-        source_ready[source] = 1'b1;
+    for (slot = 0; slot < RETIRE_LANES; slot = slot + 1) begin
+      if ((COUNT_WIDTH'(slot) < available_count) && selected_valid[slot]) begin
+        source_ready = source_ready | selected_onehot[slot];
         selected_count = selected_count + 1;
       end
     end
@@ -117,12 +137,13 @@ module a7_parallel_event_compactor #(
       fill_event[lane] = '0;
       fill_source[lane] = '0;
       if (lane_available[lane]) begin
-        for (source = 0; source < NUM_SOURCES; source = source + 1) begin
-          if (!fill_found[lane] && source_ready[source] &&
-              (cyclic_rank[source] == available_rank[lane])) begin
+        for (slot = 0; slot < RETIRE_LANES; slot = slot + 1) begin
+          if (!fill_found[lane] &&
+              (available_rank[lane] == COUNT_WIDTH'(slot)) &&
+              (COUNT_WIDTH'(slot) < available_count) && selected_valid[slot]) begin
             fill_found[lane] = 1'b1;
-            fill_event[lane] = source_event[source];
-            fill_source[lane] = SOURCE_WIDTH'(source);
+            fill_source[lane] = selected_source[slot];
+            fill_event[lane] = source_event[selected_source[slot]];
           end
         end
       end
@@ -130,13 +151,11 @@ module a7_parallel_event_compactor #(
 
     any_selected = (selected_count != 0);
     last_selected_source = rotation_base;
-    for (source = 0; source < NUM_SOURCES; source = source + 1)
-      if (source_ready[source] &&
-          (cyclic_rank[source] == COUNT_WIDTH'(selected_count-1)))
-        last_selected_source = SOURCE_WIDTH'(source);
+    for (slot = 0; slot < RETIRE_LANES; slot = slot + 1)
+      if (selected_valid[slot] && (slot == selected_count-1))
+        last_selected_source = selected_source[slot];
 
-    inflight_next = source_inflight & ~retiring_source;
-    inflight_next = inflight_next | source_ready;
+    inflight_next = (source_inflight & ~retiring_source) | source_ready;
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -156,7 +175,6 @@ module a7_parallel_event_compactor #(
         else
           rotation_base <= last_selected_source + SOURCE_WIDTH'(1);
       end
-
       for (lane_seq = 0; lane_seq < RETIRE_LANES; lane_seq = lane_seq + 1) begin
         if (lane_available[lane_seq]) begin
           lane_valid[lane_seq] <= fill_found[lane_seq];
@@ -175,8 +193,8 @@ module a7_parallel_event_compactor #(
   initial begin
     if ((RETIRE_LANES != 1) && (RETIRE_LANES != 2) &&
         (RETIRE_LANES != 4) && (RETIRE_LANES != 8))
-      $fatal(1, "A7 supports RETIRE_LANES=1,2,4,8");
+      $fatal(1, "A7 reference supports RETIRE_LANES=1,2,4,8");
     if (RETIRE_LANES > NUM_SOURCES)
-      $fatal(1, "A7 RETIRE_LANES must not exceed NUM_SOURCES");
+      $fatal(1, "A7 reference RETIRE_LANES must not exceed NUM_SOURCES");
   end
 endmodule

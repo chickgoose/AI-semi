@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 
-// Storage-free normalized binding. All buffering and arbitration are in A7 RTL.
-module a7_parallel_event_compactor_binding #(
+// Storage-free normalized binding for the candidate-only adversarial reference.
+module a7_replicated_selector_binding #(
   parameter int NUM_SOURCES = 16,
   parameter int ADDR_WIDTH = 16,
   parameter int RETIRE_LANES = 4,
@@ -19,20 +19,14 @@ module a7_parallel_event_compactor_binding #(
       always_comb bench.retire_source[item] = packed_retire_source[item];
     end
   endgenerate
-  a7_parallel_event_compactor #(
-    .NUM_SOURCES(NUM_SOURCES),
-    .ADDR_WIDTH(ADDR_WIDTH),
-    .RETIRE_LANES(RETIRE_LANES),
-    .SOURCE_WIDTH(SOURCE_WIDTH)
+  a7_replicated_selector_reference #(
+    .NUM_SOURCES(NUM_SOURCES), .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES), .SOURCE_WIDTH(SOURCE_WIDTH)
   ) candidate (
-    .clk(bench.clk),
-    .rst_n(bench.rst_n),
-    .source_valid(bench.source_valid),
-    .source_event(packed_source_event),
-    .source_ready(bench.source_ready),
-    .retire_valid(bench.retire_valid),
-    .retire_event(packed_retire_event),
-    .retire_source(packed_retire_source),
+    .clk(bench.clk), .rst_n(bench.rst_n),
+    .source_valid(bench.source_valid), .source_event(packed_source_event),
+    .source_ready(bench.source_ready), .retire_valid(bench.retire_valid),
+    .retire_event(packed_retire_event), .retire_source(packed_retire_source),
     .retire_ready(bench.retire_ready)
   );
 endmodule
