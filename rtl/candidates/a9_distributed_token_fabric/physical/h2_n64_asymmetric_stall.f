@@ -1,0 +1,5 @@
+rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv
+rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv
+rtl/candidates/a9_distributed_token_fabric/a9_neighbor_handoff_fabric.sv
+rtl/candidates/a9_distributed_token_fabric/a9_phase4_synth_top.sv
+rtl/candidates/a9_distributed_token_fabric/physical/a9_h2_n64_asymmetric_stall_top.sv

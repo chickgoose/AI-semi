@@ -1,0 +1,4 @@
+rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv
+rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv
+rtl/candidates/a9_distributed_token_fabric/a9_phase4_synth_top.sv
+rtl/candidates/a9_distributed_token_fabric/physical/a9_static_n64_timing_top.sv

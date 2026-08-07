@@ -276,3 +276,13 @@ hotspot produces an unexplained correctness difference or severe service
 
 The completed N=16 evidence and current rejection assessment are in
 [`a9_distributed_token_fabric_results.md`](a9_distributed_token_fabric_results.md).
+
+## 12. Optional physical handoff boundary
+
+The final local gate at `e571e67` rejects A9 for the always-ready shortlist.
+The only preserved follow-ups are a static N=64 timing-first experiment and an
+H2 N=64 persistent-asymmetric-stall experiment.  They are separate immutable
+capabilities, never an N=16 default shortlist.  Their candidate-owned tops,
+locks, eligibility gate, and fail-closed physical preflight are specified in
+`docs/research/a9_optional_physical_handoff.md`.  That handoff does not authorize
+a server run or a common-flow modification.
