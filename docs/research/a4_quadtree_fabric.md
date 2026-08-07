@@ -72,10 +72,10 @@ summary; the reverse channel is `ready`.
    into this node occurs.
 4. Exactly the selected child sees `ready`.  No child is acknowledged unless
    its payload is captured on that edge.
-5. A captured age is incremented saturating while resident.  Age is a local
-   congestion summary for observability and later policy experiments; the
-   clean candidate deliberately does not use age to override RR, preserving a
-   simple bounded-progress proof.
+5. A captured age is incremented saturating once per tree hop and then held
+   stable with its event.  It is a local tree-depth summary, not neural urgency
+   or an occurrence timestamp.  The clean candidate deliberately does not use
+   age to override RR, preserving a simple bounded-progress proof.
 6. Reset clears valid, age, and phase, preventing phantom retirement.
 
 Leaf nodes map their four fixed physical source positions into the same child
@@ -189,6 +189,15 @@ These are pre-PPA hypotheses, not measured results:
 
 Server PPA is forbidden until head approval.  No synthesis or P&R result will
 be claimed in the initial regression report.
+
+For the N=16 paper proxy, count a source-to-leaf Manhattan span of 1 grid unit
+and a leaf-to-root span of 2.  With 20 identity bits, 8 age bits, valid, and
+ready, A4's full-channel proxy is `16*30*1 + 4*30*2 = 720 bit-grid`; the flat
+source-to-center proxy is `16*21*2 + 16*1*2 = 704 bit-grid`.  A4 is therefore
+2.3% worse at N=16 under this deliberately simple full-data proxy.  The
+control-only request/ready proxy is `48` versus flat `64 bit-grid` (-25%).
+This split is important: bounded control wiring is the hypothesis, while
+repeated registered payload transport is a real cost.
 
 ## 9. Permutation neutrality policy
 

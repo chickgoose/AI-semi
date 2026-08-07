@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "candidate": "a4-quadtree",
+  "native_interface": {
+    "protocol": "distributed_leaf_ready_single_retire_ready_valid",
+    "source_count": {"kind": "fixed", "value": 16},
+    "source_observable": true,
+    "retire_lanes": 1
+  },
+  "capabilities": {
+    "sink_always_ready": {"supported": true},
+    "address_event_correctness": {"supported": true},
+    "occurrence_to_delivery_latency": {"supported": true},
+    "loss_duplicate_phantom": {"supported": true},
+    "fairness": {"supported": true},
+    "output_backpressure": {"supported": true},
+    "polarity_event_type": {"supported": true},
+    "multi_lane_retirement": {
+      "supported": false,
+      "reason": "the root exposes exactly one logical retire lane"
+    }
+  }
+}
