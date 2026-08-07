@@ -460,3 +460,193 @@ a claimed high-load power win without head-approved physical power evidence.
 If the shortlist requires a material VCD reduction rather than merely a strict
 numeric reduction, A3 should be rejected for this power risk.  No server PPA was
 run in this second pass.
+
+## 12. Third-pass control stability and counterevidence
+
+This pass freezes the second-pass RTL and defaults.  It adds no calendar,
+epoch, bucket, second path, predictor, codec, multi-grant, or token mechanism.
+RR and fixed priority below are executable reference policies only; neither is
+incorporated into A3.
+
+### 12.1 Event-driven control law and safe region
+
+Let `a_i[t]` denote a latched request, `q[t]` a successful A3 grant, and
+`w[t]` its source.  With unsigned saturation `S_U(x)=min(U,max(0,x))`, the
+implemented event-driven state equations are
+
+```text
+s(a) = +1, if sum(a_i) > A_high
+       -1, if sum(a_i) < A_low
+        0, otherwise
+
+H[t+1] = S_H(H[t] + s(a[t]))
+Theta(H) = Theta_0 + (H << k)
+
+u_i[t+1] = 0                                             if q and i=w
+             S_U(u_i + G(H) - L - q*I(H))               if a_i and i!=w
+             S_U(u_i - L)                               otherwise
+```
+
+`G/I` select their low or high values from the MSB of `H`.  Arbitration first
+chooses a requester with `u_i >= Theta(H)` from the rotating symmetry-neutral
+phase, otherwise the maximum membrane, with the same phase resolving exact
+ties.  A grant advances phase to `w+1`.  Clock enables from pass two suppress
+only exact no-op writes and do not change these equations.
+
+For an always-requesting nonwinner on every grant opportunity, define
+
+```text
+d_min = min(G_low-L-I_low, G_high-L-I_high).
+```
+
+If `d_min>0` and `Theta_max<=U`, a victim reaches the protected population in
+at most `ceil(Theta_max/d_min)` nonwinning grant opportunities.  Once protected,
+positive progress keeps it protected and the rotating scan cannot cross it;
+therefore it wins within at most another `N` opportunities.  The bound is
+
+```text
+B = ceil(Theta_max/d_min) + N.
+```
+
+For the frozen default, `d_min=min(4,2)=2`, `Theta_max=38`, `U=63`, hence
+`B=35` at N=16 and `B=23` at N=4.  These are grant-opportunity bounds.  There
+is no finite wall-clock bound under unbounded downstream backpressure, a limit
+shared by every non-buffering arbiter.
+
+The sufficient safe region is stronger than the RTL's generic parameter guard:
+both low- and high-activity progress must be positive.  The current values meet
+that condition, but arbitrary reuse of the module must not infer low-branch
+safety solely from the existing high-branch `$fatal` check.
+
+For a constant active count, `H` is especially simple.  It moves monotonically
+to `H_max` above `A_high`, monotonically to zero below `A_low`, and is constant
+inside the deadband.  Distance to the applicable rail is a decreasing Lyapunov
+function, so a fixed active set cannot create an autonomous `H` oscillation.
+The membrane vector is bounded by construction.  Permanent contention produces
+a driven reset/charge rotation, an intentional bounded limit cycle rather than
+divergence.
+
+### 12.2 N=4 exhaustive and token-identity checks
+
+`control_stability.py` performs two complementary N=4 searches.  The first
+merges identical reachable states while enumerating all 16 occurrence masks for
+eight cycles.  Its state includes membranes, `H`, phase, all four one-entry
+source latches, and the registered retire source.  The exact numeric defaults
+reach 188 states over 13,232 transitions.  Because `active_count>4` is
+unreachable at N=4, a second run scales only the feedback activity thresholds
+to `A_low/A_high=1/2`; this exercises both feedback directions and reaches
+1,122 states over 41,200 transitions.  This scaling is verification stimulus,
+not an RTL/default change.
+
+Every transition asserts
+
+```text
+old outstanding + generated = delivered + overrun + new outstanding,
+grant implies a pending token,
+0 <= u_i <= 63, 0 <= H <= 15, and 0 <= phase < 4.
+```
+
+All 1,310 states drain in at most four cycles with zero new arrivals.  The
+search observes the membrane saturation boundaries 110,338 times.  A separate
+token-ID search enumerates all 1,048,576 length-five occurrence sequences
+(1,118,480 transitions), asserting one live location per token, no phantom or
+duplicate retire, and strictly increasing delivered token IDs per source.
+
+The starvation search starts from 2,048 hostile boundary states: all requesters
+pending, every phase, `H` at either rail, and every membrane independently at
+zero, just below/at maximum threshold, or saturation.  It then enumerates every
+nonvictim refill choice.  Source zero is served by opportunity five in the
+worst explored path, below the N=4 proof bound of 23.  This finite search does
+not replace the proof; it checks the update and boundary cases used by it.
+
+### 12.3 Oscillation and protection-lockout regions
+
+The following regions are rejected or carry explicit recovery risk:
+
+- `d_min<=0`: an inhibited persistent nonwinner need not approach threshold,
+  so the homeostatic protected channel can lock out and `B` is undefined.  The
+  max-membrane/tie fallback happened to keep max wait at 15 in the bounded
+  correlated test, but that empirical fallback is not the homeostatic proof.
+- `Theta_max>U`: high-`H` protection is unreachable.  Both this case and the
+  nonpositive high-branch progress case are blocked by current RTL elaboration.
+- `L=0`: inactive membranes retain stale history, so one-source recovery has no
+  finite membrane-decay bound.  It is arithmetically legal but is outside the
+  recovery-safe region; correlated-test switching rose from 16.550781 to
+  25.054688 policy-state bit toggles/cycle.
+- excessive feedback slope such that `Theta_max>U`, or reversed activity
+  thresholds, is illegal.  The RTL blocks both bit-fit failure and reversed
+  thresholds.
+- any periodic offered load that repeatedly crosses both activity thresholds
+  can force an `H` limit cycle.  This is input-driven, not autonomous.  In the
+  8-cycle synchronized overload/24-cycle quiet test, default `H` traverses
+  1..15 and reverses direction 31 times.  Thus A3 is bounded but does not filter
+  correlated oscillation; the resulting state switching is real.
+
+Current defaults are therefore inside the arithmetic and starvation-safe
+region (`d_min=2`, representable threshold, positive leak, ordered deadband).
+They are not inside a no-forced-oscillation region: this instantaneous update
+law follows a sufficiently strong periodic input unless extra damping is added.
+Time bucketing is intentionally not introduced here.
+
+### 12.4 A3 versus RR and fixed priority
+
+Each 512-cycle test uses the same one-entry source-latch and one-grant/cycle
+transport.  Jain fairness is computed over per-source `served/generated`
+ratios, so source overrun is included.  Settling is the first 32-cycle window
+whose demand-normalized Jain index is at least 0.90 for eight consecutive
+windows; `--` means the criterion is never met.  Toggle counts include only
+policy state (A3 membranes/`H`/phase or the RR pointer), excluding common
+transport.
+
+| Workload | Policy | Overrun | Jain DN | Max wait | Settle | Policy toggles/cycle |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| asymmetric rate step | A3 | 491 | 0.926588 | 15 | 53 | 14.898438 |
+|  | RR | 491 | 0.926588 | 15 | 53 | 1.779297 |
+|  | fixed | 477 | 0.765796 | 15 | -- | 0 |
+| rotating burst | A3 | 244 | 0.999841 | 2 | 40 | 3.212891 |
+|  | RR | 244 | 0.999639 | 2 | 40 | 1.634766 |
+|  | fixed | 244 | 0.968766 | 64 | 463 | 0 |
+| correlated oscillation | A3 | 1,680 | 1.000000 | 15 | -- | 16.550781 |
+|  | RR | 1,680 | 1.000000 | 15 | -- | 1.347656 |
+|  | fixed | 1,680 | 0.418513 | 22 | -- | 0 |
+| one-source recovery | A3 | 1,908 | 0.502883 | 15 | 32 | 8.580078 |
+|  | RR | 1,908 | 0.502883 | 15 | 32 | 0.525391 |
+|  | fixed | 1,905 | 0.077935 | 147 | 32 | 0 |
+
+The one-source recovery fairness number includes the preceding all-source
+overload phase; post-step service settling is 32 cycles, while A3's `H` itself
+returns to zero in 29 cycles.  In correlated oscillation, no policy meets the
+settling definition before the next forced phase; A3 and RR nevertheless have
+perfect full-trace demand-normalized Jain fairness.  Fixed priority's three
+fewer overruns in recovery are not a fairness win: it retains old low-priority
+requests for up to 147 cycles while favoring source zero.
+
+A3 matches RR's fairness, wait, and settling on the asymmetric and recovery
+tests, improves rotating-burst Jain by only 0.000202, and uses about 1.97x to
+12.28x RR policy-state toggles/cycle across these tests.  This is evidence of
+bounded and stable control, but it falsifies a practical advantage over the
+much smaller reference scheduler on this N=16 adversarial set.
+
+### 12.5 Reproduction and decision
+
+Run:
+
+```sh
+python3 tests/a3_homeostatic_inhibition/control_stability.py \
+  --output-dir /tmp/a3-phase3
+```
+
+The exhaustive JSON, comparison CSV, and parameter-region CSV SHA-256 hashes
+are respectively `9209d4f4cfa73849a52cbd815cb3d6c48fa6deaccb0835f10fdb3c83485333cd`,
+`7a7d5368cd63ced51495b558c71e524fededdbea4e2a85a603d36be62f022f9b`,
+and `aa9f3f42a4d63a6262ecdc3b9eae2e48e1d26268ee10d18799be1fb967045bf8`.
+
+**Decision: reject A3 from the implementation shortlist.**  The frozen RTL is
+functionally bounded and its current parameters are in the derived safe region,
+so the rejection is not for loss, order, saturation, or a starvation violation.
+It is rejected because the third-pass controls find no material fairness,
+max-wait, or settling benefit over RR while confirming substantially higher
+high-activity state switching and a large forced `H` limit cycle.  The A3 RTL
+and research remain useful as a negative bio-homeostatic result; they should
+not be promoted as a power-competitive candidate.  No common files, frozen
+traces, server runs, or server PPA were modified or invoked in this pass.
