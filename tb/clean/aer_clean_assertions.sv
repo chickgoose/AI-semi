@@ -18,11 +18,12 @@ module aer_clean_assertions #(
           source_was_stalled <= 1'b0;
           stalled_source_event <= '0;
         end else begin
-          if (source_was_stalled && bench.source_valid[source] &&
-              !bench.source_ready[source] &&
-              (bench.source_event[source] !== stalled_source_event))
-            $error("CLEAN_ASSERT source changed during continuous stall source=%0d",
+          if (source_was_stalled && !bench.source_valid[source])
+            $error("CLEAN_ASSERT source valid dropped after stall source=%0d",
                    source);
+          if (source_was_stalled && bench.source_valid[source] &&
+              (bench.source_event[source] !== stalled_source_event))
+            $error("CLEAN_ASSERT source changed after stall source=%0d", source);
           source_was_stalled <=
             bench.source_valid[source] && !bench.source_ready[source];
           if (bench.source_valid[source] && !bench.source_ready[source])
@@ -49,12 +50,12 @@ module aer_clean_assertions #(
           stalled_retire_event <= '0;
           stalled_retire_source <= '0;
         end else begin
+          if (retire_was_stalled && !bench.retire_valid[lane])
+            $error("CLEAN_ASSERT completed valid dropped after stall lane=%0d", lane);
           if (retire_was_stalled && bench.retire_valid[lane] &&
-              !bench.retire_ready[lane] &&
               ((bench.retire_event[lane] !== stalled_retire_event) ||
                (bench.retire_source[lane] !== stalled_retire_source)))
-            $error("CLEAN_ASSERT completed event changed during continuous stall lane=%0d",
-                   lane);
+            $error("CLEAN_ASSERT completed event changed after stall lane=%0d", lane);
           retire_was_stalled <=
             bench.retire_valid[lane] && !bench.retire_ready[lane];
           if (bench.retire_valid[lane] && !bench.retire_ready[lane]) begin

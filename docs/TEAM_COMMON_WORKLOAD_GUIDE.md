@@ -42,6 +42,7 @@ the candidate and its PPA boundary.
 | trace `moving_hotspot` | one or several hot sources move by phase | Can the design track nonstationary congestion without starving mice? |
 | trace `rotating_victim` | every source becomes the low-rate victim in turn | Is service sensitive to address/priority position? |
 | trace `phase_transition` | sparse, near-saturation, overload, post-sparse probe, zero-injection drain | How fast do backlog and normal sparse latency recover? |
+| optional `optional_multilane_independent_stall` | rotating four-source bursts with a different deterministic stall phase per retire lane | Does each lane hold stable independently while other lanes continue? |
 
 The deterministic generator also supports manifest-controlled `basic_sparse`,
 `basic_simultaneous`, `uniform`, `elephant_mouse`, `global_fanin`,
@@ -106,6 +107,8 @@ RUN. The checked profiles currently classify:
 | Candidate | Always-ready core | Backpressure | Polarity/type | Multi-lane |
 | --- | --- | --- | --- | --- |
 | Ganghee direct-coordinate | RUN, fixed N=16 | SKIP | SKIP | SKIP |
+| Hyeonsu rotation-priority final | RUN, fixed N=16 | RUN | SKIP | SKIP |
+| DREC prefix N=16/K=4 | RUN, fixed N=16 | RUN | SKIP | RUN |
 | legacy baseline (historical calibration) | RUN | RUN | SKIP | SKIP |
 | A23 EE430 (historical calibration) | RUN | RUN | SKIP | SKIP |
 
@@ -125,6 +128,10 @@ tb/clean/native/                  storage-free native observation bindings
 tests/clean_native/               Ganghee binding protocol fixture
 scripts/run_clean_benchmark.sh    mock and historical calibration runner
 scripts/run_ganghee_native_benchmark.sh
+scripts/run_common_multilane_benchmark.sh
+scripts/run_common_multilane_candidate.sh
+benchmarks/clean_slate_aer/manifest.multilane-n16.json
+reports/common-multilane/           shared lane-capacity instructions/results
 docs/verification/               specification, profiles, results, PPA contract
 ```
 
@@ -179,12 +186,46 @@ python3 benchmarks/clean_slate_aer/aggregate.py \
   --output /tmp/aer-common-summary.csv
 ```
 
+Generate the exact common lane-capacity trace slice without selecting a DUT:
+
+```bash
+scripts/run_common_multilane_benchmark.sh generate-only
+```
+
+Run DREC through the first registered common multi-lane binding:
+
+```bash
+AER_SIMULATOR=xrun \
+  scripts/run_common_multilane_benchmark.sh drec-prefix 4
+```
+
+The multi-lane manifest is not a DREC workload. Single-lane candidates consume
+the same 18 traces and expose their natural saturation behavior. Only the
+independent-lane stall test is optional and capability-gated.
+
+Run all 18 traces on a candidate already registered in the common clean runner
+(for example Hyeonsu's server-side `rotation-priority` entry):
+
+```bash
+AER_SIMULATOR=xrun \
+  scripts/run_common_multilane_candidate.sh clean rotation-priority
+```
+
+Run Ganghee's original native binding after setting its existing top/file-list
+environment variables:
+
+```bash
+scripts/run_common_multilane_candidate.sh ganghee
+```
+
 ## 7. Current gaps
 
 The written specification includes, but the current common runner does not yet
 fully implement, `basic_reset_drain`, native `basic_polarity`, automatic
-16/64/256 `limit_scale`, fixed-pin `limit_pin_budget`, and independent multi-lane
-stall qualification. Do not claim these as qualified results. The old in-SV `limit_load` uses
+16/64/256 `limit_scale`, and fixed-pin `limit_pin_budget`. Independent multi-lane
+stall qualification is now implemented as an optional capability suite; it is
+not a mandatory core requirement. Do not claim unimplemented items as qualified
+results. The old in-SV `limit_load` uses
 a per-source probability; frozen comparisons should use the deterministic trace
 generator, whose `load` is aggregate offered events/cycle.
 

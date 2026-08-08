@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "candidate": "drec_prefix_n16_k4",
+  "capabilities": {
+    "sink_always_ready": {"supported": true, "reason": ""},
+    "address_event_correctness": {"supported": true, "reason": ""},
+    "occurrence_to_delivery_latency": {"supported": true, "reason": ""},
+    "loss_duplicate_phantom": {"supported": true, "reason": ""},
+    "fairness": {"supported": true, "reason": ""},
+    "output_backpressure": {"supported": true, "reason": "independent elastic retire lanes hold valid and event identity while stalled"},
+    "polarity_event_type": {"supported": false, "reason": "current frozen DREC boundary carries a coordinate-address event only"},
+    "multi_lane_retirement": {"supported": true, "reason": "native configuration has four independently ready retire lanes"}
+  },
+  "native_interface": {
+    "protocol": "per-source ready/valid to four independent ready/valid retire lanes",
+    "source_count": {"kind": "fixed", "value": 16},
+    "source_observable": true,
+    "retire_lanes": 4
+  }
+}

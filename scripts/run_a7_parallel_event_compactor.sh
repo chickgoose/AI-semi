@@ -96,17 +96,19 @@ case "$simulator" in
     verilator --binary --timing -Wno-fatal --top-module aer_clean_tb \
       -GNUM_SOURCES="$num_sources" -GADDR_WIDTH="$addr_width" \
       -GRETIRE_LANES="$retire_lanes" --Mdir "$build_dir/obj" \
-      -o a7_clean "${verilator_define[@]}" "${candidate_files[@]}"
+      -o a7_clean ${verilator_define[@]+"${verilator_define[@]}"} \
+      "${candidate_files[@]}"
     for test_name in "${tests[@]}"; do
       "$build_dir/obj/a7_clean" "+CLEAN_TEST=$test_name" \
         "+CANDIDATE=$candidate_name" "+METRICS=$out_dir/$test_name.csv" \
         "+EVENT_METRICS=$out_dir/$test_name.events.csv" \
         "+STIM_CYCLES=$stim_cycles" "+LOAD_PCT=$load_pct" "+SEED=$seed" \
-        "${trace_args[@]}" | tee "$out_dir/$test_name.log"
+        ${trace_args[@]+"${trace_args[@]}"} | tee "$out_dir/$test_name.log"
     done
     ;;
   iverilog)
-    iverilog -g2012 -Wall -s aer_clean_tb "${iverilog_define[@]}" \
+    iverilog -g2012 -Wall -s aer_clean_tb \
+      ${iverilog_define[@]+"${iverilog_define[@]}"} \
       -P "aer_clean_tb.NUM_SOURCES=$num_sources" \
       -P "aer_clean_tb.ADDR_WIDTH=$addr_width" \
       -P "aer_clean_tb.RETIRE_LANES=$retire_lanes" \
@@ -116,7 +118,7 @@ case "$simulator" in
         "+CANDIDATE=$candidate_name" "+METRICS=$out_dir/$test_name.csv" \
         "+EVENT_METRICS=$out_dir/$test_name.events.csv" \
         "+STIM_CYCLES=$stim_cycles" "+LOAD_PCT=$load_pct" "+SEED=$seed" \
-        "${trace_args[@]}" | tee "$out_dir/$test_name.log"
+        ${trace_args[@]+"${trace_args[@]}"} | tee "$out_dir/$test_name.log"
     done
     ;;
   xrun)
@@ -126,7 +128,7 @@ case "$simulator" in
       -defparam "aer_clean_tb.NUM_SOURCES=$num_sources" \
       -defparam "aer_clean_tb.ADDR_WIDTH=$addr_width" \
       -defparam "aer_clean_tb.RETIRE_LANES=$retire_lanes" \
-      "${xrun_define[@]}" \
+      ${xrun_define[@]+"${xrun_define[@]}"} \
       "${candidate_files[@]}" -l "$build_dir/elaborate.log"
     for test_name in "${tests[@]}"; do
       xrun -64bit -R -snapshot "$snapshot" -xmlibdirname "$build_dir/xcelium.d" \
@@ -134,7 +136,7 @@ case "$simulator" in
         "+METRICS=$out_dir/$test_name.csv" \
         "+EVENT_METRICS=$out_dir/$test_name.events.csv" \
         "+STIM_CYCLES=$stim_cycles" "+LOAD_PCT=$load_pct" "+SEED=$seed" \
-        "${trace_args[@]}" -l "$out_dir/$test_name.log"
+        ${trace_args[@]+"${trace_args[@]}"} -l "$out_dir/$test_name.log"
     done
     ;;
   *) printf 'unsupported AER_SIMULATOR=%s\n' "$simulator" >&2; exit 1 ;;

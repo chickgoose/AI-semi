@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "description": "Candidate-neutral N=16 lane-capacity slice of the frozen 46-run suite; every run is byte-for-byte configuration-identical to manifest.neutrality-n16.json",
+  "policy": {
+    "ranking_input": "exact generated JSONL trace SHA, never a lane-count-specific stimulus",
+    "logical_event": "one coordinate-address spike; polarity and event type are fixed",
+    "lane_rule": "the trace never encodes a retire-lane count; run the same trace at each candidate native lane count",
+    "comparison_rule": "single-lane candidates run the capacity traces and skip only the independent-lane optional test",
+    "measurement": "report throughput, overrun, latency tail, service gap, and events per pin-cycle"
+  },
+  "runs": [
+    {"name":"core_simultaneous_identity","workload":"basic_simultaneous","seed":1002,"geometry":{"width":4,"height":4},"load":0.063,"stim_cycles":256,"parameters":{"simultaneous_count":16,"occurrence_cycle":64,"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"uniform_l1p00_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p00_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p00_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p25_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":1.25,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p25_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":1.25,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p25_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":1.25,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p50_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":1.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p50_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":1.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l1p50_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":1.5,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l2p00_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":2.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l2p00_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":2.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"uniform_l2p00_s2003","workload":"uniform","seed":2003,"geometry":{"width":4,"height":4},"load":2.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"shape_b4","workload":"rate_shape","seed":3101,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":4096,"parameters":{"event_count":2048,"shape":"bursty","burst_size":4,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"shape_b16","workload":"rate_shape","seed":3101,"geometry":{"width":4,"height":4},"load":0.5,"stim_cycles":4096,"parameters":{"event_count":2048,"shape":"bursty","burst_size":16,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"global_fanin_identity","workload":"global_fanin","seed":3701,"geometry":{"width":4,"height":4},"load":0.25,"stim_cycles":2048,"parameters":{"fan_in_count":16,"burst_period":64,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"phase_transition_s3501","workload":"phase_transition","seed":3501,"geometry":{"width":4,"height":4},"load":0.769,"stim_cycles":4096,"parameters":{"sparse_load":0.125,"near_load":0.9,"overload_load":2.0,"post_load":0.1,"recovery_load":0.0,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"phase_transition_s3502","workload":"phase_transition","seed":3502,"geometry":{"width":4,"height":4},"load":0.769,"stim_cycles":4096,"parameters":{"sparse_load":0.125,"near_load":0.9,"overload_load":2.0,"post_load":0.1,"recovery_load":0.0,"fixed_polarity":1,"fixed_event_type":"spike"}}
+  ]
+}

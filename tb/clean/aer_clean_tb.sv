@@ -19,7 +19,14 @@ module aer_clean_tb;
     .RETIRE_LANES(RETIRE_LANES)
   ) bench(clk);
 
-`ifdef AER_CLEAN_GANGHEE_NATIVE
+`ifdef AER_CLEAN_GANGHEE_CLUSTER2
+  aer_ganghee_cluster2_binding #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES),
+    .FIFO_DEPTH(FIFO_DEPTH)
+  ) candidate(bench);
+`elsif AER_CLEAN_GANGHEE_NATIVE
   aer_ganghee_native_binding #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
@@ -413,6 +420,14 @@ module aer_clean_tb;
         for (stimulus_source = 0; stimulus_source < NUM_SOURCES;
              stimulus_source = stimulus_source + 1)
           seeded_offer(stimulus_source, load_pct);
+      end else if (test_name == "optional_multilane_independent_stall") begin
+        // Four-source bursts exercise concurrent retirement. The source group
+        // rotates so the test is not tied to one priority or coordinate region.
+        if ((local_cycle % 4) == 0)
+          for (stimulus_source = 0;
+               (stimulus_source < 4) && (stimulus_source < NUM_SOURCES);
+               stimulus_source = stimulus_source + 1)
+            offer_event((local_cycle + stimulus_source) % NUM_SOURCES);
       end else begin
         $fatal(2, "Unknown CLEAN_TEST=%s", test_name);
       end
@@ -435,6 +450,15 @@ module aer_clean_tb;
       end else if (test_name == "limit_backpressure_shock") begin
         if ((local_cycle >= stim_cycles/4) && (local_cycle < stim_cycles/2))
           bench.retire_ready = '0;
+      end else if (test_name == "optional_multilane_independent_stall") begin
+        // Each lane sees a different deterministic stall phase. All lanes are
+        // released during final drain because local_cycle >= stim_cycles.
+        if (local_cycle < stim_cycles)
+          for (monitor_lane = 0; monitor_lane < RETIRE_LANES;
+               monitor_lane = monitor_lane + 1)
+            if (((local_cycle + (monitor_lane * 3)) % 11) <
+                ((monitor_lane % 4) + 1))
+              bench.retire_ready[monitor_lane] = 1'b0;
       end
     end
   endtask

@@ -40,6 +40,7 @@
       "required_capabilities": [
         "address_event_correctness",
         "loss_duplicate_phantom",
+        "output_backpressure",
         "multi_lane_retirement"
       ]
     }
