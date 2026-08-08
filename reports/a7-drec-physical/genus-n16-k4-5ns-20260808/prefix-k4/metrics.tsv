@@ -1,0 +1,8 @@
+metric	value	unit
+cell_area	5826.569	um2
+wns	0.000000	ns
+tns	0.000000	ns
+fmax	200.000000	MHz
+total_power	0.550772000	mW
+dynamic_power	0.550634000	mW
+leakage_power	0.000137200	mW

@@ -1,6 +1,6 @@
 # DREC: Dual-Rank Elastic AER Compactor
 
-팀 발표용 기술 브리핑 · 2026-08-07
+팀 발표용 기술 브리핑 · 2026-08-08
 
 > 한 문장 요약: AER 요청과 현재 사용 가능한 출력 lane을 각각 순위화하고
 > 두 순위를 연결하여, 막힌 lane은 보존하면서 나머지 lane은 같은 cycle에
@@ -12,9 +12,13 @@
 - 후보 근거: A7 original shared-prefix K=4, branch evidence `f3520b4`
 - 비교 기준: 동일 K, 동일 104-bit register state, 동일 rotation/fairness,
   동일 independent-ready/refill semantics의 replicated-selector reference
-- 현재 증명된 수치는 **기능 검증과 Yosys generic structural proxy**이다.
-- **Genus standard-cell PPA와 Innovus post-route PPA/Fmax는 아직 미확정**이다.
-  따라서 이 문서의 gate/depth 수치를 area, Fmax 또는 silicon 결과로 부르지 않는다.
+- 서버 Xcelium lockstep은 1,223 cycle, 3,761 accepted = 3,761 delivered로
+  cycle-exact PASS했다.
+- 동일 N=16/K=4, 동일 104-bit state와 376 functional pins, slow GSCLIB045,
+  5 ns 조건의 **Genus standard-cell screening 결과는 확보했다.**
+- Genus는 pre-layout screening일 뿐이다. **Innovus fixed-netlist 진단은 현재
+  진행 중이며 post-route PPA/Fmax는 아직 미확정**이다. 따라서 Genus timing을
+  최종 Fmax 또는 silicon 결과로 부르지 않는다.
 
 ---
 
@@ -92,8 +96,9 @@ source 다음으로 이동한다.
 - N=16의 65,536개 request bitmap을 K=1/2/4 각각 exhaustive 검사
 - independent-ready adversarial test에서 stalled lane의 valid/event/source 안정성,
   다른 lane의 진행, source 중복 배치 방지와 conservation 통과
-- prefix K=4와 equal-state replicated K=4를 동시에 구동한 randomized lockstep
-  검증에서 1,223 cycle 동안 ready/valid/event/source가 cycle-exact하게 일치했고,
+- 서버 Xcelium에서 prefix K=4와 equal-state replicated K=4를 동시에 구동한
+  randomized lockstep 검증이 PASS했다. 1,223 cycle 동안
+  ready/valid/event/source가 cycle-exact하게 일치했고,
   3,761 accepted = 3,761 delivered로 drain conservation 통과
 - all-ready service opportunity에서 persistent source는 최대 `ceil(N/K)`번의
   service cycle 안에 acceptance된다는 bound를 확인
@@ -129,6 +134,26 @@ generic topological depth가 44.0% 낮다. 그러나 이는 Yosys `techmap; opt`
 113, replicated 5,542/depth 161로 방향이 유지됐다. 효과 크기는 각각 4.9%,
 29.8%로 줄었으므로 발표에서는 이를 “두 mapper에서 유지된 구조 가설”로만
 설명하고 Genus 결과로 표현하지 않는다.
+
+### 서버 Genus standard-cell screening
+
+동일한 N=16/K=4, 104-bit state, 376 functional pins, slow GSCLIB045 library와
+5 ns target을 사용했다.
+
+| 항목 | DREC prefix | Equal-state replicated | screening 해석 |
+| --- | ---: | ---: | --- |
+| mapped area | 5,826.569 um² | 7,928.415 um² | DREC −26.510% |
+| combinational cells | 3,089 | 4,407 | DREC −29.907% |
+| 5 ns setup WNS | 0 ns | −1.0435 ns | DREC만 200 MHz target 충족 |
+| screening frequency | 200.000 MHz | 165.467 MHz | pre-layout estimate only |
+| vectorless total power | 0.550772 mW | 0.739729 mW | DREC −25.544%, screening only |
+| latch / unresolved / error | 0 / 0 / 0 | 0 / 0 / 0 | synthesis integrity check 통과 |
+
+이 결과는 Yosys에서 보인 K=4 crossover가 target standard-cell mapping에서도
+유지됐다는 **GO 근거**다. 다만 power는 activity-annotated post-route power가
+아닌 vectorless estimate이며, replicated의 165.467 MHz도 post-route
+demonstrated Fmax가 아니다. 최종 PPA/Fmax 주장은 Innovus route, setup/hold,
+unconstrained-path 확인과 per-target resynthesis 이후에만 가능하다.
 
 ### workload 수치와 올바른 해석
 
@@ -170,18 +195,20 @@ dual-rank elastic composition과 그 손익분기 검증**이 기여다.
 
 ### 다음 단계의 Stop/Go
 
-**현재 판정: GO — physical screening 자격만 획득. 최종 채택은 아님.**
+**현재 판정: Genus screening GO — Innovus fixed-netlist 진단 진행 중.
+최종 채택 또는 최종 PPA 승리는 아님.**
 
-1. original prefix K=4와 equal-state replicated K=4를 immutable하게 freeze한다.
-2. 동일 46 traces, four lanes, 동일 IO/load/clock/SDC로 서버 Xcelium
-   correctness를 다시 확인한다. 로컬 Verilator lockstep은 통과했다.
-3. 동일 Liberty/PVT에서 Genus screening을 실행하고 same-frequency area/power와
-   maximum-demonstrated timing을 분리해 보고한다.
-4. correctness가 실패하거나 generic crossover가 standard-cell 비교에서
-   사라지면 **STOP**한다.
-5. Genus에서도 실질적 이점이 유지될 때만 period별 재합성과 Innovus P&R로
-   진행한다. 최종 주장은 setup/hold, route, unconstrained path와 네 endpoint
-   비용까지 포함한 post-route 결과로만 결정한다.
+1. **완료:** original prefix K=4와 equal-state replicated K=4를 동일
+   104-bit state, 376 functional-pin boundary로 비교했다.
+2. **완료:** 서버 Xcelium lockstep에서 cycle-exact equivalence와
+   3,761 accepted = delivered를 확인했다.
+3. **완료:** 동일 slow GSCLIB045/5 ns Genus screening에서 DREC의 area,
+   combinational-cell, timing과 vectorless-power 이점이 유지됐다.
+4. **진행 중:** 동일 netlist의 Innovus fixed-netlist 진단으로 placement/routing 후
+   timing 한계를 찾는다. 이 단계는 디버깅·bracketing용이며 최종 Fmax가 아니다.
+5. route 실패, setup/hold violation, unconstrained path 또는 endpoint/pin 비용으로
+   crossover가 사라지면 **STOP**한다. 진단이 유지될 때만 period별 Genus 재합성과
+   complete Innovus P&R을 수행하고, 그 결과로 최종 판정한다.
 
 ### 발표에서 금지할 표현
 
@@ -189,6 +216,8 @@ dual-rank elastic composition과 그 손익분기 검증**이 기여다.
 - “최초의 bitmap-to-K selector”, “새로운 multi-grant round robin”
 - “4x throughput”, “K=4가 K=2보다 빠르다”
 - generic proxy만으로 “area/Fmax/power/PPA 승리”
+- Genus의 200/165.467 MHz를 “post-route 실측 Fmax”로 표현
+- vectorless power를 “실제 workload energy/event”로 표현
 - 88 retire signals와 네 endpoint를 제외한 비용 비교
 - one-outstanding/source 제한을 생략한 “일반적인 backpressure-complete AER”
 
@@ -222,9 +251,13 @@ K=4 throughput은 K=2와 같은 1.999이고 lane utilization은 50%입니다. �
 prefix scan, compaction, m-select round robin 자체는 선행기술입니다. 저희의 좁고
 방어 가능한 기여는 cyclic source rank와 available-lane rank를 independent-ready
 AER 계약에 결합하고, 동일 상태량 reference로 손익분기점을 측정한 것입니다.
-다음 단계는 동일 조건의 Xcelium과 Genus 비교입니다. standard-cell에서도 이점이
-유지될 때만 네 lane과 88개 retire signal 비용을 전부 포함해 Innovus P&R까지
-진행하겠습니다.
+서버 Xcelium lockstep도 1,223 cycle, 3,761 accepted와 delivered가 일치해
+통과했습니다. 동일 slow GSCLIB045, 5 ns의 Genus screening에서는 DREC가
+5,826.569 제곱마이크로미터, replicated가 7,928.415였고, DREC만 200 MHz target의
+WNS 0을 만족했습니다. vectorless power도 0.550772 대 0.739729 밀리와트였습니다.
+하지만 이것은 pre-layout screening입니다. 현재 Innovus fixed-netlist 진단을
+진행 중이며, 네 lane과 376 functional pins, endpoint와 배선 비용을 포함한
+post-route 결과가 나오기 전에는 최종 PPA나 Fmax 승리를 주장하지 않겠습니다.
 
 ---
 

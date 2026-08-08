@@ -9,6 +9,8 @@ set library [require_env AER_LIBRARY_FILE]
 set qrc     [require_env AER_QRC_TECH]
 set sdc     [require_env AER_PNR_SDC]
 
+# Diagnostic-only single-corner view.  A qualified hold result requires a
+# separately declared fast Liberty/RC view; do not reinterpret view_slow as it.
 create_library_set -name libset_slow -timing [list $library]
 create_rc_corner -name rc_typical -qrc_tech $qrc
 create_delay_corner -name delay_slow \

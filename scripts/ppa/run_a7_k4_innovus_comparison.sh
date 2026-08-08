@@ -25,6 +25,15 @@ for required in "$AER_LIBRARY_FILE" "$AER_QRC_TECH" "$AER_TECH_LEF" \
     exit 2
   }
 done
+[[ -f "$BUNDLE_ROOT/bundle-files.sha256" ]] || {
+  printf 'bundle checksum manifest not found: %s\n' \
+    "$BUNDLE_ROOT/bundle-files.sha256" >&2
+  exit 2
+}
+(cd "$BUNDLE_ROOT" && sha256sum -c bundle-files.sha256 >/dev/null) || {
+  printf 'bundle checksum verification failed: %s\n' "$BUNDLE_ROOT" >&2
+  exit 2
+}
 [[ ! -e "$RESULT_ROOT" ]] || {
   printf 'result root already exists: %s\n' "$RESULT_ROOT" >&2
   exit 2
@@ -32,6 +41,7 @@ done
 mkdir -p "$RESULT_ROOT"
 
 printf 'design\tstatus\ttool_exit\n' > "$RESULT_ROOT/comparison.tsv"
+any_fail=0
 
 while IFS=$'\t' read -r design commit top filelist; do
   [[ "$design" != design ]] || continue
@@ -74,6 +84,11 @@ while IFS=$'\t' read -r design commit top filelist; do
     printf 'flow=fixed_genus_netlist_place_cts_route_extract\n'
     printf 'floorplan=aspect:1.0,target_utilization:0.50,margin_um:10\n'
     printf 'power_mode=innovus_vectorless_screening_only\n'
+    printf 'analysis_scope=single_slow_lib_typical_rc_fixed_netlist_diagnostic\n'
+    printf 'timing_qualification=NOT_QUALIFIED_UNPARSED_WNS_AND_COVERAGE\n'
+    printf 'hold_qualification=NOT_QUALIFIED_NO_FAST_HOLD_VIEW\n'
+    printf 'pin_placement_qualification=NOT_QUALIFIED_NO_FROZEN_COMMON_PIN_CONSTRAINT\n'
+    printf 'drc_antenna_qualification=NOT_QUALIFIED_REPORT_PRESENCE_ONLY\n'
   } > "$output/manifest.txt"
 
   set +e
@@ -81,16 +96,28 @@ while IFS=$'\t' read -r design commit top filelist; do
     > "$output/tool.log" 2>&1
   tool_status=$?
   set -e
-  status=PASS_TOOL
+  status=COMPLETE_SINGLE_CORNER_DIAGNOSTIC
   if [[ "$tool_status" -ne 0 ]]; then
     status="FAIL_INNOVUS_$tool_status"
-  elif grep -Eiq '(^|[[:space:]])(ERROR|FATAL)(:|[[:space:]])' "$output/tool.log"; then
+  elif grep -Eiq '(^|[[:space:]])(ERROR|FATAL)(:|[[:space:]])|\*\*(ERROR|FATAL):' \
+      "$output/tool.log"; then
     status=FAIL_LOG_ERRORS
   elif [[ ! -s "$output/reports/setup_timing.rpt" ||
           ! -s "$output/reports/hold_timing.rpt" ||
           ! -s "$output/reports/area.rpt" ||
-          ! -s "$output/reports/power.rpt" ]]; then
+          ! -s "$output/reports/power.rpt" ||
+          ! -s "$output/reports/check_design_pre_place.rpt" ||
+          ! -s "$output/reports/check_design_post_route.rpt" ||
+          ! -s "$output/reports/check_timing.rpt" ||
+          ! -s "$output/reports/connectivity.rpt" ||
+          ! -s "$output/reports/drc.rpt" ||
+          ! -s "$output/reports/antenna.rpt" ||
+          ! -s "$output/reports/route.rpt" ||
+          ! -s "$output/status/FLOW_SUCCESS" ]]; then
     status=FAIL_MISSING_REPORTS
+  fi
+  if [[ "$status" != COMPLETE_SINGLE_CORNER_DIAGNOSTIC ]]; then
+    any_fail=1
   fi
   printf 'tool_exit=%s\nstatus=%s\n' "$tool_status" "$status" \
     >> "$output/manifest.txt"
@@ -99,4 +126,8 @@ while IFS=$'\t' read -r design commit top filelist; do
   printf 'A7_K4_INNOVUS_RESULT design=%s status=%s\n' "$design" "$status"
 done < "$BUNDLE_ROOT/designs.tsv"
 
+if [[ "$any_fail" -ne 0 ]]; then
+  printf 'A7_K4_INNOVUS_COMPARISON_FAILED results=%s\n' "$RESULT_ROOT" >&2
+  exit 1
+fi
 printf 'A7_K4_INNOVUS_COMPARISON_DONE results=%s\n' "$RESULT_ROOT"

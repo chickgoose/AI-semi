@@ -154,12 +154,21 @@
 - 별도 branch `integration/a7-k4-physical-candidate`, commit `1cdb1da`를 원격에 보존했다.
   발표 자료는 `docs/presentation/a7_drec_team_briefing.md`, 검증 기록은
   `docs/experiments/a7-drec-qualification.md`다.
-- immutable Genus bundle과 전체 source archive를 `/tmp`에 생성·재추출 검증했다.
-  서버는 공개키 비대화형 인증이 거부되어 Xcelium/Genus 실행이 남아 있다. 비밀번호나
-  라이선스 정보는 저장하지 않았다.
-- 다음 gate: 서버 Xcelium → 동일 Liberty/PVT/SDC Genus. standard-cell crossover가
-  유지될 때만 4 endpoints와 88 retire signals를 모두 포함해 Innovus P&R한다. 실패하면
-  A7을 무기한 보완하지 않고 A4 N=64 scaling 또는 신규 hierarchical K-grant merge를
+- 서버 Xcelium 23.09 lockstep도 1,223 cycle, accepted=delivered=3,761로 PASS했다.
+- 동일 N=16/K=4, 104 state bit, 376 functional pin, slow GSCLIB045, 5 ns Genus
+  screening에서 DREC는 area 5,826.569 um2 / comb 3,089 / WNS 0 / vectorless
+  power 0.550772 mW, equal-state replicated reference는 7,928.415 um2 / comb 4,407 /
+  WNS -1.0435 ns / 0.739729 mW였다. DREC의 area -26.510%, comb -29.907%,
+  vectorless power -25.544% crossover가 standard-cell에서도 유지되어 Genus GO다.
+- Genus 수치는 pre-layout screening이며 post-route Fmax나 workload power가 아니다.
+  첫 5 ns Innovus exploratory run은 pre-CTS 최적화가 13분 이상 지속되고 고정 pin/fast
+  hold 자격이 없는 상태라 로그를 보존하고 중단했다. RTL 실패나 완성 P&R 결과가 아니다.
+- Innovus bundle은 이후 fail-closed sentinel, pre/post design check, timing,
+  connectivity, route, DRC, antenna report와 전체-run nonzero 실패 판정을 추가했다.
+  deterministic 376-pin policy와 fast hold corner가 freeze되기 전까지 결과 상태는
+  `COMPLETE_SINGLE_CORNER_DIAGNOSTIC` 이상으로 주장하지 않는다.
+- 발표 대표 후보는 DREC를 유지하되, 최종 post-route/채택 주장은 보류한다. 물리
+  crossover가 사라지면 A4 N=64 scaling 또는 신규 hierarchical K-grant merge를
   별도 가설로 검토한다.
 
 ## 설계 환경 접속 상태

@@ -1,0 +1,7 @@
+# Raw Cadence output is preserved byte-for-byte in archives/.  Keep the clean
+# comparison tables and manifests expanded for review.
+genus-n16-k4-5ns-20260808/*/netlist/
+genus-n16-k4-5ns-20260808/*/reports/
+genus-n16-k4-5ns-20260808/*/tool.log
+innovus-interrupted-n16-k4-5ns-20260808/*/reports/
+innovus-interrupted-n16-k4-5ns-20260808/*/tool.log

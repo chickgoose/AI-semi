@@ -14,7 +14,8 @@ bundle_dir="$1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
-mkdir -p "$bundle_dir/common/constraints" "$bundle_dir/sources"
+mkdir -p "$bundle_dir/common/constraints" "$bundle_dir/sources" \
+  "$bundle_dir/scripts/ppa"
 
 for design in prefix-k4 replicated-k4; do
   destination="$bundle_dir/sources/$design"
@@ -37,6 +38,12 @@ cp "$SCRIPT_DIR/a7_k4_genus_compare.tcl" \
   "$bundle_dir/common/a7_k4_genus_compare.tcl"
 cp "$SCRIPT_DIR/run_a7_k4_genus_comparison.sh" \
   "$bundle_dir/run_comparison.sh"
+cp "$SCRIPT_DIR/a7_k4_innovus_mmmc.tcl" \
+  "$bundle_dir/scripts/ppa/a7_k4_innovus_mmmc.tcl"
+cp "$SCRIPT_DIR/a7_k4_innovus_pnr.tcl" \
+  "$bundle_dir/scripts/ppa/a7_k4_innovus_pnr.tcl"
+cp "$SCRIPT_DIR/run_a7_k4_innovus_comparison.sh" \
+  "$bundle_dir/scripts/ppa/run_a7_k4_innovus_comparison.sh"
 
 {
   printf 'design\tcommit\ttop\tfilelist\n'
@@ -46,7 +53,8 @@ cp "$SCRIPT_DIR/run_a7_k4_genus_comparison.sh" \
 
 chmod +x "$bundle_dir/run_comparison.sh" \
   "$bundle_dir/common/extract_genus_metrics.sh" \
-  "$bundle_dir/common/parse_genus_detail.sh"
+  "$bundle_dir/common/parse_genus_detail.sh" \
+  "$bundle_dir/scripts/ppa/run_a7_k4_innovus_comparison.sh"
 
 (
   cd "$bundle_dir"

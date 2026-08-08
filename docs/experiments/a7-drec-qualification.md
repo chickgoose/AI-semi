@@ -1,6 +1,6 @@
 # A7 DREC N=16/K=4 qualification
 
-Date: 2026-08-07
+Date: 2026-08-08
 
 ## Decision boundary
 
@@ -10,8 +10,9 @@ native ports, four one-entry retire registers, 104 registered state bits,
 rotation policy, and independent-ready behavior.  K=1, K=2, fixed priority,
 or a design with fewer output endpoints is not a physical comparison baseline.
 
-The candidate remains a physical-screening hypothesis until same-library Genus
-and, if that passes, Innovus P&R.  Generic mapping is not standard-cell PPA.
+The candidate passed same-library Genus screening on 2026-08-08.  It remains a
+post-route hypothesis until a qualified Innovus flow completes.  Generic
+mapping is not standard-cell PPA, and Genus timing is not demonstrated Fmax.
 
 ## Reproduced functional evidence
 
@@ -32,6 +33,10 @@ The frozen 46-trace evidence remains 138/138 correct across K=1/2/4.  Same-K
 prefix and replicated aggregate rows are identical.  The new lockstep test
 closes the earlier gap where aggregate equivalence alone could have hidden
 cycle-level differences.
+
+The same lockstep test also passed under server Xcelium 23.09 with zero compile
+or elaboration errors.  This separates the correctness result from a
+local-simulator-only claim.
 
 ## Reproduced generic structural evidence
 
@@ -59,7 +64,28 @@ tests/a7_parallel_event_compactor/abc_sensitivity_compare.py \
   --output reports/a7-parallel-event-compactor/abc-fast-sensitivity.csv
 ```
 
-## Physical bundle
+## Server Genus screening
+
+The immutable `0e04b8f5052fa1aac84ff2350966c210a8b9854f` bundle was run with
+Genus 23.14, the slow GSCLIB045 Liberty, and the common 5.000 ns SDC.  Both
+designs use N=16, K=4, 104 registered state bits, and the same 376-bit
+functional boundary.
+
+| Metric | DREC prefix K4 | Equal-state replicated K4 | Result |
+| --- | ---: | ---: | --- |
+| mapped cell area | 5,826.569 um2 | 7,928.415 um2 | DREC -26.510% |
+| combinational cells | 3,089 | 4,407 | DREC -29.907% |
+| sequential cells | 104 | 104 | equal state |
+| 5 ns WNS | 0.0000 ns | -1.0435 ns | DREC alone meets target |
+| screening frequency | 200.000 MHz | 165.467 MHz | pre-layout only |
+| vectorless total power | 0.550772 mW | 0.739729 mW | DREC -25.544% |
+
+Both runs have zero inferred latches, unresolved references, and error/fatal
+lines.  This is a standard-cell **screening GO**, not final PPA.  The power is
+vectorless and the frequency is a Genus estimate.  Raw reports and manifests
+are preserved under `reports/a7-drec-physical/`.
+
+## Physical bundle and Innovus boundary
 
 Build an immutable comparison bundle only from a committed tree:
 
@@ -82,13 +108,28 @@ Tcl hash, port/state boundary, clock period, and flow effort.  Vectorless Genus
 power is labeled screening-only.  No hardcoded throughput number is converted
 into an efficiency claim.
 
+The bundle now also carries a fail-closed Innovus fixed-netlist diagnostic.
+It requires the placement/CTS/route/extraction command sequence, pre/post design
+checks, timing, connectivity, DRC, antenna, and route reports before declaring
+command completion.  That completion is still explicitly
+`COMPLETE_SINGLE_CORNER_DIAGNOSTIC`: the available slow-Liberty/typical-RC view
+is not a qualified fast hold view, and no reviewed deterministic placement for
+all 376 functional pins has been frozen.
+
+The first exploratory 5 ns run used the earlier non-fail-closed script and was
+stopped after more than 13 minutes of pre-CTS optimization.  DREC had not met
+timing, the reference had not started, and no routed reports existed.  Its
+`FAIL_INNOVUS_1` status records an intentional interruption, not an RTL failure.
+The log is retained as negative evidence and must not be ranked as P&R PPA.
+
 ## Stop/go rule
 
 - STOP on any correctness, unresolved-reference, latch, or timing-metric failure.
 - STOP if the standard-cell comparison removes the shared-prefix benefit without
   a compensating and material timing benefit.
-- Only a meaningful same-frequency Genus area/power or timing advantage allows
-  period-by-period resynthesis and Innovus P&R.
+- The meaningful Genus area/power/timing advantage satisfied the screening GO.
+- A completed, deterministic-pin, multi-corner Innovus run is still required
+  before any post-route PPA, Fmax bracket, or final-candidate claim.
 - P&R must charge all four endpoints and 88 retire signals.  If global prefix
   wiring removes the crossover, reject DREC and use the documented fallback
   gate rather than optimizing indefinitely.

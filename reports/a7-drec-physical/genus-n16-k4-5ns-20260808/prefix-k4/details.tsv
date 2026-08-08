@@ -1,0 +1,17 @@
+metric	value	unit
+total_cells	3193	cells
+sequential_cells	104	cells
+combinational_cells	3089	cells
+latch_cells	0	cells
+critical_startpoint	(R) dut/lane_valid_reg[1]/CK	text
+critical_endpoint	(F) dut/rotation_base_reg[1]/D	text
+logic_loop_warnings	0	count
+multi_driver_warnings	0	count
+latch_warnings	0	count
+unresolved_references	0	count
+empty_modules	0	count
+error_fatal_lines	0	count
+throughput	1.0	event_per_cycle
+area_per_event_cycle	5826.569000	um2_per_event_cycle
+power_per_event_cycle	0.550772000	mW_per_event_cycle
+throughput_per_area	0.000171628	event_per_cycle_per_um2
