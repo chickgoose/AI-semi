@@ -58,13 +58,21 @@ class A3CompatibleGeneratedFixture:
         "avg_timing_error", "max_timing_error",
     )
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, mapping: str = "identity") -> None:
         self.directory = directory
-        self.trace_path = directory / "mixed_phase_always_ready_identity.events.jsonl"
-        self.manifest_path = directory / "mixed_phase_always_ready_identity.manifest.json"
+        self.mapping = mapping
+        self.trace_path = directory / f"mixed_phase_always_ready_{mapping}.events.jsonl"
+        self.manifest_path = directory / f"mixed_phase_always_ready_{mapping}.manifest.json"
         self.event_path = directory / "mixed.events.csv"
         self.summary_path = directory / "mixed.summary.csv"
         self.trace = self._generate_trace()
+        if mapping == "bit_reverse":
+            for row in self.trace:
+                source = int(f"{int(row['logical_source']):04b}"[::-1], 2)
+                row["logical_source"] = source
+                row["x"], row["y"] = source % 4, source // 4
+        elif mapping != "identity":
+            raise ValueError(f"unsupported fixture mapping {mapping}")
         self.write_generated_artifacts()
         self.write_events()
         self.write_summary()
@@ -132,22 +140,28 @@ class A3CompatibleGeneratedFixture:
         )
         self.trace_path.write_text(payload, encoding="utf-8")
         digest = hashlib.sha256(self.trace_path.read_bytes()).hexdigest()
+        parameters = {
+            "uniform_source_probability": 0.125,
+            "hot_probability": 0.8,
+            "fixed_polarity": 1,
+            "fixed_event_type": "spike",
+        }
+        if self.mapping == "bit_reverse":
+            parameters["source_permutation"] = "bit_reverse"
+        permutation = list(range(16))
+        if self.mapping == "bit_reverse":
+            permutation = [int(f"{source:04b}"[::-1], 2) for source in range(16)]
         metadata = {
             "schema_version": 1,
             "generator_version": "4.0",
             "run": {
-                "name": "mixed_phase_always_ready_identity",
+                "name": f"mixed_phase_always_ready_{self.mapping}",
                 "workload": "mixed_phase_always_ready",
                 "seed": 4001,
                 "geometry": {"width": 4, "height": 4},
                 "load": "2.25",
                 "stim_cycles": 4096,
-                "parameters": {
-                    "uniform_source_probability": 0.125,
-                    "hot_probability": 0.8,
-                    "fixed_polarity": 1,
-                    "fixed_event_type": "spike",
-                },
+                "parameters": parameters,
                 "sink": {"mode": "always"},
             },
             "report_group": "mixed_phase_always_ready",
@@ -168,7 +182,7 @@ class A3CompatibleGeneratedFixture:
             "dut_payload_fields": [],
             "dut_sideband_fields": ["logical_source"],
             "trace_metadata_fields": ["x", "y", "polarity", "event_type"],
-            "logical_source_permutation": list(range(16)),
+            "logical_source_permutation": permutation,
             "tb_only_fields": [
                 "occurrence_cycle", "tb_only_event_id", "relation_id",
                 "relation_role", "deadline",
@@ -228,6 +242,33 @@ class A3CompatibleGeneratedFixture:
 
 
 class MixedPhaseMetricTest(unittest.TestCase):
+    def test_rejects_generator_version_999(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            fixture = A3CompatibleGeneratedFixture(Path(directory_name))
+            metadata = json.loads(fixture.manifest_path.read_text(encoding="utf-8"))
+            metadata["generator_version"] = "999"
+            fixture.manifest_path.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaisesRegex(mixed_metrics.MixedPhaseMetricError, "generator_version"):
+                mixed_metrics.analyze(fixture.manifest_path, fixture.event_path)
+
+    def test_rejects_wrong_official_seed_or_probabilities(self):
+        cases = (
+            ("seed", 4002, "seed"),
+            ("uniform_source_probability", 0.25, "uniform_source_probability"),
+            ("hot_probability", 0.5, "hot_probability"),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory_name:
+                fixture = A3CompatibleGeneratedFixture(Path(directory_name))
+                metadata = json.loads(fixture.manifest_path.read_text(encoding="utf-8"))
+                if field == "seed":
+                    metadata["run"][field] = value
+                else:
+                    metadata["run"]["parameters"][field] = value
+                fixture.manifest_path.write_text(json.dumps(metadata), encoding="utf-8")
+                with self.assertRaisesRegex(mixed_metrics.MixedPhaseMetricError, message):
+                    mixed_metrics.analyze(fixture.manifest_path, fixture.event_path)
+
     def test_full_a3_compatible_generated_trace_and_summary_qualify(self):
         with tempfile.TemporaryDirectory() as directory_name:
             fixture = A3CompatibleGeneratedFixture(Path(directory_name))
@@ -250,6 +291,15 @@ class MixedPhaseMetricTest(unittest.TestCase):
             self.assertTrue(result["matched_trace_validation"]["sustained_frozen_dwell_and_rotation"])
             self.assertTrue(result["matched_trace_validation"]["hotspot_a_replay_exact_physical_replay"])
             self.assertIn("backlog_recovery_to_zero_cycles", result["phases"][0])
+
+    def test_declared_bit_reverse_mapping_is_accepted(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            fixture = A3CompatibleGeneratedFixture(Path(directory_name), mapping="bit_reverse")
+            result = mixed_metrics.analyze(
+                fixture.manifest_path, fixture.event_path, fixture.summary_path
+            )
+            self.assertEqual(result["classification"]["correctness_status"], "qualified_pass")
+            self.assertTrue(result["matched_trace_validation"]["hotspot_a_replay_exact_physical_replay"])
 
     def test_events_without_common_summary_do_not_claim_correctness(self):
         with tempfile.TemporaryDirectory() as directory_name:
@@ -280,6 +330,51 @@ class MixedPhaseMetricTest(unittest.TestCase):
             self.assertEqual(result["classification"]["analysis_status"], "capacity_loss")
             self.assertEqual(result["classification"]["correctness_status"], "qualified_pass")
             self.assertEqual(result["classification"]["capacity_loss_events"], 1)
+
+    def test_require_qualified_writes_diagnostics_then_fails_without_summary(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            fixture = A3CompatibleGeneratedFixture(Path(directory_name))
+            output = fixture.directory / "diagnostic.json"
+            status = mixed_metrics.main([
+                "--run-manifest", str(fixture.manifest_path),
+                "--events", str(fixture.event_path),
+                "--require-qualified", "--output", str(output),
+            ])
+            self.assertEqual(status, 1)
+            diagnostic = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(diagnostic["classification"]["correctness_status"], "not_qualified")
+
+    def test_require_qualified_fails_on_common_correctness_error(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            fixture = A3CompatibleGeneratedFixture(Path(directory_name))
+            fixture.write_summary(errors=1)
+            output = fixture.directory / "diagnostic.json"
+            status = mixed_metrics.main([
+                "--run-manifest", str(fixture.manifest_path),
+                "--events", str(fixture.event_path),
+                "--summary", str(fixture.summary_path),
+                "--require-qualified", "--output", str(output),
+            ])
+            self.assertEqual(status, 1)
+            diagnostic = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(diagnostic["classification"]["analysis_status"], "correctness_failure")
+
+    def test_require_qualified_accepts_conserved_capacity_loss(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            fixture = A3CompatibleGeneratedFixture(Path(directory_name))
+            fixture.write_events(overrun_id=0)
+            fixture.write_summary(overrun=1)
+            output = fixture.directory / "diagnostic.json"
+            status = mixed_metrics.main([
+                "--run-manifest", str(fixture.manifest_path),
+                "--events", str(fixture.event_path),
+                "--summary", str(fixture.summary_path),
+                "--require-qualified", "--output", str(output),
+            ])
+            self.assertEqual(status, 0)
+            diagnostic = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(diagnostic["classification"]["analysis_status"], "capacity_loss")
+            self.assertEqual(diagnostic["classification"]["correctness_status"], "qualified_pass")
 
     def test_rejects_censored_or_summary_counter_mismatch(self):
         with tempfile.TemporaryDirectory() as directory_name:

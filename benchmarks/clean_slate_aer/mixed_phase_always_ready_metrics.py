@@ -26,6 +26,10 @@ import aggregate
 
 
 WORKLOAD = "mixed_phase_always_ready"
+GENERATOR_VERSION = "4.0"
+OFFICIAL_SEED = 4001
+OFFICIAL_UNIFORM_PROBABILITY = Decimal("0.125")
+OFFICIAL_HOT_PROBABILITY = Decimal("0.8")
 PHASE_NAMES = (
     "u_bernoulli",
     "u_smooth",
@@ -105,9 +109,15 @@ def _validate_manifest(manifest_path: Path) -> tuple[dict[str, Any], Path, list[
     metadata = _read_json(manifest_path)
     if not isinstance(metadata, dict) or metadata.get("schema_version") != 1:
         raise MixedPhaseMetricError("generated manifest schema_version must be 1")
+    if metadata.get("generator_version") != GENERATOR_VERSION:
+        raise MixedPhaseMetricError(
+            f"generator_version must be frozen {GENERATOR_VERSION}"
+        )
     run = metadata.get("run")
     if not isinstance(run, dict) or run.get("workload") != WORKLOAD:
         raise MixedPhaseMetricError(f"run manifest must describe {WORKLOAD}")
+    if run.get("seed") != OFFICIAL_SEED:
+        raise MixedPhaseMetricError(f"mixed phase seed must be {OFFICIAL_SEED}")
     stim_cycles = _integer(run.get("stim_cycles"), "run.stim_cycles", minimum=1)
     geometry = run.get("geometry")
     if not isinstance(geometry, dict):
@@ -134,6 +144,17 @@ def _validate_manifest(manifest_path: Path) -> tuple[dict[str, Any], Path, list[
     parameters = run.get("parameters")
     if not isinstance(parameters, dict) or "fixed_polarity" not in parameters or "fixed_event_type" not in parameters:
         raise MixedPhaseMetricError("address-only run must freeze polarity and event_type")
+    try:
+        uniform_probability = Decimal(str(parameters["uniform_source_probability"]))
+        hot_probability = Decimal(str(parameters["hot_probability"]))
+    except (KeyError, InvalidOperation) as exc:
+        raise MixedPhaseMetricError("mixed phase probability parameters are missing") from exc
+    if uniform_probability != OFFICIAL_UNIFORM_PROBABILITY:
+        raise MixedPhaseMetricError("uniform_source_probability must be frozen 0.125")
+    if hot_probability != OFFICIAL_HOT_PROBABILITY:
+        raise MixedPhaseMetricError("hot_probability must be frozen 0.8")
+    if parameters["fixed_polarity"] != 1 or parameters["fixed_event_type"] != "spike":
+        raise MixedPhaseMetricError("mixed phase annotations must be fixed polarity=1 spike")
     trace_name = metadata.get("trace_file")
     if not isinstance(trace_name, str) or not trace_name or Path(trace_name).name != trace_name:
         raise MixedPhaseMetricError("trace_file must be a local filename")
@@ -223,6 +244,14 @@ def _logical_permutation(metadata: dict[str, Any], source_count: int) -> list[in
             or any(isinstance(value, bool) or not isinstance(value, int) for value in permutation)
             or sorted(permutation) != list(range(source_count))):
         raise MixedPhaseMetricError("logical_source_permutation must be a 16-source bijection")
+    declaration = metadata["run"]["parameters"].get("source_permutation", "identity")
+    if not isinstance(declaration, str) or declaration not in {"identity", "bit_reverse"}:
+        raise MixedPhaseMetricError("mixed phase mapping must be identity or bit_reverse")
+    expected = list(range(source_count))
+    if declaration == "bit_reverse":
+        expected = [int(f"{source:04b}"[::-1], 2) for source in range(source_count)]
+    if permutation != expected:
+        raise MixedPhaseMetricError("logical_source_permutation disagrees with declared mapping")
     return permutation
 
 
@@ -612,6 +641,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-manifest", type=Path, required=True)
     parser.add_argument("--events", type=Path, required=True)
     parser.add_argument("--summary", type=Path)
+    parser.add_argument(
+        "--require-qualified", action="store_true",
+        help="return 1 unless common summary correctness qualification passes",
+    )
     parser.add_argument("-o", "--output", type=Path)
     args = parser.parse_args(argv)
     try:
@@ -624,6 +657,11 @@ def main(argv: list[str] | None = None) -> int:
         args.output.write_text(payload, encoding="utf-8")
     else:
         print(payload, end="")
+    if args.require_qualified:
+        classification = result["classification"]
+        if (classification["correctness_status"] != "qualified_pass"
+                or classification["analysis_status"] == "correctness_failure"):
+            return 1
     return 0
 
 
