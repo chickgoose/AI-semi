@@ -66,16 +66,18 @@ class BenchmarkReleaseTest(unittest.TestCase):
             }
             for index in range(count)
         ]
-        if runs:
-            runs[0]["name"] = "mixed_phase_always_ready"
-            runs[0]["workload"] = "mixed_phase"
+        if len(runs) >= 2:
+            runs[0]["name"] = "mixed_phase_always_ready_identity"
+            runs[0]["workload"] = "mixed_phase_always_ready"
+            runs[1]["name"] = "mixed_phase_always_ready_bit_reverse"
+            runs[1]["workload"] = "mixed_phase_always_ready"
         return runs
 
     def _write_fixture(self) -> None:
         full_runs = self.runs(50)
         self.write(
             "bench/generator.py",
-            'GENERATOR_VERSION = "3.0"\n\n'
+            'GENERATOR_VERSION = "4.0"\n\n'
             "def metadata():\n"
             "    return {\n"
             '        "event_identity_mode": "address_only",\n'
@@ -123,16 +125,18 @@ class BenchmarkReleaseTest(unittest.TestCase):
         self.write(
             "bench/golden.json",
             json.dumps({
-                "generator_version": "3.0",
+                "generator_version": "4.0",
                 "suite": "manifest.full.json",
                 "runs": [{"name": run["name"]} for run in full_runs],
             }) + "\n",
         )
 
-    def generate(self, kind: str = "commit") -> tuple[Path, dict[str, object]]:
-        output = self.base / f"release-{kind}.json"
+    def generate(
+        self, kind: str = "commit", release_kind: str = "current"
+    ) -> tuple[Path, dict[str, object]]:
+        output = self.base / f"release-{kind}-{release_kind}.json"
         manifest = benchmark_release.generate_manifest(
-            self.repo, output, kind, self.inputs
+            self.repo, output, kind, self.inputs, release_kind
         )
         return output, manifest
 
@@ -154,6 +158,7 @@ class BenchmarkReleaseTest(unittest.TestCase):
         command = [
             sys.executable, str(ROOT / "benchmark_release.py"), "generate",
             "--repo", str(self.repo), "--output", str(output),
+            "--release-kind", "current",
             "--generator", self.inputs.generator,
             "--preparer", self.inputs.preparer,
             "--testbench", self.inputs.testbench,
@@ -234,7 +239,7 @@ class BenchmarkReleaseTest(unittest.TestCase):
         self.write(
             "bench/golden.json",
             json.dumps({
-                "generator_version": "3.0",
+                "generator_version": "4.0",
                 "suite": "manifest.full.json",
                 "runs": [{"name": run["name"]} for run in stale_runs],
             }) + "\n",
@@ -285,7 +290,7 @@ class BenchmarkReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(benchmark_release.ReleaseError, "golden suite"):
             self.generate()
 
-    def test_mixed_phase_run_is_required_in_both_suites(self) -> None:
+    def test_both_mixed_phase_runs_are_required_in_both_suites(self) -> None:
         full = json.loads((self.repo / "bench/manifest.full.json").read_text())
         capacity = json.loads(
             (self.repo / "bench/manifest.capacity.json").read_text()
@@ -299,6 +304,21 @@ class BenchmarkReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(benchmark_release.ReleaseError, "required run"):
             self.generate()
 
+        full = json.loads((self.repo / "bench/manifest.full.json").read_text())
+        capacity = json.loads(
+            (self.repo / "bench/manifest.capacity.json").read_text()
+        )
+        full["runs"][0]["name"] = "mixed_phase_always_ready_identity"
+        capacity["runs"][0]["name"] = "mixed_phase_always_ready_identity"
+        full["runs"][1]["name"] = "stale_second_phase_run"
+        capacity["runs"][1]["name"] = "stale_second_phase_run"
+        self.write("bench/manifest.full.json", json.dumps(full) + "\n")
+        self.write("bench/manifest.capacity.json", json.dumps(capacity) + "\n")
+        self.git("add", "bench/manifest.full.json", "bench/manifest.capacity.json")
+        self.git("commit", "-qm", "remove second mixed phase")
+        with self.assertRaisesRegex(benchmark_release.ReleaseError, "required run"):
+            self.generate()
+
     def test_non_address_only_generator_is_rejected(self) -> None:
         source = (self.repo / "bench/generator.py").read_text()
         self.write(
@@ -309,6 +329,42 @@ class BenchmarkReleaseTest(unittest.TestCase):
         self.git("commit", "-qm", "break identity")
         with self.assertRaisesRegex(benchmark_release.ReleaseError, "address-only"):
             self.generate()
+
+    def test_stale_generator_3_is_rejected_for_current_release(self) -> None:
+        source = (self.repo / "bench/generator.py").read_text()
+        self.write("bench/generator.py", source.replace('"4.0"', '"3.0"'))
+        golden = json.loads((self.repo / "bench/golden.json").read_text())
+        golden["generator_version"] = "3.0"
+        self.write("bench/golden.json", json.dumps(golden) + "\n")
+        self.git("add", "bench/generator.py", "bench/golden.json")
+        self.git("commit", "-qm", "bind stale generator")
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError,
+            "current release generator version must be 4.0, got 3.0",
+        ):
+            self.generate()
+
+    def test_generator_3_requires_explicit_historical_release(self) -> None:
+        source = (self.repo / "bench/generator.py").read_text()
+        self.write("bench/generator.py", source.replace('"4.0"', '"3.0"'))
+        golden = json.loads((self.repo / "bench/golden.json").read_text())
+        golden["generator_version"] = "3.0"
+        self.write("bench/golden.json", json.dumps(golden) + "\n")
+        self.git("add", "bench/generator.py", "bench/golden.json")
+        self.git("commit", "-qm", "bind historical generator")
+        _, manifest = self.generate(release_kind="historical")
+        self.assertEqual(manifest["release_kind"], "historical")
+        self.assertEqual(manifest["generator"]["version"], "3.0")
+        benchmark_release.validate_manifest(self.repo, manifest)
+
+    def test_declared_generator_version_mismatch_is_rejected(self) -> None:
+        _, manifest = self.generate()
+        tampered = copy.deepcopy(manifest)
+        tampered["generator"]["version"] = "3.0"
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError, "generator.version mismatch"
+        ):
+            benchmark_release.validate_manifest(self.repo, tampered)
 
     def test_results_and_log_artifacts_are_rejected(self) -> None:
         self.write("results/runner.py", "pass\n")

@@ -212,7 +212,11 @@ serialized ROW/COL design, or another implementation.
 repository is clean. It reads the generator, v4 preparer, clean TB, runners,
 official 50-run full and 22-run capacity manifests, golden fixture, and
 analyzers from a Git commit or tree object and records their SHA-256 values.
-The policy requires `mixed_phase_always_ready` in both official manifests.
+The default `current` release requires generator version 4.0. Generator 3.0 is
+accepted only with the explicit `--release-kind historical` marker; historical
+status does not relax the 50/22 suite, prepared ABI v4, or address-only rules.
+The policy requires both `mixed_phase_always_ready_identity` and
+`mixed_phase_always_ready_bit_reverse` in both official manifests.
 Counts are derived from the bound JSON arrays and must match 50/22 exactly.
 The output must be a sidecar outside the repository; it is never included in
 its own hash set.

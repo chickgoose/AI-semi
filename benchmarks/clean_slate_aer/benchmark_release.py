@@ -20,12 +20,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
-SCHEMA = "aer-address-only-benchmark-release-v2"
-GENERATOR_VERSION = "3.0"
+SCHEMA = "aer-address-only-benchmark-release-v3"
+CURRENT_GENERATOR_VERSION = "4.0"
+HISTORICAL_GENERATOR_VERSION = "3.0"
 SUITE_POLICY = {
     "expected_full_count": 50,
     "expected_capacity_count": 22,
-    "required_run_names": ["mixed_phase_always_ready"],
+    "required_run_names": [
+        "mixed_phase_always_ready_identity",
+        "mixed_phase_always_ready_bit_reverse",
+    ],
 }
 TRACE_ABI = {
     "version": 4,
@@ -155,6 +159,14 @@ def _generator_version(data: bytes) -> str:
     return match.group(1).decode("ascii")
 
 
+def _required_generator_version(release_kind: str) -> str:
+    if release_kind == "current":
+        return CURRENT_GENERATOR_VERSION
+    if release_kind == "historical":
+        return HISTORICAL_GENERATOR_VERSION
+    raise ReleaseError(f"unsupported release kind: {release_kind!r}")
+
+
 def _generator_is_address_only(data: bytes) -> bool:
     try:
         tree = ast.parse(data.decode("utf-8"))
@@ -253,9 +265,15 @@ def _verify_suite_documents(
     capacity: dict[str, Any],
     golden: dict[str, Any],
     full_name: str,
+    release_kind: str,
 ) -> tuple[int, int, int]:
-    if _generator_version(generator) != GENERATOR_VERSION:
-        raise ReleaseError(f"generator version must be {GENERATOR_VERSION}")
+    required_version = _required_generator_version(release_kind)
+    actual_version = _generator_version(generator)
+    if actual_version != required_version:
+        raise ReleaseError(
+            f"{release_kind} release generator version must be "
+            f"{required_version}, got {actual_version}"
+        )
     if not _generator_is_address_only(generator):
         raise ReleaseError("generator does not emit the address-only identity contract")
     full_runs = _runs(full, "official full manifest")
@@ -283,7 +301,7 @@ def _verify_suite_documents(
             raise ReleaseError(
                 f"official capacity manifest lacks required run: {required_name}"
             )
-    if golden.get("generator_version") != GENERATOR_VERSION:
+    if golden.get("generator_version") != required_version:
         raise ReleaseError("golden generator_version mismatch")
     if golden.get("suite") != PurePosixPath(full_name).name:
         raise ReleaseError("golden suite does not name the official full manifest")
@@ -316,8 +334,9 @@ def _validate_evidence(entries: Any) -> None:
 
 
 def _manifest_from_inputs(
-    repo: Path, binding_kind: str, inputs: ReleaseInputs
+    repo: Path, binding_kind: str, inputs: ReleaseInputs, release_kind: str
 ) -> dict[str, Any]:
+    required_version = _required_generator_version(release_kind)
     binding = _binding(repo, binding_kind)
     paths = [
         inputs.generator, inputs.preparer, inputs.testbench,
@@ -338,6 +357,7 @@ def _manifest_from_inputs(
         _json_bytes(capacity_blob, inputs.capacity_manifest),
         _json_bytes(golden_blob, inputs.golden),
         inputs.full_manifest,
+        release_kind,
     )
     preparer_blob = _blob(repo, binding, inputs.preparer)
     if not _preparer_has_v4_address_only_abi(preparer_blob):
@@ -352,6 +372,7 @@ def _manifest_from_inputs(
     _validate_evidence(evidence)
     return {
         "schema": SCHEMA,
+        "release_kind": release_kind,
         "binding": binding,
         "suite_policy": {
             **SUITE_POLICY,
@@ -359,7 +380,7 @@ def _manifest_from_inputs(
         },
         "generator": {
             **_artifact(repo, binding, inputs.generator),
-            "version": GENERATOR_VERSION,
+            "version": required_version,
         },
         "preparer": _artifact(repo, binding, inputs.preparer),
         "testbench": _artifact(repo, binding, inputs.testbench),
@@ -376,7 +397,7 @@ def _manifest_from_inputs(
         },
         "golden": {
             **_artifact(repo, binding, inputs.golden),
-            "generator_version": GENERATOR_VERSION,
+            "generator_version": required_version,
             "run_count": counts[2],
         },
         "trace_abi": {
@@ -411,13 +432,14 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     _clean(repo)
     _exact_keys(
         manifest,
-        {"schema", "binding", "suite_policy", "generator", "preparer",
+        {"schema", "release_kind", "binding", "suite_policy", "generator", "preparer",
          "testbench", "runners",
          "official_manifests", "golden", "trace_abi", "analyzers", "test_evidence"},
         "release manifest",
     )
     if manifest["schema"] != SCHEMA:
         raise ReleaseError(f"unsupported schema: {manifest['schema']!r}")
+    required_version = _required_generator_version(manifest["release_kind"])
     if manifest["suite_policy"] != SUITE_POLICY:
         raise ReleaseError("suite policy is not the official 50/22 mixed-phase policy")
     binding = manifest["binding"]
@@ -447,7 +469,7 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     generator_path = _verify_artifact(
         repo, binding, manifest["generator"], "generator", {"version"}
     )
-    if manifest["generator"]["version"] != GENERATOR_VERSION:
+    if manifest["generator"]["version"] != required_version:
         raise ReleaseError("generator.version mismatch")
     paths.append(generator_path)
     preparer_path = _verify_artifact(repo, binding, manifest["preparer"], "preparer")
@@ -480,7 +502,7 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         repo, binding, manifest["golden"], "golden",
         {"generator_version", "run_count"},
     )
-    if manifest["golden"]["generator_version"] != GENERATOR_VERSION:
+    if manifest["golden"]["generator_version"] != required_version:
         raise ReleaseError("golden generator version mismatch")
     paths.append(golden_path)
     if manifest["trace_abi"] != TRACE_ABI:
@@ -496,6 +518,7 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         _json_bytes(_blob(repo, binding, capacity_path), capacity_path),
         _json_bytes(_blob(repo, binding, golden_path), golden_path),
         full_path,
+        manifest["release_kind"],
     )
     if official["full_n16"]["run_count"] != counts[0]:
         raise ReleaseError("declared full run count differs from bound manifest")
@@ -514,7 +537,8 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
 
 
 def generate_manifest(
-    repo: Path, output: Path, binding_kind: str, inputs: ReleaseInputs
+    repo: Path, output: Path, binding_kind: str, inputs: ReleaseInputs,
+    release_kind: str = "current",
 ) -> dict[str, Any]:
     repo = repo.resolve()
     output = output.resolve()
@@ -524,7 +548,7 @@ def generate_manifest(
         pass
     else:
         raise ReleaseError("release manifest must be a detached sidecar outside the repository")
-    manifest = _manifest_from_inputs(repo, binding_kind, inputs)
+    manifest = _manifest_from_inputs(repo, binding_kind, inputs, release_kind)
     validate_manifest(repo, manifest)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix + ".tmp")
@@ -565,6 +589,10 @@ def parser() -> argparse.ArgumentParser:
     generate.add_argument("--repo", type=Path, required=True)
     generate.add_argument("--output", type=Path, required=True)
     generate.add_argument("--binding", choices=("commit", "tree"), default="commit")
+    generate.add_argument(
+        "--release-kind", choices=("current", "historical"), default="current",
+        help="current requires generator 4.0; historical explicitly permits 3.0",
+    )
     generate.add_argument("--generator", required=True)
     generate.add_argument("--preparer", required=True)
     generate.add_argument("--testbench", required=True)
@@ -585,7 +613,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         if args.command == "generate":
-            manifest = generate_manifest(args.repo, args.output, args.binding, _inputs(args))
+            manifest = generate_manifest(
+                args.repo, args.output, args.binding, _inputs(args), args.release_kind
+            )
             print(
                 f"BENCHMARK_RELEASE_GENERATED kind={manifest['binding']['kind']} "
                 f"tree={manifest['binding']['tree']} output={args.output}"
