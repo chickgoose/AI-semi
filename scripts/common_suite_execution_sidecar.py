@@ -35,15 +35,19 @@ def build(attempt_root: Path, run_manifest: Path, trace: Path, result: Path,
     if needs_analyzer != (analyzer is not None):
         raise receipt.ReceiptError("analyzer presence does not match workload schema")
     tools = attempt.get("tools")
-    if not isinstance(tools, dict) or "runner" not in tools or (needs_analyzer and workload not in tools):
+    if (not isinstance(tools, dict) or not {"runner", "generator"}.issubset(tools) or
+            (needs_analyzer and workload not in tools)):
         raise receipt.ReceiptError("attempt lacks required tool identity")
     tool_binding = {}
-    for key in (["runner", workload] if needs_analyzer else ["runner"]):
+    for key in (["runner", "generator", workload] if needs_analyzer else ["runner", "generator"]):
         row = tools[key]
         tool_binding[key] = {
             "identity": receipt._string(row.get("identity"), f"tool {key} identity"),
-            "sha256": receipt._sha(row.get("sha256"), f"tool {key} sha256"),
+            "bundle_sha256": receipt._sha(row.get("bundle_sha256"), f"tool {key} bundle sha256"),
         }
+    simulator = attempt.get("simulator")
+    if not isinstance(simulator, dict):
+        raise receipt.ReceiptError("attempt lacks simulator identity")
     return {
         "schema_version": receipt.SIDECAR_SCHEMA_VERSION,
         "suite": receipt._string(attempt.get("suite"), "attempt suite"),
@@ -55,6 +59,13 @@ def build(attempt_root: Path, run_manifest: Path, trace: Path, result: Path,
         "candidate_manifest_sha256": receipt._sha(
             attempt.get("candidate_manifest", {}).get("sha256"), "candidate manifest sha256"),
         "tools": tool_binding,
+        "simulator": {
+            "identity": receipt._string(simulator.get("identity"), "simulator identity"),
+            "executable_sha256": receipt._sha(simulator.get("executable", {}).get("sha256"),
+                                               "simulator executable sha256"),
+            "version_sha256": receipt._sha(simulator.get("version", {}).get("sha256"),
+                                            "simulator version sha256"),
+        },
         "result_sha256": _sha(result),
         "analyzer_sha256": _sha(analyzer) if analyzer else None,
     }
