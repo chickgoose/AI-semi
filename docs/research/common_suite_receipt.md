@@ -26,19 +26,32 @@ the embedded generation-index object and byte equality to the generator's
 canonical sorted/indented serialization, hashes those actual bytes, and checks
 the named JSONL against the frozen trace SHA.
 
-## Attempt artifacts
+## Immutable attempt and execution binding
 
-The artifact manifest has schema 2:
+`common_suite_attempt.py` allocates only a new
+`attempts/<suite>/<candidate>/<unique-id>/` directory. It snapshots the candidate
+manifest and every declared runner/analyzer tool into `provenance/`, hashes the
+snapshot bytes, and writes/fsyncs schema-2 `attempt.json`. The receipt requires
+that exact directory shape and refuses a missing, moved, renamed, or hash-mismatched
+attempt. Existing attempts and user results are never removed or overwritten.
+
+The artifact manifest has schema 3 and resides in that attempt root:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "suite": "full50",
+  "candidate": "candidate-key",
+  "attempt": {"path": "attempt.json", "sha256": "..."},
   "runs": [{
     "name": "core_sparse_identity",
     "freshness_marker": "runs/core_sparse_identity/freshness.marker",
     "result": {
       "path": "runs/core_sparse_identity/trace.events.csv",
+      "sha256": "..."
+    },
+    "execution_sidecar": {
+      "path": "runs/core_sparse_identity/execution.sidecar.json",
       "sha256": "..."
     }
   }]
@@ -46,14 +59,23 @@ The artifact manifest has schema 2:
 ```
 
 Paths are relative to `--artifact-root`. Absolute paths, `..`, symlinks,
-shared paths, empty artifacts, hash mismatches, and artifacts not strictly
-newer than their per-run empty marker fail the receipt. Each result CSV must
-have one consistent, nonempty candidate/test/seed tuple matching the generated
-run manifest, and the candidate must be the same across all 50 or 22 runs.
+shared paths, hard links, reused inodes, reused result SHA values, empty
+artifacts, hash mismatches, and artifacts not strictly newer than their per-run
+empty marker fail the receipt. Each result CSV must have one consistent
+candidate/test/seed tuple matching both the generated run manifest and the
+attempt candidate.
 
-Only `pairwise_contention` and `mixed_phase_always_ready` rows must add an
-`analyzer` object with the same path/SHA form. Analyzer declarations on other
-workloads are rejected. Provenance follows the analyzers that actually exist:
+Every run requires a sidecar created after its result/analyzer. Its complete
+schema binds the exact suite, attempt ID, candidate, run name, trace SHA,
+generated run-manifest SHA, snapshotted candidate-manifest SHA, runner/tool
+identity and SHA, result SHA, and optional analyzer SHA. A swapped result or
+sidecar therefore cannot satisfy another run merely because filenames or mtimes
+look fresh.
+
+`pairwise_contention`, `mixed_phase_always_ready`, `phase_transition`, and
+`timing_pair` rows must add an `analyzer` object with the same path/SHA form.
+Analyzer declarations on other workloads are rejected. Provenance follows the
+actual analyzer schemas:
 
 - pairwise: candidate/test/seed, trace SHA, generator version, and logical
   permutation must agree; `measurement_state` must be `COMPLETE`, evaluable
@@ -63,6 +85,11 @@ workloads are rejected. Provenance follows the analyzers that actually exist:
   check must pass. Its correctness status must be `qualified_pass`; valid
   analysis outcomes are `pass` and `capacity_loss` (loss is a measured outcome,
   not a receipt failure).
+- phase transition: candidate/test/seed/trace provenance, the exact five phase
+  names and required accounting fields, and uncensored recovery are required.
+- timing pair: candidate/test/seed/trace provenance and exact
+  total=evaluable+dropped+censored accounting are required; dropped source
+  events remain a measured capacity outcome, while censoring is rejected.
 
 No nonexistent `_common_suite_provenance` or result-SHA analyzer field is
 assumed. Result SHA remains bound by the artifact manifest and receipt.
@@ -71,7 +98,13 @@ Invocation:
 
 ```sh
 attempt_root="$(python3 scripts/common_suite_attempt.py \
-  --root "$out_root" --suite full50 --candidate "$candidate")" || exit $?
+  --root "$out_root" --suite full50 --candidate "$candidate" \
+  --candidate-manifest "$candidate_manifest" \
+  --tool runner="$runner" \
+  --tool pairwise_contention="$pairwise_analyzer" \
+  --tool mixed_phase_always_ready="$mixed_analyzer" \
+  --tool phase_transition="$phase_analyzer" \
+  --tool timing_pair="$timing_analyzer")" || exit $?
 
 python3 scripts/common_suite_receipt.py \
   --suite full50 \
@@ -82,11 +115,20 @@ python3 scripts/common_suite_receipt.py \
   --output "$attempt_root/common-suite.receipt.json"
 ```
 
-`common_suite_attempt.py` creates, with exclusive `mkdir`, a private path below
-`$out_root/attempts/$suite/$candidate/` containing `runs/` and an fsynced
-`attempt.json`. It never removes or overwrites an earlier result. A runner may
-therefore put the freshness marker, DUT output, analyzer output, artifact
-manifest, and receipt in one unique namespace without a shared-path race.
+The runner writes markers and outputs only below this returned path, then emits
+each execution sidecar and finally schema-3 `artifacts.json`. The sidecar helper
+computes hashes from the actual files and refuses overwrite:
+
+```sh
+python3 scripts/common_suite_execution_sidecar.py \
+  --attempt-root "$attempt_root" \
+  --run-manifest "$run_manifest" --trace "$trace" \
+  --result "$result" --analyzer "$analysis" \
+  --output "$attempt_root/runs/$run_name/execution.sidecar.json"
+```
+
+Omit `--analyzer` only for a workload outside the four analyzer schemas. The
+runner must not reuse another attempt's inode or result digest.
 
 ## Atomic publication boundary
 
