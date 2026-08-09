@@ -21,8 +21,9 @@ from typing import Any
 
 import common_suite_official as official
 
-SCHEMA_VERSION = 4
-SIDECAR_SCHEMA_VERSION = 2
+SCHEMA_VERSION = 5
+SIDECAR_SCHEMA_VERSION = 3
+EXECUTION_IDENTITY_SCHEMA_VERSION = 1
 ANALYZER_WORKLOADS = {
     "pairwise_contention", "mixed_phase_always_ready",
     "phase_transition", "timing_pair",
@@ -256,6 +257,18 @@ def _artifact(root: Path, spec: Any, marker: os.stat_result, label: str,
     if digest != _sha(spec["sha256"], f"{label}.sha256"):
         raise ReceiptError(f"{label} SHA256 mismatch")
     return path, payload, info, digest
+
+
+def _immutable_artifact(root: Path, spec: Any, label: str,
+                        inodes: dict[tuple[int, int], Path]):
+    if not isinstance(spec, dict) or set(spec) != {"path", "sha256"}:
+        raise ReceiptError(f"{label} must contain exactly path and sha256")
+    path = _contained(root, spec["path"], f"{label}.path")
+    payload, info = _read_bytes_stable(path, label)
+    _claim_inode(info, path, label, inodes)
+    if not payload or _sha256(payload) != _sha(spec["sha256"], f"{label}.sha256"):
+        raise ReceiptError(f"{label} identity mismatch")
+    return path, payload, info, _sha256(payload)
 
 
 def _csv_provenance(payload: bytes, metadata: dict[str, Any], name: str,
@@ -651,7 +664,7 @@ def _load_attempt(artifact_root: Path, artifacts: dict[str, Any], suite: str,
         if not contents or _sha256(contents) != digest:
             raise ReceiptError(f"simulator {key} identity mismatch")
         simulator[f"{key}_sha256"] = digest
-    return doc, payload, candidate, candidate_sha, tools, simulator
+    return doc, payload, candidate, candidate_sha, tools, simulator, candidate_doc
 
 
 def validate_official_generation(generation_index_path: Path, suite_manifest_path: Path,
@@ -704,6 +717,60 @@ def validate_official_generation(generation_index_path: Path, suite_manifest_pat
             "generation_index_sha256": _sha256(index_bytes)}
 
 
+def _validate_execution_evidence(artifact_root: Path, artifacts: dict[str, Any],
+                                 attempt_doc: dict[str, Any], candidate_sha: str,
+                                 tools: dict[str, Any], simulator: dict[str, Any],
+                                 candidate_doc: dict[str, Any],
+                                 inodes: dict[tuple[int, int], Path]):
+    compile_path, compile_bytes, compile_info, compile_sha = _immutable_artifact(
+        artifact_root, artifacts.get("compile_manifest"), "runner compile manifest", inodes)
+    try:
+        compile_doc = json.loads(compile_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReceiptError(f"runner compile manifest is invalid JSON: {exc}") from exc
+    expected_compile = {
+        "schema_version": 1, "candidate_manifest_sha256": candidate_sha,
+        "candidate_bundle_sha256": candidate_doc["bundle_sha256"],
+        "filelist": candidate_doc["filelist"], "top": candidate_doc["top"],
+        "parameters": candidate_doc["parameters"], "defines": candidate_doc["defines"],
+        "includes": candidate_doc["includes"], "source_count": candidate_doc["source_count"],
+        "retire_lanes": candidate_doc["retire_lanes"], "simulator": simulator,
+    }
+    if compile_doc != expected_compile:
+        raise ReceiptError("runner compile manifest does not prove exact candidate/simulator consumption")
+    compile_log_path, _, compile_log_info, compile_log_sha = _immutable_artifact(
+        artifact_root, artifacts.get("compile_log"), "runner compile log", inodes)
+
+    identity_path, identity_bytes, identity_info, identity_sha = _immutable_artifact(
+        artifact_root, artifacts.get("execution_identity"), "execution identity", inodes)
+    try:
+        identity_doc = json.loads(identity_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReceiptError(f"execution identity is invalid JSON: {exc}") from exc
+    expected_tool_rows = {}
+    for name, normalized in tools.items():
+        raw = attempt_doc["tools"][name]
+        files = [raw["entrypoint"], *raw["dependencies"]]
+        expected_tool_rows[name] = {"bundle_sha256": normalized["bundle_sha256"], "files": [
+            {"logical_name": row["logical_name"], "sha256": row["sha256"],
+             "pre_sha256": row["sha256"], "post_sha256": row["sha256"]} for row in files]}
+    expected_simulator = {**simulator,
+        "executable_pre_sha256": simulator["executable_sha256"],
+        "executable_post_sha256": simulator["executable_sha256"],
+        "version_pre_sha256": simulator["version_sha256"],
+        "version_post_sha256": simulator["version_sha256"]}
+    expected_identity = {"schema_version": EXECUTION_IDENTITY_SCHEMA_VERSION,
+        "status": "pre_post_match", "candidate_manifest_sha256": candidate_sha,
+        "tools": expected_tool_rows, "simulator": expected_simulator,
+        "compile_manifest_sha256": compile_sha, "compile_log_sha256": compile_log_sha}
+    if identity_doc != expected_identity:
+        raise ReceiptError("execution identity does not match immutable tool/simulator snapshots")
+    return ({"path": str(identity_path), "sha256": identity_sha, "size_bytes": identity_info.st_size},
+            {"path": str(compile_path), "sha256": compile_sha, "size_bytes": compile_info.st_size},
+            {"path": str(compile_log_path), "sha256": compile_log_sha,
+             "size_bytes": compile_log_info.st_size}, identity_sha)
+
+
 def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
              artifacts_path: Path, artifact_root: Path,
              suites: dict[str, Any] | None = None,
@@ -738,10 +805,11 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
         raise ReceiptError("artifact manifest must reside in the attempt root")
     artifacts, artifacts_bytes, artifacts_info = _read_json(artifacts_path, "artifact manifest")
     _claim_inode(artifacts_info, artifacts_path, "artifact manifest", inodes)
-    if (set(artifacts) != {"schema_version", "suite", "candidate", "attempt", "runs"} or
+    if (set(artifacts) != {"schema_version", "suite", "candidate", "attempt", "execution_identity",
+                           "compile_manifest", "compile_log", "runs"} or
             artifacts["schema_version"] != SCHEMA_VERSION or artifacts["suite"] != suite):
         raise ReceiptError("artifact manifest schema_version/suite mismatch")
-    attempt_doc, attempt_bytes, candidate, candidate_manifest_sha, tools, simulator = _load_attempt(
+    attempt_doc, attempt_bytes, candidate, candidate_manifest_sha, tools, simulator, candidate_doc = _load_attempt(
         artifact_root, artifacts, suite, inodes)
     if artifacts["candidate"] != candidate:
         raise ReceiptError("artifact and attempt candidate mismatch")
@@ -752,6 +820,9 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
                                                      if indexed[name]["run"]["workload"] in ANALYZER_WORKLOADS}
     if not required_tool_names.issubset(tools):
         raise ReceiptError(f"attempt is missing tool identities: {sorted(required_tool_names - set(tools))}")
+    execution_entry, compile_entry, compile_log_entry, execution_identity_sha = _validate_execution_evidence(
+        artifact_root, artifacts, attempt_doc, candidate_manifest_sha, tools, simulator,
+        candidate_doc, inodes)
 
     trace_root, receipt_runs, result_shas = generation_index_path.parent, [], set()
     for name in names:
@@ -784,6 +855,8 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
         expected_row_keys = {"name", "freshness_marker", "result", "execution_sidecar"}
         if metadata["run"]["workload"] in ANALYZER_WORKLOADS:
             expected_row_keys.add("analyzer")
+        if metadata["run"]["workload"] == "mixed_phase_always_ready":
+            expected_row_keys.add("summary")
         if set(row) != expected_row_keys:
             raise ReceiptError(f"run {name} artifact row schema mismatch")
         marker_path = _contained(artifact_root, row.get("freshness_marker"), f"run {name} marker")
@@ -799,6 +872,14 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
         csv_key = _csv_provenance(result_bytes, metadata, name, candidate)
 
         workload, analyzer_entry, analyzer_sha, analyzer_info = metadata["run"]["workload"], None, None, None
+        summary_entry, summary_sha, summary_info = None, None, None
+        if workload == "mixed_phase_always_ready":
+            summary_path, _, summary_info, summary_sha = _artifact(
+                artifact_root, row.get("summary"), marker_info, f"run {name} mixed summary", inodes)
+            summary_entry = {"path": str(summary_path), "sha256": summary_sha,
+                             "size_bytes": summary_info.st_size, "mtime_ns": summary_info.st_mtime_ns}
+        elif "summary" in row:
+            raise ReceiptError(f"run {name} must not declare a summary")
         if workload in ANALYZER_WORKLOADS:
             analyzer_path, analyzer_bytes, analyzer_info, analyzer_sha = _artifact(
                 artifact_root, row.get("analyzer"), marker_info, f"run {name} analyzer", inodes)
@@ -818,7 +899,8 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
             artifact_root, row.get("execution_sidecar"), marker_info,
             f"run {name} execution sidecar", inodes)
         if sidecar_info.st_mtime_ns <= max(result_info.st_mtime_ns,
-                                           analyzer_info.st_mtime_ns if analyzer_info else 0):
+                                           analyzer_info.st_mtime_ns if analyzer_info else 0,
+                                           summary_info.st_mtime_ns if summary_info else 0):
             raise ReceiptError(f"run {name} execution sidecar predates bound outputs")
         try:
             sidecar = json.loads(sidecar_bytes)
@@ -834,7 +916,8 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
             "run_manifest_sha256": run_manifest_sha,
             "candidate_manifest_sha256": candidate_manifest_sha,
             "tools": bound_tools, "simulator": simulator, "result_sha256": result_sha,
-            "analyzer_sha256": analyzer_sha,
+            "analyzer_sha256": analyzer_sha, "summary_sha256": summary_sha,
+            "execution_identity_sha256": execution_identity_sha,
         }
         if sidecar != expected_sidecar:
             raise ReceiptError(f"run {name} execution sidecar binding mismatch")
@@ -851,6 +934,8 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
         }
         if analyzer_entry is not None:
             receipt_row["analyzer"] = analyzer_entry
+        if summary_entry is not None:
+            receipt_row["summary"] = summary_entry
         receipt_runs.append(receipt_row)
 
     return {
@@ -862,6 +947,8 @@ def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
                     "sha256": _sha256(attempt_bytes), "attempt_id": attempt_doc["attempt_id"]},
         "candidate_manifest_sha256": candidate_manifest_sha, "tools": tools,
         "simulator": simulator,
+        "execution_identity": execution_entry, "compile_manifest": compile_entry,
+        "compile_log": compile_log_entry,
         "inputs": {
             "official_manifest": {"path": str(suite_manifest_path.resolve()), "sha256": _sha256(manifest_bytes)},
             "generation_index": {"path": str(generation_index_path.resolve()), "sha256": _sha256(index_bytes)},

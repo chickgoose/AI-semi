@@ -113,6 +113,37 @@ class OfficialSuiteFixture:
             simulator_executable=self.simulator_executable, simulator_version=self.simulator_version)
         self.attempt_doc = json.loads((self.attempt / "attempt.json").read_text())
         self.attempt_sha = digest((self.attempt / "attempt.json").read_bytes())
+        simulator_identity = self._simulator()
+        candidate_doc = json.loads(candidate_manifest.read_text())
+        compile_doc = {"schema_version": 1,
+            "candidate_manifest_sha256": self.attempt_doc["candidate_manifest"]["sha256"],
+            "candidate_bundle_sha256": candidate_doc["bundle_sha256"], "filelist": candidate_doc["filelist"],
+            "top": candidate_doc["top"], "parameters": candidate_doc["parameters"],
+            "defines": candidate_doc["defines"], "includes": candidate_doc["includes"],
+            "source_count": candidate_doc["source_count"], "retire_lanes": candidate_doc["retire_lanes"],
+            "simulator": simulator_identity}
+        self.compile_manifest = self.attempt / "compile.manifest.json"
+        self.compile_manifest.write_text(json.dumps(compile_doc, indent=2, sort_keys=True) + "\n")
+        self.compile_log = self.attempt / "compile.log"; self.compile_log.write_text("compile evidence\n")
+        execution_tools = {}
+        for tool_name, tool in self.attempt_doc["tools"].items():
+            files = [tool["entrypoint"], *tool["dependencies"]]
+            execution_tools[tool_name] = {"bundle_sha256": tool["bundle_sha256"], "files": [
+                {"logical_name": item["logical_name"], "sha256": item["sha256"],
+                 "pre_sha256": item["sha256"], "post_sha256": item["sha256"]} for item in files]}
+        execution_doc = {"schema_version": receipt.EXECUTION_IDENTITY_SCHEMA_VERSION,
+            "status": "pre_post_match",
+            "candidate_manifest_sha256": self.attempt_doc["candidate_manifest"]["sha256"],
+            "tools": execution_tools, "simulator": {**simulator_identity,
+                "executable_pre_sha256": simulator_identity["executable_sha256"],
+                "executable_post_sha256": simulator_identity["executable_sha256"],
+                "version_pre_sha256": simulator_identity["version_sha256"],
+                "version_post_sha256": simulator_identity["version_sha256"]},
+            "compile_manifest_sha256": digest(self.compile_manifest.read_bytes()),
+            "compile_log_sha256": digest(self.compile_log.read_bytes())}
+        self.execution_identity = self.attempt / "execution.identity.json"
+        self.execution_identity.write_text(json.dumps(execution_doc, indent=2, sort_keys=True) + "\n")
+        self.execution_identity_sha = digest(self.execution_identity.read_bytes())
 
         artifact_runs = []
         for position, name in enumerate(self.names):
@@ -131,7 +162,13 @@ class OfficialSuiteFixture:
             row = {"name": name, "freshness_marker": f"runs/{name}/freshness.marker",
                    "result": {"path": f"runs/{name}/trace.events.csv", "sha256": digest(result)}}
             analyzer = self._analyzer(metadata)
-            analyzer_sha = None
+            analyzer_sha = summary_sha = None
+            if config["workload"] == "mixed_phase_always_ready":
+                summary_bytes = b"candidate,test,seed,load_pct\ndut,mixed_phase_always_ready,4001,225\n"
+                summary_path = run_root / "trace.csv"; summary_path.write_bytes(summary_bytes)
+                os.utime(summary_path, ns=(marker_ns + 15_000, marker_ns + 15_000))
+                summary_sha = digest(summary_bytes)
+                row["summary"] = {"path": f"runs/{name}/trace.csv", "sha256": summary_sha}
             if analyzer is not None:
                 analyzer_bytes = (json.dumps(analyzer, sort_keys=True) + "\n").encode()
                 analyzer_path = run_root / "analysis.json"; analyzer_path.write_bytes(analyzer_bytes)
@@ -149,6 +186,8 @@ class OfficialSuiteFixture:
                 "candidate_manifest_sha256": self.attempt_doc["candidate_manifest"]["sha256"],
                 "tools": tool_binding, "simulator": self._simulator(),
                 "result_sha256": digest(result), "analyzer_sha256": analyzer_sha,
+                "summary_sha256": summary_sha,
+                "execution_identity_sha256": self.execution_identity_sha,
             }
             sidecar_bytes = (json.dumps(sidecar, sort_keys=True) + "\n").encode()
             sidecar_path = run_root / "execution.sidecar.json"; sidecar_path.write_bytes(sidecar_bytes)
@@ -160,6 +199,12 @@ class OfficialSuiteFixture:
         self.artifact_doc = {"schema_version": receipt.SCHEMA_VERSION, "suite": suite,
                              "candidate": self.candidate,
                              "attempt": {"path": "attempt.json", "sha256": self.attempt_sha},
+                             "execution_identity": {"path": "execution.identity.json",
+                                                    "sha256": self.execution_identity_sha},
+                             "compile_manifest": {"path": "compile.manifest.json",
+                                                  "sha256": digest(self.compile_manifest.read_bytes())},
+                             "compile_log": {"path": "compile.log",
+                                             "sha256": digest(self.compile_log.read_bytes())},
                              "runs": artifact_runs}
         self.artifact_path = self.attempt / "artifacts.json"; self.write_artifacts()
 
@@ -357,6 +402,7 @@ class CommonSuiteReceiptTest(unittest.TestCase):
             lambda doc: doc.__setitem__("candidate_manifest_sha256", "0" * 64),
             lambda doc: doc["tools"]["runner"].__setitem__("bundle_sha256", "0" * 64),
             lambda doc: doc["simulator"].__setitem__("version_sha256", "0" * 64),
+            lambda doc: doc.__setitem__("execution_identity_sha256", "0" * 64),
         ]
         for mutate in mutations:
             with self.subTest(mutate=mutate):
@@ -364,11 +410,36 @@ class CommonSuiteReceiptTest(unittest.TestCase):
                 with self.assertRaisesRegex(receipt.ReceiptError, "sidecar binding mismatch"):
                     fixture.validate()
 
+    def test_mixed_summary_path_and_sha_are_bound(self):
+        fixture = self.fixture(); name = "mixed_phase_always_ready_identity"; row = fixture.row(name)
+        summary = fixture.attempt / row["summary"]["path"]
+        summary.write_bytes(summary.read_bytes() + b"tamper\n")
+        marker = fixture.attempt / row["freshness_marker"]
+        os.utime(summary, ns=(marker.stat().st_mtime_ns + 20_000,) * 2)
+        with self.assertRaisesRegex(receipt.ReceiptError, "summary SHA256 mismatch"):
+            fixture.validate()
+
+    def test_execution_and_compile_evidence_fail_closed(self):
+        fixture = self.fixture(); path = fixture.execution_identity
+        path.write_bytes(path.read_bytes().replace(b"pre_post_match", b"pre_post_mismatch"))
+        fixture.artifact_doc["execution_identity"]["sha256"] = digest(path.read_bytes())
+        fixture.write_artifacts()
+        with self.assertRaisesRegex(receipt.ReceiptError, "execution identity does not match"):
+            fixture.validate()
+
+        fixture = self.fixture(); path = fixture.compile_manifest
+        document = json.loads(path.read_text()); document["top"] = "wrong_top"
+        path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+        fixture.artifact_doc["compile_manifest"]["sha256"] = digest(path.read_bytes())
+        fixture.write_artifacts()
+        with self.assertRaisesRegex(receipt.ReceiptError, "does not prove exact candidate"):
+            fixture.validate()
+
     def test_sidecar_helper_reproduces_bound_content(self):
         fixture = self.fixture(); name = "phase_transition_s3501"; row = fixture.row(name)
         built = sidecar_tool.build(fixture.attempt, fixture.trace_root / f"{name}.manifest.json",
             fixture.trace_root / f"{name}.events.jsonl", fixture.attempt / row["result"]["path"],
-            fixture.attempt / row["analyzer"]["path"])
+            fixture.attempt / row["analyzer"]["path"], None, fixture.execution_identity)
         self.assertEqual(built, json.loads((fixture.attempt / row["execution_sidecar"]["path"]).read_text()))
 
     def test_rejects_swapped_sidecars(self):

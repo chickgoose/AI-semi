@@ -46,20 +46,29 @@ are verified against regular, non-symlink files relative to the manifest, and
 each file is separately snapshotted into the attempt. The receipt rechecks every
 snapshot against both the filelist and bundle identity.
 
+The candidate snapshot is executable as a bundle, not merely an inventory:
+`provenance/candidate/bundle/candidate.manifest.json` retains its original
+relative filelist, while each source is stored under the same relative path
+beneath that bundle. Thus a compliant runner resolves and compiles immutable
+snapshot sources without consulting the mutable candidate tree.
+
 Each tool row binds a snapshotted entrypoint, ordered dependency snapshots, and
 a bundle SHA over logical names and byte hashes. `dependency_closure` is fixed
 to `declared_complete`; the helper cannot infer omitted imports, sourced shell
 files, or dynamically loaded code. Simulator identity separately binds the
 executable snapshot and exact captured version-output bytes.
 
-The artifact manifest has schema 4 and resides in that attempt root:
+The artifact manifest has schema 5 and resides in that attempt root:
 
 ```json
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "suite": "full50",
   "candidate": "candidate-key",
   "attempt": {"path": "attempt.json", "sha256": "..."},
+  "execution_identity": {"path": "execution.identity.json", "sha256": "..."},
+  "compile_manifest": {"path": "runner-evidence/compile.manifest.json", "sha256": "..."},
+  "compile_log": {"path": "runner-evidence/compile.log", "sha256": "..."},
   "runs": [{
     "name": "core_sparse_identity",
     "freshness_marker": "runs/core_sparse_identity/freshness.marker",
@@ -86,7 +95,9 @@ Every run requires a sidecar created after its result/analyzer. Its complete
 schema binds the exact suite, attempt ID, candidate, run name, trace SHA,
 generated run-manifest SHA, snapshotted candidate-manifest SHA, runner/analyzer
 bundle identity, simulator executable/version identity, result SHA, and optional
-analyzer SHA. A swapped result or
+analyzer SHA. Mixed rows additionally bind the actual `trace.csv` summary path
+through the artifact manifest and its SHA through both artifact and sidecar;
+all sidecars bind the attempt-level execution-identity SHA. A swapped result or
 sidecar therefore cannot satisfy another run merely because filenames or mtimes
 look fresh. `load_pct` mirrors `aer_clean_tb`: `load_milli=int(run.load*1000)`
 then `load_pct=(load_milli+5)//10`. Thus official loads 0.125, 0.234, and
@@ -156,19 +167,21 @@ python3 scripts/common_suite_receipt.py \
 ```
 
 The runner writes markers and outputs only below this returned path, then emits
-each execution sidecar and finally schema-4 `artifacts.json`. The sidecar helper
+each execution sidecar and finally schema-5 `artifacts.json`. The sidecar helper
 computes hashes from the actual files and refuses overwrite:
 
 ```sh
 python3 scripts/common_suite_execution_sidecar.py \
   --attempt-root "$attempt_root" \
   --run-manifest "$run_manifest" --trace "$trace" \
-  --result "$result" --analyzer "$analysis" \
+  --result "$result" --analyzer "$analysis" --summary "$mixed_summary" \
+  --execution-identity "$attempt_root/execution.identity.json" \
   --output "$attempt_root/runs/$run_name/execution.sidecar.json"
 ```
 
-Omit `--analyzer` only for a workload outside the four analyzer schemas. The
-runner must not reuse another attempt's inode or result digest.
+Omit `--analyzer` only for a workload outside the four analyzer schemas, and
+omit `--summary` except for mixed-phase rows. The runner must not reuse another
+attempt's inode or result digest.
 
 The integration tests locate the real v4 common generator in the current tree
 or sibling A1 tree (override with `AER_V4_COMMON_ROOT`), generate both official
@@ -194,11 +207,19 @@ performs, in order:
 5. revalidate the traces, require each `{run}` result/summary glob to resolve to
    exactly one private regular file newer than its marker, and run every
    workload-required analyzer;
-6. atomically publish every execution sidecar, schema-4 `artifacts.json`, and
+6. rehash every actual entrypoint, declared dependency, simulator executable,
+   and simulator-version file and require the pre-run, immutable-snapshot, and
+   post-run hashes to agree;
+7. verify the runner-emitted compile manifest exactly names the frozen candidate
+   filelist, top, parameters, defines, includes, source/retire-lane counts,
+   bundle hashes, and simulator identity, and bind it plus the nonempty compile
+   log into `execution.identity.json`;
+8. atomically publish every execution sidecar, schema-5 `artifacts.json`, and
    finally the immutable receipt.
 
 Any generator, runner, analyzer, validation, freshness, cardinality, sidecar,
-artifact, or fsync failure returns nonzero and publishes no receipt. The failed
+compile-attestation, pre/post identity, artifact, or fsync failure returns
+nonzero and publishes no receipt. The failed
 unique attempt is retained for diagnosis. Existing attempts and arbitrary
 pre-existing files below `--output-root` are neither deleted nor overwritten.
 The wrapper constrains the approved existing runners through all output/tmp
@@ -239,6 +260,15 @@ listed with repeated `--tool-dependency NAME=PATH`. Runner arguments, permitted
 the automatically bundled execution plan. Reserved output variables cannot be
 overridden by the caller.
 
+The wrapper exports the mandatory runner contract
+`AER_RECEIPT_CANDIDATE_MANIFEST`, `AER_RECEIPT_CANDIDATE_BUNDLE`, and
+`AER_RECEIPT_SIMULATOR` as immutable attempt-snapshot paths, accompanied by
+their hashes/identity and `AER_RECEIPT_COMPILE_MANIFEST`/`AER_RECEIPT_COMPILE_LOG`
+destinations. A runner that does not consume this contract and emit the exact
+compile evidence cannot obtain a receipt. This is an attested execution
+contract, not proof extracted from an arbitrary simulator log; candidate
+runners need explicit wiring to produce it.
+
 `generate-only` is a non-destructive smoke gate. Its output directory must not
 exist, and success requires the exact official manifest bytes, names, generated
 run manifests, and frozen trace hashes:
@@ -248,6 +278,13 @@ python3 scripts/common_suite_official_wrapper.py generate-only \
   --suite full50 --official-manifest "$common/manifest.neutrality-n16.json" \
   --generator "$common/generate_trace.py" --output-dir "$new_trace_dir"
 ```
+
+The integration suite also invokes the unmodified current A1
+`run_common_multilane_benchmark.sh generate-only` entrypoint and validates its
+22 outputs against the frozen capacity22 bytes/names/SHA registry. This is a
+real existing-runner generation E2E, not a DUT/simulator E2E. The latter remains
+fail-closed until an existing runner implements the mandatory compile-evidence
+environment contract above.
 
 ## Atomic publication boundary
 
