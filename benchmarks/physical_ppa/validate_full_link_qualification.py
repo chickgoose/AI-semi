@@ -19,6 +19,9 @@ import sys
 from pathlib import Path
 from typing import Any, Sequence
 
+import generate_full_link_inventory as inventory_generator
+import extract_full_link_evidence as evidence_extractor
+
 
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
@@ -204,7 +207,9 @@ def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
-def _stable_read_regular(path: Path, label: str, errors: list[str]) -> bytes | None:
+def _stable_read_regular_snapshot(
+    path: Path, label: str, errors: list[str]
+) -> tuple[bytes, tuple[int, int, int, int, int]] | None:
     """Read one regular file without following symlinks and detect mutation."""
 
     try:
@@ -259,7 +264,28 @@ def _stable_read_regular(path: Path, label: str, errors: list[str]) -> bytes | N
     if len(identities) != 1:
         errors.append(f"{label} changed during stable read")
         return None
-    return b"".join(chunks)
+    return b"".join(chunks), _stat_identity(after_fd)
+
+
+def _stable_read_regular(path: Path, label: str, errors: list[str]) -> bytes | None:
+    snapshot = _stable_read_regular_snapshot(path, label, errors)
+    return None if snapshot is None else snapshot[0]
+
+
+def _reject_ancestor_symlinks(path: Path, label: str, errors: list[str]) -> None:
+    """Reject a symlink in any existing component from filesystem root to path."""
+
+    absolute = path.absolute()
+    chain = list(reversed(absolute.parents)) + [absolute]
+    for component in chain:
+        try:
+            info = os.lstat(component)
+        except OSError as exc:
+            errors.append(f"{label} ancestor cannot be lstat'ed: {component}: {exc}")
+            return
+        if stat.S_ISLNK(info.st_mode):
+            errors.append(f"{label} ancestor must not be a symlink: {component}")
+            return
 
 
 class ArtifactReader:
@@ -268,7 +294,8 @@ class ArtifactReader:
     def __init__(self, base_dir: Path, errors: list[str]):
         self.base_dir = base_dir
         self.errors = errors
-        self.cache: dict[tuple[str, str], bytes] = {}
+        self.cache: dict[str, tuple[str, str, bytes]] = {}
+        self.inode_roles: dict[tuple[int, int], str] = {}
 
     def read(self, value: Any, path: str) -> bytes | None:
         artifact = _mapping(value, path, self.errors)
@@ -290,6 +317,23 @@ class ArtifactReader:
             )
             return None
 
+        cached = self.cache.get(raw_path)
+        normalized_sha = str(expected).lower()
+        if cached is not None:
+            cached_sha, cached_role, cached_data = cached
+            if cached_role != path:
+                self.errors.append(
+                    f"artifact evidence-role reuse is forbidden: {raw_path!r} "
+                    f"used by {cached_role} and {path}"
+                )
+                return None
+            if cached_sha != normalized_sha:
+                self.errors.append(
+                    f"artifact {raw_path!r} has contradictory SHA-256 records"
+                )
+                return None
+            return cached_data
+
         current = self.base_dir
         for part in relative.parts:
             current = current / part
@@ -302,19 +346,28 @@ class ArtifactReader:
                 self.errors.append(f"{path}.path traverses symlink {current}")
                 return None
 
-        key = (raw_path, str(expected).lower())
-        if key in self.cache:
-            return self.cache[key]
-        data = _stable_read_regular(current, f"{path}.path", self.errors)
-        if data is None:
+        snapshot = _stable_read_regular_snapshot(
+            current, f"{path}.path", self.errors
+        )
+        if snapshot is None:
             return None
+        data, identity = snapshot
         actual = hashlib.sha256(data).hexdigest()
-        if not isinstance(expected, str) or actual != expected.lower():
+        if not isinstance(expected, str) or actual != normalized_sha:
             self.errors.append(
                 f"{path}.sha256 digest mismatch ({expected!r} != {actual})"
             )
             return None
-        self.cache[key] = data
+        inode = (identity[0], identity[1])
+        prior_role = self.inode_roles.get(inode)
+        if prior_role is not None and prior_role != path:
+            self.errors.append(
+                f"artifact inode evidence-role reuse is forbidden between "
+                f"{prior_role} and {path}"
+            )
+            return None
+        self.inode_roles[inode] = path
+        self.cache[raw_path] = (normalized_sha, path, data)
         return data
 
     def json(self, value: Any, path: str) -> dict[str, Any]:
@@ -438,7 +491,7 @@ def _same_number(actual: Any, expected: float, path: str,
 
 def _load_bundle_inventory(
     reader: ArtifactReader, value: Any, errors: list[str]
-) -> list[str]:
+) -> tuple[list[str], dict[str, bytes]]:
     path = "$.candidate.bundle_inventory"
     inventory = reader.json(value, path)
     _strict_keys(inventory, {"schema_version", "files"}, f"{path}<content>", errors)
@@ -446,6 +499,7 @@ def _load_bundle_inventory(
         errors.append(f"{path}<content>.schema_version must equal 1")
     files = _array(inventory.get("files"), f"{path}<content>.files", errors)
     ordered: list[str] = []
+    source_data: dict[str, bytes] = {}
     seen: set[str] = set()
     for index, item in enumerate(files):
         item_path = f"{path}<content>.files[{index}]"
@@ -458,10 +512,12 @@ def _load_bundle_inventory(
             errors.append(f"{path}<content>.files contains duplicate {source_path!r}")
         seen.add(source_path)
         ordered.append(source_path)
-        reader.read(entry, item_path)
+        data = reader.read(entry, item_path)
+        if data is not None:
+            source_data[source_path] = data
     if not ordered:
         errors.append(f"{path}<content>.files must not be empty")
-    return ordered
+    return ordered, source_data
 
 
 def _load_ordered_filelist(
@@ -494,95 +550,147 @@ def _load_ordered_filelist(
     return result
 
 
-def _load_mapped_hierarchy(
-    reader: ArtifactReader, value: Any, errors: list[str]
-) -> tuple[str | None, dict[str, dict[str, Any]]]:
-    path = "$.flow.mapped_hierarchy_inventory"
-    inventory = reader.json(value, path)
-    _strict_keys(
-        inventory,
-        {"schema_version", "synthesis_top", "blocks"},
-        f"{path}<content>",
-        errors,
+def _load_canonical_evidence(
+    reader: ArtifactReader,
+    value: Any,
+    path: str,
+    evidence_type: str,
+    value_fields: set[str],
+    expected_inputs: list[tuple[str, Any]],
+    errors: list[str],
+) -> dict[str, Any]:
+    """Regenerate one canonical result from its raw report and frozen inputs."""
+
+    report = reader.json(value, path)
+    producer = _mapping(report.get("producer"), f"{path}<content>.producer", errors)
+    inputs = _array(
+        producer.get("inputs"), f"{path}<content>.producer.inputs", errors
     )
-    if inventory.get("schema_version") != 1:
-        errors.append(f"{path}<content>.schema_version must equal 1")
-    synthesis_top = inventory.get("synthesis_top")
-    if not isinstance(synthesis_top, str) or not synthesis_top:
-        errors.append(f"{path}<content>.synthesis_top must be a nonempty string")
-        synthesis_top = None
-    blocks: dict[str, dict[str, Any]] = {}
-    for index, item in enumerate(
-        _array(inventory.get("blocks"), f"{path}<content>.blocks", errors)
-    ):
-        item_path = f"{path}<content>.blocks[{index}]"
-        entry = _mapping(item, item_path, errors)
-        _strict_keys(
-            entry,
-            {"name", "kind", "top", "hierarchy_path", "source_files"},
-            item_path,
-            errors,
+    raw_reference = inputs[0] if inputs else {}
+    raw_data = reader.read(
+        raw_reference, f"{path}<content>.producer.raw_report"
+    )
+    context: list[tuple[str, dict[str, str]]] = []
+    for role, reference in expected_inputs:
+        artifact_ref = _mapping(reference, f"{path}<expected:{role}>", errors)
+        context.append((role, {
+            "path": str(artifact_ref.get("path")),
+            "sha256": str(artifact_ref.get("sha256")).lower(),
+        }))
+    output_ref = _mapping(value, path, errors)
+    extractor_errors: list[str] = []
+    extractor_data = _stable_read_regular(
+        Path(evidence_extractor.__file__), "trusted evidence extractor",
+        extractor_errors,
+    )
+    errors.extend(extractor_errors)
+    try:
+        expected_report = evidence_extractor.produce_evidence(
+            evidence_type=evidence_type,
+            raw_data=raw_data or b"",
+            raw_path=str(_mapping(raw_reference, f"{path}<raw>", errors).get("path")),
+            context_inputs=context,
+            output_path=str(output_ref.get("path")),
+            extractor_sha256=hashlib.sha256(extractor_data or b"").hexdigest(),
         )
-        name = entry.get("name")
-        if not isinstance(name, str) or not name:
-            errors.append(f"{item_path}.name must be a nonempty string")
-            continue
-        if name in blocks:
-            errors.append(f"{path}<content>.blocks contains duplicate name {name!r}")
-        sources = _array(entry.get("source_files"), f"{item_path}.source_files", errors)
-        normalized_sources: list[str] = []
-        for source_index, source in enumerate(sources):
-            normalized = _inventory_path(
-                source, f"{item_path}.source_files[{source_index}]", errors
-            )
-            if normalized is not None:
-                normalized_sources.append(normalized)
-        entry = dict(entry)
-        entry["source_files"] = normalized_sources
-        blocks[name] = entry
-    return synthesis_top, blocks
+    except evidence_extractor.EvidenceError as exc:
+        errors.append(f"{path} trusted raw-report extraction failed: {exc}")
+        expected_report = {}
+    if report != expected_report:
+        errors.append(
+            f"{path}<content> does not match trusted regenerated canonical evidence"
+        )
+    values = _mapping(expected_report.get("values"), f"{path}<derived-values>", errors)
+    _strict_keys(values, value_fields, f"{path}<derived-values>", errors)
+    return values
 
 
-def _load_generated_features(
-    reader: ArtifactReader, value: Any, errors: list[str]
-) -> tuple[str | None, set[tuple[str, str, str, str]]]:
-    path = "$.flow.generated_feature_inventory"
-    inventory = reader.json(value, path)
+def _parse_json_bytes(data: bytes | None, path: str, errors: list[str]) -> dict[str, Any]:
+    if data is None:
+        return {}
+    try:
+        value = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        errors.append(f"{path} must contain UTF-8 JSON: {exc}")
+        return {}
+    return _mapping(value, path, errors)
+
+
+def _load_synthesis_assets(
+    reader: ArtifactReader,
+    synthesis_data: bytes | None,
+    candidate_filelist: Any,
+    primary_library: Any,
+    primary_tool_config: Any,
+    primary_sdc: Any,
+    mapped_netlist: Any,
+    hierarchy_source: Any,
+    filelist_data: bytes | None,
+    library_data: bytes | None,
+    tool_config_data: bytes | None,
+    sdc_data: bytes | None,
+    mapped_netlist_data: bytes | None,
+    hierarchy_source_data: bytes | None,
+    errors: list[str],
+) -> dict[str, bytes]:
+    """Read every command-bound include, generated-IP, and library artifact."""
+
+    path = "$.flow.synthesis_command<content>"
+    manifest = _parse_json_bytes(synthesis_data, path, errors)
     _strict_keys(
-        inventory,
-        {"schema_version", "synthesis_top", "features"},
-        f"{path}<content>",
+        manifest,
+        {
+            "schema_version", "synthesis_top", "command", "filelist",
+            "tool_config", "sdc", "mapped_netlist", "hierarchy_source",
+            "include_files", "generated_ip", "libraries",
+        },
+        path,
         errors,
     )
-    if inventory.get("schema_version") != 1:
-        errors.append(f"{path}<content>.schema_version must equal 1")
-    synthesis_top = inventory.get("synthesis_top")
-    if not isinstance(synthesis_top, str) or not synthesis_top:
-        errors.append(f"{path}<content>.synthesis_top must be a nonempty string")
-        synthesis_top = None
-    result: set[tuple[str, str, str, str]] = set()
-    for index, item in enumerate(
-        _array(inventory.get("features"), f"{path}<content>.features", errors)
+    if manifest.get("schema_version") != 1:
+        errors.append(f"{path}.schema_version must equal 1")
+    command = _array(manifest.get("command"), f"{path}.command", errors)
+    if not command or not all(isinstance(token, str) and token for token in command):
+        errors.append(f"{path}.command must contain nonempty string tokens")
+    if manifest.get("filelist") != candidate_filelist:
+        errors.append(f"{path}.filelist must equal candidate.filelist artifact binding")
+
+    assets: dict[str, bytes] = {}
+    filelist_ref = _mapping(candidate_filelist, "$.candidate.filelist", errors)
+    if filelist_data is not None and isinstance(filelist_ref.get("path"), str):
+        assets[filelist_ref["path"]] = filelist_data
+    library_ref = _mapping(primary_library, "$.flow.library", errors)
+    if library_data is not None and isinstance(library_ref.get("path"), str):
+        assets[library_ref["path"]] = library_data
+    for name, reference, data in (
+        ("tool_config", primary_tool_config, tool_config_data),
+        ("sdc", primary_sdc, sdc_data),
+        ("mapped_netlist", mapped_netlist, mapped_netlist_data),
+        ("hierarchy_source", hierarchy_source, hierarchy_source_data),
     ):
-        item_path = f"{path}<content>.features[{index}]"
-        entry = _mapping(item, item_path, errors)
-        _strict_keys(
-            entry,
-            {"name", "category", "charged_block", "hierarchy_path"},
-            item_path,
-            errors,
-        )
-        values = tuple(entry.get(field) for field in (
-            "name", "category", "charged_block", "hierarchy_path"
-        ))
-        if not all(isinstance(item_value, str) and item_value for item_value in values):
-            errors.append(f"{item_path} fields must be nonempty strings")
-            continue
-        typed_values = (values[0], values[1], values[2], values[3])
-        if typed_values in result:
-            errors.append(f"{path}<content>.features contains duplicate {typed_values!r}")
-        result.add(typed_values)
-    return synthesis_top, result
+        if manifest.get(name) != reference:
+            errors.append(f"{path}.{name} must equal flow.{name} artifact binding")
+        artifact_ref = _mapping(reference, f"$.flow.{name}", errors)
+        if data is not None and isinstance(artifact_ref.get("path"), str):
+            assets[artifact_ref["path"]] = data
+
+    for group in ("include_files", "generated_ip", "libraries"):
+        for index, raw in enumerate(
+            _array(manifest.get(group), f"{path}.{group}", errors)
+        ):
+            item_path = f"{path}.{group}[{index}]"
+            reference = _mapping(raw, item_path, errors)
+            artifact_path = reference.get("path")
+            if artifact_path not in command:
+                errors.append(f"{item_path}.path must appear as an exact command token")
+            if group == "libraries" and reference == primary_library:
+                continue
+            data = reader.read(reference, item_path)
+            if data is not None and isinstance(artifact_path, str):
+                assets[artifact_path] = data
+    if primary_library not in _array(manifest.get("libraries"), f"{path}.libraries", errors):
+        errors.append(f"{path}.libraries must bind the primary flow.library artifact")
+    return assets
 
 
 def validate_record(
@@ -592,8 +700,8 @@ def validate_record(
 
     errors = _schema_errors(record)
     root = _mapping(record, "$", errors)
-    if root.get("schema_version") != 3:
-        errors.append("$.schema_version must equal 3")
+    if root.get("schema_version") != 4:
+        errors.append("$.schema_version must equal 4")
     if root.get("status") not in {"freeze_candidate", "frozen"}:
         errors.append("$.status must be freeze_candidate or frozen")
 
@@ -602,6 +710,7 @@ def validate_record(
         artifact_base = Path(".")
     else:
         artifact_base = Path(base_dir)
+        _reject_ancestor_symlinks(artifact_base, "artifact base_dir", errors)
         try:
             base_info = os.lstat(artifact_base)
             if stat.S_ISLNK(base_info.st_mode):
@@ -620,9 +729,13 @@ def validate_record(
     if not isinstance(synthesis_top, str) or not synthesis_top:
         errors.append("$.candidate.synthesis_top must be a nonempty string")
         synthesis_top = ""
-    bundle_files = _load_bundle_inventory(
+    bundle_data = reader.read(
+        candidate.get("bundle_inventory"), "$.candidate.bundle_inventory"
+    )
+    bundle_files, source_data = _load_bundle_inventory(
         reader, candidate.get("bundle_inventory"), errors
     )
+    filelist_data = reader.read(candidate.get("filelist"), "$.candidate.filelist")
     filelist_files = _load_ordered_filelist(reader, candidate.get("filelist"), errors)
     if bundle_files != filelist_files:
         errors.append(
@@ -755,10 +868,6 @@ def validate_record(
             )
             if normalized is not None:
                 charged_source_union.add(normalized)
-                if normalized not in filelist_files:
-                    errors.append(
-                        f"{path}.source_files contains {normalized!r} outside candidate filelist"
-                    )
         for field in (
             "included_in_area", "included_in_timing", "included_in_activity",
             "included_in_power",
@@ -774,13 +883,6 @@ def validate_record(
                 errors.append(
                     "runtime link encoding requires charged encoder and decoder blocks"
                 )
-    if set(filelist_files) != charged_source_union:
-        missing = sorted(set(filelist_files) - charged_source_union)
-        extra = sorted(charged_source_union - set(filelist_files))
-        errors.append(
-            "charged source closure mismatch "
-            f"(uncharged={missing!r}, outside_filelist={extra!r})"
-        )
 
     declarations = _mapping(
         root.get("feature_declarations"), "$.feature_declarations", errors
@@ -804,7 +906,6 @@ def validate_record(
                     )
                 else:
                     all_declaration_names[declaration_name] = category
-            reader.read(declaration.get("evidence"), f"{path}.evidence")
             block_name = declaration.get("charged_block")
             if not isinstance(block_name, str) or not block_name:
                 continue
@@ -830,11 +931,6 @@ def validate_record(
                 errors.append(
                     f"{path}.hierarchy_path must match charged block {block_name!r}"
                 )
-            if declaration.get("evidence") != block.get("hierarchy_evidence"):
-                errors.append(
-                    f"{path}.evidence must match charged block {block_name!r} "
-                    "hierarchy_evidence"
-                )
             if isinstance(declaration_name, str) and declaration_name:
                 declaration_inventory.add((
                     declaration_name,
@@ -854,50 +950,181 @@ def validate_record(
         )
 
     flow = _mapping(root.get("flow"), "$.flow", errors)
-    evidence_fields = (
-        "tool_config", "sdc", "library", "post_elaboration_report",
-        "synthesis_hierarchy_report", "synthesis_evidence", "mapped_netlist",
-        "area_report", "stage_report", "setup_report", "hold_report",
-        "route_report", "unconstrained_report", "drc_report",
+    flow_results = _mapping(flow.get("results"), "$.flow.results", errors)
+    tool_data = reader.read(flow.get("tool_config"), "$.flow.tool_config")
+    sdc_data = reader.read(flow.get("sdc"), "$.flow.sdc")
+    library_data = reader.read(flow.get("library"), "$.flow.library")
+    hierarchy_report_data = reader.read(
+        flow.get("synthesis_hierarchy_report"), "$.flow.synthesis_hierarchy_report"
     )
-    for field in evidence_fields:
-        reader.read(flow.get(field), f"$.flow.{field}")
-    mapped_top, mapped_blocks = _load_mapped_hierarchy(
-        reader, flow.get("mapped_hierarchy_inventory"), errors
+    synthesis_evidence_data = reader.read(
+        flow.get("synthesis_evidence"), "$.flow.synthesis_evidence"
     )
-    if mapped_top != synthesis_top:
-        errors.append("mapped hierarchy synthesis_top must equal candidate synthesis_top")
-    if set(mapped_blocks) != set(block_by_name):
-        errors.append(
-            "mapped hierarchy block set must exactly equal charged_blocks "
-            f"(mapped={sorted(mapped_blocks)!r}, charged={sorted(block_by_name)!r})"
+    mapped_netlist_data = reader.read(
+        flow.get("mapped_netlist"), "$.flow.mapped_netlist"
+    )
+    synthesis_command_data = reader.read(
+        flow.get("synthesis_command"), "$.flow.synthesis_command"
+    )
+    hierarchy_source_data = reader.read(
+        flow.get("hierarchy_source"), "$.flow.hierarchy_source"
+    )
+    del hierarchy_report_data, synthesis_evidence_data
+
+    assets = _load_synthesis_assets(
+        reader,
+        synthesis_command_data,
+        candidate.get("filelist"),
+        flow.get("library"),
+        flow.get("tool_config"),
+        flow.get("sdc"),
+        flow.get("mapped_netlist"),
+        flow.get("hierarchy_source"),
+        filelist_data,
+        library_data,
+        tool_data,
+        sdc_data,
+        mapped_netlist_data,
+        hierarchy_source_data,
+        errors,
+    )
+    assets.update(source_data)
+    if filelist_data is not None:
+        assets[str(_mapping(candidate.get("filelist"), "$.candidate.filelist", errors).get("path"))] = filelist_data
+    try:
+        generator_path = Path(inventory_generator.__file__)
+        generator_errors: list[str] = []
+        generator_data = _stable_read_regular(
+            generator_path, "trusted inventory generator", generator_errors
         )
-    for name in sorted(set(mapped_blocks) & set(block_by_name)):
-        mapped = mapped_blocks[name]
-        charged = block_by_name[name]
-        for field in ("kind", "top", "hierarchy_path"):
-            if mapped.get(field) != charged.get(field):
-                errors.append(
-                    f"mapped hierarchy block {name!r} {field} does not match charged block"
-                )
-        if mapped.get("source_files") != charged.get("source_files"):
-            errors.append(
-                f"mapped hierarchy block {name!r} source_files do not match charged block"
-            )
-    generated_top, generated_features = _load_generated_features(
-        reader, flow.get("generated_feature_inventory"), errors
-    )
-    if generated_top != synthesis_top:
-        errors.append("generated feature synthesis_top must equal candidate synthesis_top")
-    if generated_features != declaration_inventory:
-        hidden = sorted(generated_features - declaration_inventory)
-        invented = sorted(declaration_inventory - generated_features)
+        errors.extend(generator_errors)
+        inventory_ref = _mapping(flow.get("inventory"), "$.flow.inventory", errors)
+        input_paths = {
+            "bundle_inventory": str(_mapping(candidate.get("bundle_inventory"), "$.candidate.bundle_inventory", errors).get("path")),
+            "filelist": str(_mapping(candidate.get("filelist"), "$.candidate.filelist", errors).get("path")),
+            "mapped_netlist": str(_mapping(flow.get("mapped_netlist"), "$.flow.mapped_netlist", errors).get("path")),
+            "hierarchy_source": str(_mapping(flow.get("hierarchy_source"), "$.flow.hierarchy_source", errors).get("path")),
+            "synthesis_command": str(_mapping(flow.get("synthesis_command"), "$.flow.synthesis_command", errors).get("path")),
+        }
+        expected_inventory = inventory_generator.produce_inventory(
+            bundle_data=bundle_data or b"",
+            filelist_data=filelist_data or b"",
+            mapped_netlist_data=mapped_netlist_data or b"",
+            hierarchy_source_data=hierarchy_source_data or b"",
+            synthesis_command_data=synthesis_command_data or b"",
+            input_paths=input_paths,
+            source_loader=lambda path: assets[path],
+            output_path=str(inventory_ref.get("path")),
+            generator_sha256=hashlib.sha256(generator_data or b"").hexdigest(),
+        )
+    except (inventory_generator.InventoryError, KeyError) as exc:
+        errors.append(f"trusted inventory production failed: {exc}")
+        expected_inventory = {}
+    actual_inventory = reader.json(flow.get("inventory"), "$.flow.inventory")
+    if actual_inventory != expected_inventory:
         errors.append(
-            "generated feature inventory must exactly equal declaration set "
-            f"(hidden={hidden!r}, undevidenced_declarations={invented!r})"
+            "$.flow.inventory does not byte-semantically match trusted regenerated inventory"
         )
 
-    flow_results = _mapping(flow.get("results"), "$.flow.results", errors)
+    inventory_top = expected_inventory.get("synthesis_top")
+    if inventory_top != synthesis_top:
+        errors.append("trusted inventory synthesis_top must equal candidate synthesis_top")
+    inventory_blocks = {
+        item.get("name"): item
+        for item in expected_inventory.get("blocks", [])
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    if set(inventory_blocks) != set(block_by_name):
+        errors.append(
+            "trusted inventory block set must exactly equal charged_blocks "
+            f"(produced={sorted(inventory_blocks)!r}, charged={sorted(block_by_name)!r})"
+        )
+    for name in sorted(set(inventory_blocks) & set(block_by_name)):
+        produced = inventory_blocks[name]
+        charged = block_by_name[name]
+        for field in ("kind", "top", "hierarchy_path", "source_files"):
+            if produced.get(field) != charged.get(field):
+                errors.append(
+                    f"trusted inventory block {name!r} {field} does not match charged block"
+                )
+    produced_sources = {
+        source
+        for block in inventory_blocks.values()
+        for source in block.get("source_files", [])
+    }
+    if produced_sources != charged_source_union:
+        errors.append(
+            "charged source hierarchy closure differs from trusted inventory "
+            f"(produced={sorted(produced_sources)!r}, charged={sorted(charged_source_union)!r})"
+        )
+    produced_features = {
+        (
+            item.get("name"), item.get("category"), item.get("charged_block"),
+            item.get("hierarchy_path"),
+        )
+        for item in expected_inventory.get("features", [])
+        if isinstance(item, dict)
+    }
+    if produced_features != declaration_inventory:
+        errors.append(
+            "trusted generated feature inventory must exactly equal declaration set "
+            f"(hidden={sorted(produced_features - declaration_inventory)!r}, "
+            f"invented={sorted(declaration_inventory - produced_features)!r})"
+        )
+
+    area_inputs = [
+        ("mapped_netlist", flow.get("mapped_netlist")),
+        ("tool_config", flow.get("tool_config")),
+        ("library", flow.get("library")),
+    ]
+    timing_inputs = [
+        ("mapped_netlist", flow.get("mapped_netlist")),
+        ("sdc", flow.get("sdc")),
+        ("library", flow.get("library")),
+    ]
+    area_values = _load_canonical_evidence(
+        reader, flow.get("area_report"), "$.flow.area_report", "area",
+        {"mapped_cell_count", "area_um2"}, area_inputs, errors,
+    )
+    stage_values = _load_canonical_evidence(
+        reader, flow.get("stage_report"), "$.flow.stage_report", "stage",
+        {"pipeline_stage_count"}, area_inputs, errors,
+    )
+    setup_values = _load_canonical_evidence(
+        reader, flow.get("setup_report"), "$.flow.setup_report", "setup",
+        {"setup_wns_ns"}, timing_inputs, errors,
+    )
+    hold_values = _load_canonical_evidence(
+        reader, flow.get("hold_report"), "$.flow.hold_report", "hold",
+        {"hold_wns_ns"}, timing_inputs, errors,
+    )
+    route_values = _load_canonical_evidence(
+        reader, flow.get("route_report"), "$.flow.route_report", "route",
+        {"detailed_route_completed"}, timing_inputs, errors,
+    )
+    unresolved_values = _load_canonical_evidence(
+        reader, flow.get("post_elaboration_report"),
+        "$.flow.post_elaboration_report", "elaboration",
+        {"unresolved_references"}, [("synthesis_command", flow.get("synthesis_command"))], errors,
+    )
+    unconstrained_values = _load_canonical_evidence(
+        reader, flow.get("unconstrained_report"), "$.flow.unconstrained_report",
+        "unconstrained", {"unconstrained_paths"}, timing_inputs, errors,
+    )
+    drc_values = _load_canonical_evidence(
+        reader, flow.get("drc_report"), "$.flow.drc_report", "drc",
+        {"drc_violations"}, timing_inputs, errors,
+    )
+    derived_flow = {
+        **area_values, **stage_values, **setup_values, **hold_values, **route_values,
+        **unresolved_values, **unconstrained_values, **drc_values,
+    }
+    for field, derived in derived_flow.items():
+        if not _json_equal(flow_results.get(field), derived):
+            errors.append(
+                f"$.flow.results.{field} does not match parsed canonical evidence "
+                f"({flow_results.get(field)!r} != {derived!r})"
+            )
     for field in ("unresolved_references", "unconstrained_paths", "drc_violations"):
         if flow_results.get(field) != 0:
             errors.append(f"$.flow.results.{field} must equal 0")
@@ -907,11 +1134,70 @@ def validate_record(
         _finite_nonnegative(flow_results.get(field), f"$.flow.results.{field}", errors)
 
     activity = _mapping(root.get("activity"), "$.activity", errors)
+    reader.read(activity.get("trace"), "$.activity.trace")
+    reader.read(activity.get("prepared_input"), "$.activity.prepared_input")
+    activity_values = _load_canonical_evidence(
+        reader, activity.get("activity_artifact"), "$.activity.activity_artifact",
+        "activity",
+        {
+            "candidate_id", "test_id", "seed", "hierarchy_root", "format",
+            "coverage_percent", "window_start_cycle", "window_end_cycle_exclusive",
+            "measurement_cycles",
+        },
+        [
+            ("trace", activity.get("trace")),
+            ("prepared_input", activity.get("prepared_input")),
+            ("bundle_inventory", candidate.get("bundle_inventory")),
+        ],
+        errors,
+    )
+    power_values = _load_canonical_evidence(
+        reader, activity.get("power_report"), "$.activity.power_report", "power",
+        {
+            "candidate_id", "test_id", "seed", "measurement_cycles",
+            "average_power_mw", "errors",
+        },
+        [
+            ("activity", activity.get("activity_artifact")),
+            ("mapped_netlist", flow.get("mapped_netlist")),
+            ("library", flow.get("library")),
+        ], errors,
+    )
+    common_values = _load_canonical_evidence(
+        reader, activity.get("common_result"), "$.activity.common_result", "common_result",
+        {
+            "candidate_id", "test_id", "seed", "measurement_cycles",
+            "delivered_events", "errors",
+        },
+        [
+            ("trace", activity.get("trace")),
+            ("prepared_input", activity.get("prepared_input")),
+            ("bundle_inventory", candidate.get("bundle_inventory")),
+        ],
+        errors,
+    )
+    candidate_id = candidate.get("id")
     for field in (
-        "trace", "prepared_input", "activity_artifact", "power_report",
-        "common_result",
+        "test_id", "seed", "hierarchy_root", "format", "coverage_percent",
+        "window_start_cycle", "window_end_cycle_exclusive", "measurement_cycles",
     ):
-        reader.read(activity.get(field), f"$.activity.{field}")
+        if not _json_equal(activity.get(field), activity_values.get(field)):
+            errors.append(
+                f"$.activity.{field} does not match parsed activity evidence"
+            )
+    for evidence_name, values, fields in (
+        ("power", power_values, ("test_id", "seed", "measurement_cycles", "average_power_mw", "errors")),
+        ("common_result", common_values, ("test_id", "seed", "measurement_cycles", "delivered_events", "errors")),
+    ):
+        if values.get("candidate_id") != candidate_id:
+            errors.append(f"parsed {evidence_name} candidate_id does not match candidate")
+        for field in fields:
+            if not _json_equal(activity.get(field), values.get(field)):
+                errors.append(
+                    f"$.activity.{field} does not match parsed {evidence_name} evidence"
+                )
+    if activity_values.get("candidate_id") != candidate_id:
+        errors.append("parsed activity candidate_id does not match candidate")
     if activity.get("hierarchy_root") != synthesis_top:
         errors.append("$.activity.hierarchy_root must equal candidate synthesis_top")
     coverage = _finite_nonnegative(

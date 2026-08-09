@@ -1,6 +1,6 @@
 # Address-Only Zero-Feature Binding Eligibility
 
-Status: **eligibility-accounting HOLD CLOSED** against governing schema v3,
+Status: **eligibility-accounting HOLD CLOSED** against governing schema v4,
 2026-08-10. The gate implementation is GO; every candidate execution and
 qualification record remains unverified and is not thereby released for ranking.
 
@@ -25,7 +25,7 @@ This is a functional eligibility contract, not a claim that any candidate
 passed simulation, regression, CDC signoff, synthesis, or PPA qualification.
 The governing and latest physical boundary/accounting contract is
 [`aer-address-only-full-link-qualification.md`](aer-address-only-full-link-qualification.md).
-Its schema-v3 requirements take precedence over any use of “zero-feature” or
+Its schema-v4 requirements take precedence over any use of “zero-feature” or
 “free” in this document. Closing this eligibility HOLD does not release a
 candidate for ranking.
 
@@ -61,7 +61,7 @@ not mean zero physical cost. Runtime acknowledgement qualification, address or
 row/column decode, acknowledged-request masking, bitmap expansion, and retire
 fanout may be used in the functional seam to determine structural eligibility,
 but every equivalent gate and path is **mandatory charged logic** in ranked
-PPA. The TB binding module itself remains excluded as required by schema v3;
+PPA. The TB binding module itself remains excluded as required by schema v4;
 the equivalent physical acknowledgement/decoder/normalizer logic must appear
 under the synthesis top, be declared as the appropriate physical feature, map
 1:1 to a `charged_blocks` entry, and carry hierarchy/evidence hashes.

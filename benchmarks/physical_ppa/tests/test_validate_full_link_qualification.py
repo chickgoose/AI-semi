@@ -50,7 +50,9 @@ def valid_record(root):
 
     source_entries = []
     for kind in block_kinds:
-        reference = artifact(root, f"rtl/{kind}.sv", f"module {kind}; endmodule\n")
+        reference = artifact(
+            root, f"rtl/{kind}.sv", f"module candidate_{kind}; endmodule\n"
+        )
         source_entries.append(reference)
     bundle = json_artifact(root, "manifest/bundle.json", {
         "schema_version": 1,
@@ -63,6 +65,7 @@ def valid_record(root):
     )
 
     charged_blocks = []
+    hierarchy_rows = []
     hierarchy_evidence = {}
     for kind in block_kinds:
         evidence = artifact(
@@ -83,6 +86,12 @@ def valid_record(root):
             "included_in_activity": True,
             "included_in_power": True,
         })
+        hierarchy_rows.append({
+            "name": kind,
+            "kind": kind,
+            "hierarchy_path": f"{synthesis_top}.u_{kind}",
+            "module": f"candidate_{kind}",
+        })
 
     category_for_kind = {
         "encoder": "codec",
@@ -99,65 +108,188 @@ def valid_record(root):
             "codec", "serializer", "deserializer", "buffer", "cdc", "normalizer"
         )
     }
-    generated_features = []
     for kind, category in category_for_kind.items():
         entry = {
-            "name": f"{kind}_feature",
+            "name": kind,
             "charged_block": kind,
             "hierarchy_path": f"{synthesis_top}.u_{kind}",
-            "evidence": hierarchy_evidence[kind],
         }
         declarations[category].append(entry)
-        generated_features.append({
-            "name": entry["name"],
-            "category": category,
-            "charged_block": kind,
-            "hierarchy_path": entry["hierarchy_path"],
-        })
 
-    mapped_inventory = json_artifact(root, "evidence/mapped_hierarchy.json", {
+    mapped_text = [f"module {synthesis_top};\n"]
+    mapped_text.extend(f"  candidate_{kind} u_{kind}();\n" for kind in block_kinds)
+    mapped_text.append("endmodule\n")
+    mapped_text.extend(f"module candidate_{kind}; endmodule\n" for kind in block_kinds)
+    mapped_netlist = artifact(root, "evidence/mapped_netlist.v", "".join(mapped_text))
+    hierarchy_source = json_artifact(root, "evidence/hierarchy_source.json", {
         "schema_version": 1,
         "synthesis_top": synthesis_top,
-        "blocks": [
-            {
-                "name": block["name"],
-                "kind": block["kind"],
-                "top": block["top"],
-                "hierarchy_path": block["hierarchy_path"],
-                "source_files": block["source_files"],
-            }
-            for block in charged_blocks
+        "blocks": hierarchy_rows,
+    })
+    library = artifact(root, "flow/cells.lib", "library(test) {}\n")
+    tool_config = artifact(root, "flow/tool_config.tcl", "set trusted 1\n")
+    sdc = artifact(root, "flow/constraints.sdc", "create_clock -period 5 clk\n")
+    include = artifact(root, "flow/defines.vh", "`define TEST 1\n")
+    generated_ip = artifact(
+        root, "flow/generated_ip.sv", "module generated_unused_ip; endmodule\n"
+    )
+    synth_command_value = {
+        "schema_version": 1,
+        "synthesis_top": synthesis_top,
+        "command": [
+            "yosys", "-c", tool_config["path"], "-sdc", sdc["path"],
+            "-f", filelist["path"], "-I", include["path"],
+            "-ip", generated_ip["path"], "-lib", library["path"],
+            "-top", synthesis_top, "-o", mapped_netlist["path"],
+            "--hierarchy", hierarchy_source["path"],
         ],
-    })
-    generated_inventory = json_artifact(root, "evidence/generated_features.json", {
-        "schema_version": 1,
-        "synthesis_top": synthesis_top,
-        "features": generated_features,
-    })
-
-    flow_artifacts = {}
-    for field in (
-        "tool_config", "sdc", "library", "post_elaboration_report",
-        "synthesis_hierarchy_report", "synthesis_evidence", "mapped_netlist",
-        "area_report", "stage_report", "setup_report", "hold_report",
-        "route_report", "unconstrained_report", "drc_report",
-    ):
-        flow_artifacts[field] = artifact(
-            root, f"evidence/{field}.txt", f"verified {field}\n"
-        )
-    flow_artifacts["mapped_hierarchy_inventory"] = mapped_inventory
-    flow_artifacts["generated_feature_inventory"] = generated_inventory
-
-    activity_artifacts = {
-        field: artifact(root, f"activity/{field}.dat", f"verified {field}\n")
-        for field in (
-            "trace", "prepared_input", "activity_artifact", "power_report",
-            "common_result",
-        )
+        "filelist": filelist,
+        "tool_config": tool_config,
+        "sdc": sdc,
+        "mapped_netlist": mapped_netlist,
+        "hierarchy_source": hierarchy_source,
+        "include_files": [include],
+        "generated_ip": [generated_ip],
+        "libraries": [library],
     }
+    synthesis_command = json_artifact(
+        root, "flow/synthesis_command.json", synth_command_value
+    )
+    inventory_value = validator.inventory_generator.produce_inventory(
+        bundle_data=(root / bundle["path"]).read_bytes(),
+        filelist_data=(root / filelist["path"]).read_bytes(),
+        mapped_netlist_data=(root / mapped_netlist["path"]).read_bytes(),
+        hierarchy_source_data=(root / hierarchy_source["path"]).read_bytes(),
+        synthesis_command_data=(root / synthesis_command["path"]).read_bytes(),
+        input_paths={
+            "bundle_inventory": bundle["path"],
+            "filelist": filelist["path"],
+            "mapped_netlist": mapped_netlist["path"],
+            "hierarchy_source": hierarchy_source["path"],
+            "synthesis_command": synthesis_command["path"],
+        },
+        source_loader=lambda path: (root / path).read_bytes(),
+        output_path="evidence/inventory.json",
+        generator_sha256=hashlib.sha256(
+            Path(validator.inventory_generator.__file__).read_bytes()
+        ).hexdigest(),
+    )
+    inventory = json_artifact(root, "evidence/inventory.json", inventory_value)
+
+    def canonical(relative, evidence_type, values, inputs):
+        raw_lines = []
+        for field in validator.evidence_extractor.FIELD_TYPES[evidence_type]:
+            value = values[field]
+            if isinstance(value, bool):
+                value = "true" if value else "false"
+            raw_lines.append(f"{field}={value}\n")
+        raw_path = relative.replace(".json", ".raw")
+        raw = artifact(root, raw_path, "".join(raw_lines))
+        extracted = validator.evidence_extractor.produce_evidence(
+            evidence_type=evidence_type,
+            raw_data=(root / raw["path"]).read_bytes(),
+            raw_path=raw["path"],
+            context_inputs=inputs,
+            output_path=relative,
+            extractor_sha256=hashlib.sha256(
+                Path(validator.evidence_extractor.__file__).read_bytes()
+            ).hexdigest(),
+        )
+        return json_artifact(root, relative, extracted)
+
+    flow_artifacts = {
+        "tool_config": tool_config,
+        "sdc": sdc,
+        "library": library,
+        "synthesis_command": synthesis_command,
+        "hierarchy_source": hierarchy_source,
+        "inventory": inventory,
+        "synthesis_hierarchy_report": artifact(
+            root, "evidence/synthesis_hierarchy.txt", "candidate_full_link\n"
+        ),
+        "synthesis_evidence": artifact(
+            root, "evidence/synthesis_evidence.txt", "trusted synthesis\n"
+        ),
+        "mapped_netlist": mapped_netlist,
+    }
+    area_inputs = [
+        ("mapped_netlist", mapped_netlist), ("tool_config", tool_config),
+        ("library", library),
+    ]
+    timing_inputs = [
+        ("mapped_netlist", mapped_netlist), ("sdc", sdc), ("library", library),
+    ]
+    flow_artifacts.update({
+        "post_elaboration_report": canonical(
+            "evidence/elaboration.json", "elaboration",
+            {"unresolved_references": 0}, [("synthesis_command", synthesis_command)],
+        ),
+        "area_report": canonical(
+            "evidence/area.json", "area",
+            {"mapped_cell_count": 123, "area_um2": 456.25}, area_inputs,
+        ),
+        "stage_report": canonical(
+            "evidence/stage.json", "stage", {"pipeline_stage_count": 3}, area_inputs,
+        ),
+        "setup_report": canonical(
+            "evidence/setup.json", "setup", {"setup_wns_ns": 0.05}, timing_inputs,
+        ),
+        "hold_report": canonical(
+            "evidence/hold.json", "hold", {"hold_wns_ns": 0.02}, timing_inputs,
+        ),
+        "route_report": canonical(
+            "evidence/route.json", "route", {"detailed_route_completed": True},
+            timing_inputs,
+        ),
+        "unconstrained_report": canonical(
+            "evidence/unconstrained.json", "unconstrained",
+            {"unconstrained_paths": 0}, timing_inputs,
+        ),
+        "drc_report": canonical(
+            "evidence/drc.json", "drc", {"drc_violations": 0}, timing_inputs,
+        ),
+    })
+
+    trace = artifact(root, "activity/trace.json", "trace\n")
+    prepared = artifact(root, "activity/prepared.dat", "prepared\n")
+    activity_input = [
+        ("trace", trace), ("prepared_input", prepared),
+        ("bundle_inventory", bundle),
+    ]
+    activity_evidence = canonical(
+        "activity/activity.json", "activity",
+        {
+            "candidate_id": "candidate", "test_id": "uniform", "seed": 7,
+            "hierarchy_root": synthesis_top, "format": "saif",
+            "coverage_percent": 99.0, "window_start_cycle": 20,
+            "window_end_cycle_exclusive": 120, "measurement_cycles": cycles,
+        },
+        activity_input,
+    )
+    power_report = canonical(
+        "activity/power.json", "power",
+        {
+            "candidate_id": "candidate", "test_id": "uniform", "seed": 7,
+            "measurement_cycles": cycles, "average_power_mw": power_mw,
+            "errors": 0,
+        },
+        [
+            ("activity", activity_evidence), ("mapped_netlist", mapped_netlist),
+            ("library", library),
+        ],
+    )
+    common_result = canonical(
+        "activity/common_result.json", "common_result",
+        {
+            "candidate_id": "candidate", "test_id": "uniform", "seed": 7,
+            "measurement_cycles": cycles, "delivered_events": delivered,
+            "errors": 0,
+        },
+        activity_input,
+    )
     events_per_cycle = delivered / cycles
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "qualification_id": "candidate-n16-sparse",
         "status": "frozen",
         "candidate": {
@@ -264,7 +396,11 @@ def valid_record(root):
             },
         },
         "activity": {
-            **activity_artifacts,
+            "trace": trace,
+            "prepared_input": prepared,
+            "activity_artifact": activity_evidence,
+            "power_report": power_report,
+            "common_result": common_result,
             "format": "saif",
             "hierarchy_root": synthesis_top,
             "coverage_percent": 99.0,
@@ -274,6 +410,9 @@ def valid_record(root):
             "measurement_cycles": cycles,
             "clock_mhz": clock_mhz,
             "operating_point": "sparse",
+            "test_id": "uniform",
+            "seed": 7,
+            "errors": 0,
             "power_evidence": "activity_annotated",
             "average_power_mw": power_mw,
             "delivered_events": delivered,
@@ -304,7 +443,35 @@ class FullLinkQualificationTest(unittest.TestCase):
     def rewrite_json_reference(self, owner, field, relative, value):
         owner[field] = json_artifact(self.root, relative, value)
 
-    def test_schema_is_machine_readable_draft_2020_12_v3(self):
+    def rebind_synthesis_input(self, record, field, relative):
+        synthesis = read_json_artifact(
+            self.root, record["flow"]["synthesis_command"]
+        )
+        old_reference = synthesis[field]
+        synthesis[field] = record["flow"][field]
+        synthesis["command"] = [
+            record["flow"][field]["path"] if token == old_reference["path"] else token
+            for token in synthesis["command"]
+        ]
+        old_synthesis = record["flow"]["synthesis_command"]
+        record["flow"]["synthesis_command"] = json_artifact(
+            self.root, relative, synthesis
+        )
+        inventory = read_json_artifact(self.root, record["flow"]["inventory"])
+        for item in inventory["producer"]["inputs"]:
+            if item["role"] == field:
+                item.update(record["flow"][field])
+            if item["role"] == "synthesis_command":
+                item.update(record["flow"]["synthesis_command"])
+        inventory["producer"]["command"] = [
+            record["flow"][field]["path"] if token == old_reference["path"]
+            else record["flow"]["synthesis_command"]["path"]
+            if token == old_synthesis["path"] else token
+            for token in inventory["producer"]["command"]
+        ]
+        return inventory
+
+    def test_schema_is_machine_readable_draft_2020_12_v4(self):
         schema = json.loads(
             (ROOT / "full_link_qualification.schema.json").read_text(
                 encoding="utf-8"
@@ -313,7 +480,7 @@ class FullLinkQualificationTest(unittest.TestCase):
         self.assertEqual(
             schema["$schema"], "https://json-schema.org/draft/2020-12/schema"
         )
-        self.assertEqual(schema["properties"]["schema_version"]["const"], 3)
+        self.assertEqual(schema["properties"]["schema_version"]["const"], 4)
 
     def test_valid_full_link_record_recomputes_metrics(self):
         result = self.validate()
@@ -358,17 +525,12 @@ class FullLinkQualificationTest(unittest.TestCase):
             self.record["logical_contract"]["source_mapping"]["artifact"],
             *(block["hierarchy_evidence"] for block in self.record["charged_blocks"]),
             *(
-                declaration["evidence"]
-                for declarations in self.record["feature_declarations"].values()
-                for declaration in declarations
-            ),
-            *(
                 self.record["flow"][field]
                 for field in (
                     "tool_config", "sdc", "library", "post_elaboration_report",
+                    "synthesis_command", "hierarchy_source", "inventory",
                     "synthesis_hierarchy_report", "synthesis_evidence",
-                    "mapped_netlist", "mapped_hierarchy_inventory",
-                    "generated_feature_inventory", "area_report", "stage_report",
+                    "mapped_netlist", "area_report", "stage_report",
                     "setup_report", "hold_report", "route_report",
                     "unconstrained_report", "drc_report",
                 )
@@ -381,7 +543,7 @@ class FullLinkQualificationTest(unittest.TestCase):
                 )
             ),
         ]
-        for index, reference in enumerate(references):
+        for reference in references:
             original = reference["sha256"]
             reference["sha256"] = "0" * 64
             with self.subTest(path=reference["path"]):
@@ -398,7 +560,7 @@ class FullLinkQualificationTest(unittest.TestCase):
                     self.validate(record)
 
     def test_symlink_and_non_regular_evidence_are_rejected(self):
-        target = self.root / "activity" / "power_report.dat"
+        target = self.root / self.record["activity"]["power_report"]["path"]
         link = self.root / "activity" / "power-link.dat"
         os.symlink(target.name, link)
         record = copy.deepcopy(self.record)
@@ -415,8 +577,33 @@ class FullLinkQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(validator.QualificationError, "regular file"):
             self.validate(record)
 
+    def test_base_directory_ancestor_symlink_is_rejected(self):
+        linked_base = self.root / "linked-base"
+        os.symlink(self.root, linked_base)
+        with self.assertRaisesRegex(validator.QualificationError, "ancestor.*symlink"):
+            validator.validate_record(self.record, linked_base)
+
+    def test_evidence_role_and_inode_reuse_are_rejected(self):
+        record = copy.deepcopy(self.record)
+        record["activity"]["common_result"] = copy.deepcopy(
+            record["activity"]["power_report"]
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "evidence-role reuse"):
+            self.validate(record)
+
+        record = copy.deepcopy(self.record)
+        source = self.root / record["activity"]["power_report"]["path"]
+        hardlink = self.root / "activity" / "common-hardlink.json"
+        os.link(source, hardlink)
+        record["activity"]["common_result"] = {
+            "path": "activity/common-hardlink.json",
+            "sha256": record["activity"]["power_report"]["sha256"],
+        }
+        with self.assertRaisesRegex(validator.QualificationError, "inode evidence-role reuse"):
+            self.validate(record)
+
     def test_mutation_during_stable_read_is_rejected(self):
-        path = self.root / "activity" / "power_report.dat"
+        path = self.root / self.record["activity"]["power_report"]["path"]
         original_read = validator.os.read
         changed = False
 
@@ -445,6 +632,12 @@ class FullLinkQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(validator.QualificationError, "digest mismatch"):
             self.validate()
 
+    def test_synthesis_command_closes_include_generated_ip_and_library(self):
+        generated_ip = self.root / "flow" / "generated_ip.sv"
+        generated_ip.write_text("module rebound_ip; endmodule\n", encoding="utf-8")
+        with self.assertRaisesRegex(validator.QualificationError, "generated_ip.*digest"):
+            self.validate()
+
     def test_bundle_filelist_order_and_charged_source_closure_are_exact(self):
         record = copy.deepcopy(self.record)
         record["candidate"]["filelist"] = artifact(
@@ -462,69 +655,91 @@ class FullLinkQualificationTest(unittest.TestCase):
 
         record = copy.deepcopy(self.record)
         record["charged_blocks"][0]["source_files"] = ["rtl/link.sv"]
-        with self.assertRaisesRegex(validator.QualificationError, "charged source closure"):
+        with self.assertRaisesRegex(validator.QualificationError, "charged source hierarchy closure"):
             self.validate(record)
 
     def test_mapped_hierarchy_must_match_charged_blocks(self):
         record = copy.deepcopy(self.record)
-        inventory = read_json_artifact(self.root, record["flow"]["mapped_hierarchy_inventory"])
-        inventory["blocks"][0]["hierarchy_path"] = "candidate_full_link.u_free_tx"
-        self.rewrite_json_reference(
-            record["flow"], "mapped_hierarchy_inventory",
-            "evidence/mapped_hierarchy_bad.json", inventory,
-        )
-        with self.assertRaisesRegex(validator.QualificationError, "does not match charged block"):
+        record["charged_blocks"][0]["hierarchy_path"] = "candidate_full_link.u_free_tx"
+        with self.assertRaisesRegex(validator.QualificationError, "trusted inventory block"):
             self.validate(record)
 
-    def test_hidden_serializer_generated_feature_is_rejected(self):
+    def test_self_consistent_omitted_serializer_is_rejected_by_trusted_producer(self):
         record = copy.deepcopy(self.record)
-        inventory = read_json_artifact(self.root, record["flow"]["generated_feature_inventory"])
-        inventory["features"].append({
-            "name": "hidden_serializer",
-            "category": "serializer",
-            "charged_block": "serializer",
-            "hierarchy_path": "candidate_full_link.u_hidden_serializer",
-        })
-        self.rewrite_json_reference(
-            record["flow"], "generated_feature_inventory",
-            "evidence/features_hidden_serializer.json", inventory,
+        record["charged_blocks"] = [
+            block for block in record["charged_blocks"]
+            if block["kind"] not in {"serializer", "deserializer"}
+        ]
+        record["feature_declarations"]["serializer"] = []
+        record["feature_declarations"]["deserializer"] = []
+        hierarchy = read_json_artifact(self.root, record["flow"]["hierarchy_source"])
+        hierarchy["blocks"] = [
+            block for block in hierarchy["blocks"]
+            if block["kind"] not in {"serializer", "deserializer"}
+        ]
+        record["flow"]["hierarchy_source"] = json_artifact(
+            self.root, "evidence/hierarchy_omits_serializer.json", hierarchy
         )
-        with self.assertRaisesRegex(validator.QualificationError, "hidden_serializer"):
-            self.validate(record)
-
-    def test_hidden_fifo_source_is_rejected_as_uncharged(self):
-        record = copy.deepcopy(self.record)
-        hidden = artifact(self.root, "rtl/hidden_fifo.sv", "module hidden_fifo; endmodule\n")
-        inventory = read_json_artifact(self.root, record["candidate"]["bundle_inventory"])
-        inventory["files"].append(hidden)
+        inventory = self.rebind_synthesis_input(
+            record, "hierarchy_source", "flow/synthesis_omits_serializer.json"
+        )
+        inventory["blocks"] = [
+            block for block in inventory["blocks"]
+            if block["kind"] not in {"serializer", "deserializer"}
+        ]
+        inventory["features"] = [
+            feature for feature in inventory["features"]
+            if feature["category"] not in {"serializer", "deserializer"}
+        ]
+        old_inventory_path = record["flow"]["inventory"]["path"]
+        inventory["producer"]["command"] = [
+            "evidence/inventory_omits_serializer.json"
+            if token == old_inventory_path else token
+            for token in inventory["producer"]["command"]
+        ]
         self.rewrite_json_reference(
-            record["candidate"], "bundle_inventory", "manifest/bundle_hidden_fifo.json",
+            record["flow"], "inventory", "evidence/inventory_omits_serializer.json",
             inventory,
         )
-        original = (self.root / record["candidate"]["filelist"]["path"]).read_text(
-            encoding="utf-8"
-        )
-        record["candidate"]["filelist"] = artifact(
-            self.root, "manifest/filelist_hidden_fifo.f", original + "rtl/hidden_fifo.sv\n"
-        )
-        with self.assertRaisesRegex(validator.QualificationError, "hidden_fifo"):
+        with self.assertRaisesRegex(validator.QualificationError, "serializer"):
             self.validate(record)
 
-    def test_hidden_cdc_mapped_hierarchy_is_rejected(self):
+    def test_hidden_netlist_instance_with_clean_inventory_is_rejected(self):
         record = copy.deepcopy(self.record)
-        inventory = read_json_artifact(self.root, record["flow"]["mapped_hierarchy_inventory"])
-        inventory["blocks"].append({
-            "name": "hidden_cdc",
-            "kind": "cdc",
-            "top": "hidden_cdc",
-            "hierarchy_path": "candidate_full_link.u_hidden_cdc",
-            "source_files": ["rtl/cdc.sv"],
-        })
-        self.rewrite_json_reference(
-            record["flow"], "mapped_hierarchy_inventory",
-            "evidence/mapped_hierarchy_hidden_cdc.json", inventory,
+        mapped = (self.root / record["flow"]["mapped_netlist"]["path"]).read_text(
+            encoding="utf-8"
         )
-        with self.assertRaisesRegex(validator.QualificationError, "hidden_cdc"):
+        mapped = mapped.replace(
+            "module candidate_full_link;\n",
+            "module candidate_full_link;\n  generated_unused_ip u_hidden_fifo();\n",
+        )
+        record["flow"]["mapped_netlist"] = artifact(
+            self.root, "evidence/mapped_with_hidden_fifo.v", mapped
+        )
+        inventory = self.rebind_synthesis_input(
+            record, "mapped_netlist", "flow/synthesis_hidden_fifo.json"
+        )
+        old_inventory_path = record["flow"]["inventory"]["path"]
+        inventory["producer"]["command"] = [
+            "evidence/inventory_clean_hidden_fifo.json"
+            if token == old_inventory_path else token
+            for token in inventory["producer"]["command"]
+        ]
+        self.rewrite_json_reference(
+            record["flow"], "inventory", "evidence/inventory_clean_hidden_fifo.json",
+            inventory,
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "u_hidden_fifo"):
+            self.validate(record)
+
+    def test_inventory_rebound_without_producer_command_rebind_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        inventory = read_json_artifact(self.root, record["flow"]["inventory"])
+        inventory["producer"]["inputs"][0]["sha256"] = "1" * 64
+        self.rewrite_json_reference(
+            record["flow"], "inventory", "evidence/inventory_rebound.json", inventory,
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "trusted regenerated"):
             self.validate(record)
 
     def test_feature_declaration_is_one_to_one_with_charged_hierarchy(self):
@@ -534,10 +749,10 @@ class FullLinkQualificationTest(unittest.TestCase):
             self.validate(record)
 
         record = copy.deepcopy(self.record)
-        record["feature_declarations"]["codec"][0]["evidence"] = record[
-            "charged_blocks"
-        ][3]["hierarchy_evidence"]
-        with self.assertRaisesRegex(validator.QualificationError, "evidence must match"):
+        record["feature_declarations"]["codec"][0]["hierarchy_path"] = (
+            "candidate_full_link.u_wrong_encoder"
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "hierarchy_path must match"):
             self.validate(record)
 
     def test_serializer_deserializer_pair_is_required(self):
@@ -560,6 +775,73 @@ class FullLinkQualificationTest(unittest.TestCase):
         record = copy.deepcopy(self.record)
         record["activity"]["coverage_percent"] = 90.0
         with self.assertRaisesRegex(validator.QualificationError, "below the frozen threshold"):
+            self.validate(record)
+
+    def test_activity_power_and_common_identity_fields_are_parsed(self):
+        record = copy.deepcopy(self.record)
+        record["candidate"]["id"] = "different-candidate"
+        with self.assertRaisesRegex(
+            validator.QualificationError, "candidate_id does not match candidate"
+        ):
+            self.validate(record)
+
+        for field, value in (
+            ("test_id", "different-test"), ("seed", 99),
+            ("measurement_cycles", 101), ("errors", 1),
+            ("delivered_events", 51), ("average_power_mw", 2.5),
+        ):
+            record = copy.deepcopy(self.record)
+            record["activity"][field] = value
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(
+                    validator.QualificationError, rf"activity\.{field}.*parsed"
+                ):
+                    self.validate(record)
+
+    def test_rehashed_activity_hierarchy_coverage_window_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        report = read_json_artifact(self.root, record["activity"]["activity_artifact"])
+        report["values"]["hierarchy_root"] = "testbench"
+        report["values"]["coverage_percent"] = 100.0
+        report["values"]["window_start_cycle"] = 0
+        report["values"]["window_end_cycle_exclusive"] = 100
+        self.rewrite_json_reference(
+            record["activity"], "activity_artifact",
+            "activity/activity_rehashed.json", report,
+        )
+        record["activity"].update({
+            "hierarchy_root": "testbench", "coverage_percent": 100.0,
+            "window_start_cycle": 0, "window_end_cycle_exclusive": 100,
+        })
+        with self.assertRaisesRegex(
+            validator.QualificationError, "trusted regenerated canonical evidence"
+        ):
+            self.validate(record)
+
+    def test_rehashed_canonical_report_number_rebound_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        report = read_json_artifact(self.root, record["flow"]["area_report"])
+        report["values"]["area_um2"] = 1.0
+        self.rewrite_json_reference(
+            record["flow"], "area_report", "evidence/area_rehashed.json", report
+        )
+        record["flow"]["results"]["area_um2"] = 1.0
+        with self.assertRaisesRegex(
+            validator.QualificationError, "trusted regenerated canonical evidence"
+        ):
+            self.validate(record)
+
+    def test_rehashed_contradictory_power_evidence_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        report = read_json_artifact(self.root, record["activity"]["power_report"])
+        report["values"]["average_power_mw"] = 0.25
+        self.rewrite_json_reference(
+            record["activity"], "power_report", "activity/power_rehashed.json", report
+        )
+        record["activity"]["average_power_mw"] = 0.25
+        with self.assertRaisesRegex(
+            validator.QualificationError, "trusted regenerated canonical evidence"
+        ):
             self.validate(record)
 
     def test_physical_signoff_failures_are_rejected(self):
@@ -599,6 +881,34 @@ class FullLinkQualificationTest(unittest.TestCase):
         record_path = self.root / "qualification.json"
         record_path.write_text(json.dumps(self.record), encoding="utf-8")
         self.assertEqual(validator.main([str(record_path)]), 0)
+
+    def test_flow_owned_producer_clis_use_file_based_arguments(self):
+        previous = Path.cwd()
+        try:
+            os.chdir(self.root)
+            inventory_args = [
+                "--bundle-inventory", self.record["candidate"]["bundle_inventory"]["path"],
+                "--filelist", self.record["candidate"]["filelist"]["path"],
+                "--mapped-netlist", self.record["flow"]["mapped_netlist"]["path"],
+                "--hierarchy-source", self.record["flow"]["hierarchy_source"]["path"],
+                "--synthesis-command", self.record["flow"]["synthesis_command"]["path"],
+                "--output", "evidence/inventory_cli.json",
+            ]
+            self.assertEqual(validator.inventory_generator.main(inventory_args), 0)
+
+            area = read_json_artifact(self.root, self.record["flow"]["area_report"])
+            raw = area["producer"]["inputs"][0]
+            extractor_args = [
+                "--type", "area", "--raw-report", raw["path"],
+            ]
+            for binding in area["producer"]["inputs"][1:]:
+                extractor_args.extend([
+                    "--bind", binding["role"], binding["path"], binding["sha256"]
+                ])
+            extractor_args.extend(["--output", "evidence/area_cli.json"])
+            self.assertEqual(validator.evidence_extractor.main(extractor_args), 0)
+        finally:
+            os.chdir(previous)
 
     def test_input_is_not_mutated(self):
         original = copy.deepcopy(self.record)
