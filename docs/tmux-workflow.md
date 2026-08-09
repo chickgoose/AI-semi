@@ -6,17 +6,17 @@ tmux 그룹 세션 두 개를 사용한다. 그룹 세션은 같은 창과 프�
 
 | 세션 | 표시 창 | 패인 구성 | 용도 |
 | --- | --- | --- | --- |
-| `dev` | 창 0 | Codex 패인 0·1·2, 가로 균등 3분할 | 병렬 Codex 작업 |
+| `dev` | 창 0 | 헤드 Codex a1 단일 패인 | 통합·관리·최종 판단 |
 | `dev-shell` | 창 1 | 패인 0: 관리 쉘, 패인 1: SSH, 가로 균등 2분할 | Git/worktree 관리 및 SSH |
+| `dev-agents` | 창 2 | Codex a2~a9, 4열×2행 8패인 | 기본 8-agent 병렬 작업 |
 
 현재 worktree는 다음과 같다.
 
 | 경로 | 브랜치 | 권장 용도 |
 | --- | --- | --- |
 | `/home/chickgoose/projects/AI-semi` | `main` | 관리·병합 |
-| `/home/chickgoose/projects/a1` | `a1` | Codex 1 |
-| `/home/chickgoose/projects/a2` | `a2` | Codex 2 |
-| `/home/chickgoose/projects/a3` | `a3` | Codex 3 |
+| `/home/chickgoose/projects/a1` | task branch | 헤드 Codex a1 |
+| `/home/chickgoose/projects/a2` ... `/home/chickgoose/projects/a9` | agent별 독립 branch | Codex a2~a9 |
 
 ## 복구
 
@@ -25,16 +25,20 @@ tmux 서버와 패인이 살아 있다면 다음 순서로 복구한다.
 ```bash
 tmux select-layout -t dev:0 even-horizontal
 tmux select-layout -t dev:1 even-horizontal
+tmux select-layout -t dev:2 tiled
 ```
 
 그 다음 터미널 두 개를 각각 열어 아래 명령으로 연결한다.
 
 ```bash
-# 터미널 A: Codex 3패인 창 0
+# 터미널 A: 헤드 Codex 창 0
 tmux attach-session -t dev
 
 # 터미널 B: 관리 쉘 + SSH 창 1
 tmux attach-session -t dev-shell
+
+# 터미널 C: a2~a9 8-agent 창 2
+tmux attach-session -t dev-agents
 ```
 
 ## 안전 규칙
@@ -45,4 +49,6 @@ tmux attach-session -t dev-shell
 - 패인을 이동·추가한 뒤에는 대상 창에 `tmux select-layout -t <세션>:<창> even-horizontal`을 적용해 너비를 균등화한다.
 - tmux를 변경하기 전과 후에 `tmux list-sessions`, `tmux list-windows -a`, `tmux list-panes -a`, `tmux list-clients`로 상태를 확인한다.
 - Codex 패널이 실제 worktree를 사용하려면 해당 패널에서 종료 후 `cd /home/chickgoose/projects/a1`처럼 worktree로 이동해 다시 실행한다.
-
+- 별도 중단 지시가 없으면 실질적인 AI-semi 작업은 a2~a9 여덟 Codex에 처음부터 서로 겹치지 않게 배분한다.
+- `pane_current_command=node`만으로 작업 중이라고 판단하지 않는다. `tmux capture-pane`에서 각 pane이 `Working`인지 확인한다.
+- 내부 collaboration slot 제한이 4여도 tmux a2~a9 기본 운영을 3개로 축소하지 않는다.
