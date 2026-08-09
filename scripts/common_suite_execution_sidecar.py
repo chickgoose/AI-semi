@@ -17,7 +17,8 @@ def _sha(path: Path) -> str:
 
 
 def build(attempt_root: Path, run_manifest: Path, trace: Path, result: Path,
-          analyzer: Path | None) -> dict:
+          analyzer: Path | None, summary: Path | None = None,
+          execution_identity: Path | None = None) -> dict:
     attempt_path = attempt_root / "attempt.json"
     try:
         attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
@@ -34,6 +35,10 @@ def build(attempt_root: Path, run_manifest: Path, trace: Path, result: Path,
     needs_analyzer = workload in receipt.ANALYZER_WORKLOADS
     if needs_analyzer != (analyzer is not None):
         raise receipt.ReceiptError("analyzer presence does not match workload schema")
+    if (workload == "mixed_phase_always_ready") != (summary is not None):
+        raise receipt.ReceiptError("summary presence does not match workload schema")
+    if execution_identity is None:
+        raise receipt.ReceiptError("execution identity is required")
     tools = attempt.get("tools")
     if (not isinstance(tools, dict) or not {"runner", "generator"}.issubset(tools) or
             (needs_analyzer and workload not in tools)):
@@ -68,6 +73,8 @@ def build(attempt_root: Path, run_manifest: Path, trace: Path, result: Path,
         },
         "result_sha256": _sha(result),
         "analyzer_sha256": _sha(analyzer) if analyzer else None,
+        "summary_sha256": _sha(summary) if summary else None,
+        "execution_identity_sha256": _sha(execution_identity),
     }
 
 
@@ -78,6 +85,8 @@ def main(argv=None) -> int:
     parser.add_argument("--trace", type=Path, required=True)
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--analyzer", type=Path)
+    parser.add_argument("--summary", type=Path)
+    parser.add_argument("--execution-identity", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     try:
@@ -85,7 +94,8 @@ def main(argv=None) -> int:
         output = args.output.resolve(strict=False)
         if root not in output.parents:
             raise receipt.ReceiptError("sidecar output must reside in attempt root")
-        payload = (json.dumps(build(root, args.run_manifest, args.trace, args.result, args.analyzer),
+        payload = (json.dumps(build(root, args.run_manifest, args.trace, args.result, args.analyzer,
+                                    args.summary, args.execution_identity),
                               indent=2, sort_keys=True) + "\n").encode()
         receipt.publish_new_atomic(args.output, payload)
     except (OSError, receipt.ReceiptError) as exc:

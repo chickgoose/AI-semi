@@ -96,13 +96,17 @@ def create(root: Path, suite: str, candidate: str, candidate_manifest: Path,
         simulator_root = provenance / "simulator"
         tool_root.mkdir(parents=True, mode=0o700)
         simulator_root.mkdir(mode=0o700)
-        candidate_relative = Path("provenance/candidate.manifest.json")
-        candidate_sha = _snapshot(candidate_manifest, attempt / candidate_relative)
-        candidate_bundle_root = provenance / "candidate" / "files"
+        candidate_bundle_root = provenance / "candidate" / "bundle"
         candidate_bundle_root.mkdir(parents=True, mode=0o700)
+        candidate_relative = Path("provenance/candidate/bundle/candidate.manifest.json")
+        candidate_sha = _snapshot(candidate_manifest, attempt / candidate_relative)
         candidate_bundle_rows = []
-        for position, (logical_path, source, expected_sha) in enumerate(candidate_sources):
-            relative = Path("provenance/candidate/files") / f"file-{position:04d}.snapshot"
+        candidate_source_parents = []
+        for logical_path, source, expected_sha in candidate_sources:
+            relative = Path("provenance/candidate/bundle") / logical_path
+            destination_parent = (attempt / relative).parent
+            destination_parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+            candidate_source_parents.append(destination_parent)
             actual_sha = _snapshot(source, attempt / relative)
             if actual_sha != expected_sha:  # source changed after its preflight read
                 raise ValueError(f"candidate bundle source changed: {source}")
@@ -163,6 +167,7 @@ def create(root: Path, suite: str, candidate: str, candidate_manifest: Path,
         directories = [path.parent for path in (attempt / executable_relative,
                                                   attempt / version_relative)]
         directories += [tool_root / name for name in tools]
+        directories += candidate_source_parents
         directories += [candidate_bundle_root, candidate_bundle_root.parent]
         directories += [tool_root, provenance, attempt, attempts]
         for directory in dict.fromkeys(directories):

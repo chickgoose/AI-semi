@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -31,6 +32,17 @@ def v4_generator():
         if generator.is_file() and "pairwise_contention" in generator.read_text():
             return generator
     raise AssertionError("real v4 common generator not found; set AER_V4_COMMON_ROOT")
+
+
+def existing_capacity_runner():
+    explicit = os.environ.get("AER_V4_CAPACITY_RUNNER")
+    candidates = ([Path(explicit)] if explicit else []) + [
+        ROOT.parent / "a1/scripts/run_common_multilane_benchmark.sh",
+        ROOT / "scripts/run_common_multilane_benchmark.sh"]
+    for runner in candidates:
+        if runner.is_file() and "generate-only" in runner.read_text():
+            return runner
+    raise AssertionError("existing v4 capacity runner not found; set AER_V4_CAPACITY_RUNNER")
 
 
 class OfficialWrapperTest(unittest.TestCase):
@@ -78,7 +90,17 @@ class OfficialWrapperTest(unittest.TestCase):
         self.assertEqual((document["status"], document["validated_run_count"]), ("PASS", 22))
         self.assertEqual(len(list((attempt_root / "runs").glob("*/execution.sidecar.json"))), 22)
         self.assertEqual(len(list((attempt_root / "runs").glob("*/analysis.json"))), 6)
+        self.assertEqual(len(list((attempt_root / "runner-output/results").glob("mixed_phase_*/trace.csv"))), 2)
+        artifacts = json.loads((attempt_root / "artifacts.json").read_text())
+        self.assertEqual(sum("summary" in row for row in artifacts["runs"]), 2)
+        for key in ("execution_identity", "compile_manifest", "compile_log"):
+            artifact = attempt_root / artifacts[key]["path"]
+            self.assertEqual(digest(artifact.read_bytes()), artifacts[key]["sha256"])
         attempt = json.loads((attempt_root / "attempt.json").read_text())
+        candidate_snapshot = attempt_root / attempt["candidate_manifest"]["path"]
+        candidate_document = json.loads(candidate_snapshot.read_text())
+        for row in candidate_document["filelist"]:
+            self.assertTrue((candidate_snapshot.parent / row["path"]).is_file())
         runner_dependencies = {row["logical_name"] for row in attempt["tools"]["runner"]["dependencies"]}
         self.assertIn("common_suite_official_wrapper.py", runner_dependencies)
         self.assertIn("execution-plan.json", runner_dependencies)
@@ -93,6 +115,17 @@ class OfficialWrapperTest(unittest.TestCase):
         self.assertEqual((output / "sentinel.txt").read_text(), "keep\n")
         self.assertFalse(list(output.glob("attempts/capacity22/wrapper-dut/*/common-suite.receipt.json")))
         self.assertEqual(len(list(output.glob("attempts/capacity22/wrapper-dut/*"))), 1)
+
+    def test_mutated_actual_dependency_is_rejected_after_execution(self):
+        root = self.root(); output, args = self.invocation(root)
+        dependency = root / "runner-dependency.sh"; dependency.write_text("original\n")
+        args += ["--tool-dependency", f"runner={dependency}",
+                 "--runner-env", f"FAKE_RUNNER_MUTATE_PATH={dependency}"]
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error):
+            self.assertEqual(wrapper.main(args), 2)
+        self.assertIn("actual tool runner source changed", error.getvalue())
+        self.assertFalse(list(output.glob("attempts/capacity22/wrapper-dut/*/common-suite.receipt.json")))
 
     def test_real_v4_generate_only_smoke_full50_and_capacity22(self):
         root = self.root()
@@ -110,6 +143,19 @@ class OfficialWrapperTest(unittest.TestCase):
                 self.assertEqual(wrapper.main(["generate-only", "--suite", suite, "--official-manifest",
                     str(FIXTURES / official.SUITES[suite]["manifest_name"]),
                     "--generator", str(v4_generator()), "--output-dir", str(output)]), 2)
+
+    def test_existing_capacity_runner_generate_only_end_to_end(self):
+        root = self.root(); trace_root = root / "existing-runner-capacity22"
+        environment = os.environ.copy()
+        environment.update({"AER_COMMON_MULTILANE_TRACE_DIR": str(trace_root),
+                            "AER_CLEAN_OUT": str(root / "unused-results")})
+        completed = subprocess.run([str(existing_capacity_runner()), "generate-only"],
+            cwd=existing_capacity_runner().parent.parent, env=environment,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        generated = receipt.validate_official_generation(trace_root / "generation-index.json",
+            FIXTURES / official.SUITES["capacity22"]["manifest_name"], "capacity22")
+        self.assertEqual(len(generated["names"]), 22)
 
 
 if __name__ == "__main__":
