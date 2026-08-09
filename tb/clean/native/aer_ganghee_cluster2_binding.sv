@@ -31,6 +31,8 @@ module aer_ganghee_cluster2_binding #(
   logic [3:0]  native_col_mask1;
   logic [15:0] native_result_mask;
   logic [15:0] native_ack_mask;
+  // Assertion-only history. It never drives the DUT or normalized seam.
+  logic [15:0] previous_native_result_mask;
   integer mask_col;
   integer map_col;
   integer source;
@@ -119,7 +121,13 @@ module aer_ganghee_cluster2_binding #(
   end
 
   always @(posedge bench.clk) begin
-    if (bench.rst_n) begin
+    if (!bench.rst_n) begin
+      previous_native_result_mask <= '0;
+    end else begin
+      if ((native_result_mask & previous_native_result_mask) != '0)
+        $fatal(1, "GANGHEE_CLUSTER2_BINDING repeated native result without quiet edge mask=%h previous=%h",
+               native_result_mask, previous_native_result_mask);
+      previous_native_result_mask <= native_result_mask;
       if ((native_result_mask != '0) && (bench.retire_ready !== '1))
         $error("GANGHEE_CLUSTER2_BINDING supports sink-always-ready only");
       if (native_valid0 && $isunknown({native_row0, native_col_mask0}))

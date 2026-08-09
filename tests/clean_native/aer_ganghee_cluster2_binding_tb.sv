@@ -32,6 +32,15 @@ module aer_ganghee_cluster2_binding_tb;
       $display("GANGHEE_CLUSTER2_RAW_PHANTOM_VISIBLE");
   end
 
+`ifdef AER_CLUSTER2_IMMEDIATE_RETRIGGER
+  // Re-offer the same address at the earliest legal driver edge. A stale raw
+  // result held across the edge must not alias this new occurrence.
+  always @(negedge clk) begin
+    if (bench.rst_n && (acknowledgements == 1) && !bench.source_valid[5])
+      bench.source_valid[5] <= 1'b1;
+  end
+`endif
+
   always @(posedge clk) begin
     if (bench.rst_n) begin
       if (bench.source_valid[5] && bench.source_ready[5]) begin

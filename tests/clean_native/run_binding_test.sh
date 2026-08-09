@@ -94,7 +94,60 @@ if [[ "$cluster2_fault_status" -eq 0 ]]; then
 fi
 grep -q 'GANGHEE_CLUSTER2_RAW_PHANTOM_VISIBLE' \
   "$OUT_DIR/cluster2-fault.log"
-grep -q 'GANGHEE_CLUSTER2_BINDING duplicate/phantom bitmap' \
+grep -q 'GANGHEE_CLUSTER2_BINDING repeated native result without quiet edge' \
   "$OUT_DIR/cluster2-fault.log"
 printf 'GANGHEE_CLUSTER2_DUPLICATE_FAIL_CLOSED_PASS status=%d\n' \
   "$cluster2_fault_status"
+
+# A held stale bitmap must not alias an immediately re-offered occurrence at
+# the same address merely because source_valid became live again.
+"$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
+  -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
+  -DAER_GANGHEE_CLUSTER2_MODULE=ganghee_cluster2_protocol_mock \
+  -DAER_CLUSTER2_MOCK_REPEAT -DAER_CLUSTER2_IMMEDIATE_RETRIGGER \
+  --top-module aer_ganghee_cluster2_binding_tb \
+  --Mdir "$OUT_DIR/cluster2-retrigger-fault-obj" \
+  "$PROJECT_ROOT/tb/clean/aer_bench_if.sv" \
+  "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv" \
+  "$PROJECT_ROOT/tests/clean_native/aer_ganghee_cluster2_binding_tb.sv"
+
+set +e
+"$OUT_DIR/cluster2-retrigger-fault-obj/Vaer_ganghee_cluster2_binding_tb" \
+  >"$OUT_DIR/cluster2-retrigger-fault.log" 2>&1
+cluster2_retrigger_status=$?
+set -e
+if [[ "$cluster2_retrigger_status" -eq 0 ]]; then
+  printf 'cluster2 immediate-retrigger stale result unexpectedly passed\n' >&2
+  exit 1
+fi
+grep -q 'GANGHEE_CLUSTER2_BINDING repeated native result without quiet edge' \
+  "$OUT_DIR/cluster2-retrigger-fault.log"
+printf 'GANGHEE_CLUSTER2_RETRIGGER_ALIAS_FAIL_CLOSED_PASS status=%d\n' \
+  "$cluster2_retrigger_status"
+
+# Reset quiet is checked at the unmasked native boundary.
+"$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
+  -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
+  -DAER_GANGHEE_CLUSTER2_MODULE=ganghee_cluster2_protocol_mock \
+  -DAER_CLUSTER2_MOCK_RESET_FAULT \
+  --top-module aer_ganghee_cluster2_binding_tb \
+  --Mdir "$OUT_DIR/cluster2-reset-fault-obj" \
+  "$PROJECT_ROOT/tb/clean/aer_bench_if.sv" \
+  "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv" \
+  "$PROJECT_ROOT/tests/clean_native/aer_ganghee_cluster2_binding_tb.sv"
+
+set +e
+"$OUT_DIR/cluster2-reset-fault-obj/Vaer_ganghee_cluster2_binding_tb" \
+  >"$OUT_DIR/cluster2-reset-fault.log" 2>&1
+cluster2_reset_status=$?
+set -e
+if [[ "$cluster2_reset_status" -eq 0 ]]; then
+  printf 'cluster2 reset-valid fault unexpectedly passed\n' >&2
+  exit 1
+fi
+grep -q 'GANGHEE_CLUSTER2_BINDING native valid active during reset' \
+  "$OUT_DIR/cluster2-reset-fault.log"
+printf 'GANGHEE_CLUSTER2_RESET_FAIL_CLOSED_PASS status=%d\n' \
+  "$cluster2_reset_status"

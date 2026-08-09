@@ -22,9 +22,15 @@ module ganghee_cluster2_protocol_mock (
 
   always_ff @(posedge clk) begin
     if (rst) begin
+`ifdef AER_CLUSTER2_MOCK_RESET_FAULT
+      valid0 <= 1'b1;
+      row0 <= 2'd1;
+      col_mask0 <= 4'b0010;
+`else
       valid0 <= 1'b0;
       row0 <= '0;
       col_mask0 <= '0;
+`endif
       valid1 <= 1'b0;
       row1 <= '0;
       col_mask1 <= '0;
