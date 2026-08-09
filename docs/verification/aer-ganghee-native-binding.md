@@ -62,6 +62,13 @@ interval. Such a producer is outside this stateless binding contract and
 requires an explicit transaction tag or stateful ingress; that added hardware
 belongs to the candidate and its PPA boundary.
 
+`tests/clean_native/run_causal_credit_test.sh` is a reference-checker
+self-test for that rule. It verifies legal refill/reset, immediate repeat,
+no-new-request delayed stale output, and illegal request/result overlap. It
+does not instantiate Ganghee RTL or the production binding, so its PASS result
+must not be reported as candidate qualification. Candidate qualification still
+requires the native binding tests and the official common traces.
+
 ## Capabilities
 
 Supported:
