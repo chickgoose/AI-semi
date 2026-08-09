@@ -67,10 +67,9 @@ module aer_ganghee_native_binding #(
     if (native_ack) begin
       bench.source_ready[native_addr] = 1'b1;
       bench.retire_valid[0] = 1'b1;
-      // Ganghee's native link returns only source identity.  The common
-      // scoreboard event identity is reconstructed from the one live pending
-      // latch; it is TB sideband and is not added to the native DUT payload.
-      bench.retire_event[0] = bench.source_event[native_addr];
+      // The native address itself is the complete mandatory AER event.  Never
+      // reconstruct polarity, type, or arbitrary data from TB pending state.
+      bench.retire_event[0] = ADDR_WIDTH'(native_addr);
       bench.retire_source[0] = SOURCE_WIDTH'(native_addr);
     end
   end
@@ -106,6 +105,10 @@ module aer_ganghee_native_binding #(
         $error("GANGHEE_NATIVE_BINDING acknowledge mapping is inconsistent");
       if (native_ack && native_req[native_addr])
         $error("GANGHEE_NATIVE_BINDING acknowledged req was not masked");
+      if (native_ack &&
+          (bench.source_event[native_addr] !== ADDR_WIDTH'(native_addr)))
+        $error("GANGHEE_NATIVE_BINDING common input is not address-only source=%0d event=%h",
+               native_addr, bench.source_event[native_addr]);
     end
   end
 endmodule

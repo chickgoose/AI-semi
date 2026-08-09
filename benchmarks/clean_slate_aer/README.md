@@ -20,17 +20,19 @@ Each output `*.events.jsonl` file contains one JSON object per line, ordered by
 | --- | --- | --- |
 | `occurrence_cycle` | Cycle when the event becomes eligible for injection | TB only |
 | `tb_only_event_id` | Monotonic trace identity for matching and scoreboarding | TB only; never encode in DUT payload |
-| `logical_source` | Architecture-neutral source index | Source sideband/driver selection |
-| `x`, `y` | Event coordinate within the declared geometry | DUT payload |
-| `polarity` | Signed event polarity, exactly `-1` or `1` | DUT payload |
-| `event_type` | Semantic type string | DUT payload or adapter mapping |
+| `logical_source` | Firing-neuron address; the complete mandatory event identity | DUT address/source selection |
+| `x`, `y` | Coordinate aliases derived from `logical_source` | TB metadata |
+| `polarity` | Signed polarity for a future optional capability | TB metadata in the mandatory suite |
+| `event_type` | Semantic label for optional analysis | TB metadata in the mandatory suite |
 | `relation_id`, `relation_role` | Optional timing-pair/group relation | TB only; never encode in DUT payload |
 | `deadline` | Absolute cycle for deadline analysis | TB only |
 
-The per-run output manifest repeats these classifications as
-`dut_payload_fields`, `dut_sideband_fields`, and `tb_only_fields`. An adapter
-may encode the DUT-visible fields to its native address format, but must keep
-`tb_only_event_id` exclusively in its reference/scoreboard state.
+The per-run output manifest declares `event_identity_mode: address_only`, puts
+`logical_source` in `dut_address_fields`, and leaves `dut_payload_fields`
+empty. Polarity/type remain trace metadata unless a separately frozen optional
+suite and native contract explicitly carry them. An adapter may encode the
+address into its native format, but must never recover metadata from TB pending
+state and present it as if the physical link transported it.
 
 When an event occurs while its source is not ready, the benchmark driver places
 it in that source's single architecture-neutral pending latch and presents it
@@ -63,11 +65,15 @@ PRNG. Workloads that are intrinsically finite (`basic_*`, `retrigger`, and
 parameters to form the trace. The output manifest records requested load and
 actual `event_count`, so achieved load is always auditable.
 
-The example manifest includes the full suite and three `uniform` points for a
-load sweep:
+The example manifest includes one illustrative run per workload family plus
+three `uniform` points for a load sweep. The official full suite is the frozen
+48-run N=16 manifest described below:
 
 - `basic_sparse`: deterministic low-count sanity events across the geometry.
 - `basic_simultaneous`: several sources with the exact same occurrence cycle.
+- `pairwise_contention`: every unordered source-address pair under the same
+  quiescent ingress spacing, with optional address permutation. The DUT is not
+  reset between pairs; the analyzer reports any prior-pair service overlap.
 - `uniform`: uniform random sources at the requested aggregate load.
 - `elephant_mouse`: a configurable hot source plus uniformly selected mice.
 - `global_fanin`: many distinct source coordinates occurring on the same cycle.
@@ -113,7 +119,7 @@ event count, declared/actual mean load, peak events/cycle, report group, and
 trace SHA256. `generation-index.json` summarizes the complete
 invocation. Generated traces are outputs and should not be committed here.
 
-The committed `fixtures/neutrality_n16_golden.json` freezes all 46 expected
+The committed `fixtures/neutrality_n16_golden.json` freezes all 48 expected
 event counts, achieved loads, peak rates, report groups, and SHA256 values. The
 neutrality self-test fails if a generator change silently changes any official
 trace.
@@ -134,7 +140,7 @@ change changes a stochastic trace.
 ## Frozen N=16 candidate-neutral suite
 
 [manifest.neutrality-n16.json](manifest.neutrality-n16.json) is the common
-exact-trace suite for candidate comparison. It has 46 sink-always-ready runs,
+exact-trace suite for candidate comparison. It has 48 sink-always-ready runs,
 uses the shared N=16 geometry supported by the current candidates, fixes the
 logical event to a coordinate-address spike, and never emits two occurrences
 from the same logical source in one cycle. It includes:
@@ -144,6 +150,7 @@ from the same logical source in one cycle. It includes:
 - matched local/dispersed spatial traffic;
 - single and multiple moving hotspots;
 - rotating starvation victims under identity and affine address mappings;
+- exhaustive pairwise address contention under identity and affine mappings;
 - sparse-to-overload-to-post-sparse-to-drain phase transitions;
 - cross-source timing pairs under independent background traffic;
 - legacy AER fan-in, elephant/mouse, and retrigger bottlenecks with relabeling
@@ -178,6 +185,14 @@ fields. They never enter the DUT payload. Use `timing_pair_metrics.py` with the
 same `--trace`, `--run-manifest`, and `--events` arguments to calculate the
 cross-source A/B gap error, including dropped and censored pairs. This replaces
 the old same-source consecutive-delivery approximation for timing-pair claims.
+
+Use `pairwise_contention_metrics.py` with the same three inputs for a
+`pairwise_contention` run. It reports every trial, repeated-address-pair
+aggregates, completion latency, service skew, drop/censor counts, service-order
+bias, distinct worst-completion/worst-skew pairs, and prior-pair overlap.
+Identity and affine reports currently remain separate artifacts; compare them
+by canonical relation ID. An automatic cross-map delta report is not yet
+implemented and must not be claimed.
 
 ## Architecture-neutral result aggregator
 

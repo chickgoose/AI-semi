@@ -90,11 +90,14 @@ def encode_events(
     height = run["geometry"]["height"]
     source_count = width * height
     stim_cycles = run["stim_cycles"]
-    event_types = sorted({event["event_type"] for event in events})
+    identity_mode = metadata.get("event_identity_mode")
+    if identity_mode != "address_only":
+        raise TracePreparationError(
+            f"common trace loader requires event_identity_mode=address_only, got {identity_mode!r}"
+        )
+    event_types = {event["event_type"] for event in events}
     if any(not isinstance(name, str) or not name for name in event_types):
         raise TracePreparationError("event_type must be a non-empty string")
-    type_codes = {name: index for index, name in enumerate(event_types)}
-    type_bits = max(1, (max(1, len(type_codes)) - 1).bit_length())
     encoded: list[tuple[int, int, int, int, int]] = []
     previous_key = (-1, -1)
 
@@ -129,8 +132,10 @@ def encode_events(
             raise TracePreparationError("trace must be sorted by occurrence cycle and event ID")
         previous_key = key
 
-        coordinate = y * width + x
-        event_address = (((coordinate << 1) | int(polarity > 0)) << type_bits) | type_codes[event["event_type"]]
+        # Mandatory common AER semantics are address-only.  Polarity and type
+        # remain trace metadata for optional capability suites and must not be
+        # smuggled through the normalized event word.
+        event_address = y * width + x
         if event_address >= (1 << addr_width):
             raise TracePreparationError(
                 f"event {trace_id}: encoded address {event_address} exceeds ADDR_WIDTH={addr_width}"
@@ -192,7 +197,7 @@ def prepare_trace(trace_path: Path, manifest_path: Path, output_path: Path, addr
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with temporary.open("w", encoding="ascii", newline="\n") as output:
         output.write(
-            f"3 {len(encoded)} {run['stim_cycles']} {source_count} {int(load_milli)} "
+            f"4 {len(encoded)} {run['stim_cycles']} {source_count} {int(load_milli)} "
             f"{sink_mode} {sink_arg0} {sink_arg1} {run['seed']}\n"
         )
         for occurrence, trace_id, source, address, deadline in encoded:

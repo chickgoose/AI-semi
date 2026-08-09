@@ -1,6 +1,6 @@
 # AER bottleneck coverage and anti-specialization audit
 
-Status: implementation-backed review, 2026-08-07
+Status: implementation-backed address-only review, 2026-08-10
 
 ## What “biased” means here
 
@@ -15,12 +15,13 @@ For that reason the original locality and fan-in tests remain. The repair is to
 add orthogonal bottleneck families and matched controls, not to weaken the
 families that an existing design already solves.
 
-## Coverage after the 2026-08-07 audit
+## Coverage after the 2026-08-10 audit
 
 | AER bottleneck | Frozen workload/control | What must be reported |
 | --- | --- | --- |
 | sparse basic AER correctness | `core_sparse_*` | loss, duplicate, corruption, E2E latency |
 | simultaneous global fan-in | `core_simultaneous_*`, `global_fanin_*` | drain time, p99 latency, overrun |
+| pair-dependent partition/HOL | `pairwise_contention_identity`, `pairwise_contention_affine` | `pairwise_contention_metrics.py`: per-trial/repeat completion latency/skew, order bias, distinct worst pairs, prior-pair overlap; cross-map delta is pending |
 | sustainable shared-link bandwidth | `uniform_l0p125` through `uniform_l2p00`, three seeds | completion/cycle plateau, overrun, backlog and latency tail |
 | temporal burst sensitivity at equal mean | `shape_b1`, `shape_b4`, `shape_b16` | throughput/latency/overrun spread across burst size |
 | spatial locality opportunity | `spatial_local` | local efficiency and latency |
@@ -34,7 +35,7 @@ families that an existing design already solves.
 | throughput above one event/cycle | uniform 1.25/1.5/2.0 and 16-way burst | completed logical events/cycle plus physical pin-cycle efficiency |
 
 The exact common input is
-`benchmarks/clean_slate_aer/manifest.neutrality-n16.json`: 46 N=16,
+`benchmarks/clean_slate_aer/manifest.neutrality-n16.json`: 48 N=16,
 sink-always-ready traces. Each candidate must use the same generated JSONL SHA.
 The generator regression gate verifies determinism, one occurrence per
 source/cycle, fixed coordinate-spike semantics, matched burst histograms,
@@ -68,7 +69,7 @@ achieved mean load, peak rate, and aggregation group.
 
 ## Deliberately separate suites and remaining gaps
 
-The frozen 46-run core keeps the sink always ready because current candidates
+The frozen 48-run core keeps the sink always ready because current candidates
 do not expose equivalent output backpressure. Backpressure shock remains an
 optional capability suite and cannot award or remove points from candidates
 that lack that same external contract.
@@ -92,11 +93,9 @@ frozen for final judging:
 
 1. reset-after-drain and mid-traffic reset semantics need an implemented common
    regression, not only a specification row;
-2. multi-lane positive and lane-independent-stall fixtures are needed before a
-   multi-lane capability is marked verified;
-3. fixed physical pin-budget comparison must include every required
+2. fixed physical pin-budget comparison must include every required
    synthesizable serializer/codec/buffer in candidate PPA;
-4. final saturation confidence should expand the three-seed screening sweep to
+3. final saturation confidence should expand the three-seed screening sweep to
    a predeclared larger seed set and publish percentile/confidence bounds.
 
 These gaps are recorded rather than hidden. They do not invalidate the common

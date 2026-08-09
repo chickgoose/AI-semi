@@ -35,6 +35,7 @@ module aer_ganghee_cluster2_binding #(
   integer map_col;
   integer source;
   integer lane;
+  integer check_source;
 
   assign native_rst = ~bench.rst_n;
 
@@ -81,7 +82,7 @@ module aer_ganghee_cluster2_binding #(
       if (native_valid0 && !$isunknown({native_row0, native_col_mask0}) &&
           native_col_mask0[map_col] && native_ack_mask[source]) begin
         bench.retire_valid[map_col] = 1'b1;
-        bench.retire_event[map_col] = bench.source_event[source];
+        bench.retire_event[map_col] = ADDR_WIDTH'(source);
         bench.retire_source[map_col] = SOURCE_WIDTH'(source);
       end
 
@@ -89,7 +90,7 @@ module aer_ganghee_cluster2_binding #(
       if (native_valid1 && !$isunknown({native_row1, native_col_mask1}) &&
           native_col_mask1[map_col] && native_ack_mask[source]) begin
         bench.retire_valid[4 + map_col] = 1'b1;
-        bench.retire_event[4 + map_col] = bench.source_event[source];
+        bench.retire_event[4 + map_col] = ADDR_WIDTH'(source);
         bench.retire_source[4 + map_col] = SOURCE_WIDTH'(source);
       end
     end
@@ -129,6 +130,12 @@ module aer_ganghee_cluster2_binding #(
         $error("GANGHEE_CLUSTER2_BINDING acknowledged requests were not masked");
       if ($countones(bench.retire_valid) != $countones(bench.source_ready))
         $error("GANGHEE_CLUSTER2_BINDING acknowledge mapping is inconsistent");
+      for (check_source = 0; check_source < NUM_SOURCES;
+           check_source = check_source + 1)
+        if (bench.source_ready[check_source] &&
+            (bench.source_event[check_source] !== ADDR_WIDTH'(check_source)))
+          $error("GANGHEE_CLUSTER2_BINDING common input is not address-only source=%0d event=%h",
+                 check_source, bench.source_event[check_source]);
     end
   end
 endmodule

@@ -16,10 +16,11 @@ from typing import Any, Callable, Iterable
 
 
 SCHEMA_VERSION = 1
-GENERATOR_VERSION = "2.0"
+GENERATOR_VERSION = "3.0"
 WORKLOADS = (
     "basic_sparse",
     "basic_simultaneous",
+    "pairwise_contention",
     "uniform",
     "elephant_mouse",
     "global_fanin",
@@ -111,6 +112,11 @@ class TraceBuilder:
         ] = []
         self._source_permutation = self._build_source_permutation()
         self._source_cycle_keys: set[tuple[int, int]] = set()
+
+    @property
+    def source_permutation(self) -> list[int]:
+        """Return the frozen canonical-to-physical address mapping."""
+        return list(self._source_permutation)
 
     def _build_source_permutation(self) -> list[int]:
         count = self.config.source_count
@@ -339,6 +345,32 @@ def generate_basic_simultaneous(builder: TraceBuilder) -> None:
     cycle = integer_parameter(config, "occurrence_cycle", config.stim_cycles // 2, 0)
     for source in evenly_spaced_sources(count, config.source_count):
         builder.add(cycle, source)
+
+
+def generate_pairwise_contention(builder: TraceBuilder) -> None:
+    """Exercise every unordered pair with equal quiescent ingress spacing."""
+    config = builder.config
+    spacing = integer_parameter(config, "pair_spacing", 8, 1)
+    repeats = integer_parameter(config, "pair_repeats", 1, 1)
+    start_cycle = integer_parameter(config, "start_cycle", 1, 0)
+    cycle = start_cycle
+    relation_id = 0
+    for _ in range(repeats):
+        for source_a in range(config.source_count):
+            for source_b in range(source_a + 1, config.source_count):
+                if cycle >= config.stim_cycles:
+                    raise ManifestError(
+                        f"{config.name}: pairwise schedule exceeds stim_cycles; "
+                        "increase stim_cycles or reduce pair_repeats/pair_spacing"
+                    )
+                builder.add(
+                    cycle, source_a, relation_id=relation_id, relation_role="a"
+                )
+                builder.add(
+                    cycle, source_b, relation_id=relation_id, relation_role="b"
+                )
+                relation_id += 1
+                cycle += spacing
 
 
 def generate_uniform(builder: TraceBuilder) -> None:
@@ -700,6 +732,7 @@ def generate_phase_transition(builder: TraceBuilder) -> None:
 GENERATORS: dict[str, Callable[[TraceBuilder], None]] = {
     "basic_sparse": generate_basic_sparse,
     "basic_simultaneous": generate_basic_simultaneous,
+    "pairwise_contention": generate_pairwise_contention,
     "uniform": generate_uniform,
     "elephant_mouse": generate_elephant_mouse,
     "global_fanin": generate_global_fanin,
@@ -848,8 +881,12 @@ def generate_run(config: RunConfig, output_dir: Path) -> dict[str, Any]:
         "trace_sha256": trace_sha256,
         "event_count": event_count,
         "event_schema": list(EVENT_FIELDS),
-        "dut_payload_fields": ["x", "y", "polarity", "event_type"],
+        "event_identity_mode": "address_only",
+        "dut_address_fields": ["logical_source"],
+        "dut_payload_fields": [],
         "dut_sideband_fields": ["logical_source"],
+        "trace_metadata_fields": ["x", "y", "polarity", "event_type"],
+        "logical_source_permutation": builder.source_permutation,
         "tb_only_fields": [
             "occurrence_cycle", "tb_only_event_id", "relation_id",
             "relation_role", "deadline"

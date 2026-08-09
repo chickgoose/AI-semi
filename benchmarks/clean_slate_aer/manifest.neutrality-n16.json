@@ -13,6 +13,8 @@
     {"name":"core_sparse_identity","workload":"basic_sparse","seed":1001,"geometry":{"width":4,"height":4},"load":0.031,"stim_cycles":512,"parameters":{"event_count":16,"fixed_polarity":1,"fixed_event_type":"spike"}},
     {"name":"core_sparse_rotate180","workload":"basic_sparse","seed":1001,"geometry":{"width":4,"height":4},"load":0.031,"stim_cycles":512,"parameters":{"event_count":16,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":"rotate_180"}},
     {"name":"core_simultaneous_identity","workload":"basic_simultaneous","seed":1002,"geometry":{"width":4,"height":4},"load":0.063,"stim_cycles":256,"parameters":{"simultaneous_count":16,"occurrence_cycle":64,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"pairwise_contention_identity","workload":"pairwise_contention","seed":1003,"geometry":{"width":4,"height":4},"load":0.234,"stim_cycles":2048,"parameters":{"pair_spacing":8,"pair_repeats":2,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"pairwise_contention_affine","workload":"pairwise_contention","seed":1003,"geometry":{"width":4,"height":4},"load":0.234,"stim_cycles":2048,"parameters":{"pair_spacing":8,"pair_repeats":2,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":{"mode":"affine","multiplier":5,"offset":3}}},
 
     {"name":"uniform_l0p125_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":0.125,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
     {"name":"uniform_l0p125_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":0.125,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},

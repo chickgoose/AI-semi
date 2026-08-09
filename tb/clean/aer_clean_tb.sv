@@ -146,9 +146,9 @@ module aer_clean_tb;
     input integer source_index,
     input integer event_sequence
   );
-    // Address is the source coordinate plus a legitimate one-bit event type.
-    // The event sequence remains testbench-only.
-    make_event = ADDR_WIDTH'((source_index << 1) | (event_sequence & 1));
+    // Mandatory common AER traffic carries only the firing source address.
+    // Consecutive occurrences are distinguished exclusively by TB-only IDs.
+    make_event = ADDR_WIDTH'(source_index);
   endfunction
 
   function automatic integer abs_integer(input integer value);
@@ -283,7 +283,7 @@ module aer_clean_tb;
         trace_seed_name);
       if (trace_scan_count != 9)
         $fatal(1, "CLEAN_TRACE malformed header in %s", trace_file_path);
-      if (trace_version != 3)
+      if (trace_version != 4)
         $fatal(1, "CLEAN_TRACE unsupported version=%0d", trace_version);
       if ((trace_count < 0) || (trace_count > MAX_EVENTS))
         $fatal(1, "CLEAN_TRACE invalid event count=%0d", trace_count);
@@ -318,6 +318,10 @@ module aer_clean_tb;
             (trace_source[trace_index] >= NUM_SOURCES))
           $fatal(1, "CLEAN_TRACE illegal source row=%0d source=%0d",
                  trace_index, trace_source[trace_index]);
+        if (trace_address[trace_index] != trace_source[trace_index])
+          $fatal(1, "CLEAN_TRACE address-only mismatch row=%0d source=%0d address=%0d",
+                 trace_index, trace_source[trace_index],
+                 trace_address[trace_index]);
         if ((trace_occurrence[trace_index] < 0) ||
             (trace_occurrence[trace_index] >= trace_stim_cycles))
           $fatal(1, "CLEAN_TRACE illegal occurrence row=%0d cycle=%0d",

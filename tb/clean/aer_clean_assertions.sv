@@ -34,6 +34,12 @@ module aer_clean_assertions #(
       ap_source_control_known: assert property (
         !$isunknown({bench.source_valid[source], bench.source_ready[source]})
       ) else $error("CLEAN_ASSERT unknown source handshake source=%0d", source);
+
+      ap_source_is_address: assert property (
+        bench.source_valid[source] |->
+          (bench.source_event[source] == ADDR_WIDTH'(source))
+      ) else $error("CLEAN_ASSERT source event is not its AER address source=%0d",
+                    source);
     end
   endgenerate
 
@@ -69,6 +75,12 @@ module aer_clean_assertions #(
         bench.retire_valid[lane] |->
           !$isunknown({bench.retire_event[lane], bench.retire_source[lane]})
       ) else $error("CLEAN_ASSERT unknown completed event lane=%0d", lane);
+
+      ap_retire_is_address: assert property (
+        bench.retire_valid[lane] |->
+          (bench.retire_event[lane] == ADDR_WIDTH'(bench.retire_source[lane]))
+      ) else $error("CLEAN_ASSERT completed event is not its AER address lane=%0d",
+                    lane);
     end
   endgenerate
 endmodule

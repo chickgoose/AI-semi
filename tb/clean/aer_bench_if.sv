@@ -6,8 +6,9 @@ interface aer_bench_if #(
 ) (input logic clk);
   logic rst_n;
 
-  // Normalized source-latch side.  event_addr is the event identity
-  // (coordinate plus optional type), not an arbitrary payload.
+  // Normalized source-latch side.  In the mandatory common suite source_event
+  // is exactly the firing source address.  Polarity/type require a separately
+  // declared optional capability and are never arbitrary payload here.
   logic [NUM_SOURCES-1:0] source_valid;
   logic [NUM_SOURCES-1:0] source_ready;
   logic [ADDR_WIDTH-1:0] source_event [NUM_SOURCES];

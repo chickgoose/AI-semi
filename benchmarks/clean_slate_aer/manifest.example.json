@@ -21,6 +21,15 @@
       "parameters": {"simultaneous_count": 8, "occurrence_cycle": 32}
     },
     {
+      "name": "pairwise_contention",
+      "workload": "pairwise_contention",
+      "seed": 1003,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.984,
+      "stim_cycles": 4096,
+      "parameters": {"pair_spacing": 2, "pair_repeats": 1}
+    },
+    {
       "name": "uniform_load_0p10",
       "workload": "uniform",
       "seed": 2001,

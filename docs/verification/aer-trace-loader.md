@@ -6,15 +6,21 @@ the manifest, event schema, count, filename, and SHA256 in Python before emittin
 a numeric simulator input.  The numeric file is derived build output, not a
 second source of truth.
 
+The derived `.svtrace` ABI is version 4. Version 4 is the first fail-closed
+address-only format: its manifest must explicitly declare
+`event_identity_mode: address_only`, and every numeric event word must equal
+its logical source address. Older version-3 files may contain packed
+polarity/type bits and are deliberately rejected rather than silently
+reinterpreted.
+
 The preparation step also enforces the AER-aligned invariant
 `logical_source == y * width + x`.  A workload cannot turn the source address
-into an unrelated arbitrary payload.  Workload names are likewise not exposed
-through `event_type`; ordinary events use `spike`, while a test may explicitly
-define a real semantic type such as `timing_a` or `timing_b`.
+into an unrelated arbitrary payload. Workload names are not exposed through
+the physical event address; `event_type` is metadata in the mandatory suite.
 
-The source coordinate, polarity, and semantic event type are packed into the
-normalized event address.  `tb_only_event_id`, occurrence cycle, and deadline
-remain scoreboard-only.  A normalized retire-source sideband lets the common
+Only `logical_source == y * width + x` is emitted as the normalized mandatory
+event address. Polarity, event type, `tb_only_event_id`, occurrence cycle, and
+deadline remain metadata/scoreboard-only. A normalized retire-source sideband lets the common
 scoreboard select the originating one-entry source latch; it is produced by the
 candidate adapter and is not an arbitrary physical-link payload.
 

@@ -13,8 +13,8 @@ class MultilaneManifestTest(unittest.TestCase):
         full = json.loads(FULL.read_text(encoding="utf-8"))
         multilane = json.loads(MULTILANE.read_text(encoding="utf-8"))
         by_name = {run["name"]: run for run in full["runs"]}
-        self.assertEqual(len(multilane["runs"]), 18)
-        self.assertEqual(len({run["name"] for run in multilane["runs"]}), 18)
+        self.assertEqual(len(multilane["runs"]), 20)
+        self.assertEqual(len({run["name"] for run in multilane["runs"]}), 20)
         for run in multilane["runs"]:
             self.assertIn(run["name"], by_name)
             self.assertEqual(run, by_name[run["name"]])
@@ -24,7 +24,10 @@ class MultilaneManifestTest(unittest.TestCase):
         names = {run["name"] for run in document["runs"]}
         loads = {run["load"] for run in document["runs"] if run["workload"] == "uniform"}
         self.assertEqual(loads, {1.0, 1.25, 1.5, 2.0})
-        self.assertTrue({"shape_b4", "shape_b16", "global_fanin_identity"} <= names)
+        self.assertTrue({
+            "shape_b4", "shape_b16", "global_fanin_identity",
+            "pairwise_contention_identity", "pairwise_contention_affine",
+        } <= names)
         self.assertEqual(
             sum(run["workload"] == "phase_transition" for run in document["runs"]),
             2,

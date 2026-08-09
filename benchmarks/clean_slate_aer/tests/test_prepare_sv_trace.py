@@ -18,6 +18,8 @@ class PrepareSvTraceTest(unittest.TestCase):
              "x": 1, "y": 0, "polarity": 1, "event_type": "spike", "deadline": 6},
             {"occurrence_cycle": 7, "tb_only_event_id": 2, "logical_source": 3,
              "x": 1, "y": 1, "polarity": 1, "event_type": "timing_b", "deadline": 8},
+            {"occurrence_cycle": 7, "tb_only_event_id": 3, "logical_source": 0,
+             "x": 0, "y": 0, "polarity": 1, "event_type": "different_metadata", "deadline": 8},
         ]
         trace = directory / "tiny.events.jsonl"
         raw = "".join(json.dumps(event, separators=(",", ":")) + "\n" for event in events)
@@ -31,6 +33,7 @@ class PrepareSvTraceTest(unittest.TestCase):
             "trace_file": trace.name,
             "trace_sha256": hashlib.sha256(raw.encode("ascii")).hexdigest(),
             "event_count": len(events),
+            "event_identity_mode": "address_only",
         }) + "\n", encoding="utf-8")
         return trace, manifest
 
@@ -44,10 +47,12 @@ class PrepareSvTraceTest(unittest.TestCase):
             self.assertEqual(result["load_milli"], 500)
             self.assertEqual(result["report_group"], "tiny")
             lines = output.read_text(encoding="ascii").splitlines()
-            self.assertEqual(lines[0], "3 3 8 4 500 0 0 0 9")
+            self.assertEqual(lines[0], "4 4 8 4 500 0 0 0 9")
             self.assertEqual([line.split()[:3] for line in lines[1:]],
-                             [["1", "0", "0"], ["1", "1", "1"], ["7", "2", "3"]])
-            self.assertNotEqual(lines[1].split()[3], lines[3].split()[3])
+                             [["1", "0", "0"], ["1", "1", "1"],
+                              ["7", "2", "3"], ["7", "3", "0"]])
+            self.assertEqual([line.split()[3] for line in lines[1:]],
+                             ["0", "1", "3", "0"])
 
     def test_returns_explicit_report_group(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -75,7 +80,27 @@ class PrepareSvTraceTest(unittest.TestCase):
             directory = Path(temporary)
             trace, manifest = self.make_fixture(directory)
             with self.assertRaisesRegex(TracePreparationError, "ADDR_WIDTH"):
-                prepare_trace(trace, manifest, directory / "out.svtrace", 2)
+                prepare_trace(trace, manifest, directory / "out.svtrace", 1)
+
+    def test_rejects_non_address_identity_mode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            trace, manifest = self.make_fixture(directory)
+            metadata = json.loads(manifest.read_text(encoding="utf-8"))
+            metadata["event_identity_mode"] = "address_plus_payload"
+            manifest.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(TracePreparationError, "address_only"):
+                prepare_trace(trace, manifest, directory / "out.svtrace", 8)
+
+    def test_rejects_missing_identity_mode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            trace, manifest = self.make_fixture(directory)
+            metadata = json.loads(manifest.read_text(encoding="utf-8"))
+            del metadata["event_identity_mode"]
+            manifest.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(TracePreparationError, "address_only"):
+                prepare_trace(trace, manifest, directory / "out.svtrace", 8)
 
     def test_encodes_sink_shock_from_manifest(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -88,7 +113,7 @@ class PrepareSvTraceTest(unittest.TestCase):
             prepare_trace(trace, manifest, output, 8)
             self.assertEqual(
                 output.read_text(encoding="ascii").splitlines()[0],
-                "3 3 8 4 500 2 2 3 9",
+                "4 4 8 4 500 2 2 3 9",
             )
 
 

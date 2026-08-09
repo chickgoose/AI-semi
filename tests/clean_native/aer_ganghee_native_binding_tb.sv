@@ -79,9 +79,9 @@ module aer_ganghee_native_binding_tb;
           $error("BINDING_TB source mismatch ready=%0d retire=%0d",
                  acknowledged_source, bench.retire_source[0]);
         end
-        if (bench.retire_event[0] !== bench.source_event[acknowledged_source]) begin
+        if (bench.retire_event[0] !== ADDR_WIDTH'(acknowledged_source)) begin
           test_errors = test_errors + 1;
-          $error("BINDING_TB pending event reconstruction mismatch source=%0d",
+          $error("BINDING_TB native address reconstruction mismatch source=%0d",
                  acknowledged_source);
         end
         acknowledgement_count = acknowledgement_count + 1;
@@ -120,9 +120,9 @@ module aer_ganghee_native_binding_tb;
 
     // Simultaneous pending sources: the native DUT owns selection.  The
     // binding acknowledges only the returned addr and adds no arbitration.
-    issue_event(2, 16'h0022);
-    issue_event(7, 16'h0077);
-    issue_event(15, 16'h00ff);
+    issue_event(2, ADDR_WIDTH'(2));
+    issue_event(7, ADDR_WIDTH'(7));
+    issue_event(15, ADDR_WIDTH'(15));
     wait_for_acknowledgements(3);
 
     // Fastest legal same-source retrigger: the first acknowledgement clears
@@ -130,14 +130,14 @@ module aer_ganghee_native_binding_tb;
     // observes req low, then presents the next event.  This prevents a held
     // request from being interpreted as a duplicate native completion.
     @(negedge clk);
-    issue_event(5, 16'h0051);
+    issue_event(5, ADDR_WIDTH'(5));
     wait_for_acknowledgements(4);
     @(negedge clk);
     if (bench.source_valid[5] !== 1'b0) begin
       test_errors = test_errors + 1;
       $error("BINDING_TB req did not clear after implicit acknowledge");
     end
-    issue_event(5, 16'h0052);
+    issue_event(5, ADDR_WIDTH'(5));
     wait_for_acknowledgements(5);
 
     count_before_idle = acknowledgement_count;

@@ -1,13 +1,13 @@
 # Clean-Slate AER RTL 역할·기능·검증 계약
 
-Status: team-internal implementation contract, 2026-08-07
+Status: team-internal address-only implementation contract, 2026-08-10
 
 ## 1. 현재 결정
 
-새로 작성할 RTL은 기존 A23, fovea, rotation-priority 설계 중
-하나를 베이스로 삼지 않는다. 기존 설계는 결과 교차 확인을 위한
-read-only reference로만 남겨 둔다. 재사용하는 것은 다음의 후보
-중립 검증 자산뿐이다.
+새로 작성할 RTL은 강희의 전통적 address-only AER 의미를 기본으로
+삼고, raw cluster2를 현재 비교 reference로 둔다. 다만 cluster2의
+center/periphery 분할, bitmap lane, foveation, arbitration policy 자체를
+공통 규격으로 강제하지 않는다.
 
 - 논리 AER event 의미와 deterministic occurrence trace;
 - source별 one-entry pending-latch 모델;
@@ -29,9 +29,11 @@ packing, pipeline 구조를 강제하지 않는다. 새 설계의 내부 구조�
 논리 event는 다음과 같다.
 
 ```text
-(source coordinate/address, optional polarity or event type, occurrence time)
+(source coordinate/address, occurrence time)
 ```
 
+주소 자체가 mandatory event이며 arbitrary payload는 없다. polarity와
+event type은 별도 optional capability에서만 전송 대상으로 인정한다.
 `occurrence time`과 `tb_only_event_id`는 DUT payload가 아니다. 시간은
 trace의 발생 순간으로 나타나고, TB-only ID는 scoreboard가 손실과
 중복을 찾기 위해서만 사용한다. 임의 sequence number를 DUT로 보내
@@ -89,7 +91,7 @@ RTL이어야 하며 PPA 경계에 포함한다. TB binding이 이 기능을
 | `clk` | TB -> candidate | 공통 계측 clock |
 | `rst_n` | TB -> candidate | normalized active-low reset |
 | `source_valid[s]` | TB -> candidate | source `s`의 one-entry latch에 event가 pending |
-| `source_event[s]` | TB -> candidate | coordinate/address와, 지원하면 type/polarity를 포함한 event identity |
+| `source_event[s]` | TB -> candidate | mandatory suite에서는 정확히 source coordinate/address |
 | `source_ready[s]` | candidate -> TB | 이 cycle에 source `s`를 인수할 수 있음 |
 | `retire_valid[l]` | candidate -> TB | lane `l`에 completed logical event가 있음 |
 | `retire_event[l]` | candidate -> TB | 완료된 event identity |

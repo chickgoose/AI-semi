@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Candidate-neutral N=16 lane-capacity slice of the frozen 46-run suite; every run is byte-for-byte configuration-identical to manifest.neutrality-n16.json",
+  "description": "Candidate-neutral N=16 lane-capacity slice of the frozen 48-run address-only suite; every run is byte-for-byte configuration-identical to manifest.neutrality-n16.json",
   "policy": {
     "ranking_input": "exact generated JSONL trace SHA, never a lane-count-specific stimulus",
     "logical_event": "one coordinate-address spike; polarity and event type are fixed",
@@ -10,6 +10,8 @@
   },
   "runs": [
     {"name":"core_simultaneous_identity","workload":"basic_simultaneous","seed":1002,"geometry":{"width":4,"height":4},"load":0.063,"stim_cycles":256,"parameters":{"simultaneous_count":16,"occurrence_cycle":64,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"pairwise_contention_identity","workload":"pairwise_contention","seed":1003,"geometry":{"width":4,"height":4},"load":0.234,"stim_cycles":2048,"parameters":{"pair_spacing":8,"pair_repeats":2,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"pairwise_contention_affine","workload":"pairwise_contention","seed":1003,"geometry":{"width":4,"height":4},"load":0.234,"stim_cycles":2048,"parameters":{"pair_spacing":8,"pair_repeats":2,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":{"mode":"affine","multiplier":5,"offset":3}}},
 
     {"name":"uniform_l1p00_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
     {"name":"uniform_l1p00_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":1.0,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},

@@ -35,6 +35,10 @@ def check_trace(output: Path, metadata: dict[str, object]) -> None:
     events = read_events(output / metadata["trace_file"])
     assert len(events) == metadata["event_count"]
     assert metadata["event_schema"] == list(generate_trace.EVENT_FIELDS)
+    assert metadata["event_identity_mode"] == "address_only"
+    assert metadata["dut_address_fields"] == ["logical_source"]
+    assert metadata["dut_payload_fields"] == []
+    assert set(metadata["trace_metadata_fields"]) == {"x", "y", "polarity", "event_type"}
     assert "tb_only_event_id" not in metadata["dut_payload_fields"]
     assert "tb_only_event_id" in metadata["tb_only_fields"]
     assert "ready" not in metadata["event_schema"]

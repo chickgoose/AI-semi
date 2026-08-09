@@ -105,8 +105,8 @@ if [[ -n "$TRACE_JSONL" ]]; then
   read -r trace_version trace_count trace_stim_cycles trace_source_count \
     trace_load_milli trace_sink_mode trace_sink_arg0 trace_sink_arg1 \
     trace_seed_name < "$prepared_trace"
-  [[ "$trace_version" == 3 && "$trace_source_count" == 16 ]] || {
-    printf 'prepared trace must be version 3 with 16 sources\n' >&2
+  [[ "$trace_version" == 4 && "$trace_source_count" == 16 ]] || {
+    printf 'prepared trace must be address-only version 4 with 16 sources\n' >&2
     exit 2
   }
   [[ "$trace_sink_mode" == 0 ]] || {

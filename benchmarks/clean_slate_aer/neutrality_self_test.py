@@ -52,7 +52,7 @@ def main() -> int:
         first_runs = generate_trace.generate_manifest(MANIFEST, first)
         second_runs = generate_trace.generate_manifest(MANIFEST, second)
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        assert len(first_runs) == 46
+        assert len(first_runs) == 48
         assert golden["generator_version"] == generate_trace.GENERATOR_VERSION
         assert golden["suite"] == MANIFEST.name
         assert golden["runs"] == [
@@ -83,6 +83,18 @@ def main() -> int:
                 Counter(event["occurrence_cycle"] for event in events).values(),
                 default=0,
             )
+
+        pairwise_identity = read_events(first, "pairwise_contention_identity")
+        pairwise_affine = read_events(first, "pairwise_contention_affine")
+        expected_pairs = 16 * 15 // 2
+        for events in (pairwise_identity, pairwise_affine):
+            relation_counts = Counter(event["relation_id"] for event in events)
+            assert len(relation_counts) == expected_pairs * 2
+            assert set(relation_counts.values()) == {2}
+            assert max(Counter(event["occurrence_cycle"] for event in events).values()) == 2
+        assert [strip_address(event) for event in pairwise_identity] == [
+            strip_address(event) for event in pairwise_affine
+        ]
 
         shapes = [read_events(first, f"shape_b{size}") for size in (1, 4, 16)]
         source_histograms = [
@@ -191,7 +203,7 @@ def main() -> int:
         }
         assert uniform_groups == {"uniform"}
 
-    print("NEUTRALITY_SELF_TEST_PASS runs=46 n=16 deterministic=1")
+    print("NEUTRALITY_SELF_TEST_PASS runs=48 n=16 address_only=1 deterministic=1")
     return 0
 
 
