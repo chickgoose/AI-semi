@@ -210,15 +210,21 @@ serialized ROW/COL design, or another implementation.
 
 `benchmark_release.py` freezes an address-only benchmark release only after the
 repository is clean. It reads the generator, v4 preparer, clean TB, runners,
-official 48-run and 20-run manifests, golden fixture, and analyzers from a Git
-commit or tree object and records their SHA-256 values. The output must be a
-sidecar outside the repository; it is never included in its own hash set.
+official 50-run full and 22-run capacity manifests, golden fixture, and
+analyzers from a Git commit or tree object and records their SHA-256 values.
+The policy requires `mixed_phase_always_ready` in both official manifests.
+Counts are derived from the bound JSON arrays and must match 50/22 exactly.
+The output must be a sidecar outside the repository; it is never included in
+its own hash set.
 
 Generation and validation are fail-closed on any tracked or untracked dirty
 path. Artifact paths under `results/` or `logs/`, and `*.log` artifacts, are
 rejected. Test evidence is embedded only as a PASS marker, not as a result or
 log path. See `benchmark_release.py generate --help` for the required explicit
 file list and `benchmark_release.schema.json` for the interchange schema.
+The validator also inspects the bound preparer and TB sources for the v4
+nine-field header, five-field address-only event row, and
+`trace_address == trace_source` enforcement; blob hashes alone are insufficient.
 
 ## Input schema
 
