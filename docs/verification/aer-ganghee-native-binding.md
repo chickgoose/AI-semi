@@ -131,11 +131,19 @@ supported sink-always-ready suite.
 | Check | Result |
 | --- | --- |
 | edge-sampled native fixture | PASS: issued 5, acknowledgements 5, native results 5, masked sampling edges 5, duplicates 0 |
+| repeated-native-result negative control | PASS only when the raw repeated address trips `GANGHEE_NATIVE_BINDING duplicate/phantom native result` and the simulator exits nonzero |
 | structural repository self-check | PASS |
 | clean-slate Python unit tests | PASS: 25/25 |
 | deterministic trace-generator self-test | PASS: 10 workloads |
 | runner capability parsing | PASS: all 10 always-ready tests accepted |
 | unsupported capability guards | PASS: both backpressure tests rejected with exit 2 |
+
+The negative control is
+`tests/clean_native/ganghee_native_duplicate_fault.sv`. It repeats source 2
+after the first implicit acknowledgement has cleared the live pending request.
+`tests/clean_native/run_binding_test.sh` treats either a zero simulator status
+or a missing binding diagnostic as test failure. Thus the normalizer cannot
+silently discard this raw duplicate and report a clean scoreboard result.
 
 ## Server original-RTL qualification (2026-08-06)
 
