@@ -423,6 +423,23 @@ cycles. The aggregator intentionally has no clock-frequency or nanosecond
 option. Cycle-to-nanosecond conversion belongs to the separate PPA layer that
 owns post-layout frequency and corner information.
 
+Compare the separate identity and affine pairwise analyzer artifacts by their
+frozen canonical relation contract:
+
+```sh
+python3 benchmarks/clean_slate_aer/pairwise_cross_map_compare.py \
+  --identity-manifest pairwise_contention_identity.manifest.json \
+  --identity-report pairwise_contention_identity.pairs.json \
+  --affine-manifest pairwise_contention_affine.manifest.json \
+  --affine-report pairwise_contention_affine.pairs.json \
+  --output pairwise_identity_vs_affine.json
+```
+
+The comparison fails closed on provenance, permutation, candidate, relation,
+repeat, canonical-pair, or physical-address disagreement. Completion and skew
+deltas are emitted only when both trials are evaluable; drop and censor deltas
+remain independent and order changes are reported explicitly.
+
 `--fail-on-correctness` returns exit status 2 for CI when any test has a real
 correctness failure. Saturation alone still returns success.
 
