@@ -194,6 +194,14 @@ analyzers from a Git commit or tree object and records their SHA-256 values.
 The default `current` release requires generator version 4.0. Generator 3.0 is
 accepted only with the explicit `--release-kind historical` marker; historical
 status does not relax the 50/22 suite, prepared ABI v4, or address-only rules.
+Every tracked `tb/clean/native/*_binding.sv` is required in the release's
+`native_bindings` hash list. Explicitly bound synth/PPA `.f` source lists are
+also hashed and must exclude those bindings; native protocol adaptation remains
+a verification boundary and is never synthesizable/PPA design RTL.
+Pass one `--native-binding` for every tracked binding and one
+`--synth-ppa-filelist` for every actual synthesis/PPA source list. A nested
+`-f` list must also be passed and hashed explicitly. The clean simulation list
+`tb/clean/files.f` is verification infrastructure, not a synth/PPA declaration.
 The policy requires both `mixed_phase_always_ready_identity` and
 `mixed_phase_always_ready_bit_reverse` in both official manifests.
 Counts are derived from the bound JSON arrays and must match 50/22 exactly.
