@@ -1,6 +1,6 @@
 # AI-semi Progress
 
-최종 갱신: 2026-08-07
+최종 갱신: 2026-08-10
 
 ## 프로젝트 상태
 
@@ -46,6 +46,33 @@
 - [x] native candidate capability profile과 저장 없는 강희 direct-coordinate TB binding 구현
 - [x] 강희 원본 무수정 상태로 서버 Xcelium 공용 always-ready core workload 10/10 PASS
 - [x] 팀 공용 workload/TB 사용법, workload별 검증 목적, RUN/SKIP 정책 문서화
+
+## 2026-08-10 address-only 공용 benchmark 동결 상태
+
+- 팀의 구현 출발 의미는 Ganghee가 강조한 전통적 address-event AER로
+  정리했다. 임의 16-bit payload가 아니라 발화 source의 coordinate address
+  자체가 event다. Raw cluster2는 현재 conventional reference이지만 row split,
+  foveation, bitmap packing, 두 lane, arbitration 정책은 공통 RTL 요구가 아니다.
+- 공식 N=16 screening은 full 50 traces, lane-capacity 22 traces다. Generator 4.0,
+  address-only prepared ABI v4, golden trace SHA와 deterministic self-test가 이를
+  고정한다. 과거 문서의 46/18 표기는 historical suite/result다.
+- Pairwise identity/affine 결과는 canonical relation ID로 자동 결합한다. 둘 중
+  하나가 없거나 stale이면 exit 2, drop/censor 때문에 비교 불가능하면 진단
+  artifact를 보존한 뒤 exit 3으로 non-rankable 처리한다.
+- Mixed-phase analyzer는 stale summary/event를 거부하고 `--require-qualified`를
+  강제한다. 성공·correctness-failure·missing-output 경로는 outer-runner 동적
+  regression으로 고정했다.
+- `basic_reset_drain`과 raw duplicate/reset/retrigger negative controls가 구현됐다.
+  Stateless native binding은 저장·중재·retry를 추가하지 않으며, causal-credit를
+  벗어난 quiet-gap delayed same-address stale 결과는 address만으로 식별할 수 없다는
+  계약 한계를 명시했다.
+- 미세구조 편향 감사 결과 full50/cap22는 cluster2/A23/DREC 내부 구조를 요구하지
+  않는다. 다만 N=16, 4x4, one-outstanding/source, at most one occurrence/source/cycle,
+  sink-always-ready, synchronous one-hop screening이라는 범위 한계는 남는다.
+- 최종 범용 우승 판정 전 별도 동결이 필요한 P0는 N16/64/256 및 odd geometry scale,
+  동일 physical pin budget, sustained 3/4/8 event/cycle, activity-annotated full-link
+  PPA/energy-event다. Backpressure, multi-outstanding, CDC/multi-hop은 capability suite로
+  분리하고 지원하지 않는 candidate를 mandatory correctness에서 억지로 탈락시키지 않는다.
 
 ## 2026-08-06 공용 workload/TB 결론
 

@@ -230,8 +230,9 @@ native ready가 없는 candidate에 TB FIFO를 붙여 이 test를 통과시키�
 optional capability로 분리한다.
 
 글로 정의되었지만 현재 공통 runner에서 아직 완전 자동화/자격 검증되지
-않은 항목은 `basic_reset_drain`, native `basic_polarity`, automatic
-16/64/256 `limit_scale`, fixed-pin `limit_pin_budget`, mixed-phase trace다.
+않은 항목은 native `basic_polarity`, automatic 16/64/256 `limit_scale`,
+fixed-pin `limit_pin_budget`다. `basic_reset_drain`, mixed-phase trace 및
+identity/affine cross-map 분석은 구현되어 fail-closed regression으로 고정됐다.
 이들을 PASS한 것처럼 발표하지 않는다.
 
 ## 9. 성능 계약

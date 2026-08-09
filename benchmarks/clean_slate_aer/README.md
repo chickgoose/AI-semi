@@ -194,9 +194,11 @@ Use `pairwise_contention_metrics.py` with the same three inputs for a
 `pairwise_contention` run. It reports every trial, repeated-address-pair
 aggregates, completion latency, service skew, drop/censor counts, service-order
 bias, distinct worst-completion/worst-skew pairs, and prior-pair overlap.
-Identity and affine reports currently remain separate artifacts; compare them
-by canonical relation ID. An automatic cross-map delta report is not yet
-implemented and must not be claimed.
+The official common multi-lane runners require both identity and affine
+reports, join them by canonical relation ID, and publish one no-overwrite
+`identity-vs-affine.json`. A report with dropped/censored or otherwise
+non-evaluable pairs is preserved for diagnosis but makes the runner return 3
+and is not rankable.
 
 ## Architecture-neutral result aggregator
 

@@ -156,7 +156,7 @@ coverage.
 | `limit_load` | seeded Bernoulli load sweep from sparse through overload | saturation, throughput, overrun, p95/p99 latency |
 | `limit_elephant_mouse` | one continuously active source plus a periodic low-rate victim | starvation, victim maximum wait, throughput |
 | `limit_global_fanin` | all sources fire together at a fixed period | arbitration/drain latency and scaling |
-| `limit_pairwise_contention` | every unordered address pair under equal ingress spacing and address permutation, without hidden reset | pair-dependent arbitration, partition HOL, prior-pair overlap; automatic cross-map delta pending |
+| `limit_pairwise_contention` | every unordered address pair under equal ingress spacing and address permutation, without hidden reset | pair-dependent arbitration, partition HOL, prior-pair overlap; automatic identity/affine cross-map delta with non-rankable exit 3 |
 | `limit_local_cluster` | temporally clustered events from adjacent coordinates | locality opportunity, burst efficiency |
 | `limit_distributed_burst` | equally large burst from dispersed coordinates | anti-overfit check for locality-dependent schemes |
 | `limit_retrigger` | one source refires faster than service time | source overrun and required buffering |

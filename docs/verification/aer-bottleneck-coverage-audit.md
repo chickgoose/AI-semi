@@ -21,7 +21,7 @@ families that an existing design already solves.
 | --- | --- | --- |
 | sparse basic AER correctness | `core_sparse_*` | loss, duplicate, corruption, E2E latency |
 | simultaneous global fan-in | `core_simultaneous_*`, `global_fanin_*` | drain time, p99 latency, overrun |
-| pair-dependent partition/HOL | `pairwise_contention_identity`, `pairwise_contention_affine` | `pairwise_contention_metrics.py`: per-trial/repeat completion latency/skew, order bias, distinct worst pairs, prior-pair overlap; cross-map delta is pending |
+| pair-dependent partition/HOL | `pairwise_contention_identity`, `pairwise_contention_affine` | `pairwise_contention_metrics.py`: per-trial/repeat completion latency/skew, order bias, distinct worst pairs, prior-pair overlap; runner-produced identity/affine cross-map delta |
 | sustainable shared-link bandwidth | `uniform_l0p125` through `uniform_l2p00`, three seeds | completion/cycle plateau, overrun, backlog and latency tail |
 | temporal burst sensitivity at equal mean | `shape_b1`, `shape_b4`, `shape_b16` | throughput/latency/overrun spread across burst size |
 | spatial locality opportunity | `spatial_local` | local efficiency and latency |
@@ -91,8 +91,8 @@ freeze a new mandatory native stimulus boundary before seeing candidate results.
 The following items are still required before calling the benchmark completely
 frozen for final judging:
 
-1. reset-after-drain and mid-traffic reset semantics need an implemented common
-   regression, not only a specification row;
+1. reset-after-drain is implemented; mid-traffic reset cancel/preserve semantics
+   remain deliberately undefined and require a separately frozen contract;
 2. fixed physical pin-budget comparison must include every required
    synthesizable serializer/codec/buffer in candidate PPA;
 3. final saturation confidence should expand the three-seed screening sweep to
