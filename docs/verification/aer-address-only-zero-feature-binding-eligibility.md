@@ -1,6 +1,8 @@
 # Address-Only Zero-Feature Binding Eligibility
 
-Status: audit contract and unverified eligibility decision, 2026-08-10
+Status: **eligibility-accounting HOLD CLOSED** against schema v2 at `1acc9c2`,
+2026-08-10. Candidate execution remains unverified, and the governing full-link
+qualification itself remains on HOLD pending complete evidence.
 
 ## Purpose and authority
 
@@ -15,10 +17,17 @@ qualification result. Therefore `latest` means only the files present in that
 snapshot at the audit time. The SHA-256 values below bind the observations to
 those files; they do not establish a clean commit or release provenance.
 
+This revision closes the PPA-accounting ambiguity left by eligibility commit
+`d6bc597`: structural functional bindability and physical charging are separate
+decisions, and a positive result in the former never waives the latter.
+
 This is a functional eligibility contract, not a claim that any candidate
 passed simulation, regression, CDC signoff, synthesis, or PPA qualification.
-The full physical boundary and accounting rules remain in
+The governing and latest physical boundary/accounting contract is
 [`aer-address-only-full-link-qualification.md`](aer-address-only-full-link-qualification.md).
+Its schema-v2 requirements take precedence over any use of “zero-feature” or
+“free” in this document. Closing this eligibility HOLD does not release a
+candidate for ranking.
 
 ## Zero-feature binding contract
 
@@ -29,7 +38,7 @@ source before the next candidate sampling edge, as demonstrated by the existing
 stateless Ganghee binding in
 [`aer_ganghee_native_binding.sv`](../../tb/clean/native/aer_ganghee_native_binding.sv#L36).
 
-A zero-feature binding may contain only:
+A zero-feature **functional TB** binding may contain only:
 
 - port rename, reset-polarity conversion, constant tie, static slice,
   permutation, concatenation, or zero extension;
@@ -47,25 +56,41 @@ model. It may not acknowledge an event by probing an internal non-port signal.
 It may not convert the common held-request source into an unacknowledged
 one-cycle pulse.
 
-Bitmap expansion is free only as functional scoreboard observation under this
-contract. If the ranked physical endpoint requires scalar events, the expander
-is real RX RTL and must be synthesized and charged. Alternatively, a native
-bitmap may be frozen as the complete receiver boundary and all of its pins must
-be counted. A TB expansion is never evidence of scalar-RX area, timing, power,
-or completeness.
+“Zero-feature” means that the TB adds no state or recovery capability; it does
+not mean zero physical cost. Runtime acknowledgement qualification, address or
+row/column decode, acknowledged-request masking, bitmap expansion, and retire
+fanout may be used in the functional seam to determine structural eligibility,
+but every equivalent gate and path is **mandatory charged logic** in ranked
+PPA. The TB binding module itself remains excluded as required by schema v2;
+the equivalent physical acknowledgement/decoder/normalizer logic must appear
+under the synthesis top, be declared as the appropriate physical feature, map
+1:1 to a `charged_blocks` entry, and carry hierarchy/evidence hashes.
+
+Only literal port rename, static bit permutation/slice/concatenation, constant
+tie, and zero extension of an already recovered address remain free wiring.
+If a native bitmap is frozen as the complete receiver boundary, all bitmap pins
+are counted and no scalar-RX claim is allowed. If scalar logical completions are
+the receiver boundary, the bitmap expander and fanout are charged RX or
+normalizer RTL. Functional TB logic is correctness evidence only and never
+area, timing, power, or full-link completeness evidence.
 
 ## Eligibility classes
 
 - **BINDABLE_UNVERIFIED**: a zero-feature binding is structurally possible for
   the mandatory sink-always-ready profile. No common execution has been run.
+- **CURRENTLY_WIRED_PATH**: an in-repository binding and runner shape exists for
+  the native ports and required retire capacity. This still does not mean the
+  audited snapshot was compiled or run.
+- **STRUCTURALLY_ELIGIBLE_NOT_WIRED**: the native timing permits a stateless
+  functional binding, but the repository has no matching binding/runner today.
 - **SKIP_BACKPRESSURE**: the candidate has no native sink stall mechanism; the
   optional backpressure suite must be skipped rather than emulated.
 - **NOT_COMMON_QUALIFIABLE**: the current top cannot obey the common held-request
   occurrence contract without forbidden binding functionality or has an
   independently fatal native handshake defect.
-- **PPA_REQUIRED**: state or protocol logic is genuinely present in candidate
-  RTL. It must remain inside the candidate synthesis/activity/PPA boundary; it
-  is not binding functionality.
+- **PPA_REQUIRED**: any runtime combinational or stateful logic needed by the
+  physical path must be present inside the candidate synthesis/activity/PPA
+  boundary. A functionally equivalent TB expression does not make it free.
 - **DECODER_INCOMPLETE**: a transmitted representation is not a complete
   address event and no synthesizable receiver is present.
 
@@ -89,6 +114,33 @@ The two raw Ganghee rows are reference anchors needed to explain which wrappers
 preserve or break the existing stateless acknowledgement timing. They are not
 claimed as new Hyeonsu candidates.
 
+## Structural eligibility versus current wiring
+
+The retire capacity below counts logical address occurrences, not native words.
+Fixed source-indexed functional slots avoid adding a dynamic compactor.
+
+| Candidate | Maximum logical retirements/cycle | Minimum functional retire capacity | Structural status | Current repository wiring |
+| --- | ---: | ---: | --- | --- |
+| Ganghee raw fovea | **1** | 1 | **BINDABLE_UNVERIFIED** | **CURRENTLY_WIRED_PATH**: scalar `valid/addr` binding and `RETIRE_LANES=1` runner path exist; the audited snapshot was not run |
+| Ganghee raw cluster2 | **8**: two selected rows × four columns | 8 fixed native-lane/column slots | **BINDABLE_UNVERIFIED** | **STRUCTURALLY_ELIGIBLE_NOT_WIRED**: existing binding accepts only scalar `valid/addr` |
+| `aer_adaptive2lane` | **8**: two selected rows × four columns | 8 fixed native-lane/column slots | **BINDABLE_UNVERIFIED** | **STRUCTURALLY_ELIGIBLE_NOT_WIRED** |
+| `aer_4lane_rowsplit` | **16**: four rows × four columns | 16 fixed row/column slots | **BINDABLE_UNVERIFIED** | **STRUCTURALLY_ELIGIBLE_NOT_WIRED** |
+
+The current specialized runner fixes `RETIRE_LANES=1` and compiles the scalar
+Ganghee binding; see `scripts/run_ganghee_native_benchmark.sh:118-128`. That
+binding requires the scalar native ports and rejects any retire-lane count other
+than one at `tb/clean/native/aer_ganghee_native_binding.sv:17-25`, `:47-53`, and
+`:78-82`. No repository binding instantiates raw cluster2, rowsplit, or adaptive
+at this snapshot. Supporting their native maximum is plumbing still to be
+implemented, not an executed qualification result.
+
+For all four rows, the functional binding may use a fixed slot mapping and copy
+the one live pending event into scoreboard-only fields. In physical
+qualification, however, the ack decode, request mask, bitmap-to-source decode,
+and fanout just described must be included and charged under the governing
+full-link contract. The optional sink-backpressure suite remains
+`SKIP_BACKPRESSURE`; the binding may not add storage to enable it.
+
 ## Evidence for the decisions
 
 ### One-stage native outputs can use the stateless acknowledgement seam
@@ -102,6 +154,7 @@ The rowsplit top likewise registers the current row bitmap directly at
 registers its combinational grants and selected bitmaps at
 `/tmp/team-latest-aer/hyeonsu/aer_adaptive2lane.sv:60-85`. Their returned bits
 can therefore be masked before the next sampling edge without binding state.
+The corresponding physical ack decode, mask, and fanout remain charged logic.
 
 These candidates still lack native output backpressure. Rowsplit overwrites its
 outputs each cycle, and adaptive arbitration/credit advances without a sink
