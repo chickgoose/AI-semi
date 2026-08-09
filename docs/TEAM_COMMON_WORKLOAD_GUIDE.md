@@ -18,10 +18,12 @@ and duplication but is never inserted into the DUT. Each source has one pending
 latch. A refire while that latch is occupied is reported as `source_overrun`;
 the testbench does not hide it in an unbounded queue.
 
-Candidate bindings may map native pins and observe completion, but must not add
-FIFO storage, arbitration, retry, serialization, backpressure, event type, or
-retire lanes. Synthesizable logic needed for one of those features belongs to
-the candidate and its PPA boundary.
+Candidate-specific TB-only bindings are retained. They must satisfy the
+[zero-feature native-binding contract](verification/aer-native-capability-profile.md#native-harness-boundary):
+pin wiring, stateless address/bitmap observation, and native ACK timing are
+allowed; hardware features and stateful decoding are not. Earlier no-binding
+or inline-only directions are superseded. Approved workloads, traces,
+scoreboards, and metrics remain unchanged.
 
 ## 2. Implemented workloads
 
