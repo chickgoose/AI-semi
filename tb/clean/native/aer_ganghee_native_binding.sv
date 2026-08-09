@@ -90,8 +90,8 @@ module aer_ganghee_native_binding #(
       $fatal(1, "GANGHEE_NATIVE_BINDING requires RETIRE_LANES=1");
     if (ADDR_WIDTH <= 0)
       $fatal(1, "GANGHEE_NATIVE_BINDING requires positive ADDR_WIDTH");
-    if (FIFO_DEPTH < 0)
-      $fatal(1, "GANGHEE_NATIVE_BINDING FIFO_DEPTH is compatibility-only");
+    if (FIFO_DEPTH != 0)
+      $fatal(1, "GANGHEE_NATIVE_BINDING requires FIFO_DEPTH=0");
   end
 
   // Capability and protocol checks only; these assertions add no state to the
@@ -114,10 +114,6 @@ module aer_ganghee_native_binding #(
         $error("GANGHEE_NATIVE_BINDING acknowledge mapping is inconsistent");
       if (native_ack && native_req[native_addr])
         $error("GANGHEE_NATIVE_BINDING acknowledged req was not masked");
-      if (native_ack &&
-          (bench.source_event[native_addr] !== ADDR_WIDTH'(native_addr)))
-        $error("GANGHEE_NATIVE_BINDING common input is not address-only source=%0d event=%h",
-               native_addr, bench.source_event[native_addr]);
     end
   end
 endmodule

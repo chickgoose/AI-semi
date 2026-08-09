@@ -52,3 +52,49 @@ grep -q \
   'GANGHEE_NATIVE_BINDING duplicate/phantom native result addr=2' \
   "$OUT_DIR/duplicate-fault.log"
 printf 'GANGHEE_NATIVE_DUPLICATE_FAIL_CLOSED_PASS status=%d\n' "$fault_status"
+
+# Cluster2 positive control: held level request is acknowledged once, and the
+# delivered event identity comes only from the raw row/column bitmap.
+"$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
+  -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
+  -DAER_GANGHEE_CLUSTER2_MODULE=ganghee_cluster2_protocol_mock \
+  --top-module aer_ganghee_cluster2_binding_tb \
+  --Mdir "$OUT_DIR/cluster2-obj" \
+  "$PROJECT_ROOT/tb/clean/aer_bench_if.sv" \
+  "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv" \
+  "$PROJECT_ROOT/tests/clean_native/aer_ganghee_cluster2_binding_tb.sv"
+
+"$OUT_DIR/cluster2-obj/Vaer_ganghee_cluster2_binding_tb" | \
+  tee "$OUT_DIR/cluster2.log"
+grep -q 'GANGHEE_CLUSTER2_BINDING_PASS ack=1 retire=1 phantom=0' \
+  "$OUT_DIR/cluster2.log"
+
+# Cluster2 negative control: a repeated raw bitmap must remain observable on
+# retire and must make the binding/test process fail rather than being masked.
+"$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
+  -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
+  -DAER_GANGHEE_CLUSTER2_MODULE=ganghee_cluster2_protocol_mock \
+  -DAER_CLUSTER2_MOCK_REPEAT \
+  --top-module aer_ganghee_cluster2_binding_tb \
+  --Mdir "$OUT_DIR/cluster2-fault-obj" \
+  "$PROJECT_ROOT/tb/clean/aer_bench_if.sv" \
+  "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv" \
+  "$PROJECT_ROOT/tests/clean_native/aer_ganghee_cluster2_binding_tb.sv"
+
+set +e
+"$OUT_DIR/cluster2-fault-obj/Vaer_ganghee_cluster2_binding_tb" \
+  >"$OUT_DIR/cluster2-fault.log" 2>&1
+cluster2_fault_status=$?
+set -e
+if [[ "$cluster2_fault_status" -eq 0 ]]; then
+  printf 'cluster2 repeated bitmap fault unexpectedly passed\n' >&2
+  exit 1
+fi
+grep -q 'GANGHEE_CLUSTER2_RAW_PHANTOM_VISIBLE' \
+  "$OUT_DIR/cluster2-fault.log"
+grep -q 'GANGHEE_CLUSTER2_BINDING duplicate/phantom bitmap' \
+  "$OUT_DIR/cluster2-fault.log"
+printf 'GANGHEE_CLUSTER2_DUPLICATE_FAIL_CLOSED_PASS status=%d\n' \
+  "$cluster2_fault_status"

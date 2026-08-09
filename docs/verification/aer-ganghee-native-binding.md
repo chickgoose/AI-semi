@@ -130,12 +130,17 @@ supported sink-always-ready suite.
 | Check | Result |
 | --- | --- |
 | edge-sampled native fixture | PASS: issued 5, acknowledgements 5, native results 5, masked sampling edges 5, duplicates 0 |
-| repeated-native-result negative control | PASS only when the raw repeated address trips `GANGHEE_NATIVE_BINDING duplicate/phantom native result` and the simulator exits nonzero |
 | structural repository self-check | PASS |
 | clean-slate Python unit tests | PASS: 25/25 |
 | deterministic trace-generator self-test | PASS: 10 workloads |
 | runner capability parsing | PASS: all 10 always-ready tests accepted |
 | unsupported capability guards | PASS: both backpressure tests rejected with exit 2 |
+
+## Fail-closed duplicate extension (2026-08-10)
+
+| Check | Result |
+| --- | --- |
+| repeated-native-result negative control | PASS only when the raw repeated address trips `GANGHEE_NATIVE_BINDING duplicate/phantom native result` and the simulator exits nonzero |
 
 The negative control is
 `tests/clean_native/ganghee_native_duplicate_fault.sv`. It repeats source 2

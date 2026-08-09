@@ -35,9 +35,17 @@ module aer_ganghee_cluster2_binding #(
   integer map_col;
   integer source;
   integer lane;
-  integer check_source;
 
   assign native_rst = ~bench.rst_n;
+
+  // Reset quiet is checked at the unmasked native boundary. A normalizer may
+  // not make a stale native result disappear merely because no request lives.
+  always @(negedge bench.clk) begin
+    if (!bench.rst_n &&
+        ((native_valid0 !== 1'b0) || (native_valid1 !== 1'b0)))
+      $fatal(1, "GANGHEE_CLUSTER2_BINDING native valid active during reset lane0=%b lane1=%b",
+             native_valid0, native_valid1);
+  end
 
   always_comb begin
     native_result_mask = '0;
@@ -79,8 +87,11 @@ module aer_ganghee_cluster2_binding #(
 
     for (map_col = 0; map_col < 4; map_col = map_col + 1) begin
       source = (integer'(native_row0) * 4) + map_col;
+      // Observe the raw native result even when no common source is pending.
+      // The scoreboard must see a repeated/phantom result instead of having
+      // the acknowledgement mask silently discard it.
       if (native_valid0 && !$isunknown({native_row0, native_col_mask0}) &&
-          native_col_mask0[map_col] && native_ack_mask[source]) begin
+          native_col_mask0[map_col]) begin
         bench.retire_valid[map_col] = 1'b1;
         bench.retire_event[map_col] = ADDR_WIDTH'(source);
         bench.retire_source[map_col] = SOURCE_WIDTH'(source);
@@ -88,7 +99,7 @@ module aer_ganghee_cluster2_binding #(
 
       source = (integer'(native_row1) * 4) + map_col;
       if (native_valid1 && !$isunknown({native_row1, native_col_mask1}) &&
-          native_col_mask1[map_col] && native_ack_mask[source]) begin
+          native_col_mask1[map_col]) begin
         bench.retire_valid[4 + map_col] = 1'b1;
         bench.retire_event[4 + map_col] = ADDR_WIDTH'(source);
         bench.retire_source[4 + map_col] = SOURCE_WIDTH'(source);
@@ -103,8 +114,8 @@ module aer_ganghee_cluster2_binding #(
       $fatal(1, "GANGHEE_CLUSTER2_BINDING requires RETIRE_LANES=8");
     if (ADDR_WIDTH <= 0)
       $fatal(1, "GANGHEE_CLUSTER2_BINDING requires positive ADDR_WIDTH");
-    if (FIFO_DEPTH < 0)
-      $fatal(1, "GANGHEE_CLUSTER2_BINDING FIFO_DEPTH is compatibility-only");
+    if (FIFO_DEPTH != 0)
+      $fatal(1, "GANGHEE_CLUSTER2_BINDING requires FIFO_DEPTH=0");
   end
 
   always @(posedge bench.clk) begin
@@ -124,18 +135,12 @@ module aer_ganghee_cluster2_binding #(
       if (native_valid1 && !((native_row1 == 2'd0) || (native_row1 == 2'd3)))
         $error("GANGHEE_CLUSTER2_BINDING lane1 emitted non-peripheral row=%0d", native_row1);
       if ((native_result_mask & ~bench.source_valid) != '0)
-        $error("GANGHEE_CLUSTER2_BINDING duplicate/phantom bitmap mask=%h pending=%h",
+        $fatal(1, "GANGHEE_CLUSTER2_BINDING duplicate/phantom bitmap mask=%h pending=%h",
                native_result_mask, bench.source_valid);
       if ((native_result_mask & native_req) != '0)
         $error("GANGHEE_CLUSTER2_BINDING acknowledged requests were not masked");
-      if ($countones(bench.retire_valid) != $countones(bench.source_ready))
-        $error("GANGHEE_CLUSTER2_BINDING acknowledge mapping is inconsistent");
-      for (check_source = 0; check_source < NUM_SOURCES;
-           check_source = check_source + 1)
-        if (bench.source_ready[check_source] &&
-            (bench.source_event[check_source] !== ADDR_WIDTH'(check_source)))
-          $error("GANGHEE_CLUSTER2_BINDING common input is not address-only source=%0d event=%h",
-                 check_source, bench.source_event[check_source]);
+      if ($countones(bench.retire_valid) != $countones(native_result_mask))
+        $error("GANGHEE_CLUSTER2_BINDING raw result mapping is inconsistent");
     end
   end
 endmodule

@@ -125,6 +125,7 @@ compile_command=(xrun -64bit -sv -timescale 1ns/1ps
   -defparam aer_clean_tb.NUM_SOURCES=16
   -defparam aer_clean_tb.ADDR_WIDTH=16
   -defparam aer_clean_tb.RETIRE_LANES=8
+  -defparam aer_clean_tb.FIFO_DEPTH=0
   -f "$PROJECT_ROOT/tb/clean/files.f"
   "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv")
 if [[ -n "$RTL" ]]; then
