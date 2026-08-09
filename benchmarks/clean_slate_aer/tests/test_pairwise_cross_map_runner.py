@@ -21,6 +21,19 @@ RUNNERS = (
     PROJECT_ROOT / "scripts" / "run_common_multilane_benchmark.sh",
     PROJECT_ROOT / "scripts" / "run_common_multilane_candidate.sh",
 )
+OFFICIAL_STEMS = (
+    "core_simultaneous_identity",
+    "pairwise_contention_identity",
+    "pairwise_contention_affine",
+    "uniform_l1p00_s2001", "uniform_l1p00_s2002", "uniform_l1p00_s2003",
+    "uniform_l1p25_s2001", "uniform_l1p25_s2002", "uniform_l1p25_s2003",
+    "uniform_l1p50_s2001", "uniform_l1p50_s2002", "uniform_l1p50_s2003",
+    "uniform_l2p00_s2001", "uniform_l2p00_s2002", "uniform_l2p00_s2003",
+    "shape_b4", "shape_b16", "global_fanin_identity",
+    "phase_transition_s3501", "phase_transition_s3502",
+    "mixed_phase_always_ready_identity",
+    "mixed_phase_always_ready_bit_reverse",
+)
 
 
 class PairwiseCrossMapRunnerTest(unittest.TestCase):
@@ -46,7 +59,7 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
         marker_ns = self.marker.stat().st_mtime_ns
         os.utime(destination, ns=(marker_ns + 1_000_000, marker_ns + 1_000_000))
 
-    def _run(self, expected="current-schema-fixture", output=None):
+    def _run(self, expected="current-schema-fixture", output=None, project_root=None):
         command = (
             'set -euo pipefail; source "$1"; '
             'pairwise_cross_map_compare "$2" "$3" "$4" "$5" "$6" '
@@ -59,7 +72,7 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
                 command,
                 "pairwise-runner-test",
                 str(HELPER),
-                str(PROJECT_ROOT),
+                str(project_root or PROJECT_ROOT),
                 expected,
                 str(self.marker),
                 str(FIXTURE / "identity_manifest.json"),
@@ -126,6 +139,33 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
         self.assertIn("output collision", second.stderr)
         self.assertEqual(self.output.read_bytes(), before)
 
+    def test_dangling_symlink_is_an_output_collision(self):
+        self.output.parent.mkdir(parents=True)
+        self.output.symlink_to(self.root / "missing-target")
+        result = self._run()
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("output collision", result.stderr)
+        self.assertTrue(self.output.is_symlink())
+
+    def test_invalid_temporary_json_is_never_published(self):
+        fake_root = self.root / "fake-project"
+        analyzer = fake_root / "benchmarks" / "clean_slate_aer"
+        analyzer.mkdir(parents=True)
+        script = analyzer / "pairwise_cross_map_compare.py"
+        script.write_text(
+            """#!/usr/bin/env python3
+import pathlib, sys
+output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])
+output.write_text('{invalid', encoding='utf-8')
+""",
+            encoding="utf-8",
+        )
+        result = self._run(project_root=fake_root)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid JSON", result.stderr)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.output.parent.glob(".identity-vs-affine.tmp.*")), [])
+
     def test_stale_report_fails_closed_without_output(self):
         newest = max(self.identity.stat().st_mtime_ns, self.affine.stat().st_mtime_ns)
         os.utime(self.marker, ns=(newest + 1_000_000, newest + 1_000_000))
@@ -153,6 +193,46 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
         self.assertEqual(payload["drop_delta_affine_minus_identity"], -1)
         self.assertEqual(payload["censor_delta_affine_minus_identity"], -1)
 
+    def test_both_pairwise_reports_missing_is_exit_two(self):
+        result = subprocess.run(
+            [
+                "bash", "-c",
+                'set -euo pipefail; source "$1"; '
+                'pairwise_cross_map_require_reports "" "" "test-scope"',
+                "pairwise-presence-test", str(HELPER),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("requires identity and affine", result.stderr)
+
+    def test_official_stem_validator_rejects_duplicate_and_missing_stem(self):
+        trace_root = self.root / "official-traces"
+        trace_root.mkdir()
+        paths = []
+        for stem in OFFICIAL_STEMS:
+            event = trace_root / f"{stem}.events.jsonl"
+            event.write_text("{}\n", encoding="utf-8")
+            (trace_root / f"{stem}.manifest.json").write_text("{}\n", encoding="utf-8")
+            paths.append(event)
+        paths[-1] = paths[0]
+        command = (
+            'set -euo pipefail; source "$1"; shift; '
+            'validate_official_multilane_traces "$1" "${@:2}"'
+        )
+        result = subprocess.run(
+            ["bash", "-c", command, "official-set-test", str(HELPER),
+             str(trace_root), *(str(path) for path in paths)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicates=['core_simultaneous_identity']", result.stderr)
+        self.assertIn("missing=['mixed_phase_always_ready_bit_reverse']", result.stderr)
+
     def test_runner_sources_encode_exact_pair_and_deferred_exit_policy(self):
         benchmark = RUNNERS[0].read_text(encoding="utf-8")
         candidate = RUNNERS[1].read_text(encoding="utf-8")
@@ -161,10 +241,8 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
                 '[[ -n "$identity_pair_report" && -n "$affine_pair_report" ]]',
                 source,
             )
-            self.assertIn(
-                '[[ -n "$identity_pair_report" || -n "$affine_pair_report" ]]',
-                source,
-            )
+            self.assertIn("pairwise_cross_map_require_reports", source)
+            self.assertIn("validate_official_multilane_traces", source)
             self.assertIn('out_root="$(mktemp -d "$out_parent/run.XXXXXXXX")"', source)
             self.assertNotIn("find \"$result_root\"", source)
         self.assertLess(
@@ -182,7 +260,7 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_benchmark_all_lanes_finish_before_nonrankable_exit_three(self):
+    def test_benchmark_all_lanes_and_candidate_22_finish_before_exit_three(self):
         harness = self.root / "harness"
         scripts = harness / "scripts"
         library = scripts / "lib"
@@ -190,6 +268,7 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
         library.mkdir(parents=True)
         benchmark.mkdir(parents=True)
         shutil.copy2(RUNNERS[0], scripts / RUNNERS[0].name)
+        shutil.copy2(RUNNERS[1], scripts / RUNNERS[1].name)
         shutil.copy2(HELPER, library / HELPER.name)
         shutil.copy2(
             PROJECT_ROOT
@@ -200,6 +279,9 @@ class PairwiseCrossMapRunnerTest(unittest.TestCase):
         )
         (benchmark / "manifest.multilane-n16.json").write_text(
             "{}\n", encoding="utf-8"
+        )
+        (benchmark / "official_stems.json").write_text(
+            json.dumps(OFFICIAL_STEMS), encoding="utf-8"
         )
         for fixture_name in (
             "identity_manifest.json",
@@ -226,8 +308,7 @@ a = p.parse_args()
 root = pathlib.Path(a.output_dir)
 root.mkdir(parents=True, exist_ok=True)
 here = pathlib.Path(__file__).resolve().parent
-names = ['pairwise_contention_identity', 'pairwise_contention_affine']
-names += [f'ordinary_{index:02d}' for index in range(20)]
+names = json.loads((here / 'official_stems.json').read_text(encoding='utf-8'))
 runs = []
 for name in names:
     event = root / f'{name}.events.jsonl'
@@ -257,9 +338,13 @@ here = pathlib.Path(__file__).resolve().parent
 kind = 'identity' if 'identity' in pathlib.Path(a.run_manifest).stem else 'affine'
 payload = json.loads((here / f'{kind}_report.json').read_text(encoding='utf-8'))
 match = re.search(r'/k([124])/', a.output)
-if not match:
-    raise SystemExit('test harness could not infer lane')
-payload['candidate'] = f'a7_prefix_k{match.group(1)}'
+if match:
+    payload['candidate'] = f'a7_prefix_k{match.group(1)}'
+else:
+    match = re.search(r'/([^/]+)-n16-seed1/', a.output)
+    if not match:
+        raise SystemExit('test harness could not infer candidate')
+    payload['candidate'] = match.group(1)
 path = pathlib.Path(a.output)
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(payload), encoding='utf-8')
@@ -267,7 +352,11 @@ path.write_text(json.dumps(payload), encoding='utf-8')
             encoding="utf-8",
         )
         (benchmark / "mixed_phase_always_ready_metrics.py").write_text(
-            "raise SystemExit('mixed phase is outside this harness')\n",
+            """#!/usr/bin/env python3
+import pathlib, sys
+output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])
+output.write_text('{}\\n', encoding='utf-8')
+""",
             encoding="utf-8",
         )
         (scripts / "run_a7_parallel_event_compactor.sh").write_text(
@@ -281,13 +370,29 @@ stem="$(basename "$AER_TRACE_JSONL" .events.jsonl)"
 result="$AER_CLEAN_OUT/prefix/k$lane/$stem"
 mkdir -p "$result"
 printf 'cycle\\n0\\n' > "$result/trace.events.csv"
+printf 'summary\\n' > "$result/trace.csv"
 printf '%s %s\\n' "$lane" "$stem" >> "$TEST_RUN_LOG"
+""",
+            encoding="utf-8",
+        )
+        (scripts / "run_clean_benchmark.sh").write_text(
+            """#!/usr/bin/env bash
+set -euo pipefail
+candidate="$1"
+stem="$(basename "$AER_TRACE_JSONL" .events.jsonl)"
+result="$AER_CLEAN_OUT/$candidate-n16-seed1"
+mkdir -p "$result"
+printf 'cycle\\n0\\n' > "$result/trace.events.csv"
+printf 'summary\\n' > "$result/trace.csv"
+printf '%s %s\\n' "$candidate" "$stem" >> "$TEST_RUN_LOG"
 """,
             encoding="utf-8",
         )
         for executable in (
             scripts / RUNNERS[0].name,
+            scripts / RUNNERS[1].name,
             scripts / "run_a7_parallel_event_compactor.sh",
+            scripts / "run_clean_benchmark.sh",
             benchmark / "generate_trace.py",
             benchmark / "pairwise_contention_metrics.py",
         ):
@@ -323,6 +428,37 @@ printf '%s %s\\n' "$lane" "$stem" >> "$TEST_RUN_LOG"
                 / "identity-vs-affine.json"
             )
             self.assertFalse(json.loads(artifact.read_text(encoding="utf-8"))["rankable"])
+
+        candidate_parent = self.root / "candidate-runs"
+        candidate_log = self.root / "candidate.log"
+        environment.update(
+            AER_CLEAN_OUT=str(candidate_parent),
+            TEST_RUN_LOG=str(candidate_log),
+        )
+        candidate_result = subprocess.run(
+            [
+                str(scripts / RUNNERS[1].name),
+                "clean",
+                "current-schema-fixture",
+            ],
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(candidate_result.returncode, 3, candidate_result.stderr)
+        self.assertEqual(len(candidate_log.read_text(encoding="utf-8").splitlines()), 22)
+        candidate_roots = list(candidate_parent.glob("run.*"))
+        self.assertEqual(len(candidate_roots), 1)
+        candidate_artifact = (
+            candidate_roots[0]
+            / "pairwise-cross-map"
+            / "clean-current-schema-fixture-n16-seed1"
+            / "identity-vs-affine.json"
+        )
+        self.assertFalse(
+            json.loads(candidate_artifact.read_text(encoding="utf-8"))["rankable"]
+        )
 
 
 if __name__ == "__main__":

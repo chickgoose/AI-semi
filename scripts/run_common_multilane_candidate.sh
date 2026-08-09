@@ -61,11 +61,7 @@ index = json.loads((root / "generation-index.json").read_text(encoding="utf-8"))
 for run in index["runs"]:
     print(root / run["trace_file"])' "$trace_root"
 )
-[[ "${#generated_traces[@]}" -eq 22 ]] || {
-  printf 'expected exactly 22 indexed multi-lane traces, found %d\n' \
-    "${#generated_traces[@]}" >&2
-  exit 1
-}
+validate_official_multilane_traces "$trace_root" "${generated_traces[@]}" || exit 2
 
 case "$binding" in
   clean)
@@ -149,6 +145,8 @@ for event_path in "${generated_traces[@]}"; do
   rm -f "$freshness_marker"
 done
 
+pairwise_cross_map_require_reports "$identity_pair_report" \
+  "$affine_pair_report" "$candidate_scope" || exit 2
 if [[ -n "$identity_pair_report" && -n "$affine_pair_report" ]]; then
   cross_output="$out_root/pairwise-cross-map/$candidate_scope/identity-vs-affine.json"
   if pairwise_cross_map_compare "$project_root" "$expected_report_candidate" \
@@ -162,11 +160,8 @@ if [[ -n "$identity_pair_report" && -n "$affine_pair_report" ]]; then
     pairwise_status="$?"
     [[ "$pairwise_status" -eq 3 ]] || exit "$pairwise_status"
   fi
-elif [[ -n "$identity_pair_report" || -n "$affine_pair_report" ]]; then
-  printf 'pairwise cross-map requires both identity and affine reports\n' >&2
-  exit 2
 else
-  pairwise_status=0
+  exit 2
 fi
 rm -f "$pairwise_marker"
 
