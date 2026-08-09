@@ -1,5 +1,5 @@
 {
-  "generator_version": "2.0",
+  "generator_version": "4.0",
   "runs": [
     {
       "actual_mean_load": "0.03125",
@@ -24,6 +24,22 @@
       "peak_events_per_cycle": 16,
       "report_group": "core_simultaneous_identity",
       "trace_sha256": "a9a81664fc2117e72df8739b816eaffdeb8a4ab734576ab7c96336d0d232f045"
+    },
+    {
+      "actual_mean_load": "0.234375",
+      "event_count": 480,
+      "name": "pairwise_contention_identity",
+      "peak_events_per_cycle": 2,
+      "report_group": "pairwise_contention_identity",
+      "trace_sha256": "e1df1600f2c15d17e15c9cdad60b51529eea9d0f685279840dcbbe9079d1f15a"
+    },
+    {
+      "actual_mean_load": "0.234375",
+      "event_count": 480,
+      "name": "pairwise_contention_affine",
+      "peak_events_per_cycle": 2,
+      "report_group": "pairwise_contention_affine",
+      "trace_sha256": "c8b2340e57c81603708a2ec1978a6c0d74d6fbfa24141f3070e336989ebb0821"
     },
     {
       "actual_mean_load": "0.12255859375",
@@ -368,6 +384,22 @@
       "peak_events_per_cycle": 2,
       "report_group": "timing_pair",
       "trace_sha256": "04eeba16b1c8c90cc69a457e56b7319cb7361952d71ffc79f89800c3a139d73b"
+    },
+    {
+      "actual_mean_load": "2.2529296875",
+      "event_count": 9228,
+      "name": "mixed_phase_always_ready_identity",
+      "peak_events_per_cycle": 16,
+      "report_group": "mixed_phase_always_ready",
+      "trace_sha256": "9fde0ee816a80975d219b57e9799e73c198efc85d6e9aec4cb2a2e4816974705"
+    },
+    {
+      "actual_mean_load": "2.2529296875",
+      "event_count": 9228,
+      "name": "mixed_phase_always_ready_bit_reverse",
+      "peak_events_per_cycle": 16,
+      "report_group": "mixed_phase_always_ready",
+      "trace_sha256": "4e0ff22112dba73d984cfcc50d6ce2e726f74d4ce2a70b9b7dec5399a7dbe822"
     }
   ],
   "schema_version": 1,

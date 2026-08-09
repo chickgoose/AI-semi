@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "description": "Frozen N=16 always-ready anti-overfit suite for candidate-neutral AER evaluation",
+  "description": "Frozen N=16 50-run always-ready address-only anti-overfit suite for candidate-neutral AER evaluation",
   "policy": {
     "ranking_input": "exact generated JSONL trace SHA, never built-in synthetic test names",
-    "logical_event": "one coordinate-address spike; polarity and event type are fixed",
+    "logical_event": "one coordinate-address spike; polarity and event type are fixed metadata only",
     "source_rule": "at most one occurrence per logical source per cycle",
     "load_rule": "load is the declared grouping/target mean; generated metadata records achieved mean and peak",
     "uniform_seed_rule": "same seed at different loads is an independent realization, not a nested common-random trace",
@@ -13,6 +13,8 @@
     {"name":"core_sparse_identity","workload":"basic_sparse","seed":1001,"geometry":{"width":4,"height":4},"load":0.031,"stim_cycles":512,"parameters":{"event_count":16,"fixed_polarity":1,"fixed_event_type":"spike"}},
     {"name":"core_sparse_rotate180","workload":"basic_sparse","seed":1001,"geometry":{"width":4,"height":4},"load":0.031,"stim_cycles":512,"parameters":{"event_count":16,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":"rotate_180"}},
     {"name":"core_simultaneous_identity","workload":"basic_simultaneous","seed":1002,"geometry":{"width":4,"height":4},"load":0.063,"stim_cycles":256,"parameters":{"simultaneous_count":16,"occurrence_cycle":64,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"pairwise_contention_identity","workload":"pairwise_contention","seed":1003,"geometry":{"width":4,"height":4},"load":0.234,"stim_cycles":2048,"parameters":{"pair_spacing":8,"pair_repeats":2,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"pairwise_contention_affine","workload":"pairwise_contention","seed":1003,"geometry":{"width":4,"height":4},"load":0.234,"stim_cycles":2048,"parameters":{"pair_spacing":8,"pair_repeats":2,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":{"mode":"affine","multiplier":5,"offset":3}}},
 
     {"name":"uniform_l0p125_s2001","workload":"uniform","seed":2001,"geometry":{"width":4,"height":4},"load":0.125,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
     {"name":"uniform_l0p125_s2002","workload":"uniform","seed":2002,"geometry":{"width":4,"height":4},"load":0.125,"stim_cycles":2048,"parameters":{"fixed_polarity":1,"fixed_event_type":"spike"}},
@@ -62,6 +64,9 @@
     {"name":"retrigger_identity","workload":"retrigger","seed":3801,"geometry":{"width":4,"height":4},"load":0.25,"stim_cycles":2048,"parameters":{"trigger_count":128,"repeats":4,"retrigger_interval":1,"fixed_polarity":1,"fixed_event_type":"spike"}},
     {"name":"retrigger_affine","workload":"retrigger","seed":3801,"geometry":{"width":4,"height":4},"load":0.25,"stim_cycles":2048,"parameters":{"trigger_count":128,"repeats":4,"retrigger_interval":1,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":{"mode":"affine","multiplier":5,"offset":3}}},
     {"name":"timing_pair_s3901","workload":"timing_pair","seed":3901,"geometry":{"width":4,"height":4},"load":0.625,"stim_cycles":2048,"parameters":{"pair_count":128,"pair_gap":2,"pair_deadline_slack":16,"background_load":0.5,"fixed_polarity":1,"fixed_event_type":"spike"}},
-    {"name":"timing_pair_s3902","workload":"timing_pair","seed":3902,"geometry":{"width":4,"height":4},"load":0.625,"stim_cycles":2048,"parameters":{"pair_count":128,"pair_gap":2,"pair_deadline_slack":16,"background_load":0.5,"fixed_polarity":1,"fixed_event_type":"spike"}}
+    {"name":"timing_pair_s3902","workload":"timing_pair","seed":3902,"geometry":{"width":4,"height":4},"load":0.625,"stim_cycles":2048,"parameters":{"pair_count":128,"pair_gap":2,"pair_deadline_slack":16,"background_load":0.5,"fixed_polarity":1,"fixed_event_type":"spike"}},
+
+    {"name":"mixed_phase_always_ready_identity","workload":"mixed_phase_always_ready","seed":4001,"geometry":{"width":4,"height":4},"load":2.25,"stim_cycles":4096,"parameters":{"uniform_source_probability":0.125,"hot_probability":0.8,"fixed_polarity":1,"fixed_event_type":"spike"}},
+    {"name":"mixed_phase_always_ready_bit_reverse","workload":"mixed_phase_always_ready","seed":4001,"geometry":{"width":4,"height":4},"load":2.25,"stim_cycles":4096,"parameters":{"uniform_source_probability":0.125,"hot_probability":0.8,"fixed_polarity":1,"fixed_event_type":"spike","source_permutation":"bit_reverse"}}
   ]
 }

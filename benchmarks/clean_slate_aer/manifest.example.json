@@ -21,6 +21,15 @@
       "parameters": {"simultaneous_count": 8, "occurrence_cycle": 32}
     },
     {
+      "name": "pairwise_contention",
+      "workload": "pairwise_contention",
+      "seed": 1003,
+      "geometry": {"width": 8, "height": 8},
+      "load": 0.984,
+      "stim_cycles": 4096,
+      "parameters": {"pair_spacing": 2, "pair_repeats": 1}
+    },
+    {
       "name": "uniform_load_0p10",
       "workload": "uniform",
       "seed": 2001,
@@ -163,6 +172,15 @@
         "shock_deadline_slack": 8
       },
       "sink": {"mode": "shock", "start": 192, "cycles": 96}
+    },
+    {
+      "name": "mixed_phase_always_ready",
+      "workload": "mixed_phase_always_ready",
+      "seed": 4001,
+      "geometry": {"width": 4, "height": 4},
+      "load": 2.25,
+      "stim_cycles": 4096,
+      "parameters": {"uniform_source_probability": 0.125, "hot_probability": 0.8}
     }
   ]
 }
