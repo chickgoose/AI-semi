@@ -260,7 +260,7 @@ output.write_text('{invalid', encoding='utf-8')
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_benchmark_all_lanes_and_candidate_22_finish_before_exit_three(self):
+    def test_combined_e2e_mixed_and_cross_map_finish_before_exit_three(self):
         harness = self.root / "harness"
         scripts = harness / "scripts"
         library = scripts / "lib"
@@ -327,7 +327,7 @@ for name in names:
         )
         (benchmark / "pairwise_contention_metrics.py").write_text(
             """#!/usr/bin/env python3
-import argparse, json, pathlib, re
+import argparse, json, os, pathlib, re
 p = argparse.ArgumentParser()
 p.add_argument('--trace')
 p.add_argument('--run-manifest', required=True)
@@ -346,15 +346,30 @@ else:
         raise SystemExit('test harness could not infer candidate')
     payload['candidate'] = match.group(1)
 path = pathlib.Path(a.output)
+expected_events = path.parent / 'trace.events.csv'
+if pathlib.Path(a.events) != expected_events:
+    raise SystemExit(
+        f'pair analyzer received non-exact event result: {a.events} != {expected_events}'
+    )
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(payload), encoding='utf-8')
+with pathlib.Path(os.environ['TEST_PAIR_EVENT_LOG']).open('a', encoding='utf-8') as stream:
+    stream.write(f'{a.events}\\n')
 """,
             encoding="utf-8",
         )
         (benchmark / "mixed_phase_always_ready_metrics.py").write_text(
             """#!/usr/bin/env python3
-import pathlib, sys
+import os, pathlib, sys
+events = pathlib.Path(sys.argv[sys.argv.index('--events') + 1])
+summary = pathlib.Path(sys.argv[sys.argv.index('--summary') + 1])
 output = pathlib.Path(sys.argv[sys.argv.index('--output') + 1])
+if events != output.parent / 'trace.events.csv':
+    raise SystemExit(f'mixed analyzer event path mismatch: {events}')
+if summary != output.parent / 'trace.csv':
+    raise SystemExit(f'mixed analyzer summary path mismatch: {summary}')
+with pathlib.Path(os.environ['TEST_MIXED_LOG']).open('a', encoding='utf-8') as stream:
+    stream.write(f'{events} {summary} {output}\\n')
 output.write_text('{}\\n', encoding='utf-8')
 """,
             encoding="utf-8",
@@ -400,11 +415,15 @@ printf '%s %s\\n' "$candidate" "$stem" >> "$TEST_RUN_LOG"
 
         output_parent = self.root / "runs"
         run_log = self.root / "run.log"
+        pair_event_log = self.root / "pair-events.log"
+        mixed_log = self.root / "mixed.log"
         environment = os.environ.copy()
         environment.update(
             AER_COMMON_MULTILANE_TRACE_DIR=str(self.root / "traces"),
             AER_CLEAN_OUT=str(output_parent),
             TEST_RUN_LOG=str(run_log),
+            TEST_PAIR_EVENT_LOG=str(pair_event_log),
+            TEST_MIXED_LOG=str(mixed_log),
         )
         result = subprocess.run(
             [str(scripts / RUNNERS[0].name), "drec-prefix", "all"],
@@ -417,8 +436,24 @@ printf '%s %s\\n' "$candidate" "$stem" >> "$TEST_RUN_LOG"
         completed = run_log.read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(completed), 66)
         self.assertEqual({line.split()[0] for line in completed}, {"1", "2", "4"})
+        benchmark_pair_events = pair_event_log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(benchmark_pair_events), 6)
+        self.assertTrue(
+            all(path.endswith("/trace.events.csv") for path in benchmark_pair_events)
+        )
+        self.assertEqual(len(mixed_log.read_text(encoding="utf-8").splitlines()), 6)
         run_roots = list(output_parent.glob("run.*"))
         self.assertEqual(len(run_roots), 1)
+        self.assertEqual(
+            len(
+                list(
+                    run_roots[0].glob(
+                        "prefix/k*/pairwise-cross-map/identity-vs-affine.json"
+                    )
+                )
+            ),
+            3,
+        )
         for lane in (1, 2, 4):
             artifact = (
                 run_roots[0]
@@ -428,12 +463,26 @@ printf '%s %s\\n' "$candidate" "$stem" >> "$TEST_RUN_LOG"
                 / "identity-vs-affine.json"
             )
             self.assertFalse(json.loads(artifact.read_text(encoding="utf-8"))["rankable"])
+        self.assertEqual(
+            len(
+                list(
+                    run_roots[0].glob(
+                        "prefix/k*/mixed_phase_always_ready_*/*.mixed.json"
+                    )
+                )
+            ),
+            6,
+        )
 
         candidate_parent = self.root / "candidate-runs"
         candidate_log = self.root / "candidate.log"
+        candidate_pair_event_log = self.root / "candidate-pair-events.log"
+        candidate_mixed_log = self.root / "candidate-mixed.log"
         environment.update(
             AER_CLEAN_OUT=str(candidate_parent),
             TEST_RUN_LOG=str(candidate_log),
+            TEST_PAIR_EVENT_LOG=str(candidate_pair_event_log),
+            TEST_MIXED_LOG=str(candidate_mixed_log),
         )
         candidate_result = subprocess.run(
             [
@@ -448,8 +497,28 @@ printf '%s %s\\n' "$candidate" "$stem" >> "$TEST_RUN_LOG"
         )
         self.assertEqual(candidate_result.returncode, 3, candidate_result.stderr)
         self.assertEqual(len(candidate_log.read_text(encoding="utf-8").splitlines()), 22)
+        candidate_pair_events = candidate_pair_event_log.read_text(
+            encoding="utf-8"
+        ).splitlines()
+        self.assertEqual(len(candidate_pair_events), 2)
+        self.assertTrue(
+            all(path.endswith("/trace.events.csv") for path in candidate_pair_events)
+        )
+        self.assertEqual(
+            len(candidate_mixed_log.read_text(encoding="utf-8").splitlines()), 2
+        )
         candidate_roots = list(candidate_parent.glob("run.*"))
         self.assertEqual(len(candidate_roots), 1)
+        self.assertEqual(
+            len(
+                list(
+                    candidate_roots[0].glob(
+                        "pairwise-cross-map/*/identity-vs-affine.json"
+                    )
+                )
+            ),
+            1,
+        )
         candidate_artifact = (
             candidate_roots[0]
             / "pairwise-cross-map"
@@ -458,6 +527,16 @@ printf '%s %s\\n' "$candidate" "$stem" >> "$TEST_RUN_LOG"
         )
         self.assertFalse(
             json.loads(candidate_artifact.read_text(encoding="utf-8"))["rankable"]
+        )
+        self.assertEqual(
+            len(
+                list(
+                    candidate_roots[0].glob(
+                        "mixed_phase_always_ready_*/*/*.mixed.json"
+                    )
+                )
+            ),
+            2,
         )
 
 
