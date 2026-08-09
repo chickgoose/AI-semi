@@ -1,401 +1,342 @@
 #!/usr/bin/env python3
-"""Validate and atomically publish a fail-closed common-suite receipt.
-
-The tool intentionally does not discover runs or artifacts.  Every expected run
-and every produced artifact must be named by an immutable input manifest.
-"""
+"""Fail-closed receipt for the committed full50 and capacity22 suites."""
 
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import hashlib
+import io
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import common_suite_official as official
 
-SCHEMA_VERSION = 1
-PROVENANCE_KEY = "_common_suite_provenance"
+SCHEMA_VERSION = 2
+ANALYZER_WORKLOADS = {"pairwise_contention", "mixed_phase_always_ready"}
 
 
 class ReceiptError(ValueError):
-    """Raised when suite evidence is incomplete, stale, or inconsistent."""
-
-
-def _read_bytes_stable(path: Path, description: str) -> tuple[bytes, os.stat_result]:
-    try:
-        before = path.lstat()
-        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
-            raise ReceiptError(f"{description} is not a regular non-symlink file: {path}")
-        with path.open("rb") as stream:
-            opened = os.fstat(stream.fileno())
-            payload = stream.read()
-            after_read = os.fstat(stream.fileno())
-        after_path = path.lstat()
-    except OSError as exc:
-        raise ReceiptError(f"cannot read {description} {path}: {exc}") from exc
-
-    identity = lambda value: (
-        value.st_dev,
-        value.st_ino,
-        value.st_size,
-        value.st_mtime_ns,
-    )
-    if not (
-        identity(before)
-        == identity(opened)
-        == identity(after_read)
-        == identity(after_path)
-    ):
-        raise ReceiptError(f"{description} changed while being validated: {path}")
-    return payload, after_path
-
-
-def _read_json(path: Path, description: str) -> tuple[dict[str, Any], bytes]:
-    payload, _ = _read_bytes_stable(path, description)
-    try:
-        value = json.loads(payload)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ReceiptError(f"invalid JSON in {description} {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise ReceiptError(f"{description} must be a JSON object: {path}")
-    return value, payload
+    pass
 
 
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _require_sha(value: Any, description: str) -> str:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
-        raise ReceiptError(f"{description} must be a lowercase SHA256 hex digest")
-    return value
+def _read_bytes_stable(path: Path, label: str) -> tuple[bytes, os.stat_result]:
+    try:
+        before = path.lstat()
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            raise ReceiptError(f"{label} is not a regular non-symlink file: {path}")
+        with path.open("rb") as stream:
+            opened = os.fstat(stream.fileno())
+            payload = stream.read()
+            after_read = os.fstat(stream.fileno())
+        after = path.lstat()
+    except OSError as exc:
+        raise ReceiptError(f"cannot read {label} {path}: {exc}") from exc
+    identity = lambda value: (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns)
+    if not (identity(before) == identity(opened) == identity(after_read) == identity(after)):
+        raise ReceiptError(f"{label} changed while being validated: {path}")
+    return payload, after
 
 
-def _require_string(value: Any, description: str) -> str:
+def _read_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
+    payload, _ = _read_bytes_stable(path, label)
+    try:
+        value = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReceiptError(f"invalid JSON in {label} {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ReceiptError(f"{label} must be a JSON object: {path}")
+    return value, payload
+
+
+def _string(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value:
-        raise ReceiptError(f"{description} must be a non-empty string")
+        raise ReceiptError(f"{label} must be a non-empty string")
     return value
 
 
-def _unique_by_name(rows: Any, description: str) -> dict[str, dict[str, Any]]:
-    if not isinstance(rows, list):
-        raise ReceiptError(f"{description} must be an array")
-    result: dict[str, dict[str, Any]] = {}
-    for position, row in enumerate(rows):
-        if not isinstance(row, dict):
-            raise ReceiptError(f"{description}[{position}] must be an object")
-        name = _require_string(row.get("name"), f"{description}[{position}].name")
-        if name in result:
-            raise ReceiptError(f"duplicate run name in {description}: {name}")
-        result[name] = row
-    return result
+def _sha(value: Any, label: str) -> str:
+    value = _string(value, label)
+    if len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+        raise ReceiptError(f"{label} must be a lowercase SHA256 digest")
+    return value
 
 
-def _index_by_name(rows: Any) -> dict[str, dict[str, Any]]:
-    description = "generation index.runs"
-    if not isinstance(rows, list):
-        raise ReceiptError(f"{description} must be an array")
-    result: dict[str, dict[str, Any]] = {}
-    for position, row in enumerate(rows):
-        if not isinstance(row, dict):
-            raise ReceiptError(f"{description}[{position}] must be an object")
-        run = row.get("run")
-        if not isinstance(run, dict):
-            raise ReceiptError(f"{description}[{position}].run must be an object")
-        name = _require_string(run.get("name"), f"{description}[{position}].run.name")
-        if name in result:
-            raise ReceiptError(f"duplicate run name in {description}: {name}")
-        result[name] = row
-    return result
-
-
-def _resolve_relative(root: Path, value: Any, description: str) -> Path:
-    relative = Path(_require_string(value, description))
+def _contained(root: Path, value: Any, label: str) -> Path:
+    relative = Path(_string(value, label))
     if relative.is_absolute() or ".." in relative.parts:
-        raise ReceiptError(f"{description} must be a contained relative path")
-    root_resolved = root.resolve()
-    path = root_resolved / relative
-    resolved = path.resolve(strict=False)
-    if resolved != root_resolved and root_resolved not in resolved.parents:
-        raise ReceiptError(f"{description} escapes its root: {relative}")
-    component = root_resolved
+        raise ReceiptError(f"{label} must be a contained relative path")
+    root = root.resolve()
+    path = root / relative
+    if root not in path.resolve(strict=False).parents:
+        raise ReceiptError(f"{label} escapes root")
+    component = root
     for part in relative.parts:
-        component = component / part
+        component /= part
         try:
             if stat.S_ISLNK(component.lstat().st_mode):
-                raise ReceiptError(f"{description} contains a symlink: {relative}")
+                raise ReceiptError(f"{label} contains a symlink: {relative}")
         except FileNotFoundError:
             break
-        except OSError as exc:
-            raise ReceiptError(f"cannot inspect {description} {relative}: {exc}") from exc
     return path
 
 
-def _check_exact_names(
-    actual: dict[str, dict[str, Any]],
-    expected: dict[str, dict[str, Any]],
-    description: str,
-) -> None:
-    missing = sorted(set(expected) - set(actual))
-    extra = sorted(set(actual) - set(expected))
+def _named(rows: Any, label: str, *, embedded: bool = False) -> dict[str, dict[str, Any]]:
+    if not isinstance(rows, list):
+        raise ReceiptError(f"{label} must be an array")
+    result = {}
+    for position, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ReceiptError(f"{label}[{position}] must be an object")
+        target = row.get("run") if embedded else row
+        if not isinstance(target, dict):
+            raise ReceiptError(f"{label}[{position}].run must be an object")
+        name = _string(target.get("name"), f"{label}[{position}].name")
+        if name in result:
+            raise ReceiptError(f"duplicate run name in {label}: {name}")
+        result[name] = row
+    return result
+
+
+def _exact(actual: dict[str, Any], names: tuple[str, ...], label: str) -> None:
+    missing = sorted(set(names) - set(actual))
+    extra = sorted(set(actual) - set(names))
     if missing or extra:
-        raise ReceiptError(
-            f"{description} run set mismatch; missing={missing}, extra={extra}"
-        )
+        raise ReceiptError(f"{label} mismatch; missing={missing}, extra={extra}")
 
 
-def _artifact(
-    artifact_root: Path,
-    spec: Any,
-    marker_stat: os.stat_result,
-    description: str,
-) -> tuple[Path, bytes, os.stat_result, str]:
+def _canonical_run(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": row["name"],
+        "workload": row["workload"],
+        "seed": row["seed"],
+        "geometry": row["geometry"],
+        "load": str(Decimal(str(row["load"]))),
+        "stim_cycles": row["stim_cycles"],
+        "parameters": row.get("parameters", {}),
+        "sink": row.get("sink", {"mode": "always"}),
+    }
+
+
+def _report_group(config: dict[str, Any]) -> str:
+    if config["workload"] == "uniform":
+        return "uniform"
+    if config["workload"] == "mixed_phase_always_ready":
+        return "mixed_phase_always_ready"
+    return re.sub(r"_s[0-9]+$", "", config["name"])
+
+
+def _artifact(root: Path, spec: Any, marker: os.stat_result, label: str):
     if not isinstance(spec, dict):
-        raise ReceiptError(f"{description} must be an object")
-    path = _resolve_relative(artifact_root, spec.get("path"), f"{description}.path")
-    expected_sha = _require_sha(spec.get("sha256"), f"{description}.sha256")
-    payload, artifact_stat = _read_bytes_stable(path, description)
+        raise ReceiptError(f"{label} must be an object")
+    path = _contained(root, spec.get("path"), f"{label}.path")
+    payload, info = _read_bytes_stable(path, label)
     if not payload:
-        raise ReceiptError(f"{description} is empty: {path}")
-    if artifact_stat.st_mtime_ns <= marker_stat.st_mtime_ns:
-        raise ReceiptError(f"{description} is not newer than its freshness marker: {path}")
-    actual_sha = _sha256(payload)
-    if actual_sha != expected_sha:
-        raise ReceiptError(
-            f"{description} SHA256 mismatch: expected {expected_sha}, got {actual_sha}"
-        )
-    return path, payload, artifact_stat, actual_sha
+        raise ReceiptError(f"{label} is empty")
+    if info.st_mtime_ns <= marker.st_mtime_ns:
+        raise ReceiptError(f"{label} is not newer than its freshness marker")
+    digest = _sha256(payload)
+    if digest != _sha(spec.get("sha256"), f"{label}.sha256"):
+        raise ReceiptError(f"{label} SHA256 mismatch")
+    return path, payload, info, digest
 
 
-def validate(
-    generation_index_path: Path,
-    expected_runs_path: Path,
-    artifacts_path: Path,
-    artifact_root: Path,
-) -> dict[str, Any]:
+def _csv_provenance(payload: bytes, metadata: dict[str, Any], name: str) -> tuple[str, str, str]:
+    try:
+        rows = list(csv.DictReader(io.StringIO(payload.decode("utf-8"))))
+    except (UnicodeDecodeError, csv.Error) as exc:
+        raise ReceiptError(f"run {name} result is not valid CSV: {exc}") from exc
+    required = {"candidate", "test", "seed"}
+    if not rows or not required.issubset(rows[0]):
+        raise ReceiptError(f"run {name} result lacks candidate/test/seed rows")
+    triples = {(r.get("candidate", ""), r.get("test", ""), r.get("seed", "")) for r in rows}
+    expected = (next(iter(triples))[0], str(metadata["report_group"]), str(metadata["run"]["seed"]))
+    if len(triples) != 1 or "" in next(iter(triples)) or next(iter(triples)) != expected:
+        raise ReceiptError(f"run {name} result candidate/test/seed provenance mismatch")
+    return next(iter(triples))
+
+
+def _analyzer_provenance(doc: dict[str, Any], metadata: dict[str, Any], csv_key, name: str) -> None:
+    expected_common = (csv_key[0], metadata["report_group"], str(metadata["run"]["seed"]))
+    actual_common = (doc.get("candidate"), doc.get("test"), str(doc.get("seed", "")))
+    if actual_common != expected_common or doc.get("trace_sha256") != metadata["trace_sha256"]:
+        raise ReceiptError(f"run {name} analyzer provenance mismatch")
+    workload = metadata["run"]["workload"]
+    if workload == "pairwise_contention":
+        if (doc.get("generator_version") != metadata["generator_version"] or
+                doc.get("logical_source_permutation") != metadata["logical_source_permutation"]):
+            raise ReceiptError(f"run {name} pairwise analyzer manifest provenance mismatch")
+        if (doc.get("measurement_state") != "COMPLETE" or
+                doc.get("evaluable_pairs") != doc.get("pair_count") or
+                any(doc.get(key) != 0 for key in ("dropped_pairs", "censored_pairs", "nonevaluable_pairs"))):
+            raise ReceiptError(f"run {name} pairwise analyzer is incomplete or censored")
+    elif workload == "mixed_phase_always_ready":
+        provenance = doc.get("provenance_validation")
+        classification = doc.get("classification")
+        if (doc.get("schema_version") != 1 or doc.get("event_identity_mode") != "address_only" or
+                doc.get("sink_mode") != "always" or not isinstance(provenance, dict) or
+                provenance.get("status") != "pass" or
+                any(provenance.get(key) is not True for key in (
+                    "trace_sha256", "phase_boundaries", "address_only_identity",
+                    "source_local_order", "complete_uncensored_event_accounting"))):
+            raise ReceiptError(f"run {name} mixed analyzer provenance did not pass")
+        if (not isinstance(classification, dict) or
+                classification.get("correctness_status") != "qualified_pass" or
+                classification.get("analysis_status") not in {"pass", "capacity_loss"}):
+            raise ReceiptError(f"run {name} mixed analyzer correctness is not qualified")
+
+
+def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
+             artifacts_path: Path, artifact_root: Path,
+             suites: dict[str, Any] | None = None,
+             trace_hashes: dict[str, str] | None = None,
+             generator_version: str | None = None) -> dict[str, Any]:
+    suites = official.SUITES if suites is None else suites
+    trace_hashes = official.TRACE_SHA256 if trace_hashes is None else trace_hashes
+    generator_version = official.GENERATOR_VERSION if generator_version is None else generator_version
+    if suite not in suites:
+        raise ReceiptError(f"unknown official suite: {suite}")
+    frozen = suites[suite]
+    names = tuple(frozen["names"])
+
+    manifest, manifest_bytes = _read_json(suite_manifest_path, "official suite manifest")
+    if suite_manifest_path.name != frozen["manifest_name"] or _sha256(manifest_bytes) != frozen["manifest_sha256"]:
+        raise ReceiptError("official suite manifest filename or byte SHA256 mismatch")
+    if manifest.get("schema_version") != 1:
+        raise ReceiptError("official suite manifest schema_version must be 1")
+    manifest_runs = _named(manifest.get("runs"), "official suite manifest.runs")
+    _exact(manifest_runs, names, "official suite run set")
+
     index, index_bytes = _read_json(generation_index_path, "generation index")
-    expected_doc, expected_bytes = _read_json(expected_runs_path, "expected runs")
-    artifacts_doc, artifacts_bytes = _read_json(artifacts_path, "artifact manifest")
+    if set(index) != {"schema_version", "generator_version", "input_manifest", "runs"}:
+        raise ReceiptError("generation index schema has missing or extra top-level fields")
+    if (index["schema_version"] != 1 or index["generator_version"] != generator_version or
+            index["input_manifest"] != frozen["manifest_name"]):
+        raise ReceiptError("generation index schema/provenance mismatch")
+    indexed = _named(index["runs"], "generation index.runs", embedded=True)
+    _exact(indexed, names, "generation index run set")
 
-    for description, document in (
-        ("expected runs", expected_doc),
-        ("artifact manifest", artifacts_doc),
-    ):
-        if document.get("schema_version") != SCHEMA_VERSION:
-            raise ReceiptError(f"{description} schema_version must be {SCHEMA_VERSION}")
-
-    suite_id = _require_string(expected_doc.get("suite_id"), "expected runs suite_id")
-    if artifacts_doc.get("suite_id") != suite_id:
-        raise ReceiptError("artifact manifest suite_id does not match expected runs")
-
-    expected_count = expected_doc.get("expected_run_count")
-    if isinstance(expected_count, bool) or not isinstance(expected_count, int) or expected_count < 1:
-        raise ReceiptError("expected_run_count must be a positive integer")
-
-    expected = _unique_by_name(expected_doc.get("runs"), "expected runs.runs")
-    indexed = _index_by_name(index.get("runs"))
-    artifacts = _unique_by_name(artifacts_doc.get("runs"), "artifact manifest.runs")
-    if len(expected) != expected_count:
-        raise ReceiptError(
-            f"expected_run_count is {expected_count}, but expected runs contains {len(expected)}"
-        )
-    if len(indexed) != expected_count:
-        raise ReceiptError(
-            f"generation index contains {len(indexed)} runs; expected {expected_count}"
-        )
-    if len(artifacts) != expected_count:
-        raise ReceiptError(
-            f"artifact manifest contains {len(artifacts)} runs; expected {expected_count}"
-        )
-    _check_exact_names(indexed, expected, "generation index")
-    _check_exact_names(artifacts, expected, "artifact manifest")
-
-    declared_artifact_paths: set[Path] = set()
-    declared_markers: set[Path] = set()
-    for name in sorted(expected):
-        artifact_row = artifacts[name]
-        marker_path = _resolve_relative(
-            artifact_root,
-            artifact_row.get("freshness_marker"),
-            f"artifact run {name}.freshness_marker",
-        )
-        if marker_path in declared_markers:
-            raise ReceiptError(f"duplicate freshness marker across runs: {marker_path}")
-        declared_markers.add(marker_path)
-        run_paths = []
-        for kind in ("result", "analyzer"):
-            spec = artifact_row.get(kind)
-            if not isinstance(spec, dict):
-                raise ReceiptError(f"artifact run {name}.{kind} must be an object")
-            run_paths.append(
-                _resolve_relative(
-                    artifact_root,
-                    spec.get("path"),
-                    f"artifact run {name}.{kind}.path",
-                )
-            )
-        if run_paths[0] == run_paths[1]:
-            raise ReceiptError(f"result and analyzer paths are identical for run {name}")
-        for artifact_path in run_paths:
-            if artifact_path in declared_artifact_paths:
-                raise ReceiptError(f"duplicate artifact path across runs: {artifact_path}")
-            declared_artifact_paths.add(artifact_path)
-
-    index_provenance = expected_doc.get("index_provenance", {})
-    if not isinstance(index_provenance, dict):
-        raise ReceiptError("index_provenance must be an object")
-    for key, value in index_provenance.items():
-        if index.get(key) != value:
-            raise ReceiptError(f"generation index provenance mismatch for {key}")
+    artifacts, artifacts_bytes = _read_json(artifacts_path, "artifact manifest")
+    if artifacts.get("schema_version") != SCHEMA_VERSION or artifacts.get("suite") != suite:
+        raise ReceiptError(f"artifact manifest schema_version/suite mismatch")
+    artifact_runs = _named(artifacts.get("runs"), "artifact manifest.runs")
+    _exact(artifact_runs, names, "artifact manifest run set")
 
     trace_root = generation_index_path.parent
-    seen_trace_files: set[str] = set()
-    seen_artifact_paths: set[Path] = set()
-    seen_markers: set[Path] = set()
-    receipt_runs: list[dict[str, Any]] = []
+    used_paths: set[Path] = set()
+    receipt_runs = []
+    suite_candidate: str | None = None
+    for name in names:
+        metadata = indexed[name]
+        if metadata.get("schema_version") != 1 or metadata.get("generator_version") != generator_version:
+            raise ReceiptError(f"run {name} generated manifest schema mismatch")
+        canonical_run = _canonical_run(manifest_runs[name])
+        if metadata.get("run") != canonical_run:
+            raise ReceiptError(f"run {name} embedded run config differs from official manifest")
+        expected_trace = trace_hashes[name]
+        if (metadata.get("trace_file") != f"{name}.events.jsonl" or
+                metadata.get("trace_sha256") != expected_trace or
+                metadata.get("report_group") != _report_group(canonical_run) or
+                metadata.get("event_identity_mode") != "address_only" or
+                metadata.get("dut_address_fields") != ["logical_source"] or
+                metadata.get("dut_payload_fields") != []):
+            raise ReceiptError(f"run {name} generated metadata contract mismatch")
 
-    for name in sorted(expected):
-        expected_row = expected[name]
-        index_row = indexed[name]
-        expected_trace_file = _require_string(
-            expected_row.get("trace_file"), f"expected run {name}.trace_file"
-        )
-        expected_trace_sha = _require_sha(
-            expected_row.get("trace_sha256"), f"expected run {name}.trace_sha256"
-        )
-        if index_row.get("trace_file") != expected_trace_file:
-            raise ReceiptError(f"trace filename mismatch for run {name}")
-        if index_row.get("trace_sha256") != expected_trace_sha:
-            raise ReceiptError(f"indexed trace SHA256 mismatch for run {name}")
-        if expected_trace_file in seen_trace_files:
-            raise ReceiptError(f"duplicate trace_file across runs: {expected_trace_file}")
-        seen_trace_files.add(expected_trace_file)
-
-        trace_path = _resolve_relative(trace_root, expected_trace_file, f"run {name} trace_file")
+        per_manifest_path = _contained(trace_root, f"{name}.manifest.json", f"run {name} manifest")
+        per_manifest, per_manifest_bytes = _read_json(per_manifest_path, f"run {name} manifest")
+        canonical_bytes = (json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode("ascii")
+        if per_manifest != metadata or per_manifest_bytes != canonical_bytes:
+            raise ReceiptError(f"run {name} manifest bytes/content differ from generation index")
+        trace_path = _contained(trace_root, metadata["trace_file"], f"run {name} trace")
         trace_bytes, trace_stat = _read_bytes_stable(trace_path, f"run {name} trace")
-        if _sha256(trace_bytes) != expected_trace_sha:
-            raise ReceiptError(f"trace content SHA256 mismatch for run {name}")
+        if _sha256(trace_bytes) != expected_trace:
+            raise ReceiptError(f"run {name} trace SHA256 mismatch")
 
-        artifact_row = artifacts[name]
-        marker_path = _resolve_relative(
-            artifact_root,
-            artifact_row.get("freshness_marker"),
-            f"artifact run {name}.freshness_marker",
-        )
-        if marker_path in seen_markers:
-            raise ReceiptError(f"duplicate freshness marker across runs: {marker_path}")
-        seen_markers.add(marker_path)
-        marker_payload, marker_stat = _read_bytes_stable(
-            marker_path, f"run {name} freshness marker"
-        )
-        if marker_payload:
-            raise ReceiptError(f"freshness marker must be empty: {marker_path}")
-
+        row = artifact_runs[name]
+        marker_path = _contained(artifact_root, row.get("freshness_marker"), f"run {name} marker")
+        marker_bytes, marker_stat = _read_bytes_stable(marker_path, f"run {name} marker")
+        if marker_bytes:
+            raise ReceiptError(f"run {name} freshness marker must be empty")
         result_path, result_bytes, result_stat, result_sha = _artifact(
-            artifact_root, artifact_row.get("result"), marker_stat, f"run {name} result"
-        )
-        analyzer_path, analyzer_bytes, analyzer_stat, analyzer_sha = _artifact(
-            artifact_root,
-            artifact_row.get("analyzer"),
-            marker_stat,
-            f"run {name} analyzer",
-        )
-        for artifact_path in (result_path, analyzer_path):
-            if artifact_path in seen_artifact_paths:
-                raise ReceiptError(f"duplicate artifact path across runs: {artifact_path}")
-            seen_artifact_paths.add(artifact_path)
-        if result_path == analyzer_path:
-            raise ReceiptError(f"result and analyzer paths are identical for run {name}")
+            artifact_root, row.get("result"), marker_stat, f"run {name} result")
+        csv_key = _csv_provenance(result_bytes, metadata, name)
+        if suite_candidate is None:
+            suite_candidate = csv_key[0]
+        elif csv_key[0] != suite_candidate:
+            raise ReceiptError(f"run {name} candidate differs across suite")
 
-        try:
-            analyzer_doc = json.loads(analyzer_bytes)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ReceiptError(f"run {name} analyzer is not valid JSON: {exc}") from exc
-        if not isinstance(analyzer_doc, dict):
-            raise ReceiptError(f"run {name} analyzer must be a JSON object")
-        provenance = analyzer_doc.get(PROVENANCE_KEY)
-        expected_provenance = {
-            "schema_version": SCHEMA_VERSION,
-            "run_name": name,
-            "trace_sha256": expected_trace_sha,
-            "result_sha256": result_sha,
+        analyzer_entry = None
+        workload = metadata["run"]["workload"]
+        if workload in ANALYZER_WORKLOADS:
+            analyzer_path, analyzer_bytes, analyzer_stat, analyzer_sha = _artifact(
+                artifact_root, row.get("analyzer"), marker_stat, f"run {name} analyzer")
+            try:
+                analyzer_doc = json.loads(analyzer_bytes)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ReceiptError(f"run {name} analyzer is invalid JSON: {exc}") from exc
+            if not isinstance(analyzer_doc, dict):
+                raise ReceiptError(f"run {name} analyzer must be an object")
+            _analyzer_provenance(analyzer_doc, metadata, csv_key, name)
+            analyzer_entry = {"path": str(analyzer_path), "sha256": analyzer_sha,
+                              "size_bytes": analyzer_stat.st_size, "mtime_ns": analyzer_stat.st_mtime_ns}
+            paths = (marker_path, result_path, analyzer_path)
+        else:
+            if "analyzer" in row:
+                raise ReceiptError(f"run {name} must not declare an analyzer")
+            paths = (marker_path, result_path)
+        if any(path in used_paths for path in paths):
+            raise ReceiptError(f"run {name} reuses an artifact or marker path")
+        used_paths.update(paths)
+        receipt_row = {
+            "name": name, "workload": workload,
+            "run_manifest": {"path": str(per_manifest_path), "sha256": _sha256(per_manifest_bytes)},
+            "trace": {"path": str(trace_path), "sha256": expected_trace, "size_bytes": trace_stat.st_size},
+            "freshness_marker": {"path": str(marker_path), "mtime_ns": marker_stat.st_mtime_ns},
+            "result": {"path": str(result_path), "sha256": result_sha,
+                       "size_bytes": result_stat.st_size, "mtime_ns": result_stat.st_mtime_ns},
         }
-        if provenance != expected_provenance:
-            raise ReceiptError(f"analyzer provenance mismatch for run {name}")
-
-        receipt_runs.append(
-            {
-                "name": name,
-                "trace": {
-                    "path": str(trace_path),
-                    "sha256": expected_trace_sha,
-                    "size_bytes": trace_stat.st_size,
-                },
-                "freshness_marker": {
-                    "path": str(marker_path),
-                    "mtime_ns": marker_stat.st_mtime_ns,
-                },
-                "result": {
-                    "path": str(result_path),
-                    "sha256": result_sha,
-                    "size_bytes": result_stat.st_size,
-                    "mtime_ns": result_stat.st_mtime_ns,
-                },
-                "analyzer": {
-                    "path": str(analyzer_path),
-                    "sha256": analyzer_sha,
-                    "size_bytes": analyzer_stat.st_size,
-                    "mtime_ns": analyzer_stat.st_mtime_ns,
-                },
-            }
-        )
+        if analyzer_entry is not None:
+            receipt_row["analyzer"] = analyzer_entry
+        receipt_runs.append(receipt_row)
 
     return {
-        "receipt_schema_version": SCHEMA_VERSION,
-        "status": "PASS",
-        "suite_id": suite_id,
-        "validated_run_count": expected_count,
+        "receipt_schema_version": SCHEMA_VERSION, "status": "PASS", "suite": suite,
+        "candidate": suite_candidate, "validated_run_count": len(names),
         "generated_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "official_source_commit": official.SOURCE_COMMIT,
         "inputs": {
-            "generation_index": {
-                "path": str(generation_index_path.resolve()),
-                "sha256": _sha256(index_bytes),
-            },
-            "expected_runs": {
-                "path": str(expected_runs_path.resolve()),
-                "sha256": _sha256(expected_bytes),
-            },
-            "artifact_manifest": {
-                "path": str(artifacts_path.resolve()),
-                "sha256": _sha256(artifacts_bytes),
-            },
-        },
-        "runs": receipt_runs,
+            "official_manifest": {"path": str(suite_manifest_path.resolve()), "sha256": _sha256(manifest_bytes)},
+            "generation_index": {"path": str(generation_index_path.resolve()), "sha256": _sha256(index_bytes)},
+            "artifact_manifest": {"path": str(artifacts_path.resolve()), "sha256": _sha256(artifacts_bytes)},
+        }, "runs": receipt_runs,
     }
 
 
 def publish_new_atomic(path: Path, payload: bytes) -> None:
+    """Publish without overwrite; exit success implies file and directory fsync passed.
+
+    If the final directory fsync fails after link(2), the final name may exist even
+    though this function raises. Callers must accept a receipt only after exit 0.
+    """
     if not path.parent.is_dir():
         raise ReceiptError(f"receipt output parent does not exist: {path.parent}")
-    temporary_name: str | None = None
+    temporary_name = None
     try:
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-        )
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
         with os.fdopen(descriptor, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
+            stream.write(payload); stream.flush(); os.fsync(stream.fileno())
         try:
             os.link(temporary_name, path)
         except FileExistsError as exc:
@@ -408,39 +349,31 @@ def publish_new_atomic(path: Path, payload: bytes) -> None:
     except OSError as exc:
         raise ReceiptError(f"cannot atomically publish receipt {path}: {exc}") from exc
     finally:
-        if temporary_name is not None:
-            try:
-                Path(temporary_name).unlink()
-            except FileNotFoundError:
-                pass
+        if temporary_name:
+            try: Path(temporary_name).unlink()
+            except FileNotFoundError: pass
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
+def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--suite", choices=tuple(official.SUITES), required=True)
+    parser.add_argument("--official-manifest", type=Path, required=True)
     parser.add_argument("--generation-index", type=Path, required=True)
-    parser.add_argument("--expected-runs", type=Path, required=True)
     parser.add_argument("--artifacts", type=Path, required=True)
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        receipt = validate(
-            args.generation_index,
-            args.expected_runs,
-            args.artifacts,
-            args.artifact_root,
-        )
-        payload = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode()
-        publish_new_atomic(args.output, payload)
+        result = validate(args.generation_index, args.official_manifest, args.suite,
+                          args.artifacts, args.artifact_root)
+        publish_new_atomic(args.output, (json.dumps(result, indent=2, sort_keys=True) + "\n").encode())
     except ReceiptError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    print(f"PASS receipt={args.output} runs={receipt['validated_run_count']}")
-    return 0
+        print(f"error: {exc}", file=sys.stderr); return 2
+    print(f"PASS receipt={args.output} runs={result['validated_run_count']}"); return 0
 
 
 if __name__ == "__main__":

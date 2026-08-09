@@ -1,106 +1,100 @@
-# Fail-closed common-suite receipt contract
+# Fail-closed common-suite receipt
 
-`scripts/common_suite_receipt.py` publishes a receipt only after the generation
-index, frozen expected-run set, and every run's fresh result and analyzer output
-agree.  It is candidate-neutral and does not discover files by globbing.
+`scripts/common_suite_receipt.py` qualifies exactly one immutable attempt. It
+does not glob for runs, reuse a stale example list, or delete output.
 
-## Inputs
+## Frozen suites
 
-The expected-runs file freezes the exact suite:
+The candidate-owned registry in `scripts/common_suite_official.py` was derived
+from A3 commit `abd6a721b515ded8a9ef76cb96129b7e0af21e2b`:
+
+| receipt suite | committed manifest | runs | manifest byte SHA256 |
+|---|---|---:|---|
+| `full50` | `manifest.neutrality-n16.json` | 50 | `9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9` |
+| `capacity22` | `manifest.multilane-n16.json` | 22 | `99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62` |
+
+The registry freezes the exact ordered names and every trace SHA from the
+committed 50-run golden. Capacity22 is an exact subset, not a regenerated or
+lane-specific workload.
+
+The receipt rejects a manifest with the right-looking contents but different
+bytes, a generation index with missing or extra top-level schema fields, a
+generator other than 4.0, a wrong input manifest, duplicate/missing/extra runs,
+or a generated run configuration that differs from the committed input.
+For every run it reads `<name>.manifest.json`, requires both parsed equality to
+the embedded generation-index object and byte equality to the generator's
+canonical sorted/indented serialization, hashes those actual bytes, and checks
+the named JSONL against the frozen trace SHA.
+
+## Attempt artifacts
+
+The artifact manifest has schema 2:
 
 ```json
 {
-  "schema_version": 1,
-  "suite_id": "common-multilane-n16-v1",
-  "expected_run_count": 20,
-  "index_provenance": {
-    "input_manifest": "manifest.multilane-n16.json",
-    "generator_version": "3.0"
-  },
-  "runs": [
-    {
-      "name": "trace-name",
-      "trace_file": "trace-name.events.jsonl",
-      "trace_sha256": "...64 lowercase hex digits..."
+  "schema_version": 2,
+  "suite": "full50",
+  "runs": [{
+    "name": "core_sparse_identity",
+    "freshness_marker": "runs/core_sparse_identity/freshness.marker",
+    "result": {
+      "path": "runs/core_sparse_identity/trace.events.csv",
+      "sha256": "..."
     }
-  ]
+  }]
 }
 ```
 
-The execution writes an artifact manifest. All paths are relative to the
-explicit `--artifact-root`; absolute paths, `..`, symlinks, empty files, and
-shared artifact/marker paths are rejected.
+Paths are relative to `--artifact-root`. Absolute paths, `..`, symlinks,
+shared paths, empty artifacts, hash mismatches, and artifacts not strictly
+newer than their per-run empty marker fail the receipt. Each result CSV must
+have one consistent, nonempty candidate/test/seed tuple matching the generated
+run manifest, and the candidate must be the same across all 50 or 22 runs.
 
-```json
-{
-  "schema_version": 1,
-  "suite_id": "common-multilane-n16-v1",
-  "runs": [
-    {
-      "name": "trace-name",
-      "freshness_marker": "trace-name/freshness.marker",
-      "result": {"path": "trace-name/trace.events.csv", "sha256": "..."},
-      "analyzer": {"path": "trace-name/analysis.json", "sha256": "..."}
-    }
-  ]
-}
-```
+Only `pairwise_contention` and `mixed_phase_always_ready` rows must add an
+`analyzer` object with the same path/SHA form. Analyzer declarations on other
+workloads are rejected. Provenance follows the analyzers that actually exist:
 
-Create each empty marker immediately before its DUT run and retain it until the
-receipt is published. Both artifacts must be nonempty and have an mtime strictly
-newer than that run's marker. The analyzer JSON must bind itself to its input:
+- pairwise: candidate/test/seed, trace SHA, generator version, and logical
+  permutation must agree; `measurement_state` must be `COMPLETE`, evaluable
+  must equal total, and dropped/censored/nonevaluable must all be zero.
+- mixed: candidate/test/seed and trace SHA must agree; schema 1,
+  address-only/always-ready modes, and every actual `provenance_validation`
+  check must pass. Its correctness status must be `qualified_pass`; valid
+  analysis outcomes are `pass` and `capacity_loss` (loss is a measured outcome,
+  not a receipt failure).
 
-```json
-{
-  "_common_suite_provenance": {
-    "schema_version": 1,
-    "run_name": "trace-name",
-    "trace_sha256": "...",
-    "result_sha256": "..."
-  }
-}
-```
+No nonexistent `_common_suite_provenance` or result-SHA analyzer field is
+assumed. Result SHA remains bound by the artifact manifest and receipt.
 
 Invocation:
 
 ```sh
+attempt_root="$(python3 scripts/common_suite_attempt.py \
+  --root "$out_root" --suite full50 --candidate "$candidate")" || exit $?
+
 python3 scripts/common_suite_receipt.py \
+  --suite full50 \
+  --official-manifest "$common/manifest.neutrality-n16.json" \
   --generation-index "$trace_root/generation-index.json" \
-  --expected-runs "$frozen_expected_runs" \
   --artifacts "$attempt_root/artifacts.json" \
   --artifact-root "$attempt_root" \
   --output "$attempt_root/common-suite.receipt.json"
 ```
 
-The output parent must already exist. Publication uses a fully written and
-`fsync`ed temporary inode followed by an atomic hard-link into the final name.
-An existing receipt is never overwritten. Any validation or publication error
-returns exit 2 and publishes no new receipt.
+`common_suite_attempt.py` creates, with exclusive `mkdir`, a private path below
+`$out_root/attempts/$suite/$candidate/` containing `runs/` and an fsynced
+`attempt.json`. It never removes or overwrites an earlier result. A runner may
+therefore put the freshness marker, DUT output, analyzer output, artifact
+manifest, and receipt in one unique namespace without a shared-path race.
 
-## Non-destructive concurrency plan
+## Atomic publication boundary
 
-Prefer an immutable attempt namespace plus a short per-run lock. Never run two
-attempts into the same result directory and never delete an earlier attempt:
-
-```sh
-attempt_id="$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
-attempt_root="$out_root/attempts/$attempt_id"
-mkdir -p "$out_root/.locks" "$attempt_root"
-
-exec {lock_fd}>"$out_root/.locks/$candidate.$suite_id.$run_name.lock"
-flock -n "$lock_fd" || exit 75
-run_root="$attempt_root/runs/$run_name"
-mkdir -p "$run_root"
-```
-
-The persistent lock file contains no result data and need not be removed.
-Holding its file descriptor covers marker creation, DUT execution, analyzer
-execution, and artifact-manifest update for that run. The random attempt path
-prevents another invocation from satisfying freshness with its output. Publish
-the suite receipt inside that same attempt directory and expose a `latest`
-pointer only after receipt success, using a separately locked atomic rename.
-Do not repoint `latest` on failure.
-
-The receipt proves completeness and artifact identity; it does not decide
-metric thresholds. A caller must separately reject analyzer outcomes such as
-`evaluable=0` before adding the analyzer artifact to the manifest.
+The receipt file is fully written and fsynced, then linked into a previously
+absent final name, and the containing directory is fsynced. Existing receipts
+are never overwritten. Exit 0 means both file and directory fsync completed.
+If the directory fsync fails after the link, the command returns 2 but the
+final pathname may already exist; callers must treat only exit 0 as published
+and must not infer success from pathname existence. The unique attempt
+namespace makes that ambiguous failed attempt harmless and preserves it for
+diagnosis.
