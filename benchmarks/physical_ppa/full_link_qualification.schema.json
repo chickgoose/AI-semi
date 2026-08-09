@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/aer/full-link-qualification.schema.json",
+  "title": "Address-only AER full-link qualification record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "qualification_id",
+    "status",
+    "candidate",
+    "logical_contract",
+    "tb_seam",
+    "physical_boundary",
+    "normalization",
+    "charged_blocks",
+    "flow",
+    "activity",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "qualification_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["freeze_candidate", "frozen"]},
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "repo_url", "commit_sha", "bundle_sha256", "synthesis_top",
+        "filelist_sha256", "parameters", "defines", "include_dirs"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "repo_url": {"type": "string", "minLength": 1},
+        "commit_sha": {"type": "string", "pattern": "^[0-9a-fA-F]{7,64}$"},
+        "bundle_sha256": {"$ref": "#/$defs/sha256"},
+        "synthesis_top": {"type": "string", "minLength": 1},
+        "filelist_sha256": {"$ref": "#/$defs/sha256"},
+        "parameters": {"type": "object"},
+        "defines": {"type": "array", "items": {"type": "string"}},
+        "include_dirs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "logical_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_identity_mode", "source_count", "source_mapping",
+        "one_pending_latch_per_source", "acceptance_rule", "delivery_rule"
+      ],
+      "properties": {
+        "event_identity_mode": {"const": "address_only"},
+        "source_count": {"type": "integer", "minimum": 1},
+        "source_mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "sha256", "bijective"],
+          "properties": {
+            "description": {"type": "string", "minLength": 1},
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "bijective": {"const": true}
+          }
+        },
+        "one_pending_latch_per_source": {"const": true},
+        "acceptance_rule": {"type": "string", "minLength": 1},
+        "delivery_rule": {"type": "string", "minLength": 1}
+      }
+    },
+    "tb_seam": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalized_addr_width", "normalized_source_width", "retire_lanes",
+        "arbitrary_payload", "tb_only_event_id_in_dut", "ppa_excluded"
+      ],
+      "properties": {
+        "normalized_addr_width": {"type": "integer", "minimum": 1},
+        "normalized_source_width": {"type": "integer", "minimum": 1},
+        "retire_lanes": {"type": "integer", "minimum": 1},
+        "arbitrary_payload": {"const": false},
+        "tb_only_event_id_in_dut": {"const": false},
+        "ppa_excluded": {"const": true}
+      }
+    },
+    "physical_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope", "includes_tx", "includes_link", "includes_rx",
+        "native_boundary_pins", "native_functional_pin_bits", "link_encoding",
+        "link_cut"
+      ],
+      "properties": {
+        "scope": {"const": "full_link_tx_link_rx"},
+        "includes_tx": {"const": true},
+        "includes_link": {"const": true},
+        "includes_rx": {"const": true},
+        "native_boundary_pins": {
+          "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pin"}
+        },
+        "native_functional_pin_bits": {"type": "integer", "minimum": 1},
+        "link_encoding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "requires_runtime_decode"],
+          "properties": {
+            "description": {"type": "string", "minLength": 1},
+            "requires_runtime_decode": {"type": "boolean"}
+          }
+        },
+        "link_cut": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name", "count_each_signal_once", "pins", "functional_pin_bits"
+          ],
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "count_each_signal_once": {"const": true},
+            "pins": {
+              "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pin"}
+            },
+            "functional_pin_bits": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_decode_in_tb", "uses_pending_to_disambiguate",
+        "scoreboard_only_fields", "free_wiring"
+      ],
+      "properties": {
+        "runtime_decode_in_tb": {"const": false},
+        "uses_pending_to_disambiguate": {"const": false},
+        "scoreboard_only_fields": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "normalized_event_container", "retire_source", "tb_only_event_id",
+              "occurrence_cycle", "deadline"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "free_wiring": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "operation", "description"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "operation": {
+                "enum": [
+                  "rename", "bit_permutation", "slice", "concatenation",
+                  "constant_tie", "zero_extension"
+                ]
+              },
+              "description": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "charged_blocks": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name", "kind", "top", "filelist_sha256", "included_in_area",
+          "included_in_timing", "included_in_activity", "included_in_power"
+        ],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "kind": {
+            "enum": [
+              "tx", "link", "rx", "encoder", "decoder", "serializer",
+              "deserializer", "buffer", "adapter", "clocking"
+            ]
+          },
+          "top": {"type": "string", "minLength": 1},
+          "filelist_sha256": {"$ref": "#/$defs/sha256"},
+          "included_in_area": {"const": true},
+          "included_in_timing": {"const": true},
+          "included_in_activity": {"const": true},
+          "included_in_power": {"const": true}
+        }
+      }
+    },
+    "flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_config_sha256", "sdc_sha256", "library_sha256", "pvt_rc_corner",
+        "post_elaboration_report_sha256", "unresolved_references"
+      ],
+      "properties": {
+        "tool_config_sha256": {"$ref": "#/$defs/sha256"},
+        "sdc_sha256": {"$ref": "#/$defs/sha256"},
+        "library_sha256": {"$ref": "#/$defs/sha256"},
+        "pvt_rc_corner": {"type": "string", "minLength": 1},
+        "post_elaboration_report_sha256": {"$ref": "#/$defs/sha256"},
+        "unresolved_references": {"const": 0}
+      }
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_sha256", "prepared_input_sha256", "format", "activity_sha256",
+        "hierarchy_root", "coverage_percent", "window_start_cycle",
+        "window_end_cycle_exclusive", "measurement_cycles", "clock_mhz",
+        "operating_point", "power_evidence", "average_power_mw",
+        "delivered_events"
+      ],
+      "properties": {
+        "trace_sha256": {"$ref": "#/$defs/sha256"},
+        "prepared_input_sha256": {"$ref": "#/$defs/sha256"},
+        "format": {"enum": ["vcd", "saif", "fsdb", "tool_native"]},
+        "activity_sha256": {"$ref": "#/$defs/sha256"},
+        "hierarchy_root": {"type": "string", "minLength": 1},
+        "coverage_percent": {"type": "number", "minimum": 0, "maximum": 100},
+        "window_start_cycle": {"type": "integer", "minimum": 0},
+        "window_end_cycle_exclusive": {"type": "integer", "minimum": 1},
+        "measurement_cycles": {"type": "integer", "minimum": 1},
+        "clock_mhz": {"type": "number", "exclusiveMinimum": 0},
+        "operating_point": {"enum": ["sparse", "near_saturation"]},
+        "power_evidence": {"enum": ["activity_annotated", "vectorless_screening"]},
+        "average_power_mw": {"type": "number", "minimum": 0},
+        "delivered_events": {"type": "integer", "minimum": 1}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "events_per_cycle", "events_per_native_pin_cycle",
+        "events_per_link_pin_cycle", "energy_nj_per_delivered_event"
+      ],
+      "properties": {
+        "events_per_cycle": {"type": "number", "minimum": 0},
+        "events_per_native_pin_cycle": {"type": "number", "minimum": 0},
+        "events_per_link_pin_cycle": {"type": "number", "minimum": 0},
+        "energy_nj_per_delivered_event": {"type": "number", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+    "pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "direction", "width", "role"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "direction": {"enum": ["input", "output", "bidirectional"]},
+        "width": {"type": "integer", "minimum": 1},
+        "role": {"enum": ["functional", "clock", "reset", "power", "ground"]}
+      }
+    }
+  }
+}

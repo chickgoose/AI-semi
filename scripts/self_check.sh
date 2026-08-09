@@ -26,6 +26,7 @@ required=(
   docs/verification/aer-clean-benchmark-results.md
   docs/verification/aer-trace-loader.md
   docs/verification/aer-physical-ppa-contract.md
+  docs/verification/aer-address-only-full-link-qualification.md
   docs/verification/aer-native-capability-profile.md
   docs/verification/aer-ganghee-native-binding.md
   benchmarks/clean_slate_aer/prepare_sv_trace.py
@@ -40,6 +41,8 @@ required=(
   benchmarks/clean_slate_aer/fixtures/capability_profile_baseline.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
   benchmarks/physical_ppa/bracket_fmax.py
+  benchmarks/physical_ppa/full_link_qualification.schema.json
+  benchmarks/physical_ppa/validate_full_link_qualification.py
   benchmarks/physical_ppa/fixtures/ganghee_fixed_netlist_example.csv
   tb/clean/aer_bench_if.sv
   tb/clean/aer_clean_mock_candidate.sv
@@ -102,4 +105,6 @@ PYTHONDONTWRITEBYTECODE=1 python3 \
   "$PROJECT_ROOT/benchmarks/clean_slate_aer/neutrality_self_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s "$PROJECT_ROOT/benchmarks/clean_slate_aer/tests"
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+  -s "$PROJECT_ROOT/benchmarks/physical_ppa/tests"
 printf 'structural self-check passed\n'
