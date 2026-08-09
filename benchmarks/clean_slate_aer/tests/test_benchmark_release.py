@@ -201,6 +201,10 @@ class BenchmarkReleaseTest(unittest.TestCase):
             "identity_mode": "address_only",
             "required_relation": "address == logical_source",
             "full_count": 50, "capacity_count": 22,
+            "git_tool": {
+                "path": benchmark_release.TRUSTED_GIT_PATH,
+                "sha256": benchmark_release.TRUSTED_GIT_SHA256,
+            },
             "artifacts": {
                 "generator": self.artifact("bench/generator.py"),
                 "preparer": self.artifact("bench/preparer.py"),
@@ -371,6 +375,81 @@ class BenchmarkReleaseTest(unittest.TestCase):
             "current checkout tree differs from manifest binding tree",
         ):
             benchmark_release.validate_manifest(self.repo, manifest)
+
+    def test_fake_path_git_cannot_hide_cross_head_checkout(self) -> None:
+        _, manifest = self.generate()
+        self.write("tracked-change.txt", "new HEAD\n")
+        self.git("add", "tracked-change.txt")
+        self.git("commit", "-qm", "advance checkout")
+        fake_bin = self.base / "fake-git-bin"
+        fake_bin.mkdir()
+        sentinel = self.base / "fake-git-ran"
+        fake_git = fake_bin / "git"
+        fake_git.write_text(
+            "#!/bin/sh\n"
+            f"printf fake > {sentinel}\n"
+            f"exec {benchmark_release.TRUSTED_GIT_PATH} \"$@\"\n",
+            encoding="utf-8",
+        )
+        fake_git.chmod(0o755)
+        with mock.patch.dict(
+            os.environ,
+            {"PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}"},
+        ):
+            with self.assertRaisesRegex(
+                benchmark_release.ReleaseError,
+                "current checkout tree differs from manifest binding tree",
+            ):
+                benchmark_release.validate_manifest(self.repo, manifest)
+        self.assertFalse(sentinel.exists())
+
+    def assert_hidden_worktree_self_test_is_not_executed(self, flag: str) -> None:
+        _, manifest = self.generate()
+        sentinel = self.base / f"{flag.removeprefix('--')}-fake-ran"
+        self.git("update-index", flag, "bench/self_test.py")
+        self.write(
+            "bench/self_test.py",
+            "from pathlib import Path\n"
+            f"Path({str(sentinel)!r}).write_text('working tree executed')\n"
+            "print('SELF_TEST_PASS fixture=1')\n",
+        )
+        self.assertEqual(
+            self.git("status", "--porcelain=v1", "--untracked-files=all"), ""
+        )
+        benchmark_release.validate_manifest(self.repo, manifest)
+        self.assertFalse(sentinel.exists())
+
+    def test_assume_unchanged_fake_self_test_is_not_executed(self) -> None:
+        self.assert_hidden_worktree_self_test_is_not_executed(
+            "--assume-unchanged"
+        )
+
+    def test_skip_worktree_fake_self_test_is_not_executed(self) -> None:
+        self.assert_hidden_worktree_self_test_is_not_executed("--skip-worktree")
+
+    def test_snapshot_cleanup_failure_rejects_validation(self) -> None:
+        _, manifest = self.generate()
+        real_temporary_directory = tempfile.TemporaryDirectory
+
+        class CleanupFails:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                self.inner = real_temporary_directory(*args, **kwargs)
+                self.name = self.inner.name
+
+            def cleanup(self) -> None:
+                self.inner.cleanup()
+                raise OSError("injected cleanup failure")
+
+        with mock.patch.object(
+            benchmark_release.tempfile,
+            "TemporaryDirectory",
+            CleanupFails,
+        ):
+            with self.assertRaisesRegex(
+                benchmark_release.ReleaseError,
+                "cannot clean up bound-tree snapshot",
+            ):
+                benchmark_release.validate_manifest(self.repo, manifest)
 
     def test_receipts_ignore_fake_path_python_and_inherited_pythonpath(self) -> None:
         fake_bin = self.base / "fake-bin"
