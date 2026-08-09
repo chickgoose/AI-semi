@@ -88,8 +88,11 @@ generated run-manifest SHA, snapshotted candidate-manifest SHA, runner/analyzer
 bundle identity, simulator executable/version identity, result SHA, and optional
 analyzer SHA. A swapped result or
 sidecar therefore cannot satisfy another run merely because filenames or mtimes
-look fresh. Checking `load_pct` also prevents a uniform result from being rebound
-between different offered loads that share candidate/test/seed.
+look fresh. `load_pct` mirrors `aer_clean_tb`: `load_milli=int(run.load*1000)`
+then `load_pct=(load_milli+5)//10`. Thus official loads 0.125, 0.234, and
+0.769 bind to 13, 23, and 77 rather than exact decimal multiplication. This
+check also prevents a uniform result from being rebound between different
+offered loads that share candidate/test/seed.
 
 `pairwise_contention`, `mixed_phase_always_ready`, `phase_transition`, and
 `timing_pair` rows must add an `analyzer` object with the same path/SHA form.

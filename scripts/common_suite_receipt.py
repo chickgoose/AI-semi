@@ -230,6 +230,17 @@ def _report_group(config: dict[str, Any]) -> str:
     return re.sub(r"_s[0-9]+$", "", config["name"])
 
 
+def _tb_load_pct(load: Any) -> int:
+    """Mirror aer_clean_tb: load_milli=int(load*1000), then round to percent."""
+    try:
+        load_milli = int(Decimal(str(load)) * 1000)
+    except Exception as exc:
+        raise ReceiptError("run load is not a valid decimal") from exc
+    if load_milli < 0:
+        raise ReceiptError("run load must be nonnegative")
+    return (load_milli + 5) // 10
+
+
 def _artifact(root: Path, spec: Any, marker: os.stat_result, label: str,
               inodes: dict[tuple[int, int], Path]):
     if not isinstance(spec, dict) or set(spec) != {"path", "sha256"}:
@@ -260,7 +271,7 @@ def _csv_provenance(payload: bytes, metadata: dict[str, Any], name: str,
     expected = (candidate, str(metadata["report_group"]), str(metadata["run"]["seed"]))
     if len(triples) != 1 or next(iter(triples)) != expected:
         raise ReceiptError(f"run {name} result candidate/test/seed provenance mismatch")
-    expected_load = Decimal(str(metadata["run"]["load"])) * 100
+    expected_load = Decimal(_tb_load_pct(metadata["run"]["load"]))
     try:
         loads = {Decimal(row.get("load_pct", "")) for row in rows}
     except Exception as exc:
