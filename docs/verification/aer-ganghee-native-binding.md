@@ -27,13 +27,13 @@ modified or copied into this repository.
 | sixteen source pending bits | `req = source_valid & ~current_ack_onehot` |
 | implicit completion | `valid && source_valid[addr]` |
 | acknowledged source | exactly `addr[3:0]` |
-| common completed event | current pending event at `source_event[addr]`, TB-only reconstruction |
+| common completed event | zero-extended native `addr`, with no pending-event reconstruction |
 
 The binding contains no sequential process, event storage, FIFO, arbitration,
 grant history, or output-backpressure compensation. The native DUT alone
-selects `addr`. The reconstructed event value and source identity are
-scoreboard sideband; neither `tb_only_event_id` nor an arbitrary payload is
-added to Ganghee's physical native interface.
+selects `addr`. Both normalized event identity and source identity are derived
+from that native address; `tb_only_event_id`, pending `source_event`, and other
+arbitrary metadata are never copied into a completion.
 
 As soon as `valid/addr` identifies a still-pending request, the TB driver masks
 that one source from native `req`. Thus the acknowledged request is low before
@@ -105,10 +105,9 @@ scripts/run_ganghee_native_benchmark.sh basic_single basic_simultaneous
 The runner reads external RTL in place. It never stages or copies it. Trace
 mode uses the common JSONL/manifest preparation path and rejects a nonzero
 sink-mode field before elaboration. Its result candidate is explicitly named
-`ganghee-native-coordinate-source-projection`: native `addr` validates which
-source/coordinate was selected, but the common TB reconstructs the event
-record from that source's pending latch. Consequently these results do **not**
-demonstrate physical transport of polarity or event type by the native DUT.
+`ganghee-native-coordinate-source-projection`: native `addr` is the completed
+address. Consequently these results do **not** demonstrate physical transport
+of polarity or event type by the native DUT.
 
 ## Binding-level verification
 
@@ -116,7 +115,8 @@ The repository test fixture is an edge-sampled registered native protocol
 model, not Ganghee RTL. Leaving `req` high through the next sampling edge would
 make this fixture return a duplicate. It verifies simultaneous requests,
 onehot implicit acknowledgement, pending-event reconstruction, the fastest
-safe same-source retrigger, and reports a measured `duplicates=0`:
+safe same-source retrigger, native-address-only retirement, and reports a
+measured `duplicates=0`. Metadata canaries deliberately differ from address:
 
 ```bash
 tests/clean_native/run_binding_test.sh

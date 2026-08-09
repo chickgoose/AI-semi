@@ -67,10 +67,10 @@ module aer_ganghee_native_binding #(
     if (native_ack) begin
       bench.source_ready[native_addr] = 1'b1;
       bench.retire_valid[0] = 1'b1;
-      // Ganghee's native link returns only source identity.  The common
-      // scoreboard event identity is reconstructed from the one live pending
-      // latch; it is TB sideband and is not added to the native DUT payload.
-      bench.retire_event[0] = bench.source_event[native_addr];
+      // Address-only AER: the completed event is the zero-extended address
+      // physically returned by the native DUT.  Never reconstruct it from a
+      // pending TB event record or other free metadata.
+      bench.retire_event[0] = ADDR_WIDTH'(native_addr);
       bench.retire_source[0] = SOURCE_WIDTH'(native_addr);
     end
   end

@@ -79,10 +79,11 @@ module aer_ganghee_native_binding_tb;
           $error("BINDING_TB source mismatch ready=%0d retire=%0d",
                  acknowledged_source, bench.retire_source[0]);
         end
-        if (bench.retire_event[0] !== bench.source_event[acknowledged_source]) begin
+        if (bench.retire_event[0] !== ADDR_WIDTH'(acknowledged_source)) begin
           test_errors = test_errors + 1;
-          $error("BINDING_TB pending event reconstruction mismatch source=%0d",
-                 acknowledged_source);
+          $error("BINDING_TB native-address derivation mismatch source=%0d retire=%h canary=%h",
+                 acknowledged_source, bench.retire_event[0],
+                 bench.source_event[acknowledged_source]);
         end
         acknowledgement_count = acknowledgement_count + 1;
         // Mirror the common scoreboard's exactly-once pending clear.  NBA
@@ -120,9 +121,11 @@ module aer_ganghee_native_binding_tb;
 
     // Simultaneous pending sources: the native DUT owns selection.  The
     // binding acknowledges only the returned addr and adds no arbitration.
-    issue_event(2, 16'h0022);
-    issue_event(7, 16'h0077);
-    issue_event(15, 16'h00ff);
+    // These free metadata canaries deliberately disagree with the native
+    // address.  A binding that copies source_event will fail this test.
+    issue_event(2, 16'ha522);
+    issue_event(7, 16'h5a77);
+    issue_event(15, 16'hc3ff);
     wait_for_acknowledgements(3);
 
     // Fastest legal same-source retrigger: the first acknowledgement clears
@@ -130,14 +133,14 @@ module aer_ganghee_native_binding_tb;
     // observes req low, then presents the next event.  This prevents a held
     // request from being interpreted as a duplicate native completion.
     @(negedge clk);
-    issue_event(5, 16'h0051);
+    issue_event(5, 16'hde51);
     wait_for_acknowledgements(4);
     @(negedge clk);
     if (bench.source_valid[5] !== 1'b0) begin
       test_errors = test_errors + 1;
       $error("BINDING_TB req did not clear after implicit acknowledge");
     end
-    issue_event(5, 16'h0052);
+    issue_event(5, 16'had52);
     wait_for_acknowledgements(5);
 
     count_before_idle = acknowledgement_count;

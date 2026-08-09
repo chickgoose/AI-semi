@@ -90,11 +90,6 @@ def encode_events(
     height = run["geometry"]["height"]
     source_count = width * height
     stim_cycles = run["stim_cycles"]
-    event_types = sorted({event["event_type"] for event in events})
-    if any(not isinstance(name, str) or not name for name in event_types):
-        raise TracePreparationError("event_type must be a non-empty string")
-    type_codes = {name: index for index, name in enumerate(event_types)}
-    type_bits = max(1, (max(1, len(type_codes)) - 1).bit_length())
     encoded: list[tuple[int, int, int, int, int]] = []
     previous_key = (-1, -1)
 
@@ -129,8 +124,11 @@ def encode_events(
             raise TracePreparationError("trace must be sorted by occurrence cycle and event ID")
         previous_key = key
 
-        coordinate = y * width + x
-        event_address = (((coordinate << 1) | int(polarity > 0)) << type_bits) | type_codes[event["event_type"]]
+        if not isinstance(event["event_type"], str) or not event["event_type"]:
+            raise TracePreparationError("event_type must be a non-empty string")
+        # The mandatory normalized path transports only AER address identity.
+        # Polarity/type remain trace annotations and never become free payload.
+        event_address = y * width + x
         if event_address >= (1 << addr_width):
             raise TracePreparationError(
                 f"event {trace_id}: encoded address {event_address} exceeds ADDR_WIDTH={addr_width}"

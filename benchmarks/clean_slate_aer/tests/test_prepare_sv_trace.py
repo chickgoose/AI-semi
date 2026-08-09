@@ -47,7 +47,7 @@ class PrepareSvTraceTest(unittest.TestCase):
             self.assertEqual(lines[0], "3 3 8 4 500 0 0 0 9")
             self.assertEqual([line.split()[:3] for line in lines[1:]],
                              [["1", "0", "0"], ["1", "1", "1"], ["7", "2", "3"]])
-            self.assertNotEqual(lines[1].split()[3], lines[3].split()[3])
+            self.assertEqual([line.split()[3] for line in lines[1:]], ["0", "1", "3"])
 
     def test_returns_explicit_report_group(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -75,7 +75,7 @@ class PrepareSvTraceTest(unittest.TestCase):
             directory = Path(temporary)
             trace, manifest = self.make_fixture(directory)
             with self.assertRaisesRegex(TracePreparationError, "ADDR_WIDTH"):
-                prepare_trace(trace, manifest, directory / "out.svtrace", 2)
+                prepare_trace(trace, manifest, directory / "out.svtrace", 1)
 
     def test_encodes_sink_shock_from_manifest(self):
         with tempfile.TemporaryDirectory() as temporary:
