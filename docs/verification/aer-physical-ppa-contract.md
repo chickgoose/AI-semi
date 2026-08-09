@@ -4,16 +4,11 @@ Status: candidate-neutral comparison freeze candidate, 2026-08-07
 
 ## Purpose and evidence boundary
 
-This contract compares physical implementations of candidates that implement the
-same logical AER job. It does not select an RTL base and it does not turn an
-external candidate's exploratory run into an official team score.
-
-The intended final-candidate set is Ganghee's fovea design, Hyeonsu's final
-design, and Junyoung's new clean-slate design. A23 and its baseline/A2/A3
-experiments are historical evidence only: their scripts, fixed throughput
-constants, and earlier Genus table are not the final comparison pipeline. A
-newly written minimal conventional AER may be reported as a reference, but it is
-not one of the three team candidates.
+This contract compares physical implementations of the same address-only AER
+job. Raw cluster2 is the current conventional reference; that choice does not
+force its internal partition, bitmap, or arbitration on candidates. Historical
+direct-coordinate fovea, Hyeonsu, DREC, A23, baseline/A2/A3 executions remain
+reproduction or research evidence rather than the current candidate registry.
 
 Pre-layout synthesis and post-route qualification answer different questions:
 
@@ -96,20 +91,19 @@ synthesis. At minimum, each row records:
 | `normalization_rtl` | Any synthesizable codec/serializer/decoder charged to PPA |
 | `tool_config_sha256` | Hash of common SDC, library, Genus, and Innovus configuration |
 
-The first official comparison uses `N=16`, because all three candidates must be
-compared at a source count supported by the fixed-N fovea implementation. Scale
-studies at other source counts are separate evidence and must not replace the
-N=16 table. A missing SHA, top, filelist, parameter map, or physical-boundary
+The first official comparison uses the frozen N=16 address-only 50-run suite
+and its exact 22-run capacity subset. Scale studies at other source counts are
+separate evidence and must not replace the N=16 table. A missing SHA, top,
+filelist, parameter map, or physical-boundary
 declaration makes the candidate `NOT_FROZEN`, not zero-scoring.
 
-The registry contains exactly these final-candidate identities once their rows
-are complete:
+Registry roles must distinguish the current reference from historical runs:
 
 | Candidate key | Role before freeze |
 | --- | --- |
-| `ganghee_fovea_final` | final candidate; immutable identity pending registry |
-| `hyeonsu_final` | final candidate; immutable identity pending registry |
-| `junyoung_clean_slate` | final candidate; register only after new RTL exists |
+| `ganghee_raw_cluster2` | current address-only reference; immutable identity required |
+| direct-coordinate fovea / Hyeonsu / DREC | historical reproduction only unless separately re-nominated and frozen |
+| any new candidate | register only after its exact RTL, binding, capability, and PPA boundary are frozen |
 
 No compatibility wrapper may silently select obsolete RTL. Synthesizable
 normalization is allowed only when its source and cost are frozen in

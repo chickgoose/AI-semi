@@ -1,5 +1,9 @@
 # Ganghee native AER clean-benchmark binding
 
+Status: historical direct-coordinate fovea reproduction. Raw cluster2 is the
+current address-only reference; this document does not nominate the older
+direct-coordinate boundary as the current base or current-suite result.
+
 ## Purpose and boundary
 
 The common deterministic trace, source pending-latch model, scoreboard, and

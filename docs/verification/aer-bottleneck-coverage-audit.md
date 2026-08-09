@@ -1,6 +1,6 @@
 # AER bottleneck coverage and anti-specialization audit
 
-Status: implementation-backed review, 2026-08-07
+Status: implementation-backed address-only review, 2026-08-10
 
 ## What “biased” means here
 
@@ -15,12 +15,13 @@ For that reason the original locality and fan-in tests remain. The repair is to
 add orthogonal bottleneck families and matched controls, not to weaken the
 families that an existing design already solves.
 
-## Coverage after the 2026-08-07 audit
+## Coverage after the 2026-08-10 audit
 
 | AER bottleneck | Frozen workload/control | What must be reported |
 | --- | --- | --- |
 | sparse basic AER correctness | `core_sparse_*` | loss, duplicate, corruption, E2E latency |
 | simultaneous global fan-in | `core_simultaneous_*`, `global_fanin_*` | drain time, p99 latency, overrun |
+| pair-dependent partition/HOL | `pairwise_contention_identity`, `pairwise_contention_affine` | automatic `*.pairs.json`: completion latency/skew, order bias, overlap, and complete/drop/censor state |
 | sustainable shared-link bandwidth | `uniform_l0p125` through `uniform_l2p00`, three seeds | completion/cycle plateau, overrun, backlog and latency tail |
 | temporal burst sensitivity at equal mean | `shape_b1`, `shape_b4`, `shape_b16` | throughput/latency/overrun spread across burst size |
 | spatial locality opportunity | `spatial_local` | local efficiency and latency |
@@ -30,12 +31,15 @@ families that an existing design already solves.
 | fixed-priority starvation/HOL effects | `rotating_victim_*` | minimum source service ratio, p99/max victim wait |
 | source refire before release | `retrigger_*` | source overrun and occurrence-to-accept wait |
 | overload recovery/hysteresis | `phase_transition_*` | post-overload sparse latency, backlog peak, recovery-to-zero cycles |
+| phase-history and matched temporal/spatial demand | `mixed_phase_always_ready_*` | automatic `*.mixed.json`: phase-local capacity/latency/service and matched deltas |
 | address-number sensitivity | identity, mirror, bit-reverse, and affine pairs | paired mean, worst case, mapping sensitivity range |
 | throughput above one event/cycle | uniform 1.25/1.5/2.0 and 16-way burst | completed logical events/cycle plus physical pin-cycle efficiency |
 
 The exact common input is
-`benchmarks/clean_slate_aer/manifest.neutrality-n16.json`: 46 N=16,
+`benchmarks/clean_slate_aer/manifest.neutrality-n16.json`: 50 N=16,
 sink-always-ready traces. Each candidate must use the same generated JSONL SHA.
+The exact lane-capacity subset is the 22-run
+`manifest.multilane-n16.json`; it does not redefine the offered traces.
 The generator regression gate verifies determinism, one occurrence per
 source/cycle, fixed coordinate-spike semantics, matched burst histograms,
 matched spatial timing, affine relabeling, and a zero-injection recovery phase.
@@ -68,7 +72,7 @@ achieved mean load, peak rate, and aggregation group.
 
 ## Deliberately separate suites and remaining gaps
 
-The frozen 46-run core keeps the sink always ready because current candidates
+The frozen 50-run core keeps the sink always ready because current candidates
 do not expose equivalent output backpressure. Backpressure shock remains an
 optional capability suite and cannot award or remove points from candidates
 that lack that same external contract.

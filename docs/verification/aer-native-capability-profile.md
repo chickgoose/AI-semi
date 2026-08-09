@@ -154,9 +154,12 @@ profile's `multi_lane_retirement` declaration must agree with whether native
 `retire_lanes` is greater than one, and fairness support requires
 `source_observable=true`.
 
-## Repository candidate profiles
+## Repository profiles and current-reference status
 
-The checked profiles describe native interfaces; they are not score claims.
+The checked profiles below describe interfaces used by historical reproduction
+and calibration runs; they are not current-reference or score claims. Raw
+cluster2 is the current address-only reference, but it must have its own frozen
+profile/binding identity before a 50/22 result can be ranked.
 
 | Candidate profile | Native sources/protocol | Core N=16 | Backpressure | Polarity/type | Multi-lane |
 | --- | --- | --- | --- | --- | --- |

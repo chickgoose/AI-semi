@@ -1,14 +1,14 @@
 # Clean-Slate AER Benchmark Specification
 
-Status: team-internal draft, 2026-08-04
+Status: team-internal address-only contract, 2026-08-10
 
 ## 1. Purpose
 
-This benchmark is defined before choosing a new RTL architecture.  It does not
-select Ganghee's row/column burst design, Junyoung's A23 ready/valid design, or
-Hyeonsu's rotation-priority design as the implementation base.  Those designs
-may be connected later only to calibrate the benchmark through candidate-specific
-adapters.
+Ganghee's traditional address-only AER semantics are the implementation base
+and raw cluster2 is the current reference RTL. This does not freeze cluster2's
+row split, foveation, bitmap packing, or arbitration policy as requirements.
+Direct-coordinate fovea, Hyeonsu, DREC, A23, and payload-oriented executions are
+historical reproduction/calibration evidence.
 
 The benchmark has two equally important jobs:
 
@@ -30,10 +30,12 @@ regressing the conformance suite.
 The logical AER event is:
 
 ```text
-(source coordinate/address, optional polarity or event type, occurrence time)
+(source coordinate/address, occurrence time)
 ```
 
-The occurrence time belongs to the test trace.  A sequence ID is attached only
+The address itself is the mandatory event; arbitrary 16-bit payload transport
+is not required. Polarity/type are optional capability metadata. The occurrence
+time belongs to the test trace. A sequence ID is attached only
 inside the testbench to detect loss and duplication; it is never DUT payload.
 
 The problem statements in `~/TEAM_PROGRESS.md` are used with the following
@@ -153,6 +155,7 @@ coverage.
 | `limit_load` | seeded Bernoulli load sweep from sparse through overload | saturation, throughput, overrun, p95/p99 latency |
 | `limit_elephant_mouse` | one continuously active source plus a periodic low-rate victim | starvation, victim maximum wait, throughput |
 | `limit_global_fanin` | all sources fire together at a fixed period | arbitration/drain latency and scaling |
+| `limit_pairwise_contention` | every unordered address pair under equal ingress spacing and address permutation, without hidden reset | pair-dependent arbitration, partition HOL, and prior-pair overlap; current runners emit per-map `*.pairs.json` |
 | `limit_local_cluster` | temporally clustered events from adjacent coordinates | locality opportunity, burst efficiency |
 | `limit_distributed_burst` | equally large burst from dispersed coordinates | anti-overfit check for locality-dependent schemes |
 | `limit_retrigger` | one source refires faster than service time | source overrun and required buffering |
@@ -163,6 +166,7 @@ coverage.
 | `limit_moving_hotspot` | one or more hot regions move at frozen dwell boundaries | adaptation delay, hotspot handoff, dynamic congestion |
 | `limit_rotating_victim` | every source becomes a low-rate victim under aggressor load | fixed-priority sensitivity, starvation, HOL effects |
 | `limit_phase_transition` | sparse, near-saturation, overload, post-sparse probe, then zero-injection drain | backlog growth, hysteresis, sparse-latency recovery, recovery-to-zero |
+| `limit_mixed_phase_always_ready` | matched temporal and spatial A/B/A demand in one no-reset trace | partition imbalance, mapping sensitivity, state pollution, and hysteresis; current runners emit `*.mixed.json` |
 | `limit_scale` | identical normalized profiles at 16, 64, and 256 sources | area/Fmax/power and latency scaling |
 | `limit_pin_budget` | fixed physical data/control pin budget | events/pin-cycle and codec PPA |
 
@@ -226,6 +230,7 @@ if it improves a balanced set of limit tests and does not obtain that improvemen
 by adding unreported testbench storage, dropping events, widening the physical
 link without pin normalization, or severely regressing sparse traffic.
 
-The first clean reference will be a newly written minimal flat shared-channel AER,
-not a copy of any team member's candidate.  The three existing designs remain
-read-only historical references until the benchmark contract is frozen.
+Raw cluster2 is the current conventional address-only reference. New candidates
+may change its structure while preserving the frozen logical contract. Historical
+direct-coordinate fovea, Hyeonsu, DREC, and A23 results do not replace current
+50-run full-suite or 22-run capacity-suite qualification.

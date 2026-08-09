@@ -4,9 +4,11 @@
 
 대상 독자: 팀원 3명, 이후 설계·검증·제출 담당자
 
-> **Historical handoff through 2026-08-02.** 이 문서의 A23 내부 최종 후보
-> 결정은 2026-08-04 clean-slate 전환으로 폐기됐다. 과거 수치와 실험 경위는
-> 재현용 기록으로만 유지한다. 현재 workload/TB와 평가 기준은
+> **Historical handoff through 2026-08-02.** 이 문서의 A23 내부 최종 후보와
+> 이후의 “no base/clean-slate” 결정은 모두 현재 결정을 대체하지 않는다.
+> Ganghee raw cluster2가 address-only current reference이며 direct-coordinate
+> fovea/Hyeonsu/DREC 결과는 historical reproduction이다. 현재 workload/TB와
+> 평가 기준은
 > [`TEAM_COMMON_WORKLOAD_GUIDE.md`](TEAM_COMMON_WORKLOAD_GUIDE.md),
 > [`verification/aer-clean-benchmark-spec.md`](verification/aer-clean-benchmark-spec.md),
 > [`verification/aer-physical-ppa-contract.md`](verification/aer-physical-ppa-contract.md)를

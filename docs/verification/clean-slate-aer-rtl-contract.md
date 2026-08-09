@@ -1,13 +1,13 @@
 # Clean-Slate AER RTL 역할·기능·검증 계약
 
-Status: team-internal implementation contract, 2026-08-07
+Status: team-internal address-only implementation contract, 2026-08-10
 
 ## 1. 현재 결정
 
-새로 작성할 RTL은 기존 A23, fovea, rotation-priority 설계 중
-하나를 베이스로 삼지 않는다. 기존 설계는 결과 교차 확인을 위한
-read-only reference로만 남겨 둔다. 재사용하는 것은 다음의 후보
-중립 검증 자산뿐이다.
+강희의 전통적 address-only AER 의미를 구현 기준으로 삼고 raw cluster2를
+현재 비교 reference로 둔다. cluster2의 center/periphery 분할, bitmap lane,
+foveation, arbitration policy 자체는 공통 RTL 요건이 아니다. 과거
+direct-coordinate fovea, Hyeonsu, DREC 실행은 reproduction evidence다.
 
 - 논리 AER event 의미와 deterministic occurrence trace;
 - source별 one-entry pending-latch 모델;
@@ -29,10 +29,12 @@ packing, pipeline 구조를 강제하지 않는다. 새 설계의 내부 구조�
 논리 event는 다음과 같다.
 
 ```text
-(source coordinate/address, optional polarity or event type, occurrence time)
+(source coordinate/address, occurrence time)
 ```
 
-`occurrence time`과 `tb_only_event_id`는 DUT payload가 아니다. 시간은
+주소 자체가 mandatory event이며 arbitrary 16-bit payload는 요구하지 않는다.
+polarity/type은 optional capability다. `occurrence time`과
+`tb_only_event_id`는 DUT payload가 아니다. 시간은
 trace의 발생 순간으로 나타나고, TB-only ID는 scoreboard가 손실과
 중복을 찾기 위해서만 사용한다. 임의 sequence number를 DUT로 보내
 정확성을 쉽게 만드는 구조는 허용하지 않는다.
@@ -189,7 +191,7 @@ workload의 correctness를 통과할 수 있다. 새 구조의 개선은 기존
 유지하면서 overrun과 latency를 줄이고 지속 throughput 한계를 높이는
 것**으로 증명한다.
 
-## 7. Always-ready 공통 10종의 역할
+## 7. Historical always-ready 10종 reproduction의 역할
 
 다음은 현재 native N=16 교차 검증에서 사용한 10개 test intention이다.
 각 test에서 correctness gate는 계속 적용되고, 개선 경쟁은 마지막
@@ -228,8 +230,9 @@ native ready가 없는 candidate에 TB FIFO를 붙여 이 test를 통과시키�
 optional capability로 분리한다.
 
 글로 정의되었지만 현재 공통 runner에서 아직 완전 자동화/자격 검증되지
-않은 항목은 `basic_reset_drain`, native `basic_polarity`, automatic
-16/64/256 `limit_scale`, fixed-pin `limit_pin_budget`, mixed-phase trace다.
+않은 항목은 native `basic_polarity`, automatic 16/64/256 `limit_scale`,
+fixed-pin `limit_pin_budget`이다. 현재 frozen trace 계약은 full 50과
+capacity 22이며 pairwise/mixed analyzer artifact는 공통 runner가 자동 생성한다.
 이들을 PASS한 것처럼 발표하지 않는다.
 
 ## 9. 성능 계약

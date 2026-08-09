@@ -2,6 +2,10 @@
 
 Date: 2026-08-04
 
+Status: historical mechanism bring-up. Ganghee raw cluster2 is now the current
+address-only reference; direct-coordinate results below are reproduction data,
+not full50/capacity22 qualification.
+
 ## Scope
 
 This bring-up validates the benchmark mechanism, not a new competition

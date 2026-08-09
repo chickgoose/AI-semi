@@ -1,6 +1,12 @@
 팀 공용 AER workload/testbench 안내
 최종 갱신: 2026-08-06
 
+[2026-08-10 authoritative update]
+Ganghee raw cluster2가 address-only current reference다. binding은 유지한다.
+direct-coordinate fovea/Hyeonsu/DREC 실행 예와 아래 clean-slate/no-base 문구는
+historical reproduction 설명이다. 현재 suite는 full 50/capacity 22이며 상세
+계약과 analyzer/exit 정책은 docs/TEAM_COMMON_WORKLOAD_GUIDE.md를 따른다.
+
 1. 저장 위치
 
 서버 공용 폴더:
@@ -295,4 +301,3 @@ Ganghee runner는 지원하지 않는 backpressure workload를 의도적으로 �
   idle/sparse/burst/saturation/stall/recovery mixed-phase trace
 
 이 항목들은 아직 qualified 결과로 발표하면 안 된다.
-

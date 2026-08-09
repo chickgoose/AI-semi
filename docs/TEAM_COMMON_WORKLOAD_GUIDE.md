@@ -1,18 +1,20 @@
 # Team Common AER Workload and Testbench Guide
 
-Status: shared team baseline, 2026-08-07
+Status: shared address-only team baseline, 2026-08-10
 
 ## 1. Purpose and boundary
 
 This package freezes the workload, logical AER event meaning, source model,
-scoreboard, and result schema before the team selects a new RTL architecture.
-It does not select Ganghee, Junyoung, or Hyeonsu's RTL as the new design base.
-The existing baseline and A23 profiles are historical benchmark-calibration
-fixtures, not active final candidates or a starting point for Junyoung's new RTL.
+scoreboard, and result schema. Ganghee's traditional address-only AER semantics
+are the implementation starting point and raw cluster2 is the current reference
+RTL. The workload does not require cluster2's row split, bitmap lanes,
+foveation, or arbitration policy.
 
-The common logical event is `(source coordinate/address, optional polarity or
-event type, occurrence time)`. A TB-only event ID tracks loss and duplication
-but is never inserted into DUT payload. Each source has exactly one pending
+The mandatory logical event is `(source coordinate/address, occurrence time)`.
+The address is the event; arbitrary 16-bit payload transport is not required.
+Polarity/type are optional metadata unless a native capability suite declares
+them transported. A TB-only event ID tracks loss and duplication but is never
+inserted into the DUT. Each source has exactly one pending
 latch. A refire while that latch is occupied is reported as `source_overrun`;
 the testbench does not hide it in an unbounded queue.
 
@@ -30,6 +32,7 @@ scoreboards, and metrics remain unchanged.
 | `basic_single` | isolated source-0 events | Does basic address-event transport work without loss or duplication? |
 | `basic_sparse` | low-rate events rotated across sources | Are sparse AER events reconstructed in source-local order with low latency? |
 | `basic_simultaneous` | every source requests on the same cycle | Does arbitration legally drain all simultaneous events? |
+| trace `pairwise_contention` | every unordered address pair under identity and affine mappings | Which address pairs expose partition, HOL, priority, or overlap effects? |
 | `basic_backpressure` | sparse events with repeating sink stalls | Is output stable during a stall and does it recover completely? |
 | `limit_load` / trace `uniform` | seeded load from sparse through overload | Where do throughput plateau, latency growth, and source overrun begin? |
 | `limit_elephant_mouse` | one hot source and one low-rate victim | Does biased traffic cause starvation or a long victim wait? |
@@ -44,16 +47,17 @@ scoreboards, and metrics remain unchanged.
 | trace `moving_hotspot` | one or several hot sources move by phase | Can the design track nonstationary congestion without starving mice? |
 | trace `rotating_victim` | every source becomes the low-rate victim in turn | Is service sensitive to address/priority position? |
 | trace `phase_transition` | sparse, near-saturation, overload, post-sparse probe, zero-injection drain | How fast do backlog and normal sparse latency recover? |
+| trace `mixed_phase_always_ready` | matched temporal and spatial A/B/A phases without reset | Does phase history leave persistent performance bias? |
 
 The deterministic generator also supports manifest-controlled `basic_sparse`,
 `basic_simultaneous`, `uniform`, `elephant_mouse`, `global_fanin`,
 `local_cluster`, `distributed_burst`, `retrigger`, `timing_pair`,
 `backpressure_shock`, `rate_shape`, `matched_spatial`, `moving_hotspot`,
-`rotating_victim`, and `phase_transition`. Use this trace path for final
+`rotating_victim`, `phase_transition`, and `mixed_phase_always_ready`. Use this trace path for final
 cross-candidate comparisons:
 the complete occurrence stream is generated before any DUT `ready` is observed.
 
-The official screening input is the 46-run N=16
+The official full screening input is the 50-run N=16
 `manifest.neutrality-n16.json`, not the fixed-source built-in SV tests. It keeps
 locality workloads because a spatial design winning them is a legitimate
 advantage, while adding orthogonal temporal, dynamic-hotspot, recovery,
@@ -87,7 +91,9 @@ Each run writes summary and per-event CSV files. Available measurements include:
   service gaps, demand-conditioned zero-service windows, demand-normalized
   fairness, correctness, and saturation knee;
 - phase-local completion/latency/backlog and recovery-to-zero; and
-- actual cross-source A/B timing-gap distortion through TB-only relation IDs.
+- actual cross-source A/B timing-gap distortion through TB-only relation IDs;
+- pairwise completion latency, service skew, order bias, and worst pair; and
+- mixed-phase backlog, latency, service, and matched phase deltas.
 
 The legacy raw Jain value is not the ranking fairness metric because unequal
 offered traffic intentionally makes it low. Never-offered sources are excluded
@@ -103,20 +109,27 @@ polarity/event type, and multi-lane retirement are optional suites.
 
 An unsupported optional feature is `SKIP_UNSUPPORTED`, not FAIL and not zero
 performance. The harness must not add hardware behavior to turn a SKIP into a
-RUN. The checked profiles currently classify:
+RUN. The current reference and historical reproductions are classified as:
 
-| Candidate | Always-ready core | Backpressure | Polarity/type | Multi-lane |
-| --- | --- | --- | --- | --- |
-| Ganghee direct-coordinate | RUN, fixed N=16 | SKIP | SKIP | SKIP |
-| legacy baseline (historical calibration) | RUN | RUN | SKIP | SKIP |
-| A23 EE430 (historical calibration) | RUN | RUN | SKIP | SKIP |
+| Candidate | Role | Always-ready core | Backpressure | Polarity/type | Independent-lane stall |
+| --- | --- | --- | --- | --- | --- |
+| Ganghee raw cluster2 | current address-only reference | RUN, fixed N=16 | SKIP | SKIP | SKIP |
+| Ganghee direct-coordinate fovea | historical reproduction | RUN, fixed N=16 | SKIP | SKIP | SKIP |
+| Hyeonsu rotation-priority | historical reproduction | RUN, fixed N=16 | RUN | SKIP | SKIP |
+| DREC prefix N=16/K=4 | historical research reproduction | RUN, fixed N=16 | RUN | SKIP | RUN |
+| legacy baseline / A23 | historical calibration | RUN | RUN | SKIP | SKIP |
 
-Ganghee's original RTL was not modified. Its Xcelium 23.09 qualification passed
-all 10 supported always-ready workloads. The run exposed capacity limitations,
+Ganghee's original direct-coordinate RTL was not modified. Its historical
+Xcelium 23.09 qualification passed all 10 then-supported always-ready workloads.
+The run exposed capacity limitations,
 including 128/272 overrun in `limit_elephant_mouse`, 128/256 overrun in
 `limit_retrigger`, and 17-cycle maximum end-to-end latency in simultaneous and
 global-fan-in traffic. These are measured structural limits while accepted-event
 correctness remains PASS.
+
+Raw cluster2's earlier 18-run result is also historical. Current ranking uses
+the generator-v4 50-run full suite and the exact 22-run capacity subset; older
+10/18/46-run results are not silently promoted to current-suite qualification.
 
 ## 5. Repository map
 
@@ -127,6 +140,9 @@ tb/clean/native/                  storage-free native observation bindings
 tests/clean_native/               Ganghee binding protocol fixture
 scripts/run_clean_benchmark.sh    mock and historical calibration runner
 scripts/run_ganghee_native_benchmark.sh
+scripts/run_common_multilane_benchmark.sh
+scripts/run_common_multilane_candidate.sh
+benchmarks/clean_slate_aer/manifest.multilane-n16.json
 docs/verification/               specification, profiles, results, PPA contract
 ```
 
@@ -161,7 +177,7 @@ AER_TRACE_MANIFEST=/tmp/aer-common-traces/basic_sparse.manifest.json \
 scripts/run_clean_benchmark.sh baseline
 ```
 
-Run Ganghee's fixed-16 native core without editing its RTL:
+Reproduce the historical direct-coordinate fovea without editing its RTL:
 
 ```bash
 setenv AER_GANGHEE_TOP aer_tx16_trad_rowcol_fovea
@@ -171,6 +187,27 @@ scripts/run_ganghee_native_benchmark.sh
 
 The Ganghee file list must contain the original top and its arbiter dependencies
 using absolute paths. Its runner deliberately rejects backpressure workloads.
+
+Generate or run the exact 22-trace capacity subset. DREC and Hyeonsu modes are
+historical reproductions; `ganghee-cluster2` is the current reference mode:
+
+```bash
+scripts/run_common_multilane_benchmark.sh generate-only
+scripts/run_common_multilane_candidate.sh ganghee-cluster2
+AER_SIMULATOR=xrun scripts/run_common_multilane_benchmark.sh drec-prefix 4
+AER_SIMULATOR=xrun \
+  scripts/run_common_multilane_candidate.sh clean rotation-priority
+```
+
+The current A1 common runners automatically create `*.pairs.json` for the two
+pairwise runs and `*.mixed.json` for the two mixed-phase runs. Missing inputs,
+invalid provenance, analyzer exceptions, or missing/freshness-failed result
+files propagate nonzero because the runners use `set -e`. Analyzer process
+success alone is not metric qualification: pairwise must report `COMPLETE`
+with no dropped/censored/nonevaluable pairs, and mixed must report
+`correctness_status=qualified_pass`. A partial, `evaluable=0`, or unqualified
+artifact must be rejected by the fail-closed receipt/ranking gate even if the
+analyzer successfully wrote JSON.
 
 Aggregate result files from multiple candidates/seeds:
 
@@ -184,15 +221,18 @@ python3 benchmarks/clean_slate_aer/aggregate.py \
 ## 7. Current gaps
 
 The written specification includes, but the current common runner does not yet
-fully implement, `basic_reset_drain`, native `basic_polarity`, automatic
-16/64/256 `limit_scale`, fixed-pin `limit_pin_budget`, and independent multi-lane
-stall qualification. Do not claim these as qualified results. The old in-SV `limit_load` uses
+fully implement, native `basic_polarity`, automatic 16/64/256 `limit_scale`,
+and fixed-pin `limit_pin_budget`. `basic_reset_drain` and independent multi-lane
+stall qualification now have dedicated tests. Do not claim unimplemented items
+as qualified results. The old in-SV `limit_load` uses
 a per-source probability; frozen comparisons should use the deterministic trace
 generator, whose `load` is aggregate offered events/cycle.
 
-The final cross-candidate evaluation layer is also not yet implemented. Before
-ranking Ganghee fovea, Hyeonsu's frozen final RTL, and Junyoung's new clean-slate
-RTL, the team must still:
+The final cross-candidate evaluation layer is also not yet implemented. Raw
+cluster2 is the current conventional address-only reference; direct-coordinate
+fovea, Hyeonsu, and DREC commands above reproduce historical comparisons and do
+not select a current base or finalist. Before ranking frozen candidates, the
+team must still:
 
 - freeze each candidate's commit SHA, top, file list, parameters, native pins,
   source count, retire lanes, and capability profile;

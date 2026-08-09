@@ -1,6 +1,12 @@
 강희 클코 지적사항 공식 대응 정리
 작성 기준: 2026-08-07
 
+[2026-08-10 status note]
+이 문서는 당시 3-candidate 비교 논의를 보존한 historical record다. 현재는
+Ganghee raw cluster2를 address-only reference로 사용하며 direct-coordinate
+fovea/Hyeonsu/DREC 실행은 reproduction evidence다. current full/capacity suite는
+각각 50/22이고 zero-feature TB binding은 유지한다.
+
 이 문서는 세 후보 중 하나를 최종 제출하기 위해, 현재 기능 검증과 PPA
 비교의 상태를 정확히 정리하고 앞으로의 공통 평가 절차를 합의하기 위한
 팀 공유용 문서다.
