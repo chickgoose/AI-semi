@@ -97,7 +97,9 @@ module aer_ganghee_cluster2_steal_buf_real_direct_tb;
         if (pulse_bits[source_index] && reference_count[source_index] == 2)
           expected_overrun[source_index] = 1'b1;
 
-      @(posedge clk);
+      // Snapshot rejection before the admission edge instead of depending on
+      // active/NBA ordering at @(posedge clk).
+      #4;
       sampled_overrun = overrun;
       if (sampled_overrun !== expected_overrun) begin
         errors = errors + 1;
@@ -108,6 +110,7 @@ module aer_ganghee_cluster2_steal_buf_real_direct_tb;
       dropped += $countones(sampled_overrun);
       admitted += $countones(pulse_bits & ~sampled_overrun);
 
+      @(posedge clk);
       #1;
       post_edge_overrun = overrun;
       post_edge_false_full += $countones(post_edge_overrun & ~sampled_overrun);
