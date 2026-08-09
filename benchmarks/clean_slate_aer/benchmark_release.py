@@ -20,8 +20,13 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
-SCHEMA = "aer-address-only-benchmark-release-v1"
+SCHEMA = "aer-address-only-benchmark-release-v2"
 GENERATOR_VERSION = "3.0"
+SUITE_POLICY = {
+    "expected_full_count": 50,
+    "expected_capacity_count": 22,
+    "required_run_names": ["mixed_phase_always_ready"],
+}
 TRACE_ABI = {
     "version": 4,
     "identity_mode": "address_only",
@@ -174,11 +179,10 @@ def _generator_is_address_only(data: bytes) -> bool:
     return False
 
 
-def _runs(document: dict[str, Any], label: str, count: int) -> list[dict[str, Any]]:
+def _runs(document: dict[str, Any], label: str) -> list[dict[str, Any]]:
     runs = document.get("runs")
-    if not isinstance(runs, list) or len(runs) != count:
-        actual = len(runs) if isinstance(runs, list) else "non-list"
-        raise ReleaseError(f"{label} run count: expected {count}, got {actual}")
+    if not isinstance(runs, list):
+        raise ReleaseError(f"{label} runs must be an array")
     if not all(isinstance(run, dict) and isinstance(run.get("name"), str) for run in runs):
         raise ReleaseError(f"{label} contains an invalid run")
     names = [run["name"] for run in runs]
@@ -187,30 +191,109 @@ def _runs(document: dict[str, Any], label: str, count: int) -> list[dict[str, An
     return runs
 
 
+def _preparer_has_v4_address_only_abi(data: bytes) -> bool:
+    try:
+        tree = ast.parse(data.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError) as exc:
+        raise ReleaseError("preparer is not valid UTF-8 Python") from exc
+    has_identity_guard = False
+    has_address_assignment = False
+    has_v4_header = False
+    has_five_field_row = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            constants = {
+                child.value for child in ast.walk(node)
+                if isinstance(child, ast.Constant) and isinstance(child.value, str)
+            }
+            if "address_only" in constants:
+                has_identity_guard = True
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "event_address"
+                   for target in targets):
+                expression = ast.unparse(node.value).replace(" ", "")
+                if expression == "y*width+x":
+                    has_address_assignment = True
+        if isinstance(node, ast.JoinedStr):
+            formatted = sum(isinstance(value, ast.FormattedValue) for value in node.values)
+            literal = "".join(
+                value.value for value in node.values
+                if isinstance(value, ast.Constant) and isinstance(value.value, str)
+            )
+            first = node.values[0] if node.values else None
+            if (isinstance(first, ast.Constant) and isinstance(first.value, str)
+                    and first.value.startswith("4 ") and formatted == 8):
+                has_v4_header = True
+            if formatted == 5 and literal.count(" ") == 4 and literal.endswith("\n"):
+                has_five_field_row = True
+    return all((has_identity_guard, has_address_assignment,
+                has_v4_header, has_five_field_row))
+
+
+def _testbench_has_v4_address_only_abi(data: bytes) -> bool:
+    try:
+        source = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReleaseError("testbench is not UTF-8 text") from exc
+    header = re.search(
+        r"%d\s+%d\s+%d\s+%d\s+%d\s+%d\s+%d\s+%d\s+%s", source
+    )
+    version = re.search(r"trace_version\s*!=\s*4", source)
+    address = re.search(
+        r"trace_address\s*\[\s*trace_index\s*\]\s*!=\s*"
+        r"trace_source\s*\[\s*trace_index\s*\]", source,
+    )
+    return bool(header and version and address)
+
+
 def _verify_suite_documents(
     generator: bytes,
     full: dict[str, Any],
     capacity: dict[str, Any],
     golden: dict[str, Any],
     full_name: str,
-) -> None:
+) -> tuple[int, int, int]:
     if _generator_version(generator) != GENERATOR_VERSION:
         raise ReleaseError(f"generator version must be {GENERATOR_VERSION}")
     if not _generator_is_address_only(generator):
         raise ReleaseError("generator does not emit the address-only identity contract")
-    full_runs = _runs(full, "official full manifest", 48)
-    capacity_runs = _runs(capacity, "official capacity manifest", 20)
+    full_runs = _runs(full, "official full manifest")
+    capacity_runs = _runs(capacity, "official capacity manifest")
+    if len(full_runs) != SUITE_POLICY["expected_full_count"]:
+        raise ReleaseError(
+            "official full manifest count: expected "
+            f"{SUITE_POLICY['expected_full_count']}, got {len(full_runs)}"
+        )
+    if len(capacity_runs) != SUITE_POLICY["expected_capacity_count"]:
+        raise ReleaseError(
+            "official capacity manifest count: expected "
+            f"{SUITE_POLICY['expected_capacity_count']}, got {len(capacity_runs)}"
+        )
     full_by_name = {run["name"]: run for run in full_runs}
     for run in capacity_runs:
         if full_by_name.get(run["name"]) != run:
             raise ReleaseError(
                 f"capacity run is not byte-equivalent JSON to full run: {run['name']}"
             )
+    for required_name in SUITE_POLICY["required_run_names"]:
+        if required_name not in full_by_name:
+            raise ReleaseError(f"official full manifest lacks required run: {required_name}")
+        if not any(run["name"] == required_name for run in capacity_runs):
+            raise ReleaseError(
+                f"official capacity manifest lacks required run: {required_name}"
+            )
     if golden.get("generator_version") != GENERATOR_VERSION:
         raise ReleaseError("golden generator_version mismatch")
     if golden.get("suite") != PurePosixPath(full_name).name:
         raise ReleaseError("golden suite does not name the official full manifest")
-    _runs(golden, "golden fixture", 48)
+    golden_runs = _runs(golden, "golden fixture")
+    if len(golden_runs) != len(full_runs):
+        raise ReleaseError(
+            f"golden run count differs from full manifest: "
+            f"{len(golden_runs)} != {len(full_runs)}"
+        )
+    return len(full_runs), len(capacity_runs), len(golden_runs)
 
 
 def _validate_evidence(entries: Any) -> None:
@@ -249,13 +332,19 @@ def _manifest_from_inputs(
     full_blob = _blob(repo, binding, inputs.full_manifest)
     capacity_blob = _blob(repo, binding, inputs.capacity_manifest)
     golden_blob = _blob(repo, binding, inputs.golden)
-    _verify_suite_documents(
+    counts = _verify_suite_documents(
         generator_blob,
         _json_bytes(full_blob, inputs.full_manifest),
         _json_bytes(capacity_blob, inputs.capacity_manifest),
         _json_bytes(golden_blob, inputs.golden),
         inputs.full_manifest,
     )
+    preparer_blob = _blob(repo, binding, inputs.preparer)
+    if not _preparer_has_v4_address_only_abi(preparer_blob):
+        raise ReleaseError("preparer does not implement the address-only v4 ABI")
+    testbench_blob = _blob(repo, binding, inputs.testbench)
+    if not _testbench_has_v4_address_only_abi(testbench_blob):
+        raise ReleaseError("testbench does not enforce the address-only v4 ABI")
     evidence = [
         {"name": name, "status": "PASS", "marker": marker}
         for name, marker in inputs.test_evidence
@@ -264,6 +353,10 @@ def _manifest_from_inputs(
     return {
         "schema": SCHEMA,
         "binding": binding,
+        "suite_policy": {
+            **SUITE_POLICY,
+            "required_run_names": list(SUITE_POLICY["required_run_names"]),
+        },
         "generator": {
             **_artifact(repo, binding, inputs.generator),
             "version": GENERATOR_VERSION,
@@ -274,19 +367,23 @@ def _manifest_from_inputs(
         "official_manifests": {
             "full_n16": {
                 **_artifact(repo, binding, inputs.full_manifest),
-                "run_count": 48,
+                "run_count": counts[0],
             },
             "capacity_n16": {
                 **_artifact(repo, binding, inputs.capacity_manifest),
-                "run_count": 20,
+                "run_count": counts[1],
             },
         },
         "golden": {
             **_artifact(repo, binding, inputs.golden),
             "generator_version": GENERATOR_VERSION,
-            "run_count": 48,
+            "run_count": counts[2],
         },
-        "trace_abi": TRACE_ABI,
+        "trace_abi": {
+            **TRACE_ABI,
+            "header_fields": list(TRACE_ABI["header_fields"]),
+            "event_fields": list(TRACE_ABI["event_fields"]),
+        },
         "analyzers": [_artifact(repo, binding, path) for path in inputs.analyzers],
         "test_evidence": evidence,
     }
@@ -314,12 +411,15 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     _clean(repo)
     _exact_keys(
         manifest,
-        {"schema", "binding", "generator", "preparer", "testbench", "runners",
+        {"schema", "binding", "suite_policy", "generator", "preparer",
+         "testbench", "runners",
          "official_manifests", "golden", "trace_abi", "analyzers", "test_evidence"},
         "release manifest",
     )
     if manifest["schema"] != SCHEMA:
         raise ReleaseError(f"unsupported schema: {manifest['schema']!r}")
+    if manifest["suite_policy"] != SUITE_POLICY:
+        raise ReleaseError("suite policy is not the official 50/22 mixed-phase policy")
     binding = manifest["binding"]
     if not isinstance(binding, dict):
         raise ReleaseError("binding must be an object")
@@ -350,8 +450,9 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     if manifest["generator"]["version"] != GENERATOR_VERSION:
         raise ReleaseError("generator.version mismatch")
     paths.append(generator_path)
-    paths.append(_verify_artifact(repo, binding, manifest["preparer"], "preparer"))
-    paths.append(_verify_artifact(repo, binding, manifest["testbench"], "testbench"))
+    preparer_path = _verify_artifact(repo, binding, manifest["preparer"], "preparer")
+    testbench_path = _verify_artifact(repo, binding, manifest["testbench"], "testbench")
+    paths.extend((preparer_path, testbench_path))
 
     for collection_name in ("runners", "analyzers"):
         collection = manifest[collection_name]
@@ -373,10 +474,6 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         repo, binding, official["capacity_n16"], "official capacity manifest",
         {"run_count"},
     )
-    if official["full_n16"]["run_count"] != 48:
-        raise ReleaseError("official full manifest count must be 48")
-    if official["capacity_n16"]["run_count"] != 20:
-        raise ReleaseError("official capacity manifest count must be 20")
     paths.extend((full_path, capacity_path))
 
     golden_path = _verify_artifact(
@@ -385,8 +482,6 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     )
     if manifest["golden"]["generator_version"] != GENERATOR_VERSION:
         raise ReleaseError("golden generator version mismatch")
-    if manifest["golden"]["run_count"] != 48:
-        raise ReleaseError("golden run count must be 48")
     paths.append(golden_path)
     if manifest["trace_abi"] != TRACE_ABI:
         raise ReleaseError("trace ABI is not the frozen address-only v4 contract")
@@ -395,13 +490,27 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     _validate_evidence(manifest["test_evidence"])
 
     generator_blob = _blob(repo, binding, generator_path)
-    _verify_suite_documents(
+    counts = _verify_suite_documents(
         generator_blob,
         _json_bytes(_blob(repo, binding, full_path), full_path),
         _json_bytes(_blob(repo, binding, capacity_path), capacity_path),
         _json_bytes(_blob(repo, binding, golden_path), golden_path),
         full_path,
     )
+    if official["full_n16"]["run_count"] != counts[0]:
+        raise ReleaseError("declared full run count differs from bound manifest")
+    if official["capacity_n16"]["run_count"] != counts[1]:
+        raise ReleaseError("declared capacity run count differs from bound manifest")
+    if manifest["golden"]["run_count"] != counts[2]:
+        raise ReleaseError("declared golden run count differs from bound fixture")
+    if not _preparer_has_v4_address_only_abi(
+        _blob(repo, binding, preparer_path)
+    ):
+        raise ReleaseError("preparer does not implement the address-only v4 ABI")
+    if not _testbench_has_v4_address_only_abi(
+        _blob(repo, binding, testbench_path)
+    ):
+        raise ReleaseError("testbench does not enforce the address-only v4 ABI")
 
 
 def generate_manifest(

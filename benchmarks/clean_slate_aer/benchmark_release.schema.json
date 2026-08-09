@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/aer-address-only-benchmark-release-v1.schema.json",
+  "$id": "https://example.invalid/aer-address-only-benchmark-release-v2.schema.json",
   "title": "Detached address-only AER benchmark release",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema", "binding", "generator", "preparer", "testbench", "runners",
+    "schema", "binding", "suite_policy", "generator", "preparer", "testbench", "runners",
     "official_manifests", "golden", "trace_abi", "analyzers", "test_evidence"
   ],
   "properties": {
-    "schema": {"const": "aer-address-only-benchmark-release-v1"},
+    "schema": {"const": "aer-address-only-benchmark-release-v2"},
     "binding": {
       "type": "object",
       "additionalProperties": false,
@@ -29,6 +29,20 @@
           "then": {"properties": {"commit": {"type": "null"}}}
         }
       ]
+    },
+    "suite_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_full_count", "expected_capacity_count", "required_run_names"],
+      "properties": {
+        "expected_full_count": {"const": 50},
+        "expected_capacity_count": {"const": 22},
+        "required_run_names": {
+          "type": "array",
+          "prefixItems": [{"const": "mixed_phase_always_ready"}],
+          "items": false
+        }
+      }
     },
     "generator": {"$ref": "#/$defs/versionedArtifact"},
     "preparer": {"$ref": "#/$defs/artifact"},
@@ -121,7 +135,7 @@
       "properties": {
         "path": {"$ref": "#/$defs/safePath"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "run_count": {"const": 48}
+        "run_count": {"const": 50}
       }
     },
     "capacityManifestArtifact": {
@@ -131,7 +145,7 @@
       "properties": {
         "path": {"$ref": "#/$defs/safePath"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "run_count": {"const": 20}
+        "run_count": {"const": 22}
       }
     },
     "goldenArtifact": {
@@ -142,7 +156,7 @@
         "path": {"$ref": "#/$defs/safePath"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "generator_version": {"const": "3.0"},
-        "run_count": {"const": 48}
+        "run_count": {"const": 50}
       }
     }
   }
