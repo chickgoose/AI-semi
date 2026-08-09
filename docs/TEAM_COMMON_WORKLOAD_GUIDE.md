@@ -233,9 +233,10 @@ The multi-lane manifest is not a DREC workload. Single-lane candidates consume
 the same 22 traces and expose their natural saturation behavior. Only the
 independent-lane stall test is optional and capability-gated.
 
-Run all 22 lane-capacity traces on a historical candidate already registered in
-the common clean runner (for example Hyeonsu's server-side
-`rotation-priority` entry):
+Run all 22 lane-capacity traces on a historical candidate only after its
+external RTL/file list and clean-runner entry have been registered. The current
+A1 checkout does not contain Hyeonsu's server-side `rotation-priority` entry,
+so the following is a template rather than an immediately runnable command:
 
 ```bash
 AER_SIMULATOR=xrun \
@@ -259,8 +260,16 @@ scripts/run_common_multilane_candidate.sh ganghee
 ```
 
 Both common runners automatically write `*.pairs.json` beside each pairwise
-result. Identity and affine reports contain canonical relation IDs, but an
-automatic cross-map delta artifact is still pending and must not be claimed.
+result. They require the exact 22 official run names with a nonempty generated
+manifest for each run, join identity and affine reports by canonical relation
+ID, and publish one no-overwrite
+`identity-vs-affine.json`. A non-rankable comparison remains preserved as a
+diagnostic but makes the runner exit 3. Mixed-phase reports are likewise
+accepted only when the analyzer returns `qualified_pass`; a JSON file by itself
+is never evidence of a successful run. Immutable generator, manifest, and
+per-trace content hashes are frozen separately by the benchmark release
+manifest; the runner's name-set check is not a substitute for that release
+receipt.
 
 ## 7. Current gaps
 

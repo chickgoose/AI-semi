@@ -29,8 +29,9 @@ modified or copied into this repository.
 | acknowledged source | exactly `addr[3:0]` |
 | common completed event | zero-extended native `addr`; the received address itself is the event |
 
-The binding contains no sequential process, event storage, FIFO, arbitration,
-grant history, or output-backpressure compensation. The native DUT alone
+The binding contains no sequential functional state, event storage, FIFO,
+arbitration, grant history, or output-backpressure compensation. Clocked code
+is assertion-only and cannot create or suppress a completion. The native DUT alone
 selects `addr`. The normalized event is derived only from native `addr`;
 neither `tb_only_event_id`, polarity/type metadata, nor arbitrary payload is
 recovered from the pending TB state.
@@ -48,6 +49,18 @@ of the current result; it is neither stored history nor duplicate suppression.
 A native `valid/addr` observation for a source whose request is no longer live
 is reported as duplicate/phantom behavior and is not converted into another
 completion. This is a protocol check, not stateful duplicate suppression.
+
+The native protocol must also satisfy a causal-credit rule: every asserted raw
+source/address result bit must correspond to a request occurrence sampled by
+the native DUT that has not already produced a raw completion. The direct
+`valid/addr` binding detects a result with no live request. The cluster2 binding
+additionally has an assertion-only monitor for a consecutively repeated raw
+bitmap and the immediate same-source retrigger alias exercised by its negative
+fixture. Neither address-only observer can distinguish an arbitrarily delayed
+stale result from a genuinely new occurrence of the same address after a quiet
+interval. Such a producer is outside this stateless binding contract and
+requires an explicit transaction tag or stateful ingress; that added hardware
+belongs to the candidate and its PPA boundary.
 
 ## Capabilities
 
@@ -141,6 +154,8 @@ supported sink-always-ready suite.
 | Check | Result |
 | --- | --- |
 | repeated-native-result negative control | PASS only when the raw repeated address trips `GANGHEE_NATIVE_BINDING duplicate/phantom native result` and the simulator exits nonzero |
+| cluster2 immediate-retrigger negative control | PASS only when an unconsumed raw bitmap credit is reused and the assertion-only causal monitor exits nonzero |
+| cluster2 reset-valid negative control | PASS only when a raw result appears during reset and the simulator exits nonzero |
 
 The negative control is
 `tests/clean_native/ganghee_native_duplicate_fault.sv`. It repeats source 2

@@ -15,28 +15,34 @@ candidate="${2:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
 trace_root="${AER_COMMON_MULTILANE_TRACE_DIR:-/tmp/aer-common-multilane-n16}"
-out_root="${AER_CLEAN_OUT:-$project_root/results/common-multilane-candidates}"
+out_parent="${AER_CLEAN_OUT:-$project_root/results/common-multilane-candidates}"
 seed="${AER_SEED:-1}"
+source "$script_dir/lib/pairwise_cross_map_common.sh"
+
+clear_mixed_outputs() {
+  local trace_stem="$1" result_root="$2"
+  [[ "$trace_stem" == mixed_phase_always_ready_* ]] || return 0
+  rm -f "$result_root/trace.csv" "$result_root/trace.events.csv" \
+    "$result_root/$trace_stem.mixed.json"
+}
 
 analyze_pairwise() {
   local trace_stem="$1"
   local event_path="$2"
-  local run_manifest="$3"
-  local result_root="$4"
-  local event_results=()
+  local event_result="$3"
+  local run_manifest="$4"
+  local result_root="$5"
   [[ "$trace_stem" == pairwise_contention_* ]] || return 0
-  mapfile -t event_results < <(
-    find "$result_root" -type f -name 'trace.events.csv' -print | sort
-  )
-  if [[ "${#event_results[@]}" -ne 1 ]]; then
-    printf 'expected one pairwise event result under %s, found %d\n' \
-      "$result_root" "${#event_results[@]}" >&2
+  [[ -s "$event_result" ]] || {
+    printf 'pairwise event result is missing: %s\n' "$event_result" >&2
     return 1
-  fi
+  }
+  local pair_report="$result_root/$trace_stem.pairs.json"
   python3 "$project_root/benchmarks/clean_slate_aer/pairwise_contention_metrics.py" \
     --trace "$event_path" --run-manifest "$run_manifest" \
-    --events "${event_results[0]}" \
-    --output "$result_root/$trace_stem.pairs.json"
+    --events "$event_result" \
+    --output "$pair_report"
+  printf '%s\n' "$pair_report"
 }
 
 analyze_mixed_phase() {
@@ -44,16 +50,23 @@ analyze_mixed_phase() {
   local event_path="$2"
   local run_manifest="$3"
   local result_root="$4"
+  local freshness_marker="$5"
   local summary_path="$result_root/trace.csv"
+  local output_path="$result_root/$trace_stem.mixed.json"
   [[ "$trace_stem" == mixed_phase_always_ready_* ]] || return 0
-  [[ -s "$summary_path" ]] || {
-    printf 'expected mixed-phase summary result: %s\n' "$summary_path" >&2
+  [[ -s "$summary_path" && "$summary_path" -nt "$freshness_marker" ]] || {
+    printf 'expected fresh mixed-phase summary result: %s\n' "$summary_path" >&2
     return 1
   }
+  rm -f "$output_path"
   python3 "$project_root/benchmarks/clean_slate_aer/mixed_phase_always_ready_metrics.py" \
     --run-manifest "$run_manifest" --events "$event_path" \
-    --summary "$summary_path" \
-    --output "$result_root/$trace_stem.mixed.json"
+    --summary "$summary_path" --require-qualified --output "$output_path"
+  [[ -s "$output_path" && "$output_path" -nt "$freshness_marker" ]] || {
+    printf 'mixed-phase analyzer did not produce a fresh result: %s\n' \
+      "$output_path" >&2
+    return 1
+  }
 }
 
 python3 "$project_root/benchmarks/clean_slate_aer/generate_trace.py" \
@@ -67,27 +80,37 @@ index = json.loads((root / "generation-index.json").read_text(encoding="utf-8"))
 for run in index["runs"]:
     print(root / run["trace_file"])' "$trace_root"
 )
-[[ "${#generated_traces[@]}" -eq 22 ]] || {
-  printf 'expected exactly 22 indexed multi-lane traces, found %d\n' \
-    "${#generated_traces[@]}" >&2
-  exit 1
-}
+validate_official_multilane_traces "$trace_root" "${generated_traces[@]}" || exit 2
 
 case "$binding" in
   clean)
     [[ -n "$candidate" ]] || usage
+    expected_report_candidate="$candidate"
+    candidate_scope="clean-$candidate-n16-seed$seed"
     ;;
   ganghee)
     [[ -z "$candidate" ]] || usage
+    expected_report_candidate="ganghee-native-coordinate-source-projection"
+    candidate_scope="ganghee-native-n16-seed$seed"
     ;;
   ganghee-cluster2)
     [[ -z "$candidate" ]] || usage
+    expected_report_candidate="ganghee-cluster2-row-bitmap"
+    candidate_scope="ganghee-cluster2-n16-seed$seed"
     ;;
   drec-prefix)
     case "$candidate" in 1|2|4) ;; *) usage ;; esac
+    expected_report_candidate="a7_prefix_k$candidate"
+    candidate_scope="drec-prefix-k$candidate-n16-seed$seed"
     ;;
   *) usage ;;
 esac
+
+mkdir -p "$out_parent"
+out_root="$(mktemp -d "$out_parent/run.XXXXXXXX")"
+pairwise_marker="$(mktemp)"
+identity_pair_report=""
+affine_pair_report=""
 
 for event_path in "${generated_traces[@]}"; do
   [[ -f "$event_path" ]] || {
@@ -101,24 +124,28 @@ for event_path in "${generated_traces[@]}"; do
   case "$binding" in
     clean)
       candidate_result_root="$trace_out_root/$candidate-n16-seed$seed"
+      clear_mixed_outputs "$trace_stem" "$candidate_result_root"
       AER_CLEAN_OUT="$trace_out_root" AER_NUM_SOURCES=16 \
       AER_TRACE_JSONL="$event_path" AER_TRACE_MANIFEST="$run_manifest" \
         "$script_dir/run_clean_benchmark.sh" "$candidate"
       ;;
     ganghee)
       candidate_result_root="$trace_out_root/ganghee-native-n16-seed$seed"
+      clear_mixed_outputs "$trace_stem" "$candidate_result_root"
       AER_CLEAN_OUT="$trace_out_root" \
       AER_TRACE_JSONL="$event_path" AER_TRACE_MANIFEST="$run_manifest" \
         "$script_dir/run_ganghee_native_benchmark.sh"
       ;;
     ganghee-cluster2)
       candidate_result_root="$trace_out_root/ganghee-cluster2-n16-seed$seed"
+      clear_mixed_outputs "$trace_stem" "$candidate_result_root"
       AER_CLEAN_OUT="$trace_out_root" \
       AER_TRACE_JSONL="$event_path" AER_TRACE_MANIFEST="$run_manifest" \
         "$script_dir/run_ganghee_cluster2_benchmark.sh"
       ;;
     drec-prefix)
       candidate_result_root="$trace_out_root/prefix/k$candidate/$trace_stem"
+      clear_mixed_outputs "$trace_stem" "$candidate_result_root"
       AER_CLEAN_OUT="$trace_out_root" AER_A7_IMPL=prefix \
       AER_TRACE_JSONL="$event_path" AER_TRACE_MANIFEST="$run_manifest" \
         "$script_dir/run_a7_parallel_event_compactor.sh" "$candidate"
@@ -130,11 +157,32 @@ for event_path in "${generated_traces[@]}"; do
       "$event_result" >&2
     exit 1
   }
-  analyze_pairwise "$trace_stem" "$event_path" "$run_manifest" \
-    "$candidate_result_root"
+  pair_report="$(analyze_pairwise "$trace_stem" "$event_path" \
+    "$event_result" "$run_manifest" "$candidate_result_root")"
+  case "$trace_stem" in
+    pairwise_contention_identity) identity_pair_report="$pair_report" ;;
+    pairwise_contention_affine) affine_pair_report="$pair_report" ;;
+  esac
   analyze_mixed_phase "$trace_stem" "$event_result" "$run_manifest" \
-    "$candidate_result_root"
+    "$candidate_result_root" "$freshness_marker"
   rm -f "$freshness_marker"
 done
 
+pairwise_cross_map_require_reports "$identity_pair_report" \
+  "$affine_pair_report" "$candidate_scope" || exit 2
+cross_output="$out_root/pairwise-cross-map/$candidate_scope/identity-vs-affine.json"
+if pairwise_cross_map_compare "$project_root" "$expected_report_candidate" \
+  "$pairwise_marker" \
+  "$trace_root/pairwise_contention_identity.manifest.json" \
+  "$identity_pair_report" \
+  "$trace_root/pairwise_contention_affine.manifest.json" \
+  "$affine_pair_report" "$cross_output"; then
+  pairwise_status=0
+else
+  pairwise_status="$?"
+  [[ "$pairwise_status" -eq 3 ]] || exit "$pairwise_status"
+fi
+rm -f "$pairwise_marker"
+
 printf 'common lane-capacity candidate run complete: %s\n' "$out_root"
+exit "$pairwise_status"
