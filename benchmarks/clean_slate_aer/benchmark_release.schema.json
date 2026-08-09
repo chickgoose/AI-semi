@@ -1,16 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/aer-address-only-benchmark-release-v6.schema.json",
+  "$id": "https://example.invalid/aer-address-only-benchmark-release-v7.schema.json",
   "title": "Detached address-only AER benchmark release",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema", "release_kind", "binding", "policy", "suite_policy", "generator",
+    "schema", "release_kind", "binding", "bootstrap", "policy", "suite_policy", "generator",
     "preparer", "testbench", "native_bindings", "ppa_registry", "runners",
-    "official_manifests", "golden", "trace_abi", "analyzers", "test_receipts"
+    "tool_helpers", "official_manifests", "golden", "trace_abi", "analyzers",
+    "executed_receipts"
   ],
   "properties": {
-    "schema": {"const": "aer-address-only-benchmark-release-v6"},
+    "schema": {"const": "aer-address-only-benchmark-release-v7"},
     "release_kind": {"const": "current"},
     "binding": {
       "type": "object",
@@ -31,6 +32,16 @@
           "then": {"properties": {"commit": {"type": "null"}}}
         }
       ]
+    },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["validator", "git_executable", "python_executable"],
+      "properties": {
+        "validator": {"$ref": "#/$defs/artifact"},
+        "git_executable": {"$ref": "#/$defs/executable"},
+        "python_executable": {"$ref": "#/$defs/executable"}
+      }
     },
     "policy": {"$ref": "#/$defs/artifact"},
     "suite_policy": {
@@ -59,6 +70,7 @@
     },
     "ppa_registry": {"$ref": "#/$defs/artifact"},
     "runners": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/artifact"}},
+    "tool_helpers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/artifact"}},
     "official_manifests": {
       "type": "object",
       "additionalProperties": false,
@@ -99,7 +111,7 @@
       }
     },
     "analyzers": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/artifact"}},
-    "test_receipts": {
+    "executed_receipts": {
       "type": "array", "minItems": 2, "uniqueItems": true,
       "items": {"$ref": "#/$defs/artifact"}
     }
@@ -116,6 +128,15 @@
       "required": ["path", "sha256"],
       "properties": {
         "path": {"$ref": "#/$defs/safePath"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "executable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^/"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     },

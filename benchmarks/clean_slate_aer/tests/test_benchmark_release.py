@@ -49,7 +49,10 @@ class BenchmarkReleaseTest(unittest.TestCase):
                 "tb/clean/native/aer_ganghee_native_binding.sv",
             ),
             ppa_registry="bench/ppa_registry.json",
-            runners=("scripts/run_clean.sh", "scripts/run_capacity.sh"),
+            runners=(
+                "scripts/run_clean.sh", "scripts/run_capacity.sh",
+                "scripts/run_a7.sh",
+            ),
             full_manifest="bench/manifest.full.json",
             capacity_manifest="bench/manifest.capacity.json",
             golden="bench/golden.json",
@@ -100,10 +103,13 @@ class BenchmarkReleaseTest(unittest.TestCase):
         self.write("bench/preparer.py", "# trusted v4 preparer fixture\n")
         self.write("tb/clean_tb.sv", "module clean_tb; endmodule\n")
         self.write("bench/analyzer.py", "def analyze(): return {}\n")
+        self.write(benchmark_release.VALIDATOR_PATH, "# fixture validator\n")
         self.write("PROGRESS.md", "not an executable runner\n")
         self.write("docs/analyzer.md", "not an executable analyzer\n")
         self.write("scripts/run_clean.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write("scripts/run_capacity.sh", "#!/usr/bin/env bash\nexit 0\n")
+        self.write("scripts/run_a7.sh", "#!/usr/bin/env bash\nexit 0\n")
+        self.write("scripts/lib/common.sh", "#!/usr/bin/env bash\ntrue\n")
         self.write("bench/manifest.full.json", json.dumps({"runs": full_runs}) + "\n")
         self.write(
             "bench/manifest.capacity.json",
@@ -220,9 +226,11 @@ class BenchmarkReleaseTest(unittest.TestCase):
             "runners": [
                 self.artifact("scripts/run_clean.sh"),
                 self.artifact("scripts/run_capacity.sh"),
+                self.artifact("scripts/run_a7.sh"),
             ],
             "analyzers": [self.artifact("bench/analyzer.py")],
-            "test_receipts": [
+            "tool_helpers": [self.artifact("scripts/lib/common.sh")],
+            "executed_receipts": [
                 self.artifact("bench/receipts/self.json"),
                 self.artifact("bench/receipts/neutrality.json"),
             ],
@@ -257,10 +265,53 @@ class BenchmarkReleaseTest(unittest.TestCase):
             manifest["official_manifests"]["capacity_n16"]["run_count"], 22
         )
         self.assertEqual(len(manifest["native_bindings"]), 4)
-        self.assertEqual(len(manifest["test_receipts"]), 2)
+        self.assertEqual(len(manifest["executed_receipts"]), 2)
+        self.assertEqual(len(manifest["tool_helpers"]), 1)
+        self.assertEqual(
+            manifest["bootstrap"]["validator"]["path"],
+            benchmark_release.VALIDATOR_PATH,
+        )
+        self.assertEqual(
+            manifest["bootstrap"]["validator"]["sha256"],
+            self.sha(benchmark_release.VALIDATOR_PATH),
+        )
+        python = Path(sys.executable).resolve(strict=True)
+        self.assertEqual(
+            manifest["bootstrap"]["python_executable"],
+            {
+                "path": str(python),
+                "sha256": hashlib.sha256(python.read_bytes()).hexdigest(),
+            },
+        )
+        receipt_paths = {
+            artifact["path"] for artifact in manifest["executed_receipts"]
+        }
+        self.assertTrue(
+            all(
+                artifact["path"] not in receipt_paths
+                for artifact in manifest["analyzers"]
+            )
+        )
         benchmark_release.validate_manifest(
             self.repo, benchmark_release.load_manifest(output)
         )
+
+    def test_tool_helper_inventory_omission_is_rejected(self) -> None:
+        _, manifest = self.generate()
+        manifest["tool_helpers"] = []
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError, "tool_helpers"
+        ):
+            benchmark_release.validate_manifest(self.repo, manifest)
+
+    def test_bootstrap_python_metadata_tamper_is_rejected(self) -> None:
+        _, manifest = self.generate()
+        manifest["bootstrap"]["python_executable"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError,
+            "bootstrap Python executable metadata mismatch",
+        ):
+            benchmark_release.validate_manifest(self.repo, manifest)
 
     def test_cli_cannot_override_trusted_policy_hash(self) -> None:
         output = self.base / "cli.json"

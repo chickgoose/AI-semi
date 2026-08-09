@@ -25,9 +25,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
-SCHEMA = "aer-address-only-benchmark-release-v6"
+SCHEMA = "aer-address-only-benchmark-release-v7"
 TRUSTED_POLICY_PATH = "benchmarks/clean_slate_aer/a1_release_policy.json"
-TRUSTED_POLICY_SHA256 = "294a499d596331142bd1977b3aae40a9a41453a690b6b1fe5899a1d69d5d937c"
+TRUSTED_POLICY_SHA256 = "c34785d21fe7f8f40ab7f141c93fc2accccad83faca346374f3234f20404b1f9"
+VALIDATOR_PATH = "benchmarks/clean_slate_aer/benchmark_release.py"
 TRUSTED_GIT_PATH = "/usr/bin/git"
 TRUSTED_GIT_SHA256 = "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"
 CURRENT_GENERATOR_VERSION = "4.0"
@@ -101,6 +102,17 @@ def _trusted_git() -> str:
     if str(executable) != TRUSTED_GIT_PATH or digest != TRUSTED_GIT_SHA256:
         raise ReleaseError("trusted Git executable path or SHA-256 mismatch")
     return str(executable)
+
+
+def _python_metadata() -> dict[str, str]:
+    try:
+        executable = Path(sys.executable).resolve(strict=True)
+        digest = _sha(executable.read_bytes())
+    except OSError as exc:
+        raise ReleaseError("cannot read Python executable") from exc
+    if not executable.is_absolute():
+        raise ReleaseError("Python executable path is not absolute")
+    return {"path": str(executable), "sha256": digest}
 
 
 def _git(repo: Path, *args: str, binary: bool = False) -> str | bytes:
@@ -253,7 +265,8 @@ def _load_trusted_policy(
         policy,
         {"schema", "generator_version", "trace_abi_version", "identity_mode",
          "required_relation", "full_count", "capacity_count", "artifacts",
-         "git_tool", "runners", "analyzers", "test_receipts", "ppa_registry"},
+         "git_tool", "runners", "analyzers", "tool_helpers",
+         "executed_receipts", "ppa_registry"},
         "trusted policy",
     )
     if policy["schema"] != "aer-a1-release-policy-v1":
@@ -444,7 +457,7 @@ def _validate_executed_receipts(
     entries: Any,
     policy: dict[str, Any],
 ) -> list[str]:
-    expected = policy["test_receipts"]
+    expected = policy["executed_receipts"]
     if not isinstance(entries, list) or entries != expected:
         raise ReleaseError("test receipts do not exactly match trusted policy")
     artifacts = policy["artifacts"]
@@ -571,15 +584,22 @@ def _manifest_from_inputs(
         raise ReleaseError("runner paths differ from ordered canonical policy")
     if not expected_analyzers or list(inputs.analyzers) != expected_analyzers:
         raise ReleaseError("analyzer paths differ from ordered canonical policy")
+    if not isinstance(policy["tool_helpers"], list) or not policy["tool_helpers"]:
+        raise ReleaseError("trusted policy tool helper inventory is empty")
+    for index, value in enumerate(policy["tool_helpers"]):
+        _verify_policy_artifact(repo, binding, value, f"tool helper {index}")
     if inputs.ppa_registry != policy["ppa_registry"]["path"]:
         raise ReleaseError("PPA registry path differs from canonical policy")
-    if list(inputs.test_receipts) != [item["path"] for item in policy["test_receipts"]]:
+    if list(inputs.test_receipts) != [
+        item["path"] for item in policy["executed_receipts"]
+    ]:
         raise ReleaseError("test receipt paths differ from canonical policy")
     paths = [
         inputs.policy, inputs.generator, inputs.preparer, inputs.testbench,
         inputs.full_manifest, inputs.capacity_manifest, inputs.golden,
         inputs.ppa_registry, *inputs.test_receipts, *inputs.native_bindings,
         *inputs.runners, *inputs.analyzers,
+        *[item["path"] for item in policy["tool_helpers"]], VALIDATOR_PATH,
     ]
     normalized = [_repo_path(path) for path in paths]
     if len(set(normalized)) != len(normalized):
@@ -599,6 +619,14 @@ def _manifest_from_inputs(
         "schema": SCHEMA,
         "release_kind": release_kind,
         "binding": binding,
+        "bootstrap": {
+            "validator": _artifact(repo, binding, VALIDATOR_PATH),
+            "git_executable": {
+                "path": TRUSTED_GIT_PATH,
+                "sha256": TRUSTED_GIT_SHA256,
+            },
+            "python_executable": _python_metadata(),
+        },
         "policy": _artifact(repo, binding, inputs.policy),
         "suite_policy": {
             **SUITE_POLICY,
@@ -615,6 +643,7 @@ def _manifest_from_inputs(
         ],
         "ppa_registry": _artifact(repo, binding, inputs.ppa_registry),
         "runners": [_artifact(repo, binding, path) for path in inputs.runners],
+        "tool_helpers": policy["tool_helpers"],
         "official_manifests": {
             "full_n16": {
                 **_artifact(repo, binding, inputs.full_manifest),
@@ -636,7 +665,7 @@ def _manifest_from_inputs(
             "event_fields": list(TRACE_ABI["event_fields"]),
         },
         "analyzers": [_artifact(repo, binding, path) for path in inputs.analyzers],
-        "test_receipts": [
+        "executed_receipts": [
             _artifact(repo, binding, path) for path in inputs.test_receipts
         ],
     }
@@ -664,9 +693,10 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     _clean(repo)
     _exact_keys(
         manifest,
-        {"schema", "release_kind", "binding", "policy", "suite_policy", "generator",
+        {"schema", "release_kind", "binding", "bootstrap", "policy", "suite_policy", "generator",
          "preparer", "testbench", "native_bindings", "ppa_registry", "runners",
-         "official_manifests", "golden", "trace_abi", "analyzers", "test_receipts"},
+         "tool_helpers", "official_manifests", "golden", "trace_abi",
+         "analyzers", "executed_receipts"},
         "release manifest",
     )
     if manifest["schema"] != SCHEMA:
@@ -702,12 +732,33 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     if current_tree != binding["tree"]:
         raise ReleaseError("current checkout tree differs from manifest binding tree")
 
+    bootstrap = manifest["bootstrap"]
+    if not isinstance(bootstrap, dict):
+        raise ReleaseError("bootstrap metadata must be an object")
+    _exact_keys(
+        bootstrap,
+        {"validator", "git_executable", "python_executable"},
+        "bootstrap metadata",
+    )
+    validator_path = _verify_artifact(
+        repo, binding, bootstrap["validator"], "bootstrap validator"
+    )
+    if validator_path != VALIDATOR_PATH:
+        raise ReleaseError("bootstrap validator path is not canonical")
+    if bootstrap["git_executable"] != {
+        "path": TRUSTED_GIT_PATH,
+        "sha256": TRUSTED_GIT_SHA256,
+    }:
+        raise ReleaseError("bootstrap Git executable metadata mismatch")
+    if bootstrap["python_executable"] != _python_metadata():
+        raise ReleaseError("bootstrap Python executable metadata mismatch")
+
     policy_path = _verify_artifact(repo, binding, manifest["policy"], "policy")
     policy = _load_trusted_policy(repo, binding, policy_path)
     if manifest["policy"]["sha256"] != TRUSTED_POLICY_SHA256:
         raise ReleaseError("manifest policy SHA-256 is not trusted")
     policy_artifacts = policy["artifacts"]
-    paths: list[str] = [policy_path]
+    paths: list[str] = [validator_path, policy_path]
     generator_path = _verify_artifact(
         repo, binding, manifest["generator"], "generator", {"version"}
     )
@@ -757,6 +808,16 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
                 repo, binding, artifact, f"{collection_name}[{index}]"
             ))
 
+    helpers = manifest["tool_helpers"]
+    if not isinstance(helpers, list) or not helpers:
+        raise ReleaseError("tool_helpers must be a nonempty inventory")
+    if helpers != policy["tool_helpers"]:
+        raise ReleaseError("tool_helpers differ from ordered canonical policy")
+    for index, artifact in enumerate(helpers):
+        paths.append(_verify_artifact(
+            repo, binding, artifact, f"tool_helpers[{index}]"
+        ))
+
     official = manifest["official_manifests"]
     if not isinstance(official, dict):
         raise ReleaseError("official_manifests must be an object")
@@ -795,7 +856,7 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         raise ReleaseError("bound artifact paths must be unique")
     with _materialized_tree(repo, binding) as snapshot:
         receipt_paths = _validate_executed_receipts(
-            repo, binding, snapshot, manifest["test_receipts"], policy
+            repo, binding, snapshot, manifest["executed_receipts"], policy
         )
     paths.extend(receipt_paths)
     if len(paths) != len(set(paths)):
