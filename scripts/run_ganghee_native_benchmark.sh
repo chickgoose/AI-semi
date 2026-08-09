@@ -55,6 +55,7 @@ is_core_test() {
 }
 
 trace_args=()
+mixed_trace=0
 if [[ -n "$TRACE_JSONL" || -n "$TRACE_MANIFEST" ]]; then
   [[ -n "$TRACE_JSONL" && -n "$TRACE_MANIFEST" ]] || {
     printf 'AER_TRACE_JSONL and AER_TRACE_MANIFEST must be set together\n' >&2
@@ -96,11 +97,13 @@ if [[ -n "$TRACE_JSONL" ]]; then
     --trace "$TRACE_JSONL" --run-manifest "$TRACE_MANIFEST" \
     --output "$prepared_trace" --addr-width 16)"
   printf '%s\n' "$prepare_output"
+  prepared_report_name="${prepare_output##*report_group=}"
+  prepared_report_name="${prepared_report_name%% *}"
   trace_report_name="${AER_TRACE_NAME:-}"
   if [[ -z "$trace_report_name" ]]; then
-    trace_report_name="${prepare_output##*report_group=}"
-    trace_report_name="${trace_report_name%% *}"
+    trace_report_name="$prepared_report_name"
   fi
+  [[ "$prepared_report_name" == "mixed_phase_always_ready" ]] && mixed_trace=1
   read -r trace_version trace_count trace_stim_cycles trace_source_count \
     trace_load_milli trace_sink_mode trace_sink_arg0 trace_sink_arg1 \
     trace_seed_name < "$prepared_trace"
@@ -135,16 +138,29 @@ compile_command+=(-l "$out_dir/elaborate.log")
 (cd "$PROJECT_ROOT" && "${compile_command[@]}")
 
 for test_name in "${tests[@]}"; do
+  metrics_path="$out_dir/$test_name.csv"
+  event_metrics_path="$out_dir/$test_name.events.csv"
+  mixed_metrics_path="$out_dir/$test_name.mixed_metrics.json"
+  if (( mixed_trace )); then
+    # A successful simulator process that emits no result must never qualify
+    # against files left by an earlier run.
+    rm -f "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
+  fi
   run_command=(xrun -64bit -R -snapshot "$snapshot"
     -xmlibdirname "$out_dir/xcelium.d"
     "+CLEAN_TEST=$test_name" "+CANDIDATE=ganghee-native-coordinate-source-projection"
-    "+METRICS=$out_dir/$test_name.csv"
-    "+EVENT_METRICS=$out_dir/$test_name.events.csv"
+    "+METRICS=$metrics_path"
+    "+EVENT_METRICS=$event_metrics_path"
     "+SEED=$SEED" -l "$out_dir/$test_name.log")
   if [[ -n "$TRACE_JSONL" ]]; then
     run_command+=("${trace_args[@]}")
   fi
   (cd "$PROJECT_ROOT" && "${run_command[@]}")
+  if (( mixed_trace )); then
+    python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/mixed_phase_always_ready_metrics.py" \
+      --run-manifest "$TRACE_MANIFEST" --events "$event_metrics_path" \
+      --summary "$metrics_path" --require-qualified --output "$mixed_metrics_path"
+  fi
 done
 
 printf 'Ganghee native clean benchmark complete: %s\n' "$out_dir"
