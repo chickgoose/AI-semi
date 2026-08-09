@@ -52,7 +52,7 @@ elif [[ $# -gt 0 ]]; then
   tests=("$@")
 else
   tests=(
-    basic_single basic_sparse basic_simultaneous basic_backpressure
+    basic_single basic_sparse basic_simultaneous basic_reset_drain basic_backpressure
     limit_load limit_elephant_mouse limit_global_fanin
     limit_local_cluster limit_distributed_burst limit_retrigger
     limit_timing_fidelity limit_backpressure_shock
