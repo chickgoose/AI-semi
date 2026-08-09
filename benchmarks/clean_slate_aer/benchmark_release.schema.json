@@ -1,15 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/aer-address-only-benchmark-release-v2.schema.json",
+  "$id": "https://example.invalid/aer-address-only-benchmark-release-v3.schema.json",
   "title": "Detached address-only AER benchmark release",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema", "binding", "suite_policy", "generator", "preparer", "testbench", "runners",
+    "schema", "release_kind", "binding", "suite_policy", "generator", "preparer", "testbench", "runners",
     "official_manifests", "golden", "trace_abi", "analyzers", "test_evidence"
   ],
   "properties": {
-    "schema": {"const": "aer-address-only-benchmark-release-v2"},
+    "schema": {"const": "aer-address-only-benchmark-release-v3"},
+    "release_kind": {"enum": ["current", "historical"]},
     "binding": {
       "type": "object",
       "additionalProperties": false,
@@ -39,7 +40,10 @@
         "expected_capacity_count": {"const": 22},
         "required_run_names": {
           "type": "array",
-          "prefixItems": [{"const": "mixed_phase_always_ready"}],
+          "prefixItems": [
+            {"const": "mixed_phase_always_ready_identity"},
+            {"const": "mixed_phase_always_ready_bit_reverse"}
+          ],
           "items": false
         }
       }
@@ -103,6 +107,26 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {"properties": {"release_kind": {"const": "current"}}},
+      "then": {
+        "properties": {
+          "generator": {"properties": {"version": {"const": "4.0"}}},
+          "golden": {"properties": {"generator_version": {"const": "4.0"}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"release_kind": {"const": "historical"}}},
+      "then": {
+        "properties": {
+          "generator": {"properties": {"version": {"const": "3.0"}}},
+          "golden": {"properties": {"generator_version": {"const": "3.0"}}}
+        }
+      }
+    }
+  ],
   "$defs": {
     "safePath": {
       "type": "string",
@@ -125,7 +149,7 @@
       "properties": {
         "path": {"$ref": "#/$defs/safePath"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "version": {"const": "3.0"}
+        "version": {"enum": ["4.0", "3.0"]}
       }
     },
     "fullManifestArtifact": {
@@ -155,7 +179,7 @@
       "properties": {
         "path": {"$ref": "#/$defs/safePath"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "generator_version": {"const": "3.0"},
+        "generator_version": {"enum": ["4.0", "3.0"]},
         "run_count": {"const": 50}
       }
     }
