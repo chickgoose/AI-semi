@@ -20,7 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
-SCHEMA = "aer-address-only-benchmark-release-v3"
+SCHEMA = "aer-address-only-benchmark-release-v4"
 CURRENT_GENERATOR_VERSION = "4.0"
 HISTORICAL_GENERATOR_VERSION = "3.0"
 SUITE_POLICY = {
@@ -61,6 +61,8 @@ class ReleaseInputs:
     generator: str
     preparer: str
     testbench: str
+    native_bindings: tuple[str, ...]
+    synth_ppa_filelists: tuple[str, ...]
     runners: tuple[str, ...]
     full_manifest: str
     capacity_manifest: str
@@ -150,6 +152,67 @@ def _blob(repo: Path, binding: dict[str, Any], path: str) -> bytes:
 def _artifact(repo: Path, binding: dict[str, Any], path: str) -> dict[str, str]:
     path = _repo_path(path)
     return {"path": path, "sha256": _sha(_blob(repo, binding, path))}
+
+
+def _tracked_native_bindings(repo: Path, binding: dict[str, Any]) -> list[str]:
+    listing = str(_git(
+        repo, "ls-tree", "-r", "--name-only", _object(binding), "--",
+        "tb/clean/native",
+    ))
+    return sorted(
+        path for path in listing.splitlines()
+        if path.startswith("tb/clean/native/") and path.endswith("_binding.sv")
+    )
+
+
+def _validate_native_synth_boundary(
+    repo: Path,
+    binding: dict[str, Any],
+    native_paths: Sequence[str],
+    synth_filelists: Sequence[str],
+) -> None:
+    tracked = _tracked_native_bindings(repo, binding)
+    if sorted(native_paths) != tracked:
+        raise ReleaseError(
+            "native_bindings must exactly enumerate tracked "
+            f"tb/clean/native/*_binding.sv files: expected {tracked}"
+        )
+    if not synth_filelists:
+        raise ReleaseError("at least one synth/PPA filelist is required")
+    declared_filelists = set(synth_filelists)
+    binding_names = {PurePosixPath(path).name for path in native_paths}
+    for filelist in synth_filelists:
+        if PurePosixPath(filelist).suffix != ".f":
+            raise ReleaseError(f"synth/PPA source list must be a .f file: {filelist}")
+        try:
+            source = _blob(repo, binding, filelist).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ReleaseError(f"synth/PPA filelist is not UTF-8: {filelist}") from exc
+        tokens: list[str] = []
+        for line in source.splitlines():
+            tokens.extend(line.split("#", 1)[0].split())
+        for index, token in enumerate(tokens):
+            clean = token.strip("'\"")
+            candidate = clean[2:] if clean.startswith("-f") and len(clean) > 2 else clean
+            if PurePosixPath(candidate).name in binding_names:
+                raise ReleaseError(
+                    f"native binding is forbidden in synth/PPA sources: "
+                    f"{filelist}: {candidate}"
+                )
+            if clean == "-f":
+                if index + 1 >= len(tokens):
+                    raise ReleaseError(f"dangling -f in synth/PPA filelist: {filelist}")
+                nested = tokens[index + 1].strip("'\"")
+                if nested not in declared_filelists:
+                    raise ReleaseError(
+                        f"nested synth/PPA filelist must be explicitly bound: {nested}"
+                    )
+            elif clean.startswith("-f") and len(clean) > 2:
+                nested = clean[2:]
+                if nested not in declared_filelists:
+                    raise ReleaseError(
+                        f"nested synth/PPA filelist must be explicitly bound: {nested}"
+                    )
 
 
 def _generator_version(data: bytes) -> str:
@@ -341,6 +404,7 @@ def _manifest_from_inputs(
     paths = [
         inputs.generator, inputs.preparer, inputs.testbench,
         inputs.full_manifest, inputs.capacity_manifest, inputs.golden,
+        *inputs.native_bindings, *inputs.synth_ppa_filelists,
         *inputs.runners, *inputs.analyzers,
     ]
     normalized = [_repo_path(path) for path in paths]
@@ -384,6 +448,12 @@ def _manifest_from_inputs(
         },
         "preparer": _artifact(repo, binding, inputs.preparer),
         "testbench": _artifact(repo, binding, inputs.testbench),
+        "native_bindings": [
+            _artifact(repo, binding, path) for path in inputs.native_bindings
+        ],
+        "synth_ppa_filelists": [
+            _artifact(repo, binding, path) for path in inputs.synth_ppa_filelists
+        ],
         "runners": [_artifact(repo, binding, path) for path in inputs.runners],
         "official_manifests": {
             "full_n16": {
@@ -433,7 +503,7 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     _exact_keys(
         manifest,
         {"schema", "release_kind", "binding", "suite_policy", "generator", "preparer",
-         "testbench", "runners",
+         "testbench", "native_bindings", "synth_ppa_filelists", "runners",
          "official_manifests", "golden", "trace_abi", "analyzers", "test_evidence"},
         "release manifest",
     )
@@ -475,6 +545,23 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     preparer_path = _verify_artifact(repo, binding, manifest["preparer"], "preparer")
     testbench_path = _verify_artifact(repo, binding, manifest["testbench"], "testbench")
     paths.extend((preparer_path, testbench_path))
+
+    boundary_paths: dict[str, list[str]] = {}
+    for collection_name in ("native_bindings", "synth_ppa_filelists"):
+        collection = manifest[collection_name]
+        if not isinstance(collection, list) or not collection:
+            raise ReleaseError(f"{collection_name} must be a nonempty array")
+        boundary_paths[collection_name] = []
+        for index, artifact in enumerate(collection):
+            path = _verify_artifact(
+                repo, binding, artifact, f"{collection_name}[{index}]"
+            )
+            boundary_paths[collection_name].append(path)
+            paths.append(path)
+    _validate_native_synth_boundary(
+        repo, binding, boundary_paths["native_bindings"],
+        boundary_paths["synth_ppa_filelists"],
+    )
 
     for collection_name in ("runners", "analyzers"):
         collection = manifest[collection_name]
@@ -576,6 +663,8 @@ def _inputs(args: argparse.Namespace) -> ReleaseInputs:
         evidence.append(tuple(entry.split("=", 1)))
     return ReleaseInputs(
         generator=args.generator, preparer=args.preparer, testbench=args.testbench,
+        native_bindings=tuple(args.native_binding),
+        synth_ppa_filelists=tuple(args.synth_ppa_filelist),
         runners=tuple(args.runner), full_manifest=args.full_manifest,
         capacity_manifest=args.capacity_manifest, golden=args.golden,
         analyzers=tuple(args.analyzer), test_evidence=tuple(evidence),
@@ -596,6 +685,8 @@ def parser() -> argparse.ArgumentParser:
     generate.add_argument("--generator", required=True)
     generate.add_argument("--preparer", required=True)
     generate.add_argument("--testbench", required=True)
+    generate.add_argument("--native-binding", action="append", required=True)
+    generate.add_argument("--synth-ppa-filelist", action="append", required=True)
     generate.add_argument("--runner", action="append", required=True)
     generate.add_argument("--full-manifest", required=True)
     generate.add_argument("--capacity-manifest", required=True)

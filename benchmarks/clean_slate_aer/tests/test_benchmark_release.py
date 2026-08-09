@@ -33,6 +33,11 @@ class BenchmarkReleaseTest(unittest.TestCase):
             generator="bench/generator.py",
             preparer="bench/preparer.py",
             testbench="tb/clean_tb.sv",
+            native_bindings=(
+                "tb/clean/native/aer_ganghee_cluster2_binding.sv",
+                "tb/clean/native/aer_ganghee_native_binding.sv",
+            ),
+            synth_ppa_filelists=("synth/design.f",),
             runners=("scripts/run_clean.sh", "scripts/run_capacity.sh"),
             full_manifest="bench/manifest.full.json",
             capacity_manifest="bench/manifest.capacity.json",
@@ -115,6 +120,16 @@ class BenchmarkReleaseTest(unittest.TestCase):
             "  end\n"
             "endmodule\n",
         )
+        self.write(
+            "tb/clean/native/aer_ganghee_cluster2_binding.sv",
+            "module aer_ganghee_cluster2_binding; endmodule\n",
+        )
+        self.write(
+            "tb/clean/native/aer_ganghee_native_binding.sv",
+            "module aer_ganghee_native_binding; endmodule\n",
+        )
+        self.write("rtl/design.sv", "module design; endmodule\n")
+        self.write("synth/design.f", "rtl/design.sv\n")
         self.write("scripts/run_clean.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write("scripts/run_capacity.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write("bench/manifest.full.json", json.dumps({"runs": full_runs}) + "\n")
@@ -169,6 +184,10 @@ class BenchmarkReleaseTest(unittest.TestCase):
         ]
         for runner in self.inputs.runners:
             command.extend(("--runner", runner))
+        for native_binding in self.inputs.native_bindings:
+            command.extend(("--native-binding", native_binding))
+        for filelist in self.inputs.synth_ppa_filelists:
+            command.extend(("--synth-ppa-filelist", filelist))
         for analyzer in self.inputs.analyzers:
             command.extend(("--analyzer", analyzer))
         generated = subprocess.run(
@@ -364,6 +383,50 @@ class BenchmarkReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(
             benchmark_release.ReleaseError, "generator.version mismatch"
         ):
+            benchmark_release.validate_manifest(self.repo, tampered)
+
+    def test_all_native_bindings_are_hashed(self) -> None:
+        _, manifest = self.generate()
+        self.assertEqual(
+            [entry["path"] for entry in manifest["native_bindings"]],
+            list(self.inputs.native_bindings),
+        )
+        for entry in manifest["native_bindings"]:
+            self.assertRegex(entry["sha256"], r"^[0-9a-f]{64}$")
+
+    def test_omitted_native_binding_is_rejected(self) -> None:
+        incomplete = benchmark_release.ReleaseInputs(
+            **{
+                **self.inputs.__dict__,
+                "native_bindings": (self.inputs.native_bindings[0],),
+            }
+        )
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError, "exactly enumerate tracked"
+        ):
+            benchmark_release.generate_manifest(
+                self.repo, self.base / "incomplete.json", "commit", incomplete
+            )
+
+    def test_native_binding_in_synth_ppa_filelist_is_rejected(self) -> None:
+        self.write(
+            "synth/design.f",
+            "rtl/design.sv\n"
+            "tb/clean/native/aer_ganghee_native_binding.sv\n",
+        )
+        self.git("add", "synth/design.f")
+        self.git("commit", "-qm", "contaminate synth boundary")
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError,
+            "native binding is forbidden in synth/PPA sources",
+        ):
+            self.generate()
+
+    def test_native_binding_hash_tampering_is_rejected(self) -> None:
+        _, manifest = self.generate()
+        tampered = copy.deepcopy(manifest)
+        tampered["native_bindings"][0]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(benchmark_release.ReleaseError, "hash mismatch"):
             benchmark_release.validate_manifest(self.repo, tampered)
 
     def test_results_and_log_artifacts_are_rejected(self) -> None:
