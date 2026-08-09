@@ -18,14 +18,18 @@ module aer_cluster2_causal_credit_monitor #(
     if (rst) begin
       sampled_request_credit <= '0;
     end else begin
+      if ((native_req & native_result_mask) != '0)
+        $fatal(1,
+          "GANGHEE_CLUSTER2_CAUSAL_CREDIT seam_req_result_overlap mask=%h",
+          native_req & native_result_mask);
       if ((native_result_mask & ~sampled_request_credit) != '0)
         $fatal(1,
           "GANGHEE_CLUSTER2_CAUSAL_CREDIT raw_without_credit mask=%h credit=%h",
           native_result_mask, sampled_request_credit);
 
       // A held level is one outstanding occurrence, so credit saturates at one.
-      // Raw and req for the same source cannot coincide at the normalized seam:
-      // the current raw result masks that source's request before this edge.
+      // The assertion above makes the normalized-seam exclusion explicit: a
+      // current raw result must mask that source's request before this edge.
       sampled_request_credit <=
         (sampled_request_credit & ~native_result_mask) | native_req;
     end

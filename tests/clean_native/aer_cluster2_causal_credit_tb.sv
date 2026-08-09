@@ -12,6 +12,14 @@ module aer_cluster2_causal_credit_tb;
     source_valid & ~raw_result_mask;
   wire  [NUM_SOURCES-1:0] source_ready =
     source_valid & raw_result_mask;
+`ifdef AER_CAUSAL_SEAM_OVERLAP
+  // Test-only fault injection at the monitor seam. Production normalization
+  // must never present req and result for the same source on one sampled edge.
+  wire [NUM_SOURCES-1:0] monitored_native_req =
+    native_req | raw_result_mask;
+`else
+  wire [NUM_SOURCES-1:0] monitored_native_req = native_req;
+`endif
 
   integer sampled_request_episodes = 0;
   integer raw_results = 0;
@@ -25,7 +33,7 @@ module aer_cluster2_causal_credit_tb;
   ) monitor (
     .clk(clk),
     .rst(rst),
-    .native_req(native_req),
+    .native_req(monitored_native_req),
     .native_result_mask(raw_result_mask)
   );
 
@@ -71,7 +79,13 @@ module aer_cluster2_causal_credit_tb;
     raw_result_mask[SOURCE] = 1'b1;
     @(posedge clk);
 
-`ifdef AER_CAUSAL_IMMEDIATE_REPEAT
+`ifdef AER_CAUSAL_SEAM_OVERLAP
+    // The monitor must terminate on the preceding result edge. Delay the
+    // fallback to a negedge so simulator active-region ordering cannot mask the
+    // assertion provenance.
+    @(negedge clk);
+    $fatal(1, "CAUSAL_CREDIT_TB seam overlap unexpectedly survived");
+`elsif AER_CAUSAL_IMMEDIATE_REPEAT
     // A clears at the preceding edge. B is offered at the earliest legal
     // driver negedge while the faulty raw A bitmap is retained. B is never
     // sampled because the stale bitmap masks native_req, so the next edge must

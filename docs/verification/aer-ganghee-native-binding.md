@@ -167,21 +167,30 @@ cannot prove whether it originated from the new request or is an older delayed
 result. Claims stronger than credit conservation require forbidden event
 identity or a stronger native protocol.
 
-`tests/clean_native/aer_cluster2_causal_credit_monitor.sv` is the executable
-reference checker. `tests/clean_native/aer_cluster2_causal_credit_tb.sv` covers:
+`tests/clean_native/aer_cluster2_causal_credit_monitor.sv` is an executable
+reference-checker self-test, not actual-DUT qualification and not evidence that
+the current production binding enforces this condition. Actual qualification
+requires wiring an equivalent checker to the DUT-facing sampled `native_req`
+and raw result mask. `tests/clean_native/aer_cluster2_causal_credit_tb.sv`
+covers:
 
 - fastest legal same-source retrigger after the raw result drops;
 - an immediate repeated bitmap overlapping a newly offered, but not sampled,
   same-source occurrence;
 - a delayed stale bitmap after a complete low observation cycle; and
+- illegal same-source `native_req`/raw-result overlap at the monitored seam; and
 - a second reset only after all accepted results drain, followed by a fresh
   post-reset request credit.
 
-The two fault runs pass qualification only when the simulated design exits
-nonzero with `raw_without_credit`; a fallback fatal or clean conservation result
-is insufficient. The legal run requires three sampled request episodes, three
-raw results, three acceptances, and no mid-traffic reset semantics. This monitor
-does not modify or substitute for production RTL.
+The three fault-mode checker self-tests pass only when runtime exits nonzero with
+the exact expected checker diagnostic; a fallback fatal or clean conservation
+result is insufficient. The runner uses a unique temporary build root, requires
+every compile to succeed before runtime, and relaxes shell error handling only
+around expected-failing fault execution. The legal self-test requires three
+sampled request episodes, three raw results, three acceptances, and no
+mid-traffic reset semantics. This monitor does not modify or substitute for
+production RTL, and these self-test results alone must not be reported as a DUT
+or binding qualification PASS.
 
 ## Server original-RTL qualification (2026-08-06)
 
