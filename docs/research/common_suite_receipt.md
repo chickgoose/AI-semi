@@ -177,6 +177,78 @@ frozen registry before exercising the receipt. Analyzer artifacts in this test
 are schema-complete deterministic execution fixtures; DUT simulation itself
 remains runner responsibility and is not claimed by the receipt test.
 
+## Official wrapper
+
+`scripts/common_suite_official_wrapper.py` turns the tools above into one
+fail-closed workflow without modifying either existing common runner. `run`
+performs, in order:
+
+1. freeze the candidate bundle, generator, existing runner, wrapper, immutable
+   execution plan, analyzer dependency bundles, simulator executable, and
+   simulator version into a new unique attempt;
+2. generate and validate the exact official v4 50- or 22-run trace set;
+3. create one persistent empty freshness marker per indexed run;
+4. execute the existing suite runner with `AER_COMMON_MULTILANE_TRACE_DIR`,
+   `AER_A7_TRACE_DIR`, `AER_CLEAN_OUT`, `TMPDIR`, and receipt-specific paths all
+   rooted below the attempt;
+5. revalidate the traces, require each `{run}` result/summary glob to resolve to
+   exactly one private regular file newer than its marker, and run every
+   workload-required analyzer;
+6. atomically publish every execution sidecar, schema-4 `artifacts.json`, and
+   finally the immutable receipt.
+
+Any generator, runner, analyzer, validation, freshness, cardinality, sidecar,
+artifact, or fsync failure returns nonzero and publishes no receipt. The failed
+unique attempt is retained for diagnosis. Existing attempts and arbitrary
+pre-existing files below `--output-root` are neither deleted nor overwritten.
+The wrapper constrains the approved existing runners through all output/tmp
+variables they consume; it is not an OS sandbox for a malicious runner that
+deliberately ignores its output contract.
+
+Capacity22 candidate-runner shape, using Ganghee cluster2 as an example:
+
+```sh
+python3 scripts/common_suite_official_wrapper.py run \
+  --suite capacity22 --output-root "$receipt_root" \
+  --candidate-manifest "$candidate_manifest" \
+  --official-manifest "$common/manifest.multilane-n16.json" \
+  --generator "$common/generate_trace.py" \
+  --runner scripts/run_common_multilane_candidate.sh \
+  --runner-arg ganghee-cluster2 \
+  --result-pattern 'runner-output/run.*/{run}/ganghee-cluster2-n16-seed1/trace.events.csv' \
+  --summary-pattern 'runner-output/run.*/{run}/ganghee-cluster2-n16-seed1/trace.csv' \
+  --analyzer pairwise_contention="$common/pairwise_contention_metrics.py" \
+  --analyzer mixed_phase_always_ready="$common/mixed_phase_always_ready_metrics.py" \
+  --analyzer phase_transition="$common/phase_metrics.py" \
+  --simulator-name verilator --simulator-executable "$(command -v verilator)" \
+  --simulator-version "$simulator_version_file" \
+  --runner-env AER_SIMULATOR=verilator
+```
+
+The current A7 full-suite runner produces several lane counts; the pattern must
+select only the candidate manifest's frozen lane count. For its N16 K4 prefix
+configuration use `--suite full50`, runner `scripts/run_a7_46_traces.sh`, add the
+timing analyzer, and select
+`runner-output/prefix/k4/{run}/trace.events.csv` plus the adjacent `trace.csv`.
+Despite the historical runner filename it is accepted only if the revalidated
+index contains the exact current 50 names.
+
+Every sourced/imported non-standard runner, generator, and analyzer file must be
+listed with repeated `--tool-dependency NAME=PATH`. Runner arguments, permitted
+`--runner-env` values, result patterns, and simulator identity are frozen in
+the automatically bundled execution plan. Reserved output variables cannot be
+overridden by the caller.
+
+`generate-only` is a non-destructive smoke gate. Its output directory must not
+exist, and success requires the exact official manifest bytes, names, generated
+run manifests, and frozen trace hashes:
+
+```sh
+python3 scripts/common_suite_official_wrapper.py generate-only \
+  --suite full50 --official-manifest "$common/manifest.neutrality-n16.json" \
+  --generator "$common/generate_trace.py" --output-dir "$new_trace_dir"
+```
+
 ## Atomic publication boundary
 
 The receipt file is fully written and fsynced, then linked into a previously

@@ -654,6 +654,56 @@ def _load_attempt(artifact_root: Path, artifacts: dict[str, Any], suite: str,
     return doc, payload, candidate, candidate_sha, tools, simulator
 
 
+def validate_official_generation(generation_index_path: Path, suite_manifest_path: Path,
+                                 suite: str) -> dict[str, Any]:
+    """Validate exact official v4 trace generation before any runner executes."""
+    if suite not in official.SUITES:
+        raise ReceiptError(f"unknown official suite: {suite}")
+    frozen, names = official.SUITES[suite], tuple(official.SUITES[suite]["names"])
+    manifest, manifest_bytes, _ = _read_json(suite_manifest_path, "official suite manifest")
+    if (suite_manifest_path.name != frozen["manifest_name"] or
+            _sha256(manifest_bytes) != frozen["manifest_sha256"] or manifest.get("schema_version") != 1):
+        raise ReceiptError("official suite manifest identity mismatch")
+    manifest_runs = _named(manifest.get("runs"), "official suite manifest.runs")
+    _exact(manifest_runs, names, "official suite run set")
+    index, index_bytes, _ = _read_json(generation_index_path, "generation index")
+    if (set(index) != {"schema_version", "generator_version", "input_manifest", "runs"} or
+            index["schema_version"] != 1 or index["generator_version"] != official.GENERATOR_VERSION or
+            index["input_manifest"] != frozen["manifest_name"]):
+        raise ReceiptError("generation index schema/provenance mismatch")
+    indexed = _named(index["runs"], "generation index.runs", embedded=True)
+    _exact(indexed, names, "generation index run set")
+    trace_root, runs = generation_index_path.parent, []
+    for name in names:
+        metadata = indexed[name]
+        canonical_run = _canonical_run(manifest_runs[name])
+        if (metadata.get("schema_version") != 1 or
+                metadata.get("generator_version") != official.GENERATOR_VERSION or
+                metadata.get("run") != canonical_run):
+            raise ReceiptError(f"run {name} generated manifest contract mismatch")
+        expected_trace = official.TRACE_SHA256[name]
+        if (metadata.get("trace_file") != f"{name}.events.jsonl" or
+                metadata.get("trace_sha256") != expected_trace or
+                metadata.get("report_group") != _report_group(canonical_run) or
+                metadata.get("event_identity_mode") != "address_only" or
+                metadata.get("dut_address_fields") != ["logical_source"] or
+                metadata.get("dut_payload_fields") != []):
+            raise ReceiptError(f"run {name} generated metadata contract mismatch")
+        run_manifest_path = _contained(trace_root, f"{name}.manifest.json", f"run {name} manifest")
+        run_manifest, run_manifest_bytes, _ = _read_json(run_manifest_path, f"run {name} manifest")
+        canonical_bytes = (json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode("ascii")
+        if run_manifest != metadata or run_manifest_bytes != canonical_bytes:
+            raise ReceiptError(f"run {name} manifest bytes/content differ from generation index")
+        trace_path = _contained(trace_root, metadata["trace_file"], f"run {name} trace")
+        trace_bytes, _ = _read_bytes_stable(trace_path, f"run {name} trace")
+        if _sha256(trace_bytes) != expected_trace:
+            raise ReceiptError(f"run {name} trace SHA256 mismatch")
+        runs.append({"name": name, "workload": canonical_run["workload"], "metadata": metadata,
+                     "trace": trace_path, "run_manifest": run_manifest_path})
+    return {"suite": suite, "names": names, "runs": runs, "manifest_sha256": _sha256(manifest_bytes),
+            "generation_index_sha256": _sha256(index_bytes)}
+
+
 def validate(generation_index_path: Path, suite_manifest_path: Path, suite: str,
              artifacts_path: Path, artifact_root: Path,
              suites: dict[str, Any] | None = None,
