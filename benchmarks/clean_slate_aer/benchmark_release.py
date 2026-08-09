@@ -10,20 +10,26 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
 SCHEMA = "aer-address-only-benchmark-release-v6"
 TRUSTED_POLICY_PATH = "benchmarks/clean_slate_aer/a1_release_policy.json"
-TRUSTED_POLICY_SHA256 = "870a88886eaf07385b2696de7553c28a00339e4ab5535f2e22d76a19609954ff"
+TRUSTED_POLICY_SHA256 = "294a499d596331142bd1977b3aae40a9a41453a690b6b1fe5899a1d69d5d937c"
+TRUSTED_GIT_PATH = "/usr/bin/git"
+TRUSTED_GIT_SHA256 = "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"
 CURRENT_GENERATOR_VERSION = "4.0"
 HISTORICAL_GENERATOR_VERSION = "3.0"
 SUITE_POLICY = {
@@ -85,10 +91,31 @@ class ReleaseInputs:
     test_receipts: tuple[str, ...]
 
 
+@lru_cache(maxsize=1)
+def _trusted_git() -> str:
+    try:
+        executable = Path(TRUSTED_GIT_PATH).resolve(strict=True)
+        digest = _sha(executable.read_bytes())
+    except OSError as exc:
+        raise ReleaseError("cannot read trusted Git executable") from exc
+    if str(executable) != TRUSTED_GIT_PATH or digest != TRUSTED_GIT_SHA256:
+        raise ReleaseError("trusted Git executable path or SHA-256 mismatch")
+    return str(executable)
+
+
 def _git(repo: Path, *args: str, binary: bool = False) -> str | bytes:
+    environment = {
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin",
+    }
     try:
         result = subprocess.run(
-            ["git", *args], cwd=repo, check=True,
+            [_trusted_git(), *args], cwd=repo, env=environment, check=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         ).stdout
     except (OSError, subprocess.CalledProcessError) as exc:
@@ -168,6 +195,40 @@ def _artifact(repo: Path, binding: dict[str, Any], path: str) -> dict[str, str]:
     return {"path": path, "sha256": _sha(_blob(repo, binding, path))}
 
 
+@contextmanager
+def _materialized_tree(repo: Path, binding: dict[str, Any]):
+    """Yield a private snapshot made only from the bound Git object."""
+    archive = _git(
+        repo, "archive", "--format=tar", _object(binding), binary=True
+    )
+    assert isinstance(archive, bytes)
+    temporary = tempfile.TemporaryDirectory(prefix="aer-release-bound-tree-")
+    snapshot = Path(temporary.name)
+    try:
+        try:
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                members = bundle.getmembers()
+                for member in members:
+                    path = PurePosixPath(member.name)
+                    if (
+                        path.is_absolute()
+                        or ".." in path.parts
+                        or not (member.isfile() or member.isdir())
+                    ):
+                        raise ReleaseError(
+                            f"bound tree archive contains unsafe entry: {member.name}"
+                        )
+                bundle.extractall(snapshot, members=members, filter="data")
+        except (OSError, tarfile.TarError) as exc:
+            raise ReleaseError("cannot securely materialize bound tree") from exc
+        yield snapshot
+    finally:
+        try:
+            temporary.cleanup()
+        except OSError as exc:
+            raise ReleaseError("cannot clean up bound-tree snapshot") from exc
+
+
 def _tracked_native_bindings(repo: Path, binding: dict[str, Any]) -> list[str]:
     listing = str(_git(
         repo, "ls-tree", "-r", "--name-only", _object(binding), "--",
@@ -192,7 +253,7 @@ def _load_trusted_policy(
         policy,
         {"schema", "generator_version", "trace_abi_version", "identity_mode",
          "required_relation", "full_count", "capacity_count", "artifacts",
-         "runners", "analyzers", "test_receipts", "ppa_registry"},
+         "git_tool", "runners", "analyzers", "test_receipts", "ppa_registry"},
         "trusted policy",
     )
     if policy["schema"] != "aer-a1-release-policy-v1":
@@ -206,6 +267,11 @@ def _load_trusted_policy(
         or policy["capacity_count"] != 22
     ):
         raise ReleaseError("trusted policy is not the canonical A1 v4/50/22 policy")
+    if policy["git_tool"] != {
+        "path": TRUSTED_GIT_PATH,
+        "sha256": TRUSTED_GIT_SHA256,
+    }:
+        raise ReleaseError("trusted policy Git tool contract mismatch")
     return policy
 
 
@@ -374,6 +440,7 @@ def _verify_suite_documents(
 def _validate_executed_receipts(
     repo: Path,
     binding: dict[str, Any],
+    snapshot: Path,
     entries: Any,
     policy: dict[str, Any],
 ) -> list[str]:
@@ -435,9 +502,14 @@ def _validate_executed_receipts(
         ):
             raise ReleaseError(f"test receipt markers are invalid: {path}")
         try:
+            script = snapshot / _repo_path(command[1])
+            if not script.is_file() or script.is_symlink():
+                raise ReleaseError(
+                    f"receipt script is absent from bound-tree snapshot: {command[1]}"
+                )
             result = subprocess.run(
-                [isolated_python, "-I", "-B", command[1]],
-                cwd=repo, env=environment,
+                [isolated_python, "-I", "-B", str(script)],
+                cwd=snapshot, env=environment,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 timeout=120, check=False,
             )
@@ -721,9 +793,10 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         raise ReleaseError("trace ABI is not the frozen address-only v4 contract")
     if len(paths) != len(set(paths)):
         raise ReleaseError("bound artifact paths must be unique")
-    receipt_paths = _validate_executed_receipts(
-        repo, binding, manifest["test_receipts"], policy
-    )
+    with _materialized_tree(repo, binding) as snapshot:
+        receipt_paths = _validate_executed_receipts(
+            repo, binding, snapshot, manifest["test_receipts"], policy
+        )
     paths.extend(receipt_paths)
     if len(paths) != len(set(paths)):
         raise ReleaseError("bound artifact paths must be unique")

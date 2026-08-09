@@ -6,6 +6,7 @@
   "required_relation": "address == logical_source",
   "full_count": 50,
   "capacity_count": 22,
+  "git_tool": {"path": "/usr/bin/git", "sha256": "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"},
   "artifacts": {
     "generator": {"path": "benchmarks/clean_slate_aer/generate_trace.py", "sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50"},
     "preparer": {"path": "benchmarks/clean_slate_aer/prepare_sv_trace.py", "sha256": "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826"},
