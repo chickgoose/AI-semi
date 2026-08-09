@@ -125,7 +125,7 @@ class OfficialSuiteFixture:
             os.utime(marker, ns=(marker_ns, marker_ns))
             result = ("candidate,test,seed,load_pct,run_evidence\n"
                       f"{self.candidate},{metadata['report_group']},{config['seed']},"
-                      f"{receipt.Decimal(str(config['load'])) * 100},{name}\n").encode()
+                      f"{receipt._tb_load_pct(config['load'])},{name}\n").encode()
             result_path = run_root / "trace.events.csv"; result_path.write_bytes(result)
             os.utime(result_path, ns=(marker_ns + 10_000, marker_ns + 10_000))
             row = {"name": name, "freshness_marker": f"runs/{name}/freshness.marker",
@@ -321,6 +321,31 @@ class CommonSuiteReceiptTest(unittest.TestCase):
         self.assertEqual(tuple(row["run"]["name"] for row in generated), official.CAPACITY22)
         self.assertTrue(all(row["trace_sha256"] == official.TRACE_SHA256[row["run"]["name"]]
                             for row in generated))
+
+    def test_tb_load_pct_rounding_contract_accepts_fractional_official_loads(self):
+        self.assertEqual(receipt._tb_load_pct("0.125"), 13)
+        self.assertEqual(receipt._tb_load_pct("0.234"), 23)
+        self.assertEqual(receipt._tb_load_pct("0.769"), 77)
+        fixture = self.fixture("full50")
+        for name, expected in (("uniform_l0p125_s2001", "13"),
+                               ("pairwise_contention_identity", "23"),
+                               ("phase_transition_s3501", "77")):
+            row = fixture.row(name)
+            fields = (fixture.attempt / row["result"]["path"]).read_text().splitlines()[1].split(",")
+            self.assertEqual(fields[3], expected)
+        fixture.validate()
+
+    def test_rejects_wrong_tb_load_pct_even_when_sidecar_is_rebound(self):
+        fixture = self.fixture(); name = "pairwise_contention_identity"; row = fixture.row(name)
+        path = fixture.attempt / row["result"]["path"]
+        lines = path.read_text().splitlines(); fields = lines[1].split(","); fields[3] = "24"
+        payload = (lines[0] + "\n" + ",".join(fields) + "\n").encode()
+        path.write_bytes(payload); row["result"]["sha256"] = digest(payload)
+        marker = fixture.attempt / row["freshness_marker"]
+        os.utime(path, ns=(marker.stat().st_mtime_ns + 10_000,) * 2)
+        fixture.rewrite_sidecar(name, lambda doc: doc.__setitem__("result_sha256", digest(payload)))
+        with self.assertRaisesRegex(receipt.ReceiptError, "load_pct provenance mismatch"):
+            fixture.validate()
 
     def test_sidecar_binds_run_candidate_tool_bundle_and_simulator(self):
         name = "pairwise_contention_identity"
