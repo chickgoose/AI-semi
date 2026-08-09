@@ -1,7 +1,11 @@
 import copy
+import hashlib
 import json
+import os
 import sys
+import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -11,29 +15,158 @@ sys.path.insert(0, str(ROOT))
 import validate_full_link_qualification as validator
 
 
-HASH_A = "a" * 64
-HASH_B = "b" * 64
+def artifact(root, relative, content):
+    data = content if isinstance(content, bytes) else content.encode("utf-8")
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return {"path": relative, "sha256": hashlib.sha256(data).hexdigest()}
 
 
-def valid_record():
+def json_artifact(root, relative, value):
+    return artifact(
+        root,
+        relative,
+        json.dumps(value, indent=2, sort_keys=True) + "\n",
+    )
+
+
+def read_json_artifact(root, reference):
+    return json.loads((root / reference["path"]).read_text(encoding="utf-8"))
+
+
+def valid_record(root):
     cycles = 100
     delivered = 50
     native_bits = 37
     link_bits = 8
     clock_mhz = 200.0
     power_mw = 2.0
+    synthesis_top = "candidate_full_link"
+    block_kinds = (
+        "tx", "link", "encoder", "decoder", "serializer", "deserializer",
+        "buffer", "cdc", "normalizer", "rx",
+    )
+
+    source_entries = []
+    for kind in block_kinds:
+        reference = artifact(root, f"rtl/{kind}.sv", f"module {kind}; endmodule\n")
+        source_entries.append(reference)
+    bundle = json_artifact(root, "manifest/bundle.json", {
+        "schema_version": 1,
+        "files": source_entries,
+    })
+    filelist = artifact(
+        root,
+        "manifest/filelist.f",
+        "".join(f"rtl/{kind}.sv\n" for kind in block_kinds),
+    )
+
+    charged_blocks = []
+    hierarchy_evidence = {}
+    for kind in block_kinds:
+        evidence = artifact(
+            root,
+            f"evidence/hierarchy_{kind}.rpt",
+            f"{synthesis_top}.u_{kind} candidate_{kind} rtl/{kind}.sv\n",
+        )
+        hierarchy_evidence[kind] = evidence
+        charged_blocks.append({
+            "name": kind,
+            "kind": kind,
+            "top": f"candidate_{kind}",
+            "hierarchy_path": f"{synthesis_top}.u_{kind}",
+            "hierarchy_evidence": evidence,
+            "source_files": [f"rtl/{kind}.sv"],
+            "included_in_area": True,
+            "included_in_timing": True,
+            "included_in_activity": True,
+            "included_in_power": True,
+        })
+
+    category_for_kind = {
+        "encoder": "codec",
+        "decoder": "codec",
+        "serializer": "serializer",
+        "deserializer": "deserializer",
+        "buffer": "buffer",
+        "cdc": "cdc",
+        "normalizer": "normalizer",
+    }
+    declarations = {
+        category: []
+        for category in (
+            "codec", "serializer", "deserializer", "buffer", "cdc", "normalizer"
+        )
+    }
+    generated_features = []
+    for kind, category in category_for_kind.items():
+        entry = {
+            "name": f"{kind}_feature",
+            "charged_block": kind,
+            "hierarchy_path": f"{synthesis_top}.u_{kind}",
+            "evidence": hierarchy_evidence[kind],
+        }
+        declarations[category].append(entry)
+        generated_features.append({
+            "name": entry["name"],
+            "category": category,
+            "charged_block": kind,
+            "hierarchy_path": entry["hierarchy_path"],
+        })
+
+    mapped_inventory = json_artifact(root, "evidence/mapped_hierarchy.json", {
+        "schema_version": 1,
+        "synthesis_top": synthesis_top,
+        "blocks": [
+            {
+                "name": block["name"],
+                "kind": block["kind"],
+                "top": block["top"],
+                "hierarchy_path": block["hierarchy_path"],
+                "source_files": block["source_files"],
+            }
+            for block in charged_blocks
+        ],
+    })
+    generated_inventory = json_artifact(root, "evidence/generated_features.json", {
+        "schema_version": 1,
+        "synthesis_top": synthesis_top,
+        "features": generated_features,
+    })
+
+    flow_artifacts = {}
+    for field in (
+        "tool_config", "sdc", "library", "post_elaboration_report",
+        "synthesis_hierarchy_report", "synthesis_evidence", "mapped_netlist",
+        "area_report", "stage_report", "setup_report", "hold_report",
+        "route_report", "unconstrained_report", "drc_report",
+    ):
+        flow_artifacts[field] = artifact(
+            root, f"evidence/{field}.txt", f"verified {field}\n"
+        )
+    flow_artifacts["mapped_hierarchy_inventory"] = mapped_inventory
+    flow_artifacts["generated_feature_inventory"] = generated_inventory
+
+    activity_artifacts = {
+        field: artifact(root, f"activity/{field}.dat", f"verified {field}\n")
+        for field in (
+            "trace", "prepared_input", "activity_artifact", "power_report",
+            "common_result",
+        )
+    }
     events_per_cycle = delivered / cycles
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "qualification_id": "candidate-n16-sparse",
         "status": "frozen",
         "candidate": {
             "id": "candidate",
             "repo_url": "ssh://example.invalid/candidate.git",
             "commit_sha": "1a2b3c4d",
-            "bundle_sha256": HASH_A,
-            "synthesis_top": "candidate_full_link",
-            "filelist_sha256": HASH_B,
+            "bundle_inventory": bundle,
+            "synthesis_top": synthesis_top,
+            "filelist": filelist,
             "parameters": {"N": 16},
             "defines": [],
             "include_dirs": [],
@@ -42,8 +175,10 @@ def valid_record():
             "event_identity_mode": "address_only",
             "source_count": 16,
             "source_mapping": {
-                "description": "logical_source equals native row-major index",
-                "sha256": HASH_A,
+                "description": "logical source equals native row-major index",
+                "artifact": artifact(
+                    root, "contract/source_mapping.txt", "0..15 -> 0..15\n"
+                ),
                 "bijective": True,
             },
             "one_pending_latch_per_source": True,
@@ -105,62 +240,17 @@ def valid_record():
             "scoreboard_only_fields": [
                 "normalized_event_container", "retire_source", "tb_only_event_id"
             ],
-            "free_wiring": [
-                {
-                    "name": "scoreboard_address_widen",
-                    "operation": "zero_extension",
-                    "description": "zero extend recovered four-bit source to 16 bits",
-                }
-            ],
+            "free_wiring": [{
+                "name": "scoreboard_address_widen",
+                "operation": "zero_extension",
+                "description": "zero extend recovered source for scoreboard only",
+            }],
         },
-        "feature_declarations": {
-            "codec": [
-                {
-                    "name": kind,
-                    "charged_block": kind,
-                    "hierarchy_path": f"candidate_full_link.u_{kind}",
-                    "evidence_sha256": HASH_A,
-                }
-                for kind in ("encoder", "decoder")
-            ],
-            "serializer": [],
-            "deserializer": [],
-            "buffer": [],
-            "cdc": [],
-            "normalizer": [],
-        },
-        "charged_blocks": [
-            {
-                "name": kind,
-                "kind": kind,
-                "top": f"candidate_{kind}",
-                "hierarchy_path": f"candidate_full_link.u_{kind}",
-                "hierarchy_sha256": HASH_A,
-                "rtl_sha256": HASH_A,
-                "filelist_sha256": HASH_B,
-                "included_in_area": True,
-                "included_in_timing": True,
-                "included_in_activity": True,
-                "included_in_power": True,
-            }
-            for kind in ("tx", "link", "encoder", "decoder", "rx")
-        ],
+        "feature_declarations": declarations,
+        "charged_blocks": charged_blocks,
         "flow": {
-            "tool_config_sha256": HASH_A,
-            "sdc_sha256": HASH_B,
-            "library_sha256": HASH_A,
+            **flow_artifacts,
             "pvt_rc_corner": "slow_0p9v_125c_rcworst",
-            "post_elaboration_report_sha256": HASH_B,
-            "synthesis_hierarchy_report_sha256": HASH_A,
-            "synthesis_evidence_sha256": HASH_B,
-            "mapped_netlist_sha256": HASH_A,
-            "area_report_sha256": HASH_B,
-            "stage_report_sha256": HASH_A,
-            "setup_report_sha256": HASH_B,
-            "hold_report_sha256": HASH_A,
-            "route_report_sha256": HASH_B,
-            "unconstrained_report_sha256": HASH_A,
-            "drc_report_sha256": HASH_B,
             "results": {
                 "mapped_cell_count": 123,
                 "area_um2": 456.25,
@@ -174,12 +264,11 @@ def valid_record():
             },
         },
         "activity": {
-            "trace_sha256": HASH_A,
-            "prepared_input_sha256": HASH_B,
+            **activity_artifacts,
             "format": "saif",
-            "activity_sha256": HASH_A,
-            "hierarchy_root": "candidate_full_link",
+            "hierarchy_root": synthesis_top,
             "coverage_percent": 99.0,
+            "coverage_threshold_percent": 95.0,
             "window_start_cycle": 20,
             "window_end_cycle_exclusive": 120,
             "measurement_cycles": cycles,
@@ -188,8 +277,6 @@ def valid_record():
             "power_evidence": "activity_annotated",
             "average_power_mw": power_mw,
             "delivered_events": delivered,
-            "power_report_sha256": HASH_B,
-            "common_result_sha256": HASH_A,
         },
         "metrics": {
             "events_per_cycle": events_per_cycle,
@@ -202,34 +289,22 @@ def valid_record():
     }
 
 
-def add_feature(record, category, kind=None):
-    block_kind = kind or category
-    name = f"{category}_feature"
-    hierarchy_path = f"candidate_full_link.u_{name}"
-    record["charged_blocks"].append({
-        "name": name,
-        "kind": block_kind,
-        "top": f"candidate_{name}",
-        "hierarchy_path": hierarchy_path,
-        "hierarchy_sha256": HASH_A,
-        "rtl_sha256": HASH_B,
-        "filelist_sha256": HASH_A,
-        "included_in_area": True,
-        "included_in_timing": True,
-        "included_in_activity": True,
-        "included_in_power": True,
-    })
-    record["feature_declarations"][category].append({
-        "name": name,
-        "charged_block": name,
-        "hierarchy_path": hierarchy_path,
-        "evidence_sha256": HASH_A,
-    })
-    return name
-
-
 class FullLinkQualificationTest(unittest.TestCase):
-    def test_schema_is_machine_readable_draft_2020_12(self):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.record = valid_record(self.root)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def validate(self, record=None):
+        return validator.validate_record(record or self.record, self.root)
+
+    def rewrite_json_reference(self, owner, field, relative, value):
+        owner[field] = json_artifact(self.root, relative, value)
+
+    def test_schema_is_machine_readable_draft_2020_12_v3(self):
         schema = json.loads(
             (ROOT / "full_link_qualification.schema.json").read_text(
                 encoding="utf-8"
@@ -238,10 +313,10 @@ class FullLinkQualificationTest(unittest.TestCase):
         self.assertEqual(
             schema["$schema"], "https://json-schema.org/draft/2020-12/schema"
         )
-        self.assertEqual(schema["properties"]["schema_version"]["const"], 2)
+        self.assertEqual(schema["properties"]["schema_version"]["const"], 3)
 
     def test_valid_full_link_record_recomputes_metrics(self):
-        result = validator.validate_record(valid_record())
+        result = self.validate()
         self.assertEqual(result["native_functional_pin_bits"], 37)
         self.assertEqual(result["link_functional_pin_bits"], 8)
         self.assertAlmostEqual(result["events_per_cycle"], 0.5)
@@ -249,232 +324,286 @@ class FullLinkQualificationTest(unittest.TestCase):
 
     def test_schema_required_type_and_additional_properties_are_enforced(self):
         cases = []
-
-        missing = valid_record()
-        del missing["flow"]["area_report_sha256"]
-        cases.append(("missing", missing, r"flow\.area_report_sha256 is required"))
-
-        wrong_type = valid_record()
-        wrong_type["flow"]["results"]["mapped_cell_count"] = "123"
-        cases.append((
-            "wrong_type", wrong_type,
-            r"mapped_cell_count must be of type integer",
-        ))
-
-        extra_root = valid_record()
-        extra_root["unaccounted_result"] = HASH_A
-        cases.append((
-            "extra_root", extra_root,
-            r"unaccounted_result is an additional property",
-        ))
-
-        extra_nested = valid_record()
-        extra_nested["candidate"]["untracked_define"] = "FREE_FEATURE"
-        cases.append((
-            "extra_nested", extra_nested,
-            r"candidate\.untracked_define is an additional property",
-        ))
-
+        missing = copy.deepcopy(self.record)
+        del missing["flow"]["area_report"]
+        cases.append(("missing", missing, r"flow\.area_report is required"))
+        wrong = copy.deepcopy(self.record)
+        wrong["flow"]["results"]["mapped_cell_count"] = "123"
+        cases.append(("type", wrong, r"mapped_cell_count must be of type integer"))
+        extra = copy.deepcopy(self.record)
+        extra["candidate"]["untracked_define"] = "FREE_FEATURE"
+        cases.append(("extra", extra, r"untracked_define is an additional property"))
         for name, record, pattern in cases:
             with self.subTest(name=name):
                 with self.assertRaisesRegex(validator.QualificationError, pattern):
-                    validator.validate_record(record)
+                    self.validate(record)
 
-    def test_all_physical_feature_categories_map_one_to_one(self):
-        record = valid_record()
-        add_feature(record, "serializer")
-        add_feature(record, "deserializer")
-        add_feature(record, "buffer")
-        add_feature(record, "cdc")
-        add_feature(record, "normalizer")
-        validator.validate_record(record)
+    def test_every_evidence_reference_requires_path_and_sha(self):
+        for replacement in ({"sha256": "a" * 64}, {"path": "activity/power_report.dat"}):
+            record = copy.deepcopy(self.record)
+            record["activity"]["power_report"] = replacement
+            with self.subTest(replacement=replacement):
+                with self.assertRaisesRegex(validator.QualificationError, "is required"):
+                    self.validate(record)
 
-    def test_feature_declaration_cannot_reference_missing_or_wrong_block(self):
-        missing = valid_record()
-        missing["feature_declarations"]["buffer"].append({
-            "name": "missing_buffer",
-            "charged_block": "missing_buffer",
-            "hierarchy_path": "candidate_full_link.u_missing_buffer",
-            "evidence_sha256": HASH_A,
-        })
-        with self.assertRaisesRegex(
-            validator.QualificationError, "references unknown charged block"
-        ):
-            validator.validate_record(missing)
+        record = copy.deepcopy(self.record)
+        record["activity"]["power_report"]["unchecked_size"] = 123
+        with self.assertRaisesRegex(validator.QualificationError, "additional property"):
+            self.validate(record)
 
-        wrong = valid_record()
-        encoder = wrong["feature_declarations"]["codec"].pop(0)
-        wrong["feature_declarations"]["buffer"].append(encoder)
-        with self.assertRaisesRegex(
-            validator.QualificationError, "category buffer cannot declare"
-        ):
-            validator.validate_record(wrong)
+    def test_all_evidence_classes_are_actual_digest_checked(self):
+        references = [
+            self.record["candidate"]["bundle_inventory"],
+            self.record["candidate"]["filelist"],
+            self.record["logical_contract"]["source_mapping"]["artifact"],
+            *(block["hierarchy_evidence"] for block in self.record["charged_blocks"]),
+            *(
+                declaration["evidence"]
+                for declarations in self.record["feature_declarations"].values()
+                for declaration in declarations
+            ),
+            *(
+                self.record["flow"][field]
+                for field in (
+                    "tool_config", "sdc", "library", "post_elaboration_report",
+                    "synthesis_hierarchy_report", "synthesis_evidence",
+                    "mapped_netlist", "mapped_hierarchy_inventory",
+                    "generated_feature_inventory", "area_report", "stage_report",
+                    "setup_report", "hold_report", "route_report",
+                    "unconstrained_report", "drc_report",
+                )
+            ),
+            *(
+                self.record["activity"][field]
+                for field in (
+                    "trace", "prepared_input", "activity_artifact", "power_report",
+                    "common_result",
+                )
+            ),
+        ]
+        for index, reference in enumerate(references):
+            original = reference["sha256"]
+            reference["sha256"] = "0" * 64
+            with self.subTest(path=reference["path"]):
+                with self.assertRaisesRegex(validator.QualificationError, "digest mismatch"):
+                    self.validate()
+            reference["sha256"] = original
 
-    def test_feature_block_cannot_be_undeclared_or_multiply_declared(self):
-        undeclared = valid_record()
-        block_name = add_feature(undeclared, "buffer")
-        undeclared["feature_declarations"]["buffer"] = []
-        with self.assertRaisesRegex(
-            validator.QualificationError,
-            rf"feature charged block {block_name!r} has no 1:1",
-        ):
-            validator.validate_record(undeclared)
+    def test_actual_digest_mismatch_rejects_power_and_common_result(self):
+        for field in ("power_report", "common_result"):
+            record = copy.deepcopy(self.record)
+            record["activity"][field]["sha256"] = "0" * 64
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(validator.QualificationError, "digest mismatch"):
+                    self.validate(record)
 
-        duplicate = valid_record()
-        duplicate["feature_declarations"]["codec"].append({
-            "name": "encoder_alias",
-            "charged_block": "encoder",
-            "hierarchy_path": "candidate_full_link.u_encoder",
-            "evidence_sha256": HASH_A,
-        })
-        with self.assertRaisesRegex(
-            validator.QualificationError, "charged block 'encoder' is declared more than once"
-        ):
-            validator.validate_record(duplicate)
+    def test_symlink_and_non_regular_evidence_are_rejected(self):
+        target = self.root / "activity" / "power_report.dat"
+        link = self.root / "activity" / "power-link.dat"
+        os.symlink(target.name, link)
+        record = copy.deepcopy(self.record)
+        record["activity"]["power_report"]["path"] = "activity/power-link.dat"
+        with self.assertRaisesRegex(validator.QualificationError, "symlink"):
+            self.validate(record)
 
-        reused_name = valid_record()
-        add_feature(reused_name, "buffer")
-        add_feature(reused_name, "cdc")
-        reused_name["feature_declarations"]["cdc"][0]["name"] = "buffer_feature"
-        with self.assertRaisesRegex(
-            validator.QualificationError, "feature declaration name 'buffer_feature' is reused"
-        ):
-            validator.validate_record(reused_name)
+        directory = self.root / "activity" / "not-a-file"
+        directory.mkdir()
+        record = copy.deepcopy(self.record)
+        record["activity"]["common_result"] = {
+            "path": "activity/not-a-file", "sha256": hashlib.sha256(b"").hexdigest()
+        }
+        with self.assertRaisesRegex(validator.QualificationError, "regular file"):
+            self.validate(record)
 
-    def test_feature_evidence_must_match_charged_hierarchy(self):
-        record = valid_record()
-        record["feature_declarations"]["codec"][0]["evidence_sha256"] = HASH_B
-        with self.assertRaisesRegex(
-            validator.QualificationError,
-            "evidence_sha256 must match charged block 'encoder' hierarchy_sha256",
-        ):
-            validator.validate_record(record)
+    def test_mutation_during_stable_read_is_rejected(self):
+        path = self.root / "activity" / "power_report.dat"
+        original_read = validator.os.read
+        changed = False
 
-    def test_charged_hierarchy_must_be_inside_synthesis_top(self):
-        record = valid_record()
-        record["charged_blocks"][0]["hierarchy_path"] = "testbench.free_tx"
-        with self.assertRaisesRegex(
-            validator.QualificationError, "hierarchy_path is outside synthesis_top"
-        ):
-            validator.validate_record(record)
+        def mutate_after_first_read(descriptor, count):
+            nonlocal changed
+            data = original_read(descriptor, count)
+            if data and not changed:
+                changed = True
+                path.write_bytes(b"mutated while open\n")
+            return data
 
-    def test_serializer_requires_charged_deserializer_peer(self):
-        record = valid_record()
-        add_feature(record, "serializer")
-        with self.assertRaisesRegex(
-            validator.QualificationError,
-            "serializer and deserializer feature declarations must both be present",
-        ):
-            validator.validate_record(record)
+        errors = []
+        with mock.patch.object(validator.os, "read", side_effect=mutate_after_first_read):
+            result = validator._stable_read_regular(path, "power", errors)
+        self.assertIsNone(result)
+        self.assertIn("changed during stable read", "\n".join(errors))
 
-    def test_synthesis_and_result_evidence_hashes_are_required(self):
-        flow_hashes = (
-            "synthesis_hierarchy_report_sha256",
-            "synthesis_evidence_sha256",
-            "mapped_netlist_sha256",
-            "area_report_sha256",
-            "stage_report_sha256",
-            "setup_report_sha256",
-            "hold_report_sha256",
-            "route_report_sha256",
-            "unconstrained_report_sha256",
-            "drc_report_sha256",
+    def test_non_normalized_artifact_path_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        record["activity"]["power_report"]["path"] = "activity//power_report.dat"
+        with self.assertRaisesRegex(validator.QualificationError, "must be normalized"):
+            self.validate(record)
+
+    def test_bundle_inventory_verifies_each_source_digest(self):
+        (self.root / "rtl" / "tx.sv").write_text("tampered\n", encoding="utf-8")
+        with self.assertRaisesRegex(validator.QualificationError, "digest mismatch"):
+            self.validate()
+
+    def test_bundle_filelist_order_and_charged_source_closure_are_exact(self):
+        record = copy.deepcopy(self.record)
+        record["candidate"]["filelist"] = artifact(
+            self.root,
+            "manifest/reordered.f",
+            "rtl/link.sv\nrtl/tx.sv\n" + "".join(
+                f"rtl/{kind}.sv\n" for kind in (
+                    "encoder", "decoder", "serializer", "deserializer", "buffer",
+                    "cdc", "normalizer", "rx",
+                )
+            ),
         )
-        for field in flow_hashes:
-            record = valid_record()
-            record["flow"][field] = "not-a-sha"
-            with self.subTest(field=field):
-                with self.assertRaisesRegex(
-                    validator.QualificationError, rf"flow\.{field}"
-                ):
-                    validator.validate_record(record)
+        with self.assertRaisesRegex(validator.QualificationError, "same source paths"):
+            self.validate(record)
 
-        for field in ("power_report_sha256", "common_result_sha256"):
-            record = valid_record()
-            record["activity"][field] = "not-a-sha"
-            with self.subTest(field=field):
-                with self.assertRaisesRegex(
-                    validator.QualificationError, rf"activity\.{field}"
-                ):
-                    validator.validate_record(record)
+        record = copy.deepcopy(self.record)
+        record["charged_blocks"][0]["source_files"] = ["rtl/link.sv"]
+        with self.assertRaisesRegex(validator.QualificationError, "charged source closure"):
+            self.validate(record)
+
+    def test_mapped_hierarchy_must_match_charged_blocks(self):
+        record = copy.deepcopy(self.record)
+        inventory = read_json_artifact(self.root, record["flow"]["mapped_hierarchy_inventory"])
+        inventory["blocks"][0]["hierarchy_path"] = "candidate_full_link.u_free_tx"
+        self.rewrite_json_reference(
+            record["flow"], "mapped_hierarchy_inventory",
+            "evidence/mapped_hierarchy_bad.json", inventory,
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "does not match charged block"):
+            self.validate(record)
+
+    def test_hidden_serializer_generated_feature_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        inventory = read_json_artifact(self.root, record["flow"]["generated_feature_inventory"])
+        inventory["features"].append({
+            "name": "hidden_serializer",
+            "category": "serializer",
+            "charged_block": "serializer",
+            "hierarchy_path": "candidate_full_link.u_hidden_serializer",
+        })
+        self.rewrite_json_reference(
+            record["flow"], "generated_feature_inventory",
+            "evidence/features_hidden_serializer.json", inventory,
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "hidden_serializer"):
+            self.validate(record)
+
+    def test_hidden_fifo_source_is_rejected_as_uncharged(self):
+        record = copy.deepcopy(self.record)
+        hidden = artifact(self.root, "rtl/hidden_fifo.sv", "module hidden_fifo; endmodule\n")
+        inventory = read_json_artifact(self.root, record["candidate"]["bundle_inventory"])
+        inventory["files"].append(hidden)
+        self.rewrite_json_reference(
+            record["candidate"], "bundle_inventory", "manifest/bundle_hidden_fifo.json",
+            inventory,
+        )
+        original = (self.root / record["candidate"]["filelist"]["path"]).read_text(
+            encoding="utf-8"
+        )
+        record["candidate"]["filelist"] = artifact(
+            self.root, "manifest/filelist_hidden_fifo.f", original + "rtl/hidden_fifo.sv\n"
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "hidden_fifo"):
+            self.validate(record)
+
+    def test_hidden_cdc_mapped_hierarchy_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        inventory = read_json_artifact(self.root, record["flow"]["mapped_hierarchy_inventory"])
+        inventory["blocks"].append({
+            "name": "hidden_cdc",
+            "kind": "cdc",
+            "top": "hidden_cdc",
+            "hierarchy_path": "candidate_full_link.u_hidden_cdc",
+            "source_files": ["rtl/cdc.sv"],
+        })
+        self.rewrite_json_reference(
+            record["flow"], "mapped_hierarchy_inventory",
+            "evidence/mapped_hierarchy_hidden_cdc.json", inventory,
+        )
+        with self.assertRaisesRegex(validator.QualificationError, "hidden_cdc"):
+            self.validate(record)
+
+    def test_feature_declaration_is_one_to_one_with_charged_hierarchy(self):
+        record = copy.deepcopy(self.record)
+        record["feature_declarations"]["buffer"] = []
+        with self.assertRaisesRegex(validator.QualificationError, "no 1:1 feature declaration"):
+            self.validate(record)
+
+        record = copy.deepcopy(self.record)
+        record["feature_declarations"]["codec"][0]["evidence"] = record[
+            "charged_blocks"
+        ][3]["hierarchy_evidence"]
+        with self.assertRaisesRegex(validator.QualificationError, "evidence must match"):
+            self.validate(record)
+
+    def test_serializer_deserializer_pair_is_required(self):
+        record = copy.deepcopy(self.record)
+        record["feature_declarations"]["deserializer"] = []
+        with self.assertRaisesRegex(validator.QualificationError, "must both be present"):
+            self.validate(record)
+
+    def test_activity_root_and_positive_frozen_coverage_are_enforced(self):
+        record = copy.deepcopy(self.record)
+        record["activity"]["hierarchy_root"] = "testbench"
+        with self.assertRaisesRegex(validator.QualificationError, "must equal candidate synthesis_top"):
+            self.validate(record)
+
+        record = copy.deepcopy(self.record)
+        record["activity"]["coverage_threshold_percent"] = 0.0
+        with self.assertRaisesRegex(validator.QualificationError, "must be positive"):
+            self.validate(record)
+
+        record = copy.deepcopy(self.record)
+        record["activity"]["coverage_percent"] = 90.0
+        with self.assertRaisesRegex(validator.QualificationError, "below the frozen threshold"):
+            self.validate(record)
 
     def test_physical_signoff_failures_are_rejected(self):
-        cases = (
-            ("setup_wns_ns", -0.01),
-            ("hold_wns_ns", -0.01),
-            ("detailed_route_completed", False),
-            ("unresolved_references", 1),
-            ("unconstrained_paths", 1),
-            ("drc_violations", 1),
-        )
-        for field, value in cases:
-            record = valid_record()
+        for field, value in (
+            ("setup_wns_ns", -0.01), ("hold_wns_ns", -0.01),
+            ("detailed_route_completed", False), ("unresolved_references", 1),
+            ("unconstrained_paths", 1), ("drc_violations", 1),
+        ):
+            record = copy.deepcopy(self.record)
             record["flow"]["results"][field] = value
             with self.subTest(field=field):
-                with self.assertRaisesRegex(
-                    validator.QualificationError, rf"flow\.results\.{field}"
-                ):
-                    validator.validate_record(record)
-
-    def test_zero_feature_tb_binding_stays_outside_ppa(self):
-        record = valid_record()
-        record["normalization"]["zero_feature_tb_binding_excluded"] = False
-        with self.assertRaisesRegex(
-            validator.QualificationError, "zero_feature_tb_binding_excluded"
-        ):
-            validator.validate_record(record)
-
-    def test_normalized_tb_or_runtime_decode_cannot_be_free(self):
-        record = valid_record()
-        record["tb_seam"]["ppa_excluded"] = False
-        record["normalization"]["runtime_decode_in_tb"] = True
-        with self.assertRaisesRegex(
-            validator.QualificationError, "(?s)ppa_excluded.*runtime_decode_in_tb"
-        ):
-            validator.validate_record(record)
-
-    def test_pin_totals_are_derived_from_enumerated_physical_ports(self):
-        record = valid_record()
-        record["physical_boundary"]["native_functional_pin_bits"] = 53
-        with self.assertRaisesRegex(
-            validator.QualificationError, "does not match pin list"
-        ):
-            validator.validate_record(record)
+                with self.assertRaisesRegex(validator.QualificationError, rf"flow\.results\.{field}"):
+                    self.validate(record)
 
     def test_runtime_encoding_requires_charged_encoder_and_decoder(self):
-        record = valid_record()
+        record = copy.deepcopy(self.record)
         record["charged_blocks"] = [
-            block
-            for block in record["charged_blocks"]
+            block for block in record["charged_blocks"]
             if block["kind"] not in {"encoder", "decoder"}
         ]
-        with self.assertRaisesRegex(
-            validator.QualificationError,
-            "requires charged encoder and decoder",
-        ):
-            validator.validate_record(record)
+        with self.assertRaisesRegex(validator.QualificationError, "requires charged encoder"):
+            self.validate(record)
 
     def test_derived_metric_mismatch_is_rejected(self):
-        record = valid_record()
+        record = copy.deepcopy(self.record)
         record["metrics"]["events_per_link_pin_cycle"] = 0.5
-        with self.assertRaisesRegex(
-            validator.QualificationError, "events_per_link_pin_cycle"
-        ):
-            validator.validate_record(record)
+        with self.assertRaisesRegex(validator.QualificationError, "events_per_link_pin_cycle"):
+            self.validate(record)
 
     def test_frozen_energy_row_cannot_use_vectorless_power(self):
-        record = valid_record()
+        record = copy.deepcopy(self.record)
         record["activity"]["power_evidence"] = "vectorless_screening"
-        with self.assertRaisesRegex(
-            validator.QualificationError, "activity_annotated"
-        ):
-            validator.validate_record(record)
+        with self.assertRaisesRegex(validator.QualificationError, "activity_annotated"):
+            self.validate(record)
+
+    def test_cli_uses_record_directory_for_artifacts(self):
+        record_path = self.root / "qualification.json"
+        record_path.write_text(json.dumps(self.record), encoding="utf-8")
+        self.assertEqual(validator.main([str(record_path)]), 0)
 
     def test_input_is_not_mutated(self):
-        record = valid_record()
-        original = copy.deepcopy(record)
-        validator.validate_record(record)
-        self.assertEqual(record, original)
+        original = copy.deepcopy(self.record)
+        self.validate()
+        self.assertEqual(self.record, original)
 
 
 if __name__ == "__main__":
