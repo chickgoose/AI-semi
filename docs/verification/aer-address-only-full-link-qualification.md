@@ -1,6 +1,6 @@
 # Address-Only AER Full-Link and PPA-Boundary Qualification
 
-Status: **GO for gate implementation**, candidate-neutral schema v4, 2026-08-10.
+Status: **GO for gate implementation**, candidate-neutral schema v5, 2026-08-10.
 This releases the validator contract, not any candidate result. No record is
 ranked until that individual record passes schema validation, actual artifact
 digest verification, hierarchy/accounting closure, and all physical result
@@ -28,7 +28,7 @@ and checked by
 A missing or invalid field makes a row `NOT_QUALIFIED`; it does not become a
 zero-area or zero-power result.
 
-Schema v4 is intentionally fail-closed. The validator executes the schema's
+Schema v5 is intentionally fail-closed. The validator executes the schema's
 `required`, `type`, `const`, `enum`, bounds, uniqueness, and
 `additionalProperties: false` rules before checking cross-field invariants.
 Unknown result fields, wrong types, and incomplete nested evidence are therefore
@@ -176,6 +176,13 @@ efficiency; the native-boundary value prevents a candidate from hiding a large
 source or sink interface. Neither may silently substitute the normalized TB
 port count.
 
+The trusted inventory producer extracts the synthesis-top ANSI ports and
+annotated mapped link-cut nets directly from the mapped structural netlist. The
+generated name, direction, width, and role arrays must exactly equal
+`native_boundary_pins` and `link_cut.pins`, in order and bit-for-bit. The
+validator derives both functional totals afterward; a record cannot shrink a
+wide native or link signal to one bit while adjusting only its entered total.
+
 ## Activity and energy boundary
 
 Power uses the same synthesized full-link top, candidate configuration,
@@ -201,6 +208,14 @@ evidence extractor parses hierarchy root, annotation format/coverage, exact
 window and cycle count from the raw activity report. It also parses and compares
 candidate ID, test ID, seed, error count, delivered events, measurement cycles,
 and average power across the power and common-result reports.
+
+Schema v5 freezes one `clock_port` and `clock_period_ns` in the flow and
+activity records. The trusted SDC parser requires exactly one canonical
+`create_clock`, extracts its port and period, and compares them exactly against
+the flow record and trusted inventory. Activity and power raw evidence must each
+repeat the same port, period, and MHz value; `clock_mhz` must exactly equal
+`1000 / clock_period_ns`. A faster claimed activity clock cannot be paired with
+a slower SDC.
 
 Reset, warm-up, and drain are included only when their cycles lie inside the
 frozen window. They must not be removed differently per candidate. A window with
@@ -243,9 +258,13 @@ hierarchy source, and synthesis-command inputs. The synthesis command in turn
 must close its exact tool config, SDC, file list, include files, generated IP,
 libraries, mapped-netlist output, and hierarchy output.
 
-The producer discovers every candidate-module instance reachable in the mapped
-structural netlist, maps modules back to verified bundle/generated-IP sources,
-and requires the hierarchy export to cover that discovered set exactly. The
+The producer traverses the complete reachable mapped module graph beginning at
+the synthesized wrapper, including the wrapper itself and externally owned
+leaf instances. The wrapper must be owned by the candidate source closure.
+`top_ownership=candidate` and
+`flatten_policy=preserve_candidate_hierarchy` are explicit and mandatory. It
+maps candidate modules back to verified bundle/generated-IP sources and
+requires the hierarchy export to cover that discovered candidate set exactly. The
 regenerated block set, paths, kinds, tops, and sources must equal
 `charged_blocks`; the regenerated feature tuples must equal the codec,
 serializer, deserializer, buffer, CDC, and normalizer declarations. Therefore a
@@ -261,6 +280,14 @@ unresolved/unconstrained/DRC counts, activity coverage/window, power, and common
 functional counts. Rehashing an edited canonical number without the matching
 raw report and trusted reproduction is rejected.
 
+Every raw summary also has a distinct flow manifest. It must bind a nonempty
+tool name and version, exact command tokens, `status=success`, a separately
+hashed artifact containing the asserted `FLOW_SUCCESS` sentinel, all frozen
+input path/SHA records, and raw-summary plus sentinel output path/SHA records.
+The validator reads and verifies the manifest, sentinel, inputs, and outputs;
+an arbitrary “verified” summary or a success string without the bound artifacts
+does not qualify.
+
 The corresponding results must report a positive mapped-cell count and area,
 an explicit nonnegative pipeline-stage count, setup and hold WNS greater than or
 equal to zero, completed detailed route, zero unresolved references, zero
@@ -274,17 +301,17 @@ Every ranked record freezes these groups before results are compared:
 
 | Group | Required fields |
 | --- | --- |
-| identity | schema v4, qualification ID/status, candidate ID, repository, immutable commit and bundle-inventory path/SHA |
+| identity | schema v5, qualification ID/status, candidate ID, repository, immutable commit and bundle-inventory path/SHA |
 | logical contract | address-only mode, source count/map artifact, one-pending-source rule, exact accept and delivery rules |
 | TB seam | normalized address/source widths and retire lanes, explicitly marked PPA-excluded |
 | synthesis boundary | full-link scope, synthesis top, verified ordered file list/bundle/config artifacts, parameters, defines, include paths, TX/link/RX inclusion |
-| native boundary | every port name, direction, width, role, and native functional-pin total |
-| link cut | every cut signal name, direction, width, role, once-only rule, and link functional-pin total |
+| native boundary | generated mapped-top and record port arrays with every name, direction, width, role, and derived functional-pin total |
+| link cut | generated mapped-cut and record signal arrays with every name, direction, width, role, once-only rule, and derived functional-pin total |
 | mapping | complete free-wiring whitelist entries; explicit no-runtime-decode-in-TB and zero-feature-binding-excluded assertions |
 | feature declarations | explicit codec/serializer/deserializer/buffer/CDC/normalizer arrays with 1:1 charged-block, hierarchy, and evidence mapping |
 | charged logic | mandatory TX/link/RX and every physical feature block with top/hierarchy evidence, exact source ownership, and area/timing/activity/power inclusion |
-| physical flow | trusted producer/extractor hashes and commands; SHA-bound tool config/SDC/filelist/include/generated-IP/library/netlist/hierarchy closure; regenerated inventory and physical results |
-| activity | raw and regenerated trace/input/activity/power/common-result evidence; candidate/test/seed/errors; exact top/window/frequency; positive frozen coverage threshold; delivered count and power |
+| physical flow | trusted producer/extractor hashes and commands; tool-version/status/sentinel/input/output flow manifests; SHA-bound tool config/SDC/filelist/include/generated-IP/library/netlist/hierarchy closure; wrapper ownership/flatten policy; regenerated inventory/results |
+| activity | raw and regenerated trace/input/activity/power/common-result evidence; candidate/test/seed/errors; SDC-exact clock port/period/MHz; exact top/window; positive coverage threshold; delivered count and power |
 | derived metrics | events/cycle, both events/pin-cycle values, and energy per delivered event |
 
 ## Qualification checklist
@@ -299,6 +326,8 @@ Every ranked record freezes these groups before results are compared:
       same source paths in the same order.
 - [ ] The synthesis command binds its tool config, SDC, file list, every include,
       generated IP and library, plus mapped-netlist and hierarchy outputs.
+- [ ] SDC, flow, inventory, activity, and power evidence agree exactly on clock
+      port and period; activity/power MHz equals `1000 / period_ns`.
 - [ ] The simulation binding and the physical synthesis top are named
       separately.
 - [ ] The PPA top includes synthesizable TX, link state, and RX/egress.
@@ -314,18 +343,24 @@ Every ranked record freezes these groups before results are compared:
 - [ ] The flow-owned producer independently regenerates mapped hierarchy and
       source ownership from netlist/hierarchy/sources and exactly closes against
       charged blocks.
+- [ ] The complete mapped graph includes the candidate-owned wrapper, uses the
+      hierarchy-preserving flatten policy, and exposes hidden wrapper features.
 - [ ] The regenerated feature inventory exactly equals all physical feature
       declarations, with no hidden serializer, FIFO/buffer, CDC, codec, or normalizer.
 - [ ] Every required codec endpoint is present in the charged block list and
       included in area, timing, activity, and power.
 - [ ] Native-boundary and link-cut pins are enumerated bit-for-bit; clock,
       reset, power, and ground are the only excluded roles.
+- [ ] Generated mapped top-port and link-cut arrays exactly equal the record
+      arrays before functional pin totals are accepted.
 - [ ] Bidirectional and TX/RX link wires are counted once at the designated cut.
 - [ ] Post-elaboration top, port, register/memory, and unresolved-reference
       reports match the frozen source/config hashes.
 - [ ] Synthesis hierarchy/netlist, area/stage, setup/hold, route,
       unconstrained-path, DRC, activity, power, and common-result raw evidence is
       independently extracted and matches the canonical JSON and record fields.
+- [ ] Every raw summary has a verified tool-version/command/status manifest,
+      asserted hashed success sentinel, and exact input/output path/SHA closure.
 - [ ] Setup/hold WNS are nonnegative, detailed route is complete, and unresolved
       references, unconstrained paths, and DRC violations are all zero.
 - [ ] Correctness proves zero loss, duplicate, corruption, and phantom delivery

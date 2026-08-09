@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -24,12 +25,15 @@ FIELD_TYPES = {
     "activity": {
         "candidate_id": str, "test_id": str, "seed": int,
         "hierarchy_root": str, "format": str, "coverage_percent": float,
+        "clock_port": str, "clock_period_ns": float, "clock_mhz": float,
         "window_start_cycle": int, "window_end_cycle_exclusive": int,
         "measurement_cycles": int,
     },
     "power": {
         "candidate_id": str, "test_id": str, "seed": int,
-        "measurement_cycles": int, "average_power_mw": float, "errors": int,
+        "measurement_cycles": int, "clock_port": str,
+        "clock_period_ns": float, "clock_mhz": float,
+        "average_power_mw": float, "errors": int,
     },
     "common_result": {
         "candidate_id": str, "test_id": str, "seed": int,
@@ -85,16 +89,42 @@ def parse_raw(evidence_type: str, raw_data: bytes) -> dict[str, Any]:
     return result
 
 
+SDC_CLOCK_RE = re.compile(
+    r"^create_clock\s+-name\s+(\S+)\s+-period\s+([0-9]+(?:\.[0-9]+)?)\s+"
+    r"\[get_ports\s+([A-Za-z_$][\w$]*)\]\s*$"
+)
+
+
+def parse_sdc_clock(raw_data: bytes) -> dict[str, Any]:
+    try:
+        lines = [line for line in raw_data.decode("utf-8").splitlines() if line]
+    except UnicodeDecodeError as exc:
+        raise EvidenceError("SDC must be UTF-8") from exc
+    matches = [SDC_CLOCK_RE.fullmatch(line) for line in lines]
+    clocks = [match for match in matches if match is not None]
+    if len(clocks) != 1:
+        raise EvidenceError("SDC must contain exactly one canonical create_clock")
+    name, period, port = clocks[0].groups()
+    parsed_period = float(period)
+    if parsed_period <= 0 or not math.isfinite(parsed_period):
+        raise EvidenceError("SDC clock period must be finite and positive")
+    return {"clock_name": name, "clock_port": port, "clock_period_ns": parsed_period}
+
+
 def produce_evidence(
     *, evidence_type: str, raw_data: bytes, raw_path: str,
+    flow_manifest: dict[str, str],
     context_inputs: list[tuple[str, dict[str, str]]], output_path: str,
     extractor_sha256: str,
 ) -> dict[str, Any]:
-    inputs = [{"role": "raw_report", "path": raw_path, "sha256": sha256(raw_data)}]
+    inputs = [
+        {"role": "raw_report", "path": raw_path, "sha256": sha256(raw_data)},
+        {"role": "flow_manifest", **flow_manifest},
+    ]
     inputs.extend({"role": role, **reference} for role, reference in context_inputs)
     command = [
         "python3", "extract_full_link_evidence.py", "--type", evidence_type,
-        "--raw-report", raw_path,
+        "--raw-report", raw_path, "--flow-manifest", flow_manifest["path"],
     ]
     for role, reference in context_inputs:
         command.extend(["--bind", role, reference["path"], reference["sha256"]])
@@ -116,6 +146,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--type", required=True, choices=sorted(FIELD_TYPES))
     parser.add_argument("--raw-report", required=True)
+    parser.add_argument("--flow-manifest", required=True)
     parser.add_argument("--bind", action="append", nargs=3, default=[])
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
@@ -133,6 +164,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             evidence_type=args.type,
             raw_data=raw_path.read_bytes(),
             raw_path=args.raw_report,
+            flow_manifest={
+                "path": args.flow_manifest,
+                "sha256": sha256(Path(args.flow_manifest).read_bytes()),
+            },
             context_inputs=context_inputs,
             output_path=args.output,
             extractor_sha256=sha256(Path(__file__).read_bytes()),

@@ -20,7 +20,7 @@
     "metrics"
   ],
   "properties": {
-    "schema_version": {"const": 4},
+    "schema_version": {"const": 5},
     "qualification_id": {"type": "string", "minLength": 1},
     "status": {"enum": ["freeze_candidate", "frozen"]},
     "candidate": {
@@ -201,7 +201,7 @@
             "enum": [
               "tx", "link", "rx", "encoder", "decoder", "serializer",
               "deserializer", "buffer", "adapter", "clocking", "codec",
-              "cdc", "normalizer"
+              "cdc", "normalizer", "wrapper"
             ]
           },
           "top": {"type": "string", "minLength": 1},
@@ -223,6 +223,7 @@
       "additionalProperties": false,
       "required": [
         "tool_config", "sdc", "library", "pvt_rc_corner",
+        "clock_port", "clock_period_ns",
         "synthesis_command", "hierarchy_source", "inventory",
         "post_elaboration_report", "synthesis_hierarchy_report",
         "synthesis_evidence", "mapped_netlist", "area_report", "stage_report",
@@ -234,6 +235,8 @@
         "sdc": {"$ref": "#/$defs/artifact"},
         "library": {"$ref": "#/$defs/artifact"},
         "pvt_rc_corner": {"type": "string", "minLength": 1},
+        "clock_port": {"type": "string", "minLength": 1},
+        "clock_period_ns": {"type": "number", "exclusiveMinimum": 0},
         "synthesis_command": {"$ref": "#/$defs/artifact"},
         "hierarchy_source": {"$ref": "#/$defs/artifact"},
         "inventory": {"$ref": "#/$defs/artifact"},
@@ -276,7 +279,8 @@
       "required": [
         "trace", "prepared_input", "format", "activity_artifact",
         "hierarchy_root", "coverage_percent", "coverage_threshold_percent", "window_start_cycle",
-        "window_end_cycle_exclusive", "measurement_cycles", "clock_mhz",
+        "window_end_cycle_exclusive", "measurement_cycles", "clock_port",
+        "clock_period_ns", "clock_mhz",
         "operating_point", "test_id", "seed", "errors",
         "power_evidence", "average_power_mw",
         "delivered_events", "power_report", "common_result"
@@ -294,6 +298,8 @@
         "window_start_cycle": {"type": "integer", "minimum": 0},
         "window_end_cycle_exclusive": {"type": "integer", "minimum": 1},
         "measurement_cycles": {"type": "integer", "minimum": 1},
+        "clock_port": {"type": "string", "minLength": 1},
+        "clock_period_ns": {"type": "number", "exclusiveMinimum": 0},
         "clock_mhz": {"type": "number", "exclusiveMinimum": 0},
         "operating_point": {"enum": ["sparse", "near_saturation"]},
         "test_id": {"type": "string", "minLength": 1},

@@ -33,7 +33,7 @@ FEATURE_CATEGORY = {
     "adapter": "normalizer",
 }
 MODULE_RE = re.compile(
-    r"\bmodule\s+([A-Za-z_$][\w$]*)\b[^;]*;(.*?)\bendmodule\b", re.S
+    r"\bmodule\s+([A-Za-z_$][\w$]*)\b([^;]*);(.*?)\bendmodule\b", re.S
 )
 INSTANCE_RE = re.compile(
     r"(?:^|;)\s*([A-Za-z_$][\w$]*)\s*"
@@ -42,6 +42,20 @@ INSTANCE_RE = re.compile(
     re.M | re.S,
 )
 COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+PORT_RE = re.compile(
+    r"\b(input|output|inout)\b\s+"
+    r"(?:(?:wire|logic|reg)\s+)?(?:signed\s+)?"
+    r"(?:\[\s*(\d+)\s*:\s*(\d+)\s*\]\s+)?"
+    r"([A-Za-z_$][\w$]*)"
+)
+LINK_RE = re.compile(
+    r"\(\*\s*AER_LINK_CUT\s*=\s*\"([^\"]+)\"\s*,\s*"
+    r"AER_DIRECTION\s*=\s*\"(input|output|bidirectional)\"\s*,\s*"
+    r"AER_ROLE\s*=\s*\"(functional|clock|reset|power|ground)\"\s*\*\)\s*"
+    r"wire\s+(?:\[\s*(\d+)\s*:\s*(\d+)\s*\]\s+)?"
+    r"([A-Za-z_$][\w$]*)\s*;",
+    re.S,
+)
 
 
 class InventoryError(ValueError):
@@ -70,18 +84,18 @@ def _strict(value: dict[str, Any], keys: set[str], label: str) -> None:
         )
 
 
-def _modules(data: bytes, label: str) -> dict[str, str]:
+def _modules(data: bytes, label: str) -> dict[str, dict[str, str]]:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise InventoryError(f"{label} must be UTF-8 structural Verilog") from exc
     text = COMMENT_RE.sub("", text)
-    modules: dict[str, str] = {}
+    modules: dict[str, dict[str, str]] = {}
     for match in MODULE_RE.finditer(text):
-        name, body = match.groups()
+        name, header, body = match.groups()
         if name in modules:
             raise InventoryError(f"{label} defines module {name!r} more than once")
-        modules[name] = body
+        modules[name] = {"header": header, "body": body}
     if not modules:
         raise InventoryError(f"{label} contains no Verilog modules")
     return modules
@@ -92,27 +106,84 @@ def _instances(body: str) -> list[tuple[str, str]]:
 
 
 def _candidate_hierarchy(
-    modules: dict[str, str], candidate_modules: set[str], top: str
-) -> dict[str, str]:
+    modules: dict[str, dict[str, str]], candidate_modules: set[str], top: str
+) -> tuple[dict[str, str], list[dict[str, str]]]:
     if top not in modules:
         raise InventoryError(f"mapped netlist does not define synthesis_top {top!r}")
-    found: dict[str, str] = {}
+    graph: dict[str, str] = {top: top}
 
     def walk(module: str, hierarchy_path: str, ancestors: tuple[str, ...]) -> None:
         if module in ancestors:
             raise InventoryError(f"recursive candidate hierarchy through {module!r}")
-        for child_module, instance in _instances(modules[module]):
-            if child_module not in candidate_modules:
-                continue
+        for child_module, instance in _instances(modules[module]["body"]):
             child_path = f"{hierarchy_path}.{instance}"
-            if child_path in found:
+            if child_path in graph:
                 raise InventoryError(f"duplicate hierarchy path {child_path!r}")
-            found[child_path] = child_module
+            graph[child_path] = child_module
             if child_module in modules:
                 walk(child_module, child_path, ancestors + (module,))
 
     walk(top, top, ())
-    return found
+    candidate = {
+        path: module for path, module in graph.items() if module in candidate_modules
+    }
+    rows = [
+        {
+            "hierarchy_path": path,
+            "module": module,
+            "owner": "candidate" if module in candidate_modules else "mapped_external",
+        }
+        for path, module in sorted(graph.items())
+    ]
+    return candidate, rows
+
+
+def _top_ports(
+    modules: dict[str, dict[str, str]], top: str, clock_port: str,
+    reset_ports: list[str],
+) -> list[dict[str, Any]]:
+    ports = []
+    seen: set[str] = set()
+    for match in PORT_RE.finditer(modules[top]["header"]):
+        direction, msb, lsb, name = match.groups()
+        if name in seen:
+            raise InventoryError(f"mapped top repeats port {name!r}")
+        seen.add(name)
+        width = abs(int(msb) - int(lsb)) + 1 if msb is not None else 1
+        role = "clock" if name == clock_port else "reset" if name in reset_ports else "functional"
+        ports.append({
+            "name": name,
+            "direction": "bidirectional" if direction == "inout" else direction,
+            "width": width,
+            "role": role,
+        })
+    if not ports:
+        raise InventoryError("mapped synthesis top has no ANSI port declarations")
+    if clock_port not in seen:
+        raise InventoryError(f"mapped top does not contain clock port {clock_port!r}")
+    if not set(reset_ports).issubset(seen):
+        raise InventoryError("mapped top is missing a declared reset port")
+    return ports
+
+
+def _link_cut(mapped_netlist_data: bytes, link_name: str) -> dict[str, Any]:
+    text = COMMENT_RE.sub("", mapped_netlist_data.decode("utf-8"))
+    pins = []
+    seen: set[str] = set()
+    for match in LINK_RE.finditer(text):
+        cut, direction, role, msb, lsb, name = match.groups()
+        if cut != link_name:
+            continue
+        if name in seen:
+            raise InventoryError(f"mapped link cut repeats signal {name!r}")
+        seen.add(name)
+        width = abs(int(msb) - int(lsb)) + 1 if msb is not None else 1
+        pins.append({
+            "name": name, "direction": direction, "width": width, "role": role,
+        })
+    if not pins:
+        raise InventoryError(f"mapped netlist has no annotated link cut {link_name!r}")
+    return {"name": link_name, "pins": pins}
 
 
 def produce_inventory(
@@ -150,7 +221,9 @@ def produce_inventory(
         {
             "schema_version", "synthesis_top", "command", "filelist",
             "tool_config", "sdc", "mapped_netlist", "hierarchy_source",
-            "include_files", "generated_ip", "libraries",
+            "include_files", "generated_ip", "libraries", "clock_port",
+            "clock_period_ns", "reset_ports", "link_cut_name", "top_ownership",
+            "flatten_policy",
         },
         "synthesis command",
     )
@@ -163,6 +236,26 @@ def produce_inventory(
         or not all(isinstance(token, str) and token for token in command)
     ):
         raise InventoryError("synthesis command must be a nonempty string array")
+    if synthesis.get("top_ownership") != "candidate":
+        raise InventoryError("synthesis top_ownership must equal candidate")
+    if synthesis.get("flatten_policy") != "preserve_candidate_hierarchy":
+        raise InventoryError(
+            "flatten_policy must equal preserve_candidate_hierarchy"
+        )
+    clock_port = synthesis.get("clock_port")
+    period = synthesis.get("clock_period_ns")
+    reset_ports = synthesis.get("reset_ports")
+    link_cut_name = synthesis.get("link_cut_name")
+    if not isinstance(clock_port, str) or not clock_port:
+        raise InventoryError("synthesis command clock_port is invalid")
+    if not isinstance(period, (int, float)) or isinstance(period, bool) or period <= 0:
+        raise InventoryError("synthesis command clock_period_ns is invalid")
+    if not isinstance(reset_ports, list) or not all(
+        isinstance(item, str) and item for item in reset_ports
+    ):
+        raise InventoryError("synthesis command reset_ports is invalid")
+    if not isinstance(link_cut_name, str) or not link_cut_name:
+        raise InventoryError("synthesis command link_cut_name is invalid")
 
     nested_inputs: list[tuple[str, str, bytes]] = []
 
@@ -237,7 +330,13 @@ def produce_inventory(
         raise InventoryError("hierarchy source synthesis_top is invalid")
     if synthesis.get("synthesis_top") != top:
         raise InventoryError("synthesis command top differs from hierarchy source top")
-    discovered = _candidate_hierarchy(mapped_modules, set(module_sources), top)
+    discovered, module_graph = _candidate_hierarchy(
+        mapped_modules, set(module_sources), top
+    )
+    if discovered.get(top) != top:
+        raise InventoryError("synthesis top is not owned by candidate source closure")
+    top_ports = _top_ports(mapped_modules, top, clock_port, reset_ports)
+    link_cut = _link_cut(mapped_netlist_data, link_cut_name)
 
     declared_by_path: dict[str, dict[str, str]] = {}
     blocks_value = hierarchy.get("blocks")
@@ -324,6 +423,13 @@ def produce_inventory(
             "inputs": inputs,
         },
         "synthesis_top": top,
+        "top_ownership": synthesis["top_ownership"],
+        "flatten_policy": synthesis["flatten_policy"],
+        "clock_port": clock_port,
+        "clock_period_ns": period,
+        "top_ports": top_ports,
+        "link_cut": link_cut,
+        "module_graph": module_graph,
         "blocks": blocks,
         "features": features,
     }

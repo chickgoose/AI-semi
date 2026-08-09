@@ -567,6 +567,7 @@ def _load_canonical_evidence(
         producer.get("inputs"), f"{path}<content>.producer.inputs", errors
     )
     raw_reference = inputs[0] if inputs else {}
+    flow_manifest_reference = inputs[1] if len(inputs) > 1 else {}
     raw_data = reader.read(
         raw_reference, f"{path}<content>.producer.raw_report"
     )
@@ -577,6 +578,10 @@ def _load_canonical_evidence(
             "path": str(artifact_ref.get("path")),
             "sha256": str(artifact_ref.get("sha256")).lower(),
         }))
+    _validate_raw_flow_manifest(
+        reader, flow_manifest_reference, raw_reference, context,
+        f"{path}<content>.producer.flow_manifest", errors,
+    )
     output_ref = _mapping(value, path, errors)
     extractor_errors: list[str] = []
     extractor_data = _stable_read_regular(
@@ -589,6 +594,14 @@ def _load_canonical_evidence(
             evidence_type=evidence_type,
             raw_data=raw_data or b"",
             raw_path=str(_mapping(raw_reference, f"{path}<raw>", errors).get("path")),
+            flow_manifest={
+                "path": str(_mapping(
+                    flow_manifest_reference, f"{path}<flow-manifest>", errors
+                ).get("path")),
+                "sha256": str(_mapping(
+                    flow_manifest_reference, f"{path}<flow-manifest>", errors
+                ).get("sha256")).lower(),
+            },
             context_inputs=context,
             output_path=str(output_ref.get("path")),
             extractor_sha256=hashlib.sha256(extractor_data or b"").hexdigest(),
@@ -603,6 +616,76 @@ def _load_canonical_evidence(
     values = _mapping(expected_report.get("values"), f"{path}<derived-values>", errors)
     _strict_keys(values, value_fields, f"{path}<derived-values>", errors)
     return values
+
+
+def _validate_raw_flow_manifest(
+    reader: ArtifactReader,
+    reference: Any,
+    raw_reference: Any,
+    context_inputs: list[tuple[str, dict[str, str]]],
+    path: str,
+    errors: list[str],
+) -> None:
+    manifest = reader.json(reference, path)
+    _strict_keys(
+        manifest,
+        {
+            "schema_version", "tool", "command", "status", "success_sentinel",
+            "inputs", "outputs",
+        },
+        f"{path}<content>", errors,
+    )
+    if manifest.get("schema_version") != 1:
+        errors.append(f"{path}<content>.schema_version must equal 1")
+    tool = _mapping(manifest.get("tool"), f"{path}<content>.tool", errors)
+    _strict_keys(tool, {"name", "version"}, f"{path}<content>.tool", errors)
+    for field in ("name", "version"):
+        if not isinstance(tool.get(field), str) or not tool[field]:
+            errors.append(f"{path}<content>.tool.{field} must be nonempty")
+    command = _array(manifest.get("command"), f"{path}<content>.command", errors)
+    if not command or not all(isinstance(token, str) and token for token in command):
+        errors.append(f"{path}<content>.command must contain nonempty strings")
+    if manifest.get("status") != "success":
+        errors.append(f"{path}<content>.status must equal success")
+    sentinel = _mapping(
+        manifest.get("success_sentinel"), f"{path}<content>.success_sentinel",
+        errors,
+    )
+    _strict_keys(
+        sentinel, {"value", "artifact"}, f"{path}<content>.success_sentinel",
+        errors,
+    )
+    if sentinel.get("value") != "FLOW_SUCCESS":
+        errors.append(
+            f"{path}<content>.success_sentinel.value must equal FLOW_SUCCESS"
+        )
+    sentinel_data = reader.read(
+        sentinel.get("artifact"), f"{path}<content>.success_sentinel.artifact"
+    )
+    if sentinel_data != b"FLOW_SUCCESS\n":
+        errors.append(f"{path}<content> success sentinel artifact is not asserted")
+    expected_inputs = [
+        {"role": role, **artifact} for role, artifact in context_inputs
+    ]
+    if manifest.get("inputs") != expected_inputs:
+        errors.append(f"{path}<content>.inputs do not match frozen context SHA bindings")
+    raw = _mapping(raw_reference, f"{path}<raw>", errors)
+    expected_outputs = [{
+        "role": "raw_report", "path": raw.get("path"), "sha256": raw.get("sha256")
+    }, {
+        "role": "success_sentinel",
+        **_mapping(
+            sentinel.get("artifact"), f"{path}<content>.success_sentinel.artifact",
+            errors,
+        ),
+    }]
+    if manifest.get("outputs") != expected_outputs:
+        errors.append(f"{path}<content>.outputs do not bind the raw report")
+    for entry in expected_inputs + expected_outputs:
+        if entry.get("path") not in command:
+            errors.append(
+                f"{path}<content>.command omits bound path {entry.get('path')!r}"
+            )
 
 
 def _parse_json_bytes(data: bytes | None, path: str, errors: list[str]) -> dict[str, Any]:
@@ -642,7 +725,9 @@ def _load_synthesis_assets(
         {
             "schema_version", "synthesis_top", "command", "filelist",
             "tool_config", "sdc", "mapped_netlist", "hierarchy_source",
-            "include_files", "generated_ip", "libraries",
+            "include_files", "generated_ip", "libraries", "clock_port",
+            "clock_period_ns", "reset_ports", "link_cut_name", "top_ownership",
+            "flatten_policy",
         },
         path,
         errors,
@@ -700,8 +785,8 @@ def validate_record(
 
     errors = _schema_errors(record)
     root = _mapping(record, "$", errors)
-    if root.get("schema_version") != 4:
-        errors.append("$.schema_version must equal 4")
+    if root.get("schema_version") != 5:
+        errors.append("$.schema_version must equal 5")
     if root.get("status") not in {"freeze_candidate", "frozen"}:
         errors.append("$.status must be freeze_candidate or frozen")
 
@@ -969,6 +1054,16 @@ def validate_record(
     hierarchy_source_data = reader.read(
         flow.get("hierarchy_source"), "$.flow.hierarchy_source"
     )
+    try:
+        sdc_clock = evidence_extractor.parse_sdc_clock(sdc_data or b"")
+    except evidence_extractor.EvidenceError as exc:
+        errors.append(f"$.flow.sdc clock parse failed: {exc}")
+        sdc_clock = {}
+    for field in ("clock_port", "clock_period_ns"):
+        if not _json_equal(flow.get(field), sdc_clock.get(field)):
+            errors.append(
+                f"$.flow.{field} does not exactly match parsed SDC clock"
+            )
     del hierarchy_report_data, synthesis_evidence_data
 
     assets = _load_synthesis_assets(
@@ -1029,6 +1124,28 @@ def validate_record(
     inventory_top = expected_inventory.get("synthesis_top")
     if inventory_top != synthesis_top:
         errors.append("trusted inventory synthesis_top must equal candidate synthesis_top")
+    if expected_inventory.get("top_ownership") != "candidate":
+        errors.append("trusted inventory must assign synthesis top to candidate ownership")
+    if expected_inventory.get("flatten_policy") != "preserve_candidate_hierarchy":
+        errors.append("trusted inventory flatten policy is not hierarchy preserving")
+    for field in ("clock_port", "clock_period_ns"):
+        if not _json_equal(expected_inventory.get(field), flow.get(field)):
+            errors.append(f"trusted inventory {field} does not match flow record")
+    if expected_inventory.get("top_ports") != boundary.get("native_boundary_pins"):
+        errors.append(
+            "trusted mapped top-port inventory does not exactly match "
+            "native_boundary_pins bit inventory"
+        )
+    produced_link = _mapping(
+        expected_inventory.get("link_cut"), "$.flow.inventory<derived>.link_cut",
+        errors,
+    )
+    if produced_link.get("name") != link_cut.get("name"):
+        errors.append("trusted mapped link-cut name does not match physical boundary")
+    if produced_link.get("pins") != link_cut.get("pins"):
+        errors.append(
+            "trusted mapped link-cut pin inventory does not exactly match record"
+        )
     inventory_blocks = {
         item.get("name"): item
         for item in expected_inventory.get("blocks", [])
@@ -1141,7 +1258,8 @@ def validate_record(
         "activity",
         {
             "candidate_id", "test_id", "seed", "hierarchy_root", "format",
-            "coverage_percent", "window_start_cycle", "window_end_cycle_exclusive",
+            "coverage_percent", "clock_port", "clock_period_ns", "clock_mhz",
+            "window_start_cycle", "window_end_cycle_exclusive",
             "measurement_cycles",
         },
         [
@@ -1155,7 +1273,8 @@ def validate_record(
         reader, activity.get("power_report"), "$.activity.power_report", "power",
         {
             "candidate_id", "test_id", "seed", "measurement_cycles",
-            "average_power_mw", "errors",
+            "clock_port", "clock_period_ns", "clock_mhz", "average_power_mw",
+            "errors",
         },
         [
             ("activity", activity.get("activity_artifact")),
@@ -1179,6 +1298,7 @@ def validate_record(
     candidate_id = candidate.get("id")
     for field in (
         "test_id", "seed", "hierarchy_root", "format", "coverage_percent",
+        "clock_port", "clock_period_ns", "clock_mhz",
         "window_start_cycle", "window_end_cycle_exclusive", "measurement_cycles",
     ):
         if not _json_equal(activity.get(field), activity_values.get(field)):
@@ -1186,7 +1306,10 @@ def validate_record(
                 f"$.activity.{field} does not match parsed activity evidence"
             )
     for evidence_name, values, fields in (
-        ("power", power_values, ("test_id", "seed", "measurement_cycles", "average_power_mw", "errors")),
+        ("power", power_values, (
+            "test_id", "seed", "measurement_cycles", "clock_port",
+            "clock_period_ns", "clock_mhz", "average_power_mw", "errors",
+        )),
         ("common_result", common_values, ("test_id", "seed", "measurement_cycles", "delivered_events", "errors")),
     ):
         if values.get("candidate_id") != candidate_id:
@@ -1228,6 +1351,18 @@ def validate_record(
     )
     if clock_mhz <= 0.0:
         errors.append("$.activity.clock_mhz must be positive")
+    if activity.get("clock_port") != flow.get("clock_port"):
+        errors.append("$.activity.clock_port must exactly equal flow.clock_port")
+    if not _json_equal(activity.get("clock_period_ns"), flow.get("clock_period_ns")):
+        errors.append(
+            "$.activity.clock_period_ns must exactly equal flow.clock_period_ns"
+        )
+    period_value = _finite_nonnegative(
+        flow.get("clock_period_ns"), "$.flow.clock_period_ns", errors
+    )
+    expected_clock_mhz = 1000.0 / period_value if period_value > 0 else 0.0
+    if not _json_equal(activity.get("clock_mhz"), expected_clock_mhz):
+        errors.append("$.activity.clock_mhz must exactly equal 1000/clock_period_ns")
     delivered = _positive_int(
         activity.get("delivered_events"), "$.activity.delivered_events", errors
     )

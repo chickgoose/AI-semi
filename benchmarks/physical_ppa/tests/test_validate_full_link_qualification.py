@@ -48,7 +48,9 @@ def valid_record(root):
         "buffer", "cdc", "normalizer", "rx",
     )
 
-    source_entries = []
+    source_entries = [artifact(
+        root, "rtl/full_link.sv", f"module {synthesis_top}; endmodule\n"
+    )]
     for kind in block_kinds:
         reference = artifact(
             root, f"rtl/{kind}.sv", f"module candidate_{kind}; endmodule\n"
@@ -61,11 +63,25 @@ def valid_record(root):
     filelist = artifact(
         root,
         "manifest/filelist.f",
-        "".join(f"rtl/{kind}.sv\n" for kind in block_kinds),
+        "rtl/full_link.sv\n" + "".join(f"rtl/{kind}.sv\n" for kind in block_kinds),
     )
 
-    charged_blocks = []
-    hierarchy_rows = []
+    wrapper_evidence = artifact(
+        root, "evidence/hierarchy_wrapper.rpt",
+        f"{synthesis_top} {synthesis_top} rtl/full_link.sv\n",
+    )
+    charged_blocks = [{
+        "name": "wrapper", "kind": "wrapper", "top": synthesis_top,
+        "hierarchy_path": synthesis_top,
+        "hierarchy_evidence": wrapper_evidence,
+        "source_files": ["rtl/full_link.sv"],
+        "included_in_area": True, "included_in_timing": True,
+        "included_in_activity": True, "included_in_power": True,
+    }]
+    hierarchy_rows = [{
+        "name": "wrapper", "kind": "wrapper", "hierarchy_path": synthesis_top,
+        "module": synthesis_top,
+    }]
     hierarchy_evidence = {}
     for kind in block_kinds:
         evidence = artifact(
@@ -116,7 +132,20 @@ def valid_record(root):
         }
         declarations[category].append(entry)
 
-    mapped_text = [f"module {synthesis_top};\n"]
+    mapped_text = [
+        f"module {synthesis_top}(\n",
+        "  input wire [15:0] source_req,\n",
+        "  output wire [15:0] source_ack,\n",
+        "  output wire rx_valid,\n",
+        "  output wire [3:0] rx_addr,\n",
+        "  input wire clk,\n",
+        "  input wire rst_n\n",
+        ");\n",
+        "  (* AER_LINK_CUT=\"tx_to_rx\", AER_DIRECTION=\"output\", AER_ROLE=\"functional\" *) wire valid;\n",
+        "  (* AER_LINK_CUT=\"tx_to_rx\", AER_DIRECTION=\"input\", AER_ROLE=\"functional\" *) wire ready;\n",
+        "  (* AER_LINK_CUT=\"tx_to_rx\", AER_DIRECTION=\"output\", AER_ROLE=\"functional\" *) wire [5:0] code;\n",
+        "  (* AER_LINK_CUT=\"tx_to_rx\", AER_DIRECTION=\"input\", AER_ROLE=\"clock\" *) wire link_clk;\n",
+    ]
     mapped_text.extend(f"  candidate_{kind} u_{kind}();\n" for kind in block_kinds)
     mapped_text.append("endmodule\n")
     mapped_text.extend(f"module candidate_{kind}; endmodule\n" for kind in block_kinds)
@@ -128,7 +157,10 @@ def valid_record(root):
     })
     library = artifact(root, "flow/cells.lib", "library(test) {}\n")
     tool_config = artifact(root, "flow/tool_config.tcl", "set trusted 1\n")
-    sdc = artifact(root, "flow/constraints.sdc", "create_clock -period 5 clk\n")
+    sdc = artifact(
+        root, "flow/constraints.sdc",
+        "create_clock -name core_clk -period 5.0 [get_ports clk]\n",
+    )
     include = artifact(root, "flow/defines.vh", "`define TEST 1\n")
     generated_ip = artifact(
         root, "flow/generated_ip.sv", "module generated_unused_ip; endmodule\n"
@@ -142,12 +174,20 @@ def valid_record(root):
             "-ip", generated_ip["path"], "-lib", library["path"],
             "-top", synthesis_top, "-o", mapped_netlist["path"],
             "--hierarchy", hierarchy_source["path"],
+            "--clock-port", "clk", "--clock-period-ns", "5.0",
+            "--link-cut", "tx_to_rx", "--preserve-candidate-hierarchy",
         ],
         "filelist": filelist,
         "tool_config": tool_config,
         "sdc": sdc,
         "mapped_netlist": mapped_netlist,
         "hierarchy_source": hierarchy_source,
+        "clock_port": "clk",
+        "clock_period_ns": 5.0,
+        "reset_ports": ["rst_n"],
+        "link_cut_name": "tx_to_rx",
+        "top_ownership": "candidate",
+        "flatten_policy": "preserve_candidate_hierarchy",
         "include_files": [include],
         "generated_ip": [generated_ip],
         "libraries": [library],
@@ -185,10 +225,35 @@ def valid_record(root):
             raw_lines.append(f"{field}={value}\n")
         raw_path = relative.replace(".json", ".raw")
         raw = artifact(root, raw_path, "".join(raw_lines))
+        sentinel = artifact(
+            root, relative.replace(".json", ".success"), "FLOW_SUCCESS\n"
+        )
+        flow_manifest = json_artifact(
+            root, relative.replace(".json", ".flow.json"), {
+                "schema_version": 1,
+                "tool": {"name": "trusted-test-tool", "version": "1.0"},
+                "command": [
+                    "trusted-test-tool",
+                    *(item for _, reference in inputs for item in ("--input", reference["path"])),
+                    "--output", raw["path"],
+                    "--success-sentinel", sentinel["path"],
+                ],
+                "status": "success",
+                "success_sentinel": {
+                    "value": "FLOW_SUCCESS", "artifact": sentinel,
+                },
+                "inputs": [{"role": role, **reference} for role, reference in inputs],
+                "outputs": [
+                    {"role": "raw_report", **raw},
+                    {"role": "success_sentinel", **sentinel},
+                ],
+            },
+        )
         extracted = validator.evidence_extractor.produce_evidence(
             evidence_type=evidence_type,
             raw_data=(root / raw["path"]).read_bytes(),
             raw_path=raw["path"],
+            flow_manifest=flow_manifest,
             context_inputs=inputs,
             output_path=relative,
             extractor_sha256=hashlib.sha256(
@@ -261,6 +326,8 @@ def valid_record(root):
         {
             "candidate_id": "candidate", "test_id": "uniform", "seed": 7,
             "hierarchy_root": synthesis_top, "format": "saif",
+            "clock_port": "clk", "clock_period_ns": 5.0,
+            "clock_mhz": clock_mhz,
             "coverage_percent": 99.0, "window_start_cycle": 20,
             "window_end_cycle_exclusive": 120, "measurement_cycles": cycles,
         },
@@ -271,6 +338,8 @@ def valid_record(root):
         {
             "candidate_id": "candidate", "test_id": "uniform", "seed": 7,
             "measurement_cycles": cycles, "average_power_mw": power_mw,
+            "clock_port": "clk", "clock_period_ns": 5.0,
+            "clock_mhz": clock_mhz,
             "errors": 0,
         },
         [
@@ -289,7 +358,7 @@ def valid_record(root):
     )
     events_per_cycle = delivered / cycles
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "qualification_id": "candidate-n16-sparse",
         "status": "frozen",
         "candidate": {
@@ -383,6 +452,8 @@ def valid_record(root):
         "flow": {
             **flow_artifacts,
             "pvt_rc_corner": "slow_0p9v_125c_rcworst",
+            "clock_port": "clk",
+            "clock_period_ns": 5.0,
             "results": {
                 "mapped_cell_count": 123,
                 "area_um2": 456.25,
@@ -408,6 +479,8 @@ def valid_record(root):
             "window_start_cycle": 20,
             "window_end_cycle_exclusive": 120,
             "measurement_cycles": cycles,
+            "clock_port": "clk",
+            "clock_period_ns": 5.0,
             "clock_mhz": clock_mhz,
             "operating_point": "sparse",
             "test_id": "uniform",
@@ -471,7 +544,7 @@ class FullLinkQualificationTest(unittest.TestCase):
         ]
         return inventory
 
-    def test_schema_is_machine_readable_draft_2020_12_v4(self):
+    def test_schema_is_machine_readable_draft_2020_12_v5(self):
         schema = json.loads(
             (ROOT / "full_link_qualification.schema.json").read_text(
                 encoding="utf-8"
@@ -480,7 +553,7 @@ class FullLinkQualificationTest(unittest.TestCase):
         self.assertEqual(
             schema["$schema"], "https://json-schema.org/draft/2020-12/schema"
         )
-        self.assertEqual(schema["properties"]["schema_version"]["const"], 4)
+        self.assertEqual(schema["properties"]["schema_version"]["const"], 5)
 
     def test_valid_full_link_record_recomputes_metrics(self):
         result = self.validate()
@@ -488,6 +561,14 @@ class FullLinkQualificationTest(unittest.TestCase):
         self.assertEqual(result["link_functional_pin_bits"], 8)
         self.assertAlmostEqual(result["events_per_cycle"], 0.5)
         self.assertAlmostEqual(result["energy_nj_per_delivered_event"], 0.02)
+        inventory = read_json_artifact(self.root, self.record["flow"]["inventory"])
+        self.assertEqual(inventory["module_graph"][0], {
+            "hierarchy_path": "candidate_full_link",
+            "module": "candidate_full_link",
+            "owner": "candidate",
+        })
+        self.assertEqual(inventory["top_ownership"], "candidate")
+        self.assertEqual(inventory["flatten_policy"], "preserve_candidate_hierarchy")
 
     def test_schema_required_type_and_additional_properties_are_enforced(self):
         cases = []
@@ -710,8 +791,9 @@ class FullLinkQualificationTest(unittest.TestCase):
             encoding="utf-8"
         )
         mapped = mapped.replace(
-            "module candidate_full_link;\n",
-            "module candidate_full_link;\n  generated_unused_ip u_hidden_fifo();\n",
+            ");\n",
+            ");\n  generated_unused_ip u_hidden_fifo();\n",
+            1,
         )
         record["flow"]["mapped_netlist"] = artifact(
             self.root, "evidence/mapped_with_hidden_fifo.v", mapped
@@ -797,6 +879,120 @@ class FullLinkQualificationTest(unittest.TestCase):
                     validator.QualificationError, rf"activity\.{field}.*parsed"
                 ):
                     self.validate(record)
+
+    def test_clock_exaggeration_is_rejected_against_sdc_and_power(self):
+        record = copy.deepcopy(self.record)
+        record["flow"]["clock_period_ns"] = 2.5
+        record["activity"]["clock_period_ns"] = 2.5
+        record["activity"]["clock_mhz"] = 400.0
+        with self.assertRaisesRegex(
+            validator.QualificationError, "parsed SDC clock|trusted inventory clock_period"
+        ):
+            self.validate(record)
+
+    def test_one_bit_native_and_link_pin_shrink_are_rejected(self):
+        record = copy.deepcopy(self.record)
+        record["physical_boundary"]["native_boundary_pins"][0]["width"] = 1
+        record["physical_boundary"]["native_functional_pin_bits"] = 22
+        with self.assertRaisesRegex(
+            validator.QualificationError, "mapped top-port inventory"
+        ):
+            self.validate(record)
+
+        record = copy.deepcopy(self.record)
+        record["physical_boundary"]["link_cut"]["pins"][2]["width"] = 1
+        record["physical_boundary"]["link_cut"]["functional_pin_bits"] = 3
+        with self.assertRaisesRegex(
+            validator.QualificationError, "mapped link-cut pin inventory"
+        ):
+            self.validate(record)
+
+    def test_rehashed_arbitrary_raw_summary_is_rejected(self):
+        record = copy.deepcopy(self.record)
+        report = read_json_artifact(self.root, record["flow"]["area_report"])
+        old_raw = report["producer"]["inputs"][0]
+        arbitrary = artifact(
+            self.root, "evidence/area_arbitrary.raw", "verified success\n"
+        )
+        flow_ref = report["producer"]["inputs"][1]
+        flow_manifest = read_json_artifact(self.root, flow_ref)
+        flow_manifest["outputs"][0] = {"role": "raw_report", **arbitrary}
+        flow_manifest["command"] = [
+            arbitrary["path"] if token == old_raw["path"] else token
+            for token in flow_manifest["command"]
+        ]
+        new_flow = json_artifact(
+            self.root, "evidence/area_arbitrary.flow.json", flow_manifest
+        )
+        report["producer"]["inputs"][0] = {"role": "raw_report", **arbitrary}
+        report["producer"]["inputs"][1] = {"role": "flow_manifest", **new_flow}
+        report["producer"]["command"] = [
+            arbitrary["path"] if token == old_raw["path"]
+            else new_flow["path"] if token == flow_ref["path"] else token
+            for token in report["producer"]["command"]
+        ]
+        self.rewrite_json_reference(
+            record["flow"], "area_report", "evidence/area_arbitrary.json", report
+        )
+        with self.assertRaisesRegex(
+            validator.QualificationError, "trusted raw-report extraction failed"
+        ):
+            self.validate(record)
+
+    def test_raw_flow_manifest_requires_tool_version_success_and_output_hashes(self):
+        record = copy.deepcopy(self.record)
+        report = read_json_artifact(self.root, record["flow"]["area_report"])
+        flow_ref = report["producer"]["inputs"][1]
+        manifest = read_json_artifact(self.root, flow_ref)
+        manifest["status"] = "failed"
+        manifest["tool"]["version"] = ""
+        manifest["outputs"][0]["sha256"] = "0" * 64
+        new_flow = json_artifact(
+            self.root, "evidence/area_invalid_flow.json", manifest
+        )
+        report["producer"]["inputs"][1] = {"role": "flow_manifest", **new_flow}
+        report["producer"]["command"] = [
+            new_flow["path"] if token == flow_ref["path"] else token
+            for token in report["producer"]["command"]
+        ]
+        self.rewrite_json_reference(
+            record["flow"], "area_report", "evidence/area_invalid_flow_report.json",
+            report,
+        )
+        with self.assertRaisesRegex(
+            validator.QualificationError,
+            "tool.version must be nonempty|status must equal success|outputs do not bind",
+        ):
+            self.validate(record)
+
+    def test_wrapper_hidden_feature_is_rejected_by_full_module_graph(self):
+        record = copy.deepcopy(self.record)
+        mapped = (self.root / record["flow"]["mapped_netlist"]["path"]).read_text(
+            encoding="utf-8"
+        )
+        mapped = mapped.replace(
+            ");\n", ");\n  candidate_serializer u_wrapper_hidden_serializer();\n", 1
+        )
+        record["flow"]["mapped_netlist"] = artifact(
+            self.root, "evidence/mapped_wrapper_hidden_serializer.v", mapped
+        )
+        inventory = self.rebind_synthesis_input(
+            record, "mapped_netlist", "flow/synthesis_wrapper_hidden.json"
+        )
+        old_inventory_path = record["flow"]["inventory"]["path"]
+        inventory["producer"]["command"] = [
+            "evidence/inventory_wrapper_hidden.json"
+            if token == old_inventory_path else token
+            for token in inventory["producer"]["command"]
+        ]
+        self.rewrite_json_reference(
+            record["flow"], "inventory", "evidence/inventory_wrapper_hidden.json",
+            inventory,
+        )
+        with self.assertRaisesRegex(
+            validator.QualificationError, "u_wrapper_hidden_serializer"
+        ):
+            self.validate(record)
 
     def test_rehashed_activity_hierarchy_coverage_window_is_rejected(self):
         record = copy.deepcopy(self.record)
@@ -898,10 +1094,12 @@ class FullLinkQualificationTest(unittest.TestCase):
 
             area = read_json_artifact(self.root, self.record["flow"]["area_report"])
             raw = area["producer"]["inputs"][0]
+            flow_manifest = area["producer"]["inputs"][1]
             extractor_args = [
                 "--type", "area", "--raw-report", raw["path"],
+                "--flow-manifest", flow_manifest["path"],
             ]
-            for binding in area["producer"]["inputs"][1:]:
+            for binding in area["producer"]["inputs"][2:]:
                 extractor_args.extend([
                     "--bind", binding["role"], binding["path"], binding["sha256"]
                 ])
