@@ -263,11 +263,12 @@ automatic cross-map delta artifact is still pending and must not be claimed.
 ## 7. Current gaps
 
 The written specification includes, but the current common runner does not yet
-fully implement, `basic_reset_drain`, native `basic_polarity`, automatic
-16/64/256 `limit_scale`, and fixed-pin `limit_pin_budget`. Independent multi-lane
-stall qualification is now implemented as an optional capability suite; it is
-not a mandatory core requirement. Do not claim unimplemented items as qualified
-results. The old in-SV `limit_load` uses
+fully implement, native `basic_polarity`, automatic 16/64/256 `limit_scale`,
+and fixed-pin `limit_pin_budget`. `basic_reset_drain` is implemented as a
+mandatory direct-SV conformance test. Independent multi-lane stall qualification
+is implemented as an optional capability suite, not a mandatory core
+requirement. Do not claim unimplemented items as qualified results. The old
+in-SV `limit_load` uses
 a per-source probability; frozen comparisons should use the deterministic trace
 generator, whose `load` is aggregate offered events/cycle.
 
@@ -295,3 +296,10 @@ seed set and publish uncertainty. Multi-hop routing/multicast, asynchronous CDC,
 and native multiple-occurrences-per-source-per-cycle are not silently claimed by
 this one-hop synchronous core; they require separately frozen capability suites
 and all required hardware must remain inside candidate PPA.
+
+The mandatory direct-SV `basic_reset_drain` test is specified in
+`docs/verification/aer-basic-reset-drain.md`. It drains a lower-half address
+epoch before asserting the second reset, checks output quiet and a no-traffic
+stale guard, then sends a disjoint upper-half address epoch and drains it. It
+deliberately does not define mid-traffic reset cancellation or preservation
+semantics.

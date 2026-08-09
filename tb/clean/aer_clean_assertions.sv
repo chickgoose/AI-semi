@@ -7,6 +7,14 @@ module aer_clean_assertions #(
   default clocking cb @(posedge bench.clk); endclocking
   default disable iff (!bench.rst_n);
 
+  // Sample after a reset-active rising edge so synchronous and asynchronous
+  // reset implementations receive the same full edge before quiet is judged.
+  always @(negedge bench.clk) begin
+    if (!bench.rst_n && (bench.retire_valid !== '0))
+      $fatal(1, "CLEAN_ASSERT completion active during reset valid=%0h",
+             bench.retire_valid);
+  end
+
   genvar source;
   generate
     for (source = 0; source < NUM_SOURCES; source = source + 1) begin : source_rule

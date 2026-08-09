@@ -9,6 +9,8 @@ module aer_clean_tb;
   parameter int TIMEOUT_CYCLES = 20000;
   parameter int MAX_EVENTS = 131072;
   parameter int QUIET_GUARD_CYCLES = 8;
+  parameter int RESET_HOLD_CYCLES = 3;
+  parameter int RESET_POST_GUARD_CYCLES = 4;
 
   logic clk = 1'b0;
   always #5 clk = ~clk;
@@ -19,7 +21,19 @@ module aer_clean_tb;
     .RETIRE_LANES(RETIRE_LANES)
   ) bench(clk);
 
-`ifdef AER_CLEAN_GANGHEE_CLUSTER2
+`ifdef AER_CLEAN_RESET_FAULT
+  aer_reset_fault_candidate #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES)
+  ) candidate(bench);
+`elsif AER_CLEAN_STALE_FAULT
+  aer_stale_fault_candidate #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES)
+  ) candidate(bench);
+`elsif AER_CLEAN_GANGHEE_CLUSTER2
   aer_ganghee_cluster2_binding #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
@@ -134,6 +148,14 @@ module aer_clean_tb;
   integer stim_cycle;
   logic [ADDR_WIDTH-1:0] expected_event;
   logic measurement_active;
+  integer reset_conformance_errors;
+  integer reset_phase1_errors;
+  integer reset_phase1_generated;
+  integer reset_phase1_overrun;
+  integer reset_phase1_accepted;
+  integer reset_phase1_delivered;
+  integer reset_phase1_measured;
+  integer reset_phase1_cycles;
 
   always_comb begin
     bench.source_valid = pending;
@@ -230,6 +252,180 @@ module aer_clean_tb;
     begin
       synthetic_event = make_event(source_index, source_sequence[source_index]);
       offer_event_record(source_index, generated_count, synthetic_event, 32);
+    end
+  endtask
+
+  task automatic offer_address_event(input integer source_index);
+    begin
+      offer_event_record(source_index, generated_count,
+                         ADDR_WIDTH'(source_index), 32);
+    end
+  endtask
+
+  task automatic check_epoch_conservation(
+    input string epoch_name,
+    input integer epoch_generated,
+    input integer epoch_overrun,
+    input integer epoch_accepted,
+    input integer epoch_delivered
+  );
+    begin
+      if (pending_count() != 0) begin
+        $error("CLEAN_RESET %s pending sources remain=%0d",
+               epoch_name, pending_count());
+        error_count = error_count + 1;
+      end
+      if (outstanding_count() != 0) begin
+        $error("CLEAN_RESET %s accepted events remain=%0d",
+               epoch_name, outstanding_count());
+        error_count = error_count + 1;
+      end
+      if (epoch_accepted != epoch_delivered) begin
+        $error("CLEAN_RESET %s accepted/delivered mismatch accepted=%0d delivered=%0d",
+               epoch_name, epoch_accepted, epoch_delivered);
+        error_count = error_count + 1;
+      end
+      if (epoch_generated != epoch_overrun + epoch_accepted) begin
+        $error("CLEAN_RESET %s generation conservation failed generated=%0d overrun=%0d accepted=%0d",
+               epoch_name, epoch_generated, epoch_overrun, epoch_accepted);
+        error_count = error_count + 1;
+      end
+    end
+  endtask
+
+  task automatic drain_reset_epoch(input string epoch_name);
+    begin
+      bench.retire_ready = '1;
+      timeout = 0;
+      while (((pending != '0) || (outstanding_count() != 0) ||
+              (bench.retire_valid != '0)) &&
+             (timeout < TIMEOUT_CYCLES)) begin
+        @(negedge clk);
+        timeout = timeout + 1;
+      end
+      if (timeout >= TIMEOUT_CYCLES) begin
+        $error("CLEAN_RESET %s drain timeout pending=%0h outstanding=%0d retire_valid=%0h",
+               epoch_name, pending, outstanding_count(), bench.retire_valid);
+        error_count = error_count + 1;
+      end
+    end
+  endtask
+
+  task automatic run_basic_reset_drain();
+    integer reset_source;
+    integer address_split;
+    integer phase2_generated;
+    integer phase2_overrun;
+    integer phase2_accepted;
+    integer phase2_delivered;
+    begin
+      reset_conformance_errors = 0;
+      bench.retire_ready = '1;
+      address_split = NUM_SOURCES / 2;
+      if ((address_split == 0) || (address_split == NUM_SOURCES))
+        $fatal(1, "CLEAN_RESET requires at least two sources for disjoint address epochs");
+
+      // Epoch 0 uses only the lower half of the source-address space.  The
+      // second reset is not asserted until every accepted event and every
+      // source latch drains.
+      @(negedge clk);
+      for (reset_source = 0; reset_source < address_split;
+           reset_source = reset_source + 1)
+        offer_address_event(reset_source);
+      drain_reset_epoch("pre-reset");
+      check_epoch_conservation("pre-reset", generated_count,
+        source_overrun_count, accepted_count, delivered_count);
+
+      reset_phase1_errors = error_count;
+      reset_phase1_generated = generated_count;
+      reset_phase1_overrun = source_overrun_count;
+      reset_phase1_accepted = accepted_count;
+      reset_phase1_delivered = delivered_count;
+      reset_phase1_measured = delivered_in_measurement;
+      reset_phase1_cycles = cycle_count;
+
+      if ((pending != '0) || (outstanding_count() != 0) ||
+          (bench.retire_valid != '0) ||
+          (accepted_count != delivered_count))
+        $fatal(1, "CLEAN_RESET refused second reset before complete drain pending=%0h outstanding=%0d accepted=%0d delivered=%0d valid=%0h",
+               pending, outstanding_count(), accepted_count, delivered_count,
+               bench.retire_valid);
+
+      // Assert and release only on falling edges.  A synchronous-reset DUT gets
+      // the preceding rising edge before quiet is sampled at the falling edge;
+      // an asynchronous-reset DUT receives no delta-cycle scoring advantage.
+      @(negedge clk);
+      bench.rst_n = 1'b0;
+      bench.retire_ready = '1;
+      repeat (RESET_HOLD_CYCLES) begin
+        @(posedge clk);
+        @(negedge clk);
+        if (bench.retire_valid !== '0) begin
+          $error("CLEAN_RESET completion active during reset valid=%0h",
+                 bench.retire_valid);
+          reset_conformance_errors = reset_conformance_errors + 1;
+        end
+      end
+
+      bench.rst_n = 1'b1;
+      repeat (RESET_POST_GUARD_CYCLES) begin
+        @(posedge clk);
+        @(negedge clk);
+        if (bench.retire_valid !== '0) begin
+          $error("CLEAN_RESET stale completion after reset valid=%0h",
+                 bench.retire_valid);
+          reset_conformance_errors = reset_conformance_errors + 1;
+        end
+      end
+      if ((accepted_count != 0) || (delivered_count != 0) ||
+          (outstanding_count() != 0) || (pending != '0)) begin
+        $error("CLEAN_RESET scoreboard not clean after reset accepted=%0d delivered=%0d outstanding=%0d pending=%0h",
+               accepted_count, delivered_count, outstanding_count(), pending);
+        reset_conformance_errors = reset_conformance_errors + 1;
+      end
+
+      // Epoch 1 uses only the upper half.  Disjoint address sets ensure a stale
+      // pre-reset completion cannot masquerade as a legitimate post-reset
+      // event, even if it appears at the post-reset offer boundary.
+      @(negedge clk);
+      for (reset_source = NUM_SOURCES-1; reset_source >= address_split;
+           reset_source = reset_source - 1)
+        offer_address_event(reset_source);
+      drain_reset_epoch("post-reset");
+
+      phase2_generated = generated_count - reset_phase1_generated;
+      phase2_overrun = source_overrun_count - reset_phase1_overrun;
+      phase2_accepted = accepted_count;
+      phase2_delivered = delivered_count;
+      check_epoch_conservation("post-reset", phase2_generated,
+        phase2_overrun, phase2_accepted, phase2_delivered);
+
+      // Restore cumulative transport counts for the ordinary metrics and final
+      // conservation checks.  Record IDs and generated/overrun counts were
+      // monotonic across reset, so event evidence remains intact.
+      accepted_count = reset_phase1_accepted + phase2_accepted;
+      delivered_count = reset_phase1_delivered + phase2_delivered;
+      delivered_in_measurement = reset_phase1_measured + delivered_in_measurement;
+      cycle_count = reset_phase1_cycles + RESET_HOLD_CYCLES +
+                    RESET_POST_GUARD_CYCLES + cycle_count;
+      error_count = reset_phase1_errors + error_count +
+                    reset_conformance_errors;
+
+      if (accepted_count != delivered_count) begin
+        $error("CLEAN_RESET cumulative accepted/delivered mismatch accepted=%0d delivered=%0d",
+               accepted_count, delivered_count);
+        error_count = error_count + 1;
+      end
+      if (generated_count != source_overrun_count + accepted_count) begin
+        $error("CLEAN_RESET cumulative conservation failed generated=%0d overrun=%0d accepted=%0d",
+               generated_count, source_overrun_count, accepted_count);
+        error_count = error_count + 1;
+      end
+
+      $display("AER_RESET_DRAIN_RESULT pre_generated=%0d pre_accepted=%0d pre_delivered=%0d post_generated=%0d post_accepted=%0d post_delivered=%0d reset_errors=%0d",
+        reset_phase1_generated, reset_phase1_accepted, reset_phase1_delivered,
+        phase2_generated, phase2_accepted, phase2_delivered,
+        reset_conformance_errors);
     end
   endtask
 
@@ -702,6 +898,26 @@ module aer_clean_tb;
     @(negedge clk);
     bench.rst_n = 1'b1;
     measurement_active = 1'b1;
+
+    if (test_name == "basic_reset_drain") begin
+      // This is a correctness conformance test, not a throughput sample.
+      measurement_active = 1'b0;
+      run_basic_reset_drain();
+      repeat (QUIET_GUARD_CYCLES) begin
+        @(negedge clk);
+        bench.retire_ready = '1;
+      end
+      write_event_metrics();
+      write_metrics();
+      if (error_count == 0) begin
+        $display("AER_RESET_DRAIN_PASS generated=%0d accepted=%0d delivered=%0d",
+                 generated_count, accepted_count, delivered_count);
+        $display("AER_CLEAN_TEST_PASS %s", test_name);
+      end else begin
+        $fatal(1, "AER_CLEAN_TEST_FAIL %s errors=%0d", test_name, error_count);
+      end
+      $finish;
+    end
 
     for (stim_cycle = 0; stim_cycle < stim_cycles; stim_cycle = stim_cycle + 1) begin
       @(negedge clk);

@@ -125,7 +125,7 @@ abs((delivery_2 - delivery_1) - (occurrence_2 - occurrence_1))
 | `core_sparse_*` | frozen mandatory core | isolated coordinate spikes, exact address, no loss/duplicate, source-local order |
 | `core_simultaneous_identity` | frozen mandatory core | one event from every source on one cycle, legal arbitration, complete drain |
 | conservation/quiet guard | frozen mandatory core | generated/overrun/pending/accepted/delivered conservation and no late phantom |
-| `basic_reset_drain` | target mandatory; implementation pending | reset, traffic, drain, reset again with clean state |
+| `basic_reset_drain` | mandatory direct-SV core | disjoint address-only epochs, complete drain, reset, quiet/stale guard, post-reset correctness and drain |
 | `basic_backpressure` | optional capability | stable output during a sink stall and complete recovery |
 | `basic_polarity` | optional capability | preserve declared polarity/event type when the native contract carries it |
 
@@ -136,9 +136,11 @@ candidate declares the optional backpressure capability as RUN.
 Implementation status matters: the exact N=16 coordinate-spike core currently
 qualifies sparse/simultaneous/event-conservation behavior. Output backpressure
 and polarity/type are capability-gated because the candidates do not share
-those physical contracts, and `basic_reset_drain` still needs an implemented
-common regression. Therefore an older “10/10 core PASS” must not be described
-as passing every row in this target conformance table.
+those physical contracts. `basic_reset_drain` is a direct-SV mandatory test;
+its second reset occurs only after complete accepted-event drain and makes no
+cancel-or-preserve claim for traffic active during reset. Therefore an older
+“10/10 core PASS” must not be described as passing every row in this target
+conformance table.
 
 ### 5.2 Limit-exposure suite: scored, not architecture-specific
 

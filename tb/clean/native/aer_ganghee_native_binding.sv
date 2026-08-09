@@ -33,6 +33,15 @@ module aer_ganghee_native_binding #(
 
   assign native_rst = ~bench.rst_n;
 
+  // The normalizer masks results that do not correspond to a live pending
+  // request.  Check reset quiet at the unmasked native boundary so that mask
+  // behavior cannot make a stale native completion pass for free.
+  always @(negedge bench.clk) begin
+    if (!bench.rst_n && (native_valid !== 1'b0))
+      $fatal(1, "GANGHEE_NATIVE_BINDING native valid active during reset value=%b",
+             native_valid);
+  end
+
   // Mask the acknowledged source before the next active sampling edge.  This
   // is a stateless TB-driver timing adaptation; all other pending requests
   // remain visible and the native DUT still owns arbitration.
@@ -96,7 +105,7 @@ module aer_ganghee_native_binding #(
         $error("GANGHEE_NATIVE_BINDING native addr is unknown while valid");
       if (native_valid && !$isunknown(native_addr) &&
           !bench.source_valid[native_addr])
-        $error("GANGHEE_NATIVE_BINDING duplicate/phantom native result addr=%0d",
+        $fatal(1, "GANGHEE_NATIVE_BINDING duplicate/phantom native result addr=%0d",
                native_addr);
       if (!$onehot0(bench.source_ready))
         $error("GANGHEE_NATIVE_BINDING acknowledged more than one source");
