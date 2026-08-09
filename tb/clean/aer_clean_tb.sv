@@ -9,8 +9,6 @@ module aer_clean_tb;
   parameter int TIMEOUT_CYCLES = 20000;
   parameter int MAX_EVENTS = 131072;
   parameter int QUIET_GUARD_CYCLES = 8;
-  localparam int SOURCE_WIDTH = (NUM_SOURCES <= 1) ? 1 : $clog2(NUM_SOURCES);
-
   logic clk = 1'b0;
   always #5 clk = ~clk;
 
@@ -21,64 +19,13 @@ module aer_clean_tb;
   ) bench(clk);
 
 `ifdef AER_CLEAN_GANGHEE_CLUSTER2
-  // AER_CLUSTER2_DIRECT_BEGIN
-  // Raw native RTL is the DUT. req is electrically the common pending bitmap;
-  // the following normalization is non-synthesizable scoreboard observation,
-  // not an adapter in the DUT path.
-  logic [15:0] cluster2_req;
-  logic cluster2_valid0;
-  logic [1:0] cluster2_row0;
-  logic [3:0] cluster2_col_mask0;
-  logic cluster2_valid1;
-  logic [1:0] cluster2_row1;
-  logic [3:0] cluster2_col_mask1;
-  integer cluster2_col;
-  integer cluster2_source;
-  integer cluster2_lane;
-
-  assign cluster2_req = bench.source_valid;
-
-  `AER_GANGHEE_CLUSTER2_MODULE raw_cluster2_dut (
-    .clk       (bench.clk),
-    .rst       (~bench.rst_n),
-    .req       (cluster2_req),
-    .valid0    (cluster2_valid0),
-    .row0      (cluster2_row0),
-    .col_mask0 (cluster2_col_mask0),
-    .valid1    (cluster2_valid1),
-    .row1      (cluster2_row1),
-    .col_mask1 (cluster2_col_mask1)
-  );
-
-  // synthesis translate_off
-  always_comb begin
-    bench.source_ready = '0;
-    bench.retire_valid = '0;
-    for (cluster2_lane = 0; cluster2_lane < RETIRE_LANES;
-         cluster2_lane = cluster2_lane + 1) begin
-      bench.retire_event[cluster2_lane] = '0;
-      bench.retire_source[cluster2_lane] = '0;
-    end
-    for (cluster2_col = 0; cluster2_col < 4;
-         cluster2_col = cluster2_col + 1) begin
-      cluster2_source = (integer'(cluster2_row0) * 4) + cluster2_col;
-      if (cluster2_valid0 && cluster2_col_mask0[cluster2_col]) begin
-        bench.source_ready[cluster2_source] = 1'b1;
-        bench.retire_valid[cluster2_col] = 1'b1;
-        bench.retire_event[cluster2_col] = ADDR_WIDTH'(cluster2_source);
-        bench.retire_source[cluster2_col] = SOURCE_WIDTH'(cluster2_source);
-      end
-      cluster2_source = (integer'(cluster2_row1) * 4) + cluster2_col;
-      if (cluster2_valid1 && cluster2_col_mask1[cluster2_col]) begin
-        bench.source_ready[cluster2_source] = 1'b1;
-        bench.retire_valid[4 + cluster2_col] = 1'b1;
-        bench.retire_event[4 + cluster2_col] = ADDR_WIDTH'(cluster2_source);
-        bench.retire_source[4 + cluster2_col] = SOURCE_WIDTH'(cluster2_source);
-      end
-    end
-  end
-  // synthesis translate_on
-  // AER_CLUSTER2_DIRECT_END
+  // Candidate-specific TB binding owns native protocol normalization.  The
+  // separate direct-instantiation harness remains a regression oracle only.
+  aer_ganghee_cluster2_binding #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES)
+  ) candidate(bench);
 `elsif AER_CLEAN_GANGHEE_NATIVE
   aer_ganghee_native_binding #(
     .NUM_SOURCES(NUM_SOURCES),

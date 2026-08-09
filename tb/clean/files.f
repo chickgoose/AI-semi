@@ -5,4 +5,5 @@ tb/clean/aer_bench_if.sv
 tb/clean/aer_clean_mock_candidate.sv
 tb/clean/aer_legacy_candidate_adapter.sv
 tb/clean/aer_clean_assertions.sv
+tb/clean/native/aer_ganghee_cluster2_binding.sv
 tb/clean/aer_clean_tb.sv

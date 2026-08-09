@@ -16,6 +16,7 @@ PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" \
   python3 -m unittest -v test_address_derivation_lint
 python3 "$SCRIPT_DIR/lint_address_derivation.py" \
   "$PROJECT_ROOT/tb/clean/native/aer_ganghee_native_binding.sv" \
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv" \
   "$PROJECT_ROOT/tb/clean/aer_clean_tb.sv"
 
 "$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
@@ -35,6 +36,42 @@ grep -q \
 
 "$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
   -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
+  -DAER_CLEAN_GANGHEE_CLUSTER2 \
+  -DAER_GANGHEE_CLUSTER2_MODULE=ganghee_cluster2_protocol_mock \
+  --top-module aer_ganghee_cluster2_binding_tb \
+  --Mdir "$OUT_DIR/cluster2-binding-obj" \
+  "$PROJECT_ROOT/tb/clean/aer_bench_if.sv" \
+  "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv" \
+  "$PROJECT_ROOT/tests/clean_native/aer_ganghee_cluster2_binding_tb.sv"
+
+"$OUT_DIR/cluster2-binding-obj/Vaer_ganghee_cluster2_binding_tb" | \
+  tee "$OUT_DIR/cluster2-binding-run.log"
+grep -q \
+  'GANGHEE_CLUSTER2_BINDING_HELD_ACK_PASS ack=1 retire=1 phantom=0' \
+  "$OUT_DIR/cluster2-binding-run.log"
+
+"$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
+  -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
+  -DAER_CLEAN_GANGHEE_CLUSTER2 \
+  -DAER_GANGHEE_CLUSTER2_MODULE=ganghee_cluster2_protocol_mock \
+  -DAER_CLUSTER2_MOCK_REPEAT \
+  -GREPEAT_EACH_RESULT=1 \
+  --top-module aer_ganghee_cluster2_binding_tb \
+  --Mdir "$OUT_DIR/cluster2-binding-repeat-obj" \
+  "$PROJECT_ROOT/tb/clean/aer_bench_if.sv" \
+  "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
+  "$PROJECT_ROOT/tb/clean/native/aer_ganghee_cluster2_binding.sv" \
+  "$PROJECT_ROOT/tests/clean_native/aer_ganghee_cluster2_binding_tb.sv"
+
+"$OUT_DIR/cluster2-binding-repeat-obj/Vaer_ganghee_cluster2_binding_tb" | \
+  tee "$OUT_DIR/cluster2-binding-repeat-run.log"
+grep -q \
+  'GANGHEE_CLUSTER2_BINDING_PHANTOM_VISIBLE_PASS ack=1 retire=2 phantom=1' \
+  "$OUT_DIR/cluster2-binding-repeat-run.log"
+
+"$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
+  -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
   --top-module aer_ganghee_cluster2_direct_tb \
   --Mdir "$OUT_DIR/cluster2-obj" \
   "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
@@ -43,5 +80,19 @@ grep -q \
 "$OUT_DIR/cluster2-obj/Vaer_ganghee_cluster2_direct_tb" | \
   tee "$OUT_DIR/cluster2-run.log"
 grep -q \
-  'GANGHEE_CLUSTER2_DIRECT_ANTI_RECONSTRUCTION_PASS seen=6' \
+  'GANGHEE_CLUSTER2_HELD_ACK_PASS raw=6 ack=6 phantom=0 masked=6' \
   "$OUT_DIR/cluster2-run.log"
+
+"$VERILATOR_BIN" --binary --timing --assert -Wall -Wno-fatal \
+  -Wno-BLKSEQ -Wno-UNUSEDSIGNAL \
+  -GREPEAT_EACH_RESULT=1 \
+  --top-module aer_ganghee_cluster2_direct_tb \
+  --Mdir "$OUT_DIR/cluster2-repeat-obj" \
+  "$PROJECT_ROOT/tests/clean_native/ganghee_cluster2_protocol_mock.sv" \
+  "$PROJECT_ROOT/tests/clean_native/aer_ganghee_cluster2_direct_tb.sv"
+
+"$OUT_DIR/cluster2-repeat-obj/Vaer_ganghee_cluster2_direct_tb" | \
+  tee "$OUT_DIR/cluster2-repeat-run.log"
+grep -q \
+  'GANGHEE_CLUSTER2_PHANTOM_VISIBLE_PASS raw=12 ack=6 phantom=6 masked=12' \
+  "$OUT_DIR/cluster2-repeat-run.log"

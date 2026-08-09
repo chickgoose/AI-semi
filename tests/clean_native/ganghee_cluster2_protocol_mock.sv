@@ -12,32 +12,54 @@ module ganghee_cluster2_protocol_mock (
   output logic [1:0]  row1,
   output logic [3:0]  col_mask1
 );
-  always_comb begin
-    valid0 = 1'b0;
-    row0 = '0;
-    col_mask0 = '0;
-    valid1 = 1'b0;
-    row1 = '0;
-    col_mask1 = '0;
-    if (!rst) begin
+`ifdef AER_CLUSTER2_MOCK_REPEAT
+  parameter int REPEAT_EACH_RESULT = 1;
+`else
+  parameter int REPEAT_EACH_RESULT = 0;
+`endif
+
+  logic repeat_pending;
+
+  always_ff @(posedge clk) begin
+    if (rst) begin
+      valid0 <= 1'b0;
+      row0 <= '0;
+      col_mask0 <= '0;
+      valid1 <= 1'b0;
+      row1 <= '0;
+      col_mask1 <= '0;
+      repeat_pending <= 1'b0;
+    end else if (repeat_pending) begin
+      // Deliberate raw-DUT fault: repeat the preceding registered result even
+      // though the TB request driver masked/cleared the acknowledged sources.
+      repeat_pending <= 1'b0;
+    end else begin
+      valid0 <= 1'b0;
+      row0 <= '0;
+      col_mask0 <= '0;
+      valid1 <= 1'b0;
+      row1 <= '0;
+      col_mask1 <= '0;
       if (req[7:4] != '0) begin
-        valid0 = 1'b1;
-        row0 = 2'd1;
-        col_mask0 = req[7:4];
+        valid0 <= 1'b1;
+        row0 <= 2'd1;
+        col_mask0 <= req[7:4];
       end else if (req[11:8] != '0) begin
-        valid0 = 1'b1;
-        row0 = 2'd2;
-        col_mask0 = req[11:8];
+        valid0 <= 1'b1;
+        row0 <= 2'd2;
+        col_mask0 <= req[11:8];
       end
       if (req[3:0] != '0) begin
-        valid1 = 1'b1;
-        row1 = 2'd0;
-        col_mask1 = req[3:0];
+        valid1 <= 1'b1;
+        row1 <= 2'd0;
+        col_mask1 <= req[3:0];
       end else if (req[15:12] != '0) begin
-        valid1 = 1'b1;
-        row1 = 2'd3;
-        col_mask1 = req[15:12];
+        valid1 <= 1'b1;
+        row1 <= 2'd3;
+        col_mask1 <= req[15:12];
       end
+      if ((REPEAT_EACH_RESULT != 0) && (req != '0))
+        repeat_pending <= 1'b1;
     end
   end
 endmodule
