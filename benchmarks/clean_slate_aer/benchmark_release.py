@@ -21,9 +21,9 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
-SCHEMA = "aer-address-only-benchmark-release-v5"
+SCHEMA = "aer-address-only-benchmark-release-v6"
 TRUSTED_POLICY_PATH = "benchmarks/clean_slate_aer/a1_release_policy.json"
-TRUSTED_POLICY_SHA256 = "72b5eb73887f0b1d5a11c5f2fcd97f859477b543155af6ec16871eae0983d6dc"
+TRUSTED_POLICY_SHA256 = "870a88886eaf07385b2696de7553c28a00339e4ab5535f2e22d76a19609954ff"
 CURRENT_GENERATOR_VERSION = "4.0"
 HISTORICAL_GENERATOR_VERSION = "3.0"
 SUITE_POLICY = {
@@ -192,7 +192,7 @@ def _load_trusted_policy(
         policy,
         {"schema", "generator_version", "trace_abi_version", "identity_mode",
          "required_relation", "full_count", "capacity_count", "artifacts",
-         "test_receipts", "ppa_registry"},
+         "runners", "analyzers", "test_receipts", "ppa_registry"},
         "trusted policy",
     )
     if policy["schema"] != "aer-a1-release-policy-v1":
@@ -387,8 +387,19 @@ def _validate_executed_receipts(
     }
     seen_commands: set[tuple[str, ...]] = set()
     paths: list[str] = []
-    environment = os.environ.copy()
-    environment.update({"PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C"})
+    try:
+        isolated_python = str(Path(sys.executable).resolve(strict=True))
+    except OSError as exc:
+        raise ReleaseError("cannot resolve the trusted Python interpreter") from exc
+    if not Path(isolated_python).is_absolute():
+        raise ReleaseError("trusted Python interpreter is not absolute")
+    # Do not inherit PATH, PYTHONPATH, or any PYTHON* setting from the caller.
+    # -I additionally enables Python isolated mode and ignores user site state.
+    environment = {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
     for index, entry in enumerate(entries):
         path = _verify_policy_artifact(
             repo, binding, entry, f"test receipt {index}"
@@ -425,7 +436,8 @@ def _validate_executed_receipts(
             raise ReleaseError(f"test receipt markers are invalid: {path}")
         try:
             result = subprocess.run(
-                list(command), cwd=repo, env=environment,
+                [isolated_python, "-I", "-B", command[1]],
+                cwd=repo, env=environment,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 timeout=120, check=False,
             )
@@ -475,6 +487,18 @@ def _manifest_from_inputs(
             raise ReleaseError(f"{name} path differs from canonical policy")
     for name, value in artifacts.items():
         _verify_policy_artifact(repo, binding, value, name)
+    expected_runners = [
+        _verify_policy_artifact(repo, binding, value, f"runner {index}")
+        for index, value in enumerate(policy["runners"])
+    ] if isinstance(policy["runners"], list) else None
+    expected_analyzers = [
+        _verify_policy_artifact(repo, binding, value, f"analyzer {index}")
+        for index, value in enumerate(policy["analyzers"])
+    ] if isinstance(policy["analyzers"], list) else None
+    if not expected_runners or list(inputs.runners) != expected_runners:
+        raise ReleaseError("runner paths differ from ordered canonical policy")
+    if not expected_analyzers or list(inputs.analyzers) != expected_analyzers:
+        raise ReleaseError("analyzer paths differ from ordered canonical policy")
     if inputs.ppa_registry != policy["ppa_registry"]["path"]:
         raise ReleaseError("PPA registry path differs from canonical policy")
     if list(inputs.test_receipts) != [item["path"] for item in policy["test_receipts"]]:
@@ -602,6 +626,9 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
             raise ReleaseError("binding commit/tree mismatch")
     elif binding["commit"] is not None:
         raise ReleaseError("tree binding must set commit to null")
+    current_tree = str(_git(repo, "rev-parse", "HEAD^{tree}"))
+    if current_tree != binding["tree"]:
+        raise ReleaseError("current checkout tree differs from manifest binding tree")
 
     policy_path = _verify_artifact(repo, binding, manifest["policy"], "policy")
     policy = _load_trusted_policy(repo, binding, policy_path)
@@ -649,6 +676,10 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         collection = manifest[collection_name]
         if not isinstance(collection, list) or not collection:
             raise ReleaseError(f"{collection_name} must be a nonempty array")
+        if collection != policy[collection_name]:
+            raise ReleaseError(
+                f"{collection_name} differ from ordered canonical policy"
+            )
         for index, artifact in enumerate(collection):
             paths.append(_verify_artifact(
                 repo, binding, artifact, f"{collection_name}[{index}]"

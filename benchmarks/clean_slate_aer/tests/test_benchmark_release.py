@@ -100,6 +100,8 @@ class BenchmarkReleaseTest(unittest.TestCase):
         self.write("bench/preparer.py", "# trusted v4 preparer fixture\n")
         self.write("tb/clean_tb.sv", "module clean_tb; endmodule\n")
         self.write("bench/analyzer.py", "def analyze(): return {}\n")
+        self.write("PROGRESS.md", "not an executable runner\n")
+        self.write("docs/analyzer.md", "not an executable analyzer\n")
         self.write("scripts/run_clean.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write("scripts/run_capacity.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write("bench/manifest.full.json", json.dumps({"runs": full_runs}) + "\n")
@@ -133,7 +135,10 @@ class BenchmarkReleaseTest(unittest.TestCase):
         self.write("scripts/tool.tcl", "# trusted tool\n")
         self.write("scripts/tool.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write(
-            "bench/self_test.py", "print('SELF_TEST_PASS fixture=1')\n"
+            "bench/self_test.py",
+            "import os\n"
+            "assert 'PYTHONPATH' not in os.environ\n"
+            "print('SELF_TEST_PASS fixture=1')\n",
         )
         self.write(
             "bench/neutrality_self_test.py",
@@ -208,6 +213,11 @@ class BenchmarkReleaseTest(unittest.TestCase):
                     "bench/neutrality_self_test.py"
                 ),
             },
+            "runners": [
+                self.artifact("scripts/run_clean.sh"),
+                self.artifact("scripts/run_capacity.sh"),
+            ],
+            "analyzers": [self.artifact("bench/analyzer.py")],
             "test_receipts": [
                 self.artifact("bench/receipts/self.json"),
                 self.artifact("bench/receipts/neutrality.json"),
@@ -345,6 +355,65 @@ class BenchmarkReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(benchmark_release.ReleaseError, "not canonical"):
             self.generate()
 
+    def test_cross_head_fake_self_test_cannot_validate_bound_manifest(self) -> None:
+        _, manifest = self.generate()
+        self.write(
+            "bench/self_test.py",
+            "import os\n"
+            "assert 'PYTHONPATH' not in os.environ\n"
+            "print('SELF_TEST_PASS fixture=1')\n"
+            "# fake current checkout\n",
+        )
+        self.git("add", "bench/self_test.py")
+        self.git("commit", "-qm", "replace current self test")
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError,
+            "current checkout tree differs from manifest binding tree",
+        ):
+            benchmark_release.validate_manifest(self.repo, manifest)
+
+    def test_receipts_ignore_fake_path_python_and_inherited_pythonpath(self) -> None:
+        fake_bin = self.base / "fake-bin"
+        fake_bin.mkdir()
+        sentinel = self.base / "fake-python-ran"
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            f"#!/bin/sh\nprintf fake > {sentinel}\nexit 99\n",
+            encoding="utf-8",
+        )
+        fake_python.chmod(0o755)
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+                "PYTHONPATH": str(self.base / "poison"),
+            },
+        ):
+            self.generate()
+        self.assertFalse(sentinel.exists())
+
+    def test_tracked_progress_doc_cannot_be_runner(self) -> None:
+        bad = benchmark_release.ReleaseInputs(
+            **{**self.inputs.__dict__, "runners": ("PROGRESS.md",)}
+        )
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError, "ordered canonical policy"
+        ):
+            benchmark_release.generate_manifest(
+                self.repo, self.base / "progress-runner.json", "commit", bad
+            )
+
+    def test_tracked_docs_file_cannot_be_analyzer(self) -> None:
+        bad = benchmark_release.ReleaseInputs(
+            **{**self.inputs.__dict__, "analyzers": ("docs/analyzer.md",)}
+        )
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError, "ordered canonical policy"
+        ):
+            benchmark_release.generate_manifest(
+                self.repo, self.base / "docs-analyzer.json", "commit", bad
+            )
+
     def test_stale_48_20_rejected_even_under_resigned_policy(self) -> None:
         runs = self.runs(48)
         self.write("bench/manifest.full.json", json.dumps({"runs": runs}) + "\n")
@@ -427,7 +496,9 @@ class BenchmarkReleaseTest(unittest.TestCase):
         bad = benchmark_release.ReleaseInputs(
             **{**self.inputs.__dict__, "runners": ("results/runner.py",)}
         )
-        with self.assertRaisesRegex(benchmark_release.ReleaseError, "forbidden"):
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError, "ordered canonical policy"
+        ):
             benchmark_release.generate_manifest(
                 self.repo, self.base / "result.json", "commit", bad
             )

@@ -16,6 +16,22 @@
     "self_test": {"path": "benchmarks/clean_slate_aer/self_test.py", "sha256": "e6bb8e2c71544bf172cacbfa86de4755a11560f68d5428aed8a7b611eaa12003"},
     "neutrality_self_test": {"path": "benchmarks/clean_slate_aer/neutrality_self_test.py", "sha256": "f9a429562eaa4eb69fb0d3ab1063e7ebf324a8e7dcfdaf261bd9142d374403ed"}
   },
+  "runners": [
+    {"path": "scripts/run_clean_benchmark.sh", "sha256": "cc07eb426d9b536b6b8475543b5630e21e61e0f5dfab7271ff11ef14f6e38d33"},
+    {"path": "scripts/run_common_multilane_benchmark.sh", "sha256": "fe2d485e13f7fd3e31ae2ccf93b761a7eb06b6f1e924c9a60dd572cc03aa7d9b"},
+    {"path": "scripts/run_common_multilane_candidate.sh", "sha256": "c537ba1e11252d41152284f043cb26a40cef46e7a9300ed7c020303616e9e3a9"},
+    {"path": "scripts/run_ganghee_cluster2_benchmark.sh", "sha256": "99b57f1c07411430ce382b5b6b81a90509b981e549c570803efd62cefcf71ea6"},
+    {"path": "scripts/run_ganghee_native_benchmark.sh", "sha256": "d80a23434f3cf878f75dc2c5c11c2323d7c7ffbe064a980e3b3d8a8fa2df969c"},
+    {"path": "tests/clean_reset/run_reset_drain_test.sh", "sha256": "5a317c0ba3d3cd008fd6447553093008dd267e3ba0bba4acd42a7dc62c634cc6"}
+  ],
+  "analyzers": [
+    {"path": "benchmarks/clean_slate_aer/aggregate.py", "sha256": "aa02fa2a9c97cf607e144d1a40eb0f667d1850aba494de114b9cdb8d8d296923"},
+    {"path": "benchmarks/clean_slate_aer/pairwise_contention_metrics.py", "sha256": "d3fef3ab758f0d98cace32626d147e681bbb69262472330401cc00a987aa81db"},
+    {"path": "benchmarks/clean_slate_aer/pairwise_cross_map_compare.py", "sha256": "5052daee6f6aab4a9b11d5a059d489989506197d1bbccfcadcbd6b5f8daf63d8"},
+    {"path": "benchmarks/clean_slate_aer/mixed_phase_always_ready_metrics.py", "sha256": "86b31ecffbafee90e4e296f1056cd2f863b92d64b398f52103a3990c8ec9af53"},
+    {"path": "benchmarks/clean_slate_aer/phase_metrics.py", "sha256": "cbfa467c90e6e897d15d9b575dd2d189dc85deb1371649fb80f20cd11284ac3b"},
+    {"path": "benchmarks/clean_slate_aer/timing_pair_metrics.py", "sha256": "7a50372c099b21d7d4b2db7a7f1f6e06bf56ffd92d77bcc3541547779d2d3d39"}
+  ],
   "test_receipts": [
     {"path": "benchmarks/clean_slate_aer/receipts/a1_self_test.json", "sha256": "98761ba8aeb2ea201156dd6e2e92bb58a9d40de6332cd44cf4cd3f6f088dc798"},
     {"path": "benchmarks/clean_slate_aer/receipts/a1_neutrality_self_test.json", "sha256": "86cbf9eb2fcd42db7712257a12f0ee1e11d1fe23de33deaa55f9258e48e1867e"}

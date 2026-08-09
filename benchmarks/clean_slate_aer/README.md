@@ -213,9 +213,9 @@ repository is clean. It reads the generator, v4 preparer, clean TB, runners,
 official 50-run full and 22-run capacity manifests, golden fixture, and
 analyzers from a Git commit or tree object and records their SHA-256 values.
 The trusted current policy pins the canonical A1 generator 4.0, preparer, clean
-TB, full-50 manifest, capacity-22 manifest, golden fixture, and self-tests by
-exact SHA-256. A historical release needs a separate trusted policy and is not
-authorized by this tool build.
+TB, full-50 manifest, capacity-22 manifest, golden fixture, self-tests, and the
+exact ordered runner/analyzer path-and-SHA lists. A historical release needs a
+separate trusted policy and is not authorized by this tool build.
 Every tracked `tb/clean/native/*_binding.sv` is required in the release's
 `native_bindings` hash list. The trusted candidate PPA registry freezes the
 exact candidate set, tops, parameters, defines, tool scripts, filelists, and
@@ -229,10 +229,14 @@ dangling symlinks are rejected. Publication uses a securely created same-folder
 temporary inode, `fsync`, and atomic hard-link no-replace publication.
 
 Generation and validation are fail-closed on any tracked or untracked dirty
-path. Artifact paths under `results/` or `logs/`, and `*.log` artifacts, are
-rejected. Self-declared PASS markers are not evidence. Trusted, immutable
-receipt blobs bind canonical commands, exit status, required markers, and exact
-log SHA-256; validation re-executes each command and compares the captured log.
+path. Validation also requires the current clean `HEAD` tree to equal the bound
+tree, so executable evidence cannot come from a different checkout. Artifact
+paths under `results/` or `logs/`, and `*.log` artifacts, are rejected.
+Self-declared PASS markers are not evidence. Trusted, immutable receipt blobs
+bind canonical commands, exit status, required markers, and exact log SHA-256;
+validation re-executes each command using the absolute current Python
+interpreter with `-I -B` and a fresh minimal environment that does not inherit
+`PATH`, `PYTHONPATH`, or other caller settings, then compares the captured log.
 See `benchmark_release.py generate --help` and
 `benchmark_release.schema.json` for the required inputs and interchange schema.
 

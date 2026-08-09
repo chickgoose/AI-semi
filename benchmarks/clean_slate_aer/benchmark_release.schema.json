@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/aer-address-only-benchmark-release-v5.schema.json",
+  "$id": "https://example.invalid/aer-address-only-benchmark-release-v6.schema.json",
   "title": "Detached address-only AER benchmark release",
   "type": "object",
   "additionalProperties": false,
@@ -10,7 +10,7 @@
     "official_manifests", "golden", "trace_abi", "analyzers", "test_receipts"
   ],
   "properties": {
-    "schema": {"const": "aer-address-only-benchmark-release-v5"},
+    "schema": {"const": "aer-address-only-benchmark-release-v6"},
     "release_kind": {"const": "current"},
     "binding": {
       "type": "object",
