@@ -219,6 +219,10 @@ trust anchor: the tool and policy both pin its absolute path and executable
 SHA-256, and every Git subprocess uses that path with a fresh, sanitized
 environment. A historical release needs a separate trusted policy and is not
 authorized by this tool build.
+The canonical tool closure is the generator and preparer plus the ordered
+`runners`, `analyzers`, and `tool_helpers` inventories. It includes the A7
+runner and the pairwise cross-map shared shell helper as well as every
+repo-local script directly sourced or executed by a canonical runner.
 Every tracked `tb/clean/native/*_binding.sv` is required in the release's
 `native_bindings` hash list. The trusted candidate PPA registry freezes the
 exact candidate set, tops, parameters, defines, tool scripts, filelists, and
@@ -243,6 +247,16 @@ interpreter with `-I -B` and a fresh minimal environment that does not inherit
 exist only in a secure temporary snapshot materialized from the bound Git tree,
 never in the index or working tree; cleanup must complete before validation can
 succeed. The captured log is then compared with the immutable receipt.
+The manifest deliberately separates deployable `analyzers`/`tool_helpers`
+from `executed_receipts`: phase, timing-pair, and cross-map analyzers are
+inventory unless a separately listed immutable receipt actually executes them.
+
+`bootstrap` records the validator's bound Git-blob content SHA-256 and the
+absolute path/content SHA-256 of Git and `sys.executable`. Git and Python are
+external trust anchors that must be verified by the release operator. The
+validator can bind the version of itself stored in the release tree, but it
+does not claim to self-attest correctly if the executing validator itself has
+already been maliciously modified.
 See `benchmark_release.py generate --help` and
 `benchmark_release.schema.json` for the required inputs and interchange schema.
 
