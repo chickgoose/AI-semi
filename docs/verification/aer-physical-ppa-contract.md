@@ -54,6 +54,10 @@ official external-candidate score, or a decision to adopt that candidate.
 A comparison is valid only when every candidate is charged for the same complete
 logical service and physical boundary. Freeze and record all of the following:
 
+Address-only candidates additionally use the exact TX-link-RX boundary, free
+wiring whitelist, and machine-readable pin/codec/activity record in
+[`aer-address-only-full-link-qualification.md`](aer-address-only-full-link-qualification.md).
+
 1. logical event semantics, source count, and accepted/delivered-event rules;
 2. normalized logical retire width, or all serializer/deserializer cycles, pins,
    buffering, and codec logic required to reach that width;
