@@ -35,7 +35,7 @@ families that an existing design already solves.
 | throughput above one event/cycle | uniform 1.25/1.5/2.0 and 16-way burst | completed logical events/cycle plus physical pin-cycle efficiency |
 
 The exact common input is
-`benchmarks/clean_slate_aer/manifest.neutrality-n16.json`: 48 N=16,
+`benchmarks/clean_slate_aer/manifest.neutrality-n16.json`: 50 N=16,
 sink-always-ready traces. Each candidate must use the same generated JSONL SHA.
 The generator regression gate verifies determinism, one occurrence per
 source/cycle, fixed coordinate-spike semantics, matched burst histograms,
@@ -69,7 +69,7 @@ achieved mean load, peak rate, and aggregation group.
 
 ## Deliberately separate suites and remaining gaps
 
-The frozen 48-run core keeps the sink always ready because current candidates
+The frozen 50-run core keeps the sink always ready because current candidates
 do not expose equivalent output backpressure. Backpressure shock remains an
 optional capability suite and cannot award or remove points from candidates
 that lack that same external contract.

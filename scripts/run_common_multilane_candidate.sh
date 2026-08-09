@@ -50,8 +50,8 @@ index = json.loads((root / "generation-index.json").read_text(encoding="utf-8"))
 for run in index["runs"]:
     print(root / run["trace_file"])' "$trace_root"
 )
-[[ "${#generated_traces[@]}" -eq 20 ]] || {
-  printf 'expected exactly 20 indexed multi-lane traces, found %d\n' \
+[[ "${#generated_traces[@]}" -eq 22 ]] || {
+  printf 'expected exactly 22 indexed multi-lane traces, found %d\n' \
     "${#generated_traces[@]}" >&2
   exit 1
 }

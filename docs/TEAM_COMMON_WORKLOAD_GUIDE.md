@@ -45,17 +45,18 @@ the candidate and its PPA boundary.
 | trace `moving_hotspot` | one or several hot sources move by phase | Can the design track nonstationary congestion without starving mice? |
 | trace `rotating_victim` | every source becomes the low-rate victim in turn | Is service sensitive to address/priority position? |
 | trace `phase_transition` | sparse, near-saturation, overload, post-sparse probe, zero-injection drain | How fast do backlog and normal sparse latency recover? |
+| trace `mixed_phase_always_ready` | count-matched burst/smooth and sustained/rotating phases followed by spatial A/B/A replay without reset | Do temporal fan-in, partition imbalance, address mapping, or prior history leave persistent performance bias? |
 | optional `optional_multilane_independent_stall` | rotating four-source bursts with a different deterministic stall phase per retire lane | Does each lane hold stable independently while other lanes continue? |
 
 The deterministic generator also supports manifest-controlled `basic_sparse`,
 `basic_simultaneous`, `uniform`, `elephant_mouse`, `global_fanin`,
 `local_cluster`, `distributed_burst`, `retrigger`, `timing_pair`,
 `backpressure_shock`, `rate_shape`, `matched_spatial`, `moving_hotspot`,
-`rotating_victim`, and `phase_transition`. Use this trace path for final
+`rotating_victim`, `phase_transition`, and `mixed_phase_always_ready`. Use this trace path for final
 cross-candidate comparisons:
 the complete occurrence stream is generated before any DUT `ready` is observed.
 
-The official screening input is the 48-run N=16
+The official screening input is the 50-run N=16
 `manifest.neutrality-n16.json`, not the fixed-source built-in SV tests. It keeps
 locality workloads because a spatial design winning them is a legitimate
 advantage, while adding orthogonal temporal, dynamic-hotspot, recovery,
@@ -128,9 +129,9 @@ global-fan-in traffic. These are measured structural limits while accepted-event
 correctness remains PASS.
 
 Raw cluster2 later passed the legacy 18-run common multi-lane slice through a
-stateless address decoder. That result is historical evidence, not generator-v3
-qualification: the frozen address-only suite is now 48 runs and its lane slice
-is 20 runs, so every reference and new candidate must be rerun on the new trace
+stateless address decoder. That result is historical evidence, not generator-v4
+qualification: the frozen address-only suite is now 50 runs and its lane slice
+is 22 runs, so every reference and new candidate must be rerun on the new trace
 hashes before ranking.
 
 ## 5. Repository map
@@ -227,10 +228,10 @@ AER_SIMULATOR=xrun \
 ```
 
 The multi-lane manifest is not a DREC workload. Single-lane candidates consume
-the same 20 traces and expose their natural saturation behavior. Only the
+the same 22 traces and expose their natural saturation behavior. Only the
 independent-lane stall test is optional and capability-gated.
 
-Run all 20 lane-capacity traces on a historical candidate already registered in
+Run all 22 lane-capacity traces on a historical candidate already registered in
 the common clean runner (for example Hyeonsu's server-side
 `rotation-priority` entry):
 

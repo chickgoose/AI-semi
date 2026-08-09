@@ -165,6 +165,7 @@ coverage.
 | `limit_moving_hotspot` | one or more hot regions move at frozen dwell boundaries | adaptation delay, hotspot handoff, dynamic congestion |
 | `limit_rotating_victim` | every source becomes a low-rate victim under aggressor load | fixed-priority sensitivity, starvation, HOL effects |
 | `limit_phase_transition` | sparse, near-saturation, overload, post-sparse probe, then zero-injection drain | backlog growth, hysteresis, sparse-latency recovery, recovery-to-zero |
+| `limit_mixed_phase_always_ready` | matched burst/smooth and sustained/rotating demand plus spatial A/B/A replay in one no-reset trace | temporal fan-in, partition imbalance, mapping sensitivity, state pollution, and hysteresis |
 | `limit_scale` | identical normalized profiles at 16, 64, and 256 sources | area/Fmax/power and latency scaling |
 | `limit_pin_budget` | fixed physical data/control pin budget | events/pin-cycle and codec PPA |
 

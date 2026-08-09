@@ -67,7 +67,7 @@ actual `event_count`, so achieved load is always auditable.
 
 The example manifest includes one illustrative run per workload family plus
 three `uniform` points for a load sweep. The official full suite is the frozen
-48-run N=16 manifest described below:
+50-run N=16 manifest described below:
 
 - `basic_sparse`: deterministic low-count sanity events across the geometry.
 - `basic_simultaneous`: several sources with the exact same occurrence cycle.
@@ -91,6 +91,9 @@ three `uniform` points for a load sweep. The official full suite is the frozen
   aggressor traffic remains active.
 - `phase_transition`: sparse, near-saturation, overload, post-overload sparse
   probes, and a zero-injection drain phase in one trace.
+- `mixed_phase_always_ready`: one no-reset trace that pairs Bernoulli versus
+  count-matched smooth traffic, sustained versus rotating partitions, and a
+  spatial A/B/A replay to expose history, hysteresis, and mapping sensitivity.
 
 `source_permutation` is a generator-level metamorphic control, not a candidate
 feature. It supports identity, affine bijections, mirror, rotate, transpose,
@@ -119,7 +122,7 @@ event count, declared/actual mean load, peak events/cycle, report group, and
 trace SHA256. `generation-index.json` summarizes the complete
 invocation. Generated traces are outputs and should not be committed here.
 
-The committed `fixtures/neutrality_n16_golden.json` freezes all 48 expected
+The committed `fixtures/neutrality_n16_golden.json` freezes all 50 expected
 event counts, achieved loads, peak rates, report groups, and SHA256 values. The
 neutrality self-test fails if a generator change silently changes any official
 trace.
@@ -140,7 +143,7 @@ change changes a stochastic trace.
 ## Frozen N=16 candidate-neutral suite
 
 [manifest.neutrality-n16.json](manifest.neutrality-n16.json) is the common
-exact-trace suite for candidate comparison. It has 48 sink-always-ready runs,
+exact-trace suite for candidate comparison. It has 50 sink-always-ready runs,
 uses the shared N=16 geometry supported by the current candidates, fixes the
 logical event to a coordinate-address spike, and never emits two occurrences
 from the same logical source in one cycle. It includes:
@@ -152,6 +155,7 @@ from the same logical source in one cycle. It includes:
 - rotating starvation victims under identity and affine address mappings;
 - exhaustive pairwise address contention under identity and affine mappings;
 - sparse-to-overload-to-post-sparse-to-drain phase transitions;
+- no-reset mixed temporal/spatial phases under identity and bit-reverse maps;
 - cross-source timing pairs under independent background traffic;
 - legacy AER fan-in, elephant/mouse, and retrigger bottlenecks with relabeling
   controls.
