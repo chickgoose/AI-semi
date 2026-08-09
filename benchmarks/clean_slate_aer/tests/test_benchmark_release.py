@@ -34,10 +34,16 @@ class BenchmarkReleaseTest(unittest.TestCase):
             preparer="bench/preparer.py",
             testbench="tb/clean_tb.sv",
             native_bindings=(
+                "tb/clean/native/a7_parallel_event_compactor_binding.sv",
+                "tb/clean/native/a7_replicated_selector_binding.sv",
                 "tb/clean/native/aer_ganghee_cluster2_binding.sv",
                 "tb/clean/native/aer_ganghee_native_binding.sv",
             ),
-            synth_ppa_filelists=("synth/design.f",),
+            synth_ppa_filelists=(
+                "tb/filelists/baseline.f",
+                "tb/filelists/a23_ee430.f",
+                "tb/filelists/a7_k4_structural.f",
+            ),
             runners=("scripts/run_clean.sh", "scripts/run_capacity.sh"),
             full_manifest="bench/manifest.full.json",
             capacity_manifest="bench/manifest.capacity.json",
@@ -121,6 +127,14 @@ class BenchmarkReleaseTest(unittest.TestCase):
             "endmodule\n",
         )
         self.write(
+            "tb/clean/native/a7_parallel_event_compactor_binding.sv",
+            "module a7_parallel_event_compactor_binding; endmodule\n",
+        )
+        self.write(
+            "tb/clean/native/a7_replicated_selector_binding.sv",
+            "module a7_replicated_selector_binding; endmodule\n",
+        )
+        self.write(
             "tb/clean/native/aer_ganghee_cluster2_binding.sv",
             "module aer_ganghee_cluster2_binding; endmodule\n",
         )
@@ -129,7 +143,16 @@ class BenchmarkReleaseTest(unittest.TestCase):
             "module aer_ganghee_native_binding; endmodule\n",
         )
         self.write("rtl/design.sv", "module design; endmodule\n")
-        self.write("synth/design.f", "rtl/design.sv\n")
+        self.write("tb/filelists/baseline.f", "rtl/design.sv\n")
+        self.write("tb/filelists/a23_ee430.f", "rtl/design.sv\n")
+        self.write("tb/filelists/a7_k4_structural.f", "rtl/design.sv\n")
+        self.write(
+            "tb/filelists/a7_parallel_event_compactor.f",
+            "rtl/design.sv\n"
+            "tb/clean/native/a7_parallel_event_compactor_binding.sv\n"
+            "tb/clean/native/a7_replicated_selector_binding.sv\n",
+        )
+        self.write("tb/clean/files.f", "rtl/design.sv\n")
         self.write("scripts/run_clean.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write("scripts/run_capacity.sh", "#!/usr/bin/env bash\nexit 0\n")
         self.write("bench/manifest.full.json", json.dumps({"runs": full_runs}) + "\n")
@@ -393,6 +416,10 @@ class BenchmarkReleaseTest(unittest.TestCase):
         )
         for entry in manifest["native_bindings"]:
             self.assertRegex(entry["sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(
+            [entry["path"] for entry in manifest["synth_ppa_filelists"]],
+            list(self.inputs.synth_ppa_filelists),
+        )
 
     def test_omitted_native_binding_is_rejected(self) -> None:
         incomplete = benchmark_release.ReleaseInputs(
@@ -410,17 +437,49 @@ class BenchmarkReleaseTest(unittest.TestCase):
 
     def test_native_binding_in_synth_ppa_filelist_is_rejected(self) -> None:
         self.write(
-            "synth/design.f",
+            "tb/filelists/baseline.f",
             "rtl/design.sv\n"
             "tb/clean/native/aer_ganghee_native_binding.sv\n",
         )
-        self.git("add", "synth/design.f")
+        self.git("add", "tb/filelists/baseline.f")
         self.git("commit", "-qm", "contaminate synth boundary")
         with self.assertRaisesRegex(
             benchmark_release.ReleaseError,
             "native binding is forbidden in synth/PPA sources",
         ):
             self.generate()
+
+    def test_a7_simulation_binding_filelist_is_not_synth_ppa(self) -> None:
+        bad = benchmark_release.ReleaseInputs(
+            **{
+                **self.inputs.__dict__,
+                "synth_ppa_filelists": (
+                    "tb/filelists/a7_parallel_event_compactor.f",
+                ),
+            }
+        )
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError,
+            "native binding is forbidden in synth/PPA sources",
+        ):
+            benchmark_release.generate_manifest(
+                self.repo, self.base / "a7-simulation.json", "commit", bad
+            )
+
+    def test_clean_verification_filelist_is_not_synth_ppa(self) -> None:
+        bad = benchmark_release.ReleaseInputs(
+            **{
+                **self.inputs.__dict__,
+                "synth_ppa_filelists": ("tb/clean/files.f",),
+            }
+        )
+        with self.assertRaisesRegex(
+            benchmark_release.ReleaseError,
+            "verification filelist cannot be declared as synth/PPA",
+        ):
+            benchmark_release.generate_manifest(
+                self.repo, self.base / "clean-verification.json", "commit", bad
+            )
 
     def test_native_binding_hash_tampering_is_rejected(self) -> None:
         _, manifest = self.generate()
