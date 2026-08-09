@@ -20,7 +20,7 @@
     "metrics"
   ],
   "properties": {
-    "schema_version": {"const": 3},
+    "schema_version": {"const": 4},
     "qualification_id": {"type": "string", "minLength": 1},
     "status": {"enum": ["freeze_candidate", "frozen"]},
     "candidate": {
@@ -223,9 +223,9 @@
       "additionalProperties": false,
       "required": [
         "tool_config", "sdc", "library", "pvt_rc_corner",
+        "synthesis_command", "hierarchy_source", "inventory",
         "post_elaboration_report", "synthesis_hierarchy_report",
-        "synthesis_evidence", "mapped_netlist", "mapped_hierarchy_inventory",
-        "generated_feature_inventory", "area_report", "stage_report",
+        "synthesis_evidence", "mapped_netlist", "area_report", "stage_report",
         "setup_report", "hold_report", "route_report",
         "unconstrained_report", "drc_report", "results"
       ],
@@ -234,12 +234,13 @@
         "sdc": {"$ref": "#/$defs/artifact"},
         "library": {"$ref": "#/$defs/artifact"},
         "pvt_rc_corner": {"type": "string", "minLength": 1},
+        "synthesis_command": {"$ref": "#/$defs/artifact"},
+        "hierarchy_source": {"$ref": "#/$defs/artifact"},
+        "inventory": {"$ref": "#/$defs/artifact"},
         "post_elaboration_report": {"$ref": "#/$defs/artifact"},
         "synthesis_hierarchy_report": {"$ref": "#/$defs/artifact"},
         "synthesis_evidence": {"$ref": "#/$defs/artifact"},
         "mapped_netlist": {"$ref": "#/$defs/artifact"},
-        "mapped_hierarchy_inventory": {"$ref": "#/$defs/artifact"},
-        "generated_feature_inventory": {"$ref": "#/$defs/artifact"},
         "area_report": {"$ref": "#/$defs/artifact"},
         "stage_report": {"$ref": "#/$defs/artifact"},
         "setup_report": {"$ref": "#/$defs/artifact"},
@@ -276,7 +277,8 @@
         "trace", "prepared_input", "format", "activity_artifact",
         "hierarchy_root", "coverage_percent", "coverage_threshold_percent", "window_start_cycle",
         "window_end_cycle_exclusive", "measurement_cycles", "clock_mhz",
-        "operating_point", "power_evidence", "average_power_mw",
+        "operating_point", "test_id", "seed", "errors",
+        "power_evidence", "average_power_mw",
         "delivered_events", "power_report", "common_result"
       ],
       "properties": {
@@ -294,6 +296,9 @@
         "measurement_cycles": {"type": "integer", "minimum": 1},
         "clock_mhz": {"type": "number", "exclusiveMinimum": 0},
         "operating_point": {"enum": ["sparse", "near_saturation"]},
+        "test_id": {"type": "string", "minLength": 1},
+        "seed": {"type": "integer", "minimum": 0},
+        "errors": {"const": 0},
         "power_evidence": {"enum": ["activity_annotated", "vectorless_screening"]},
         "average_power_mw": {"type": "number", "minimum": 0},
         "delivered_events": {"type": "integer", "minimum": 1},
@@ -335,13 +340,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name", "charged_block", "hierarchy_path", "evidence"
+        "name", "charged_block", "hierarchy_path"
       ],
       "properties": {
         "name": {"type": "string", "minLength": 1},
         "charged_block": {"type": "string", "minLength": 1},
-        "hierarchy_path": {"type": "string", "minLength": 1},
-        "evidence": {"$ref": "#/$defs/artifact"}
+        "hierarchy_path": {"type": "string", "minLength": 1}
       }
     },
     "pin": {

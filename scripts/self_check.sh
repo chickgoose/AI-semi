@@ -42,6 +42,8 @@ required=(
   benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
   benchmarks/physical_ppa/bracket_fmax.py
   benchmarks/physical_ppa/full_link_qualification.schema.json
+  benchmarks/physical_ppa/generate_full_link_inventory.py
+  benchmarks/physical_ppa/extract_full_link_evidence.py
   benchmarks/physical_ppa/validate_full_link_qualification.py
   benchmarks/physical_ppa/fixtures/ganghee_fixed_netlist_example.csv
   tb/clean/aer_bench_if.sv

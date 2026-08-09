@@ -1,6 +1,6 @@
 # Address-Only AER Full-Link and PPA-Boundary Qualification
 
-Status: **GO for gate implementation**, candidate-neutral schema v3, 2026-08-10.
+Status: **GO for gate implementation**, candidate-neutral schema v4, 2026-08-10.
 This releases the validator contract, not any candidate result. No record is
 ranked until that individual record passes schema validation, actual artifact
 digest verification, hierarchy/accounting closure, and all physical result
@@ -28,7 +28,7 @@ and checked by
 A missing or invalid field makes a row `NOT_QUALIFIED`; it does not become a
 zero-area or zero-power result.
 
-Schema v3 is intentionally fail-closed. The validator executes the schema's
+Schema v4 is intentionally fail-closed. The validator executes the schema's
 `required`, `type`, `const`, `enum`, bounds, uniqueness, and
 `additionalProperties: false` rules before checking cross-field invariants.
 Unknown result fields, wrong types, and incomplete nested evidence are therefore
@@ -36,7 +36,10 @@ rejected rather than ignored. Every evidence value is a `{path, sha256}` record
 relative to the qualification JSON. The validator reads the named file, rejects
 absolute or non-normalized paths, symlinks in the artifact path, and non-regular
 files, verifies that file metadata is unchanged across the read, and compares
-the SHA-256 against the bytes actually read.
+the SHA-256 against the bytes actually read. Every component from the artifact
+base directory to the filesystem root must also be non-symlink. One path and
+inode may serve only one evidence role, with one SHA snapshot; path reuse,
+hard-link reuse, or contradictory SHA records fail qualification.
 
 ## Logical event and completion
 
@@ -96,10 +99,12 @@ corner, SDC policy, and physical-flow effort apply to all candidates.
 Every record explicitly declares whether it contains physical codec,
 serializer, deserializer, buffer, CDC/clocking, and normalizer/adapter
 instances. Absence is represented by an empty declaration array; omission is
-invalid. Each present declaration names exactly one `charged_blocks` entry,
-matches its hierarchy path and hierarchy-evidence artifact record, and uses a
-compatible block kind. Conversely, every charged feature block must have exactly one
-declaration. A charged block cannot be reused to satisfy two declarations.
+invalid. Each present declaration names exactly one `charged_blocks` entry and
+matches its hierarchy path and compatible block kind. Conversely, every charged
+feature block must have exactly one declaration. A charged block cannot be
+reused to satisfy two declarations. Declarations do not carry a candidate-owned
+copy of hierarchy evidence; the trusted inventory producer supplies that side
+of the comparison.
 
 Serializer and deserializer declarations must either both be present or both be
 empty. A runtime-decoded link still requires separately charged encoder and
@@ -191,7 +196,11 @@ Each record freezes a strictly positive annotation-coverage threshold; measured
 coverage must meet or exceed it. A frozen ranked row additionally requires
 activity-annotated power and positive coverage. The power report and common
 functional result are opened and digest-verified like every other artifact;
-their entered SHA strings are not accepted as proof by themselves.
+their entered SHA strings are not accepted as proof by themselves. The trusted
+evidence extractor parses hierarchy root, annotation format/coverage, exact
+window and cycle count from the raw activity report. It also parses and compares
+candidate ID, test ID, seed, error count, delivered events, measurement cycles,
+and average power across the power and common-result reports.
 
 Reset, warm-up, and drain are included only when their cycles lie inside the
 frozen window. They must not be removed differently per candidate. A window with
@@ -225,18 +234,32 @@ the digest is checked against the actual stable-read bytes:
 - the candidate bundle inventory and ordered file list, each source named by the
   bundle, and per-charged-block hierarchy/declaration evidence.
 
-The mapped-hierarchy inventory is parsed, not merely hashed. Its synthesis top
-must equal the candidate top; its block-name set must exactly equal
-`charged_blocks`; and each block's kind, top, hierarchy path, and ordered source
-list must match. The union of charged source lists must exactly equal the
-candidate file list, so a compiled but uncharged source cannot hide in the
-bundle.
+The candidate does not author the authoritative mapped/feature inventories.
+[`generate_full_link_inventory.py`](../../benchmarks/physical_ppa/generate_full_link_inventory.py)
+is the flow-owned producer, and the validator independently reruns its pure
+production function. The canonical output records the producer hash, exact
+file-based command, and the SHA-bound bundle, file list, mapped netlist,
+hierarchy source, and synthesis-command inputs. The synthesis command in turn
+must close its exact tool config, SDC, file list, include files, generated IP,
+libraries, mapped-netlist output, and hierarchy output.
 
-The generated-feature hierarchy inventory is also parsed. Its complete set of
-`(name, category, charged_block, hierarchy_path)` tuples must exactly equal the
-codec, serializer, deserializer, buffer, CDC, and normalizer declaration set.
-Thus an undeclared generated serializer, FIFO/buffer, CDC, codec endpoint, or
-normalizer fails closure even when its source was otherwise bundled.
+The producer discovers every candidate-module instance reachable in the mapped
+structural netlist, maps modules back to verified bundle/generated-IP sources,
+and requires the hierarchy export to cover that discovered set exactly. The
+regenerated block set, paths, kinds, tops, and sources must equal
+`charged_blocks`; the regenerated feature tuples must equal the codec,
+serializer, deserializer, buffer, CDC, and normalizer declarations. Therefore a
+candidate cannot obtain a pass by deleting a serializer/FIFO/CDC from both its
+declaration and submitted inventory while it remains in the netlist.
+
+Physical numbers are not accepted from record fields or arbitrary “verified”
+text. [`extract_full_link_evidence.py`](../../benchmarks/physical_ppa/extract_full_link_evidence.py)
+parses canonical raw reports and emits producer-hash, command, raw-report SHA,
+and frozen-context bindings. The validator independently regenerates those JSON
+objects and derives mapped cells, area, pipeline stages, setup/hold WNS, route,
+unresolved/unconstrained/DRC counts, activity coverage/window, power, and common
+functional counts. Rehashing an edited canonical number without the matching
+raw report and trusted reproduction is rejected.
 
 The corresponding results must report a positive mapped-cell count and area,
 an explicit nonnegative pipeline-stage count, setup and hold WNS greater than or
@@ -251,7 +274,7 @@ Every ranked record freezes these groups before results are compared:
 
 | Group | Required fields |
 | --- | --- |
-| identity | schema v3, qualification ID/status, candidate ID, repository, immutable commit and bundle-inventory path/SHA |
+| identity | schema v4, qualification ID/status, candidate ID, repository, immutable commit and bundle-inventory path/SHA |
 | logical contract | address-only mode, source count/map artifact, one-pending-source rule, exact accept and delivery rules |
 | TB seam | normalized address/source widths and retire lanes, explicitly marked PPA-excluded |
 | synthesis boundary | full-link scope, synthesis top, verified ordered file list/bundle/config artifacts, parameters, defines, include paths, TX/link/RX inclusion |
@@ -260,8 +283,8 @@ Every ranked record freezes these groups before results are compared:
 | mapping | complete free-wiring whitelist entries; explicit no-runtime-decode-in-TB and zero-feature-binding-excluded assertions |
 | feature declarations | explicit codec/serializer/deserializer/buffer/CDC/normalizer arrays with 1:1 charged-block, hierarchy, and evidence mapping |
 | charged logic | mandatory TX/link/RX and every physical feature block with top/hierarchy evidence, exact source ownership, and area/timing/activity/power inclusion |
-| physical flow | library/PVT/RC, SDC/tool config, verified elaboration/netlist/reports, parsed mapped/generated inventories, and closed result counts |
-| activity | verified trace/input/activity/power/common-result artifacts, exact top/window/frequency, positive frozen coverage threshold, delivered count, average power |
+| physical flow | trusted producer/extractor hashes and commands; SHA-bound tool config/SDC/filelist/include/generated-IP/library/netlist/hierarchy closure; regenerated inventory and physical results |
+| activity | raw and regenerated trace/input/activity/power/common-result evidence; candidate/test/seed/errors; exact top/window/frequency; positive frozen coverage threshold; delivered count and power |
 | derived metrics | events/cycle, both events/pin-cycle values, and energy per delivered event |
 
 ## Qualification checklist
@@ -270,9 +293,12 @@ Every ranked record freezes these groups before results are compared:
       TB-only identity enters the DUT.
 - [ ] The source mapping is bijective and its frozen hash matches the run.
 - [ ] Every evidence artifact is a normalized relative path plus SHA-256; it is a
-      regular non-symlink file whose actual stable-read digest matches.
+      regular non-symlink file whose actual stable-read digest matches; its base
+      ancestors are non-symlinks and its path/inode is not reused by another role.
 - [ ] The verified bundle inventory and ordered file list contain exactly the
       same source paths in the same order.
+- [ ] The synthesis command binds its tool config, SDC, file list, every include,
+      generated IP and library, plus mapped-netlist and hierarchy outputs.
 - [ ] The simulation binding and the physical synthesis top are named
       separately.
 - [ ] The PPA top includes synthesizable TX, link state, and RX/egress.
@@ -284,12 +310,12 @@ Every ranked record freezes these groups before results are compared:
 - [ ] Codec, serializer, deserializer, buffer, CDC/clocking, and
       normalizer/adapter arrays are all present, including explicit empty arrays.
 - [ ] Every declared feature and every charged feature block form one unique
-      bidirectional mapping with identical hierarchy path and evidence hash.
-- [ ] Parsed mapped hierarchy exactly closes against charged blocks and their
-      source lists; the charged-source union exactly closes against the file list.
-- [ ] Parsed generated-feature hierarchy exactly equals all physical feature
-      declarations, with no hidden serializer, FIFO/buffer, CDC, codec, or
-      normalizer.
+      bidirectional mapping with the identical trusted-produced hierarchy path.
+- [ ] The flow-owned producer independently regenerates mapped hierarchy and
+      source ownership from netlist/hierarchy/sources and exactly closes against
+      charged blocks.
+- [ ] The regenerated feature inventory exactly equals all physical feature
+      declarations, with no hidden serializer, FIFO/buffer, CDC, codec, or normalizer.
 - [ ] Every required codec endpoint is present in the charged block list and
       included in area, timing, activity, and power.
 - [ ] Native-boundary and link-cut pins are enumerated bit-for-bit; clock,
@@ -298,7 +324,8 @@ Every ranked record freezes these groups before results are compared:
 - [ ] Post-elaboration top, port, register/memory, and unresolved-reference
       reports match the frozen source/config hashes.
 - [ ] Synthesis hierarchy/netlist, area/stage, setup/hold, route,
-      unconstrained-path, DRC, power, and common-result evidence hashes exist.
+      unconstrained-path, DRC, activity, power, and common-result raw evidence is
+      independently extracted and matches the canonical JSON and record fields.
 - [ ] Setup/hold WNS are nonnegative, detailed route is complete, and unresolved
       references, unconstrained paths, and DRC violations are all zero.
 - [ ] Correctness proves zero loss, duplicate, corruption, and phantom delivery
