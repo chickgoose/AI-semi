@@ -2,10 +2,10 @@
 """Analyze a provenance-bound mixed-phase, always-ready AER result.
 
 The analyzer deliberately consumes the generated per-run manifest rather than
-accepting phase boundaries on the command line.  The manifest names and hashes
-the trace, and its phase provenance is bound to that same hash.  Source overrun
-is reported as capacity loss; malformed identity accounting, incomplete drain,
-and right-censored events fail closed.
+accepting phase boundaries on the command line.  The workload itself freezes
+the 4x4/4096 phase schedule, while the manifest names and hashes the trace.
+Source overrun is reported as capacity loss; malformed identity accounting,
+incomplete drain, and right-censored events fail closed.
 """
 
 from __future__ import annotations
@@ -33,13 +33,22 @@ PHASE_NAMES = (
     "s_rotating",
     "h_a",
     "h_b",
-    "h_a_return",
+    "h_a_replay",
+)
+FROZEN_PHASE_BOUNDS = (
+    ("u_bernoulli", 0, 640),
+    ("u_smooth", 640, 1280),
+    ("s_persistent", 1280, 1536),
+    ("s_rotating", 1536, 1792),
+    ("h_a", 1792, 2560),
+    ("h_b", 2560, 3328),
+    ("h_a_replay", 3328, 4096),
 )
 PAIR_SPECS = (
     ("uniform_temporal", "u_bernoulli", "u_smooth"),
     ("sustained_temporal", "s_persistent", "s_rotating"),
     ("spatial_b_vs_a", "h_b", "h_a"),
-    ("spatial_return_vs_a", "h_a_return", "h_a"),
+    ("spatial_replay_vs_a", "h_a_replay", "h_a"),
 )
 
 
@@ -88,43 +97,8 @@ def _percentile(values: Iterable[int], percentile: int) -> int | None:
     return ordered[math.ceil(percentile * len(ordered) / 100) - 1]
 
 
-def _phase_provenance(metadata: dict[str, Any], stim_cycles: int) -> list[Phase]:
-    provenance = metadata.get("phase_provenance")
-    if not isinstance(provenance, dict) or provenance.get("schema_version") != 1:
-        raise MixedPhaseMetricError("phase_provenance schema_version must be 1")
-    if provenance.get("boundary_basis") != "trace_occurrence_cycle":
-        raise MixedPhaseMetricError("phase boundaries must use trace_occurrence_cycle")
-    if provenance.get("trace_sha256") != metadata.get("trace_sha256"):
-        raise MixedPhaseMetricError("phase provenance is not bound to the trace SHA256")
-    if provenance.get("generator_version") != metadata.get("generator_version"):
-        raise MixedPhaseMetricError("phase provenance generator version mismatch")
-    raw_phases = provenance.get("phases")
-    if not isinstance(raw_phases, list) or len(raw_phases) != len(PHASE_NAMES):
-        raise MixedPhaseMetricError("phase provenance must contain the seven frozen phases")
-    phases: list[Phase] = []
-    cursor = 0
-    for index, raw in enumerate(raw_phases):
-        if not isinstance(raw, dict) or raw.get("name") != PHASE_NAMES[index]:
-            raise MixedPhaseMetricError("phase names/order do not match the frozen mixed format")
-        start = _integer(raw.get("start_cycle"), f"{PHASE_NAMES[index]}.start_cycle")
-        end = _integer(
-            raw.get("end_cycle_exclusive"),
-            f"{PHASE_NAMES[index]}.end_cycle_exclusive",
-            minimum=1,
-        )
-        if start != cursor or end <= start:
-            raise MixedPhaseMetricError("phase boundaries must be positive and gap-free")
-        phases.append(Phase(PHASE_NAMES[index], start, end))
-        cursor = end
-    if cursor != stim_cycles:
-        raise MixedPhaseMetricError("phase boundaries must cover exactly stim_cycles")
-    if phases[0].cycles != phases[1].cycles:
-        raise MixedPhaseMetricError("uniform matched phases must have equal duration")
-    if phases[2].cycles != phases[3].cycles:
-        raise MixedPhaseMetricError("sustained matched phases must have equal duration")
-    if len({phase.cycles for phase in phases[4:]}) != 1:
-        raise MixedPhaseMetricError("H-A/B/A-return phases must have equal duration")
-    return phases
+def _frozen_phases() -> list[Phase]:
+    return [Phase(name, start, end) for name, start, end in FROZEN_PHASE_BOUNDS]
 
 
 def _validate_manifest(manifest_path: Path) -> tuple[dict[str, Any], Path, list[Phase], int, int, int]:
@@ -140,19 +114,23 @@ def _validate_manifest(manifest_path: Path) -> tuple[dict[str, Any], Path, list[
         raise MixedPhaseMetricError("run.geometry must be an object")
     width = _integer(geometry.get("width"), "run.geometry.width", minimum=1)
     height = _integer(geometry.get("height"), "run.geometry.height", minimum=1)
+    if (width, height, stim_cycles) != (4, 4, 4096):
+        raise MixedPhaseMetricError("mixed phase requires frozen 4x4 geometry and 4096 cycles")
     if run.get("sink") != {"mode": "always"}:
         raise MixedPhaseMetricError("mixed-phase analysis requires sink.mode=always")
     if metadata.get("generation_contract") != "trace_is_fully_generated_before_any_DUT_ready_is_observed":
         raise MixedPhaseMetricError("open-loop generation contract is missing")
     if metadata.get("event_identity_mode") != "address_only":
         raise MixedPhaseMetricError("event_identity_mode must be address_only")
-    if metadata.get("dut_payload_fields") != ["x", "y", "polarity", "event_type"]:
-        raise MixedPhaseMetricError("DUT payload fields do not match address-only AER semantics")
+    if metadata.get("dut_address_fields") != ["logical_source"]:
+        raise MixedPhaseMetricError("logical_source must be the address-only DUT field")
+    if metadata.get("dut_payload_fields") != []:
+        raise MixedPhaseMetricError("address-only AER must not declare DUT payload fields")
     if metadata.get("dut_sideband_fields") != ["logical_source"]:
         raise MixedPhaseMetricError("logical_source must be the only DUT sideband identity")
-    tb_only = metadata.get("tb_only_fields")
-    if not isinstance(tb_only, list) or "canonical_rank" not in tb_only:
-        raise MixedPhaseMetricError("canonical_rank must be declared TB-only")
+    trace_metadata = metadata.get("trace_metadata_fields")
+    if trace_metadata != ["x", "y", "polarity", "event_type"]:
+        raise MixedPhaseMetricError("coordinate annotations must remain trace metadata")
     parameters = run.get("parameters")
     if not isinstance(parameters, dict) or "fixed_polarity" not in parameters or "fixed_event_type" not in parameters:
         raise MixedPhaseMetricError("address-only run must freeze polarity and event_type")
@@ -166,7 +144,7 @@ def _validate_manifest(manifest_path: Path) -> tuple[dict[str, Any], Path, list[
         raise MixedPhaseMetricError(f"cannot read trace {trace_path}: {exc}") from exc
     if trace_digest != metadata.get("trace_sha256"):
         raise MixedPhaseMetricError("trace SHA256 does not match generated manifest")
-    phases = _phase_provenance(metadata, stim_cycles)
+    phases = _frozen_phases()
     return metadata, trace_path, phases, stim_cycles, width, height
 
 
@@ -219,10 +197,6 @@ def _validate_trace(
         source_cycles.add((cycle, source))
         prior_cycle = cycle
         phase = _phase_for_cycle(phases, cycle)
-        if phase.name in {"h_a", "h_b", "h_a_return"}:
-            rank = row.get("canonical_rank")
-            if isinstance(rank, bool) or not isinstance(rank, int) or not 0 <= rank < source_count:
-                raise MixedPhaseMetricError("hotspot events require a valid TB-only canonical_rank")
         grouped[phase.name].append(row)
     return grouped
 
@@ -243,10 +217,22 @@ def _relative_stream(rows: Iterable[dict[str, Any]], phase: Phase, field: str) -
     return sorted((int(row["occurrence_cycle"]) - phase.start, int(row[field])) for row in rows)
 
 
+def _logical_permutation(metadata: dict[str, Any], source_count: int) -> list[int]:
+    permutation = metadata.get("logical_source_permutation")
+    if (not isinstance(permutation, list) or len(permutation) != source_count
+            or any(isinstance(value, bool) or not isinstance(value, int) for value in permutation)
+            or sorted(permutation) != list(range(source_count))):
+        raise MixedPhaseMetricError("logical_source_permutation must be a 16-source bijection")
+    return permutation
+
+
 def _validate_matched_trace(
     grouped: dict[str, list[dict[str, Any]]], phases: list[Phase], source_count: int,
+    metadata: dict[str, Any],
 ) -> dict[str, Any]:
     by_name = {phase.name: phase for phase in phases}
+    permutation = _logical_permutation(metadata, source_count)
+    inverse_permutation = {physical: logical for logical, physical in enumerate(permutation)}
     u_left, u_right = grouped["u_bernoulli"], grouped["u_smooth"]
     if len(u_left) != len(u_right) or _source_histogram(u_left, source_count) != _source_histogram(u_right, source_count):
         raise MixedPhaseMetricError("uniform pair does not match event count/source histogram")
@@ -255,22 +241,60 @@ def _validate_matched_trace(
             or _source_histogram(s_left, source_count) != _source_histogram(s_right, source_count)
             or _fan_in_histogram(s_left, by_name["s_persistent"]) != _fan_in_histogram(s_right, by_name["s_rotating"])):
         raise MixedPhaseMetricError("sustained pair does not match count/source/fan-in histograms")
-    hot_streams = {
-        name: _relative_stream(grouped[name], by_name[name], "canonical_rank")
-        for name in ("h_a", "h_b", "h_a_return")
-    }
-    if len({tuple(stream) for stream in hot_streams.values()}) != 1:
-        raise MixedPhaseMetricError("H-A/B/A-return canonical rank streams do not match")
+    expected_histogram = [64] * source_count
+    if (_source_histogram(s_left, source_count) != expected_histogram
+            or _source_histogram(s_right, source_count) != expected_histogram):
+        raise MixedPhaseMetricError("sustained phases must offer exactly 64 events per source")
+    for phase_name in ("s_persistent", "s_rotating"):
+        phase = by_name[phase_name]
+        per_cycle = collections.defaultdict(set)
+        for row in grouped[phase_name]:
+            relative = int(row["occurrence_cycle"]) - phase.start
+            per_cycle[relative].add(inverse_permutation[int(row["logical_source"])])
+        for relative in range(phase.cycles):
+            if phase_name == "s_persistent":
+                column = relative // 64
+            else:
+                column = relative % 4
+            expected = {column + 4 * row for row in range(4)}
+            if per_cycle[relative] != expected:
+                raise MixedPhaseMetricError(
+                    f"{phase_name} violates frozen column dwell/rotation at cycle {relative}"
+                )
+    map_a = [5, 6, 9, 10] + [source for source in range(16) if source not in {5, 6, 9, 10}]
+    map_b = [0, 5, 10, 15] + [source for source in range(16) if source not in {0, 5, 10, 15}]
+    inverse_a = {source: rank for rank, source in enumerate(map_a)}
+    inverse_b = {source: rank for rank, source in enumerate(map_b)}
+
+    def hotspot_rank_stream(name: str, inverse_map: dict[int, int]) -> list[tuple[int, int]]:
+        phase = by_name[name]
+        return [
+            (int(row["occurrence_cycle"]) - phase.start,
+             inverse_map[inverse_permutation[int(row["logical_source"])]])
+            for row in grouped[name]
+        ]
+
+    hot_streams = (
+        hotspot_rank_stream("h_a", inverse_a),
+        hotspot_rank_stream("h_b", inverse_b),
+        hotspot_rank_stream("h_a_replay", inverse_a),
+    )
+    if not hot_streams[0] == hot_streams[1] == hot_streams[2]:
+        raise MixedPhaseMetricError("H-A/B/A-replay canonical rank streams do not match")
+    for phase_name in ("h_a", "h_b", "h_a_replay"):
+        if _fan_in_histogram(grouped[phase_name], by_name[phase_name]) != {2: 768}:
+            raise MixedPhaseMetricError(f"{phase_name} must offer exactly two events per cycle")
     if _relative_stream(grouped["h_a"], by_name["h_a"], "logical_source") != _relative_stream(
-        grouped["h_a_return"], by_name["h_a_return"], "logical_source"
+        grouped["h_a_replay"], by_name["h_a_replay"], "logical_source"
     ):
-        raise MixedPhaseMetricError("H-A-return does not exactly replay H-A physical identity")
+        raise MixedPhaseMetricError("H-A-replay does not exactly replay H-A physical identity")
     return {
         "status": "pass",
         "uniform_exact_event_count_and_source_histogram": True,
         "sustained_exact_event_source_and_fan_in_histograms": True,
-        "hotspot_exact_canonical_rank_stream": True,
-        "hotspot_a_return_exact_physical_replay": True,
+        "sustained_frozen_dwell_and_rotation": True,
+        "hotspot_derived_rank_stream": True,
+        "hotspot_a_replay_exact_physical_replay": True,
     }
 
 
@@ -341,6 +365,45 @@ def _validate_events(
     return by_id, offset, observation_end
 
 
+def _validate_summary(
+    summary_path: Path | None, events: list[aggregate.Event], metadata: dict[str, Any]
+) -> dict[str, Any]:
+    if summary_path is None:
+        return {
+            "status": "not_provided",
+            "correctness_qualified": False,
+            "scoreboard_errors": None,
+            "conservation_validated": False,
+        }
+    runs = aggregate.read_runs([summary_path])
+    if len(runs) != 1:
+        raise MixedPhaseMetricError("summary CSV must contain exactly one run")
+    summary = runs[0]
+    first = events[0]
+    if (summary.candidate, summary.test, summary.seed, summary.load_pct) != first.run_key:
+        raise MixedPhaseMetricError("summary and event CSV run provenance do not match")
+    generated = len(events)
+    overrun = sum(event.event_state == "source_overrun" for event in events)
+    accepted = sum(event.accept_cycle is not None for event in events)
+    delivered = sum(event.delivery_cycle is not None for event in events)
+    if (summary.generated, summary.source_overrun, summary.accepted, summary.delivered) != (
+        generated, overrun, accepted, delivered
+    ):
+        raise MixedPhaseMetricError("summary counters do not match per-event accounting")
+    if generated != overrun + accepted or accepted != delivered:
+        raise MixedPhaseMetricError("complete-run generation/transport conservation failed")
+    if summary.stim_cycles != metadata["run"]["stim_cycles"]:
+        raise MixedPhaseMetricError("summary stim_cycles does not match run manifest")
+    return {
+        "status": "qualified_fail" if summary.errors else "qualified_pass",
+        "correctness_qualified": True,
+        "scoreboard_errors": summary.errors,
+        "conservation_validated": True,
+        "generated_equals_overrun_plus_accepted": True,
+        "accepted_equals_delivered": True,
+    }
+
+
 def _service_metrics(events: list[aggregate.Event], active_sources: set[int]) -> dict[str, Any]:
     deliveries: dict[int, list[int]] = collections.defaultdict(list)
     for event in events:
@@ -400,7 +463,16 @@ def _phase_metrics(
             for event in all_events
         )
         last_delivery = max((event.delivery_cycle - offset for event in delivered), default=phase.end - 1)
-        recovery = max(0, last_delivery - phase.end + 1)
+        phase_origin_drain = max(0, last_delivery - phase.end + 1)
+        backlog_at_end = backlog_by_cycle[phase.end - 1]
+        backlog_recovery = 0
+        if backlog_at_end:
+            next_zero = next(
+                (cycle for cycle in range(phase.end, len(backlog_by_cycle))
+                 if backlog_by_cycle[cycle] == 0),
+                None,
+            )
+            backlog_recovery = None if next_zero is None else next_zero - phase.end + 1
         result.append({
             "phase": phase.name,
             "start_cycle": phase.start,
@@ -429,9 +501,9 @@ def _phase_metrics(
             ),
             "backlog_at_start": backlog_by_cycle[phase.start - 1] if phase.start else 0,
             "backlog_peak": max(backlog_by_cycle[phase.start:phase.end], default=0),
-            "backlog_at_end": backlog_by_cycle[phase.end - 1],
-            "recovery_to_zero_after_phase_cycles": recovery,
-            "recovered_before_next_phase": recovery == 0,
+            "backlog_at_end": backlog_at_end,
+            "backlog_recovery_to_zero_cycles": backlog_recovery,
+            "phase_origin_last_delivery_after_boundary_cycles": phase_origin_drain,
         })
     if backlog_by_cycle[-1] != 0:
         raise MixedPhaseMetricError("complete event data do not recover backlog to zero")
@@ -462,22 +534,29 @@ def _matched_deltas(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "p99_latency_cycles_delta": _subtract(left["latency_cycles"]["p99"], right["latency_cycles"]["p99"]),
             "max_service_gap_cycles_delta": _subtract(left["service_gap_cycles"]["max_cycles"], right["service_gap_cycles"]["max_cycles"]),
             "backlog_peak_delta": left["backlog_peak"] - right["backlog_peak"],
-            "recovery_cycles_delta": left["recovery_to_zero_after_phase_cycles"] - right["recovery_to_zero_after_phase_cycles"],
+            "backlog_recovery_cycles_delta": _subtract(
+                left["backlog_recovery_to_zero_cycles"],
+                right["backlog_recovery_to_zero_cycles"],
+            ),
         })
     return result
 
 
-def analyze(manifest_path: Path, event_path: Path) -> dict[str, Any]:
+def analyze(
+    manifest_path: Path, event_path: Path, summary_path: Path | None = None
+) -> dict[str, Any]:
     metadata, trace_path, phases, stim_cycles, width, height = _validate_manifest(manifest_path)
     trace = _read_trace(trace_path)
     grouped = _validate_trace(trace, metadata, phases, stim_cycles, width, height)
-    matching = _validate_matched_trace(grouped, phases, width * height)
+    matching = _validate_matched_trace(grouped, phases, width * height, metadata)
     events = aggregate.read_events([event_path])
     by_id, offset, observation_end = _validate_events(
         events, trace, metadata, stim_cycles, width * height
     )
     phase_rows = _phase_metrics(phases, grouped, by_id, offset, observation_end)
+    summary_evidence = _validate_summary(summary_path, events, metadata)
     total_overrun = sum(row["source_overrun"] for row in phase_rows)
+    correctness_failure = bool(summary_evidence["scoreboard_errors"])
     first = events[0] if events else None
     return {
         "schema_version": 1,
@@ -498,10 +577,26 @@ def analyze(manifest_path: Path, event_path: Path) -> dict[str, Any]:
             "complete_uncensored_event_accounting": True,
         },
         "matched_trace_validation": matching,
+        "summary_evidence": summary_evidence,
         "classification": {
-            "analysis_status": "capacity_loss" if total_overrun else "pass",
-            "correctness_status": "pass",
-            "correctness_scope": "generated-event identity/accounting; source_overrun is excluded",
+            "analysis_status": (
+                "correctness_failure" if correctness_failure
+                else "capacity_loss_unqualified"
+                if total_overrun and not summary_evidence["correctness_qualified"]
+                else "correctness_not_qualified"
+                if not summary_evidence["correctness_qualified"]
+                else "capacity_loss" if total_overrun else "pass"
+            ),
+            "correctness_status": (
+                summary_evidence["status"]
+                if summary_evidence["correctness_qualified"]
+                else "not_qualified"
+            ),
+            "correctness_scope": (
+                "common summary errors plus exact event conservation"
+                if summary_evidence["correctness_qualified"]
+                else "not qualified without common summary error/conservation counters"
+            ),
             "capacity_status": "loss_observed" if total_overrun else "lossless",
             "capacity_loss_events": total_overrun,
             "capacity_loss_ratio": total_overrun / len(trace) if trace else 0.0,
@@ -516,10 +611,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-manifest", type=Path, required=True)
     parser.add_argument("--events", type=Path, required=True)
+    parser.add_argument("--summary", type=Path)
     parser.add_argument("-o", "--output", type=Path)
     args = parser.parse_args(argv)
     try:
-        result = analyze(args.run_manifest, args.events)
+        result = analyze(args.run_manifest, args.events, args.summary)
     except (MixedPhaseMetricError, aggregate.InputError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
