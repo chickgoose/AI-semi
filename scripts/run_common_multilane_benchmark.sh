@@ -38,6 +38,23 @@ analyze_pairwise() {
     --output "$result_root/$trace_stem.pairs.json"
 }
 
+analyze_mixed_phase() {
+  local trace_stem="$1"
+  local event_path="$2"
+  local run_manifest="$3"
+  local result_root="$4"
+  local summary_path="$result_root/trace.csv"
+  [[ "$trace_stem" == mixed_phase_always_ready_* ]] || return 0
+  [[ -s "$summary_path" ]] || {
+    printf 'expected mixed-phase summary result: %s\n' "$summary_path" >&2
+    return 1
+  }
+  python3 "$project_root/benchmarks/clean_slate_aer/mixed_phase_always_ready_metrics.py" \
+    --run-manifest "$run_manifest" --events "$event_path" \
+    --summary "$summary_path" \
+    --output "$result_root/$trace_stem.mixed.json"
+}
+
 python3 "$project_root/benchmarks/clean_slate_aer/generate_trace.py" \
   --manifest "$project_root/benchmarks/clean_slate_aer/manifest.multilane-n16.json" \
   --output-dir "$trace_root"
@@ -100,6 +117,8 @@ for lane_count in "${lane_counts[@]}"; do
       exit 1
     }
     analyze_pairwise "$trace_stem" "$event_path" "$run_manifest" \
+      "$trace_result_root"
+    analyze_mixed_phase "$trace_stem" "$event_result" "$run_manifest" \
       "$trace_result_root"
     rm -f "$freshness_marker"
   done
