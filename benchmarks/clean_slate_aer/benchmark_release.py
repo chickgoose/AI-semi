@@ -9,18 +9,21 @@ that names its own commit/hash" construction.
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 
-SCHEMA = "aer-address-only-benchmark-release-v4"
+SCHEMA = "aer-address-only-benchmark-release-v5"
+TRUSTED_POLICY_PATH = "benchmarks/clean_slate_aer/a1_release_policy.json"
+TRUSTED_POLICY_SHA256 = "72b5eb73887f0b1d5a11c5f2fcd97f859477b543155af6ec16871eae0983d6dc"
 CURRENT_GENERATOR_VERSION = "4.0"
 HISTORICAL_GENERATOR_VERSION = "3.0"
 SUITE_POLICY = {
@@ -46,10 +49,20 @@ TRACE_ABI = {
 }
 SHA_RE = re.compile(r"[0-9a-f]{64}\Z")
 OBJECT_RE = re.compile(r"[0-9a-f]{40,64}\Z")
-VERSION_RE = re.compile(
-    rb"(?m)^\s*GENERATOR_VERSION\s*=\s*['\"]([^'\"]+)['\"]\s*$"
-)
 FORBIDDEN_COMPONENTS = {"result", "results", "log", "logs"}
+REQUIRED_PPA_CONTRACT = {
+    "baseline-n16": ("aer_dut", {"ADDR_WIDTH": 16, "NUM_SOURCES": 16}, []),
+    "a23-ee430-n16": (
+        "a23_ee430_dut", {"ADDR_WIDTH": 16, "NUM_SOURCES": 16}, [],
+    ),
+    "a7-prefix-k4-n16": (
+        "a7_prefix_structural_top", {"AW": 16, "K": 4, "N": 16, "SW": 4}, [],
+    ),
+    "a7-replicated-k4-n16": (
+        "a7_replicated_structural_top",
+        {"AW": 16, "K": 4, "N": 16, "SW": 4}, [],
+    ),
+}
 
 
 class ReleaseError(ValueError):
@@ -58,17 +71,18 @@ class ReleaseError(ValueError):
 
 @dataclass(frozen=True)
 class ReleaseInputs:
+    policy: str
     generator: str
     preparer: str
     testbench: str
     native_bindings: tuple[str, ...]
-    synth_ppa_filelists: tuple[str, ...]
+    ppa_registry: str
     runners: tuple[str, ...]
     full_manifest: str
     capacity_manifest: str
     golden: str
     analyzers: tuple[str, ...]
-    test_evidence: tuple[tuple[str, str], ...]
+    test_receipts: tuple[str, ...]
 
 
 def _git(repo: Path, *args: str, binary: bool = False) -> str | bytes:
@@ -165,11 +179,124 @@ def _tracked_native_bindings(repo: Path, binding: dict[str, Any]) -> list[str]:
     )
 
 
-def _validate_native_synth_boundary(
+def _load_trusted_policy(
+    repo: Path, binding: dict[str, Any], path: str
+) -> dict[str, Any]:
+    if path != TRUSTED_POLICY_PATH:
+        raise ReleaseError(f"policy path must be {TRUSTED_POLICY_PATH}")
+    blob = _blob(repo, binding, path)
+    if _sha(blob) != TRUSTED_POLICY_SHA256:
+        raise ReleaseError("trusted A1 release policy hash mismatch")
+    policy = _json_bytes(blob, path)
+    _exact_keys(
+        policy,
+        {"schema", "generator_version", "trace_abi_version", "identity_mode",
+         "required_relation", "full_count", "capacity_count", "artifacts",
+         "test_receipts", "ppa_registry"},
+        "trusted policy",
+    )
+    if policy["schema"] != "aer-a1-release-policy-v1":
+        raise ReleaseError("unsupported trusted policy schema")
+    if (
+        policy["generator_version"] != CURRENT_GENERATOR_VERSION
+        or policy["trace_abi_version"] != 4
+        or policy["identity_mode"] != "address_only"
+        or policy["required_relation"] != "address == logical_source"
+        or policy["full_count"] != 50
+        or policy["capacity_count"] != 22
+    ):
+        raise ReleaseError("trusted policy is not the canonical A1 v4/50/22 policy")
+    return policy
+
+
+def _verify_policy_artifact(
+    repo: Path, binding: dict[str, Any], value: Any, label: str
+) -> str:
+    if not isinstance(value, dict):
+        raise ReleaseError(f"{label} policy artifact must be an object")
+    _exact_keys(value, {"path", "sha256"}, f"{label} policy artifact")
+    path = _repo_path(value["path"])
+    if not isinstance(value["sha256"], str) or not SHA_RE.fullmatch(value["sha256"]):
+        raise ReleaseError(f"{label} policy SHA-256 is invalid")
+    if _sha(_blob(repo, binding, path)) != value["sha256"]:
+        raise ReleaseError(f"canonical policy hash mismatch: {label}: {path}")
+    return path
+
+
+def _filelist_sources(data: bytes, path: str) -> list[str]:
+    try:
+        source = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReleaseError(f"PPA filelist is not UTF-8: {path}") from exc
+    tokens: list[str] = []
+    for line in source.splitlines():
+        tokens.extend(line.split("#", 1)[0].split())
+    if any(token == "-f" or token.startswith("-f") for token in tokens):
+        raise ReleaseError(f"nested PPA filelists are forbidden in registry: {path}")
+    sources = [token.strip("'\"") for token in tokens if not token.startswith(("-", "+"))]
+    if not sources:
+        raise ReleaseError(f"PPA filelist has no sources: {path}")
+    return [_repo_path(source) for source in sources]
+
+
+def _validate_ppa_registry(
     repo: Path,
     binding: dict[str, Any],
+    registry_path: str,
     native_paths: Sequence[str],
-    synth_filelists: Sequence[str],
+) -> None:
+    registry = _json_bytes(_blob(repo, binding, registry_path), registry_path)
+    _exact_keys(registry, {"schema", "candidates"}, "PPA registry")
+    if registry["schema"] != "aer-candidate-ppa-registry-v1":
+        raise ReleaseError("unsupported PPA registry schema")
+    candidates = registry["candidates"]
+    if not isinstance(candidates, list):
+        raise ReleaseError("PPA registry candidates must be an array")
+    names = [candidate.get("name") for candidate in candidates if isinstance(candidate, dict)]
+    if set(names) != set(REQUIRED_PPA_CONTRACT) or len(names) != len(REQUIRED_PPA_CONTRACT):
+        raise ReleaseError("PPA registry candidate set is not exact")
+    binding_names = {PurePosixPath(path).name for path in native_paths}
+    for candidate in candidates:
+        name = candidate.get("name")
+        _exact_keys(
+            candidate,
+            {"name", "top", "parameters", "defines", "filelist", "tool_scripts",
+             "sources"},
+            f"PPA candidate {name}",
+        )
+        expected_top, expected_parameters, expected_defines = REQUIRED_PPA_CONTRACT[name]
+        if (
+            candidate["top"] != expected_top
+            or candidate["parameters"] != expected_parameters
+            or candidate["defines"] != expected_defines
+        ):
+            raise ReleaseError(f"PPA top/parameters/defines mismatch: {name}")
+        filelist = _verify_policy_artifact(
+            repo, binding, candidate["filelist"], f"PPA {name} filelist"
+        )
+        if filelist == "tb/files.f" or filelist.startswith("tb/clean/"):
+            raise ReleaseError(f"verification filelist cannot be PPA source: {filelist}")
+        source_paths = _filelist_sources(_blob(repo, binding, filelist), filelist)
+        if any(PurePosixPath(path).name in binding_names for path in source_paths):
+            raise ReleaseError(f"native binding is forbidden in PPA sources: {name}")
+        sources = candidate["sources"]
+        if not isinstance(sources, list) or not sources:
+            raise ReleaseError(f"PPA source closure is empty: {name}")
+        declared_sources = [
+            _verify_policy_artifact(repo, binding, item, f"PPA {name} source")
+            for item in sources
+        ]
+        if declared_sources != source_paths:
+            raise ReleaseError(f"PPA source closure differs from filelist: {name}")
+        scripts = candidate["tool_scripts"]
+        if not isinstance(scripts, list) or not scripts:
+            raise ReleaseError(f"PPA tool script closure is empty: {name}")
+        for item in scripts:
+            _verify_policy_artifact(repo, binding, item, f"PPA {name} tool script")
+
+
+def _validate_native_boundary(
+    repo: Path, binding: dict[str, Any], native_paths: Sequence[str]
 ) -> None:
     tracked = _tracked_native_bindings(repo, binding)
     if sorted(native_paths) != tracked:
@@ -177,53 +304,6 @@ def _validate_native_synth_boundary(
             "native_bindings must exactly enumerate tracked "
             f"tb/clean/native/*_binding.sv files: expected {tracked}"
         )
-    if not synth_filelists:
-        raise ReleaseError("at least one synth/PPA filelist is required")
-    declared_filelists = set(synth_filelists)
-    binding_names = {PurePosixPath(path).name for path in native_paths}
-    for filelist in synth_filelists:
-        if filelist == "tb/files.f" or filelist.startswith("tb/clean/"):
-            raise ReleaseError(
-                f"verification filelist cannot be declared as synth/PPA: {filelist}"
-            )
-        if PurePosixPath(filelist).suffix != ".f":
-            raise ReleaseError(f"synth/PPA source list must be a .f file: {filelist}")
-        try:
-            source = _blob(repo, binding, filelist).decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise ReleaseError(f"synth/PPA filelist is not UTF-8: {filelist}") from exc
-        tokens: list[str] = []
-        for line in source.splitlines():
-            tokens.extend(line.split("#", 1)[0].split())
-        for index, token in enumerate(tokens):
-            clean = token.strip("'\"")
-            candidate = clean[2:] if clean.startswith("-f") and len(clean) > 2 else clean
-            if PurePosixPath(candidate).name in binding_names:
-                raise ReleaseError(
-                    f"native binding is forbidden in synth/PPA sources: "
-                    f"{filelist}: {candidate}"
-                )
-            if clean == "-f":
-                if index + 1 >= len(tokens):
-                    raise ReleaseError(f"dangling -f in synth/PPA filelist: {filelist}")
-                nested = tokens[index + 1].strip("'\"")
-                if nested not in declared_filelists:
-                    raise ReleaseError(
-                        f"nested synth/PPA filelist must be explicitly bound: {nested}"
-                    )
-            elif clean.startswith("-f") and len(clean) > 2:
-                nested = clean[2:]
-                if nested not in declared_filelists:
-                    raise ReleaseError(
-                        f"nested synth/PPA filelist must be explicitly bound: {nested}"
-                    )
-
-
-def _generator_version(data: bytes) -> str:
-    match = VERSION_RE.search(data)
-    if not match:
-        raise ReleaseError("generator does not declare GENERATOR_VERSION")
-    return match.group(1).decode("ascii")
 
 
 def _required_generator_version(release_kind: str) -> str:
@@ -232,30 +312,6 @@ def _required_generator_version(release_kind: str) -> str:
     if release_kind == "historical":
         return HISTORICAL_GENERATOR_VERSION
     raise ReleaseError(f"unsupported release kind: {release_kind!r}")
-
-
-def _generator_is_address_only(data: bytes) -> bool:
-    try:
-        tree = ast.parse(data.decode("utf-8"))
-    except (UnicodeDecodeError, SyntaxError) as exc:
-        raise ReleaseError("generator is not valid UTF-8 Python") from exc
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Dict):
-            continue
-        fields: dict[str, Any] = {}
-        for key_node, value_node in zip(node.keys, node.values):
-            if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
-                try:
-                    fields[key_node.value] = ast.literal_eval(value_node)
-                except (ValueError, TypeError):
-                    pass
-        if (
-            fields.get("event_identity_mode") == "address_only"
-            and fields.get("dut_address_fields") == ["logical_source"]
-            and fields.get("dut_payload_fields") == []
-        ):
-            return True
-    return False
 
 
 def _runs(document: dict[str, Any], label: str) -> list[dict[str, Any]]:
@@ -270,79 +326,13 @@ def _runs(document: dict[str, Any], label: str) -> list[dict[str, Any]]:
     return runs
 
 
-def _preparer_has_v4_address_only_abi(data: bytes) -> bool:
-    try:
-        tree = ast.parse(data.decode("utf-8"))
-    except (UnicodeDecodeError, SyntaxError) as exc:
-        raise ReleaseError("preparer is not valid UTF-8 Python") from exc
-    has_identity_guard = False
-    has_address_assignment = False
-    has_v4_header = False
-    has_five_field_row = False
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Compare):
-            constants = {
-                child.value for child in ast.walk(node)
-                if isinstance(child, ast.Constant) and isinstance(child.value, str)
-            }
-            if "address_only" in constants:
-                has_identity_guard = True
-        if isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if any(isinstance(target, ast.Name) and target.id == "event_address"
-                   for target in targets):
-                expression = ast.unparse(node.value).replace(" ", "")
-                if expression == "y*width+x":
-                    has_address_assignment = True
-        if isinstance(node, ast.JoinedStr):
-            formatted = sum(isinstance(value, ast.FormattedValue) for value in node.values)
-            literal = "".join(
-                value.value for value in node.values
-                if isinstance(value, ast.Constant) and isinstance(value.value, str)
-            )
-            first = node.values[0] if node.values else None
-            if (isinstance(first, ast.Constant) and isinstance(first.value, str)
-                    and first.value.startswith("4 ") and formatted == 8):
-                has_v4_header = True
-            if formatted == 5 and literal.count(" ") == 4 and literal.endswith("\n"):
-                has_five_field_row = True
-    return all((has_identity_guard, has_address_assignment,
-                has_v4_header, has_five_field_row))
-
-
-def _testbench_has_v4_address_only_abi(data: bytes) -> bool:
-    try:
-        source = data.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ReleaseError("testbench is not UTF-8 text") from exc
-    header = re.search(
-        r"%d\s+%d\s+%d\s+%d\s+%d\s+%d\s+%d\s+%d\s+%s", source
-    )
-    version = re.search(r"trace_version\s*!=\s*4", source)
-    address = re.search(
-        r"trace_address\s*\[\s*trace_index\s*\]\s*!=\s*"
-        r"trace_source\s*\[\s*trace_index\s*\]", source,
-    )
-    return bool(header and version and address)
-
-
 def _verify_suite_documents(
-    generator: bytes,
     full: dict[str, Any],
     capacity: dict[str, Any],
     golden: dict[str, Any],
     full_name: str,
-    release_kind: str,
+    required_version: str,
 ) -> tuple[int, int, int]:
-    required_version = _required_generator_version(release_kind)
-    actual_version = _generator_version(generator)
-    if actual_version != required_version:
-        raise ReleaseError(
-            f"{release_kind} release generator version must be "
-            f"{required_version}, got {actual_version}"
-        )
-    if not _generator_is_address_only(generator):
-        raise ReleaseError("generator does not emit the address-only identity contract")
     full_runs = _runs(full, "official full manifest")
     capacity_runs = _runs(capacity, "official capacity manifest")
     if len(full_runs) != SUITE_POLICY["expected_full_count"]:
@@ -381,67 +371,139 @@ def _verify_suite_documents(
     return len(full_runs), len(capacity_runs), len(golden_runs)
 
 
-def _validate_evidence(entries: Any) -> None:
-    if not isinstance(entries, list) or not entries:
-        raise ReleaseError("at least one embedded test-evidence marker is required")
-    names: set[str] = set()
+def _validate_executed_receipts(
+    repo: Path,
+    binding: dict[str, Any],
+    entries: Any,
+    policy: dict[str, Any],
+) -> list[str]:
+    expected = policy["test_receipts"]
+    if not isinstance(entries, list) or entries != expected:
+        raise ReleaseError("test receipts do not exactly match trusted policy")
+    artifacts = policy["artifacts"]
+    allowed_commands = {
+        ("python3", artifacts["self_test"]["path"]),
+        ("python3", artifacts["neutrality_self_test"]["path"]),
+    }
+    seen_commands: set[tuple[str, ...]] = set()
+    paths: list[str] = []
+    environment = os.environ.copy()
+    environment.update({"PYTHONDONTWRITEBYTECODE": "1", "LC_ALL": "C"})
     for index, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise ReleaseError(f"test_evidence[{index}] must be an object")
-        _exact_keys(entry, {"name", "status", "marker"}, f"test_evidence[{index}]")
-        if not isinstance(entry["name"], str) or not entry["name"]:
-            raise ReleaseError("test evidence name must be nonempty")
-        if entry["name"] in names:
-            raise ReleaseError(f"duplicate test evidence name: {entry['name']}")
-        names.add(entry["name"])
-        if entry["status"] != "PASS":
-            raise ReleaseError(f"test evidence is not PASS: {entry['name']}")
-        if not isinstance(entry["marker"], str) or not entry["marker"]:
-            raise ReleaseError(f"test evidence marker is empty: {entry['name']}")
+        path = _verify_policy_artifact(
+            repo, binding, entry, f"test receipt {index}"
+        )
+        receipt = _json_bytes(_blob(repo, binding, path), path)
+        _exact_keys(
+            receipt,
+            {"schema", "name", "command", "exit_code", "log_sha256",
+             "required_markers"},
+            f"test receipt {index}",
+        )
+        if receipt["schema"] != "aer-executed-test-receipt-v1":
+            raise ReleaseError(f"unsupported test receipt schema: {path}")
+        command_value = receipt["command"]
+        if not (
+            isinstance(command_value, list)
+            and all(isinstance(item, str) and item for item in command_value)
+        ):
+            raise ReleaseError(f"test receipt command is invalid: {path}")
+        command = tuple(command_value)
+        if command not in allowed_commands or command in seen_commands:
+            raise ReleaseError(f"test receipt command is not canonical: {path}")
+        seen_commands.add(command)
+        if receipt["exit_code"] != 0:
+            raise ReleaseError(f"test receipt does not declare exit code zero: {path}")
+        if not isinstance(receipt["log_sha256"], str) or not SHA_RE.fullmatch(
+            receipt["log_sha256"]
+        ):
+            raise ReleaseError(f"test receipt log SHA-256 is invalid: {path}")
+        markers = receipt["required_markers"]
+        if not isinstance(markers, list) or not markers or not all(
+            isinstance(marker, str) and marker for marker in markers
+        ):
+            raise ReleaseError(f"test receipt markers are invalid: {path}")
+        try:
+            result = subprocess.run(
+                list(command), cwd=repo, env=environment,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=120, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ReleaseError(f"receipt command execution failed: {path}: {exc}") from exc
+        log = result.stdout + result.stderr
+        if result.returncode != receipt["exit_code"]:
+            raise ReleaseError(f"receipt command exit code mismatch: {path}")
+        if _sha(log) != receipt["log_sha256"]:
+            raise ReleaseError(f"receipt command log hash mismatch: {path}")
+        decoded = log.decode("utf-8", errors="replace")
+        if any(marker not in decoded for marker in markers):
+            raise ReleaseError(f"receipt command marker missing: {path}")
+        paths.append(path)
+    if seen_commands != allowed_commands:
+        raise ReleaseError("trusted self-test receipt command set is incomplete")
+    return paths
 
 
 def _manifest_from_inputs(
     repo: Path, binding_kind: str, inputs: ReleaseInputs, release_kind: str
 ) -> dict[str, Any]:
     required_version = _required_generator_version(release_kind)
+    if release_kind != "current":
+        raise ReleaseError("trusted canonical policy authorizes current releases only")
     binding = _binding(repo, binding_kind)
+    policy = _load_trusted_policy(repo, binding, inputs.policy)
+    artifacts = policy["artifacts"]
+    if not isinstance(artifacts, dict):
+        raise ReleaseError("trusted policy artifacts must be an object")
+    _exact_keys(
+        artifacts,
+        {"generator", "preparer", "testbench", "full_manifest",
+         "capacity_manifest", "golden", "self_test", "neutrality_self_test"},
+        "trusted policy artifacts",
+    )
+    selected = {
+        "generator": inputs.generator,
+        "preparer": inputs.preparer,
+        "testbench": inputs.testbench,
+        "full_manifest": inputs.full_manifest,
+        "capacity_manifest": inputs.capacity_manifest,
+        "golden": inputs.golden,
+    }
+    for name, path in selected.items():
+        if path != artifacts[name]["path"]:
+            raise ReleaseError(f"{name} path differs from canonical policy")
+    for name, value in artifacts.items():
+        _verify_policy_artifact(repo, binding, value, name)
+    if inputs.ppa_registry != policy["ppa_registry"]["path"]:
+        raise ReleaseError("PPA registry path differs from canonical policy")
+    if list(inputs.test_receipts) != [item["path"] for item in policy["test_receipts"]]:
+        raise ReleaseError("test receipt paths differ from canonical policy")
     paths = [
-        inputs.generator, inputs.preparer, inputs.testbench,
+        inputs.policy, inputs.generator, inputs.preparer, inputs.testbench,
         inputs.full_manifest, inputs.capacity_manifest, inputs.golden,
-        *inputs.native_bindings, *inputs.synth_ppa_filelists,
+        inputs.ppa_registry, *inputs.test_receipts, *inputs.native_bindings,
         *inputs.runners, *inputs.analyzers,
     ]
     normalized = [_repo_path(path) for path in paths]
     if len(set(normalized)) != len(normalized):
         raise ReleaseError("each bound artifact path must be unique")
 
-    generator_blob = _blob(repo, binding, inputs.generator)
     full_blob = _blob(repo, binding, inputs.full_manifest)
     capacity_blob = _blob(repo, binding, inputs.capacity_manifest)
     golden_blob = _blob(repo, binding, inputs.golden)
     counts = _verify_suite_documents(
-        generator_blob,
         _json_bytes(full_blob, inputs.full_manifest),
         _json_bytes(capacity_blob, inputs.capacity_manifest),
         _json_bytes(golden_blob, inputs.golden),
         inputs.full_manifest,
-        release_kind,
+        required_version,
     )
-    preparer_blob = _blob(repo, binding, inputs.preparer)
-    if not _preparer_has_v4_address_only_abi(preparer_blob):
-        raise ReleaseError("preparer does not implement the address-only v4 ABI")
-    testbench_blob = _blob(repo, binding, inputs.testbench)
-    if not _testbench_has_v4_address_only_abi(testbench_blob):
-        raise ReleaseError("testbench does not enforce the address-only v4 ABI")
-    evidence = [
-        {"name": name, "status": "PASS", "marker": marker}
-        for name, marker in inputs.test_evidence
-    ]
-    _validate_evidence(evidence)
     return {
         "schema": SCHEMA,
         "release_kind": release_kind,
         "binding": binding,
+        "policy": _artifact(repo, binding, inputs.policy),
         "suite_policy": {
             **SUITE_POLICY,
             "required_run_names": list(SUITE_POLICY["required_run_names"]),
@@ -455,9 +517,7 @@ def _manifest_from_inputs(
         "native_bindings": [
             _artifact(repo, binding, path) for path in inputs.native_bindings
         ],
-        "synth_ppa_filelists": [
-            _artifact(repo, binding, path) for path in inputs.synth_ppa_filelists
-        ],
+        "ppa_registry": _artifact(repo, binding, inputs.ppa_registry),
         "runners": [_artifact(repo, binding, path) for path in inputs.runners],
         "official_manifests": {
             "full_n16": {
@@ -480,7 +540,9 @@ def _manifest_from_inputs(
             "event_fields": list(TRACE_ABI["event_fields"]),
         },
         "analyzers": [_artifact(repo, binding, path) for path in inputs.analyzers],
-        "test_evidence": evidence,
+        "test_receipts": [
+            _artifact(repo, binding, path) for path in inputs.test_receipts
+        ],
     }
 
 
@@ -506,14 +568,16 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     _clean(repo)
     _exact_keys(
         manifest,
-        {"schema", "release_kind", "binding", "suite_policy", "generator", "preparer",
-         "testbench", "native_bindings", "synth_ppa_filelists", "runners",
-         "official_manifests", "golden", "trace_abi", "analyzers", "test_evidence"},
+        {"schema", "release_kind", "binding", "policy", "suite_policy", "generator",
+         "preparer", "testbench", "native_bindings", "ppa_registry", "runners",
+         "official_manifests", "golden", "trace_abi", "analyzers", "test_receipts"},
         "release manifest",
     )
     if manifest["schema"] != SCHEMA:
         raise ReleaseError(f"unsupported schema: {manifest['schema']!r}")
     required_version = _required_generator_version(manifest["release_kind"])
+    if manifest["release_kind"] != "current":
+        raise ReleaseError("trusted canonical policy authorizes current releases only")
     if manifest["suite_policy"] != SUITE_POLICY:
         raise ReleaseError("suite policy is not the official 50/22 mixed-phase policy")
     binding = manifest["binding"]
@@ -539,7 +603,12 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     elif binding["commit"] is not None:
         raise ReleaseError("tree binding must set commit to null")
 
-    paths: list[str] = []
+    policy_path = _verify_artifact(repo, binding, manifest["policy"], "policy")
+    policy = _load_trusted_policy(repo, binding, policy_path)
+    if manifest["policy"]["sha256"] != TRUSTED_POLICY_SHA256:
+        raise ReleaseError("manifest policy SHA-256 is not trusted")
+    policy_artifacts = policy["artifacts"]
+    paths: list[str] = [policy_path]
     generator_path = _verify_artifact(
         repo, binding, manifest["generator"], "generator", {"version"}
     )
@@ -549,23 +618,32 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     preparer_path = _verify_artifact(repo, binding, manifest["preparer"], "preparer")
     testbench_path = _verify_artifact(repo, binding, manifest["testbench"], "testbench")
     paths.extend((preparer_path, testbench_path))
+    selected_artifacts = {
+        "generator": manifest["generator"],
+        "preparer": manifest["preparer"],
+        "testbench": manifest["testbench"],
+    }
+    for name, value in selected_artifacts.items():
+        if value["path"] != policy_artifacts[name]["path"] or value["sha256"] != policy_artifacts[name]["sha256"]:
+            raise ReleaseError(f"manifest {name} differs from canonical policy")
 
-    boundary_paths: dict[str, list[str]] = {}
-    for collection_name in ("native_bindings", "synth_ppa_filelists"):
-        collection = manifest[collection_name]
-        if not isinstance(collection, list) or not collection:
-            raise ReleaseError(f"{collection_name} must be a nonempty array")
-        boundary_paths[collection_name] = []
-        for index, artifact in enumerate(collection):
-            path = _verify_artifact(
-                repo, binding, artifact, f"{collection_name}[{index}]"
-            )
-            boundary_paths[collection_name].append(path)
-            paths.append(path)
-    _validate_native_synth_boundary(
-        repo, binding, boundary_paths["native_bindings"],
-        boundary_paths["synth_ppa_filelists"],
+    native_collection = manifest["native_bindings"]
+    if not isinstance(native_collection, list) or not native_collection:
+        raise ReleaseError("native_bindings must be a nonempty array")
+    native_paths = [
+        _verify_artifact(repo, binding, artifact, f"native_bindings[{index}]")
+        for index, artifact in enumerate(native_collection)
+    ]
+    paths.extend(native_paths)
+    _validate_native_boundary(repo, binding, native_paths)
+
+    registry_path = _verify_artifact(
+        repo, binding, manifest["ppa_registry"], "PPA registry"
     )
+    if manifest["ppa_registry"] != policy["ppa_registry"]:
+        raise ReleaseError("PPA registry differs from canonical policy")
+    _validate_ppa_registry(repo, binding, registry_path, native_paths)
+    paths.append(registry_path)
 
     for collection_name in ("runners", "analyzers"):
         collection = manifest[collection_name]
@@ -588,6 +666,13 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         {"run_count"},
     )
     paths.extend((full_path, capacity_path))
+    if (
+        official["full_n16"]["path"] != policy_artifacts["full_manifest"]["path"]
+        or official["full_n16"]["sha256"] != policy_artifacts["full_manifest"]["sha256"]
+        or official["capacity_n16"]["path"] != policy_artifacts["capacity_manifest"]["path"]
+        or official["capacity_n16"]["sha256"] != policy_artifacts["capacity_manifest"]["sha256"]
+    ):
+        raise ReleaseError("official manifests differ from canonical policy")
 
     golden_path = _verify_artifact(
         repo, binding, manifest["golden"], "golden",
@@ -595,21 +680,29 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
     )
     if manifest["golden"]["generator_version"] != required_version:
         raise ReleaseError("golden generator version mismatch")
+    if (
+        manifest["golden"]["path"] != policy_artifacts["golden"]["path"]
+        or manifest["golden"]["sha256"] != policy_artifacts["golden"]["sha256"]
+    ):
+        raise ReleaseError("golden differs from canonical policy")
     paths.append(golden_path)
     if manifest["trace_abi"] != TRACE_ABI:
         raise ReleaseError("trace ABI is not the frozen address-only v4 contract")
     if len(paths) != len(set(paths)):
         raise ReleaseError("bound artifact paths must be unique")
-    _validate_evidence(manifest["test_evidence"])
+    receipt_paths = _validate_executed_receipts(
+        repo, binding, manifest["test_receipts"], policy
+    )
+    paths.extend(receipt_paths)
+    if len(paths) != len(set(paths)):
+        raise ReleaseError("bound artifact paths must be unique")
 
-    generator_blob = _blob(repo, binding, generator_path)
     counts = _verify_suite_documents(
-        generator_blob,
         _json_bytes(_blob(repo, binding, full_path), full_path),
         _json_bytes(_blob(repo, binding, capacity_path), capacity_path),
         _json_bytes(_blob(repo, binding, golden_path), golden_path),
         full_path,
-        manifest["release_kind"],
+        required_version,
     )
     if official["full_n16"]["run_count"] != counts[0]:
         raise ReleaseError("declared full run count differs from bound manifest")
@@ -617,14 +710,6 @@ def validate_manifest(repo: Path, manifest: dict[str, Any]) -> None:
         raise ReleaseError("declared capacity run count differs from bound manifest")
     if manifest["golden"]["run_count"] != counts[2]:
         raise ReleaseError("declared golden run count differs from bound fixture")
-    if not _preparer_has_v4_address_only_abi(
-        _blob(repo, binding, preparer_path)
-    ):
-        raise ReleaseError("preparer does not implement the address-only v4 ABI")
-    if not _testbench_has_v4_address_only_abi(
-        _blob(repo, binding, testbench_path)
-    ):
-        raise ReleaseError("testbench does not enforce the address-only v4 ABI")
 
 
 def generate_manifest(
@@ -632,7 +717,14 @@ def generate_manifest(
     release_kind: str = "current",
 ) -> dict[str, Any]:
     repo = repo.resolve()
-    output = output.resolve()
+    output = output if output.is_absolute() else Path.cwd() / output
+    if os.path.lexists(output):
+        raise ReleaseError("release output already exists, including a dangling symlink")
+    if not output.parent.exists() or not output.parent.is_dir():
+        raise ReleaseError("release output parent must be an existing directory")
+    if output.parent.is_symlink():
+        raise ReleaseError("release output parent must not be a symlink")
+    output = output.parent.resolve(strict=True) / output.name
     try:
         output.relative_to(repo)
     except ValueError:
@@ -641,11 +733,34 @@ def generate_manifest(
         raise ReleaseError("release manifest must be a detached sidecar outside the repository")
     manifest = _manifest_from_inputs(repo, binding_kind, inputs, release_kind)
     validate_manifest(repo, manifest)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-                         encoding="utf-8")
-    temporary.replace(output)
+    data = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = -1
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, output)
+        except FileExistsError as exc:
+            raise ReleaseError("release output appeared before no-replace publish") from exc
+        directory_fd = os.open(output.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
     return manifest
 
 
@@ -660,18 +775,14 @@ def load_manifest(path: Path) -> dict[str, Any]:
 
 
 def _inputs(args: argparse.Namespace) -> ReleaseInputs:
-    evidence: list[tuple[str, str]] = []
-    for entry in args.test_evidence:
-        if "=" not in entry:
-            raise ReleaseError("--test-evidence must be NAME=PASS_MARKER")
-        evidence.append(tuple(entry.split("=", 1)))
     return ReleaseInputs(
+        policy=args.policy,
         generator=args.generator, preparer=args.preparer, testbench=args.testbench,
         native_bindings=tuple(args.native_binding),
-        synth_ppa_filelists=tuple(args.synth_ppa_filelist),
+        ppa_registry=args.ppa_registry,
         runners=tuple(args.runner), full_manifest=args.full_manifest,
         capacity_manifest=args.capacity_manifest, golden=args.golden,
-        analyzers=tuple(args.analyzer), test_evidence=tuple(evidence),
+        analyzers=tuple(args.analyzer), test_receipts=tuple(args.test_receipt),
     )
 
 
@@ -684,20 +795,20 @@ def parser() -> argparse.ArgumentParser:
     generate.add_argument("--binding", choices=("commit", "tree"), default="commit")
     generate.add_argument(
         "--release-kind", choices=("current", "historical"), default="current",
-        help="current requires generator 4.0; historical explicitly permits 3.0",
+        help="the trusted A1 policy currently authorizes current releases only",
     )
+    generate.add_argument("--policy", required=True)
     generate.add_argument("--generator", required=True)
     generate.add_argument("--preparer", required=True)
     generate.add_argument("--testbench", required=True)
     generate.add_argument("--native-binding", action="append", required=True)
-    generate.add_argument("--synth-ppa-filelist", action="append", required=True)
+    generate.add_argument("--ppa-registry", required=True)
     generate.add_argument("--runner", action="append", required=True)
     generate.add_argument("--full-manifest", required=True)
     generate.add_argument("--capacity-manifest", required=True)
     generate.add_argument("--golden", required=True)
     generate.add_argument("--analyzer", action="append", required=True)
-    generate.add_argument("--test-evidence", action="append", required=True,
-                          metavar="NAME=PASS_MARKER")
+    generate.add_argument("--test-receipt", action="append", required=True)
     validate = sub.add_parser("validate", help="validate a detached sidecar")
     validate.add_argument("--repo", type=Path, required=True)
     validate.add_argument("--manifest", type=Path, required=True)

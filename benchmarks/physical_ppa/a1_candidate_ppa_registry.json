@@ -1,0 +1,77 @@
+{
+  "schema": "aer-candidate-ppa-registry-v1",
+  "candidates": [
+    {
+      "name": "baseline-n16",
+      "top": "aer_dut",
+      "parameters": {"ADDR_WIDTH": 16, "NUM_SOURCES": 16},
+      "defines": [],
+      "filelist": {"path": "tb/filelists/baseline.f", "sha256": "62fe8e029dbcf24b79510d6d0d8cb296d82e2025fb614588f13c208aeec1e44f"},
+      "tool_scripts": [
+        {"path": "scripts/ppa/genus_a23_compare.tcl", "sha256": "f237d7f25383b3211e124403ed5079e7380da9728527f6a9ab332c2dfb99dcb3"},
+        {"path": "scripts/ppa/run_a23_genus_comparison.sh", "sha256": "02a53d686321b46ab6a263bb4023b7a50c0a3fdd11a9be9dcf0b4bdd5f27c0d6"}
+      ],
+      "sources": [
+        {"path": "rtl/common/aer_pkg.sv", "sha256": "ab3221072a2bef3992e9a09cf079b820dc22190d20e613437737bdd1a7786672"},
+        {"path": "rtl/baseline/fixed_priority_arbiter.sv", "sha256": "265f7e8249f39a3be9fdcc585c71fffc1d6c085a12255bb105eca2a6100ddeb0"},
+        {"path": "rtl/baseline/aer_tx.sv", "sha256": "db336bee0c96c97815c04cde6bc7aeb8ed00047b22edfbe87e7a0685424f3117"},
+        {"path": "rtl/baseline/aer_rx.sv", "sha256": "281620fbe49721508877e970a028f09d3ab1b071c5a48128705547eea70aa5d4"},
+        {"path": "rtl/baseline/aer_baseline_core.sv", "sha256": "4ca7f98f84ca67786a23d60562dc682de79172e2c185e0306f5b7423d6d136f7"},
+        {"path": "rtl/baseline/aer_dut.sv", "sha256": "5c47183dbeb7fcfd3020aeb920565ae6c6d3f7c5a28191f36fed79cc211c59ad"}
+      ]
+    },
+    {
+      "name": "a23-ee430-n16",
+      "top": "a23_ee430_dut",
+      "parameters": {"ADDR_WIDTH": 16, "NUM_SOURCES": 16},
+      "defines": [],
+      "filelist": {"path": "tb/filelists/a23_ee430.f", "sha256": "c34c493e5f0147a5364c47bcb5374d8f4d12188442ebd722e074d590e2bb7301"},
+      "tool_scripts": [
+        {"path": "scripts/ppa/genus_a23_compare.tcl", "sha256": "f237d7f25383b3211e124403ed5079e7380da9728527f6a9ab332c2dfb99dcb3"},
+        {"path": "scripts/ppa/run_a23_genus_comparison.sh", "sha256": "02a53d686321b46ab6a263bb4023b7a50c0a3fdd11a9be9dcf0b4bdd5f27c0d6"}
+      ],
+      "sources": [
+        {"path": "rtl/common/aer_pkg.sv", "sha256": "ab3221072a2bef3992e9a09cf079b820dc22190d20e613437737bdd1a7786672"},
+        {"path": "rtl/baseline/aer_rx.sv", "sha256": "281620fbe49721508877e970a028f09d3ab1b071c5a48128705547eea70aa5d4"},
+        {"path": "rtl/experiments/a23_ee430/a23_ee430_arbiter.sv", "sha256": "77e5a54311ed5eec693d7431e9473f488cd8a37ac5583449a42c5edafa38e312"},
+        {"path": "rtl/experiments/a23_ee430/a23_ee430_tx.sv", "sha256": "7d66fdcbc7cad1fbf5d680c401ba47f725b9e2d831eb349444fee4db8d598bcc"},
+        {"path": "rtl/experiments/a23_ee430/a23_ee430_core.sv", "sha256": "a69683b85caf36844809cc8738177bf2b884e70eb669ed6865488be0eff41c46"},
+        {"path": "rtl/experiments/a23_ee430/a23_ee430_dut.sv", "sha256": "11f0229dbb55a02d1d40e3c75c14ee2bd24c7ce4f537dbe9bfe272717b483311"}
+      ]
+    },
+    {
+      "name": "a7-prefix-k4-n16",
+      "top": "a7_prefix_structural_top",
+      "parameters": {"AW": 16, "K": 4, "N": 16, "SW": 4},
+      "defines": [],
+      "filelist": {"path": "tb/filelists/a7_k4_structural.f", "sha256": "93a064e559d8f3adbbd2fa8929ab89575b7f47b6be36dadf7144193f23591343"},
+      "tool_scripts": [
+        {"path": "scripts/ppa/a7_k4_genus_compare.tcl", "sha256": "6693439711535a9af0463f940b7837ec164da27011f081beb183020a29c8c338"},
+        {"path": "scripts/ppa/run_a7_k4_genus_comparison.sh", "sha256": "b8ec1cc53d5ad968c975c517ea9215034f79d143593bbcf41224d78debb376fc"}
+      ],
+      "sources": [
+        {"path": "rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv", "sha256": "a7d24ee7f95ebd81fb5b8d686412ee448dda28dd3324d7470150ade5c45793f4"},
+        {"path": "rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv", "sha256": "401ee99c183ccbbdb6963c8f2f4cf880bd1b152d2614ffbde65815d06d2c231e"},
+        {"path": "rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv", "sha256": "923af1dae61bc2c4a037f7617c6a0e7bcab9d759e7dbcd27e8bff96c14c9f7c5"},
+        {"path": "tests/a7_parallel_event_compactor/a7_structural_wrappers.sv", "sha256": "144d26ea1130addad68b71dcf486d6e64620455374702d3e9159c4a2d385d328"}
+      ]
+    },
+    {
+      "name": "a7-replicated-k4-n16",
+      "top": "a7_replicated_structural_top",
+      "parameters": {"AW": 16, "K": 4, "N": 16, "SW": 4},
+      "defines": [],
+      "filelist": {"path": "tb/filelists/a7_k4_structural.f", "sha256": "93a064e559d8f3adbbd2fa8929ab89575b7f47b6be36dadf7144193f23591343"},
+      "tool_scripts": [
+        {"path": "scripts/ppa/a7_k4_genus_compare.tcl", "sha256": "6693439711535a9af0463f940b7837ec164da27011f081beb183020a29c8c338"},
+        {"path": "scripts/ppa/run_a7_k4_genus_comparison.sh", "sha256": "b8ec1cc53d5ad968c975c517ea9215034f79d143593bbcf41224d78debb376fc"}
+      ],
+      "sources": [
+        {"path": "rtl/candidates/a7_parallel_event_compactor/a7_parallel_prefix_count.sv", "sha256": "a7d24ee7f95ebd81fb5b8d686412ee448dda28dd3324d7470150ade5c45793f4"},
+        {"path": "rtl/candidates/a7_parallel_event_compactor/a7_parallel_event_compactor.sv", "sha256": "401ee99c183ccbbdb6963c8f2f4cf880bd1b152d2614ffbde65815d06d2c231e"},
+        {"path": "rtl/candidates/a7_parallel_event_compactor/a7_replicated_selector_reference.sv", "sha256": "923af1dae61bc2c4a037f7617c6a0e7bcab9d759e7dbcd27e8bff96c14c9f7c5"},
+        {"path": "tests/a7_parallel_event_compactor/a7_structural_wrappers.sv", "sha256": "144d26ea1130addad68b71dcf486d6e64620455374702d3e9159c4a2d385d328"}
+      ]
+    }
+  ]
+}

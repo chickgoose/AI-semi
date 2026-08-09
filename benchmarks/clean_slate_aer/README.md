@@ -191,31 +191,29 @@ serialized ROW/COL design, or another implementation.
 repository is clean. It reads the generator, v4 preparer, clean TB, runners,
 official 50-run full and 22-run capacity manifests, golden fixture, and
 analyzers from a Git commit or tree object and records their SHA-256 values.
-The default `current` release requires generator version 4.0. Generator 3.0 is
-accepted only with the explicit `--release-kind historical` marker; historical
-status does not relax the 50/22 suite, prepared ABI v4, or address-only rules.
+The trusted current policy pins the canonical A1 generator 4.0, preparer, clean
+TB, full-50 manifest, capacity-22 manifest, golden fixture, and self-tests by
+exact SHA-256. A historical release needs a separate trusted policy and is not
+authorized by this tool build.
 Every tracked `tb/clean/native/*_binding.sv` is required in the release's
-`native_bindings` hash list. Explicitly bound synth/PPA `.f` source lists are
-also hashed and must exclude those bindings; native protocol adaptation remains
-a verification boundary and is never synthesizable/PPA design RTL.
-Pass one `--native-binding` for every tracked binding and one
-`--synth-ppa-filelist` for every actual synthesis/PPA source list. A nested
-`-f` list must also be passed and hashed explicitly. The clean simulation list
-`tb/clean/files.f` is verification infrastructure, not a synth/PPA declaration.
+`native_bindings` hash list. The trusted candidate PPA registry freezes the
+exact candidate set, tops, parameters, defines, tool scripts, filelists, and
+ordered source closure. Native bindings and verification filelists are rejected
+from that closure.
 The policy requires both `mixed_phase_always_ready_identity` and
 `mixed_phase_always_ready_bit_reverse` in both official manifests.
 Counts are derived from the bound JSON arrays and must match 50/22 exactly.
-The output must be a sidecar outside the repository; it is never included in
-its own hash set.
+The output must be a new sidecar outside the repository. Existing paths and
+dangling symlinks are rejected. Publication uses a securely created same-folder
+temporary inode, `fsync`, and atomic hard-link no-replace publication.
 
 Generation and validation are fail-closed on any tracked or untracked dirty
 path. Artifact paths under `results/` or `logs/`, and `*.log` artifacts, are
-rejected. Test evidence is embedded only as a PASS marker, not as a result or
-log path. See `benchmark_release.py generate --help` for the required explicit
-file list and `benchmark_release.schema.json` for the interchange schema.
-The validator also inspects the bound preparer and TB sources for the v4
-nine-field header, five-field address-only event row, and
-`trace_address == trace_source` enforcement; blob hashes alone are insufficient.
+rejected. Self-declared PASS markers are not evidence. Trusted, immutable
+receipt blobs bind canonical commands, exit status, required markers, and exact
+log SHA-256; validation re-executes each command and compares the captured log.
+See `benchmark_release.py generate --help` and
+`benchmark_release.schema.json` for the required inputs and interchange schema.
 
 ## Input schema
 

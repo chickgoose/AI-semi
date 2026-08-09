@@ -1,0 +1,24 @@
+{
+  "schema": "aer-a1-release-policy-v1",
+  "generator_version": "4.0",
+  "trace_abi_version": 4,
+  "identity_mode": "address_only",
+  "required_relation": "address == logical_source",
+  "full_count": 50,
+  "capacity_count": 22,
+  "artifacts": {
+    "generator": {"path": "benchmarks/clean_slate_aer/generate_trace.py", "sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50"},
+    "preparer": {"path": "benchmarks/clean_slate_aer/prepare_sv_trace.py", "sha256": "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826"},
+    "testbench": {"path": "tb/clean/aer_clean_tb.sv", "sha256": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2"},
+    "full_manifest": {"path": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json", "sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"},
+    "capacity_manifest": {"path": "benchmarks/clean_slate_aer/manifest.multilane-n16.json", "sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62"},
+    "golden": {"path": "benchmarks/clean_slate_aer/fixtures/neutrality_n16_golden.json", "sha256": "dd25ca657d76038574e98ddbba126a0e90e69a4678510252d964d620edf07e1b"},
+    "self_test": {"path": "benchmarks/clean_slate_aer/self_test.py", "sha256": "e6bb8e2c71544bf172cacbfa86de4755a11560f68d5428aed8a7b611eaa12003"},
+    "neutrality_self_test": {"path": "benchmarks/clean_slate_aer/neutrality_self_test.py", "sha256": "f9a429562eaa4eb69fb0d3ab1063e7ebf324a8e7dcfdaf261bd9142d374403ed"}
+  },
+  "test_receipts": [
+    {"path": "benchmarks/clean_slate_aer/receipts/a1_self_test.json", "sha256": "98761ba8aeb2ea201156dd6e2e92bb58a9d40de6332cd44cf4cd3f6f088dc798"},
+    {"path": "benchmarks/clean_slate_aer/receipts/a1_neutrality_self_test.json", "sha256": "86cbf9eb2fcd42db7712257a12f0ee1e11d1fe23de33deaa55f9258e48e1867e"}
+  ],
+  "ppa_registry": {"path": "benchmarks/physical_ppa/a1_candidate_ppa_registry.json", "sha256": "c09a897ae2d1d009f66fb62cb001bb06b841680660ce2f6f771e3222857ee841"}
+}
