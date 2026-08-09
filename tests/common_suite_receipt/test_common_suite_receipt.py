@@ -1,264 +1,227 @@
 import hashlib
-import io
 import json
 import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-
+import common_suite_attempt as attempt
+import common_suite_official as official
 import common_suite_receipt as receipt
 
 
-def sha(payload: bytes) -> str:
+def digest(payload):
     return hashlib.sha256(payload).hexdigest()
 
 
-class CommonSuiteReceiptTest(unittest.TestCase):
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
-        self.trace_root = self.root / "traces"
-        self.artifact_root = self.root / "artifacts"
-        self.trace_root.mkdir()
-        self.artifact_root.mkdir()
-        self.names = ["alpha", "beta"]
-        self.index_runs = []
-        self.expected_runs = []
-        self.artifact_runs = []
-
-        for position, name in enumerate(self.names):
-            trace_payload = f'{{"run":"{name}"}}\n'.encode()
-            trace_file = f"{name}.events.jsonl"
-            (self.trace_root / trace_file).write_bytes(trace_payload)
-            trace_sha = sha(trace_payload)
-            self.index_runs.append(
-                {
-                    "run": {"name": name},
-                    "trace_file": trace_file,
-                    "trace_sha256": trace_sha,
-                }
-            )
-            self.expected_runs.append(
-                {"name": name, "trace_file": trace_file, "trace_sha256": trace_sha}
-            )
-
-            run_root = self.artifact_root / name
-            run_root.mkdir()
-            marker = run_root / "freshness.marker"
-            marker.write_bytes(b"")
+class SuiteFixture:
+    def __init__(self, root: Path, suite: str, names: tuple[str, ...]):
+        self.root, self.suite, self.names = root, suite, names
+        self.traces, self.artifacts = root / "traces", root / "artifacts"
+        self.traces.mkdir(); self.artifacts.mkdir()
+        self.manifest_name = f"manifest.{suite}.json"
+        manifest_runs, index_runs, artifact_runs = [], [], []
+        self.trace_hashes = {}
+        for position, name in enumerate(names):
+            workload = ("pairwise_contention" if name.startswith("pairwise_contention") else
+                        "mixed_phase_always_ready" if name.startswith("mixed_phase_always_ready") else
+                        "uniform")
+            config = {"name": name, "workload": workload, "seed": 1000 + position,
+                      "geometry": {"width": 4, "height": 4}, "load": 1.0,
+                      "stim_cycles": 8, "parameters": {"fixed_polarity": 1}}
+            manifest_runs.append(config)
+            canonical = dict(config); canonical["load"] = "1.0"; canonical["sink"] = {"mode": "always"}
+            trace_payload = (json.dumps({"name": name}, separators=(",", ":")) + "\n").encode()
+            trace_sha = digest(trace_payload); self.trace_hashes[name] = trace_sha
+            (self.traces / f"{name}.events.jsonl").write_bytes(trace_payload)
+            report_group = receipt._report_group(canonical)
+            metadata = {
+                "schema_version": 1, "generator_version": "test-4.0", "run": canonical,
+                "report_group": report_group, "trace_file": f"{name}.events.jsonl",
+                "trace_sha256": trace_sha, "event_identity_mode": "address_only",
+                "dut_address_fields": ["logical_source"], "dut_payload_fields": [],
+                "logical_source_permutation": list(range(16)),
+            }
+            index_runs.append(metadata)
+            (self.traces / f"{name}.manifest.json").write_text(
+                json.dumps(metadata, indent=2, sort_keys=True, ensure_ascii=True) + "\n")
+            run_dir = self.artifacts / name; run_dir.mkdir()
+            marker = run_dir / "freshness.marker"; marker.write_bytes(b"")
             marker_ns = 1_700_000_000_000_000_000 + position * 10_000
             os.utime(marker, ns=(marker_ns, marker_ns))
+            result = f"candidate,test,seed\ndut,{report_group},{1000 + position}\n".encode()
+            result_path = run_dir / "trace.events.csv"; result_path.write_bytes(result)
+            os.utime(result_path, ns=(marker_ns + 1_000, marker_ns + 1_000))
+            artifact = {"name": name, "freshness_marker": f"{name}/freshness.marker",
+                        "result": {"path": f"{name}/trace.events.csv", "sha256": digest(result)}}
+            if workload == "pairwise_contention":
+                analyzer = {"candidate": "dut", "test": report_group, "seed": str(1000 + position),
+                            "trace_sha256": trace_sha, "generator_version": "test-4.0",
+                            "logical_source_permutation": list(range(16)), "pair_count": 3,
+                            "evaluable_pairs": 3, "dropped_pairs": 0, "censored_pairs": 0,
+                            "nonevaluable_pairs": 0, "measurement_state": "COMPLETE"}
+            elif workload == "mixed_phase_always_ready":
+                analyzer = {"schema_version": 1, "candidate": "dut", "test": report_group,
+                            "seed": str(1000 + position), "trace_sha256": trace_sha,
+                            "event_identity_mode": "address_only", "sink_mode": "always",
+                            "provenance_validation": {"status": "pass", "trace_sha256": True,
+                                "phase_boundaries": True, "address_only_identity": True,
+                                "source_local_order": True, "complete_uncensored_event_accounting": True}}
+                analyzer["classification"] = {"analysis_status": "pass",
+                                                "correctness_status": "qualified_pass"}
+            else:
+                analyzer = None
+            if analyzer is not None:
+                payload = (json.dumps(analyzer, sort_keys=True) + "\n").encode()
+                path = run_dir / "analysis.json"; path.write_bytes(payload)
+                os.utime(path, ns=(marker_ns + 2_000, marker_ns + 2_000))
+                artifact["analyzer"] = {"path": f"{name}/analysis.json", "sha256": digest(payload)}
+            artifact_runs.append(artifact)
+        manifest = {"schema_version": 1, "runs": manifest_runs}
+        manifest_bytes = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+        self.manifest = root / self.manifest_name; self.manifest.write_bytes(manifest_bytes)
+        self.index = self.traces / "generation-index.json"
+        self.index.write_text(json.dumps({"schema_version": 1, "generator_version": "test-4.0",
+            "input_manifest": self.manifest_name, "runs": index_runs}, indent=2, sort_keys=True) + "\n")
+        self.artifact_doc = {"schema_version": 2, "suite": suite, "runs": artifact_runs}
+        self.artifact_path = root / "artifacts.json"; self.write_artifacts()
+        self.suites = {suite: {"manifest_name": self.manifest_name,
+            "manifest_sha256": digest(manifest_bytes), "names": names}}
 
-            result_payload = f"candidate,test\nfixture,{name}\n".encode()
-            result_path = run_root / "trace.events.csv"
-            result_path.write_bytes(result_payload)
-            result_ns = marker_ns + 1_000
-            os.utime(result_path, ns=(result_ns, result_ns))
-            result_sha = sha(result_payload)
-
-            analyzer_payload = json.dumps(
-                {
-                    "metric": 1,
-                    receipt.PROVENANCE_KEY: {
-                        "schema_version": 1,
-                        "run_name": name,
-                        "trace_sha256": trace_sha,
-                        "result_sha256": result_sha,
-                    },
-                },
-                sort_keys=True,
-            ).encode()
-            analyzer_path = run_root / "analysis.json"
-            analyzer_path.write_bytes(analyzer_payload)
-            analyzer_ns = marker_ns + 2_000
-            os.utime(analyzer_path, ns=(analyzer_ns, analyzer_ns))
-            self.artifact_runs.append(
-                {
-                    "name": name,
-                    "freshness_marker": f"{name}/freshness.marker",
-                    "result": {
-                        "path": f"{name}/trace.events.csv",
-                        "sha256": result_sha,
-                    },
-                    "analyzer": {
-                        "path": f"{name}/analysis.json",
-                        "sha256": sha(analyzer_payload),
-                    },
-                }
-            )
-
-        self.index_path = self.trace_root / "generation-index.json"
-        self.expected_path = self.root / "expected.json"
-        self.artifacts_path = self.root / "artifacts.json"
-        self._write_inputs()
-
-    def tearDown(self):
-        self.temporary.cleanup()
-
-    def _write_inputs(self):
-        self.index_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "generator_version": "fixture-v1",
-                    "input_manifest": "suite.json",
-                    "runs": self.index_runs,
-                }
-            )
-        )
-        self.expected_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "suite_id": "fixture-suite",
-                    "expected_run_count": 2,
-                    "index_provenance": {
-                        "generator_version": "fixture-v1",
-                        "input_manifest": "suite.json",
-                    },
-                    "runs": self.expected_runs,
-                }
-            )
-        )
-        self.artifacts_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "suite_id": "fixture-suite",
-                    "runs": self.artifact_runs,
-                }
-            )
-        )
+    def write_artifacts(self):
+        self.artifact_path.write_text(json.dumps(self.artifact_doc, indent=2, sort_keys=True) + "\n")
 
     def validate(self):
-        return receipt.validate(
-            self.index_path,
-            self.expected_path,
-            self.artifacts_path,
-            self.artifact_root,
-        )
+        return receipt.validate(self.index, self.manifest, self.suite, self.artifact_path,
+                                self.artifacts, self.suites, self.trace_hashes, "test-4.0")
 
-    def assert_rejected(self, pattern):
-        self._write_inputs()
-        with self.assertRaisesRegex(receipt.ReceiptError, pattern):
-            self.validate()
 
-    def test_validates_exact_suite_and_atomically_publishes_once(self):
-        result = self.validate()
-        self.assertEqual(result["status"], "PASS")
-        self.assertEqual(result["validated_run_count"], 2)
-        self.assertEqual([row["name"] for row in result["runs"]], self.names)
+class CommonSuiteReceiptTest(unittest.TestCase):
+    def test_frozen_official_sets_are_exact_committed_50_and_22(self):
+        self.assertEqual(len(official.FULL50), 50)
+        self.assertEqual(len(official.CAPACITY22), 22)
+        self.assertEqual(set(official.FULL50), set(official.TRACE_SHA256))
+        self.assertTrue(set(official.CAPACITY22) < set(official.FULL50))
+        self.assertEqual(official.SOURCE_COMMIT, "abd6a721b515ded8a9ef76cb96129b7e0af21e2b")
+        self.assertEqual(official.FULL50[-2:], ("mixed_phase_always_ready_identity",
+                                               "mixed_phase_always_ready_bit_reverse"))
 
-        output = self.root / "receipt.json"
-        payload = (json.dumps(result, sort_keys=True) + "\n").encode()
-        receipt.publish_new_atomic(output, payload)
-        self.assertEqual(output.read_bytes(), payload)
-        with self.assertRaisesRegex(receipt.ReceiptError, "refusing to overwrite"):
-            receipt.publish_new_atomic(output, b"replacement")
-        self.assertEqual(output.read_bytes(), payload)
-        self.assertEqual(list(self.root.glob(".receipt.json.*.tmp")), [])
+    def _integration(self, suite, names):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), suite, names)
+            result = fixture.validate()
+            self.assertEqual(result["validated_run_count"], len(names))
+            self.assertEqual(result["candidate"], "dut")
+            analyzers = [row for row in result["runs"] if "analyzer" in row]
+            self.assertEqual(len(analyzers), 4)
+            for row in result["runs"]:
+                self.assertIn("run_manifest", row)
 
-    def test_cli_failure_publishes_no_receipt(self):
-        self.artifact_runs[0]["result"]["sha256"] = "0" * 64
-        self._write_inputs()
-        output = self.root / "must-not-exist.json"
-        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            status = receipt.main(
-                [
-                    "--generation-index",
-                    str(self.index_path),
-                    "--expected-runs",
-                    str(self.expected_path),
-                    "--artifacts",
-                    str(self.artifacts_path),
-                    "--artifact-root",
-                    str(self.artifact_root),
-                    "--output",
-                    str(output),
-                ]
-            )
-        self.assertEqual(status, 2)
-        self.assertFalse(output.exists())
+    def test_full50_integration(self):
+        self._integration("full50", official.FULL50)
 
-    def test_rejects_duplicate_index_run(self):
-        self.index_runs[1] = dict(self.index_runs[0])
-        self.assert_rejected("duplicate run name")
+    def test_capacity22_integration(self):
+        self._integration("capacity22", official.CAPACITY22)
 
-    def test_rejects_missing_and_extra_run_sets(self):
-        self.index_runs[1]["run"]["name"] = "extra"
-        self.assert_rejected("run set mismatch")
+    def test_rejects_changed_embedded_or_per_run_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "full50", official.FULL50)
+            doc = json.loads(fixture.index.read_text()); doc["runs"][0]["run"]["seed"] = 7
+            fixture.index.write_text(json.dumps(doc))
+            with self.assertRaisesRegex(receipt.ReceiptError, "embedded run config"):
+                fixture.validate()
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            path = fixture.traces / f"{official.CAPACITY22[0]}.manifest.json"
+            path.write_text(path.read_text() + " ")
+            with self.assertRaisesRegex(receipt.ReceiptError, "bytes/content"):
+                fixture.validate()
 
-    def test_rejects_missing_artifact_run(self):
-        self.artifact_runs.pop()
-        self.assert_rejected("artifact manifest contains 1 runs")
+    def test_analyzers_are_required_only_for_pairwise_and_mixed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            ordinary = next(row for row in fixture.artifact_doc["runs"] if row["name"].startswith("uniform"))
+            ordinary["analyzer"] = {"path": ordinary["result"]["path"], "sha256": ordinary["result"]["sha256"]}
+            fixture.write_artifacts()
+            with self.assertRaisesRegex(receipt.ReceiptError, "must not declare"):
+                fixture.validate()
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            pair = next(row for row in fixture.artifact_doc["runs"] if row["name"] == "pairwise_contention_identity")
+            del pair["analyzer"]; fixture.write_artifacts()
+            with self.assertRaisesRegex(receipt.ReceiptError, "analyzer must be an object"):
+                fixture.validate()
 
-    def test_rejects_extra_artifact_run(self):
-        self.artifact_runs[1]["name"] = "extra"
-        self.assert_rejected("artifact manifest run set mismatch")
+    def test_rejects_pairwise_evaluable_zero_and_csv_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            name = "pairwise_contention_identity"; path = fixture.artifacts / name / "analysis.json"
+            doc = json.loads(path.read_text()); doc.update(measurement_state="NO_EVALUABLE_PAIRS", evaluable_pairs=0)
+            payload = (json.dumps(doc, sort_keys=True) + "\n").encode(); path.write_bytes(payload)
+            row = next(row for row in fixture.artifact_doc["runs"] if row["name"] == name)
+            row["analyzer"]["sha256"] = digest(payload); fixture.write_artifacts()
+            with self.assertRaisesRegex(receipt.ReceiptError, "incomplete or censored"):
+                fixture.validate()
 
-    def test_rejects_wrong_index_provenance(self):
-        self._write_inputs()
-        index = json.loads(self.index_path.read_text())
-        index["input_manifest"] = "wrong.json"
-        self.index_path.write_text(json.dumps(index))
-        with self.assertRaisesRegex(receipt.ReceiptError, "provenance mismatch"):
-            self.validate()
+    def test_rejects_duplicate_missing_extra_and_wrong_official_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            doc = json.loads(fixture.index.read_text())
+            doc["runs"][1]["run"]["name"] = doc["runs"][0]["run"]["name"]
+            fixture.index.write_text(json.dumps(doc))
+            with self.assertRaisesRegex(receipt.ReceiptError, "duplicate run name"):
+                fixture.validate()
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            fixture.artifact_doc["runs"].pop(); fixture.write_artifacts()
+            with self.assertRaisesRegex(receipt.ReceiptError, "missing="):
+                fixture.validate()
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            fixture.artifact_doc["runs"].append({"name": "extra"}); fixture.write_artifacts()
+            with self.assertRaisesRegex(receipt.ReceiptError, "extra="):
+                fixture.validate()
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            fixture.manifest.write_bytes(fixture.manifest.read_bytes() + b" ")
+            with self.assertRaisesRegex(receipt.ReceiptError, "byte SHA256 mismatch"):
+                fixture.validate()
 
-    def test_rejects_trace_content_sha_mismatch(self):
-        (self.trace_root / "alpha.events.jsonl").write_text("changed\n")
-        self.assert_rejected("trace content SHA256 mismatch")
+    def test_rejects_stale_result_and_actual_analyzer_provenance_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            name = official.CAPACITY22[0]
+            marker = fixture.artifacts / name / "freshness.marker"
+            result = fixture.artifacts / name / "trace.events.csv"
+            os.utime(result, ns=(marker.stat().st_mtime_ns, marker.stat().st_mtime_ns))
+            with self.assertRaisesRegex(receipt.ReceiptError, "not newer"):
+                fixture.validate()
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = SuiteFixture(Path(temporary), "capacity22", official.CAPACITY22)
+            name = "mixed_phase_always_ready_identity"
+            path = fixture.artifacts / name / "analysis.json"
+            doc = json.loads(path.read_text()); doc["candidate"] = "other"
+            payload = (json.dumps(doc, sort_keys=True) + "\n").encode(); path.write_bytes(payload)
+            row = next(row for row in fixture.artifact_doc["runs"] if row["name"] == name)
+            row["analyzer"]["sha256"] = digest(payload); fixture.write_artifacts()
+            with self.assertRaisesRegex(receipt.ReceiptError, "analyzer provenance mismatch"):
+                fixture.validate()
 
-    def test_rejects_stale_result_or_analyzer(self):
-        marker = self.artifact_root / "alpha/freshness.marker"
-        stale = self.artifact_root / "alpha/trace.events.csv"
-        os.utime(stale, ns=(marker.stat().st_mtime_ns, marker.stat().st_mtime_ns))
-        self.assert_rejected("result is not newer")
-
-        self.setUp_fresh_artifact_mtimes("alpha")
-        analyzer = self.artifact_root / "alpha/analysis.json"
-        os.utime(analyzer, ns=(marker.stat().st_mtime_ns, marker.stat().st_mtime_ns))
-        self.assert_rejected("analyzer is not newer")
-
-    def setUp_fresh_artifact_mtimes(self, name):
-        marker_ns = (self.artifact_root / name / "freshness.marker").stat().st_mtime_ns
-        for offset, filename in ((1_000, "trace.events.csv"), (2_000, "analysis.json")):
-            path = self.artifact_root / name / filename
-            os.utime(path, ns=(marker_ns + offset, marker_ns + offset))
-
-    def test_rejects_artifact_hash_mismatch(self):
-        self.artifact_runs[0]["result"]["sha256"] = "0" * 64
-        self.assert_rejected("result SHA256 mismatch")
-
-    def test_rejects_analyzer_provenance_mismatch(self):
-        analyzer_path = self.artifact_root / "alpha/analysis.json"
-        analyzer = json.loads(analyzer_path.read_text())
-        analyzer[receipt.PROVENANCE_KEY]["run_name"] = "beta"
-        payload = json.dumps(analyzer, sort_keys=True).encode()
-        analyzer_path.write_bytes(payload)
-        self.setUp_fresh_artifact_mtimes("alpha")
-        self.artifact_runs[0]["analyzer"]["sha256"] = sha(payload)
-        self.assert_rejected("analyzer provenance mismatch")
-
-    def test_rejects_duplicate_artifact_path(self):
-        self.artifact_runs[1]["result"] = dict(self.artifact_runs[0]["result"])
-        self.assert_rejected("duplicate artifact path")
-
-    def test_rejects_path_escape(self):
-        self.artifact_runs[0]["result"]["path"] = "../outside.csv"
-        self.assert_rejected("contained relative path")
-
-    def test_rejects_symlink_artifact(self):
-        result_path = self.artifact_root / "alpha/trace.events.csv"
-        target_path = self.artifact_root / "alpha/real.events.csv"
-        result_path.rename(target_path)
-        result_path.symlink_to(target_path.name)
-        self.assert_rejected("contains a symlink")
+    def test_publish_is_no_overwrite_and_attempt_namespaces_are_unique(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); output = root / "receipt.json"
+            receipt.publish_new_atomic(output, b"one")
+            with self.assertRaisesRegex(receipt.ReceiptError, "refusing to overwrite"):
+                receipt.publish_new_atomic(output, b"two")
+            self.assertEqual(output.read_bytes(), b"one")
+            first = attempt.create(root, "full50", "dut")
+            second = attempt.create(root, "full50", "dut")
+            self.assertNotEqual(first, second)
+            self.assertTrue((first / "attempt.json").is_file())
+            self.assertTrue((second / "attempt.json").is_file())
 
 
 if __name__ == "__main__":
