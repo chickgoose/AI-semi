@@ -29,6 +29,8 @@ required=(
   docs/verification/aer-native-capability-profile.md
   docs/verification/aer-ganghee-native-binding.md
   benchmarks/clean_slate_aer/prepare_sv_trace.py
+  benchmarks/clean_slate_aer/benchmark_release.py
+  benchmarks/clean_slate_aer/benchmark_release.schema.json
   benchmarks/clean_slate_aer/capabilities.py
   benchmarks/clean_slate_aer/manifest.smoke.json
   benchmarks/clean_slate_aer/manifest.neutrality-n16.json
@@ -36,6 +38,7 @@ required=(
   benchmarks/clean_slate_aer/phase_metrics.py
   benchmarks/clean_slate_aer/timing_pair_metrics.py
   benchmarks/clean_slate_aer/fixtures/neutrality_n16_golden.json
+  benchmarks/clean_slate_aer/tests/test_benchmark_release.py
   benchmarks/clean_slate_aer/fixtures/capability_profile_ganghee_trad_rowcol_fovea.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_baseline.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
