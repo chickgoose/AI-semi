@@ -1,0 +1,21 @@
+{
+  "event_identity_mode": "address_only",
+  "generator_version": "4.0",
+  "logical_source_permutation": [1, 0],
+  "report_group": "pairwise_contention_affine",
+  "run": {
+    "geometry": {"height": 1, "width": 2},
+    "load": 0.125,
+    "name": "pairwise_contention_affine",
+    "parameters": {
+      "pair_repeats": 1,
+      "pair_spacing": 8,
+      "source_permutation": {"mode": "affine", "multiplier": 1, "offset": 1}
+    },
+    "seed": 1003,
+    "sink": {"mode": "always"},
+    "stim_cycles": 16,
+    "workload": "pairwise_contention"
+  },
+  "trace_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+}
