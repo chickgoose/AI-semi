@@ -58,7 +58,6 @@ module aer_ganghee_steal_buf_seam_contract_tb;
       repeat (2) @(posedge clk);
       #1;
       outputs = 0;
-      @(negedge clk);
       rst = 1'b0;
     end
   endtask
@@ -66,7 +65,10 @@ module aer_ganghee_steal_buf_seam_contract_tb;
   task automatic seam_edge;
     logic [15:0] accepted_now;
     begin
-      @(posedge clk);
+      // Inputs are stable by negedge.  Observe the combinational seam one time
+      // unit before posedge, independent of active/NBA process ordering.
+      @(negedge clk);
+      #4;
       pre_output = decoded;
       edge_overrun = overrun;
       accepted_now = 16'b0;
@@ -76,6 +78,7 @@ module aer_ganghee_steal_buf_seam_contract_tb;
         accepted_now = seam_valid & pre_output;
       else if (mode == ADMISSION_MODE)
         accepted_now = seam_valid & ~edge_overrun;
+      @(posedge clk);
       #1;
       outputs += $countones(decoded);
       if (mode == EDGE_MODE)
@@ -93,8 +96,9 @@ module aer_ganghee_steal_buf_seam_contract_tb;
     begin
       @(negedge clk);
       raw_arrival = pulse_bits;
-      @(posedge clk);
+      #4;
       edge_overrun = overrun;
+      @(posedge clk);
       #1;
       outputs += $countones(decoded);
       $display("prefill arrival=%h edge_overrun=%h output=%h",
@@ -163,7 +167,6 @@ module aer_ganghee_steal_buf_seam_contract_tb;
     // cannot retry the held logical event after a simultaneous grant frees room.
     reset_case();
     prefill_target_full();
-    @(negedge clk);
     mode = EDGE_MODE;
     raw_arrival = 16'b0;
     seam_valid = 16'h0010;
@@ -186,7 +189,6 @@ module aer_ganghee_steal_buf_seam_contract_tb;
     // on the first edge at which the native counter is not full.
     reset_case();
     prefill_target_full();
-    @(negedge clk);
     mode = ADMISSION_MODE;
     raw_arrival = 16'b0;
     seam_valid = 16'h0010;

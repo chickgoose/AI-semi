@@ -8,8 +8,8 @@ previous A3 candidate rejection decisions.
 ## Decision
 
 The address-only `aer_tx16_trad_rowcol_fovea_cluster2_steal_buf` can connect to
-the common one-outstanding, level-valid source seam with a **zero-state,
-zero-storage admission binding**, subject to the precise contract below:
+the common one-outstanding, level-valid source seam with a **zero-state
+combinational admission seam**, subject to the precise contract below:
 
 ```systemverilog
 assign native_arrival   = source_valid;
@@ -23,10 +23,12 @@ for the currently held common offer; it must **not** be accumulated once per
 held cycle as logical `source_overrun`.  Common `source_overrun` remains an
 occurrence that arrives while the common one-entry source latch is occupied.
 
-This binding has no queue, event storage, arbitration, edge detector, payload
-reconstruction, or retry state.  The existing common source latch holds the
-logical event.  The DUT's 16 two-bit counters are candidate storage and remain
-inside its PPA boundary.
+This seam has no queue, event storage, arbitration, edge detector, payload
+reconstruction, or retry state.  “Zero-state” does not mean zero cost: its
+arrival fanout, 16-bit overrun inversion, ready fanout, and any timing repair are
+mandatory common-ingress PPA/timing paths.  The existing common source latch
+holds the logical event.  The DUT's 16 two-bit counters are candidate storage
+and remain inside its PPA boundary.
 
 The mapping is valid only for the frozen address-only boundary, at most one
 occurrence per source per cycle, and an always-ready output observer.  It is not
@@ -82,6 +84,17 @@ Test:
 The test instantiates the unmodified snapshot plus `arbiter4_tree.v` and
 `arbiter2.v`.  The observer decodes only valid-gated raw row/column masks.  Build
 and run output is under `/tmp/a3-steal-buf-seam-contract`.
+
+The committed runner pins and verifies all three inputs before compilation:
+
+```text
+arbiter2.v                                             25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684
+arbiter4_tree.v                                        108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31
+aer_tx16_trad_rowcol_fovea_cluster2_steal_buf.v        56fdb33a634ea8716b60e3e3b8d54c3435a5d808785e097dbab5a3bdd6dddf96
+```
+
+It independently compiles and runs both the seam counterexample TB and the raw
+arrival/overrun TB, requiring their complete PASS lines with exact matching.
 
 ### Completion-ready is incorrect
 
@@ -158,24 +171,31 @@ single bitmap bit cannot represent multiplicity and the mapping must be rejected
 or charged for an ingress structure.
 
 `native_overrun` is combinational and can change after the edge as occupancy is
-updated.  Sampling after `#1` is invalid: the preceding direct-native test saw
-seven false new-full indications and hid six real full+grant rejections.  A
-portable harness should use a clocking-block input skew or an explicit pre-edge
-sample, not a post-NBA read.
+updated.  Sampling after `#1` is invalid: the direct-native test saw seven false
+new-full indications and hid six real full+grant rejections.  Sampling inside an
+unskewed `@(posedge)` process happened to observe the old value under the pinned
+Verilator scheduler, but that active-region ordering is not portable evidence.
+The committed TBs instead drive at negedge and snapshot one time unit before the
+next posedge.  A reusable simulator-independent harness should use a SystemVerilog
+clocking-block input sampled with `#1step`, or another explicit pre-edge monitor
+phase.  A post-NBA sample is never the admission decision.
 
 ## PPA boundary and rejection conditions
 
-Under the allowed mapping, the binding cost is wires plus inversion/observation;
-there are no binding state bits.  Candidate PPA must include at least:
+Under the allowed mapping there are no seam state bits, but the combinational
+common-ingress path is not free.  Candidate/common-ingress PPA and timing must
+include at least:
 
+- `source_valid` fanout into all native arrival/counter admission cones;
+- 16 overrun inversions and their `source_ready` fanout/load;
+- the full `pending_full -> overrun -> source_ready` timing path and any buffers,
+  replication, or timing repair needed to close it;
 - all 16 x 2-bit native pending counters;
 - both arbitration trees and steal selection logic;
-- registered output lanes; and
-- any physical inversion or timing repair needed for the 16-bit overrun-to-ready
-  path if it is implemented at the candidate boundary.
+- registered output lanes.
 
-The binding becomes a charged synthesizable ingress block, not a zero-feature
-binding, if any of the following is added:
+The seam becomes a stateful, charged synthesizable ingress block if any of the
+following is added:
 
 - per-source `seen`, pulse-arm, retry, or acceptance-history bits;
 - an occurrence FIFO or a second pending latch outside the native counters;
@@ -188,12 +208,13 @@ and refuses the held-offer interpretation, the seam is **not** directly
 compatible.  The minimum correct ingress must then retain one outstanding offer
 and its retry/admission status per source; those state bits, pulse generation,
 full/retry control, and timing paths are synthesizable candidate RTL and belong
-inside PPA.  Reusing the common source latch through the stateless admission
-mapping is the only zero-storage solution established here.
+inside PPA.  Reusing the common source latch through the zero-state combinational
+admission seam is the only state-free composition established here.
 
 ## Tool note
 
-Verilator 5.032 compiled the unmodified snapshot with `--gate-stmts 0`, required
+Verilator 5.032 compiled the SHA-pinned unmodified snapshot with
+`--gate-stmts 0`, required
 because its optimizer misclassifies the `arbiter2` cross-bit continuous
 assignment.  Remaining snapshot warnings are the two 4-bit-to-16-bit shifts in
 `granted_bitmap`, unused grant bits, missing timescales, and the same arbiter
