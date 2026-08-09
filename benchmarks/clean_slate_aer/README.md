@@ -416,10 +416,13 @@ python3 benchmarks/clean_slate_aer/pairwise_cross_map_compare.py \
   --output pairwise_identity_vs_affine.json
 ```
 
-The comparison fails closed on provenance, permutation, candidate, relation,
-repeat, canonical-pair, or physical-address disagreement. Completion and skew
-deltas are emitted only when both trials are evaluable; drop and censor deltas
-remain independent and order changes are reported explicitly.
+The comparison fails closed on current pairwise-report provenance, permutation,
+candidate, relation, repeat, canonical-pair, physical-address, measurement-state,
+and overlap-summary disagreement. A result is rankable only when both reports are
+`COMPLETE` and every trial is isolated. Partial/drop/censor or overlap evidence
+sets `rankable=false` and suppresses global and per-pair completion/skew
+aggregates, while retaining per-trial diagnostics, overlap strata, order changes,
+and independent drop, censor, and combined drop-and-censor capacity deltas.
 
 `--fail-on-correctness` returns exit status 2 for CI when any test has a real
 correctness failure. Saturation alone still returns success.

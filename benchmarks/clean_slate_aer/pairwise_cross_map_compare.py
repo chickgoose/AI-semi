@@ -19,6 +19,13 @@ class CrossMapError(ValueError):
     """Raised when either input is not a comparable frozen pairwise run."""
 
 
+MEASUREMENT_STATES = {
+    "COMPLETE",
+    "PARTIAL_DROP_OR_CENSOR",
+    "NO_EVALUABLE_PAIRS",
+}
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -161,6 +168,24 @@ def _validate_report_provenance(
         raise CrossMapError(f"{label} report candidate must be nonempty")
 
 
+def _percentile(values: list[int], percentile: int) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[math.ceil(percentile * len(ordered) / 100) - 1]
+
+
+def _same_optional_number(actual: Any, expected: int | float | None, field: str) -> None:
+    if expected is None:
+        if actual is not None:
+            raise CrossMapError(f"{field} must be null")
+        return
+    if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+        raise CrossMapError(f"{field} must be numeric")
+    if not math.isclose(float(actual), float(expected), rel_tol=1e-12, abs_tol=1e-12):
+        raise CrossMapError(f"{field} disagrees with trials")
+
+
 def _trial_order(trial: dict[str, Any], label: str) -> tuple[str, int | None]:
     result = trial.get("result")
     states = (trial.get("event_state_a"), trial.get("event_state_b"))
@@ -169,7 +194,15 @@ def _trial_order(trial: dict[str, Any], label: str) -> tuple[str, int | None]:
         raise CrossMapError(f"{label} has an invalid event state")
     has_drop = "source_overrun" in states
     has_censor = any(state in {"pending", "accepted"} for state in states)
-    expected_result = "dropped" if has_drop else "censored" if has_censor else "evaluable"
+    expected_result = (
+        "dropped_and_censored"
+        if has_drop and has_censor
+        else "dropped"
+        if has_drop
+        else "censored"
+        if has_censor
+        else "evaluable"
+    )
     if result != expected_result:
         raise CrossMapError(f"{label} trial result disagrees with event states")
     if result != "evaluable":
@@ -254,6 +287,18 @@ def _validated_trials(
             if source_field in trial and trial[source_field] != expected_source:
                 raise CrossMapError(f"{location} legacy source field mismatch")
         order, order_code = _trial_order(trial, location)
+        overlap_count = trial.get("overlapping_prior_pair_count")
+        overlap_flag = trial.get("overlaps_previous_pair")
+        if (
+            isinstance(overlap_count, bool)
+            or not isinstance(overlap_count, int)
+            or overlap_count < 0
+        ):
+            raise CrossMapError(
+                f"{location} overlapping_prior_pair_count must be nonnegative"
+            )
+        if not isinstance(overlap_flag, bool) or overlap_flag != (overlap_count > 0):
+            raise CrossMapError(f"{location} overlap fields disagree")
         normalized = dict(trial)
         normalized["order"] = order
         normalized["order_code"] = order_code
@@ -269,7 +314,157 @@ def _validated_trials(
     expected_ids = set(range(contract["expected_trials"]))
     if set(by_relation) != expected_ids:
         raise CrossMapError(f"{label} report relation IDs are not complete and contiguous")
+    _validate_report_summary(report, by_relation, contract, label=label)
     return by_relation
+
+
+def _validate_report_summary(
+    report: dict[str, Any],
+    trials: dict[int, dict[str, Any]],
+    contract: dict[str, Any],
+    *,
+    label: str,
+) -> None:
+    required = {
+        "evaluable_pairs", "dropped_pairs", "censored_pairs", "nonevaluable_pairs",
+        "measurement_state", "mean_pair_completion_latency_cycles",
+        "p95_pair_completion_latency_cycles", "max_pair_completion_latency_cycles",
+        "mean_pair_service_skew_cycles", "p95_pair_service_skew_cycles",
+        "max_pair_service_skew_cycles", "a_first_pairs", "b_first_pairs",
+        "same_cycle_pairs", "overlap_pairs", "max_overlapping_prior_pairs",
+        "isolation_state", "worst_completion_pair", "worst_skew_pair",
+        "pair_aggregates",
+    }
+    missing = sorted(required - set(report))
+    if missing:
+        raise CrossMapError(
+            f"{label} report is not current pairwise schema; missing {', '.join(missing)}"
+        )
+
+    rows = list(trials.values())
+    evaluable = [row for row in rows if row["result"] == "evaluable"]
+    dropped = sum(row["has_drop"] for row in rows)
+    censored = sum(row["has_censor"] for row in rows)
+    nonevaluable = len(rows) - len(evaluable)
+    expected_state = (
+        "NO_EVALUABLE_PAIRS"
+        if not evaluable
+        else "COMPLETE"
+        if len(evaluable) == len(rows)
+        else "PARTIAL_DROP_OR_CENSOR"
+    )
+    if report.get("measurement_state") not in MEASUREMENT_STATES:
+        raise CrossMapError(f"{label} report measurement_state is invalid")
+    expected_counts = {
+        "evaluable_pairs": len(evaluable),
+        "dropped_pairs": dropped,
+        "censored_pairs": censored,
+        "nonevaluable_pairs": nonevaluable,
+    }
+    for field, expected in expected_counts.items():
+        if report.get(field) != expected:
+            raise CrossMapError(f"{label} report {field} disagrees with trials")
+    if report.get("measurement_state") != expected_state:
+        raise CrossMapError(f"{label} report measurement_state disagrees with trials")
+
+    overlap_pairs = sum(bool(row["overlaps_previous_pair"]) for row in rows)
+    max_overlap = max(
+        (int(row["overlapping_prior_pair_count"]) for row in rows), default=0
+    )
+    if report.get("overlap_pairs") != overlap_pairs:
+        raise CrossMapError(f"{label} report overlap_pairs disagrees with trials")
+    if report.get("max_overlapping_prior_pairs") != max_overlap:
+        raise CrossMapError(
+            f"{label} report max_overlapping_prior_pairs disagrees with trials"
+        )
+    expected_isolation = "OVERLAP_OBSERVED" if overlap_pairs else "QUIESCENT"
+    if report.get("isolation_state") != expected_isolation:
+        raise CrossMapError(f"{label} report isolation_state disagrees with trials")
+
+    completions = [int(row["completion_latency_cycles"]) for row in evaluable]
+    skews = [int(row["service_skew_cycles"]) for row in evaluable]
+    expected_metrics = {
+        "mean_pair_completion_latency_cycles": (
+            statistics.fmean(completions) if completions else None
+        ),
+        "p95_pair_completion_latency_cycles": _percentile(completions, 95),
+        "max_pair_completion_latency_cycles": max(completions) if completions else None,
+        "mean_pair_service_skew_cycles": statistics.fmean(skews) if skews else None,
+        "p95_pair_service_skew_cycles": _percentile(skews, 95),
+        "max_pair_service_skew_cycles": max(skews) if skews else None,
+    }
+    for field, expected in expected_metrics.items():
+        _same_optional_number(report.get(field), expected, f"{label} report {field}")
+    expected_orders = {
+        "a_first_pairs": sum(row["order"] == "A_FIRST" for row in evaluable),
+        "b_first_pairs": sum(row["order"] == "B_FIRST" for row in evaluable),
+        "same_cycle_pairs": sum(row["order"] == "SAME_CYCLE" for row in evaluable),
+    }
+    for field, expected in expected_orders.items():
+        if report.get(field) != expected:
+            raise CrossMapError(f"{label} report {field} disagrees with trials")
+
+    aggregates = report.get("pair_aggregates")
+    if not isinstance(aggregates, list) or len(aggregates) != contract["pairs_per_repeat"]:
+        raise CrossMapError(f"{label} report pair_aggregates cardinality is invalid")
+    aggregate_keys: set[tuple[int, int]] = set()
+    for index, aggregate in enumerate(aggregates):
+        if not isinstance(aggregate, dict):
+            raise CrossMapError(f"{label} pair_aggregates[{index}] must be an object")
+        key = (aggregate.get("canonical_source_a"), aggregate.get("canonical_source_b"))
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in key):
+            raise CrossMapError(f"{label} pair_aggregates[{index}] has invalid sources")
+        if key in aggregate_keys:
+            raise CrossMapError(f"{label} report has duplicate canonical pair aggregate")
+        aggregate_keys.add(key)
+        pair_trials = [
+            row for row in rows
+            if (row["canonical_source_a"], row["canonical_source_b"]) == key
+        ]
+        if len(pair_trials) != contract["repeats"]:
+            raise CrossMapError(f"{label} report has an unknown canonical pair aggregate")
+        expected_physical = (
+            contract["permutation"][key[0]], contract["permutation"][key[1]]
+        )
+        if (
+            aggregate.get("physical_source_a"), aggregate.get("physical_source_b")
+        ) != expected_physical:
+            raise CrossMapError(
+                f"{label} pair aggregate {key} physical sources disagree with permutation"
+            )
+        pair_evaluable = [row for row in pair_trials if row["result"] == "evaluable"]
+        expected_pair_counts = {
+            "trial_count": len(pair_trials),
+            "evaluable_trials": len(pair_evaluable),
+            "dropped_trials": sum(row["has_drop"] for row in pair_trials),
+            "censored_trials": sum(row["has_censor"] for row in pair_trials),
+            "overlap_trials": sum(row["overlaps_previous_pair"] for row in pair_trials),
+        }
+        for field, expected in expected_pair_counts.items():
+            if aggregate.get(field) != expected:
+                raise CrossMapError(
+                    f"{label} pair aggregate {key} {field} disagrees with trials"
+                )
+        pair_completions = [
+            int(row["completion_latency_cycles"]) for row in pair_evaluable
+        ]
+        pair_skews = [int(row["service_skew_cycles"]) for row in pair_evaluable]
+        expected_pair_metrics = {
+            "mean_completion_latency_cycles": (
+                statistics.fmean(pair_completions) if pair_completions else None
+            ),
+            "max_completion_latency_cycles": (
+                max(pair_completions) if pair_completions else None
+            ),
+            "mean_service_skew_cycles": (
+                statistics.fmean(pair_skews) if pair_skews else None
+            ),
+            "max_service_skew_cycles": max(pair_skews) if pair_skews else None,
+        }
+        for field, expected in expected_pair_metrics.items():
+            _same_optional_number(
+                aggregate.get(field), expected, f"{label} pair aggregate {key} {field}"
+            )
 
 
 def _optional_delta(affine: Any, identity: Any) -> int | None:
@@ -305,6 +500,18 @@ def compare(
     if set(identity_trials) != set(affine_trials):
         raise CrossMapError("identity and affine relation sets differ")
 
+    rankability_reasons: list[str] = []
+    for label, report in (("identity", identity_report), ("affine", affine_report)):
+        if report["measurement_state"] != "COMPLETE":
+            rankability_reasons.append(
+                f"{label}_measurement_state={report['measurement_state']}"
+            )
+        if report["overlap_pairs"]:
+            rankability_reasons.append(
+                f"{label}_overlap_pairs={report['overlap_pairs']}"
+            )
+    rankable = not rankability_reasons
+
     rows: list[dict[str, Any]] = []
     by_pair: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
     for relation_id in sorted(identity_trials):
@@ -330,6 +537,14 @@ def compare(
             "affine_physical_source_b": affine["physical_source_b"],
             "identity_result": identity["result"],
             "affine_result": affine["result"],
+            "identity_overlaps_previous_pair": identity["overlaps_previous_pair"],
+            "affine_overlaps_previous_pair": affine["overlaps_previous_pair"],
+            "identity_overlapping_prior_pair_count": identity[
+                "overlapping_prior_pair_count"
+            ],
+            "affine_overlapping_prior_pair_count": affine[
+                "overlapping_prior_pair_count"
+            ],
             "comparison_state": (
                 "BOTH_EVALUABLE"
                 if both_evaluable
@@ -370,6 +585,16 @@ def compare(
             "identity_censor": identity["has_censor"],
             "affine_censor": affine["has_censor"],
             "censor_delta_affine_minus_identity": int(affine["has_censor"]) - int(identity["has_censor"]),
+            "identity_dropped_and_censored": (
+                identity["has_drop"] and identity["has_censor"]
+            ),
+            "affine_dropped_and_censored": (
+                affine["has_drop"] and affine["has_censor"]
+            ),
+            "dropped_and_censored_delta_affine_minus_identity": (
+                int(affine["has_drop"] and affine["has_censor"])
+                - int(identity["has_drop"] and identity["has_censor"])
+            ),
         }
         rows.append(row)
         by_pair[canonical].append(row)
@@ -388,15 +613,18 @@ def compare(
             "trial_count": len(trials),
             "comparable_trials": len(comparable_pair),
             "mean_completion_delta_affine_minus_identity": (
-                statistics.fmean(pair_completion) if pair_completion else None
+                statistics.fmean(pair_completion)
+                if rankable and pair_completion else None
             ),
             "max_completion_delta_affine_minus_identity": (
-                max(pair_completion) if pair_completion else None
+                max(pair_completion) if rankable and pair_completion else None
             ),
             "mean_skew_delta_affine_minus_identity": (
-                statistics.fmean(pair_skew) if pair_skew else None
+                statistics.fmean(pair_skew) if rankable and pair_skew else None
             ),
-            "max_skew_delta_affine_minus_identity": max(pair_skew) if pair_skew else None,
+            "max_skew_delta_affine_minus_identity": (
+                max(pair_skew) if rankable and pair_skew else None
+            ),
             "order_changed_trials": sum(row["order_changed"] for row in trials),
             "drop_delta_affine_minus_identity": sum(
                 row["drop_delta_affine_minus_identity"] for row in trials
@@ -404,12 +632,56 @@ def compare(
             "censor_delta_affine_minus_identity": sum(
                 row["censor_delta_affine_minus_identity"] for row in trials
             ),
+            "dropped_and_censored_delta_affine_minus_identity": sum(
+                row["dropped_and_censored_delta_affine_minus_identity"]
+                for row in trials
+            ),
+            "identity_dropped_and_censored_trials": sum(
+                row["identity_dropped_and_censored"] for row in trials
+            ),
+            "affine_dropped_and_censored_trials": sum(
+                row["affine_dropped_and_censored"] for row in trials
+            ),
+            "identity_overlap_trials": sum(
+                row["identity_overlaps_previous_pair"] for row in trials
+            ),
+            "affine_overlap_trials": sum(
+                row["affine_overlaps_previous_pair"] for row in trials
+            ),
         })
+
+    overlap_strata = {
+        "BOTH_ISOLATED": sum(
+            not row["identity_overlaps_previous_pair"]
+            and not row["affine_overlaps_previous_pair"]
+            for row in rows
+        ),
+        "IDENTITY_ONLY_OVERLAP": sum(
+            row["identity_overlaps_previous_pair"]
+            and not row["affine_overlaps_previous_pair"]
+            for row in rows
+        ),
+        "AFFINE_ONLY_OVERLAP": sum(
+            not row["identity_overlaps_previous_pair"]
+            and row["affine_overlaps_previous_pair"]
+            for row in rows
+        ),
+        "BOTH_OVERLAP": sum(
+            row["identity_overlaps_previous_pair"]
+            and row["affine_overlaps_previous_pair"]
+            for row in rows
+        ),
+    }
 
     return {
         "delta_convention": "affine_minus_identity",
         "order_code_contract": {"A_FIRST": -1, "SAME_CYCLE": 0, "B_FIRST": 1},
         "candidate": identity_report["candidate"],
+        "rankable": rankable,
+        "rankability_reasons": rankability_reasons,
+        "latency_skew_aggregate_scope": (
+            "ALL_TRIALS_ISOLATED_COMPLETE" if rankable else "SUPPRESSED_NOT_RANKABLE"
+        ),
         "seed": str(identity_contract["run"]["seed"]),
         "source_count": identity_contract["source_count"],
         "pair_repeats": identity_contract["repeats"],
@@ -420,22 +692,45 @@ def compare(
         "trial_count": len(rows),
         "both_evaluable_trials": len(comparable),
         "incomplete_comparisons": len(rows) - len(comparable),
+        "identity_measurement_state": identity_report["measurement_state"],
+        "affine_measurement_state": affine_report["measurement_state"],
+        "identity_evaluable_pairs": identity_report["evaluable_pairs"],
+        "affine_evaluable_pairs": affine_report["evaluable_pairs"],
+        "identity_dropped_pairs": identity_report["dropped_pairs"],
+        "affine_dropped_pairs": affine_report["dropped_pairs"],
+        "identity_censored_pairs": identity_report["censored_pairs"],
+        "affine_censored_pairs": affine_report["censored_pairs"],
+        "identity_dropped_and_censored_pairs": sum(
+            row["identity_dropped_and_censored"] for row in rows
+        ),
+        "affine_dropped_and_censored_pairs": sum(
+            row["affine_dropped_and_censored"] for row in rows
+        ),
+        "identity_overlap_pairs": identity_report["overlap_pairs"],
+        "affine_overlap_pairs": affine_report["overlap_pairs"],
+        "overlap_strata": overlap_strata,
         "mean_completion_delta_affine_minus_identity": (
-            statistics.fmean(completion_deltas) if completion_deltas else None
+            statistics.fmean(completion_deltas)
+            if rankable and completion_deltas else None
         ),
         "max_completion_regression_affine_minus_identity": (
-            max(completion_deltas) if completion_deltas else None
+            max(completion_deltas) if rankable and completion_deltas else None
         ),
         "mean_skew_delta_affine_minus_identity": (
-            statistics.fmean(skew_deltas) if skew_deltas else None
+            statistics.fmean(skew_deltas) if rankable and skew_deltas else None
         ),
-        "max_skew_regression_affine_minus_identity": max(skew_deltas) if skew_deltas else None,
+        "max_skew_regression_affine_minus_identity": (
+            max(skew_deltas) if rankable and skew_deltas else None
+        ),
         "order_changed_trials": sum(row["order_changed"] for row in rows),
         "drop_delta_affine_minus_identity": sum(
             row["drop_delta_affine_minus_identity"] for row in rows
         ),
         "censor_delta_affine_minus_identity": sum(
             row["censor_delta_affine_minus_identity"] for row in rows
+        ),
+        "dropped_and_censored_delta_affine_minus_identity": sum(
+            row["dropped_and_censored_delta_affine_minus_identity"] for row in rows
         ),
         "canonical_pair_aggregates": pair_rows,
         "trials": rows,

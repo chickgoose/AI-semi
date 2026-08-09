@@ -1,0 +1,17 @@
+{
+  "event_identity_mode": "address_only",
+  "generator_version": "4.0",
+  "logical_source_permutation": [0, 1],
+  "report_group": "pairwise_contention_identity",
+  "run": {
+    "geometry": {"height": 1, "width": 2},
+    "load": 0.125,
+    "name": "pairwise_contention_identity",
+    "parameters": {"pair_repeats": 1, "pair_spacing": 8},
+    "seed": 1003,
+    "sink": {"mode": "always"},
+    "stim_cycles": 16,
+    "workload": "pairwise_contention"
+  },
+  "trace_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+}
