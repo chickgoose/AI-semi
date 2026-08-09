@@ -111,10 +111,13 @@ are complete:
 | `hyeonsu_final` | final candidate; immutable identity pending registry |
 | `junyoung_clean_slate` | final candidate; register only after new RTL exists |
 
-No compatibility wrapper may silently select obsolete RTL. A wrapper is allowed
-only when its source and cost are frozen in `normalization_rtl`; behavioral
-testbench pin mapping remains outside PPA only when it adds no storage, retry,
-arbitration, coding, or protocol capability.
+No compatibility wrapper may silently select obsolete RTL. Synthesizable
+normalization is allowed only when its source and cost are frozen in
+`normalization_rtl`. The non-synthesizable zero-feature TB binding remains
+outside PPA only when it satisfies the
+[native harness boundary](aer-native-capability-profile.md#native-harness-boundary).
+Any stateful decoder or other functional reconstruction is DUT RTL and PPA,
+not binding.
 
 ## Evaluation stages
 

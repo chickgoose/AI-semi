@@ -1,6 +1,6 @@
 # Native Candidate Workload Capability/Profile Contract
 
-Status: team discussion candidate, 2026-08-06
+Status: team-approved native-binding contract, 2026-08-10
 
 ## Purpose
 
@@ -21,20 +21,40 @@ and receive a poor or unbounded-wait result without a capability failure.
 
 ## Native harness boundary
 
-Permitted harness work is observational or structural pin mapping:
+The common suite retains a candidate-specific, TB-only native binding. Earlier
+`no-binding`, direct-inline, or binding-removal instructions are superseded;
+they do not invalidate any already-approved workload, trace, scoreboard, or
+metric improvement. The retained binding is a **zero-feature binding**: it may
+express an existing native protocol to the common TB, but may not supply a
+hardware feature absent from the DUT.
+
+Permitted binding work is limited to:
 
 - tie an existing sink-ready input high for the core always-ready suite;
-- map native source/address pins into the common logical address scoreboard;
+- wire, slice, concatenate, or statically relabel existing native pins;
+- expand a delivered row/address plus bitmap combinationally into same-cycle
+  logical-source observation pulses, with no history or event-bearing state;
+- drive the acknowledge timing required by an existing native handshake under
+  the workload's declared sink policy; ACK phase tracking may not buffer an
+  event, choose among events, retry one, or decouple DUT service from TB service;
 - timestamp occurrence, native acceptance, and logical delivery;
 - observe each native retire lane and normalize its logical events;
 - retain TB-only event identity in the reference model.
 
-The harness must not add a FIFO, elastic buffer, retry protocol, serializer,
-polarity field, backpressure state, or extra retire lane to turn an unsupported
-feature into a supported one. Such logic is a new candidate implementation and
-belongs in its RTL/PPA boundary, not in a capability adapter. A candidate with
-no output-ready input is still valid for the always-ready core suite and simply
-skips the optional backpressure suite.
+The binding must not add event storage (including a pending latch or FIFO),
+arbitration, scheduling, retry, serialization, a new ready/backpressure
+capability, coding, payload fields, retire lanes, or functional reconstruction.
+In particular, decoding that depends on history—repeat/delta/compressed-symbol
+state, prior addresses, a dictionary, or any other stateful decoder—is DUT RTL,
+must be synthesized, and is charged inside that candidate's PPA boundary. A
+stateless address/row-bitmap expansion used only by the scoreboard is not such
+a decoder.
+
+The zero-feature binding is non-synthesizable TB infrastructure and is excluded
+from synthesis and PPA. This exclusion is valid only while every operation
+stays within the permitted list above. A candidate with no output-ready input
+is still valid for the always-ready core suite and simply skips the optional
+backpressure suite.
 
 ## Capability sets
 
