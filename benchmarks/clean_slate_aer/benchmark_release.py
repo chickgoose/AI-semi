@@ -182,6 +182,10 @@ def _validate_native_synth_boundary(
     declared_filelists = set(synth_filelists)
     binding_names = {PurePosixPath(path).name for path in native_paths}
     for filelist in synth_filelists:
+        if filelist == "tb/files.f" or filelist.startswith("tb/clean/"):
+            raise ReleaseError(
+                f"verification filelist cannot be declared as synth/PPA: {filelist}"
+            )
         if PurePosixPath(filelist).suffix != ".f":
             raise ReleaseError(f"synth/PPA source list must be a .f file: {filelist}")
         try:
