@@ -344,6 +344,23 @@ class MixedPhaseMetricTest(unittest.TestCase):
             diagnostic = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(diagnostic["classification"]["correctness_status"], "not_qualified")
 
+    def test_malformed_input_writes_failure_diagnostic(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            fixture = A3CompatibleGeneratedFixture(Path(directory_name))
+            output = fixture.directory / "diagnostic.json"
+            status = mixed_metrics.main([
+                "--run-manifest", str(fixture.manifest_path),
+                "--events", str(fixture.event_path),
+                "--summary", str(fixture.directory / "missing-summary.csv"),
+                "--require-qualified", "--output", str(output),
+            ])
+            self.assertEqual(status, 2)
+            diagnostic = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                diagnostic["classification"],
+                {"analysis_status": "input_failure", "correctness_status": "not_qualified"},
+            )
+
     def test_require_qualified_fails_on_common_correctness_error(self):
         with tempfile.TemporaryDirectory() as directory_name:
             fixture = A3CompatibleGeneratedFixture(Path(directory_name))

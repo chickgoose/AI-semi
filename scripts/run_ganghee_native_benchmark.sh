@@ -18,6 +18,7 @@ usage() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/mixed_phase_analysis.sh"
 OUT_ROOT="${AER_CLEAN_OUT:-$PROJECT_ROOT/results/clean-benchmark}"
 TOP="${AER_GANGHEE_TOP:-}"
 RTL="${AER_GANGHEE_RTL:-}"
@@ -55,7 +56,7 @@ is_core_test() {
 }
 
 trace_args=()
-mixed_trace=0
+prepared_report_name=""
 if [[ -n "$TRACE_JSONL" || -n "$TRACE_MANIFEST" ]]; then
   [[ -n "$TRACE_JSONL" && -n "$TRACE_MANIFEST" ]] || {
     printf 'AER_TRACE_JSONL and AER_TRACE_MANIFEST must be set together\n' >&2
@@ -103,12 +104,11 @@ if [[ -n "$TRACE_JSONL" ]]; then
   if [[ -z "$trace_report_name" ]]; then
     trace_report_name="$prepared_report_name"
   fi
-  [[ "$prepared_report_name" == "mixed_phase_always_ready" ]] && mixed_trace=1
   read -r trace_version trace_count trace_stim_cycles trace_source_count \
     trace_load_milli trace_sink_mode trace_sink_arg0 trace_sink_arg1 \
     trace_seed_name < "$prepared_trace"
-  [[ "$trace_version" == 3 && "$trace_source_count" == 16 ]] || {
-    printf 'prepared trace must be version 3 with 16 sources\n' >&2
+  [[ "$trace_version" == 4 && "$trace_source_count" == 16 ]] || {
+    printf 'prepared trace must be address-only version 4 with 16 sources\n' >&2
     exit 2
   }
   [[ "$trace_sink_mode" == 0 ]] || {
@@ -141,11 +141,8 @@ for test_name in "${tests[@]}"; do
   metrics_path="$out_dir/$test_name.csv"
   event_metrics_path="$out_dir/$test_name.events.csv"
   mixed_metrics_path="$out_dir/$test_name.mixed_metrics.json"
-  if (( mixed_trace )); then
-    # A successful simulator process that emits no result must never qualify
-    # against files left by an earlier run.
-    rm -f "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
-  fi
+  mixed_phase_clear_outputs "$prepared_report_name" \
+    "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
   run_command=(xrun -64bit -R -snapshot "$snapshot"
     -xmlibdirname "$out_dir/xcelium.d"
     "+CLEAN_TEST=$test_name" "+CANDIDATE=ganghee-native-coordinate-source-projection"
@@ -156,11 +153,8 @@ for test_name in "${tests[@]}"; do
     run_command+=("${trace_args[@]}")
   fi
   (cd "$PROJECT_ROOT" && "${run_command[@]}")
-  if (( mixed_trace )); then
-    python3 "$PROJECT_ROOT/benchmarks/clean_slate_aer/mixed_phase_always_ready_metrics.py" \
-      --run-manifest "$TRACE_MANIFEST" --events "$event_metrics_path" \
-      --summary "$metrics_path" --require-qualified --output "$mixed_metrics_path"
-  fi
+  mixed_phase_require_qualified "$prepared_report_name" "$PROJECT_ROOT" \
+    "$TRACE_MANIFEST" "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
 done
 
 printf 'Ganghee native clean benchmark complete: %s\n' "$out_dir"

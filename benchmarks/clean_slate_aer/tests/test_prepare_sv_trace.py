@@ -44,7 +44,7 @@ class PrepareSvTraceTest(unittest.TestCase):
             self.assertEqual(result["load_milli"], 500)
             self.assertEqual(result["report_group"], "tiny")
             lines = output.read_text(encoding="ascii").splitlines()
-            self.assertEqual(lines[0], "3 3 8 4 500 0 0 0 9")
+            self.assertEqual(lines[0], "4 3 8 4 500 0 0 0 9")
             self.assertEqual([line.split()[:3] for line in lines[1:]],
                              [["1", "0", "0"], ["1", "1", "1"], ["7", "2", "3"]])
             self.assertNotEqual(lines[1].split()[3], lines[3].split()[3])
@@ -88,7 +88,7 @@ class PrepareSvTraceTest(unittest.TestCase):
             prepare_trace(trace, manifest, output, 8)
             self.assertEqual(
                 output.read_text(encoding="ascii").splitlines()[0],
-                "3 3 8 4 500 2 2 3 9",
+                "4 3 8 4 500 2 2 3 9",
             )
 
 

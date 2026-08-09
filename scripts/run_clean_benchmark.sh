@@ -12,6 +12,7 @@ shift
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/scripts/lib/mixed_phase_analysis.sh"
 OUT_ROOT="${AER_CLEAN_OUT:-$PROJECT_ROOT/results/clean-benchmark}"
 SIMULATOR="${AER_SIMULATOR:-}"
 NUM_SOURCES="${AER_NUM_SOURCES:-4}"
@@ -22,6 +23,7 @@ LOAD_PCT="${AER_LOAD_PCT:-3}"
 SEED="${AER_SEED:-1}"
 TRACE_JSONL="${AER_TRACE_JSONL:-}"
 TRACE_MANIFEST="${AER_TRACE_MANIFEST:-}"
+prepared_report_name=""
 
 design_define=""
 design_filelist=""
@@ -82,10 +84,11 @@ if [[ -n "$TRACE_JSONL" ]]; then
     --trace "$TRACE_JSONL" --run-manifest "$TRACE_MANIFEST" \
     --output "$prepared_trace" --addr-width "$ADDR_WIDTH")"
   printf '%s\n' "$prepare_output"
+  prepared_report_name="${prepare_output##*report_group=}"
+  prepared_report_name="${prepared_report_name%% *}"
   trace_report_name="${AER_TRACE_NAME:-}"
   if [[ -z "$trace_report_name" ]]; then
-    trace_report_name="${prepare_output##*report_group=}"
-    trace_report_name="${trace_report_name%% *}"
+    trace_report_name="$prepared_report_name"
   fi
   trace_args=("+TRACE_FILE=$prepared_trace" "+TRACE_NAME=$trace_report_name")
 fi
@@ -111,11 +114,16 @@ case "$SIMULATOR" in
     (cd "$PROJECT_ROOT" && "${command[@]}")
 
     for test_name in "${tests[@]}"; do
+      metrics_path="$out_dir/$test_name.csv"
+      event_metrics_path="$out_dir/$test_name.events.csv"
+      mixed_metrics_path="$out_dir/$test_name.mixed_metrics.json"
+      mixed_phase_clear_outputs "$prepared_report_name" \
+        "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
       run_command=(xrun -64bit -R -snapshot "$snapshot"
         -xmlibdirname "$out_dir/xcelium.d"
-        "+CLEAN_TEST=$test_name" "+METRICS=$out_dir/$test_name.csv"
+        "+CLEAN_TEST=$test_name" "+METRICS=$metrics_path"
         "+CANDIDATE=$design"
-        "+EVENT_METRICS=$out_dir/$test_name.events.csv"
+        "+EVENT_METRICS=$event_metrics_path"
         "+STIM_CYCLES=$STIM_CYCLES" "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED"
         -l "$out_dir/$test_name.log")
       run_command+=("${trace_args[@]}")
@@ -129,6 +137,8 @@ case "$SIMULATOR" in
           exit 1
         fi
       fi
+      mixed_phase_require_qualified "$prepared_report_name" "$PROJECT_ROOT" \
+        "$TRACE_MANIFEST" "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
     done
     ;;
   iverilog)
@@ -142,12 +152,19 @@ case "$SIMULATOR" in
     (cd "$PROJECT_ROOT" && "${command[@]}")
 
     for test_name in "${tests[@]}"; do
+      metrics_path="$out_dir/$test_name.csv"
+      event_metrics_path="$out_dir/$test_name.events.csv"
+      mixed_metrics_path="$out_dir/$test_name.mixed_metrics.json"
+      mixed_phase_clear_outputs "$prepared_report_name" \
+        "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
       vvp "$out_dir/aer_clean.vvp" "+CLEAN_TEST=$test_name" \
         "+CANDIDATE=$design" \
-        "+METRICS=$out_dir/$test_name.csv" "+STIM_CYCLES=$STIM_CYCLES" \
-        "+EVENT_METRICS=$out_dir/$test_name.events.csv" \
+        "+METRICS=$metrics_path" "+STIM_CYCLES=$STIM_CYCLES" \
+        "+EVENT_METRICS=$event_metrics_path" \
         "+LOAD_PCT=$LOAD_PCT" "+SEED=$SEED" "${trace_args[@]}" | \
         tee "$out_dir/$test_name.log"
+      mixed_phase_require_qualified "$prepared_report_name" "$PROJECT_ROOT" \
+        "$TRACE_MANIFEST" "$metrics_path" "$event_metrics_path" "$mixed_metrics_path"
     done
     ;;
   *)

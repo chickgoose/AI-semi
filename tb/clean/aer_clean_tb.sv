@@ -276,7 +276,7 @@ module aer_clean_tb;
         trace_seed_name);
       if (trace_scan_count != 9)
         $fatal(1, "CLEAN_TRACE malformed header in %s", trace_file_path);
-      if (trace_version != 3)
+      if (trace_version != 4)
         $fatal(1, "CLEAN_TRACE unsupported version=%0d", trace_version);
       if ((trace_count < 0) || (trace_count > MAX_EVENTS))
         $fatal(1, "CLEAN_TRACE invalid event count=%0d", trace_count);

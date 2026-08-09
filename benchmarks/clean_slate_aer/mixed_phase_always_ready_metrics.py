@@ -651,6 +651,18 @@ def main(argv: list[str] | None = None) -> int:
         result = analyze(args.run_manifest, args.events, args.summary)
     except (MixedPhaseMetricError, aggregate.InputError) as exc:
         print(f"error: {exc}", file=sys.stderr)
+        if args.output:
+            diagnostic = {
+                "classification": {
+                    "analysis_status": "input_failure",
+                    "correctness_status": "not_qualified",
+                },
+                "error": str(exc),
+            }
+            args.output.write_text(
+                json.dumps(diagnostic, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         return 2
     payload = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if args.output:
