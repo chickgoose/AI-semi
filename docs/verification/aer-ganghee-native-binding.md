@@ -145,6 +145,44 @@ after the first implicit acknowledgement has cleared the live pending request.
 or a missing binding diagnostic as test failure. Thus the normalizer cannot
 silently discard this raw duplicate and report a clean scoreboard result.
 
+## Cluster2 raw-result causal-credit contract (2026-08-10)
+
+The address-only contract cannot distinguish a stale result from a new result
+merely because both carry the same source address. Qualification is therefore
+limited to this native-boundary causality rule:
+
+> Every asserted raw source bit must consume one previously unconsumed sampled
+> request credit for that source.
+
+A level request creates at most one credit while it remains asserted. A raw
+result consumes that credit. Reset clears all credits. Credit state is
+verification-only: it must not feed the DUT or binding, reconstruct
+`source_event`, suppress a result, or create an acceptance. Both consecutive
+repeats and delayed stale results after a low gap fail when no credit exists.
+
+There is an unavoidable boundary to this claim. If a genuinely new request for
+the same source was sampled after the preceding result, it creates a new credit.
+Any later same-address result may consume that credit; address-only observation
+cannot prove whether it originated from the new request or is an older delayed
+result. Claims stronger than credit conservation require forbidden event
+identity or a stronger native protocol.
+
+`tests/clean_native/aer_cluster2_causal_credit_monitor.sv` is the executable
+reference checker. `tests/clean_native/aer_cluster2_causal_credit_tb.sv` covers:
+
+- fastest legal same-source retrigger after the raw result drops;
+- an immediate repeated bitmap overlapping a newly offered, but not sampled,
+  same-source occurrence;
+- a delayed stale bitmap after a complete low observation cycle; and
+- a second reset only after all accepted results drain, followed by a fresh
+  post-reset request credit.
+
+The two fault runs pass qualification only when the simulated design exits
+nonzero with `raw_without_credit`; a fallback fatal or clean conservation result
+is insufficient. The legal run requires three sampled request episodes, three
+raw results, three acceptances, and no mid-traffic reset semantics. This monitor
+does not modify or substitute for production RTL.
+
 ## Server original-RTL qualification (2026-08-06)
 
 Xcelium 23.09 elaborated the read-only server sources directly through the
