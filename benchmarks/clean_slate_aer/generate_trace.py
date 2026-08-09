@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable
 
 
 SCHEMA_VERSION = 1
-GENERATOR_VERSION = "3.0"
+GENERATOR_VERSION = "4.0"
 WORKLOADS = (
     "basic_sparse",
     "basic_simultaneous",
@@ -34,6 +34,7 @@ WORKLOADS = (
     "moving_hotspot",
     "rotating_victim",
     "phase_transition",
+    "mixed_phase_always_ready",
 )
 EVENT_FIELDS = (
     "occurrence_cycle",
@@ -729,6 +730,106 @@ def generate_phase_transition(builder: TraceBuilder) -> None:
             builder.add(cycle, source)
 
 
+def generate_mixed_phase_always_ready(builder: TraceBuilder) -> None:
+    """Frozen N=16 mixed temporal/spatial address-only stress schedule.
+
+    The seven contiguous phases total exactly 4096 injection cycles.  Paired
+    phases reuse realized demand, rather than merely matching an expectation.
+    """
+    config = builder.config
+    if config.stim_cycles != 4096 or config.width != 4 or config.height != 4:
+        raise ManifestError(
+            f"{config.name}: mixed_phase_always_ready requires 4x4 geometry "
+            "and exactly 4096 stim_cycles"
+        )
+
+    uniform_length = 640
+    subset_length = 256
+    hotspot_length = 768
+
+    # U-Bernoulli: independent source trials.  Save the realized histogram so
+    # U-smooth is an exact count-matched temporal rearrangement.
+    bernoulli_start = 0
+    smooth_start = bernoulli_start + uniform_length
+    uniform_probability = decimal_parameter(
+        config, "uniform_source_probability", Decimal("0.125")
+    )
+    if uniform_probability > 1:
+        raise ManifestError(
+            f"{config.name}.uniform_source_probability must be <= 1"
+        )
+    uniform_counts = [0] * config.source_count
+    for relative_cycle in range(uniform_length):
+        for source in range(config.source_count):
+            if builder.rng.probability(uniform_probability):
+                builder.add(bernoulli_start + relative_cycle, source)
+                uniform_counts[source] += 1
+    for source, count in enumerate(uniform_counts):
+        for occurrence in range(count):
+            relative_cycle = (occurrence * uniform_length) // count
+            builder.add(smooth_start + relative_cycle, source)
+
+    # S-persistent: hold one full column for 64 cycles before moving.  The
+    # count-matched S-rotating phase changes column every cycle.  Both inject
+    # four events on every cycle and exactly 64 events per source.
+    persistent_start = smooth_start + uniform_length
+    rotating_start = persistent_start + subset_length
+    column_dwell = subset_length // config.width
+    for relative_cycle in range(subset_length):
+        persistent_column = relative_cycle // column_dwell
+        rotating_column = relative_cycle % config.width
+        for row in range(config.height):
+            builder.add(
+                persistent_start + relative_cycle,
+                row * config.width + persistent_column,
+            )
+            builder.add(
+                rotating_start + relative_cycle,
+                row * config.width + rotating_column,
+            )
+
+    # H-A/H-B share one canonical stochastic sequence.  A maps its four hot
+    # ranks to a local 2x2 block; B maps them to a dispersed diagonal.  The
+    # final phase replays A exactly, including occurrence cycles relative to
+    # its phase boundary.
+    hotspot_a_start = rotating_start + subset_length
+    hotspot_b_start = hotspot_a_start + hotspot_length
+    hotspot_replay_start = hotspot_b_start + hotspot_length
+    hot_probability = decimal_parameter(config, "hot_probability", Decimal("0.8"))
+    if hot_probability > 1:
+        raise ManifestError(f"{config.name}.hot_probability must be <= 1")
+    hotspot_a_front = [5, 6, 9, 10]
+    hotspot_b_front = [0, 5, 10, 15]
+    map_a = hotspot_a_front + [
+        source for source in range(config.source_count) if source not in hotspot_a_front
+    ]
+    map_b = hotspot_b_front + [
+        source for source in range(config.source_count) if source not in hotspot_b_front
+    ]
+    canonical_sequence: list[tuple[int, int]] = []
+    for relative_cycle in range(hotspot_length):
+        available_hot = list(range(4))
+        available_cold = list(range(4, config.source_count))
+        selected: list[int] = []
+        for _ in range(2):
+            choose_hot = builder.rng.probability(hot_probability)
+            pool = available_hot if choose_hot else available_cold
+            if not pool:
+                pool = available_cold if choose_hot else available_hot
+            index = builder.rng.randbelow(len(pool))
+            source_rank = pool.pop(index)
+            selected.append(source_rank)
+        for source_rank in selected:
+            canonical_sequence.append((relative_cycle, source_rank))
+    for relative_cycle, source_rank in canonical_sequence:
+        builder.add(hotspot_a_start + relative_cycle, map_a[source_rank])
+        builder.add(hotspot_b_start + relative_cycle, map_b[source_rank])
+        builder.add(hotspot_replay_start + relative_cycle, map_a[source_rank])
+
+    if hotspot_replay_start + hotspot_length != config.stim_cycles:
+        raise AssertionError("mixed phase schedule does not fill stim_cycles")
+
+
 GENERATORS: dict[str, Callable[[TraceBuilder], None]] = {
     "basic_sparse": generate_basic_sparse,
     "basic_simultaneous": generate_basic_simultaneous,
@@ -746,6 +847,7 @@ GENERATORS: dict[str, Callable[[TraceBuilder], None]] = {
     "moving_hotspot": generate_moving_hotspot,
     "rotating_victim": generate_rotating_victim,
     "phase_transition": generate_phase_transition,
+    "mixed_phase_always_ready": generate_mixed_phase_always_ready,
 }
 
 
@@ -867,6 +969,8 @@ def generate_run(config: RunConfig, output_dir: Path) -> dict[str, Any]:
     report_group = (
         "uniform"
         if config.workload == "uniform"
+        else "mixed_phase_always_ready"
+        if config.workload == "mixed_phase_always_ready"
         else re.sub(r"_s[0-9]+$", "", config.name)
     )
     metadata = {

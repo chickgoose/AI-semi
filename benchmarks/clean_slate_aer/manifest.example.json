@@ -172,6 +172,15 @@
         "shock_deadline_slack": 8
       },
       "sink": {"mode": "shock", "start": 192, "cycles": 96}
+    },
+    {
+      "name": "mixed_phase_always_ready",
+      "workload": "mixed_phase_always_ready",
+      "seed": 4001,
+      "geometry": {"width": 4, "height": 4},
+      "load": 2.25,
+      "stim_cycles": 4096,
+      "parameters": {"uniform_source_probability": 0.125, "hot_probability": 0.8}
     }
   ]
 }

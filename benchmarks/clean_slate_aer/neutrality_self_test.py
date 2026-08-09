@@ -45,6 +45,15 @@ def assert_source_boundary(events: list[dict[str, object]]) -> None:
         assert event["event_type"] == "spike"
 
 
+def phase_events(
+    events: list[dict[str, object]], start: int, length: int
+) -> list[dict[str, object]]:
+    return [
+        event for event in events
+        if start <= int(event["occurrence_cycle"]) < start + length
+    ]
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="aer-neutrality-n16-") as temporary:
         first = Path(temporary) / "first"
@@ -52,7 +61,7 @@ def main() -> int:
         first_runs = generate_trace.generate_manifest(MANIFEST, first)
         second_runs = generate_trace.generate_manifest(MANIFEST, second)
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        assert len(first_runs) == 48
+        assert len(first_runs) == 50
         assert golden["generator_version"] == generate_trace.GENERATOR_VERSION
         assert golden["suite"] == MANIFEST.name
         assert golden["runs"] == [
@@ -73,6 +82,10 @@ def main() -> int:
             run = metadata["run"]
             assert run["geometry"] == {"width": 4, "height": 4}
             assert run["sink"]["mode"] == "always"
+            assert metadata["event_identity_mode"] == "address_only"
+            assert metadata["dut_address_fields"] == ["logical_source"]
+            assert metadata["dut_payload_fields"] == []
+            assert {"polarity", "event_type"} <= set(metadata["trace_metadata_fields"])
             events = read_events(first, run["name"])
             assert_source_boundary(events)
             assert metadata["actual_mean_load"] == str(
@@ -203,7 +216,67 @@ def main() -> int:
         }
         assert uniform_groups == {"uniform"}
 
-    print("NEUTRALITY_SELF_TEST_PASS runs=48 n=16 address_only=1 deterministic=1")
+        mixed_identity = read_events(first, "mixed_phase_always_ready_identity")
+        mixed_reversed = read_events(first, "mixed_phase_always_ready_bit_reverse")
+        assert [strip_address(event) for event in mixed_identity] == [
+            strip_address(event) for event in mixed_reversed
+        ]
+        assert [int(event["logical_source"]) for event in mixed_reversed] == [
+            int(f"{int(event['logical_source']):04b}"[::-1], 2)
+            for event in mixed_identity
+        ]
+
+        u_bernoulli = phase_events(mixed_identity, 0, 640)
+        u_smooth = phase_events(mixed_identity, 640, 640)
+        assert Counter(event["logical_source"] for event in u_bernoulli) == Counter(
+            event["logical_source"] for event in u_smooth
+        )
+
+        s_persistent = phase_events(mixed_identity, 1280, 256)
+        s_rotating = phase_events(mixed_identity, 1536, 256)
+        for events, start in ((s_persistent, 1280), (s_rotating, 1536)):
+            assert Counter(event["logical_source"] for event in events) == Counter(
+                {source: 64 for source in range(16)}
+            )
+            assert Counter(event["occurrence_cycle"] for event in events) == Counter(
+                {cycle: 4 for cycle in range(start, start + 256)}
+            )
+        for block in range(4):
+            persistent_sources = {
+                int(event["logical_source"])
+                for event in s_persistent
+                if 1280 + block * 64 <= int(event["occurrence_cycle"])
+                < 1280 + (block + 1) * 64
+            }
+            assert persistent_sources == {block + 4 * row for row in range(4)}
+
+        h_a = phase_events(mixed_identity, 1792, 768)
+        h_b = phase_events(mixed_identity, 2560, 768)
+        h_a_replay = phase_events(mixed_identity, 3328, 768)
+        for events, start in ((h_a, 1792), (h_b, 2560), (h_a_replay, 3328)):
+            assert Counter(event["occurrence_cycle"] for event in events) == Counter(
+                {cycle: 2 for cycle in range(start, start + 768)}
+            )
+        assert [
+            (int(event["occurrence_cycle"]) - 1792, event["logical_source"])
+            for event in h_a
+        ] == [
+            (int(event["occurrence_cycle"]) - 3328, event["logical_source"])
+            for event in h_a_replay
+        ]
+        map_a = [5, 6, 9, 10] + [
+            source for source in range(16) if source not in {5, 6, 9, 10}
+        ]
+        map_b = [0, 5, 10, 15] + [
+            source for source in range(16) if source not in {0, 5, 10, 15}
+        ]
+        inverse_a = {source: rank for rank, source in enumerate(map_a)}
+        inverse_b = {source: rank for rank, source in enumerate(map_b)}
+        assert [inverse_a[int(event["logical_source"])] for event in h_a] == [
+            inverse_b[int(event["logical_source"])] for event in h_b
+        ]
+
+    print("NEUTRALITY_SELF_TEST_PASS runs=50 capacity=22 n=16 address_only=1 deterministic=1")
     return 0
 
 
