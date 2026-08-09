@@ -1,0 +1,8 @@
+{
+  "schema": "aer-executed-test-receipt-v1",
+  "name": "a1_self_test",
+  "command": ["python3", "benchmarks/clean_slate_aer/self_test.py"],
+  "exit_code": 0,
+  "log_sha256": "2b96e05fb61e0726161ae6fa9fa65b448c12f08f008935fbe81faebf414050fc",
+  "required_markers": ["SELF_TEST_PASS workloads=17 deterministic=1"]
+}

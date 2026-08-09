@@ -1,0 +1,10 @@
+{
+  "schema": "aer-executed-test-receipt-v1",
+  "name": "a1_neutrality_self_test",
+  "command": ["python3", "benchmarks/clean_slate_aer/neutrality_self_test.py"],
+  "exit_code": 0,
+  "log_sha256": "7e9b56f4b30f240005f317b1b0101baffee611ce1434e95d39a36caccd4fee0b",
+  "required_markers": [
+    "NEUTRALITY_SELF_TEST_PASS runs=50 capacity=22 n=16 address_only=1 deterministic=1"
+  ]
+}

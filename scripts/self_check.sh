@@ -31,6 +31,9 @@ required=(
   benchmarks/clean_slate_aer/prepare_sv_trace.py
   benchmarks/clean_slate_aer/benchmark_release.py
   benchmarks/clean_slate_aer/benchmark_release.schema.json
+  benchmarks/clean_slate_aer/a1_release_policy.json
+  benchmarks/clean_slate_aer/receipts/a1_self_test.json
+  benchmarks/clean_slate_aer/receipts/a1_neutrality_self_test.json
   benchmarks/clean_slate_aer/capabilities.py
   benchmarks/clean_slate_aer/manifest.smoke.json
   benchmarks/clean_slate_aer/manifest.neutrality-n16.json
@@ -43,6 +46,7 @@ required=(
   benchmarks/clean_slate_aer/fixtures/capability_profile_baseline.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
   benchmarks/physical_ppa/bracket_fmax.py
+  benchmarks/physical_ppa/a1_candidate_ppa_registry.json
   benchmarks/physical_ppa/fixtures/ganghee_fixed_netlist_example.csv
   tb/clean/aer_bench_if.sv
   tb/clean/aer_clean_mock_candidate.sv
