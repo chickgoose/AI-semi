@@ -13,13 +13,14 @@
     "tb_seam",
     "physical_boundary",
     "normalization",
+    "feature_declarations",
     "charged_blocks",
     "flow",
     "activity",
     "metrics"
   ],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "qualification_id": {"type": "string", "minLength": 1},
     "status": {"enum": ["freeze_candidate", "frozen"]},
     "candidate": {
@@ -130,11 +131,13 @@
       "additionalProperties": false,
       "required": [
         "runtime_decode_in_tb", "uses_pending_to_disambiguate",
-        "scoreboard_only_fields", "free_wiring"
+        "zero_feature_tb_binding_excluded", "scoreboard_only_fields",
+        "free_wiring"
       ],
       "properties": {
         "runtime_decode_in_tb": {"const": false},
         "uses_pending_to_disambiguate": {"const": false},
+        "zero_feature_tb_binding_excluded": {"const": true},
         "scoreboard_only_fields": {
           "type": "array",
           "items": {
@@ -165,14 +168,31 @@
         }
       }
     },
+    "feature_declarations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "codec", "serializer", "deserializer", "buffer", "cdc",
+        "normalizer"
+      ],
+      "properties": {
+        "codec": {"$ref": "#/$defs/featureDeclarationArray"},
+        "serializer": {"$ref": "#/$defs/featureDeclarationArray"},
+        "deserializer": {"$ref": "#/$defs/featureDeclarationArray"},
+        "buffer": {"$ref": "#/$defs/featureDeclarationArray"},
+        "cdc": {"$ref": "#/$defs/featureDeclarationArray"},
+        "normalizer": {"$ref": "#/$defs/featureDeclarationArray"}
+      }
+    },
     "charged_blocks": {
       "type": "array",
-      "minItems": 2,
+      "minItems": 3,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "name", "kind", "top", "filelist_sha256", "included_in_area",
+          "name", "kind", "top", "hierarchy_path", "hierarchy_sha256",
+          "rtl_sha256", "filelist_sha256", "included_in_area",
           "included_in_timing", "included_in_activity", "included_in_power"
         ],
         "properties": {
@@ -180,10 +200,14 @@
           "kind": {
             "enum": [
               "tx", "link", "rx", "encoder", "decoder", "serializer",
-              "deserializer", "buffer", "adapter", "clocking"
+              "deserializer", "buffer", "adapter", "clocking", "codec",
+              "cdc", "normalizer"
             ]
           },
           "top": {"type": "string", "minLength": 1},
+          "hierarchy_path": {"type": "string", "minLength": 1},
+          "hierarchy_sha256": {"$ref": "#/$defs/sha256"},
+          "rtl_sha256": {"$ref": "#/$defs/sha256"},
           "filelist_sha256": {"$ref": "#/$defs/sha256"},
           "included_in_area": {"const": true},
           "included_in_timing": {"const": true},
@@ -197,7 +221,11 @@
       "additionalProperties": false,
       "required": [
         "tool_config_sha256", "sdc_sha256", "library_sha256", "pvt_rc_corner",
-        "post_elaboration_report_sha256", "unresolved_references"
+        "post_elaboration_report_sha256", "synthesis_hierarchy_report_sha256",
+        "synthesis_evidence_sha256", "mapped_netlist_sha256",
+        "area_report_sha256", "stage_report_sha256", "setup_report_sha256",
+        "hold_report_sha256", "route_report_sha256",
+        "unconstrained_report_sha256", "drc_report_sha256", "results"
       ],
       "properties": {
         "tool_config_sha256": {"$ref": "#/$defs/sha256"},
@@ -205,7 +233,36 @@
         "library_sha256": {"$ref": "#/$defs/sha256"},
         "pvt_rc_corner": {"type": "string", "minLength": 1},
         "post_elaboration_report_sha256": {"$ref": "#/$defs/sha256"},
-        "unresolved_references": {"const": 0}
+        "synthesis_hierarchy_report_sha256": {"$ref": "#/$defs/sha256"},
+        "synthesis_evidence_sha256": {"$ref": "#/$defs/sha256"},
+        "mapped_netlist_sha256": {"$ref": "#/$defs/sha256"},
+        "area_report_sha256": {"$ref": "#/$defs/sha256"},
+        "stage_report_sha256": {"$ref": "#/$defs/sha256"},
+        "setup_report_sha256": {"$ref": "#/$defs/sha256"},
+        "hold_report_sha256": {"$ref": "#/$defs/sha256"},
+        "route_report_sha256": {"$ref": "#/$defs/sha256"},
+        "unconstrained_report_sha256": {"$ref": "#/$defs/sha256"},
+        "drc_report_sha256": {"$ref": "#/$defs/sha256"},
+        "results": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mapped_cell_count", "area_um2", "pipeline_stage_count",
+            "setup_wns_ns", "hold_wns_ns", "detailed_route_completed",
+            "unresolved_references", "unconstrained_paths", "drc_violations"
+          ],
+          "properties": {
+            "mapped_cell_count": {"type": "integer", "minimum": 1},
+            "area_um2": {"type": "number", "exclusiveMinimum": 0},
+            "pipeline_stage_count": {"type": "integer", "minimum": 0},
+            "setup_wns_ns": {"type": "number", "minimum": 0},
+            "hold_wns_ns": {"type": "number", "minimum": 0},
+            "detailed_route_completed": {"const": true},
+            "unresolved_references": {"const": 0},
+            "unconstrained_paths": {"const": 0},
+            "drc_violations": {"const": 0}
+          }
+        }
       }
     },
     "activity": {
@@ -216,7 +273,7 @@
         "hierarchy_root", "coverage_percent", "window_start_cycle",
         "window_end_cycle_exclusive", "measurement_cycles", "clock_mhz",
         "operating_point", "power_evidence", "average_power_mw",
-        "delivered_events"
+        "delivered_events", "power_report_sha256", "common_result_sha256"
       ],
       "properties": {
         "trace_sha256": {"$ref": "#/$defs/sha256"},
@@ -232,7 +289,9 @@
         "operating_point": {"enum": ["sparse", "near_saturation"]},
         "power_evidence": {"enum": ["activity_annotated", "vectorless_screening"]},
         "average_power_mw": {"type": "number", "minimum": 0},
-        "delivered_events": {"type": "integer", "minimum": 1}
+        "delivered_events": {"type": "integer", "minimum": 1},
+        "power_report_sha256": {"$ref": "#/$defs/sha256"},
+        "common_result_sha256": {"$ref": "#/$defs/sha256"}
       }
     },
     "metrics": {
@@ -252,6 +311,23 @@
   },
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+    "featureDeclarationArray": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/featureDeclaration"}
+    },
+    "featureDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name", "charged_block", "hierarchy_path", "evidence_sha256"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "charged_block": {"type": "string", "minLength": 1},
+        "hierarchy_path": {"type": "string", "minLength": 1},
+        "evidence_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
     "pin": {
       "type": "object",
       "additionalProperties": false,

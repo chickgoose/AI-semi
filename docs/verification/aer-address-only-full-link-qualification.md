@@ -1,6 +1,7 @@
 # Address-Only AER Full-Link and PPA-Boundary Qualification
 
-Status: candidate-neutral freeze candidate, 2026-08-10
+Status: **HOLD**, candidate-neutral schema v2, 2026-08-10. No record is ranked
+until it passes schema validation, cross-field accounting, and evidence closure.
 
 ## Scope
 
@@ -23,6 +24,12 @@ and checked by
 [`validate_full_link_qualification.py`](../../benchmarks/physical_ppa/validate_full_link_qualification.py).
 A missing or invalid field makes a row `NOT_QUALIFIED`; it does not become a
 zero-area or zero-power result.
+
+Schema v2 is intentionally fail-closed. The validator executes the schema's
+`required`, `type`, `const`, `enum`, bounds, uniqueness, and
+`additionalProperties: false` rules before checking cross-field invariants.
+Unknown result fields, wrong types, and incomplete nested evidence are therefore
+rejected rather than ignored.
 
 ## Logical event and completion
 
@@ -73,6 +80,27 @@ Candidate-specific wrappers are allowed, but every gate, register, memory,
 clock gate, and generated clock inside them belongs to the candidate result.
 The same source count, logical map, endpoint load, link environment, libraries,
 corner, SDC policy, and physical-flow effort apply to all candidates.
+
+## Physical feature declarations and charged blocks
+
+Every record explicitly declares whether it contains physical codec,
+serializer, deserializer, buffer, CDC/clocking, and normalizer/adapter
+instances. Absence is represented by an empty declaration array; omission is
+invalid. Each present declaration names exactly one `charged_blocks` entry,
+matches its hierarchy path and hierarchy-evidence SHA-256, and uses a compatible
+block kind. Conversely, every charged feature block must have exactly one
+declaration. A charged block cannot be reused to satisfy two declarations.
+
+Serializer and deserializer declarations must either both be present or both be
+empty. A runtime-decoded link still requires separately charged encoder and
+decoder blocks. TX, link, and RX blocks are mandatory regardless of which
+optional feature arrays are empty.
+
+The declaration is accounting metadata, not an authorization to put the
+zero-feature TB binding into the physical top. The record must assert
+`zero_feature_tb_binding_excluded=true`; scoreboard normalization remains
+outside area, timing, activity, and power. Any runtime normalizer required for
+delivery is instead a physical `normalizer` or `adapter` charged block.
 
 ## TB seam and free wiring whitelist
 
@@ -164,22 +192,43 @@ energy_nJ_per_delivered_event = power_mW /
 The validator recomputes pin efficiency and energy rather than trusting entered
 derived values.
 
+## Physical evidence closure
+
+A qualified record binds the elaborated and mapped implementation to immutable
+evidence. All of the following SHA-256 fields are mandatory:
+
+- post-elaboration report, synthesis hierarchy report, aggregate synthesis
+  evidence, and mapped netlist;
+- area and pipeline-stage reports;
+- setup and hold timing reports;
+- detailed-route, unconstrained-path, and DRC reports;
+- activity file, activity-annotated power report, and the common functional
+  result used for the delivered-event numerator; and
+- per-charged-block RTL, ordered file list, hierarchy, and declaration evidence.
+
+The corresponding results must report a positive mapped-cell count and area,
+an explicit nonnegative pipeline-stage count, setup and hold WNS greater than or
+equal to zero, completed detailed route, zero unresolved references, zero
+unconstrained paths, and zero DRC violations. A hash without the associated
+result fields, or result fields without their evidence hashes, is incomplete.
+
 ## Freeze fields
 
 Every ranked record freezes these groups before results are compared:
 
 | Group | Required fields |
 | --- | --- |
-| identity | schema version, qualification ID/status, candidate ID, repository, immutable commit and bundle SHA |
+| identity | schema v2, qualification ID/status, candidate ID, repository, immutable commit and bundle SHA |
 | logical contract | address-only mode, source count/map/hash, one-pending-source rule, exact accept and delivery rules |
 | TB seam | normalized address/source widths and retire lanes, explicitly marked PPA-excluded |
 | synthesis boundary | full-link scope, synthesis top, file-list/config hashes, parameters, defines, include paths, TX/link/RX inclusion |
 | native boundary | every port name, direction, width, role, and native functional-pin total |
 | link cut | every cut signal name, direction, width, role, once-only rule, and link functional-pin total |
-| mapping | complete free-wiring whitelist entries; explicit no-runtime-decode-in-TB assertion |
-| charged logic | TX, RX, codec, buffer, adapter, and link blocks with top/file-list hashes and area/power inclusion |
-| physical flow | library/PVT/RC, SDC and tool-config hashes, clock/load/floorplan/effort identity |
-| activity | trace/input/activity hashes, exact window, frequency, annotation method/coverage, delivered count, average power |
+| mapping | complete free-wiring whitelist entries; explicit no-runtime-decode-in-TB and zero-feature-binding-excluded assertions |
+| feature declarations | explicit codec/serializer/deserializer/buffer/CDC/normalizer arrays with 1:1 charged-block, hierarchy, and evidence mapping |
+| charged logic | mandatory TX/link/RX and every physical feature block with top/hierarchy/RTL/file-list hashes and area/timing/activity/power inclusion |
+| physical flow | library/PVT/RC, SDC/tool-config, elaboration/hierarchy/netlist hashes, area/stage/setup/hold/route/unconstrained/DRC evidence and closed result counts |
+| activity | trace/input/activity/power/common-result hashes, exact window, frequency, annotation method/coverage, delivered count, average power |
 | derived metrics | events/cycle, both events/pin-cycle values, and energy per delivered event |
 
 ## Qualification checklist
@@ -193,6 +242,12 @@ Every ranked record freezes these groups before results are compared:
 - [ ] Every free mapping is one of the static whitelist operations.
 - [ ] No runtime decode, acknowledgement, arbitration, buffering, or repair is
       performed for free in the TB.
+- [ ] The zero-feature TB binding is explicitly excluded from PPA; any physical
+      normalizer or adapter has its own declaration and charged block.
+- [ ] Codec, serializer, deserializer, buffer, CDC/clocking, and
+      normalizer/adapter arrays are all present, including explicit empty arrays.
+- [ ] Every declared feature and every charged feature block form one unique
+      bidirectional mapping with identical hierarchy path and evidence hash.
 - [ ] Every required codec endpoint is present in the charged block list and
       included in area, timing, activity, and power.
 - [ ] Native-boundary and link-cut pins are enumerated bit-for-bit; clock,
@@ -200,6 +255,10 @@ Every ranked record freezes these groups before results are compared:
 - [ ] Bidirectional and TX/RX link wires are counted once at the designated cut.
 - [ ] Post-elaboration top, port, register/memory, and unresolved-reference
       reports match the frozen source/config hashes.
+- [ ] Synthesis hierarchy/netlist, area/stage, setup/hold, route,
+      unconstrained-path, DRC, power, and common-result evidence hashes exist.
+- [ ] Setup/hold WNS are nonnegative, detailed route is complete, and unresolved
+      references, unconstrained paths, and DRC violations are all zero.
 - [ ] Correctness proves zero loss, duplicate, corruption, and phantom delivery
       after complete drain without an uncharged RX.
 - [ ] Power annotation covers the same full-link hierarchy and exact trace
