@@ -28,6 +28,8 @@ RESERVED_ENV = {
     "AER_RECEIPT_CANDIDATE_BUNDLE_SHA256", "AER_RECEIPT_SIMULATOR_IDENTITY",
     "AER_RECEIPT_SIMULATOR_SHA256", "AER_RECEIPT_SIMULATOR_VERSION_SHA256",
     "AER_RECEIPT_COMPILE_MANIFEST", "AER_RECEIPT_COMPILE_LOG",
+    "AER_RECEIPT_CANDIDATE_FILELIST", "AER_SIMULATOR",
+    "AER_GANGHEE_FILELIST", "AER_GANGHEE_CLUSTER2_FILELIST",
 }
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 PYTHON_EXECUTABLE = Path(sys.executable).resolve()
@@ -153,6 +155,38 @@ def _write_empty_marker(path: Path) -> None:
         stream.flush(); os.fsync(stream.fileno())
 
 
+def _write_candidate_filelist(attempt_root: Path, candidate_spec: dict[str, Any],
+                              output: Path) -> None:
+    lines = []
+    for row in candidate_spec["bundle_files"]:
+        source = attempt_root / row["path"]
+        if not source.is_file() or source.is_symlink():
+            raise WrapperError(f"candidate snapshot source is unavailable: {source}")
+        lines.append(str(source.resolve()))
+    payload = ("\n".join(lines) + "\n").encode()
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(payload); stream.flush(); os.fsync(stream.fileno())
+
+
+def _common_candidate_environment(runner: Path, runner_args: list[str],
+                                  filelist: Path) -> dict[str, str]:
+    """Wire only native common-runner modes that already accept a file list."""
+    if runner.name != "run_common_multilane_candidate.sh":
+        return {}
+    binding = runner_args[0] if runner_args else ""
+    if binding == "ganghee" and len(runner_args) == 1:
+        return {"AER_GANGHEE_FILELIST": str(filelist)}
+    if binding == "ganghee-cluster2" and len(runner_args) == 1:
+        return {"AER_GANGHEE_CLUSTER2_FILELIST": str(filelist)}
+    if binding in {"clean", "drec-prefix"}:
+        raise WrapperError(
+            f"common runner binding {binding!r} has no immutable candidate-filelist "
+            "input; refusing mutable project-tree execution"
+        )
+    raise WrapperError("common runner arguments do not identify a supported native binding")
+
+
 def _run_suite(args: argparse.Namespace, plan_directory: Path) -> tuple[Path, Path]:
     candidate_doc = json.loads(args.candidate_manifest.read_text(encoding="utf-8"))
     candidate = candidate_doc.get("candidate") if isinstance(candidate_doc, dict) else None
@@ -222,6 +256,8 @@ def _run_suite(args: argparse.Namespace, plan_directory: Path) -> tuple[Path, Pa
     simulator_snapshot = attempt_root / simulator_spec["executable"]["path"]
     compile_manifest_path = runner_evidence / "compile.manifest.json"
     compile_log_path = runner_evidence / "compile.log"
+    candidate_filelist_path = runner_evidence / "candidate.snapshot.f"
+    _write_candidate_filelist(attempt_root, candidate_spec, candidate_filelist_path)
     environment = os.environ.copy(); environment.update(runner_env)
     environment.update({
         "AER_COMMON_MULTILANE_TRACE_DIR": str(traces), "AER_A7_TRACE_DIR": str(traces),
@@ -230,6 +266,7 @@ def _run_suite(args: argparse.Namespace, plan_directory: Path) -> tuple[Path, Pa
         "AER_RECEIPT_SUITE": args.suite, "AER_RECEIPT_CANDIDATE": candidate,
         "AER_RECEIPT_CANDIDATE_MANIFEST": str(candidate_snapshot),
         "AER_RECEIPT_CANDIDATE_BUNDLE": str(candidate_bundle),
+        "AER_RECEIPT_CANDIDATE_FILELIST": str(candidate_filelist_path),
         "AER_RECEIPT_SIMULATOR": str(simulator_snapshot),
         "AER_RECEIPT_CANDIDATE_MANIFEST_SHA256": candidate_spec["sha256"],
         "AER_RECEIPT_CANDIDATE_BUNDLE_SHA256": candidate_doc["bundle_sha256"],
@@ -238,8 +275,12 @@ def _run_suite(args: argparse.Namespace, plan_directory: Path) -> tuple[Path, Pa
         "AER_RECEIPT_SIMULATOR_VERSION_SHA256": simulator_spec["version"]["sha256"],
         "AER_RECEIPT_COMPILE_MANIFEST": str(compile_manifest_path),
         "AER_RECEIPT_COMPILE_LOG": str(compile_log_path),
+        "AER_SIMULATOR": simulator_spec["identity"],
+        "PATH": str(simulator_snapshot.parent) + os.pathsep + environment.get("PATH", ""),
         "TMPDIR": str(temporary),
     })
+    environment.update(_common_candidate_environment(args.runner, list(args.runner_arg),
+                                                     candidate_filelist_path))
     _run(_command(args.runner, *args.runner_arg), logs / "runner.log", env=environment)
     receipt.validate_official_generation(traces / "generation-index.json", args.official_manifest, args.suite)
 

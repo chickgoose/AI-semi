@@ -24,11 +24,17 @@ def _canonical_sha(value: object) -> str:
     return _sha(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
 
 
-def _snapshot(path: Path, destination: Path) -> str:
+def _snapshot(path: Path, destination: Path, *, executable: bool = False) -> str:
+    source_info = path.lstat()
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"provenance input is not a regular file: {path}")
+    if executable and not source_info.st_mode & 0o111:
+        raise ValueError(f"simulator executable has no execute bit: {path}")
     payload = path.read_bytes()
     if not payload:
         raise ValueError(f"provenance input is empty: {path}")
-    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+    mode = 0o500 if executable else 0o400
+    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
     with os.fdopen(descriptor, "wb") as stream:
         stream.write(payload)
         stream.flush()
@@ -57,6 +63,12 @@ def create(root: Path, suite: str, candidate: str, candidate_manifest: Path,
     dependencies = tool_dependencies or {}
     if set(dependencies) - set(tools):
         raise ValueError("tool dependency names must identify a declared tool")
+    simulator_info = simulator_executable.lstat()
+    if (simulator_executable.is_symlink() or not simulator_executable.is_file() or
+            not simulator_info.st_mode & 0o111):
+        raise ValueError(
+            f"simulator executable is not an executable regular file: {simulator_executable}"
+        )
     try:
         candidate_doc = json.loads(candidate_manifest.read_bytes())
     except (OSError, json.JSONDecodeError) as exc:
@@ -136,12 +148,14 @@ def create(root: Path, suite: str, candidate: str, candidate_manifest: Path,
                                "dependencies": dependency_rows,
                                "bundle_sha256": _canonical_sha(identity_payload)}
 
-        executable_relative = Path("provenance/simulator/executable.snapshot")
+        executable_relative = Path("provenance/simulator/bin") / simulator_name
+        (attempt / executable_relative).parent.mkdir(mode=0o700)
         version_relative = Path("provenance/simulator/version.snapshot")
         simulator_row = {
             "identity": simulator_name,
             "executable": {"path": str(executable_relative),
-                           "sha256": _snapshot(simulator_executable, attempt / executable_relative)},
+                           "sha256": _snapshot(simulator_executable, attempt / executable_relative,
+                                               executable=True)},
             "version": {"path": str(version_relative),
                         "sha256": _snapshot(simulator_version, attempt / version_relative)},
         }

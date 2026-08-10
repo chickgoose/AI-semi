@@ -64,7 +64,9 @@ class OfficialWrapperTest(unittest.TestCase):
     def invocation(self, root, *, fail=False):
         output = root / "existing-output"; output.mkdir(); (output / "sentinel.txt").write_text("keep\n")
         version = root / "simulator.version"; version.write_text("FakeSim 1.0\n")
-        simulator = root / "simulator.bin"; simulator.write_bytes(b"fake-simulator\n")
+        simulator = root / "fakesim"
+        simulator.write_text("#!/bin/sh\nexit 0\n")
+        simulator.chmod(0o500)
         args = ["run", "--suite", "capacity22", "--output-root", str(output),
             "--candidate-manifest", str(self.candidate(root)), "--official-manifest",
             str(FIXTURES / official.SUITES["capacity22"]["manifest_name"]),
@@ -107,6 +109,19 @@ class OfficialWrapperTest(unittest.TestCase):
         self.assertEqual((output / "sentinel.txt").read_text(), "keep\n")
         with self.assertRaises(receipt.ReceiptError):
             receipt.publish_new_atomic(receipts[0], b"replacement")
+
+    def test_real_common_native_binding_uses_snapshot_filelist_and_rejects_mutable_modes(self):
+        filelist = Path("/attempt/runner-evidence/candidate.snapshot.f")
+        runner = Path("/trusted/scripts/run_common_multilane_candidate.sh")
+        self.assertEqual(wrapper._common_candidate_environment(
+            runner, ["ganghee"], filelist), {"AER_GANGHEE_FILELIST": str(filelist)})
+        self.assertEqual(wrapper._common_candidate_environment(
+            runner, ["ganghee-cluster2"], filelist),
+            {"AER_GANGHEE_CLUSTER2_FILELIST": str(filelist)})
+        for binding in ("clean", "drec-prefix"):
+            with self.subTest(binding=binding), self.assertRaisesRegex(
+                    wrapper.WrapperError, "refusing mutable project-tree execution"):
+                wrapper._common_candidate_environment(runner, [binding], filelist)
 
     def test_runner_failure_is_nonzero_and_preserves_existing_output(self):
         root = self.root(); output, args = self.invocation(root, fail=True)
