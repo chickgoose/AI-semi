@@ -2,6 +2,7 @@ import hashlib
 import itertools
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -105,7 +106,9 @@ class OfficialSuiteFixture:
             tools[name] = path
         self.tool_paths = tools
         self.tool_dependencies = {name: [dependency] for name in tools}
-        self.simulator_executable = root / "simulator.bin"; self.simulator_executable.write_bytes(b"simulator-binary\n")
+        self.simulator_executable = root / "testsim"
+        self.simulator_executable.write_text("#!/bin/sh\nexit 0\n")
+        self.simulator_executable.chmod(0o500)
         self.simulator_version = root / "simulator.version"; self.simulator_version.write_text("TestSim 1.0\n")
         self.attempt = attempt.create(
             root / "output", suite, self.candidate, candidate_manifest, tools,
@@ -367,6 +370,37 @@ class CommonSuiteReceiptTest(unittest.TestCase):
         self.assertTrue(all(row["trace_sha256"] == official.TRACE_SHA256[row["run"]["name"]]
                             for row in generated))
 
+    def test_simulator_snapshot_is_executable_and_data_snapshots_are_read_only(self):
+        fixture = self.fixture()
+        attempt_doc = json.loads((fixture.attempt / "attempt.json").read_text())
+        simulator = fixture.attempt / attempt_doc["simulator"]["executable"]["path"]
+        version = fixture.attempt / attempt_doc["simulator"]["version"]["path"]
+        candidate = fixture.attempt / attempt_doc["candidate_manifest"]["path"]
+        self.assertEqual(simulator.stat().st_mode & 0o777, 0o500)
+        self.assertEqual(version.stat().st_mode & 0o777, 0o400)
+        self.assertEqual(candidate.stat().st_mode & 0o777, 0o400)
+        completed = subprocess.run([str(simulator), "--receipt-probe"], check=False)
+        self.assertEqual(completed.returncode, 0)
+
+    def test_non_executable_simulator_input_fails_before_attempt_publication(self):
+        root = Path(tempfile.mkdtemp()); self.addCleanup(lambda: shutil.rmtree(root))
+        fixture = self.fixture()
+        fixture.simulator_executable.chmod(0o400)
+        with self.assertRaisesRegex(ValueError, "not an executable regular file"):
+            attempt.create(root, "capacity22", fixture.candidate, fixture.candidate_manifest,
+                fixture.tool_paths, tool_dependencies=fixture.tool_dependencies,
+                simulator_name="testsim", simulator_executable=fixture.simulator_executable,
+                simulator_version=fixture.simulator_version)
+        self.assertFalse((root / "attempts").exists())
+
+    def test_receipt_rejects_removed_snapshot_execute_mode(self):
+        fixture = self.fixture()
+        attempt_doc = json.loads((fixture.attempt / "attempt.json").read_text())
+        simulator = fixture.attempt / attempt_doc["simulator"]["executable"]["path"]
+        simulator.chmod(0o400)
+        with self.assertRaisesRegex(receipt.ReceiptError, "snapshot mode mismatch"):
+            fixture.validate()
+
     def test_tb_load_pct_rounding_contract_accepts_fractional_official_loads(self):
         self.assertEqual(receipt._tb_load_pct("0.125"), 13)
         self.assertEqual(receipt._tb_load_pct("0.234"), 23)
@@ -547,7 +581,8 @@ class CommonSuiteReceiptTest(unittest.TestCase):
         with self.assertRaisesRegex(receipt.ReceiptError, "tool runner identity mismatch"):
             fixture.validate()
         fixture = self.fixture(); executable = fixture.attempt_doc["simulator"]["executable"]
-        path = fixture.attempt / executable["path"]; path.chmod(0o600); path.write_bytes(b"changed\n")
+        path = fixture.attempt / executable["path"]
+        path.chmod(0o700); path.write_bytes(b"changed\n"); path.chmod(0o500)
         with self.assertRaisesRegex(receipt.ReceiptError, "simulator executable identity mismatch"):
             fixture.validate()
 

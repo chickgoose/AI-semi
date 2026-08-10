@@ -660,6 +660,13 @@ def _load_attempt(artifact_root: Path, artifacts: dict[str, Any], suite: str,
         path = _contained(artifact_root, spec["path"], f"simulator {key} path")
         contents, info = _read_bytes_stable(path, f"simulator {key}")
         _claim_inode(info, path, f"simulator {key}", inodes)
+        mode = stat.S_IMODE(info.st_mode)
+        expected_mode = 0o500 if key == "executable" else 0o400
+        if mode != expected_mode:
+            raise ReceiptError(
+                f"simulator {key} snapshot mode mismatch "
+                f"({mode:#05o} != {expected_mode:#05o})"
+            )
         digest = _sha(spec.get("sha256"), f"simulator {key} sha256")
         if not contents or _sha256(contents) != digest:
             raise ReceiptError(f"simulator {key} identity mismatch")

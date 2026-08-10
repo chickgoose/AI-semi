@@ -5,6 +5,8 @@ import csv
 import hashlib
 import json
 import os
+import shutil
+import subprocess
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -32,9 +34,19 @@ def main():
         source = candidate_manifest.parent / row["path"]
         if hashlib.sha256(source.read_bytes()).hexdigest() != row["sha256"]:
             return 10
+    expected_sources = [str((candidate_manifest.parent / row["path"]).resolve())
+                        for row in candidate_doc["filelist"]]
+    filelist = Path(os.environ["AER_RECEIPT_CANDIDATE_FILELIST"])
+    if filelist.read_text().splitlines() != expected_sources:
+        return 11
     simulator_path = Path(os.environ["AER_RECEIPT_SIMULATOR"])
     if hashlib.sha256(simulator_path.read_bytes()).hexdigest() != os.environ["AER_RECEIPT_SIMULATOR_SHA256"]:
-        return 11
+        return 12
+    resolved = shutil.which(os.environ["AER_SIMULATOR"])
+    if resolved is None or Path(resolved).resolve() != simulator_path.resolve():
+        return 13
+    if subprocess.run([str(simulator_path), "--receipt-probe"], check=False).returncode:
+        return 14
     simulator = {"identity": os.environ["AER_RECEIPT_SIMULATOR_IDENTITY"],
         "executable_sha256": os.environ["AER_RECEIPT_SIMULATOR_SHA256"],
         "version_sha256": os.environ["AER_RECEIPT_SIMULATOR_VERSION_SHA256"]}

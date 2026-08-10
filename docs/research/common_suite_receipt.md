@@ -57,6 +57,12 @@ a bundle SHA over logical names and byte hashes. `dependency_closure` is fixed
 to `declared_complete`; the helper cannot infer omitted imports, sourced shell
 files, or dynamically loaded code. Simulator identity separately binds the
 executable snapshot and exact captured version-output bytes.
+The simulator snapshot is the only provenance payload retaining execute
+permission: it is published read/execute-only as
+`provenance/simulator/bin/<identity>` and prepended to the runner `PATH`.
+Candidate RTL, manifests, captured version text, and all other data snapshots
+remain read-only. A non-executable simulator input, a writable simulator
+snapshot, or removal of its execute bit fails closed.
 
 The artifact manifest has schema 5 and resides in that attempt root:
 
@@ -268,6 +274,17 @@ destinations. A runner that does not consume this contract and emit the exact
 compile evidence cannot obtain a receipt. This is an attested execution
 contract, not proof extracted from an arbitrary simulator log; candidate
 runners need explicit wiring to produce it.
+
+For the existing `run_common_multilane_candidate.sh`, only native modes that
+already accept an external RTL file list are wired automatically. `ganghee`
+receives `AER_GANGHEE_FILELIST` and `ganghee-cluster2` receives
+`AER_GANGHEE_CLUSTER2_FILELIST`, both pointing to an ordered, read-only list of
+absolute candidate-snapshot paths. The simulator snapshot directory is first
+in `PATH` and `AER_SIMULATOR` is fixed to its identity. The current `clean` and
+`drec-prefix` paths still compile candidate RTL from the mutable project tree;
+the receipt wrapper therefore rejects those modes rather than claiming that
+their candidate bundle was consumed. This changes neither traces nor TB
+semantics and deliberately leaves unsupported execution as a visible HOLD.
 
 `generate-only` is a non-destructive smoke gate. Its output directory must not
 exist, and success requires the exact official manifest bytes, names, generated
