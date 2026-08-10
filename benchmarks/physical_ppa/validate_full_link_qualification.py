@@ -36,6 +36,10 @@ FREE_OPERATIONS = {
 EXCLUDED_PIN_ROLES = {"clock", "reset", "power", "ground"}
 PIN_DIRECTIONS = {"input", "output", "bidirectional"}
 SCHEMA_PATH = Path(__file__).with_name("full_link_qualification.schema.json")
+APPROVED_EXECUTION_REGISTRY_PATH = Path(__file__).with_name(
+    "approved_execution_registry.json"
+)
+REPOSITORY_ROOT = Path(__file__).absolute().parents[2]
 FEATURE_KIND_COMPATIBILITY = {
     "codec": {"codec", "encoder", "decoder"},
     "serializer": {"serializer"},
@@ -393,6 +397,76 @@ def _strict_keys(
         errors.append(f"{path}.{name} is an additional property")
 
 
+def _approved_execution_flows(errors: list[str]) -> dict[str, dict[str, Any]]:
+    """Load and authenticate the repository-owned raw-flow allowlist."""
+
+    label = "approved execution registry"
+    _reject_ancestor_symlinks(APPROVED_EXECUTION_REGISTRY_PATH, label, errors)
+    data = _stable_read_regular(APPROVED_EXECUTION_REGISTRY_PATH, label, errors)
+    if data is None:
+        return {}
+    try:
+        registry = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        errors.append(f"{label} must contain UTF-8 JSON: {exc}")
+        return {}
+    registry = _mapping(registry, label, errors)
+    _strict_keys(registry, {"schema_version", "flows"}, label, errors)
+    if registry.get("schema_version") != 1:
+        errors.append(f"{label}.schema_version must equal 1")
+
+    approved: dict[str, dict[str, Any]] = {}
+    for index, raw in enumerate(_array(registry.get("flows"), f"{label}.flows", errors)):
+        path = f"{label}.flows[{index}]"
+        entry = _mapping(raw, path, errors)
+        _strict_keys(entry, {"flow_id", "command0", "tool", "flow_script"}, path, errors)
+        flow_id = entry.get("flow_id")
+        command0 = entry.get("command0")
+        if not isinstance(flow_id, str) or not flow_id:
+            errors.append(f"{path}.flow_id must be nonempty")
+            continue
+        if flow_id in approved:
+            errors.append(f"{label} repeats flow_id {flow_id!r}")
+            continue
+        if not isinstance(command0, str) or not command0:
+            errors.append(f"{path}.command0 must be nonempty")
+        tool = _mapping(entry.get("tool"), f"{path}.tool", errors)
+        _strict_keys(tool, {"name", "version"}, f"{path}.tool", errors)
+        for field in ("name", "version"):
+            if not isinstance(tool.get(field), str) or not tool[field]:
+                errors.append(f"{path}.tool.{field} must be nonempty")
+
+        script = _mapping(entry.get("flow_script"), f"{path}.flow_script", errors)
+        _strict_keys(script, {"path", "sha256"}, f"{path}.flow_script", errors)
+        script_relative = script.get("path")
+        expected_sha = script.get("sha256")
+        _check_sha(expected_sha, f"{path}.flow_script.sha256", errors)
+        if not isinstance(script_relative, str) or not script_relative:
+            errors.append(f"{path}.flow_script.path must be nonempty")
+        else:
+            relative = Path(script_relative)
+            if (
+                relative.is_absolute() or relative.as_posix() != script_relative
+                or any(part in {"", ".", ".."} for part in relative.parts)
+            ):
+                errors.append(f"{path}.flow_script.path must be normalized and relative")
+            else:
+                script_path = REPOSITORY_ROOT / relative
+                _reject_ancestor_symlinks(script_path, f"{path}.flow_script", errors)
+                script_data = _stable_read_regular(
+                    script_path, f"{path}.flow_script", errors
+                )
+                if script_data is not None:
+                    actual_sha = hashlib.sha256(script_data).hexdigest()
+                    if not isinstance(expected_sha, str) or actual_sha != expected_sha.lower():
+                        errors.append(
+                            f"{path}.flow_script digest mismatch "
+                            f"({expected_sha!r} != {actual_sha})"
+                        )
+        approved[flow_id] = entry
+    return approved
+
+
 def _inventory_path(value: Any, path: str, errors: list[str]) -> str | None:
     if not isinstance(value, str) or not value:
         errors.append(f"{path} must be a nonempty relative path")
@@ -630,21 +704,52 @@ def _validate_raw_flow_manifest(
     _strict_keys(
         manifest,
         {
-            "schema_version", "tool", "command", "status", "success_sentinel",
-            "inputs", "outputs",
+            "schema_version", "flow_id", "tool", "flow_script", "command",
+            "exit_code", "status", "success_sentinel", "inputs", "outputs",
         },
         f"{path}<content>", errors,
     )
     if manifest.get("schema_version") != 1:
         errors.append(f"{path}<content>.schema_version must equal 1")
+    approved_flows = _approved_execution_flows(errors)
+    flow_id = manifest.get("flow_id")
+    approved = approved_flows.get(flow_id) if isinstance(flow_id, str) else None
+    if approved is None:
+        errors.append(
+            f"{path}<content>.flow_id is not in the approved execution registry"
+        )
     tool = _mapping(manifest.get("tool"), f"{path}<content>.tool", errors)
     _strict_keys(tool, {"name", "version"}, f"{path}<content>.tool", errors)
     for field in ("name", "version"):
         if not isinstance(tool.get(field), str) or not tool[field]:
             errors.append(f"{path}<content>.tool.{field} must be nonempty")
+    flow_script = _mapping(
+        manifest.get("flow_script"), f"{path}<content>.flow_script", errors
+    )
+    _strict_keys(
+        flow_script, {"path", "sha256"}, f"{path}<content>.flow_script", errors
+    )
+    _check_sha(
+        flow_script.get("sha256"), f"{path}<content>.flow_script.sha256", errors
+    )
+    if approved is not None:
+        if tool != approved.get("tool"):
+            errors.append(
+                f"{path}<content>.tool does not exactly match approved registry"
+            )
+        if flow_script != approved.get("flow_script"):
+            errors.append(
+                f"{path}<content>.flow_script does not exactly match approved registry"
+            )
     command = _array(manifest.get("command"), f"{path}<content>.command", errors)
     if not command or not all(isinstance(token, str) and token for token in command):
         errors.append(f"{path}<content>.command must contain nonempty strings")
+    elif approved is not None and command[0] != approved.get("command0"):
+        errors.append(
+            f"{path}<content>.command[0] does not exactly match approved registry"
+        )
+    if manifest.get("exit_code") != 0:
+        errors.append(f"{path}<content>.exit_code must equal 0")
     if manifest.get("status") != "success":
         errors.append(f"{path}<content>.status must equal success")
     sentinel = _mapping(

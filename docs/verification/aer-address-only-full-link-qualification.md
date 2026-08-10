@@ -183,6 +183,13 @@ generated name, direction, width, and role arrays must exactly equal
 validator derives both functional totals afterward; a record cannot shrink a
 wide native or link signal to one bit while adjusting only its entered total.
 
+The link-cut result is intentionally limited to this annotation contract. It
+proves that annotated mapped signals were inventoried and compared by name,
+direction, width, and role; it does **not** trace electrical connectivity from
+TX logic through each bit to RX logic or prove endpoint reachability. Such
+connectivity remains unverified by this gate and must not be claimed from a
+`QUALIFIED` record alone.
+
 ## Activity and energy boundary
 
 Power uses the same synthesized full-link top, candidate configuration,
@@ -215,7 +222,10 @@ activity records. The trusted SDC parser requires exactly one canonical
 the flow record and trusted inventory. Activity and power raw evidence must each
 repeat the same port, period, and MHz value; `clock_mhz` must exactly equal
 `1000 / clock_period_ns`. A faster claimed activity clock cannot be paired with
-a slower SDC.
+a slower SDC. Before parsing the canonical line, the parser scans all
+uncommented SDC text for every `create_clock` and `create_generated_clock`
+command token. A second, generated, or noncanonical clock therefore fails
+closed instead of being ignored by the canonical-line matcher.
 
 Reset, warm-up, and drain are included only when their cycles lie inside the
 frozen window. They must not be removed differently per candidate. A window with
@@ -281,12 +291,16 @@ functional counts. Rehashing an edited canonical number without the matching
 raw report and trusted reproduction is rejected.
 
 Every raw summary also has a distinct flow manifest. It must bind a nonempty
-tool name and version, exact command tokens, `status=success`, a separately
-hashed artifact containing the asserted `FLOW_SUCCESS` sentinel, all frozen
-input path/SHA records, and raw-summary plus sentinel output path/SHA records.
-The validator reads and verifies the manifest, sentinel, inputs, and outputs;
-an arbitrary “verified” summary or a success string without the bound artifacts
-does not qualify.
+tool name and version, exact command tokens, `exit_code=0`, `status=success`, a
+separately hashed artifact containing the asserted `FLOW_SUCCESS` sentinel, all
+frozen input path/SHA records, and raw-summary plus sentinel output path/SHA
+records. Its `flow_id`, tool/version, flow-script path/SHA, and `command[0]`
+must exactly match the repository-owned
+[`approved_execution_registry.json`](../../benchmarks/physical_ppa/approved_execution_registry.json).
+The validator stable-reads the registered real script and verifies its digest;
+a manifest cannot approve its own nonexistent tool or flow. The validator also
+reads and verifies the sentinel, inputs, and outputs. An arbitrary “verified”
+summary or a success string without the bound artifacts does not qualify.
 
 The corresponding results must report a positive mapped-cell count and area,
 an explicit nonnegative pipeline-stage count, setup and hold WNS greater than or
@@ -310,7 +324,7 @@ Every ranked record freezes these groups before results are compared:
 | mapping | complete free-wiring whitelist entries; explicit no-runtime-decode-in-TB and zero-feature-binding-excluded assertions |
 | feature declarations | explicit codec/serializer/deserializer/buffer/CDC/normalizer arrays with 1:1 charged-block, hierarchy, and evidence mapping |
 | charged logic | mandatory TX/link/RX and every physical feature block with top/hierarchy evidence, exact source ownership, and area/timing/activity/power inclusion |
-| physical flow | trusted producer/extractor hashes and commands; tool-version/status/sentinel/input/output flow manifests; SHA-bound tool config/SDC/filelist/include/generated-IP/library/netlist/hierarchy closure; wrapper ownership/flatten policy; regenerated inventory/results |
+| physical flow | repo-approved flow ID, exact tool/version/script SHA/command[0]/exit/status/sentinel/input/output manifest; trusted producer/extractor hashes and commands; SHA-bound tool config/SDC/filelist/include/generated-IP/library/netlist/hierarchy closure; wrapper ownership/flatten policy; regenerated inventory/results |
 | activity | raw and regenerated trace/input/activity/power/common-result evidence; candidate/test/seed/errors; SDC-exact clock port/period/MHz; exact top/window; positive coverage threshold; delivered count and power |
 | derived metrics | events/cycle, both events/pin-cycle values, and energy per delivered event |
 
@@ -359,7 +373,8 @@ Every ranked record freezes these groups before results are compared:
 - [ ] Synthesis hierarchy/netlist, area/stage, setup/hold, route,
       unconstrained-path, DRC, activity, power, and common-result raw evidence is
       independently extracted and matches the canonical JSON and record fields.
-- [ ] Every raw summary has a verified tool-version/command/status manifest,
+- [ ] Every raw summary matches a repo-owned approved flow ID, actual
+      flow-script SHA, tool/version, `command[0]`, zero exit, success status,
       asserted hashed success sentinel, and exact input/output path/SHA closure.
 - [ ] Setup/hold WNS are nonnegative, detailed route is complete, and unresolved
       references, unconstrained paths, and DRC violations are all zero.
