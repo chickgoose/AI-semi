@@ -271,6 +271,14 @@ per-trace content hashes are frozen separately by the benchmark release
 manifest; the runner's name-set check is not a substitute for that release
 receipt.
 
+The release/receipt infrastructure now binds a clean Git tree, the official
+50/22 manifests and trace closure, candidate/tool/simulator snapshots, and
+per-run artifacts without overwriting an existing attempt. A production
+receipt additionally requires a runner-generated compile manifest and compile
+log. Native Ganghee modes can consume an immutable external file list; modes
+that still compile candidate RTL from the mutable project tree are rejected
+instead of receiving a partial receipt.
+
 ## 7. Current gaps
 
 The written specification includes, but the current common runner does not yet
@@ -283,8 +291,10 @@ in-SV `limit_load` uses
 a per-source probability; frozen comparisons should use the deterministic trace
 generator, whose `load` is aggregate offered events/cycle.
 
-The final cross-candidate evaluation layer is also not yet implemented. The
-agreed starting point is Ganghee-style address-only event semantics, with raw
+The candidate-neutral release, receipt, and full-link PPA evidence gates are
+implemented, but no team candidate has completed the new physical qualification
+flow yet. The agreed starting point is Ganghee-style address-only event semantics,
+with raw
 cluster2 serving as a conventional reference rather than forcing its row split,
 bitmap lanes, or foveation into new designs. Before ranking raw cluster2 and
 independently developed address-only candidates, the team must still:

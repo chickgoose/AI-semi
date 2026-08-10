@@ -74,6 +74,27 @@
   PPA/energy-event다. Backpressure, multi-outstanding, CDC/multi-hop은 capability suite로
   분리하고 지원하지 않는 candidate를 mandatory correctness에서 억지로 탈락시키지 않는다.
 
+## 2026-08-10 공용 benchmark 재현성·physical 평가 인프라
+
+- Detached release manifest가 generator/preparer/TB, full50/capacity22 manifest,
+  native TB bindings, runner/analyzer closure와 후보 PPA registry를 clean Git tree에
+  결속한다. 최종 통합 tree의 clean-worktree generate/validate를 통과했으며, sidecar는
+  저장소 밖에 생성해 사용자 결과를 덮어쓰지 않는다.
+- Official-suite receipt는 unique attempt 아래의 trace, result, analyzer, candidate
+  bundle, simulator와 tool snapshot을 SHA로 결속하고 기존 결과를 overwrite하지 않는다.
+  Simulator snapshot은 실행 가능한 0500, 나머지 provenance data는 0400으로 고정한다.
+- Ganghee native/cluster2처럼 외부 filelist를 받는 경로는 immutable candidate filelist에
+  연결했다. Compile manifest/log를 아직 내지 않는 실제 runner와 mutable project-tree를
+  사용하는 clean/DREC 경로는 receipt를 발급하지 않고 fail-closed한다.
+- Full-link PPA gate는 TB-only stateless binding을 면적·전력에서 제외하되, 실제 기능에
+  필요한 TX/link/RX, serializer/decoder, ACK mask/fanout, buffer/CDC/normalizer는 합성
+  경계에 포함하도록 강제한다. SDC 단일 clock, mapped top/link pin inventory, activity
+  window, delivered event, area/timing/route/power evidence를 exact path/SHA로 검증한다.
+- Raw physical evidence는 repo-owned approved flow registry의 tool/version, flow-script
+  SHA, command entry, exit/status/sentinel, input/output SHA와 일치해야 한다. 다만 현재
+  link-cut 검증은 annotation 기반 pin inventory까지이며 TX→RX 전기적 연결성 증명은
+  별도다. 또한 아직 어떤 팀 candidate도 이 새 gate로 physical QUALIFIED된 상태는 아니다.
+
 ## 2026-08-06 공용 workload/TB 결론
 
 - 기존 shared-channel AER를 억지로 correctness FAIL시키지 않고, 기본 기능은 통과시킨
@@ -283,9 +304,11 @@ A3가 순수 PPA는 더 좋지만 fixed priority starvation bound가 없어서 b
 - [x] clean-slate logical event와 normalized completion 계약 초안 구현
 - [x] deterministic JSONL+manifest를 검증·변환해 공통 SV source model에 연결
 - [x] per-event p50/p95/p99/deadline/sliding-window service-gap 지표 연결
-- [x] 46-run N=16 병목 coverage/anti-specialization exact-trace suite와 golden SHA 동결
+- [x] full50/capacity22 N=16 병목 coverage/anti-specialization exact-trace suite와 golden SHA 동결
 - [x] demand-normalized fairness, fixed-window throughput, phase/timing analyzer 구현
 - [x] Genus screening과 Innovus post-route를 분리한 PPA/Fmax 판정 계약 구현
+- [x] clean-tree benchmark release manifest와 no-overwrite result receipt gate 구현
+- [x] full-link PPA evidence schema·approved-flow validator·회귀검사 구현
 - [ ] 세 최종 후보의 SHA/top/filelist/parameter/native-interface manifest 동결
 - [ ] 공용 TB에 동일 trace 기반 activity window와 후보 중립 성능 결과 export 연결
 - [ ] fixed-pin serializer/decoder의 구체적 pin 수·codec PPA 조건 freeze
