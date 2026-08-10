@@ -49,6 +49,8 @@ required=(
   benchmarks/physical_ppa/bracket_fmax.py
   benchmarks/physical_ppa/a1_candidate_ppa_registry.json
   benchmarks/physical_ppa/full_link_qualification.schema.json
+  benchmarks/physical_ppa/approved_execution_registry.json
+  benchmarks/physical_ppa/approved_raw_summary_flow.py
   benchmarks/physical_ppa/generate_full_link_inventory.py
   benchmarks/physical_ppa/extract_full_link_evidence.py
   benchmarks/physical_ppa/validate_full_link_qualification.py

@@ -1,0 +1,17 @@
+{
+  "flows": [
+    {
+      "command0": "benchmarks/physical_ppa/approved_raw_summary_flow.py",
+      "flow_id": "a8-approved-raw-summary-flow-v1",
+      "flow_script": {
+        "path": "benchmarks/physical_ppa/approved_raw_summary_flow.py",
+        "sha256": "e7fb5bf6a4782cd2cac106ddfc1848600b1c9cbd2e9126b35fb18ddedc9e85f4"
+      },
+      "tool": {
+        "name": "a8-approved-raw-summary-flow",
+        "version": "1.0"
+      }
+    }
+  ],
+  "schema_version": 1
+}

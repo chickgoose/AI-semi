@@ -93,13 +93,25 @@ SDC_CLOCK_RE = re.compile(
     r"^create_clock\s+-name\s+(\S+)\s+-period\s+([0-9]+(?:\.[0-9]+)?)\s+"
     r"\[get_ports\s+([A-Za-z_$][\w$]*)\]\s*$"
 )
+SDC_CLOCK_COMMAND_RE = re.compile(r"(?<![A-Za-z0-9_$])create_(?:generated_)?clock\b")
 
 
 def parse_sdc_clock(raw_data: bytes) -> dict[str, Any]:
     try:
-        lines = [line for line in raw_data.decode("utf-8").splitlines() if line]
+        decoded = raw_data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise EvidenceError("SDC must be UTF-8") from exc
+    # The qualification contract accepts one deliberately narrow clock form.
+    # Scan all uncommented text first so an additional/noncanonical clock
+    # command cannot disappear merely because it fails the canonical regex.
+    lines = [line.split("#", 1)[0].strip() for line in decoded.splitlines()]
+    lines = [line for line in lines if line]
+    clock_commands = SDC_CLOCK_COMMAND_RE.findall("\n".join(lines))
+    if len(clock_commands) != 1 or clock_commands[0] != "create_clock":
+        raise EvidenceError(
+            "SDC must contain exactly one create_clock command and no "
+            "create_generated_clock command"
+        )
     matches = [SDC_CLOCK_RE.fullmatch(line) for line in lines]
     clocks = [match for match in matches if match is not None]
     if len(clocks) != 1:

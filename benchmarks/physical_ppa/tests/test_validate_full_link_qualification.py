@@ -15,6 +15,11 @@ sys.path.insert(0, str(ROOT))
 import validate_full_link_qualification as validator
 
 
+APPROVED_FLOW = json.loads(
+    (ROOT / "approved_execution_registry.json").read_text(encoding="utf-8")
+)["flows"][0]
+
+
 def artifact(root, relative, content):
     data = content if isinstance(content, bytes) else content.encode("utf-8")
     path = root / relative
@@ -231,13 +236,16 @@ def valid_record(root):
         flow_manifest = json_artifact(
             root, relative.replace(".json", ".flow.json"), {
                 "schema_version": 1,
-                "tool": {"name": "trusted-test-tool", "version": "1.0"},
+                "flow_id": APPROVED_FLOW["flow_id"],
+                "tool": copy.deepcopy(APPROVED_FLOW["tool"]),
+                "flow_script": copy.deepcopy(APPROVED_FLOW["flow_script"]),
                 "command": [
-                    "trusted-test-tool",
+                    APPROVED_FLOW["command0"],
                     *(item for _, reference in inputs for item in ("--input", reference["path"])),
                     "--output", raw["path"],
                     "--success-sentinel", sentinel["path"],
                 ],
+                "exit_code": 0,
                 "status": "success",
                 "success_sentinel": {
                     "value": "FLOW_SUCCESS", "artifact": sentinel,
@@ -890,6 +898,28 @@ class FullLinkQualificationTest(unittest.TestCase):
         ):
             self.validate(record)
 
+    def test_sdc_rejects_additional_noncanonical_one_ns_clock(self):
+        sdc = (
+            b"create_clock -name core_clk -period 5.0 [get_ports clk]\n"
+            b"create_clock -period 1.0 [get_ports fast_clk]\n"
+        )
+        with self.assertRaisesRegex(
+            validator.evidence_extractor.EvidenceError,
+            "exactly one create_clock command",
+        ):
+            validator.evidence_extractor.parse_sdc_clock(sdc)
+
+    def test_sdc_rejects_generated_clock_token(self):
+        sdc = (
+            b"create_clock -name core_clk -period 5.0 [get_ports clk]\n"
+            b"create_generated_clock -source [get_ports clk] [get_ports link_clk]\n"
+        )
+        with self.assertRaisesRegex(
+            validator.evidence_extractor.EvidenceError,
+            "no create_generated_clock command",
+        ):
+            validator.evidence_extractor.parse_sdc_clock(sdc)
+
     def test_one_bit_native_and_link_pin_shrink_are_rejected(self):
         record = copy.deepcopy(self.record)
         record["physical_boundary"]["native_boundary_pins"][0]["width"] = 1
@@ -945,6 +975,7 @@ class FullLinkQualificationTest(unittest.TestCase):
         flow_ref = report["producer"]["inputs"][1]
         manifest = read_json_artifact(self.root, flow_ref)
         manifest["status"] = "failed"
+        manifest["exit_code"] = 9
         manifest["tool"]["version"] = ""
         manifest["outputs"][0]["sha256"] = "0" * 64
         new_flow = json_artifact(
@@ -961,9 +992,70 @@ class FullLinkQualificationTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(
             validator.QualificationError,
-            "tool.version must be nonempty|status must equal success|outputs do not bind",
+            "tool.version must be nonempty|exit_code must equal 0|status must equal success|outputs do not bind",
         ):
             self.validate(record)
+
+    def test_self_described_nonexistent_flow_is_not_approved(self):
+        record = copy.deepcopy(self.record)
+        report = read_json_artifact(self.root, record["flow"]["area_report"])
+        flow_ref = report["producer"]["inputs"][1]
+        manifest = read_json_artifact(self.root, flow_ref)
+        manifest["flow_id"] = "trusted-test-tool-v1"
+        manifest["tool"] = {"name": "trusted-test-tool", "version": "1.0"}
+        manifest["flow_script"] = {
+            "path": "trusted-test-tool",
+            "sha256": "0" * 64,
+        }
+        manifest["command"][0] = "trusted-test-tool"
+        new_flow = json_artifact(
+            self.root, "evidence/area_self_described_flow.json", manifest
+        )
+        report["producer"]["inputs"][1] = {"role": "flow_manifest", **new_flow}
+        report["producer"]["command"] = [
+            new_flow["path"] if token == flow_ref["path"] else token
+            for token in report["producer"]["command"]
+        ]
+        self.rewrite_json_reference(
+            record["flow"], "area_report",
+            "evidence/area_self_described_flow_report.json", report,
+        )
+        with self.assertRaisesRegex(
+            validator.QualificationError,
+            "flow_id is not in the approved execution registry",
+        ):
+            self.validate(record)
+
+    def test_approved_flow_identity_fields_require_exact_registry_match(self):
+        cases = (
+            ("tool", lambda item: item["tool"].update(version="1.0-fake"),
+             "tool does not exactly match approved registry"),
+            ("script", lambda item: item["flow_script"].update(sha256="f" * 64),
+             "flow_script does not exactly match approved registry"),
+            ("command0", lambda item: item["command"].__setitem__(0, "other-tool"),
+             r"command\[0\] does not exactly match approved registry"),
+        )
+        for name, mutate, expected in cases:
+            record = copy.deepcopy(self.record)
+            report = read_json_artifact(self.root, record["flow"]["area_report"])
+            flow_ref = report["producer"]["inputs"][1]
+            manifest = read_json_artifact(self.root, flow_ref)
+            mutate(manifest)
+            new_flow = json_artifact(
+                self.root, f"evidence/area_registry_{name}.json", manifest
+            )
+            report["producer"]["inputs"][1] = {"role": "flow_manifest", **new_flow}
+            report["producer"]["command"] = [
+                new_flow["path"] if token == flow_ref["path"] else token
+                for token in report["producer"]["command"]
+            ]
+            self.rewrite_json_reference(
+                record["flow"], "area_report",
+                f"evidence/area_registry_{name}_report.json", report,
+            )
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(validator.QualificationError, expected):
+                    self.validate(record)
 
     def test_wrapper_hidden_feature_is_rejected_by_full_module_graph(self):
         record = copy.deepcopy(self.record)
