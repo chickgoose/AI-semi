@@ -34,6 +34,9 @@ class W4ResultContractTest(unittest.TestCase):
         self.functional = json.loads(
             (W4 / "results/w4_functional_followup.json").read_text()
         )
+        self.max1_gate = json.loads(
+            (W4 / "results/w4_max1_gate_freeze.json").read_text()
+        )
 
     def test_locked_sources_and_qualification_boundaries(self) -> None:
         provenance = self.result["provenance"]
@@ -172,6 +175,45 @@ class W4ResultContractTest(unittest.TestCase):
                     self.assertEqual(sha256(vector), recorded[name]["vector_sha256"])
                     self.assertEqual(audited["accepted"], recorded[name]["accepted"])
                     self.assertEqual(audited["retired"], recorded[name]["retired"])
+
+    def test_max1_gate_is_frozen_fail_closed_with_exact_provenance(self) -> None:
+        gate = self.max1_gate
+        provenance = gate["provenance"]
+        self.assertEqual(
+            gate["freeze_head"], "41f239dad4a342277f33d94bb3ed3db53e3497e0"
+        )
+        self.assertTrue(gate["frozen_before_a3_same_flow_result_review"])
+        self.assertTrue(gate["current_decision"].startswith("HOLD_"))
+        self.assertEqual(
+            sha256(W4 / "a4_moving_block_w4.sv"), provenance["w4_rtl_sha256"]
+        )
+        self.assertEqual(
+            sha256(W4 / "results/w4_local_summary.json"),
+            provenance["local_result_sha256"],
+        )
+        self.assertEqual(
+            sha256(W4 / "results/w4_functional_followup.json"),
+            provenance["functional_followup_sha256"],
+        )
+        self.assertFalse(provenance["common_files_modified"])
+        self.assertEqual(
+            gate["local_decision_rule"]["missing_data_policy"], "HOLD"
+        )
+        local = self.result["workload_metrics"]
+        observed = gate["locked_workload_observation"]
+        for suite in ("full50", "capacity22"):
+            fixed = local[suite]
+            gain = fixed["moving_accepted"] - fixed["fixed_accepted"]
+            self.assertEqual(gain, observed[suite]["accepted_gain_events"])
+            self.assertEqual(observed[suite]["benefit_floor"], "PASS")
+        cost = gate["same_flow_local_cost_ceiling_per_size"]
+        self.assertEqual(cost["mapped_state_bits_delta_absolute"], 0)
+        self.assertLessEqual(
+            cost["mapped_total_cells_maximum_premium_fraction"], 0.15
+        )
+        self.assertLessEqual(
+            cost["mapped_comb_cells_maximum_premium_fraction"], 0.20
+        )
 
 
 if __name__ == "__main__":

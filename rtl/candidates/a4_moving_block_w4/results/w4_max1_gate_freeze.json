@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "gate_id": "A4_W4_STYLE2_VS_MAX1_GATE_V1",
+  "frozen_before_a3_same_flow_result_review": true,
+  "freeze_head": "41f239dad4a342277f33d94bb3ed3db53e3497e0",
+  "current_decision": "HOLD_PENDING_A3_SAME_FLOW_AND_COMMON_PHYSICAL_QUALIFICATION",
+  "comparison_contract": {
+    "reference": "fixed_one_step_MAX_ADVANCE_1",
+    "candidate": "STYLE2_shared_clearance_local_enable_MAX_ADVANCE_2",
+    "required_sizes": [16, 64],
+    "same_flow_required": true,
+    "same_output_width_required": true,
+    "same_ingress_output_register_boundary_required": true,
+    "same_reset_and_pin_contract_required": true,
+    "same_yosys_passes_and_generic_cell_cost_required": true,
+    "rtl_line_count_is_not_a_metric": true
+  },
+  "locked_functional_prerequisites": {
+    "frozen_full50_exact_lockstep_traces": 50,
+    "frozen_capacity22_exact_lockstep_traces": 22,
+    "stalled_reset_n16_cases": 4,
+    "bounded_n64_cases": 1,
+    "stalled_reset_total_cycles": 2982,
+    "ready_valid_event_source_exact": "PASS",
+    "conservation_order_drain": "PASS",
+    "required_status": "ALL_PASS"
+  },
+  "workload_benefit_floor": {
+    "full50": {
+      "minimum_accepted_gain_events": 32,
+      "minimum_accepted_gain_fraction_of_offered": 0.0003,
+      "minimum_output_bubble_reduction_fraction": 0.25,
+      "maximum_p99_regression_cycles": 1,
+      "maximum_max_latency_regression_cycles": 1
+    },
+    "capacity22": {
+      "minimum_accepted_gain_events": 32,
+      "minimum_accepted_gain_fraction_of_offered": 0.0005,
+      "minimum_output_bubble_reduction_fraction": 0.40,
+      "maximum_p99_regression_cycles": 1,
+      "maximum_max_latency_regression_cycles": 1
+    },
+    "isolated_sparse_minimum_p99_improvement_cycles": 2,
+    "shape_b16_minimum_p99_improvement_cycles": 2,
+    "throughput_must_not_decrease": true,
+    "overrun_must_not_increase": true
+  },
+  "locked_workload_observation": {
+    "full50": {
+      "offered": 106416,
+      "accepted_gain_events": 41,
+      "accepted_gain_fraction_of_offered": 0.000385280,
+      "output_bubble_reduction_fraction": 0.269920370,
+      "p99_regression_cycles": 1,
+      "max_latency_regression_cycles": 1,
+      "benefit_floor": "PASS"
+    },
+    "capacity22": {
+      "offered": 65616,
+      "accepted_gain_events": 35,
+      "accepted_gain_fraction_of_offered": 0.000533406,
+      "output_bubble_reduction_fraction": 0.471870248,
+      "p99_regression_cycles": 1,
+      "max_latency_regression_cycles": 1,
+      "benefit_floor": "PASS"
+    },
+    "isolated_sparse_p99_improvement_cycles": 2,
+    "shape_b16_p99_improvement_cycles": 2,
+    "throughput_non_decrease": "PASS",
+    "overrun_non_increase": "PASS"
+  },
+  "same_flow_local_cost_ceiling_per_size": {
+    "mapped_state_bits_delta_absolute": 0,
+    "mapped_total_cells_maximum_premium_fraction": 0.15,
+    "mapped_comb_cells_maximum_premium_fraction": 0.20,
+    "logic_depth_maximum_premium_levels": 2,
+    "logic_depth_maximum_premium_fraction": 0.10,
+    "max_fanout_maximum_premium_fraction": 0.15,
+    "nets_fanout_ge16_maximum_premium_fraction": 0.15,
+    "pipeline_latency_delta_cycles": 0,
+    "external_pin_delta": 0
+  },
+  "conservative_enable_cost_ceiling_per_size": {
+    "accounting": "replace_each_generic_DFFE_with_one_DFF_plus_one_external_mux",
+    "effective_total_cells_maximum_premium_fraction": 0.25,
+    "effective_comb_cells_maximum_premium_fraction": 0.30,
+    "effective_logic_depth_maximum_premium_levels": 2
+  },
+  "local_decision_rule": {
+    "GO_TO_COMMON_AND_PHYSICAL": "all functional, workload, comparability, local cost, and conservative enable criteria pass at both N16 and N64",
+    "HOLD": "any required field is missing, incomparable, or fails at either size",
+    "missing_data_policy": "HOLD",
+    "rounding_policy": "compute from integer raw counts before comparing; equality at a ceiling passes"
+  },
+  "later_physical_promotion_floor": {
+    "status_before_physical_data": "HOLD",
+    "same_library_constraints_and_activity_required": true,
+    "post_synthesis_area_maximum_premium_fraction": 0.10,
+    "valid_fmax_minimum_ratio_to_MAX1": 0.98,
+    "energy_per_delivered_event_maximum_ratio_to_MAX1": 1.00,
+    "setup_hold_drc_antenna_clean_required": true,
+    "decision": "all pass is required for physical promotion; otherwise HOLD"
+  },
+  "provenance": {
+    "w4_rtl_sha256": "433ebc7a1d01e8c8d57e52b42235278c9367941abc0519450ee2b3076edda083",
+    "local_result_sha256": "b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a",
+    "functional_followup_sha256": "40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4",
+    "w4_qualification_runner_sha256": "0bef496adbedd13b96df44f5174d8bfef98e92acc093554e90f2b7d410549e02",
+    "functional_runner_sha256": "6f86ee830cdb872a2ac6dadad21b94b434be5ce512137ba6c0ad4521e914df7c",
+    "tail_analyzer_sha256": "3f6ace306e3b6340994486ab07bc774fa2054278df5918e8fa63812fd5457042",
+    "common_head_observed_by_frozen_replay": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "common_files_modified": false
+  }
+}
