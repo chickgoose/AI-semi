@@ -1,0 +1,211 @@
+{
+  "audit": "a3_w4_a4_moving_block_generic_synthesis_scaling",
+  "comparisons": {
+    "n64_scaling": {
+      "advance1_n64_over_n16": {
+        "comb_cells": 4.677474081055608,
+        "comb_depth_cells": 1.3846153846153846,
+        "ff_bits": 4.316695352839931,
+        "max_fanout_data": 1.3095238095238095,
+        "total_cells": 4.612648832534405,
+        "wire_data_sink_pin_proxy": 4.624278452657879,
+        "wire_unique_bit_proxy": 4.564875678765362
+      },
+      "advance2_n64_over_n16": {
+        "comb_cells": 4.472071373157487,
+        "comb_depth_cells": 1.1904761904761905,
+        "ff_bits": 4.316695352839931,
+        "max_fanout_data": 1.2307692307692308,
+        "total_cells": 4.456336064145024,
+        "wire_data_sink_pin_proxy": 4.474806111549714,
+        "wire_unique_bit_proxy": 4.435401915868388
+      }
+    },
+    "within_n": {
+      "n16_advance2_over_advance1": {
+        "comb_cells": 1.9438265786993403,
+        "comb_depth_cells": 1.6153846153846154,
+        "ff_bits": 1.0,
+        "max_fanout_data": 0.9285714285714286,
+        "total_cells": 1.774238441317458,
+        "wire_data_sink_pin_proxy": 1.8551736021366416,
+        "wire_unique_bit_proxy": 1.7154901400400113
+      },
+      "n64_advance2_over_advance1": {
+        "comb_cells": 1.8584669944386234,
+        "comb_depth_cells": 1.3888888888888888,
+        "ff_bits": 1.0,
+        "max_fanout_data": 0.8727272727272727,
+        "total_cells": 1.714113308749581,
+        "wire_data_sink_pin_proxy": 1.7952081082088163,
+        "wire_unique_bit_proxy": 1.6668336202848646
+      }
+    }
+  },
+  "metric_contract": {
+    "cells": "mapped Yosys cell instances after clean -purge",
+    "comb_depth_cells": "longest combinational mapped-cell dependency chain",
+    "ff_bits": "mapped sequential Q bits; latch types forbidden",
+    "max_fanout_data": "maximum mapped sink count excluding clk/rst_n nets",
+    "wire_data_sink_pin_proxy": "mapped input-pin bits excluding clk/rst_n loads",
+    "wire_unique_bit_proxy": "distinct mapped integer net bits"
+  },
+  "normalization": {
+    "normalized_sha256": "f8225ab51572f90a0074e515716e4289483d022757e1668db0e1dcd155d922ed",
+    "reason": "Yosys 0.52 rejects unpacked ports and warns on async-reset unpacked arrays",
+    "rewrite_count": 9,
+    "semantic_mapping": "only unpacked dimensions become packed; every [index] is unchanged",
+    "state_or_logic_added": false
+  },
+  "parameters": [
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE": 1,
+      "NUM_SOURCES": 16,
+      "SOURCE_WIDTH": 4
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE": 2,
+      "NUM_SOURCES": 16,
+      "SOURCE_WIDTH": 4
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE": 1,
+      "NUM_SOURCES": 64,
+      "SOURCE_WIDTH": 6
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE": 2,
+      "NUM_SOURCES": 64,
+      "SOURCE_WIDTH": 6
+    }
+  ],
+  "provenance": {
+    "commit": "850fbcfa4ad168b1250223610780f11378f6c391",
+    "filelist_entries": [
+      "rtl/candidates/a4_moving_block_tree/a4_moving_block_tree.sv"
+    ],
+    "filelist_path": "rtl/candidates/a4_moving_block_tree/a4_moving_block_tree.f",
+    "filelist_sha256": "d7a70ae9e7764e35b26618bdd0411f34c8d85d0ca01bf179423d25a3a8f2799e",
+    "rtl_path": "rtl/candidates/a4_moving_block_tree/a4_moving_block_tree.sv",
+    "rtl_sha256": "18e00a2acba587af7f81f2f1608268f4c37d9068a3e7e3f2b29611c4f8ea5677",
+    "top": "a4_moving_block_tree"
+  },
+  "runs": [
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 3287,
+        "$_DFFE_PN0P_": 15,
+        "$_DFF_PN0_": 1147,
+        "$_MUX_": 593,
+        "$_NOT_": 112,
+        "$_OR_": 1313
+      },
+      "comb_cells": 5305,
+      "comb_depth_cells": 13,
+      "ff_bits": 1162,
+      "max_advance": 1,
+      "max_fanout_all": 1823,
+      "max_fanout_data": 42,
+      "num_sources": 16,
+      "source_width": 4,
+      "synth_recipe_sha256": "04690fb899e3a2fc7a08d030d55a61f292cd21630e37e1aeb8a6bfad4bdb25fd",
+      "total_cells": 6467,
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 11607,
+      "wire_sink_pin_proxy": 14592,
+      "wire_unique_bit_proxy": 6998
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 6302,
+        "$_DFF_PN0_": 1162,
+        "$_MUX_": 548,
+        "$_NOT_": 139,
+        "$_OR_": 3323
+      },
+      "comb_cells": 10312,
+      "comb_depth_cells": 21,
+      "ff_bits": 1162,
+      "max_advance": 2,
+      "max_fanout_all": 1824,
+      "max_fanout_data": 39,
+      "num_sources": 16,
+      "source_width": 4,
+      "synth_recipe_sha256": "8921d880e08353a5be5cd3731156483726a26e7ab880828618208c9a2599553a",
+      "total_cells": 11474,
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 21533,
+      "wire_sink_pin_proxy": 24519,
+      "wire_unique_bit_proxy": 12005
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 15282,
+        "$_DFFE_PN0P_": 63,
+        "$_DFF_PN0_": 4953,
+        "$_MUX_": 2146,
+        "$_NOT_": 451,
+        "$_OR_": 6935
+      },
+      "comb_cells": 24814,
+      "comb_depth_cells": 18,
+      "ff_bits": 5016,
+      "max_advance": 1,
+      "max_fanout_all": 7744,
+      "max_fanout_data": 55,
+      "num_sources": 64,
+      "source_width": 6,
+      "synth_recipe_sha256": "70efb06253e2653fd31ad24c879bb3350e589aa20ebee74c91252e179602b3e9",
+      "total_cells": 29830,
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 53674,
+      "wire_sink_pin_proxy": 66434,
+      "wire_unique_bit_proxy": 31945
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 27959,
+        "$_DFF_PN0_": 5016,
+        "$_MUX_": 3357,
+        "$_NOT_": 545,
+        "$_OR_": 14255
+      },
+      "comb_cells": 46116,
+      "comb_depth_cells": 25,
+      "ff_bits": 5016,
+      "max_advance": 2,
+      "max_fanout_all": 8720,
+      "max_fanout_data": 48,
+      "num_sources": 64,
+      "source_width": 6,
+      "synth_recipe_sha256": "160d8a07ff15b8dd5b4ce749388c682558d796c952746364ce45bad62d039dc4",
+      "total_cells": 51132,
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 96356,
+      "wire_sink_pin_proxy": 110092,
+      "wire_unique_bit_proxy": 53247
+    }
+  ],
+  "schema_version": 1,
+  "status": "PASS",
+  "tool": {
+    "abc_path": "/tmp/a9-phase4-yosys/usr/bin/yosys-abc",
+    "abc_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",
+    "abc_version": "UC Berkeley, ABC 1.01 (compiled May  4 2025 16:37:33)",
+    "mapping": "synth -flatten -noabc; abc -g simple; clean -purge",
+    "recipe_paths": "per-run recipe SHA substitutes NORMALIZED_RTL, WORK, and YOSYS_ABC for machine-specific paths",
+    "tcl_runtime_path": "/tmp/a9-phase4-yosys/usr/lib/x86_64-linux-gnu/libtcl8.6.so.0",
+    "tcl_runtime_sha256": "6dfbe2faf2a776485be94cb87bed369337bcf9236ee4c955e45004f8253ade8a",
+    "yosys_path": "/tmp/a9-phase4-yosys/usr/bin/yosys",
+    "yosys_sha256": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f",
+    "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+  }
+}
