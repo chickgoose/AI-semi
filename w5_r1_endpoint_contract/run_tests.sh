@@ -14,4 +14,13 @@ git -C "$PROJECT_ROOT" diff --exit-code "$BASE_COMMIT" -- \
   benchmarks/clean_slate_aer \
   rtl/candidates
 
+PROTECTED_UNTRACKED="$(git -C "$PROJECT_ROOT" ls-files --others --exclude-standard -- \
+  tb/clean \
+  benchmarks/clean_slate_aer \
+  rtl/candidates)"
+if [[ -n "$PROTECTED_UNTRACKED" ]]; then
+  printf 'W5_PROTECTED_SCOPE_FAIL untracked files:\n%s\n' "$PROTECTED_UNTRACKED" >&2
+  exit 1
+fi
+
 printf 'W5_R1_ENDPOINT_CONTRACT_SELFTEST_PASS scope=model-and-mutation-only qualification=NONE\n'

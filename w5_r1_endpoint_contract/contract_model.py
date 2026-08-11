@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 from dataclasses import dataclass, field
 from fractions import Fraction
 from collections import deque
@@ -17,6 +20,8 @@ PARALLEL_ENDPOINT_STATE_BITS = 18
 FINAL_A7_DDR_CHARGED_CELLS = 29
 FINAL_A7_PARALLEL_CHARGED_CELLS = 27
 FINAL_A7_CHARGED_DEPTH = 7
+DDR_COMPONENT_MIN_STATE_BITS = (1, 5, 1, 7, 6)  # arm, TX, ICG, RX, observer
+PARALLEL_COMPONENT_MIN_STATE_BITS = (1, 5, 1, 5, 6)
 RAW_DDR_COMMIT_DELAY = Fraction(3, 4)
 OUTPUT_AVAILABILITY_DELAY = Fraction(1, 1)
 SYNCHRONOUS_CONSUME_DELAY = Fraction(2, 1)
@@ -448,8 +453,19 @@ class ContractHarness:
 
 
 @dataclass(frozen=True)
+class ImmutableReceipt:
+    """Content-addressed evidence; a boolean assertion is not a receipt."""
+
+    kind: str
+    owner_commit: str
+    payload: bytes
+    sha256: str
+
+
+@dataclass(frozen=True)
 class PpaEvidence:
     mandatory_endpoint_tests_passed: bool
+    absolute_throughput_events_per_cycle: Fraction
     throughput_ratio_to_parallel: Fraction
     raw_ddr_commit_delay_cycles: Fraction
     output_availability_delay_cycles: Fraction
@@ -463,9 +479,16 @@ class PpaEvidence:
     ddr_rx_state_bits: int
     ddr_observer_state_bits: int
     ddr_declared_total_state_bits: int
+    parallel_launch_state_bits: int
+    parallel_tx_state_bits: int
+    parallel_icg_state_bits: int
+    parallel_rx_state_bits: int
+    parallel_observer_state_bits: int
     parallel_declared_total_state_bits: int
     ddr_charged_functional_cells: int
     parallel_charged_functional_cells: int
+    ddr_charged_logic_depth: int
+    parallel_charged_logic_depth: int
     drain_guard_charged: bool
     boundary_queue_entries: int
     payload_bits: int
@@ -480,6 +503,8 @@ class PpaEvidence:
     parallel_energy_per_event: float
     max_area_penalty_per_pin_saved: float | None = None
     max_energy_penalty_fraction: float | None = None
+    physical_report_receipt: ImmutableReceipt | None = None
+    threshold_receipt: ImmutableReceipt | None = None
 
 
 @dataclass(frozen=True)
@@ -488,6 +513,31 @@ class Decision:
     physical: str
     adoption: str
     reasons: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _receipt_payload(receipt: ImmutableReceipt | None, kind: str) -> dict | None:
+    if receipt is None:
+        return None
+    if receipt.kind != kind or receipt.owner_commit != FINAL_A7_ENDPOINT_COMMIT:
+        return None
+    if len(receipt.sha256) != 64:
+        return None
+    try:
+        int(receipt.sha256, 16)
+        if hashlib.sha256(receipt.payload).hexdigest() != receipt.sha256.lower():
+            return None
+        payload = json.loads(receipt.payload)
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("owner_commit") != FINAL_A7_ENDPOINT_COMMIT:
+        return None
+    return payload
+
+
+def _finite_positive(*values: float) -> bool:
+    return all(math.isfinite(value) and value > 0 for value in values)
 
 
 def qualify(evidence: PpaEvidence) -> Decision:
@@ -499,8 +549,16 @@ def qualify(evidence: PpaEvidence) -> Decision:
         evidence.ddr_rx_state_bits,
         evidence.ddr_observer_state_bits,
     ))
+    accounted_parallel_state = sum((
+        evidence.parallel_launch_state_bits,
+        evidence.parallel_tx_state_bits,
+        evidence.parallel_icg_state_bits,
+        evidence.parallel_rx_state_bits,
+        evidence.parallel_observer_state_bits,
+    ))
     functional_ok = all((
         evidence.mandatory_endpoint_tests_passed,
+        evidence.absolute_throughput_events_per_cycle == 1,
         evidence.throughput_ratio_to_parallel == 1,
         evidence.raw_ddr_commit_delay_cycles == RAW_DDR_COMMIT_DELAY,
         evidence.output_availability_delay_cycles == OUTPUT_AVAILABILITY_DELAY,
@@ -510,9 +568,32 @@ def qualify(evidence: PpaEvidence) -> Decision:
         evidence.parallel_functional_pins == PARALLEL_FUNCTIONAL_PINS,
         evidence.ddr_declared_total_state_bits == accounted_ddr_state,
         evidence.ddr_declared_total_state_bits >= DDR_ENDPOINT_STATE_BITS,
+        evidence.parallel_declared_total_state_bits == accounted_parallel_state,
         evidence.parallel_declared_total_state_bits >= PARALLEL_ENDPOINT_STATE_BITS,
-        evidence.ddr_charged_functional_cells > 0,
-        evidence.parallel_charged_functional_cells > 0,
+        all(actual >= minimum for actual, minimum in zip(
+            (
+                evidence.ddr_launch_state_bits,
+                evidence.ddr_tx_state_bits,
+                evidence.ddr_icg_state_bits,
+                evidence.ddr_rx_state_bits,
+                evidence.ddr_observer_state_bits,
+            ),
+            DDR_COMPONENT_MIN_STATE_BITS,
+        )),
+        all(actual >= minimum for actual, minimum in zip(
+            (
+                evidence.parallel_launch_state_bits,
+                evidence.parallel_tx_state_bits,
+                evidence.parallel_icg_state_bits,
+                evidence.parallel_rx_state_bits,
+                evidence.parallel_observer_state_bits,
+            ),
+            PARALLEL_COMPONENT_MIN_STATE_BITS,
+        )),
+        evidence.ddr_charged_functional_cells == FINAL_A7_DDR_CHARGED_CELLS,
+        evidence.parallel_charged_functional_cells == FINAL_A7_PARALLEL_CHARGED_CELLS,
+        evidence.ddr_charged_logic_depth == FINAL_A7_CHARGED_DEPTH,
+        evidence.parallel_charged_logic_depth == FINAL_A7_CHARGED_DEPTH,
         evidence.drain_guard_charged,
         evidence.boundary_queue_entries == 0,
         evidence.payload_bits == 0,
@@ -521,22 +602,54 @@ def qualify(evidence: PpaEvidence) -> Decision:
     if not functional_ok:
         reasons.append("functional/full-endpoint accounting threshold failed")
 
+    physical_payload = _receipt_payload(
+        evidence.physical_report_receipt, "w5-a7-r1-physical-v1"
+    )
+    physical_receipt_ok = physical_payload == {
+        "schema": "w5-a7-r1-physical-v1",
+        "owner_commit": FINAL_A7_ENDPOINT_COMMIT,
+        "setup_wns_ns": evidence.setup_wns_ns,
+        "hold_wns_ns": evidence.hold_wns_ns,
+        "forwarded_clock_qualified": evidence.forwarded_clock_qualified,
+    }
     physical_ok = functional_ok and all((
         evidence.post_route,
+        math.isfinite(evidence.setup_wns_ns),
+        math.isfinite(evidence.hold_wns_ns),
         evidence.setup_wns_ns >= 0,
         evidence.hold_wns_ns >= 0,
         evidence.forwarded_clock_qualified,
+        physical_receipt_ok,
     ))
     if functional_ok and not physical_ok:
-        reasons.append("post-route timing or forwarded-clock qualification missing")
+        reasons.append("authenticated immutable physical report receipt missing or failing")
 
+    threshold_payload = _receipt_payload(
+        evidence.threshold_receipt, "w5-a7-r1-threshold-v1"
+    )
     budget_present = (
         evidence.max_area_penalty_per_pin_saved is not None
         and evidence.max_energy_penalty_fraction is not None
+        and math.isfinite(evidence.max_area_penalty_per_pin_saved)
+        and math.isfinite(evidence.max_energy_penalty_fraction)
+        and evidence.max_area_penalty_per_pin_saved >= 0
+        and evidence.max_energy_penalty_fraction >= 0
+        and threshold_payload == {
+            "schema": "w5-a7-r1-threshold-v1",
+            "owner_commit": FINAL_A7_ENDPOINT_COMMIT,
+            "max_area_penalty_per_pin_saved": evidence.max_area_penalty_per_pin_saved,
+            "max_energy_penalty_fraction": evidence.max_energy_penalty_fraction,
+        }
     )
     economic_ok = False
-    if physical_ok and budget_present:
-        pins_saved = evidence.parallel_functional_pins - evidence.ddr_functional_pins
+    metrics_valid = _finite_positive(
+        evidence.endpoint_area,
+        evidence.parallel_area,
+        evidence.energy_per_event,
+        evidence.parallel_energy_per_event,
+    )
+    pins_saved = evidence.parallel_functional_pins - evidence.ddr_functional_pins
+    if physical_ok and budget_present and metrics_valid and pins_saved > 0:
         area_penalty = (evidence.endpoint_area - evidence.parallel_area) / pins_saved
         energy_penalty = (
             evidence.energy_per_event / evidence.parallel_energy_per_event - 1
@@ -549,7 +662,7 @@ def qualify(evidence: PpaEvidence) -> Decision:
         if not economic_ok:
             reasons.append("predeclared pin-value area/energy budget exceeded")
     elif physical_ok:
-        reasons.append("no predeclared pin-value economic budget")
+        reasons.append("immutable threshold receipt or finite positive PPA metrics missing")
 
     return Decision(
         functional="GO" if functional_ok else "HOLD",

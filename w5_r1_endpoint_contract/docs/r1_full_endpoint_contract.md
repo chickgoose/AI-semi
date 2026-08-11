@@ -1,6 +1,7 @@
 # Address-only N16 R1 full-endpoint contract
 
-Status: frozen W5 candidate-neutral contract.  This document and its executable
+Status: frozen W5 candidate-code-independent contract within the A7 address-only
+N16 R1 DDR2 format.  It is not format-neutral.  This document and its executable
 model define the qualification target; passing the model's mutation tests does
 not qualify a candidate.
 
@@ -120,25 +121,32 @@ Functional GO requires all of the following; otherwise it is HOLD:
   invalid-mid-frame no-phantom negative test;
 - accepted = launched = raw-committed = available = consumer-retired with
   causal order and zero phantom, duplicate, drop, or hidden reconstruction;
-- R1 delivered throughput exactly equals the parallel boundary, with no added
+- absolute sustained accepted and retired throughput is exactly one event per
+  core cycle and also exactly equals the R1 parallel boundary, with no added
   queue, no payload bits, exactly three DDR versus five parallel functional
   pins, raw DDR commit +3/4, output availability +1, synchronous consumption
   +2, and zero latency delta to the equal-boundary parallel reference; and
-- declared state equals all endpoint state and is at least 20 DDR/18 parallel
-  bits, including arm, ICG latch, raw RX, and phase observer.
+- declared component state is nonzero and at least arm/TX/ICG/RX/observer
+  `1/5/1/7/6` for DDR and `1/5/1/5/6` for parallel, sums exactly to each
+  declared total, and is at least 20 DDR/18 parallel bits; the frozen owner
+  profile additionally requires exactly 29/27 charged functional cells and
+  charged logic depth 7/7.
 
 Physical GO additionally requires post-route setup WNS >= 0, hold WNS >= 0,
-and characterized forwarded-clock/clock-gating qualification with the complete
-endpoint included.  RTL simulation, generic mapping, or an uncharacterized
-gated-clock expression leaves physical status HOLD.
+characterized forwarded-clock/clock-gating qualification with the complete
+endpoint included, and a content-addressed immutable physical-report receipt
+bound to the exact owner SHA.  Unauthenticated booleans, RTL simulation,
+generic mapping, or an uncharacterized gated-clock expression leave physical
+status HOLD.
 
 Adoption GO additionally requires two economic limits to be immutable before
 measurement: maximum area penalty per saved functional pin and maximum
-energy/event penalty relative to the parallel reference.  The endpoint must
-save exactly two pins and meet both limits.  Missing limits or an exceeded
-limit is HOLD; pin reduction alone cannot imply an economic win.  The executable
-`qualify()` function implements these thresholds without supplying a favorable
-default budget.
+energy/event penalty relative to the parallel reference.  A separate
+content-addressed threshold receipt must bind both limits to the owner SHA.
+Area and energy metrics must be finite and positive, reference denominators must
+be nonzero, the endpoint must save exactly two pins, and both limits must pass.
+Missing receipts or limits, zero/nonfinite metrics, denominator zero, or an
+exceeded limit is HOLD; pin reduction alone cannot imply an economic win.
 
 R>1, level-request capture, extra launch one-shots, queues, arbitrary payloads,
 and scoreboard-assisted output reconstruction are outside this frozen R1
@@ -147,8 +155,9 @@ contract and require separate charged architectures.
 ## Exact A7 `42377ca` cross-check
 
 Cross-check target: A7 commit
-`42377ca81340951bfcd453b3bd664e673091f9f3`.  This is an evidence comparison,
-not an A2 claim that A7 has passed common or physical qualification.
+`42377ca81340951bfcd453b3bd664e673091f9f3`.  The table records externally
+audited constants supplied to A2; it is not a local exact-git-blob replay and is
+not an A2 claim that A7 passed common, physical, or adoption qualification.
 The earlier `ca1a209` is explicitly excluded because its drain guard omitted
 same-cycle launch and pending registered valid, and its scoreboard conflated
 output availability with synchronous consumer retirement.
@@ -165,17 +174,14 @@ output availability with synchronous consumer retirement.
 | DDR charged boundary | three pins; 1 arm + 5 TX + 1 ICG + 7 RX + 6 observer = 20 bits | initial 12-bit undercount corrected |
 | PPA status | charged generic proxy 29 cells/20 bits versus parallel 27/18, both depth 7; no characterized ICG, clock tree, half-cycle STA, PVT, or power | functional structure is comparable; physical and adoption remain HOLD |
 
-The exact RTL locations are
+The externally reported RTL locations are
 `rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv`,
 `a7_r1_retire_observer.sv`, and the two endpoint tops at that commit.  W5 does
 not import, wrap, or modify them.
 
-The final exact commit was independently archived to `/tmp` and replayed with
-Verilator 5.032.  Nominal, same-cycle admission reset block, +1 availability,
-pending-valid reset block, +2 consumer retirement, continuous-valid changing-
-address, back-to-back, gapped, reset-arm/held-valid, drain-reset, invalid-mid-
-frame no-phantom, and exact-once/order/address checks passed.  Its exact Yosys
-script reproduced DDR `3 pins / 29 charged cells / 20 bits / depth 7` and
-parallel `5 pins / 27 charged cells / 18 bits / depth 7`, both physical HOLD.
-This does not provide common-workload, post-route, power, or adoption
-qualification.
+A2 did not preserve an immutable exact-blob checkout receipt or tool logs for
+this W5 package.  Therefore the reported `3 pins / 29 cells / 20 bits / depth 7`
+DDR and `5 pins / 27 cells / 18 bits / depth 7` parallel values are frozen
+external audit inputs only.  The local evidence is limited to the executable
+model and mutation tests; actual-RTL, common-workload, physical, power, and
+adoption qualification remain HOLD.

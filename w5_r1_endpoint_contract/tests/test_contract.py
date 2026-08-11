@@ -13,6 +13,7 @@ from contract_model import (
     ContractHarness,
     ContractViolation,
     Faults,
+    ImmutableReceipt,
     PpaEvidence,
     R1Endpoint,
     qualify,
@@ -248,6 +249,7 @@ class DecisionGateTest(unittest.TestCase):
     def evidence(**updates) -> PpaEvidence:
         fields = dict(
             mandatory_endpoint_tests_passed=True,
+            absolute_throughput_events_per_cycle=Fraction(1, 1),
             throughput_ratio_to_parallel=Fraction(1, 1),
             raw_ddr_commit_delay_cycles=Fraction(3, 4),
             output_availability_delay_cycles=Fraction(1, 1),
@@ -261,9 +263,16 @@ class DecisionGateTest(unittest.TestCase):
             ddr_rx_state_bits=7,
             ddr_observer_state_bits=6,
             ddr_declared_total_state_bits=20,
+            parallel_launch_state_bits=1,
+            parallel_tx_state_bits=5,
+            parallel_icg_state_bits=1,
+            parallel_rx_state_bits=5,
+            parallel_observer_state_bits=6,
             parallel_declared_total_state_bits=18,
             ddr_charged_functional_cells=29,
             parallel_charged_functional_cells=27,
+            ddr_charged_logic_depth=7,
+            parallel_charged_logic_depth=7,
             drain_guard_charged=True,
             boundary_queue_entries=0,
             payload_bits=0,
@@ -282,12 +291,22 @@ class DecisionGateTest(unittest.TestCase):
         fields.update(updates)
         return PpaEvidence(**fields)
 
-    def test_complete_predeclared_evidence_can_go(self) -> None:
+    def test_unauthenticated_booleans_cannot_make_physical_or_adoption_go(self) -> None:
         decision = qualify(self.evidence())
         self.assertEqual(
             (decision.functional, decision.physical, decision.adoption),
-            ("GO", "GO", "GO"),
+            ("GO", "HOLD", "HOLD"),
         )
+
+    def test_non_content_addressed_report_receipt_cannot_unlock_physical(self) -> None:
+        fake = ImmutableReceipt(
+            kind="w5-a7-r1-physical-v1",
+            owner_commit=FINAL_A7_ENDPOINT_COMMIT,
+            payload=b'{"owner_commit":"42377ca81340951bfcd453b3bd664e673091f9f3"}',
+            sha256="0" * 64,
+        )
+        decision = qualify(self.evidence(physical_report_receipt=fake))
+        self.assertEqual((decision.physical, decision.adoption), ("HOLD", "HOLD"))
 
     def test_missing_economic_budget_holds_adoption(self) -> None:
         decision = qualify(self.evidence(
@@ -296,11 +315,37 @@ class DecisionGateTest(unittest.TestCase):
         ))
         self.assertEqual(
             (decision.functional, decision.physical, decision.adoption),
-            ("GO", "GO", "HOLD"),
+            ("GO", "HOLD", "HOLD"),
         )
+
+    def test_fabricated_observer_cells_and_half_rate_hold(self) -> None:
+        decision = qualify(self.evidence(
+            absolute_throughput_events_per_cycle=Fraction(1, 2),
+            ddr_observer_state_bits=20,
+            ddr_declared_total_state_bits=34,
+            ddr_charged_functional_cells=1,
+        ))
+        self.assertEqual(
+            (decision.functional, decision.physical, decision.adoption),
+            ("HOLD", "HOLD", "HOLD"),
+        )
+
+    def test_zero_or_nonfinite_cost_metrics_hold(self) -> None:
+        for mutation in (
+            {"energy_per_event": 0.0},
+            {"parallel_energy_per_event": 0.0},
+            {"endpoint_area": 0.0},
+            {"parallel_area": 0.0},
+            {"energy_per_event": float("nan")},
+            {"endpoint_area": float("inf")},
+        ):
+            with self.subTest(mutation=mutation):
+                decision = qualify(self.evidence(**mutation))
+                self.assertEqual(decision.adoption, "HOLD")
 
     def test_accounting_and_physical_mutations_hold(self) -> None:
         mutations = (
+            {"absolute_throughput_events_per_cycle": Fraction(1, 2)},
             {"throughput_ratio_to_parallel": Fraction(99, 100)},
             {"raw_ddr_commit_delay_cycles": Fraction(1, 1)},
             {"output_availability_delay_cycles": Fraction(3, 4)},
@@ -309,8 +354,13 @@ class DecisionGateTest(unittest.TestCase):
             {"ddr_functional_pins": 4},
             {"ddr_declared_total_state_bits": 19},
             {"parallel_declared_total_state_bits": 17},
+            {"parallel_observer_state_bits": 0, "parallel_declared_total_state_bits": 12},
             {"ddr_charged_functional_cells": 0},
+            {"ddr_charged_functional_cells": 30},
             {"parallel_charged_functional_cells": 0},
+            {"parallel_charged_functional_cells": 28},
+            {"ddr_charged_logic_depth": 6},
+            {"parallel_charged_logic_depth": 8},
             {"drain_guard_charged": False},
             {"ddr_observer_state_bits": 0, "ddr_declared_total_state_bits": 14},
             {"boundary_queue_entries": 1},
