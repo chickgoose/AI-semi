@@ -21,7 +21,7 @@ base = importlib.util.module_from_spec(BASE_SPEC)
 sys.modules[BASE_SPEC.name] = base
 BASE_SPEC.loader.exec_module(base)
 
-BOUND_COMMIT = "ca1a20971ee7bc32520aef47a3a97c89747c7fa5"
+BOUND_COMMIT = "42377ca81340951bfcd453b3bd664e673091f9f3"
 
 
 def validate_inputs(
@@ -30,7 +30,7 @@ def validate_inputs(
 ) -> tuple[dict[str, object], dict[str, list[dict[str, object]]]]:
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     if registry.get("schema_version") != 1 or registry.get("a7_commit") != BOUND_COMMIT:
-        raise base.ReplayError("invalid ca1a209 W5 production registry")
+        raise base.ReplayError("invalid 42377ca W5 production registry")
     if base.sha256_file(generator_path) != registry["generator"]["sha256"]:
         raise base.ReplayError("generator SHA mismatch")
     version_line = next(
@@ -216,18 +216,21 @@ def evaluate(
         "comparison": {
             "phase_related_r1_capture": {
                 "implemented": True,
-                "implementation": "A7 production a7_r1_retire_observer",
+                "implementation": "A7 42377ca production a7_r1_retire_observer",
                 "observer_state_bits": 6,
                 "observer_state_breakdown": {
                     "seen_toggle": 1, "downstream_address": 4,
                     "downstream_valid": 1},
                 "complete_production_endpoint_state_bits": {
                     "parallel4": 18, "ddr2": 20},
+                "complete_production_endpoint_charged_functional_cells": {
+                    "parallel4": 27, "ddr2": 29},
                 "reset_release_arming_state_bits": 1,
                 "synchronizer_bits": 0,
                 "reason_no_synchronizer": "clocks must be phase-related and STA-constrained; this is not an asynchronous CDC",
-                "rx_commit_to_core_visible_latency_core_cycles": 0.25,
-                "tx_admission_to_core_visible_latency_core_cycles": 1.0,
+                "rx_commit_to_registered_availability_cycles": 0.25,
+                "tx_admission_to_registered_availability_cycles": 1.0,
+                "tx_admission_to_synchronous_consumer_retirement_cycles": 2.0,
                 "maximum_events_per_core_cycle": 1.0,
                 "continuous_one_event_per_cycle": True,
                 "sink_contract": "always ready; no retire backpressure or queue in the production endpoint",
@@ -262,7 +265,18 @@ def evaluate(
             "common_reset_release_arming": 1,
             "parallel4_complete_endpoint": 18,
             "ddr2_complete_endpoint": 20,
-            "note": "ca1a209 production parallel4 and DDR2 include identical launch arming and seen-toggle/address/valid observation boundaries; upstream collector/FIFO state is excluded",
+            "note": "42377ca production parallel4 and DDR2 include identical launch arming, pending-valid drain guard, and seen-toggle/address/valid observation boundaries; upstream collector/FIFO state is excluded",
+        },
+        "production_structural_proxy": {
+            "parallel4": {"pins": 5, "state_bits": 18,
+                          "pre_guard_functional_cells": 23,
+                          "drain_guard_cells": 4,
+                          "charged_functional_cells": 27},
+            "ddr2": {"pins": 3, "state_bits": 20,
+                     "pre_guard_functional_cells": 25,
+                     "drain_guard_cells": 4,
+                     "charged_functional_cells": 29},
+            "physical_status": "HOLD",
         },
         "suite_summary": summaries,
         "runs": rows,
@@ -271,8 +285,9 @@ def evaluate(
         "arbitrary_clock_cdc_status": "HOLD_REQUIRES_END_TO_END_BACKPRESSURE",
         "inclusion_boundary": {
             "included": [
-                "ca1a209 production DDR2 and complete parallel reference RTL",
+                "42377ca production DDR2 and complete parallel reference RTL",
                 "one-bit launch arming and six-bit ref-clock retire observer",
+                "four-cell common drain guard covering launch, frame, raw pending toggle and registered retire valid",
                 "bound production digital regression and structural comparison",
                 "A6 executable full50/capacity22 trace model",
             ],
@@ -285,12 +300,16 @@ def evaluate(
         "reset_rdc_contract": [
             "stop admission and fully drain the A7 link",
             "assert A7 reset (rst_n=0) only while burst clock is low",
+            "require drain_idle_o only after no same-cycle launch, active frame, raw pending toggle, or registered retire_valid remains",
             "release rst_n while ref_clk_i and sample_clk_i are low after a sample falling edge",
             "allow the first safe ref rising edge to charge reset_release_armed_q; no handshake occurs on that edge",
             "begin ready-valid admission only after event_ready_o rises from that arming edge",
             "the observer and raw RX share the same reset epoch; in-flight reset is outside the lossless contract",
         ],
-        "superseded_a6_artifact": "ee590cc standalone synchronous-reset observer is historical only; final qualification uses ca1a209 production files",
+        "superseded_bindings": [
+            "ee590cc standalone synchronous-reset observer is historical only",
+            "ca1a209 production binding is superseded because drain omitted launch/registered-valid and the consumer timing was misclassified",
+        ],
     }
 
 

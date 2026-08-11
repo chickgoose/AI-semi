@@ -3,7 +3,7 @@
 ## Final binding and recommendation
 
 The final endpoint is the A7 production snapshot at
-`ca1a20971ee7bc32520aef47a3a97c89747c7fa5`. Digital status is
+`42377ca81340951bfcd453b3bd664e673091f9f3`. Digital status is
 **GO_PRODUCTION_PHASE_RELATED_R1_DIGITAL_ONLY**. Physical status remains
 **HOLD**, and unrelated-clock CDC remains
 **HOLD_REQUIRES_END_TO_END_BACKPRESSURE**.
@@ -15,9 +15,11 @@ production endpoint additionally charges a one-bit reset-release arming register
 and provides a complete same-boundary parallel4 reference.
 
 A6 commit `ee590cc` contained a standalone synchronous-reset observer used to
-establish the architecture. It is historical, not final qualification. Those
-duplicate RTL files are removed at HEAD; all final RTL/TB/synthesis evidence is
-read directly from the bound A7 production snapshot.
+establish the architecture. A7 `ca1a209` then supplied the first production
+binding, but is superseded because its drain omitted same-cycle launch and
+registered pending-valid, and its endpoint availability was mistaken for actual
+synchronous consumer retirement. All final RTL/TB/synthesis evidence is read
+directly from `42377ca`.
 
 ## Production timing and occurrence invariant
 
@@ -27,15 +29,19 @@ For the frozen 16 ns clock contract:
 2. sample/burst rise at 4 ns captures address `[1:0]`;
 3. sample/burst fall at 12 ns captures `[3:2]`, publishes the complete raw
    address, and changes the raw retirement toggle exactly once;
-4. the next reference rise at 16 ns observes the stable address/toggle and emits
-   one-cycle `retire_valid_o`.
+4. the next reference rise at 16 ns registers the stable address/toggle and makes
+   one-cycle `retire_valid_o` available;
+5. an always-ready synchronous consumer samples that registered output at the
+   following reference rise, two cycles after admission.
 
-Commit-to-observer latency is nominally 4 ns or 0.25 reference cycles;
-admission-to-observer latency is one cycle. Continuous changing-address valid is
-legal and sustains one occurrence/reference cycle. There is no valid-edge
-detector or rearm bubble. Exactness requires no more than one raw RX retirement
-between reference edges. R=2/R=4 can make toggle transitions cancel and are
-outside this endpoint even if an individual sparse trace happens to pass.
+Commit-to-registered-availability latency is nominally 4 ns or 0.25 reference
+cycles. Availability is one cycle after admission; architectural synchronous
+consumer retirement is two cycles after admission. This latency distinction
+does not add a throughput bubble: continuous changing-address valid still
+sustains one occurrence/reference cycle. There is no valid-edge detector or
+rearm bubble. Exactness requires no more than one raw RX retirement between
+reference edges. R=2/R=4 can make toggle transitions cancel and are outside this
+endpoint even if an individual sparse trace happens to pass.
 
 ## Exact charged state and fair parallel boundary
 
@@ -53,16 +59,19 @@ reference edge after reset release, so that edge is charged and cannot handshake
 
 The complete flattened generic endpoints are:
 
-| Link | Pins | Generic cells | State bits | Operator/gate depth |
-|---|---:|---:|---:|---:|
-| parallel4 production reference | 5 | 26 | 18 | 5 / 5 |
-| DDR2 production endpoint | 3 | 30 | 20 | 5 / 5 |
+| Link | Pins | Pre-guard functional | Drain guard | Charged functional | State bits | Charged depth |
+|---|---:|---:|---:|---:|---:|---:|
+| parallel4 production reference | 5 | 23 | 4 | 27 | 18 | 7 / 7 |
+| DDR2 production endpoint | 3 | 25 | 4 | 29 | 20 | 7 / 7 |
 
-Both include the same launch arming, ICG boundary, raw RX address/toggle, and
-six-bit reference-domain observer. DDR2 therefore costs two state bits and four
-generic cells while removing two physical link pins, with the same one-event/R1
-digital ceiling. These are generic structural proxies, not physical area, timing,
-energy, or maximum-frequency results.
+Both include the same launch arming, ICG boundary, raw RX address/toggle,
+six-bit reference-domain observer, and four-cell fail-closed drain guard. The
+guard covers same-cycle launch, active frame/clock, unobserved raw toggle, and
+registered `retire_valid_o` awaiting synchronous consumption. DDR2 therefore
+costs two state bits and two charged functional cells while removing two physical
+link pins, with the same one-event/R1 digital ceiling. These are generic
+structural proxies, not physical area, timing, energy, or maximum-frequency
+results. Yosys `$scopeinfo` bookkeeping alone is excluded.
 
 The 20 DDR bits are: arming 1 + TX address/frame 5 + ICG latch 1 + RX low/raw
 address/toggle 7 + observer 6. Parallel uses arming 1 + TX data/frame 5 + ICG
@@ -76,7 +85,7 @@ non-free.
 
 | Boundary | Incremental state lower bound | First visibility | Sustainable throughput | Lossless condition | Production A7 |
 |---|---:|---|---|---|---|
-| phase-related R1 observer | observer 6; production common control adds arming 1 | 0.25 cycle after RX commit | 1 event/ref cycle | frozen phase, STA, at most one commit/ref edge, drained reset | implemented |
+| phase-related R1 observer | observer 6; arming 1; common drain guard is 4 combinational cells | available 1 cycle and synchronously consumed 2 cycles after admission | 1 event/ref cycle | frozen phase, STA, at most one commit/ref edge, guarded drain/reset | implemented |
 | bundled-data two-phase handshake | 15 | 2--3 destination cycles; reuse after return sync | conservatively <=0.25 event/cycle at equal clocks | TX waits for synchronized acknowledge | not implemented |
 | Gray-pointer async FIFO depth 2 | 31 | normally 2--3 destination cycles | min(write, read) | full backpressure or proved finite backlog | not implemented |
 | Gray-pointer async FIFO depth 4 | 47 | normally 2--3 destination cycles | min(write, read) | same, with four slots | not implemented |
@@ -122,6 +131,9 @@ All production endpoint domains share the same `rst_n` epoch. Assertion is
 asynchronous in RTL but legal only after drain with the forwarded clock low.
 Release is legal while both source clocks are low, after a sample falling edge
 and at least the quarter-cycle interval before the next reference rise.
+`drain_idle_o` is fail-closed until there is no same-cycle launch, active
+frame/clock, raw toggle unseen by the observer, or registered `retire_valid_o`
+still awaiting the always-ready consumer edge.
 
 The required order is:
 
@@ -140,14 +152,16 @@ HOLD.
 
 ## Exact inclusion boundary
 
-Included and executed from `git archive ca1a209...`:
+Included and executed from `git archive 42377ca...`:
 
 - production DDR2 endpoint and complete parallel4 reference;
 - reset-release arming, TX, generic ICG, RX and retire observer;
 - A7 nominal, continuous 16-event changing-address, gapped, held-valid reset,
-  legal drain-reset, invalid mid-frame reset and exact once/order/address tests;
-- identical generic Yosys flow yielding 30/20 DDR and 26/18 parallel
-  cell/state results;
+  same-cycle launch drain block, cycle-1 availability, cycle-2 synchronous
+  consumer retirement, pending-valid drain block, legal drain-reset, invalid
+  mid-frame reset and exact once/order/address tests;
+- identical generic Yosys flow yielding 29 charged cells/20 bits DDR and 27
+  charged cells/18 bits parallel;
 - A6 full50/capacity22 replay and handshake/FIFO lower-bound model.
 
 Required but excluded/non-free:
@@ -167,6 +181,6 @@ R1 exact/HOLD boundaries. A7 and common files remain read only.
 Provenance digests:
 
 - production registry:
-  `e6dbd1ede35d7443410953dd910c59905ab875515a4bce29fd91cf9a1da6a6df`;
+  `9cb8ea7ff894f361a003b9e4765da72f5e2ec4672be9f239c9281eb37fca0acf`;
 - machine replay report:
-  `b7003ad2d0225a46b93440c1c7c7a31bf94dccf02992fccff34ef96737de63f6`.
+  `b29c8e2c8d7c7fadba0f0bb3c3a296c4cf7d0df09bac968ed3f5aec2bf0c56dc`.

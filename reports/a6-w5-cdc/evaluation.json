@@ -1,5 +1,5 @@
 {
-  "a7_bound_commit": "ca1a20971ee7bc32520aef47a3a97c89747c7fa5",
+  "a7_bound_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
   "arbitrary_clock_cdc_status": "HOLD_REQUIRES_END_TO_END_BACKPRESSURE",
   "candidate": "a6_w5_rx_core_boundary",
   "comparison": {
@@ -45,12 +45,16 @@
       "sustainable_rate": "min(write rate, read rate); finite depth cannot absorb permanent write>read load"
     },
     "phase_related_r1_capture": {
+      "complete_production_endpoint_charged_functional_cells": {
+        "ddr2": 29,
+        "parallel4": 27
+      },
       "complete_production_endpoint_state_bits": {
         "ddr2": 20,
         "parallel4": 18
       },
       "continuous_one_event_per_cycle": true,
-      "implementation": "A7 production a7_r1_retire_observer",
+      "implementation": "A7 42377ca production a7_r1_retire_observer",
       "implemented": true,
       "lossless_scope": "R=1 only, at most one RX commit between ref edges, frozen 4 ns commit-to-ref phase, charged reset arming and drained reset sequence",
       "maximum_events_per_core_cycle": 1.0,
@@ -62,16 +66,18 @@
       },
       "reason_no_synchronizer": "clocks must be phase-related and STA-constrained; this is not an asynchronous CDC",
       "reset_release_arming_state_bits": 1,
-      "rx_commit_to_core_visible_latency_core_cycles": 0.25,
+      "rx_commit_to_registered_availability_cycles": 0.25,
       "sink_contract": "always ready; no retire backpressure or queue in the production endpoint",
       "synchronizer_bits": 0,
-      "tx_admission_to_core_visible_latency_core_cycles": 1.0
+      "tx_admission_to_registered_availability_cycles": 1.0,
+      "tx_admission_to_synchronous_consumer_retirement_cycles": 2.0
     }
   },
   "inclusion_boundary": {
     "included": [
-      "ca1a209 production DDR2 and complete parallel reference RTL",
+      "42377ca production DDR2 and complete parallel reference RTL",
       "one-bit launch arming and six-bit ref-clock retire observer",
+      "four-cell common drain guard covering launch, frame, raw pending toggle and registered retire valid",
       "bound production digital regression and structural comparison",
       "A6 executable full50/capacity22 trace model"
     ],
@@ -86,14 +92,32 @@
     "common_reset_release_arming": 1,
     "common_retire_observer": 6,
     "ddr2_complete_endpoint": 20,
-    "note": "ca1a209 production parallel4 and DDR2 include identical launch arming and seen-toggle/address/valid observation boundaries; upstream collector/FIFO state is excluded",
+    "note": "42377ca production parallel4 and DDR2 include identical launch arming, pending-valid drain guard, and seen-toggle/address/valid observation boundaries; upstream collector/FIFO state is excluded",
     "parallel4_complete_endpoint": 18
   },
+  "production_structural_proxy": {
+    "ddr2": {
+      "charged_functional_cells": 29,
+      "drain_guard_cells": 4,
+      "pins": 3,
+      "pre_guard_functional_cells": 25,
+      "state_bits": 20
+    },
+    "parallel4": {
+      "charged_functional_cells": 27,
+      "drain_guard_cells": 4,
+      "pins": 5,
+      "pre_guard_functional_cells": 23,
+      "state_bits": 18
+    },
+    "physical_status": "HOLD"
+  },
   "recommendation": "GO_PRODUCTION_PHASE_RELATED_R1_DIGITAL_ONLY",
-  "registry_sha256": "e6dbd1ede35d7443410953dd910c59905ab875515a4bce29fd91cf9a1da6a6df",
+  "registry_sha256": "9cb8ea7ff894f361a003b9e4765da72f5e2ec4672be9f239c9281eb37fca0acf",
   "reset_rdc_contract": [
     "stop admission and fully drain the A7 link",
     "assert A7 reset (rst_n=0) only while burst clock is low",
+    "require drain_idle_o only after no same-cycle launch, active frame, raw pending toggle, or registered retire_valid remains",
     "release rst_n while ref_clk_i and sample_clk_i are low after a sample falling edge",
     "allow the first safe ref rising edge to charge reset_release_armed_q; no handshake occurs on that edge",
     "begin ready-valid admission only after event_ready_o rises from that arming edge",
@@ -3416,5 +3440,8 @@
       "worst_rx_commits_between_core_edges": 4
     }
   ],
-  "superseded_a6_artifact": "ee590cc standalone synchronous-reset observer is historical only; final qualification uses ca1a209 production files"
+  "superseded_bindings": [
+    "ee590cc standalone synchronous-reset observer is historical only",
+    "ca1a209 production binding is superseded because drain omitted launch/registered-valid and the consumer timing was misclassified"
+  ]
 }

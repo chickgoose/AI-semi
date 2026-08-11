@@ -25,7 +25,7 @@ class CdcBoundaryModelTest(unittest.TestCase):
     def test_final_production_commit_is_exact(self) -> None:
         self.assertEqual(
             w5.BOUND_COMMIT,
-            "ca1a20971ee7bc32520aef47a3a97c89747c7fa5",
+            "42377ca81340951bfcd453b3bd664e673091f9f3",
         )
 
     def test_r1_phase_capture_is_exact_for_serialized_stream(self) -> None:
