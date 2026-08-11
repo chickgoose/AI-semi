@@ -139,9 +139,14 @@ class W5A7EqualFlowTest(unittest.TestCase):
         self.assertEqual(identity["python"]["implementation"], "CPython")
         self.assertTrue(identity["python"]["executable_sha256"])
         self.assertNotIn("w4_a4_moving_block_synth", run.LOCAL_RUNNER.read_text())
+        workspace = report["provenance"]["workspace_policy"]
+        self.assertEqual(workspace["generated_work_directory"], "system_temporary_directory")
+        self.assertFalse(workspace["repository_local_temporary_directories"])
+        self.assertNotIn("dir=REPO_ROOT", run.LOCAL_RUNNER.read_text())
 
     def test_receipts_are_byte_reproducible(self) -> None:
-        with tempfile.TemporaryDirectory(dir=run.REPO_ROOT) as directory:
+        # The repository may be mounted read-only; only caller/system temp is writable.
+        with tempfile.TemporaryDirectory(prefix="a3-w5-receipt-test-") as directory:
             output = Path(directory) / "receipt.json"
             self.assertEqual(run.main(["--output", str(output)]), 0)
             self.assertEqual(

@@ -200,7 +200,7 @@
       },
       "runner": {
         "path": "scripts/w5_a7_equal_flow_synth/run.py",
-        "sha256": "d1d7ba1d31b2388c0d78fbac3b76924a7d97cef9600ff318308c942821d05bd5"
+        "sha256": "a11d77132b3c675923af7c2850f7a53cff52c229dba8f4e58498e42c87006e31"
       },
       "vendored_helper": {
         "external_w4_import": false,
@@ -252,7 +252,13 @@
       "sha256": "0a830a60665801b457483bf77c7c4b2dfc79a52bb577e857ffeb2c5826b1c562"
     },
     "same_top": "a3_w5_r1_endpoint_top",
-    "source_normalization": "none"
+    "source_normalization": "none",
+    "workspace_policy": {
+      "generated_work_directory": "system_temporary_directory",
+      "repository_local_temporary_directories": false,
+      "source_checkout": "read_only",
+      "writes": "only caller-provided receipt output paths"
+    }
   },
   "r1_handshake_and_qualifier_gate": {
     "continuous_valid_new_address_each_accepted_cycle": "LEGAL",

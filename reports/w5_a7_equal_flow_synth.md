@@ -74,4 +74,7 @@ network warning; this is not a warning-free claim. Missing/duplicate digital
 PASS markers, unexpected warnings, unresolved objects, residual
 processes/memories, scopeinfo-contaminated functional counts, state-count changes,
 drain-contract changes, or Yosys check failures fail closed.
+Generated RTL copies, simulator objects, and synthesis products use the system
+temporary directory; the source checkout is read-only except for the explicitly
+requested receipt output paths.
 The JSON and this Markdown file are atomically replaced and byte-deterministic.

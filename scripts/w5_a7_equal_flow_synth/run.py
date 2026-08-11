@@ -723,6 +723,9 @@ network warning; this is not a warning-free claim. Missing/duplicate digital
 PASS markers, unexpected warnings, unresolved objects, residual
 processes/memories, scopeinfo-contaminated functional counts, state-count changes,
 drain-contract changes, or Yosys check failures fail closed.
+Generated RTL copies, simulator objects, and synthesis products use the system
+temporary directory; the source checkout is read-only except for the explicitly
+requested receipt output paths.
 The JSON and this Markdown file are atomically replaced and byte-deterministic.
 """
 
@@ -750,7 +753,9 @@ def main(argv: list[str] | None = None) -> int:
         if abc_version != base.EXPECTED_ABC_VERSION:
             raise base.AuditError("ABC version mismatch")
 
-        temporary = Path(tempfile.mkdtemp(prefix=".a3-w5-a7-", dir=REPO_ROOT))
+        # All generated sources, simulator objects, and synthesis products live
+        # outside the source tree so the audit runs from a read-only checkout.
+        temporary = Path(tempfile.mkdtemp(prefix="a3-w5-a7-"))
         try:
             digital = run_digital_regression(
                 objects, temporary / "digital_regression",
@@ -790,6 +795,12 @@ def main(argv: list[str] | None = None) -> int:
                 "same_top": TOP,
                 "source_normalization": "none",
                 "execution_identity": execution_identity(),
+                "workspace_policy": {
+                    "source_checkout": "read_only",
+                    "generated_work_directory": "system_temporary_directory",
+                    "repository_local_temporary_directories": False,
+                    "writes": "only caller-provided receipt output paths",
+                },
             },
             "r1_handshake_and_qualifier_gate": r1,
             "phase_related_consumer_contract": phase,
