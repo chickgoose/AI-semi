@@ -1,101 +1,105 @@
-# A6 W5: RX burst-clock to downstream core-clock boundary
+# A6 W5: production R1 RX-to-reference boundary audit
 
-## Recommendation
+## Final binding and recommendation
 
-Implement the **strict phase-related synchronous R1 boundary** as the primary
-endpoint. This is not an unrelated-clock CDC and contains no implicit or free
-synchronizer. `ref_clk_i`, downstream `core_clk_i`, and `sample_clk_i` must share
-the frozen source and phase contract. A7 RX commits the four-bit address and
-toggles retirement at the burst/sample falling edge; the consumer captures both
-at the next reference/core rising edge through a charged six-bit detector.
+The final endpoint is the A7 production snapshot at
+`ca1a20971ee7bc32520aef47a3a97c89747c7fa5`. Digital status is
+**GO_PRODUCTION_PHASE_RELATED_R1_DIGITAL_ONLY**. Physical status remains
+**HOLD**, and unrelated-clock CDC remains
+**HOLD_REQUIRES_END_TO_END_BACKPRESSURE**.
 
-Digital status is **GO_RESTRICTED_PHASE_RELATED_R1_ONLY**. Arbitrary-clock CDC is
-**HOLD_REQUIRES_END_TO_END_BACKPRESSURE**. The bundled-data handshake and async
-FIFO alternatives are not implemented because current A7 cannot stop RX or
-propagate full/acknowledge to TX. Adding a finite buffer without that path would
-detect or postpone overflow, not prove losslessness.
+This is not a 2FF CDC synchronizer. `ref_clk_i` and `sample_clk_i` share the
+frozen source and phase. RX commits its raw four-bit address/toggle on burst fall;
+the charged six-bit observer samples both at the next reference rise. The
+production endpoint additionally charges a one-bit reset-release arming register
+and provides a complete same-boundary parallel4 reference.
 
-## Primary timing and invariant
+A6 commit `ee590cc` contained a standalone synchronous-reset observer used to
+establish the architecture. It is historical, not final qualification. Those
+duplicate RTL files are removed at HEAD; all final RTL/TB/synthesis evidence is
+read directly from the bound A7 production snapshot.
 
-For the frozen 16 ns W4 clock contract:
+## Production timing and occurrence invariant
 
-1. reference/core rising edge at 0 ns admits at most one event;
-2. sample/burst rising edge at 4 ns captures address `[1:0]`;
-3. sample/burst falling edge at 12 ns captures `[3:2]`, publishes the complete
-   address, and changes `retire_toggle` exactly once;
-4. next reference/core rising edge at 16 ns observes the stable address and
-   changed toggle.
+For the frozen 16 ns clock contract:
 
-RX-commit-to-core-visible latency is therefore nominally 4 ns or 0.25 core
-cycles; admission-to-core-visible latency is one core cycle. Continuous traffic
-delivers one event on every core edge after pipeline fill. Exactness requires no
-more than one RX retirement between consecutive core edges. At R=2 or R=4, two
-toggle changes may cancel before observation, so this circuit is explicitly
-illegal even if a particular sparse trace happens not to alias.
+1. a reference rise at 0 ns performs one ready-valid handshake when armed;
+2. sample/burst rise at 4 ns captures address `[1:0]`;
+3. sample/burst fall at 12 ns captures `[3:2]`, publishes the complete raw
+   address, and changes the raw retirement toggle exactly once;
+4. the next reference rise at 16 ns observes the stable address/toggle and emits
+   one-cycle `retire_valid_o`.
 
-The RTL contains exactly six core-clock state bits:
+Commit-to-observer latency is nominally 4 ns or 0.25 reference cycles;
+admission-to-observer latency is one cycle. Continuous changing-address valid is
+legal and sustains one occurrence/reference cycle. There is no valid-edge
+detector or rearm bubble. Exactness requires no more than one raw RX retirement
+between reference edges. R=2/R=4 can make toggle transitions cancel and are
+outside this endpoint even if an individual sparse trace happens to pass.
 
-| State | Bits | Purpose |
-|---|---:|---|
-| `seen_toggle_q` | 1 | last consumed RX retirement generation |
-| `core_event_addr_o` | 4 | stable downstream address-only identity |
-| `core_event_valid_o` | 1 | one-core-cycle occurrence pulse |
+## Exact charged state and fair parallel boundary
 
-Local generic Yosys reports one 4-bit enabled flop, two 1-bit flops, one compare,
-and one mux: six state bits and five generic cells. This is a structural check,
-not physical PPA.
+The common retire observer contains six bits:
 
-## Fair endpoint boundary
+| State | Bits |
+|---|---:|
+| seen raw toggle | 1 |
+| registered retirement address | 4 |
+| registered retirement valid | 1 |
 
-The parallel4 comparison must use the identical six-bit consumer observation
-boundary. It is not allowed to expose its RX address/toggle directly while DDR2
-pays capture state.
+The production launch qualifier contributes a seventh common control bit:
+`reset_release_armed_q`. It holds `event_ready_o` low through the first safe
+reference edge after reset release, so that edge is charged and cannot handshake.
 
-| Link | Existing W4 link state | Common consumer state | Fixed endpoint state |
-|---|---:|---:|---:|
-| parallel4 | 11 | 6 | 17 |
-| DDR2 | 13 | 6 | 19 |
-| serial1 | 16 | 6 | 22 |
+The complete flattened generic endpoints are:
 
-Parallel4 and DDR2 both retain an ideal R1 ceiling of one event/core cycle; DDR2
-still removes two external link pins. The two-bit state difference is not a PPA
-result. Upstream same-cycle collection/FIFO, clock tree, characterized ICG,
-ODDR/IDDR, pads, routing, downstream logic, and STA/CDC/RDC closure remain outside
-these fixed-state totals and are not free.
+| Link | Pins | Generic cells | State bits | Operator/gate depth |
+|---|---:|---:|---:|---:|
+| parallel4 production reference | 5 | 26 | 18 | 5 / 5 |
+| DDR2 production endpoint | 3 | 30 | 20 | 5 / 5 |
+
+Both include the same launch arming, ICG boundary, raw RX address/toggle, and
+six-bit reference-domain observer. DDR2 therefore costs two state bits and four
+generic cells while removing two physical link pins, with the same one-event/R1
+digital ceiling. These are generic structural proxies, not physical area, timing,
+energy, or maximum-frequency results.
+
+The 20 DDR bits are: arming 1 + TX address/frame 5 + ICG latch 1 + RX low/raw
+address/toggle 7 + observer 6. Parallel uses arming 1 + TX data/frame 5 + ICG
+latch 1 + raw address/toggle 5 + observer 6 = 18.
+
+Upstream same-cycle collection/FIFO, characterized ICG, ODDR/IDDR, clock tree,
+pads, routing, downstream logic and physical STA/CDC/RDC remain excluded and
+non-free.
 
 ## Alternative comparison
 
-| Boundary | Incremental state lower bound | First-event latency | Sustainable throughput | Lossless condition | Current A7 |
+| Boundary | Incremental state lower bound | First visibility | Sustainable throughput | Lossless condition | Production A7 |
 |---|---:|---|---|---|---|
-| related-phase R1 detector | 6 | 0.25 core cycle after RX commit | 1 event/core | frozen phase, STA, at most one commit/core, drained reset | implemented |
-| bundled-data two-phase handshake | 15 | 2--3 destination cycles; source reuse after two return-sync cycles | at equal clocks, conservatively no more than 0.25 event/core | source holds address until synchronized ack; TX admission waits | incompatible without ack-to-TX path |
-| Gray-pointer async FIFO depth 2 | 31 | normally 2--3 destination cycles | up to min(write, read) rate | full backpressure or proved bounded backlog | incompatible without full-to-TX path |
-| Gray-pointer async FIFO depth 4 | 47 | normally 2--3 destination cycles | up to min(write, read) rate | same as above, with four slots | incompatible without full-to-TX path |
+| phase-related R1 observer | observer 6; production common control adds arming 1 | 0.25 cycle after RX commit | 1 event/ref cycle | frozen phase, STA, at most one commit/ref edge, drained reset | implemented |
+| bundled-data two-phase handshake | 15 | 2--3 destination cycles; reuse after return sync | conservatively <=0.25 event/cycle at equal clocks | TX waits for synchronized acknowledge | not implemented |
+| Gray-pointer async FIFO depth 2 | 31 | normally 2--3 destination cycles | min(write, read) | full backpressure or proved finite backlog | not implemented |
+| Gray-pointer async FIFO depth 4 | 47 | normally 2--3 destination cycles | min(write, read) | same, with four slots | not implemented |
 
-The handshake lower bound includes a four-bit source mailbox, request toggle,
+The handshake lower bound includes the four-bit source mailbox, request toggle,
 two destination request synchronizer bits, destination seen bit, five output
-address/valid bits, and two source acknowledgement synchronizer bits. It does not
-include reset synchronizers, constraints, or upstream admission control.
+address/valid bits, and two source acknowledgement synchronizer bits. It excludes
+reset synchronizers and the required acknowledgement-to-TX admission path.
 
-The FIFO lower bound includes four-bit payload memory, local binary and Gray
-pointers in both domains, two complete two-flop crossed-pointer synchronizers,
-four registered output bits, valid, full, and empty. Depth 2 costs 31 bits; depth
-4 costs 47. A real implementation can require additional memory/output, reset,
-almost-full, CDC constraint, or ECC state.
-
-Most importantly, neither alternative can be attached losslessly to the current
-A7 RX alone. `retire_toggle_o` has no ready input. A mailbox can be overwritten
-before acknowledge, and an async FIFO can fill. Correct future variants must
-propagate mailbox ready or FIFO full to TX admission across the entire link.
+The FIFO lower bound includes four-bit payload storage, local binary/Gray
+pointers, both two-stage crossed-pointer synchronizers, registered output/valid,
+full, and empty. A real implementation may require more state. Current RX has no
+ready/full input; a finite FIFO can overflow and a mailbox can be overwritten.
+Neither is lossless until backpressure propagates to TX admission.
 
 ## full50/capacity22 replay
 
-The executable model serializes the same address-only occurrence stream through
-the link and counts RX commits between downstream core edges. It models the
-toggle parity failure exactly: two unseen changes deliver zero, while three
-changes expose only the final occurrence.
+The A6 model pins the production sources, serializes the exact address-only
+occurrences, and counts raw RX commits between reference edges. Toggle alias is
+modeled exactly: two unseen transitions deliver zero; three expose only the last
+occurrence.
 
-| Suite | R | Events | Exact runs | Toggle-alias losses | Worst commits/core | Finite-trace FIFO depth LB | Rounded FIFO/state LB |
+| Suite | R | Events | Exact runs | Toggle-alias losses | Worst commits/ref interval | Finite-trace FIFO depth LB | Rounded FIFO/state LB |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | full50 | 1 | 106416 | 50/50 | 0 | 1 | 3 | 4 / 47 bits |
 | full50 | 2 | 106416 | 24/50 | 56452 | 2 | 4612 | 8192 / 32887 bits |
@@ -104,56 +108,65 @@ changes expose only the final occurrence.
 | capacity22 | 2 | 65616 | 3/22 | 49512 | 2 | 4612 | 8192 / 32887 bits |
 | capacity22 | 4 | 65616 | 3/22 | 48332 | 4 | 5135 | 8192 / 32887 bits |
 
-R1 is exact after the link has serialized the events. This does not make the
-unmodeled upstream same-cycle collector free: official multi-occurrence cycles
-still require the staging already identified by W4. The finite-trace FIFO column
-assumes a one-event/core reader and charges two core cycles before the synchronized
-write pointer becomes visible. It is only a capacity lower bound for those pinned
-traces. An unrelated clock can drift, and R>1 has a sustained writer-rate
-advantage, so no finite number in this table proves arbitrary losslessness.
+R1 is exact after serialization. This does not make the upstream collector free:
+official simultaneous occurrences still require staging before the one-lane
+ready-valid endpoint. The FIFO column charges two reference cycles before a
+synchronized write pointer becomes visible and is only a finite-trace capacity
+lower bound. Unrelated clocks can drift, and R>1 can sustain write>read, so no
+finite number above proves arbitrary losslessness. Lower aggregate loss at some
+R=4 cases is toggle parity, not improved correctness.
 
-The lower alias loss at some R=4 aggregates is a parity artifact, not improved
-correctness: more even-sized groups disappear completely.
+## Production reset/RDC contract
 
-## Reset and RDC contract
+All production endpoint domains share the same `rst_n` epoch. Assertion is
+asynchronous in RTL but legal only after drain with the forwarded clock low.
+Release is legal while both source clocks are low, after a sample falling edge
+and at least the quarter-cycle interval before the next reference rise.
 
-The boundary deliberately uses synchronous `core_reset_i`; it adds no unchecked
-asynchronous reset crossing. Lossless reset requires this ordered sequence:
+The required order is:
 
-1. stop admission and drain the link;
-2. assert A7 reset (`rst_n=0`) only while the burst clock is low;
-3. assert `core_reset_i` for at least one core rising edge;
-4. release A7 reset while core reset remains asserted, establishing source
-   address/toggle zero;
-5. release `core_reset_i` synchronously;
-6. admit no new event until that core edge completes.
+1. stop admission and wait for `drain_idle_o==1`;
+2. assert reset (`rst_n=0`) while the forwarded clock is low;
+3. release `rst_n` in the frozen low-phase window;
+4. charge the first safe reference edge to `reset_release_armed_q`; ready remains
+   unable to handshake on that edge;
+5. begin ready-valid admission only after `event_ready_o` rises.
 
-One-sided reset, reset with traffic in flight, source toggle reset while the
-consumer remains live, or changing the clock relationship is outside the
-lossless contract. A later asynchronous FIFO must independently synchronize
-reset release in both domains and specify what happens to in-flight entries.
+Reset clears TX/RX raw state, raw toggle, observer epoch and output valid. An
+in-flight reset can truncate the clock and has no delivery guarantee. The bound
+negative test observes that invalid case, checks no phantom retirement, and then
+performs a legal reset. Recovery/removal, RDC and physical release timing remain
+HOLD.
 
-## Exact inclusion boundary and remaining qualification
+## Exact inclusion boundary
 
-Included:
+Included and executed from `git archive ca1a209...`:
 
-- the six-bit related-phase detector RTL;
-- one-cycle valid/address output semantics;
-- continuous 18-event RTL lockstep including all N16 identities and repeated
-  same-address occurrences;
-- full50/capacity22 executable alias/FIFO-capacity model;
-- Icarus and Verilator simulation plus generic Yosys six-state-bit check.
+- production DDR2 endpoint and complete parallel4 reference;
+- reset-release arming, TX, generic ICG, RX and retire observer;
+- A7 nominal, continuous 16-event changing-address, gapped, held-valid reset,
+  legal drain-reset, invalid mid-frame reset and exact once/order/address tests;
+- identical generic Yosys flow yielding 30/20 DDR and 26/18 parallel
+  cell/state results;
+- A6 full50/capacity22 replay and handshake/FIFO lower-bound model.
 
 Required but excluded/non-free:
 
-- generated/related-clock STA proving the 4 ns bundled-data path and hold margin;
-- clock skew, CTS, PVT, recovery/removal and physical implementation;
-- A7 TX/RX, upstream collector/FIFO and common scoring integration;
-- any unrelated-clock synchronizer, mailbox acknowledgement, FIFO, full
-  backpressure, or reset synchronizer.
+- half-cycle related-clock STA, skew, recovery/removal and RDC closure;
+- characterized ICG and DDR I/O mapping, CTS, pads, routing, PVT and extracted
+  activity/power;
+- upstream same-cycle collector/FIFO and common integration;
+- unrelated-clock synchronizer, acknowledgement path, async FIFO or full
+  backpressure.
 
-Machine report SHA-256 is
-`7bcf6795bd23f79d87bdcc7577b771e1999a8fc7c26fadb87aaf25735c8f98ae`.
-Run `scripts/run_a6_w5_cdc_checks.sh` for fresh trace generation, provenance
-validation, Python tests, exact replay, dual-simulator RTL checks, and the Yosys
-state-bit assertion. A7 and common files are read only.
+Run `scripts/run_a6_w5_cdc_checks.sh`. It regenerates both suites, validates every
+trace and production source SHA, extracts the immutable A7 snapshot, runs its
+production Verilator regression and structural comparison, and requires the A6
+R1 exact/HOLD boundaries. A7 and common files remain read only.
+
+Provenance digests:
+
+- production registry:
+  `e6dbd1ede35d7443410953dd910c59905ab875515a4bce29fd91cf9a1da6a6df`;
+- machine replay report:
+  `b7003ad2d0225a46b93440c1c7c7a31bf94dccf02992fccff34ef96737de63f6`.

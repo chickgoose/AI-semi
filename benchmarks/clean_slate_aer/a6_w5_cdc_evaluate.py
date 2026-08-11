@@ -4,20 +4,62 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import math
+import subprocess
 import sys
 from collections import defaultdict, deque
 from pathlib import Path
 
 
-W4_PATH = Path(__file__).with_name("a6_w4_fixed_pin_replay_db3f04f.py")
-W4_SPEC = importlib.util.spec_from_file_location("a6_w5_w4_base", W4_PATH)
-assert W4_SPEC and W4_SPEC.loader
-w4 = importlib.util.module_from_spec(W4_SPEC)
-sys.modules[W4_SPEC.name] = w4
-W4_SPEC.loader.exec_module(w4)
+BASE_PATH = Path(__file__).with_name("a6_w4_fixed_pin_replay.py")
+BASE_SPEC = importlib.util.spec_from_file_location("a6_w5_replay_base", BASE_PATH)
+assert BASE_SPEC and BASE_SPEC.loader
+base = importlib.util.module_from_spec(BASE_SPEC)
+sys.modules[BASE_SPEC.name] = base
+BASE_SPEC.loader.exec_module(base)
+
+BOUND_COMMIT = "ca1a20971ee7bc32520aef47a3a97c89747c7fa5"
+
+
+def validate_inputs(
+    registry_path: Path, generator_path: Path, a7_repo: Path,
+    suite_inputs: dict[str, tuple[Path, Path]],
+) -> tuple[dict[str, object], dict[str, list[dict[str, object]]]]:
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    if registry.get("schema_version") != 1 or registry.get("a7_commit") != BOUND_COMMIT:
+        raise base.ReplayError("invalid ca1a209 W5 production registry")
+    if base.sha256_file(generator_path) != registry["generator"]["sha256"]:
+        raise base.ReplayError("generator SHA mismatch")
+    version_line = next(
+        (line for line in generator_path.read_text(encoding="utf-8").splitlines()
+         if line.startswith("GENERATOR_VERSION")), "")
+    if f'"{registry["generator"]["version"]}"' not in version_line:
+        raise base.ReplayError("generator version mismatch")
+    for relative, expected in registry["a7_sources"].items():
+        content = subprocess.check_output(
+            ["git", "-C", str(a7_repo), "show", f"{BOUND_COMMIT}:{relative}"])
+        if hashlib.sha256(content).hexdigest() != expected:
+            raise base.ReplayError(f"A7 production source mismatch: {relative}")
+
+    runs_by_suite: dict[str, list[dict[str, object]]] = {}
+    for suite, (manifest_path, trace_dir) in suite_inputs.items():
+        contract = registry["suites"][suite]
+        if base.sha256_file(manifest_path) != contract["manifest_sha256"]:
+            raise base.ReplayError(f"{suite}: manifest SHA mismatch")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        names = [run["name"] for run in manifest["runs"]]
+        if names != contract["run_names"] or set(names) != set(contract["traces"]):
+            raise base.ReplayError(f"{suite}: run set mismatch")
+        for name in names:
+            trace = trace_dir / f"{name}.events.jsonl"
+            if (not trace.is_file()
+                    or base.sha256_file(trace) != contract["traces"][name]["sha256"]):
+                raise base.ReplayError(f"{suite}/{name}: trace SHA mismatch")
+        runs_by_suite[suite] = manifest["runs"]
+    return registry, runs_by_suite
 
 
 def phase_capture_counts(
@@ -151,13 +193,13 @@ def evaluate(
     registry: Path, generator: Path, a7_repo: Path,
     suite_inputs: dict[str, tuple[Path, Path]],
 ) -> dict[str, object]:
-    contract, runs_by_suite = w4.validate_inputs(
+    contract, runs_by_suite = validate_inputs(
         registry, generator, a7_repo, suite_inputs)
     rows: list[dict[str, object]] = []
     for suite, runs in runs_by_suite.items():
         trace_dir = suite_inputs[suite][1]
         for run in runs:
-            events = w4.base.load_events(
+            events = base.load_events(
                 trace_dir / f"{run['name']}.events.jsonl",
                 contract["suites"][suite]["traces"][run["name"]]["sha256"],
             )
@@ -169,23 +211,27 @@ def evaluate(
     return {
         "schema_version": 1,
         "candidate": "a6_w5_rx_core_boundary",
-        "a7_bound_commit": w4.BOUND_COMMIT,
-        "registry_sha256": w4.base.sha256_file(registry),
+        "a7_bound_commit": BOUND_COMMIT,
+        "registry_sha256": base.sha256_file(registry),
         "comparison": {
             "phase_related_r1_capture": {
                 "implemented": True,
-                "synthesized_state_bits": 6,
-                "state_breakdown": {
+                "implementation": "A7 production a7_r1_retire_observer",
+                "observer_state_bits": 6,
+                "observer_state_breakdown": {
                     "seen_toggle": 1, "downstream_address": 4,
                     "downstream_valid": 1},
+                "complete_production_endpoint_state_bits": {
+                    "parallel4": 18, "ddr2": 20},
+                "reset_release_arming_state_bits": 1,
                 "synchronizer_bits": 0,
                 "reason_no_synchronizer": "clocks must be phase-related and STA-constrained; this is not an asynchronous CDC",
                 "rx_commit_to_core_visible_latency_core_cycles": 0.25,
                 "tx_admission_to_core_visible_latency_core_cycles": 1.0,
                 "maximum_events_per_core_cycle": 1.0,
                 "continuous_one_event_per_cycle": True,
-                "sink_contract": "always ready; no backpressure in the primary restricted endpoint",
-                "lossless_scope": "R=1 only, at most one RX commit between core edges, frozen 4 ns commit-to-core phase, drained reset sequence",
+                "sink_contract": "always ready; no retire backpressure or queue in the production endpoint",
+                "lossless_scope": "R=1 only, at most one RX commit between ref edges, frozen 4 ns commit-to-ref phase, charged reset arming and drained reset sequence",
             },
             "bundled_data_two_phase_toggle_handshake": {
                 "implemented": False,
@@ -211,37 +257,40 @@ def evaluate(
                 "rejection": "A7 RX exposes no ready/full path; overflow would be detection, not lossless delivery",
             },
         },
-        "fair_fixed_endpoint_state_bits": {
-            "consumer_boundary_added_to_every_link": 6,
-            "parallel4_link_plus_consumer": 17,
-            "ddr2_link_plus_consumer": 19,
-            "serial1_link_plus_consumer": 22,
-            "note": "parallel4 and DDR2 use the identical seen-toggle/address/valid observation boundary; upstream collector/FIFO state is excluded",
+        "production_fixed_endpoint_state_bits": {
+            "common_retire_observer": 6,
+            "common_reset_release_arming": 1,
+            "parallel4_complete_endpoint": 18,
+            "ddr2_complete_endpoint": 20,
+            "note": "ca1a209 production parallel4 and DDR2 include identical launch arming and seen-toggle/address/valid observation boundaries; upstream collector/FIFO state is excluded",
         },
         "suite_summary": summaries,
         "runs": rows,
-        "recommendation": "GO_RESTRICTED_PHASE_RELATED_R1_ONLY",
+        "recommendation": "GO_PRODUCTION_PHASE_RELATED_R1_DIGITAL_ONLY",
+        "physical_status": "HOLD",
         "arbitrary_clock_cdc_status": "HOLD_REQUIRES_END_TO_END_BACKPRESSURE",
         "inclusion_boundary": {
             "included": [
-                "six bits of downstream core-clock state",
-                "toggle-change detection and four-bit bundled-address capture",
-                "standalone RTL, lockstep TB, executable trace model",
+                "ca1a209 production DDR2 and complete parallel reference RTL",
+                "one-bit launch arming and six-bit ref-clock retire observer",
+                "bound production digital regression and structural comparison",
+                "A6 executable full50/capacity22 trace model",
             ],
             "required_but_not_included": [
                 "generated/related-clock STA proving the frozen phase and half-cycle bundled-data path",
-                "A7 TX/RX and any upstream same-cycle event collector or queue",
+                "any upstream same-cycle event collector or queue",
                 "clock tree, skew, recovery/removal, downstream logic and physical PPA",
             ],
         },
         "reset_rdc_contract": [
             "stop admission and fully drain the A7 link",
             "assert A7 reset (rst_n=0) only while burst clock is low",
-            "assert synchronous core_reset_i and provide at least one core edge",
-            "release A7 reset while core_reset_i remains asserted so retire_toggle is known zero",
-            "release core_reset_i synchronously; no event may occur until that edge completes",
-            "one-sided or in-flight reset is outside the lossless contract",
+            "release rst_n while ref_clk_i and sample_clk_i are low after a sample falling edge",
+            "allow the first safe ref rising edge to charge reset_release_armed_q; no handshake occurs on that edge",
+            "begin ready-valid admission only after event_ready_o rises from that arming edge",
+            "the observer and raw RX share the same reset epoch; in-flight reset is outside the lossless contract",
         ],
+        "superseded_a6_artifact": "ee590cc standalone synchronous-reset observer is historical only; final qualification uses ca1a209 production files",
     }
 
 
@@ -261,7 +310,7 @@ def main() -> int:
         {"full50": (args.full_manifest, args.full_trace_dir),
          "capacity22": (args.cap_manifest, args.cap_trace_dir)},
     )
-    w4.base.write_json(args.output, report)
+    base.write_json(args.output, report)
     print(f"A6_W5_REPORT output={args.output} recommendation={report['recommendation']}")
     return 0
 

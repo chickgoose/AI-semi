@@ -6,13 +6,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUT_DIR="${A6_W5_OUT:-/tmp/a6-w5-cdc-checks}"
 A1_ROOT="${A6_W5_A1_ROOT:-/home/chickgoose/projects/a1}"
 A7_ROOT="${A6_W5_A7_ROOT:-/home/chickgoose/projects/a7}"
+BOUND_COMMIT="ca1a20971ee7bc32520aef47a3a97c89747c7fa5"
 GENERATOR="$A1_ROOT/benchmarks/clean_slate_aer/generate_trace.py"
 FULL_MANIFEST="$A1_ROOT/benchmarks/clean_slate_aer/manifest.neutrality-n16.json"
 CAP_MANIFEST="$A1_ROOT/benchmarks/clean_slate_aer/manifest.multilane-n16.json"
-REGISTRY="$PROJECT_ROOT/benchmarks/clean_slate_aer/a6_w4_fixed_pin_registry_db3f04f.json"
-IVERILOG="${AER_IVERILOG:-/tmp/a6-iverilog/usr/bin/iverilog}"
-VVP="${AER_VVP:-/tmp/a6-iverilog/usr/bin/vvp}"
-IVERILOG_BASE="${AER_IVERILOG_BASE:-/tmp/a6-iverilog/usr/lib/x86_64-linux-gnu/ivl}"
+REGISTRY="$PROJECT_ROOT/benchmarks/clean_slate_aer/a6_w5_production_registry.json"
 VERILATOR="${AER_VERILATOR:-/tmp/a6-verilator/usr/bin/verilator}"
 YOSYS="${AER_YOSYS:-/tmp/a6-yosys/usr/bin/yosys}"
 YOSYS_LIBS="${AER_YOSYS_LIBS:-/tmp/a6-yosys-libs/usr/lib/x86_64-linux-gnu:/tmp/a6-yosys/usr/lib/x86_64-linux-gnu}"
@@ -20,6 +18,7 @@ YOSYS_LIBS="${AER_YOSYS_LIBS:-/tmp/a6-yosys-libs/usr/lib/x86_64-linux-gnu:/tmp/a
 mkdir -p "$OUT_DIR"
 FULL_TRACES="$(mktemp -d "$OUT_DIR/full50.XXXXXX")"
 CAP_TRACES="$(mktemp -d "$OUT_DIR/capacity22.XXXXXX")"
+SNAPSHOT="$(mktemp -d "$OUT_DIR/a7-ca1a209.XXXXXX")"
 
 (
   cd "$PROJECT_ROOT"
@@ -33,39 +32,38 @@ CAP_TRACES="$(mktemp -d "$OUT_DIR/capacity22.XXXXXX")"
     --output "$OUT_DIR/evaluation.json"
 )
 
-python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); s={(x["suite"],x["link_ratio"]):x for x in r["suite_summary"]}; assert r["recommendation"] == "GO_RESTRICTED_PHASE_RELATED_R1_ONLY"; assert r["arbitrary_clock_cdc_status"].startswith("HOLD"); assert s[("full50",1)]["phase_capture_exact_runs"] == 50; assert s[("capacity22",1)]["phase_capture_exact_runs"] == 22; assert not s[("full50",1)]["phase_capture_lost_by_toggle_alias"]; assert not s[("capacity22",1)]["phase_capture_lost_by_toggle_alias"]; assert s[("full50",2)]["phase_capture_lost_by_toggle_alias"] > 0; assert s[("capacity22",4)]["phase_capture_lost_by_toggle_alias"] > 0' "$OUT_DIR/evaluation.json"
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); s={(x["suite"],x["link_ratio"]):x for x in r["suite_summary"]}; assert r["a7_bound_commit"] == "ca1a20971ee7bc32520aef47a3a97c89747c7fa5"; assert r["recommendation"] == "GO_PRODUCTION_PHASE_RELATED_R1_DIGITAL_ONLY"; assert r["physical_status"] == "HOLD"; assert r["arbitrary_clock_cdc_status"].startswith("HOLD"); assert r["production_fixed_endpoint_state_bits"]["ddr2_complete_endpoint"] == 20; assert r["production_fixed_endpoint_state_bits"]["parallel4_complete_endpoint"] == 18; assert s[("full50",1)]["phase_capture_exact_runs"] == 50; assert s[("capacity22",1)]["phase_capture_exact_runs"] == 22; assert not s[("full50",1)]["phase_capture_lost_by_toggle_alias"]; assert s[("full50",2)]["phase_capture_lost_by_toggle_alias"] > 0' "$OUT_DIR/evaluation.json"
+
+git -C "$A7_ROOT" archive "$BOUND_COMMIT" \
+  rtl/candidates/a7_r1_candidate_endpoint \
+  tb/candidates/a7_r1_candidate_endpoint \
+  tb/filelists/a7_r1_candidate_endpoint_unit.f \
+  tests/a7_r1_candidate_endpoint/structural_compare.py \
+  | tar -x -C "$SNAPSHOT"
 
 (
-  cd "$PROJECT_ROOT"
-  "$IVERILOG" -B "$IVERILOG_BASE" -g2012 -Wall \
-    -s a6_w5_phase_related_rx_boundary_tb \
-    -f rtl/candidates/a6_w5_rx_core_boundary/a6_w5_phase_related_rx_boundary.f \
-    -o "$OUT_DIR/a6_w5_phase_related.vvp"
+  cd "$SNAPSHOT"
+  "$VERILATOR" --binary --timing -Wall -Wno-fatal -Wno-BLKSEQ \
+    -Wno-SYNCASYNCNET -Wno-UNUSEDSIGNAL \
+    --top-module a7_r1_candidate_endpoint_tb \
+    --Mdir "$OUT_DIR/production-unit-obj" -o a7_r1_unit \
+    -f tb/filelists/a7_r1_candidate_endpoint_unit.f
 )
-"$VVP" -M "$IVERILOG_BASE" "$OUT_DIR/a6_w5_phase_related.vvp" \
-  | tee "$OUT_DIR/iverilog.log"
+"$OUT_DIR/production-unit-obj/a7_r1_unit" | tee "$OUT_DIR/production-unit.log"
 
 (
-  cd "$PROJECT_ROOT"
-  "$VERILATOR" --Mdir "$OUT_DIR/verilator-obj" --binary --timing \
-    -Wall -Wno-fatal -Wno-BLKSEQ \
-    --top-module a6_w5_phase_related_rx_boundary_tb \
-    -f rtl/candidates/a6_w5_rx_core_boundary/a6_w5_phase_related_rx_boundary.f
-)
-"$OUT_DIR/verilator-obj/Va6_w5_phase_related_rx_boundary_tb" \
-  | tee "$OUT_DIR/verilator.log"
-
-(
-  cd "$PROJECT_ROOT"
+  cd "$SNAPSHOT"
   LD_LIBRARY_PATH="$YOSYS_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-    "$YOSYS" -Q -p \
-    "read_verilog -sv rtl/candidates/a6_w5_rx_core_boundary/a6_w5_phase_related_rx_boundary.sv; hierarchy -top a6_w5_phase_related_rx_boundary; proc; opt; tee -o $OUT_DIR/synth-stat.json stat -json -width"
-) >"$OUT_DIR/yosys.log"
-python3 -c 'import json,re,sys; d=json.load(open(sys.argv[1])); m=next(iter(d["modules"].values())); h=m["num_cells_by_type"]; bits=sum(v*int(re.search(r"_(\d+)$",k).group(1)) for k,v in h.items() if "dff" in k.lower()); assert bits == 6, bits' "$OUT_DIR/synth-stat.json"
+    python3 tests/a7_r1_candidate_endpoint/structural_compare.py \
+    --yosys "$YOSYS" --output "$OUT_DIR/production-structural.csv"
+) | tee "$OUT_DIR/production-structural.log"
 
-grep -q '^A6_W5_PHASE_RELATED_R1_PASS delivered=18 state_bits=6' \
-  "$OUT_DIR/iverilog.log"
-grep -q '^A6_W5_PHASE_RELATED_R1_PASS delivered=18 state_bits=6' \
-  "$OUT_DIR/verilator.log"
-printf 'A6 W5 restricted phase-related R1 GO; unrelated CDC HOLD: %s\n' \
+python3 -c 'import csv,sys; rows={r["link"]:r for r in csv.DictReader(open(sys.argv[1]))}; assert int(rows["ddr2"]["state_bits"]) == 20; assert int(rows["parallel4"]["state_bits"]) == 18; assert int(rows["ddr2"]["functional_cells"]) == 30; assert int(rows["parallel4"]["functional_cells"]) == 26; assert rows["ddr2"]["physical_status"] == rows["parallel4"]["physical_status"] == "HOLD"' "$OUT_DIR/production-structural.csv"
+
+grep -q '^A7_R1_RESET_RELEASE_ARMING_PASS' "$OUT_DIR/production-unit.log"
+grep -q '^A7_R1_CONTINUOUS_VALID_CHANGING_ADDRESS_PASS events=16' \
+  "$OUT_DIR/production-unit.log"
+grep -q '^A7_R1_EXACT_ONCE_ORDER_ADDRESS_PASS' "$OUT_DIR/production-unit.log"
+grep -q '^A7_R1_ENDPOINT_REGRESSION_PASS' "$OUT_DIR/production-unit.log"
+printf 'A6 W5 ca1a209 production R1 digital GO; physical/unrelated CDC HOLD: %s\n' \
   "$OUT_DIR"

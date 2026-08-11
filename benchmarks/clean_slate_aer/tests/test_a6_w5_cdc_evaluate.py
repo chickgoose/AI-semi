@@ -18,10 +18,16 @@ SPEC.loader.exec_module(w5)
 
 
 def event(cycle: int, sequence: int, address: int = 0) -> object:
-    return w5.w4.base.Event(cycle, sequence, address)
+    return w5.base.Event(cycle, sequence, address)
 
 
 class CdcBoundaryModelTest(unittest.TestCase):
+    def test_final_production_commit_is_exact(self) -> None:
+        self.assertEqual(
+            w5.BOUND_COMMIT,
+            "ca1a20971ee7bc32520aef47a3a97c89747c7fa5",
+        )
+
     def test_r1_phase_capture_is_exact_for_serialized_stream(self) -> None:
         events = [event(0, 0), event(0, 1), event(1, 2), event(4, 3)]
         row = w5.analyze_run(

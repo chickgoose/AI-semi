@@ -1,5 +1,5 @@
 {
-  "a7_bound_commit": "db3f04fe0e01699e63c596145fe71effc601e57c",
+  "a7_bound_commit": "ca1a20971ee7bc32520aef47a3a97c89747c7fa5",
   "arbitrary_clock_cdc_status": "HOLD_REQUIRES_END_TO_END_BACKPRESSURE",
   "candidate": "a6_w5_rx_core_boundary",
   "comparison": {
@@ -45,51 +45,59 @@
       "sustainable_rate": "min(write rate, read rate); finite depth cannot absorb permanent write>read load"
     },
     "phase_related_r1_capture": {
+      "complete_production_endpoint_state_bits": {
+        "ddr2": 20,
+        "parallel4": 18
+      },
       "continuous_one_event_per_cycle": true,
+      "implementation": "A7 production a7_r1_retire_observer",
       "implemented": true,
-      "lossless_scope": "R=1 only, at most one RX commit between core edges, frozen 4 ns commit-to-core phase, drained reset sequence",
+      "lossless_scope": "R=1 only, at most one RX commit between ref edges, frozen 4 ns commit-to-ref phase, charged reset arming and drained reset sequence",
       "maximum_events_per_core_cycle": 1.0,
-      "reason_no_synchronizer": "clocks must be phase-related and STA-constrained; this is not an asynchronous CDC",
-      "rx_commit_to_core_visible_latency_core_cycles": 0.25,
-      "sink_contract": "always ready; no backpressure in the primary restricted endpoint",
-      "state_breakdown": {
+      "observer_state_bits": 6,
+      "observer_state_breakdown": {
         "downstream_address": 4,
         "downstream_valid": 1,
         "seen_toggle": 1
       },
+      "reason_no_synchronizer": "clocks must be phase-related and STA-constrained; this is not an asynchronous CDC",
+      "reset_release_arming_state_bits": 1,
+      "rx_commit_to_core_visible_latency_core_cycles": 0.25,
+      "sink_contract": "always ready; no retire backpressure or queue in the production endpoint",
       "synchronizer_bits": 0,
-      "synthesized_state_bits": 6,
       "tx_admission_to_core_visible_latency_core_cycles": 1.0
     }
   },
-  "fair_fixed_endpoint_state_bits": {
-    "consumer_boundary_added_to_every_link": 6,
-    "ddr2_link_plus_consumer": 19,
-    "note": "parallel4 and DDR2 use the identical seen-toggle/address/valid observation boundary; upstream collector/FIFO state is excluded",
-    "parallel4_link_plus_consumer": 17,
-    "serial1_link_plus_consumer": 22
-  },
   "inclusion_boundary": {
     "included": [
-      "six bits of downstream core-clock state",
-      "toggle-change detection and four-bit bundled-address capture",
-      "standalone RTL, lockstep TB, executable trace model"
+      "ca1a209 production DDR2 and complete parallel reference RTL",
+      "one-bit launch arming and six-bit ref-clock retire observer",
+      "bound production digital regression and structural comparison",
+      "A6 executable full50/capacity22 trace model"
     ],
     "required_but_not_included": [
       "generated/related-clock STA proving the frozen phase and half-cycle bundled-data path",
-      "A7 TX/RX and any upstream same-cycle event collector or queue",
+      "any upstream same-cycle event collector or queue",
       "clock tree, skew, recovery/removal, downstream logic and physical PPA"
     ]
   },
-  "recommendation": "GO_RESTRICTED_PHASE_RELATED_R1_ONLY",
-  "registry_sha256": "41f5a800660d2c08d770dae4c5db1fb67bd650de9536c3ff7fbb04399b417da4",
+  "physical_status": "HOLD",
+  "production_fixed_endpoint_state_bits": {
+    "common_reset_release_arming": 1,
+    "common_retire_observer": 6,
+    "ddr2_complete_endpoint": 20,
+    "note": "ca1a209 production parallel4 and DDR2 include identical launch arming and seen-toggle/address/valid observation boundaries; upstream collector/FIFO state is excluded",
+    "parallel4_complete_endpoint": 18
+  },
+  "recommendation": "GO_PRODUCTION_PHASE_RELATED_R1_DIGITAL_ONLY",
+  "registry_sha256": "e6dbd1ede35d7443410953dd910c59905ab875515a4bce29fd91cf9a1da6a6df",
   "reset_rdc_contract": [
     "stop admission and fully drain the A7 link",
     "assert A7 reset (rst_n=0) only while burst clock is low",
-    "assert synchronous core_reset_i and provide at least one core edge",
-    "release A7 reset while core_reset_i remains asserted so retire_toggle is known zero",
-    "release core_reset_i synchronously; no event may occur until that edge completes",
-    "one-sided or in-flight reset is outside the lossless contract"
+    "release rst_n while ref_clk_i and sample_clk_i are low after a sample falling edge",
+    "allow the first safe ref rising edge to charge reset_release_armed_q; no handshake occurs on that edge",
+    "begin ready-valid admission only after event_ready_o rises from that arming edge",
+    "the observer and raw RX share the same reset epoch; in-flight reset is outside the lossless contract"
   ],
   "runs": [
     {
@@ -3407,5 +3415,6 @@
       "suite": "full50",
       "worst_rx_commits_between_core_edges": 4
     }
-  ]
+  ],
+  "superseded_a6_artifact": "ee590cc standalone synchronous-reset observer is historical only; final qualification uses ca1a209 production files"
 }
