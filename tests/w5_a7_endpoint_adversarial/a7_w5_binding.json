@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "owner_repo": "/home/chickgoose/projects/a7",
+  "owner_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
+  "production_top": "a7_r1_candidate_endpoint",
+  "parallel_top": "a7_r1_parallel_reference_top",
+  "contract": {
+    "path": "docs/research/a7_r1_candidate_endpoint_contract.md",
+    "sha256": "9fb0dbdfb66df6f8306525b5703399b38d38403fb0d9314fb9a1c116a3a6294a"
+  },
+  "sources": [
+    {
+      "path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv",
+      "sha256": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d"
+    },
+    {
+      "path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv",
+      "sha256": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9"
+    },
+    {
+      "path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_tx.sv",
+      "sha256": "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197"
+    },
+    {
+      "path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_rx.sv",
+      "sha256": "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06"
+    },
+    {
+      "path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv",
+      "sha256": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f"
+    },
+    {
+      "path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv",
+      "sha256": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03"
+    },
+    {
+      "path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_parallel_reference_top.sv",
+      "sha256": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748"
+    }
+  ]
+}
