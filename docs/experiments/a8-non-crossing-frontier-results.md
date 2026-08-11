@@ -63,7 +63,7 @@ spread over four indivisible territories from instantaneous pending occupancy.
 The exact worst drain and reversal witnesses are printed by the committed test
 runner, rather than being silently inferred from a sampled workload.
 
-## Flat-RR structural and toggle proxy
+## Flat-RR logical-operation and toggle proxy
 
 | Proxy | Flat K-lane RR | Frontier fabric | Ratio |
 | --- | ---: | ---: | ---: |
@@ -72,13 +72,23 @@ runner, rather than being silently inferred from a sampled workload.
 | select-depth proxy | 16 | 6 | 0.37500 |
 | policy state bits | 4 | 54 | 13.5x |
 
-These are topology proxies, not synthesis results.  The comparator proxy counts
-16 local source tests plus six frontier pressure comparisons.  Policy state
-includes frontier positions, four local RR pointers, overload/reversal streaks,
+These are incomplete cycle-model operation counts, not physical topology or
+synthesis results.  The nominal comparator proxy counts 16 local source tests
+plus six abstract frontier pressure comparisons.  It does **not** expand the
+population-count/addition logic needed to form lane pressure, the comparison
+bit width, moving-boundary request routing/muxes, ownership decoders, frontier
+fanout, grant merge wiring, or their buffers.  Likewise, the nominal fanout
+count treats each request as one abstract connection and can materially
+undercount physical sinks when a moving frontier must route a request toward
+different lane selectors.  Therefore `22/64`, `24/64`, and the depth ratio are
+model-screening numbers only; they do not establish comparator, wire, area,
+Fmax, or power savings over flat RR.  Policy state includes frontier positions,
+four local RR pointers, overload/reversal streaks,
 cooldowns, and direction.  Common source pending latches are excluded from both.
 
-Toggle results are also behavioral state/Hamming proxies, not VCD power.  The
-frontier candidate is lower than flat RR on moving-column (0.6908 versus 0.8464
+Toggle results are also behavioral state/Hamming proxies, not VCD power, and do
+not include the unexpanded pressure or moving-routing combinational activity.
+The frontier candidate is lower than flat RR on moving-column (0.6908 versus 0.8464
 toggles/delivered) and moving-dispersed (0.6868 versus 0.9310), but worse on
 local, mirror, elephant-mouse, moving-row, and global fan-in.  Global fan-in is
 5.0 versus 2.375 toggles/delivered because all four local RR pointers update.
@@ -94,11 +104,21 @@ minimum delivered ratio   0.8502604167  FAIL
 mean delivered ratio      0.9797634549  PASS
 minimum fairness delta   -0.0256270223  PASS
 maximum p99 delta          2             PASS
-comparator ratio           0.34375       PASS
-wire-fanout ratio          0.375         PASS
+nominal comparator ratio   0.34375       MODEL-ONLY PASS
+nominal wire-fanout ratio  0.375         MODEL-ONLY PASS
 ```
 
 The decision is **HOLD**.  Fixing the moving-row failure requires persistent
 hotspot history/prediction or allowing multiple lanes to share one source,
 which changes the assigned architecture.  Per the Wave-3 rule, no SV RTL,
 lockstep TB, Yosys proxy, or Verilator proxy was created after this failed gate.
+
+## Automation semantics
+
+`run_model_tests.sh` without arguments means that the research run and its
+invariant tests completed; it prints separate machine-decision and completion
+sentinel lines and returns zero for this completed HOLD study.  Qualification
+automation must invoke `run_model_tests.sh --require-go`, which validates that
+`go_gate.go`, `decision`, and `completion_sentinel` agree and returns nonzero for
+the frozen HOLD decision.  Unit tests explicitly assert HOLD and reject a
+rebound or contradictory sentinel.

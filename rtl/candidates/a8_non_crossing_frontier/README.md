@@ -24,7 +24,12 @@ manifest.
 
 ```bash
 tests/a8_non_crossing_frontier/run_model_tests.sh
+tests/a8_non_crossing_frontier/run_model_tests.sh --require-go  # expected nonzero on HOLD
 ```
+
+The default command reports successful research completion separately from the
+machine decision and prints `A8_NCF_RESEARCH_COMPLETE_HOLD`.  Qualification
+automation must use `--require-go`; it fails while this candidate remains HOLD.
 
 Results are frozen in `w3_model_results.json` and interpreted in
 `docs/experiments/a8-non-crossing-frontier-results.md`.

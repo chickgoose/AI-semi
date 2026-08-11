@@ -6,6 +6,8 @@
     "one_pending_occurrence_per_source": true,
     "stim_cycles": 512
   },
+  "completion_sentinel": "A8_NCF_RESEARCH_COMPLETE_HOLD",
+  "decision": "HOLD",
   "go_gate": {
     "comparator_ratio": 0.34375,
     "go": false,
@@ -29,6 +31,7 @@
       "select_depth_proxy": 6
     }
   },
+  "research_complete": true,
   "rows": [
     {
       "accepted": 1008,

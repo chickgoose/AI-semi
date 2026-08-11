@@ -225,7 +225,11 @@ def evaluate() -> dict[str, object]:
         and gate["comparator_ratio"] <= 0.50
         and gate["wire_fanout_ratio"] <= 0.50
     )
+    decision = "GO" if gate["go"] else "HOLD"
     return {
+        "research_complete": True,
+        "decision": decision,
+        "completion_sentinel": f"A8_NCF_RESEARCH_COMPLETE_{decision}",
         "assumptions": {
             "num_sources": NUM_SOURCES,
             "lanes": LANES,
@@ -242,6 +246,11 @@ def evaluate() -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--require-go",
+        action="store_true",
+        help="return nonzero when the completed research decision is HOLD",
+    )
     args = parser.parse_args()
     report = evaluate()
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
@@ -249,7 +258,7 @@ def main() -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered, encoding="utf-8")
     print(rendered, end="")
-    return 0 if report["go_gate"]["go"] else 2
+    return 2 if args.require_go and report["decision"] != "GO" else 0
 
 
 if __name__ == "__main__":

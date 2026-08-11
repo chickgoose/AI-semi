@@ -11,13 +11,16 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = PROJECT_ROOT / "rtl/candidates/a8_non_crossing_frontier/model"
+TEST_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(MODEL_DIR))
+sys.path.insert(0, str(TEST_DIR))
 
 from evaluate_frontier import evaluate  # noqa: E402
 from non_crossing_frontier import (  # noqa: E402
     NonCrossingFrontierFabric,
     validate_partition,
 )
+from read_gate_status import validate_report  # noqa: E402
 
 
 class FrontierDirectedTest(unittest.TestCase):
@@ -52,11 +55,34 @@ class FrontierDirectedTest(unittest.TestCase):
 
     def test_go_gate_model_is_self_consistent(self) -> None:
         report = evaluate()
+        self.assertTrue(report["research_complete"])
+        self.assertFalse(report["go_gate"]["go"])
+        self.assertEqual(report["decision"], "HOLD")
+        self.assertEqual(
+            report["completion_sentinel"], "A8_NCF_RESEARCH_COMPLETE_HOLD"
+        )
+        self.assertEqual(
+            validate_report(report),
+            ("HOLD", "A8_NCF_RESEARCH_COMPLETE_HOLD"),
+        )
         for row in report["rows"]:
             self.assertEqual(row["accepted"], row["delivered"])
             self.assertEqual(row["generated"], row["accepted"] + row["overrun"])
             self.assertGreaterEqual(row["demand_normalized_fairness"], 0.0)
             self.assertLessEqual(row["demand_normalized_fairness"], 1.0)
+
+    def test_machine_sentinel_mismatch_is_rejected(self) -> None:
+        report = evaluate()
+        report["completion_sentinel"] = "A8_NCF_RESEARCH_COMPLETE_GO"
+        with self.assertRaisesRegex(ValueError, "sentinel disagrees"):
+            validate_report(report)
+
+    def test_machine_decision_rebound_is_rejected(self) -> None:
+        report = evaluate()
+        report["decision"] = "GO"
+        report["completion_sentinel"] = "A8_NCF_RESEARCH_COMPLETE_GO"
+        with self.assertRaisesRegex(ValueError, "decision disagrees"):
+            validate_report(report)
 
 
 class FrontierN16ExhaustiveTest(unittest.TestCase):
