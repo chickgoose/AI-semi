@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "synthetic_fixture": false,
+  "contract_sha256": null,
+  "site_manifest_sha256": null,
+  "boundary_id": "a7_w4_full_tx_link_rx_v1",
+  "synthesis_mode": "per_target_resynthesis",
+  "target_period_ns": 16.0,
+  "corner_name": null,
+  "genus": {
+    "unresolved_references": null,
+    "unmapped_cells": null,
+    "mapped_roles": {"icg": [], "tx_ddr": [], "rx_ddr": []},
+    "rise_setup_wns_ns": null, "rise_hold_wns_ns": null,
+    "fall_setup_wns_ns": null, "fall_hold_wns_ns": null,
+    "rise_to_fall_halfcycle_wns_ns": null,
+    "fall_to_rise_halfcycle_wns_ns": null,
+    "clock_gating_setup_wns_ns": null, "clock_gating_hold_wns_ns": null,
+    "recovery_wns_ns": null, "removal_wns_ns": null,
+    "unconstrained_paths": null
+  },
+  "innovus": {
+    "placement_complete": null, "cts_complete": null,
+    "detailed_route_complete": null, "extraction_complete": null,
+    "rise_setup_wns_ns": null, "rise_hold_wns_ns": null,
+    "fall_setup_wns_ns": null, "fall_hold_wns_ns": null,
+    "rise_to_fall_halfcycle_wns_ns": null,
+    "fall_to_rise_halfcycle_wns_ns": null,
+    "clock_gating_setup_wns_ns": null, "clock_gating_hold_wns_ns": null,
+    "recovery_wns_ns": null, "removal_wns_ns": null,
+    "minimum_high_pulse_ns": null, "minimum_low_pulse_ns": null,
+    "maximum_clock_skew_ns": null, "unconstrained_paths": null,
+    "drc_violations": null, "antenna_violations": null
+  },
+  "cdc_rdc": {
+    "boundary_classification": null,
+    "internal_unwaived_cdc": null, "unwaived_rdc": null
+  },
+  "power_windows": [],
+  "artifacts": {}
+}

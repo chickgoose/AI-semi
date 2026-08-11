@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "candidate": "a7_event_triggered_ddr_burst_link_w4",
+  "owner": "A7",
+  "rtl_commit": "db3f04fe0e01699e63c596145fe71effc601e57c",
+  "status_without_server_eda": "PHYSICAL_HOLD",
+  "top": "a7_event_triggered_ddr_burst_link_w4",
+  "filelist": "physical/a7_event_triggered_ddr_burst_link_w4/rtl.f",
+  "filelist_sha256": "f8998fe3583d78dfb47f10393e1e0d6311744b7994c21c999da541e2905def91",
+  "sdc": "constraints/a7_event_triggered_ddr_burst_link_w4.sdc",
+  "sdc_sha256": "b45f0b07b790aad7f198bf1a5dffb246ced7da7c29f43185ccb5e18c54446a95",
+  "address_semantics": "address-only N16 identity",
+  "sources": [
+    {"path": "rtl/candidates/a7_event_triggered_ddr_burst_link_w4/a7_event_triggered_ddr_burst_link_w4.sv", "sha256": "60a0ea92809fc207269ec3ab3601292eff8963cdd9aae798b6c20498dd0836cd"},
+    {"path": "rtl/candidates/a7_event_triggered_ddr_burst_link_w4/a7_w4_ddr_rx.sv", "sha256": "56bbc28e9a098573ac819c7269ee83ed63e22eb7bdd1dbd003f9f82f2a964625"},
+    {"path": "rtl/candidates/a7_event_triggered_ddr_burst_link_w4/a7_w4_ddr_tx.sv", "sha256": "3d747bfa8d5d992091b5cc083c14417421368b4bfdb3056605f575ba01a9382b"},
+    {"path": "rtl/candidates/a7_event_triggered_ddr_burst_link_w4/a7_w4_icg_boundary.sv", "sha256": "b1b17c028bf39cb32ce7ac530d21977bad92cd9819b18be31f05f8691963d97c"}
+  ],
+  "technology_mapping": {
+    "required_roles": ["icg", "tx_ddr", "rx_ddr"],
+    "icg": "one named characterized integrated clock-gating cell",
+    "tx_ddr": "one named characterized ODDR cell or explicitly named characterized equivalent launch-cell set",
+    "rx_ddr": "one named characterized IDDR cell or explicitly named characterized opposite-edge capture-cell set",
+    "generic_rtl_gate_is_not_mapping_evidence": true
+  },
+  "timing": {
+    "reference_period_ns": 16.0,
+    "sample_phase_ns": 4.0,
+    "nominal_high_low_ns": [8.0, 8.0],
+    "minimum_high_low_ns": [7.0, 7.0],
+    "maximum_clock_skew_or_uncertainty_ns": 0.5,
+    "generated_clock": "burst_clk_o is a phase-preserving gated copy of sample_clk_i",
+    "required_checks": [
+      "rise-edge setup and hold", "fall-edge setup and hold",
+      "rise-to-fall half-cycle", "fall-to-rise half-cycle",
+      "clock-gating setup and hold", "minimum high and low pulse width",
+      "asynchronous reset recovery and removal", "zero unconstrained paths"
+    ],
+    "reset_false_path_prohibited": true
+  },
+  "cdc_rdc": {
+    "retire_domain": "burst_clk_o falling-edge domain",
+    "consumer_core_synchronizer_in_scope": false,
+    "required_boundary_classification": "EXPLICIT_ASYNC_OUTPUT_BOUNDARY",
+    "required_internal_unwaived_cdc": 0,
+    "required_unwaived_rdc": 0,
+    "recovery_removal_must_pass": true
+  },
+  "physical_boundary": {
+    "id": "a7_w4_full_tx_link_rx_v1",
+    "includes": ["TX", "framing", "ICG", "two data wires", "forwarded clock", "RX"],
+    "excludes": ["upstream event producer", "downstream core synchronizer"],
+    "functional_input_bits_excluding_clock_reset": 5,
+    "functional_output_bits_excluding_clock": 8,
+    "link_signal_pins": 3,
+    "link_data_pins": 2,
+    "link_clock_pins": 1,
+    "per_output_pin_load_pf": 0.01,
+    "clock_input_transition_ns": 0.05,
+    "data_input_transition_ns": 0.10,
+    "comparison_rule": "same logical endpoint boundary, same per-pin load and transition; differing link pin count remains charged"
+  },
+  "activity": {
+    "schedule": "physical/a7_event_triggered_ddr_burst_link_w4/activity_schedule.json",
+    "schedule_sha256": "824d22550cd06143c494df6a5f854e8f185970027ea581f2573e2e189f2a65cc",
+    "required_windows": ["sparse_1_of_8", "saturated_1_per_cycle"],
+    "annotation_format": "SAIF or VCD converted with a recorded deterministic command",
+    "minimum_annotation_coverage_percent": 95.0,
+    "reset_warmup_drain_excluded_identically": true,
+    "vectorless_power_qualifies": false
+  },
+  "energy_per_event": {
+    "required_power_stage": "Innovus post-route extracted activity-annotated total power",
+    "formula_pj": "total_power_mW * measurement_duration_ns / completed_logical_events",
+    "zero_completed_events": "INVALID_NOT_ZERO",
+    "required_windows": ["sparse_1_of_8", "saturated_1_per_cycle"],
+    "must_include_clock_tree_and_full_boundary": true
+  },
+  "flow": {
+    "genus": "mapped screening plus mapping/constraint receipts; not physical qualification",
+    "innovus": "placement, CTS, detailed route, extraction and post-route multi-check reports required",
+    "pvt": "site manifest must freeze setup/hold Liberty, voltage, temperature, RC/QRC, derates and tool versions",
+    "server_eda_executed": false
+  }
+}

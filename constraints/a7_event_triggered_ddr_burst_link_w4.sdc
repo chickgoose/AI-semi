@@ -27,8 +27,14 @@ set_min_pulse_width -low  $A7_W4_MIN_PULSE_NS [get_clocks a7_burst_clk]
 
 set_input_delay $A7_W4_IO_DELAY_NS -clock a7_ref_clk \
   [get_ports {event_valid_i event_addr_i[*]}]
+set_output_delay $A7_W4_IO_DELAY_NS -clock a7_ref_clk \
+  [get_ports event_ready_o]
 set_output_delay $A7_W4_IO_DELAY_NS -clock a7_burst_clk \
-  [get_ports {burst_data_o[*] retire_addr_o[*] retire_toggle_o}]
+  [get_ports burst_data_o[*]]
+set_output_delay $A7_W4_IO_DELAY_NS -clock a7_burst_clk -clock_fall -add_delay \
+  [get_ports burst_data_o[*]]
+set_output_delay $A7_W4_IO_DELAY_NS -clock a7_burst_clk -clock_fall \
+  [get_ports {retire_addr_o[*] retire_toggle_o}]
 
 # rst_n is asynchronous. Do not false-path it here: a blanket reset false path
 # can suppress the recovery/removal evidence that W4 still requires. The target

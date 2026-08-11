@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "address_semantics": "address-only N16 identity",
+  "clock_period_ns": 16.0,
+  "warmup_cycles": 16,
+  "measurement_cycles": 512,
+  "drain_excluded_from_power_window": true,
+  "address_formula": "address[event_index] = (5 * event_index + 3) modulo 16",
+  "ready_policy": "hold each offered occurrence until event_valid_i && event_ready_o",
+  "windows": [
+    {
+      "id": "sparse_1_of_8",
+      "offer_cycles": "0,8,...,504",
+      "offered_events": 64,
+      "required_completed_events": 64
+    },
+    {
+      "id": "saturated_1_per_cycle",
+      "offer_cycles": "0,1,...,511",
+      "offered_events": 512,
+      "required_completed_events": 512
+    }
+  ]
+}

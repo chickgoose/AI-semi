@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "synthetic_fixture": false,
+  "contract_sha256": null,
+  "candidate_commit": "db3f04fe0e01699e63c596145fe71effc601e57c",
+  "tools": {
+    "genus": {"executable": null, "sha256": null, "version": null},
+    "innovus": {"executable": null, "sha256": null, "version": null},
+    "cdc_rdc_tool": {"executable": null, "sha256": null, "version": null}
+  },
+  "corner": {
+    "name": null, "voltage_v": null, "temperature_c": null,
+    "setup_liberty": {"path": null, "sha256": null},
+    "hold_liberty": {"path": null, "sha256": null},
+    "tech_lef": {"path": null, "sha256": null},
+    "qrc_tech": {"path": null, "sha256": null},
+    "derates_id": null
+  },
+  "technology_cells": {
+    "icg": {"names": [], "evidence": null},
+    "tx_ddr": {"names": [], "evidence": null},
+    "rx_ddr": {"names": [], "evidence": null}
+  },
+  "boundary": {
+    "id": "a7_w4_full_tx_link_rx_v1",
+    "per_output_pin_load_pf": 0.01,
+    "clock_input_transition_ns": 0.05,
+    "data_input_transition_ns": 0.10
+  },
+  "activity_windows": []
+}
