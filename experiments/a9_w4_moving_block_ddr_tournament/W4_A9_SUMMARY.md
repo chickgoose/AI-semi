@@ -13,13 +13,14 @@
 - Bottleneck/buffer: both cores peak at one event/core-cycle; link capacity is
   R=1/2/4, so the legal event-token envelope needs zero **added A4→A7 FIFO** and
   is core/ingress-limited.  A4 still has 31 slots and ingress has 16 latches.
-- Blocker: exact A4 level-valid directly sampled by faster A7 ref clocks is
-  valid only at R=1.  R=2/4 creates extra captures without an unimplemented
+- Evidence boundary: R=1 is an analytical, rate-compatible legal-launch model,
+  not executed A4-RTL→A7-RTL composition; its reset path is absent.  R=2/4
+  creates extra captures without an unimplemented
   one-link-period launch qualifier of unknown cost; those rows are envelopes
   and HOLD.
-- Version boundary: latest A7 `a349d64` has a separate ICG latch and 13 state
-  bits.  It is explicitly excluded rather than mixed into the exact `31947a7`
-  tournament.
+- Version boundary: latest A7 is `db3f04f`; `a349d64` is its structural-evidence
+  ancestor with a separate ICG latch and 13 state bits.  Both are explicitly
+  excluded rather than mixed into the frozen `31947a7` tournament.
 - Verdict: simple serial composition, not a novel architecture.  R=1 retains
   four tradeoff points; overall adoption/PPA is HOLD, with no queue or free
   boundary functionality added.

@@ -12,11 +12,13 @@
   observed maxima are 30/31 fixed, 31/31 moving, and 16/16 source latches.
 - Preserved requested A7 commit `31947a7`: DDR state remains 12 bits in this
   tournament.  Its idle ref-clock data-mux activity is now counted.  Latest A7
-  `a349d64` uses a separate ICG latch and reports 13 bits, but is explicitly
-  excluded rather than blended into the old-commit results.
+  is `db3f04f`; structural-evidence ancestor `a349d64` uses a separate ICG latch
+  and reports 13 bits.  Both are explicitly excluded rather than blended into
+  the old-commit results.
 - Both continuously toggling old-A7 clock inputs are exposed as a separate
   unit-edge proxy (not falsely converted to power); full50 moving R=1/2/4 is
   `5.479/10.959/21.918` input-clock edges per delivered event.
-- R=2/4 remain capacity envelopes.  The missing one-link-period qualifier has
-  unknown state, timing, and toggle cost, so no free qualifier or queue is
-  modeled and exact composition remains HOLD.
+- R=1 is analytical/rate-compatible only, not an executed RTL composition, and
+  reset is absent from the composition model.  R=2/4 remain capacity envelopes.
+  The missing one-link-period qualifier has unknown state, timing, and toggle
+  cost, so no free qualifier or queue is modeled and composition remains HOLD.

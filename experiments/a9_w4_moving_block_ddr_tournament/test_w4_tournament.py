@@ -80,10 +80,13 @@ class TournamentTest(unittest.TestCase):
     def test_faster_direct_ddr_boundary_fails_closed(self) -> None:
         for suite in ("full50", "capacity22"):
             for core in ("fixed_one_step", "moving_two_step"):
-                self.assertTrue(self.row(suite, core, "ddr2", 1)["exact_direct_clock_boundary_compatible"])
+                r1 = self.row(suite, core, "ddr2", 1)
+                self.assertTrue(r1["analytical_rate_compatible"])
+                self.assertFalse(r1["executed_composed_rtl_evidence"])
+                self.assertFalse(r1["composed_reset_path_evidence"])
                 for ratio in (2, 4):
                     row = self.row(suite, core, "ddr2", ratio)
-                    self.assertFalse(row["exact_direct_clock_boundary_compatible"])
+                    self.assertFalse(row["analytical_rate_compatible"])
                     self.assertEqual(row["extra_capture_opportunities_per_valid_core_period"], ratio - 1)
                     self.assertEqual(row["eligibility"], "HOLD_MISSING_ONE_LINK_PERIOD_LAUNCH_QUALIFIER")
                     self.assertEqual(row["link_state_bits"], 12)  # no invented adapter state
@@ -99,6 +102,14 @@ class TournamentTest(unittest.TestCase):
         provenance = self.document["provenance"]
         self.assertEqual(provenance["a7_commit"], tournament.A7_COMMIT)
         self.assertEqual(provenance["a7_scope"], "frozen pre-ICG commit 31947a7 only")
+        self.assertEqual(
+            provenance["a7_latest_observed_but_excluded"]["commit"],
+            "db3f04fe0e01699e63c596145fe71effc601e57c",
+        )
+        self.assertEqual(
+            provenance["a7_latest_observed_but_excluded"]["structural_evidence_ancestor"],
+            "a349d64d8b8b3d4398a258926af493b5da1e3ac2",
+        )
         self.assertEqual(provenance["a7_latest_observed_but_excluded"]["state_bits"], 13)
         self.assertEqual(self.document["clock_boundary_rule"]["qualifier_cost"], "unknown_and_not_included")
         # Address 1 alternates data symbols 01/00 on every ref period even

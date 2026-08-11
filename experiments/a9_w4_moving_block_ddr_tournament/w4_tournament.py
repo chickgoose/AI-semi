@@ -401,7 +401,7 @@ def architecture_row(core: dict[str, Any], advance: int, link: str, ratio: int) 
     # capacitance is unknown and must not be disguised as a data-bit toggle.
     internal_clock_edges = 4 * ratio * core["cycles"] if is_ddr else 0
     delivered = core["core_delivered"]
-    direct_compatible = ratio == 1
+    analytical_rate_compatible = ratio == 1
     row = {
         key: value for key, value in core.items()
         if key not in {
@@ -444,10 +444,14 @@ def architecture_row(core: dict[str, Any], advance: int, link: str, ratio: int) 
         "p95_end_to_end_latency": core["p95_core_e2e_latency"] + float(link_delay),
         "p99_end_to_end_latency": core["p99_core_e2e_latency"] + float(link_delay),
         "throughput_bottleneck": "core_or_ingress_not_link",
-        "exact_direct_clock_boundary_compatible": direct_compatible if is_ddr else True,
+        "analytical_rate_compatible": (
+            analytical_rate_compatible if is_ddr else True
+        ),
+        "executed_composed_rtl_evidence": False,
+        "composed_reset_path_evidence": False,
         "extra_capture_opportunities_per_valid_core_period": ratio - 1 if is_ddr else 0,
         "eligibility": (
-            "ANALYTICAL_ONLY" if (not is_ddr or direct_compatible)
+            "ANALYTICAL_ONLY" if (not is_ddr or analytical_rate_compatible)
             else "HOLD_MISSING_ONE_LINK_PERIOD_LAUNCH_QUALIFIER"
         ),
     })
@@ -518,7 +522,7 @@ def evaluate() -> dict[str, Any]:
         "qualification": "LOCAL_CYCLE_ANALYTICAL_ONLY",
         "physical_qualification": "HOLD",
         "clock_boundary_rule": {
-            "R1": "exact direct level-valid sampling is compatible",
+            "R1": "analytical legal-launch envelope is rate-compatible; no composed RTL or reset-path evidence",
             "R2_R4": "capacity envelope only; exact A4 level-valid to faster A7 ref clock duplicates/early-samples frames without an unimplemented one-link-period launch qualifier",
             "qualifier_cost": "unknown_and_not_included",
             "added_queue_or_adapter": False,
@@ -531,9 +535,10 @@ def evaluate() -> dict[str, Any]:
             "a7_rtl_sha256": a7_hashes,
             "a7_scope": "frozen pre-ICG commit 31947a7 only",
             "a7_latest_observed_but_excluded": {
-                "commit": "a349d64d8b8b3d4398a258926af493b5da1e3ac2",
+                "commit": "db3f04fe0e01699e63c596145fe71effc601e57c",
                 "state_bits": 13,
-                "difference": "separate W4 ICG latch boundary; not substituted into requested exact 31947a7 tournament",
+                "difference": "latest fault-claim-gap closure; not substituted into frozen 31947a7 tournament",
+                "structural_evidence_ancestor": "a349d64d8b8b3d4398a258926af493b5da1e3ac2",
             },
             "common_commit": COMMON_COMMIT,
             "generator_version": "4.0",

@@ -20,13 +20,16 @@ The runner materializes the common commit in a secure temporary directory and
 generates all 50/22 traces there.  It verifies every official trace hash.  It
 does not read or write common result directories.
 
-This report deliberately freezes the requested pre-ICG A7 commit.  A7 later
-added a separate ICG-boundary implementation through `89760c8` and froze its
-evidence at `a349d64d8b8b3d4398a258926af493b5da1e3ac2`; that version reports 13
-state bits rather than 12.  It is not silently substituted here.  Consequently
-all 12-bit DDR state and toggle rows below describe only `31947a7`.  The latest
-ICG latch/cell result needs a separate combined replay before it can replace
-these rows.
+This report deliberately freezes the requested pre-ICG A7 commit.  The latest
+reviewed A7 is `db3f04fe0e01699e63c596145fe71effc601e57c`; its structural-evidence
+ancestor `a349d64d8b8b3d4398a258926af493b5da1e3ac2` includes the separate ICG
+boundary and reports 13 state bits rather than 12.  Neither is silently
+substituted here.  Consequently all 12-bit DDR state and toggle rows below
+describe only `31947a7`.  The latest ICG latch/cell result needs a separate
+combined replay before it can replace these rows.
+
+The source-linked prior-art and claim boundary is recorded separately in
+[`a9_w4_a7_ddr_novelty_literature_audit.md`](../../docs/research/a9_w4_a7_ddr_novelty_literature_audit.md).
 
 ## Cycle contract and accounting
 
@@ -39,10 +42,10 @@ Four points use the same occurrence stream and 16 one-pending source latches:
 
 The core first drains completely.  Its retirement is the link admission.  At
 an abstract legal event-token boundary, both links have service `R` events per
-core cycle for `R=1,2,4`.  Since either core emits at most one, the exact maximum
-cumulative A4-to-A7 boundary backlog is zero and the required **added boundary
-FIFO** is zero.  This does not mean the system has zero storage: the A4 core
-retains 31 event slots and the common ingress driver retains 16 source latches.
+core cycle for `R=1,2,4`.  Since either core emits at most one, the analytical
+maximum cumulative A4-to-A7 boundary backlog is zero and the required **added
+boundary FIFO** is zero.  This does not mean the system has zero storage: the A4
+core retains 31 event slots and the common ingress driver retains 16 source latches.
 No
 FIFO, skid entry, retransmit state, or backpressure repair is inserted.  A7's
 quarter-shifted falling burst-clock edge commits after `3/(4R)` core cycles;
@@ -69,7 +72,12 @@ running `ref_clk_i` and `sample_clk_i`; it is kept separate because their clock-
 tree capacitances are unknown.  This corrects the former event-only undercount
 without pretending an edge is a power value.
 
-## Exact full50 results at R=1
+## Analytical full50 results at the rate-compatible R=1 boundary
+
+These are cycle-model results, not an executed A4-RTL-to-A7-RTL composition.
+The analytical launch envelope assumes one legal A7 admission per A4
+retirement.  Reset is not represented in the composition model, so this table
+provides no reset-path evidence.
 
 All accepted events drain, so core A/D and link A/D are equal.  Latency is
 occurrence through link commit.  `data/state tog/e` includes committed core-
@@ -91,7 +99,7 @@ accepted, delivered, overrun, or throughput.  It saves two pins at the cost of
 delivered event at R=1.  Correct address-only data lowers the core state-toggle
 proxy; it does not change accepted, delivered, latency, or overrun.
 
-## Exact capacity22 results at R=1
+## Analytical capacity22 results at the rate-compatible R=1 boundary
 
 | core + link | core A/D | link A/D | overrun | throughput | mean / p95 / p99 e2e | pins | state bits | data/state tog/e | A7 clk edges/e | control touches/e |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -110,17 +118,17 @@ storage resources are included in the functional model even though the
 candidate comparison counts their state equally.  Only the new serial boundary
 FIFO count is zero.
 
-## Link ratio and the exact boundary blocker
+## Link-ratio envelope and boundary blocker
 
 The capacity envelope is identical for fixed and moving cores except for their
 slightly different output rates:
 
-| suite/core | R | service utilization | DDR commit delay | added buffer | throughput limiter | exact direct DDR wiring |
+| suite/core | R | service utilization | DDR commit delay | added buffer | throughput limiter | analytical boundary disposition |
 |---|---:|---:|---:|---:|---|---|
-| full50 fixed | 1 / 2 / 4 | 0.7292 / 0.3646 / 0.1823 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | usable / HOLD / HOLD |
-| full50 moving | 1 / 2 / 4 | 0.7300 / 0.3650 / 0.1825 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | usable / HOLD / HOLD |
-| capacity22 fixed | 1 / 2 / 4 | 0.7900 / 0.3950 / 0.1975 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | usable / HOLD / HOLD |
-| capacity22 moving | 1 / 2 / 4 | 0.7909 / 0.3954 / 0.1977 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | usable / HOLD / HOLD |
+| full50 fixed | 1 / 2 / 4 | 0.7292 / 0.3646 / 0.1823 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | rate-compatible / HOLD / HOLD |
+| full50 moving | 1 / 2 / 4 | 0.7300 / 0.3650 / 0.1825 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | rate-compatible / HOLD / HOLD |
+| capacity22 fixed | 1 / 2 / 4 | 0.7900 / 0.3950 / 0.1975 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | rate-compatible / HOLD / HOLD |
+| capacity22 moving | 1 / 2 / 4 | 0.7909 / 0.3954 / 0.1977 | 3/4 / 3/8 / 3/16 | 0 | core/ingress | rate-compatible / HOLD / HOLD |
 
 The old DDR link's modeled wire+register toggles and separate unit-clock edges
 per delivered moving-core event grow with the faster always-running reference,
@@ -139,14 +147,15 @@ opportunities per asserted core period, allowing duplicate or early frames.
 Providing a one-link-period launch pulse requires unimplemented boundary
 functionality and state whose PPA/toggle/latency cost is unknown.  This
 tournament neither restores it for free nor
-adds an arbitrary queue, so R=2 and R=4 fail closed.  R=1 is rate-compatible,
-but old A7's generated-clock/DDR physical qualifications remain HOLD.  The
-separate latest ICG-latch implementation is not evidence for this frozen row.
+adds an arbitrary queue, so R=2 and R=4 fail closed.  R=1 is only analytically
+rate-compatible: no composed RTL replay or reset-path test was run.  Old A7's
+generated-clock/DDR physical qualifications also remain HOLD.  The separate
+latest ICG-latch implementation is not evidence for this frozen row.
 
 ## Pareto disposition
 
-At the only exact rate-compatible point, R=1, none of the four points strictly
-dominates all others:
+At the only analytically rate-compatible point, R=1, none of the four points
+strictly dominates all others:
 
 - fixed + parallel minimizes state, local logic depth, control touches, and
   latency, but uses five pins and has the lower accepted count;
