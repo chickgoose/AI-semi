@@ -19,6 +19,29 @@ import common_suite_official as official
 
 
 POINTERS = (1, 2, 4, 8)
+CORRECTNESS_KEYS = (
+    "generated_accounting_ok", "accepted_delivered_count_ok", "id_multiset_ok",
+    "no_loss_ok", "no_duplicate_ok", "no_phantom_ok", "source_order_ok",
+)
+REQUIRE_GO_EXIT = 3
+
+
+def correctness_evidence(rows: list[dict[str, object]], config: str) -> dict[str, bool]:
+    selected = [row for row in rows if row["config"] == config]
+    if not selected:
+        raise ValueError(f"no correctness rows for {config}")
+    return {key: all(row.get(key) is True for row in selected)
+            for key in CORRECTNESS_KEYS}
+
+
+def decision_sentinel(verdict: str) -> str:
+    if verdict not in {"GO", "HOLD"}:
+        raise ValueError(f"unsupported verdict {verdict}")
+    return f"A5_ACTIVITY_DIRECTORY_SWEEP_{verdict}"
+
+
+def decision_exit_code(verdict: str, require_go: bool) -> int:
+    return REQUIRE_GO_EXIT if require_go and verdict != "GO" else 0
 
 
 def sha256(path: Path) -> str:
@@ -176,6 +199,8 @@ def main() -> int:
                         default=Path("tests/common_suite_receipt/fixtures/manifest.neutrality-n16.json"))
     parser.add_argument("--capacity-manifest", type=Path,
                         default=Path("tests/common_suite_receipt/fixtures/manifest.multilane-n16.json"))
+    parser.add_argument("--require-go", action="store_true",
+                        help="return 3 after publishing evidence unless the gate verdict is GO")
     args = parser.parse_args()
     project = Path(__file__).resolve().parents[2]
     args.output.mkdir(parents=True, exist_ok=True)
@@ -269,10 +294,11 @@ def main() -> int:
                      if row["suite"] == "capacity22_n16" and row["config"] == config)
         scale64 = next(row for row in aggregate_rows
                        if row["suite"] == "full50_n64_scaling_proxy" and row["config"] == config)
+        evidence = correctness_evidence(per_run, config)
         candidates.append({
             "config": config,
-            "correctness": all(int(row["accepted"]) == int(row["delivered"])
-                               for row in per_run if row["config"] == config),
+            "correctness": all(evidence.values()),
+            "correctness_evidence": evidence,
             "full50_throughput_delta": full16["throughput_delta_vs_flat"],
             "capacity22_throughput_delta": cap16["throughput_delta_vs_flat"],
             "capacity22_relative_throughput": (
@@ -290,7 +316,8 @@ def main() -> int:
         "schema_version": 1,
         "gate": {"min_capacity22_relative_throughput": 0.99,
                  "min_n64_examined_reduction": 0.40,
-                 "correctness_required": True},
+                 "correctness_required": True,
+                 "required_correctness_evidence": list(CORRECTNESS_KEYS)},
         "candidates": candidates,
         "verdict": "GO" if passing else "HOLD",
         "selected": min(passing, key=lambda row: int(row["state_bits_n64"]))["config"]
@@ -299,9 +326,14 @@ def main() -> int:
     }
     (args.output / "a5-activity-directory-go-gate.json").write_text(
         json.dumps(verdict, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"A5_ACTIVITY_DIRECTORY_SWEEP_PASS verdict={verdict['verdict']} "
-          f"selected={verdict['selected']} output={args.output}")
-    return 0
+    sentinel = decision_sentinel(str(verdict["verdict"]))
+    print(f"{sentinel} selected={verdict['selected']} output={args.output}")
+    exit_code = decision_exit_code(str(verdict["verdict"]), args.require_go)
+    if exit_code:
+        print("A5_ACTIVITY_DIRECTORY_REQUIRE_GO_FAILED "
+              f"verdict={verdict['verdict']} gate_json="
+              f"{args.output / 'a5-activity-directory-go-gate.json'}")
+    return exit_code
 
 
 if __name__ == "__main__":

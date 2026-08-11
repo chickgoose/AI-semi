@@ -9,6 +9,7 @@ mutated arbitrarily without changing the accepted-event truth state.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import Counter
 import math
 from statistics import mean
 from typing import Callable, Iterable
@@ -40,6 +41,8 @@ class RunResult:
     update_to_service: list[int] = field(default_factory=list)
     accepted_ids: list[int] = field(default_factory=list)
     delivered_ids: list[int] = field(default_factory=list)
+    accepted_sequence: list[tuple[int, int]] = field(default_factory=list)
+    delivered_sequence: list[tuple[int, int]] = field(default_factory=list)
     source_services: list[int] = field(default_factory=list)
     metrics: dict[str, int] = field(default_factory=dict)
 
@@ -61,6 +64,25 @@ class RunResult:
         if not active:
             return 1.0
         return sum(active) ** 2 / (len(active) * sum(value * value for value in active))
+
+    def correctness_checks(self) -> dict[str, bool]:
+        accepted = Counter(self.accepted_ids)
+        delivered = Counter(self.delivered_ids)
+        accepted_by_source = [[] for _ in range(self.source_count)]
+        delivered_by_source = [[] for _ in range(self.source_count)]
+        for source, event_id in self.accepted_sequence:
+            accepted_by_source[source].append(event_id)
+        for source, event_id in self.delivered_sequence:
+            delivered_by_source[source].append(event_id)
+        return {
+            "generated_accounting_ok": self.generated == self.accepted + self.overrun,
+            "accepted_delivered_count_ok": self.accepted == self.delivered,
+            "id_multiset_ok": accepted == delivered,
+            "no_loss_ok": not (accepted - delivered),
+            "no_duplicate_ok": len(self.delivered_ids) == len(set(self.delivered_ids)),
+            "no_phantom_ok": not (delivered - accepted),
+            "source_order_ok": accepted_by_source == delivered_by_source,
+        }
 
     def summary(self) -> dict[str, int | float | str]:
         row: dict[str, int | float | str] = {
@@ -92,6 +114,7 @@ class RunResult:
             "overflow_fallback_accepts": len(self.overflow_waits),
             "fairness": self.fairness,
         }
+        row.update(self.correctness_checks())
         row.update(self.metrics)
         return row
 
@@ -364,9 +387,13 @@ class ActivityDirectory:
 def simulate(name: str, events: Iterable[Event], source_count: int, stim_cycles: int,
              policy: FlatScan | ActivityDirectory, *, drain_limit: int | None = None) -> RunResult:
     schedule: dict[int, list[Event]] = {}
+    observed_ids: set[int] = set()
     for event in events:
         if not 0 <= event.source < source_count:
             raise ValueError(f"event source {event.source} outside N={source_count}")
+        if event.event_id in observed_ids:
+            raise ValueError(f"duplicate TB-only event ID {event.event_id}")
+        observed_ids.add(event.event_id)
         schedule.setdefault(event.occurrence, []).append(event)
     latches: list[Event | None] = [None] * source_count
     result = RunResult(name=name, source_count=source_count, stim_cycles=stim_cycles,
@@ -380,6 +407,7 @@ def simulate(name: str, events: Iterable[Event], source_count: int, stim_cycles:
             if delivery_cycle <= cycle:
                 result.delivered += 1
                 result.delivered_ids.append(event.event_id)
+                result.delivered_sequence.append((event.source, event.event_id))
                 latency = delivery_cycle - event.occurrence
                 result.e2e_latencies.append(latency)
                 if delivery_cycle < stim_cycles:
@@ -408,6 +436,7 @@ def simulate(name: str, events: Iterable[Event], source_count: int, stim_cycles:
             latches[source] = None
             result.accepted += 1
             result.accepted_ids.append(event.event_id)
+            result.accepted_sequence.append((event.source, event.event_id))
             result.source_services[source] += 1
             wait = cycle - event.occurrence
             result.waits.append(wait)
@@ -434,12 +463,9 @@ def simulate(name: str, events: Iterable[Event], source_count: int, stim_cycles:
     else:
         raise RuntimeError(f"drain timeout for {name}: pending={sum(x is not None for x in latches)}")
 
-    if result.generated != result.accepted + result.overrun:
-        raise AssertionError("source-latch conservation failed")
-    if result.accepted != result.delivered:
-        raise AssertionError("accepted/delivered conservation failed")
-    if sorted(result.accepted_ids) != sorted(result.delivered_ids):
-        raise AssertionError("loss, duplicate, or phantom delivery")
+    failed = [name for name, passed in result.correctness_checks().items() if not passed]
+    if failed:
+        raise AssertionError("correctness assertions failed: " + ", ".join(failed))
     result.metrics = dict(policy.metrics)
     result.metrics["policy_state_bits"] = policy.state_bits
     result.metrics["hint_depth_proxy"] = policy.hint_depth_proxy

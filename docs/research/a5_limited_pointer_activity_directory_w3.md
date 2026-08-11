@@ -180,9 +180,23 @@ PYTHONDONTWRITEBYTECODE=1 python3 \
 PYTHONDONTWRITEBYTECODE=1 python3 \
   tests/a5_activity_directory/run_activity_directory_sweep.py \
   --output /tmp/a5-w3-activity-directory
+# CI/adoption gate: the committed HOLD returns 3 after publishing evidence.
+PYTHONDONTWRITEBYTECODE=1 python3 \
+  tests/a5_activity_directory/run_activity_directory_sweep.py \
+  --require-go --output /tmp/a5-w3-activity-directory-require-go
 git diff --check
 ```
 
 The sweep output contains per-run CSV, aggregate CSV, L+1 adversarial CSV, the
 trace-generation log, and the machine-readable GO-gate JSON. Generated traces
 and results remain under `/tmp`; existing user result directories are untouched.
+The normal evidence run emits the decision-specific
+`A5_ACTIVITY_DIRECTORY_SWEEP_HOLD` sentinel and exits zero only to permit HOLD
+artifact collection. It never emits a PASS sentinel. Automation requiring an
+adoptable candidate must use `--require-go`; the current HOLD then emits
+`A5_ACTIVITY_DIRECTORY_REQUIRE_GO_FAILED` and exits 3.
+
+The gate JSON does not infer correctness from `accepted == delivered` alone.
+Each candidate explicitly binds generated accounting, accepted/delivered count,
+event-ID multiset equality, no loss, no duplicate, no phantom, and source-local
+order evidence. `correctness` is the conjunction of all seven fields.

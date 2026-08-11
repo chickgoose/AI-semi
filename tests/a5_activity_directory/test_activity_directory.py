@@ -11,9 +11,55 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from activity_directory_model import ActivityDirectory, Event, FlatScan, mutation, simulate
+from run_activity_directory_sweep import (
+    CORRECTNESS_KEYS, REQUIRE_GO_EXIT, correctness_evidence,
+    decision_exit_code, decision_sentinel,
+)
 
 
 class ActivityDirectoryTest(unittest.TestCase):
+    def test_hold_is_not_a_pass_sentinel_and_require_go_fails_closed(self):
+        self.assertEqual(decision_sentinel("HOLD"),
+                         "A5_ACTIVITY_DIRECTORY_SWEEP_HOLD")
+        self.assertNotIn("PASS", decision_sentinel("HOLD"))
+        self.assertEqual(decision_exit_code("HOLD", False), 0)
+        self.assertEqual(decision_exit_code("HOLD", True), REQUIRE_GO_EXIT)
+        self.assertEqual(decision_exit_code("GO", True), 0)
+
+    def test_gate_correctness_requires_every_evidence_field(self):
+        complete = {"config": "L1", **{key: True for key in CORRECTNESS_KEYS}}
+        evidence = correctness_evidence([complete], "L1")
+        self.assertTrue(all(evidence.values()))
+        for key in CORRECTNESS_KEYS:
+            broken = dict(complete); broken[key] = False
+            with self.subTest(key=key):
+                observed = correctness_evidence([complete, broken], "L1")
+                self.assertFalse(observed[key])
+                self.assertFalse(all(observed.values()))
+
+    def test_run_summary_binds_full_correctness_evidence(self):
+        result = simulate("evidence", [Event(0, 0, 0), Event(1, 1, 0)], 2, 2,
+                          ActivityDirectory(2, 1))
+        summary = result.summary()
+        self.assertTrue(all(summary[key] is True for key in CORRECTNESS_KEYS))
+        result.delivered_ids.append(99)
+        result.delivered_sequence.append((0, 99))
+        broken = result.correctness_checks()
+        self.assertFalse(broken["id_multiset_ok"])
+        self.assertFalse(broken["no_phantom_ok"])
+
+        duplicated = simulate("duplicate-evidence", [Event(2, 0, 0)], 1, 1,
+                               ActivityDirectory(1, 1))
+        duplicated.delivered_ids.append(2)
+        duplicated.delivered_sequence.append((0, 2))
+        self.assertFalse(duplicated.correctness_checks()["no_duplicate_ok"])
+
+        reordered = simulate("order-evidence",
+                             [Event(3, 0, 0), Event(4, 0, 2)], 1, 4,
+                             ActivityDirectory(1, 1))
+        reordered.delivered_sequence.reverse()
+        self.assertFalse(reordered.correctness_checks()["source_order_ok"])
+
     def test_committed_official_manifest_identities_are_50_and_22(self):
         root = Path(__file__).resolve().parents[2]
         sys.path.insert(0, str(root / "scripts"))
