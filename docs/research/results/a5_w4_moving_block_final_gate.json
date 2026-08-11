@@ -1,0 +1,200 @@
+{
+  "a4_optimized_cost_diagnostic": {
+    "n16": {
+      "classification": "DIAGNOSTIC_ONLY_NOT_SAME_FLOW",
+      "cross_flow_total_cell_ratio_vs_a3_fixed": 1.190505644038967,
+      "reason": "A4 optimized mapping and A3 fixed reference use different normalized sources/recipes"
+    },
+    "n64": {
+      "classification": "DIAGNOSTIC_ONLY_NOT_SAME_FLOW",
+      "cross_flow_total_cell_ratio_vs_a3_fixed": 1.1325511230305063,
+      "reason": "A4 optimized mapping and A3 fixed reference use different normalized sources/recipes"
+    }
+  },
+  "a9_citation_audit": {
+    "correct_restatement": {
+      "capacity22": "net +35 after 10,841 discordant IDs; matched p99 46->47",
+      "full50": "net +41 after 11,023 discordant IDs; matched p99 46->46"
+    },
+    "remaining_valid_scope": "raw accepted/delivered/overrun/throughput and all-accepted latency are descriptive; they are not matched-cohort or accepted-superset evidence",
+    "report_evidence": [
+      {
+        "finding": "calls net +41 'additional', implying a superset",
+        "line": 86
+      },
+      {
+        "finding": "does acknowledge different survivor sets, without churn/matched metrics",
+        "line": 88
+      },
+      {
+        "finding": "calls net +35 'additional' and gives no local cohort caveat",
+        "line": 103
+      }
+    ],
+    "summary_evidence": [
+      {
+        "finding": "quotes both count deltas and raw tails but omits survivor churn and matched p99",
+        "lines": "7-9"
+      }
+    ],
+    "verdict": "PARTIAL_CAVEAT_INADEQUATE_FOR_MATCHED_COHORT_CLAIM"
+  },
+  "decision": "REJECT_AS_DEFAULT_REPLACEMENT",
+  "decision_scope": "unweighted default replacement gate; an explicitly priced tail tradeoff may define a new gate",
+  "hard_gates": {
+    "capacity_direction_detected_both_suites": true,
+    "common_qualification_complete": false,
+    "exact_functional_equivalence": true,
+    "matched_tail_non_regression_both_suites": false,
+    "physical_ppa_complete": false,
+    "same_flow_throughput_per_cell_break_even_both_suites": false
+  },
+  "provenance": {
+    "a3_commit": "d1e979e1ce15a7e96e5aa6c32ef9b96c1d32d029",
+    "a3_same_flow_cost_sha256": "9b097a8b5d5152276fdf1342350c93f2aabf6763661e95ec314c2e777cf1b26f",
+    "a4_commit": "41f239dad4a342277f33d94bb3ed3db53e3497e0",
+    "a4_functional_followup_sha256": "40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4",
+    "a4_local_summary_sha256": "b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a",
+    "a5_audit_sha256": "1be66e390590593bb63afc41dc7964f8e417ca1851cad37c37a4d27bb7c1674f",
+    "a9_commit": "3450ddf09a590e7e66d9f35dff91efad831dfa87",
+    "a9_report_sha256": "da35c135ff848e4440724f03ac404cda1cb93ed041f02903d3836f67eac9a766",
+    "foreign_current_head_consulted": false
+  },
+  "same_flow_cost": {
+    "n16": {
+      "comb_cells": 1.9438265786993403,
+      "comb_depth_cells": 1.6153846153846154,
+      "ff_bits": 1.0,
+      "total_cells": 1.774238441317458,
+      "wire_data_sink_pin_proxy": 1.8551736021366416,
+      "wire_unique_bit_proxy": 1.7154901400400113
+    },
+    "n64": {
+      "comb_cells": 1.8584669944386234,
+      "comb_depth_cells": 1.3888888888888888,
+      "ff_bits": 1.0,
+      "total_cells": 1.714113308749581,
+      "wire_data_sink_pin_proxy": 1.7952081082088163,
+      "wire_unique_bit_proxy": 1.6668336202848646
+    }
+  },
+  "schema_version": 1,
+  "suites": {
+    "capacity22": {
+      "accepted_delta": 35,
+      "accepted_delta_95ci": [
+        21,
+        49
+      ],
+      "accepted_set_jaccard": 0.7759475881453313,
+      "capacity_direction_statistically_detected": true,
+      "capacity_loss_reduction_fraction": 0.00154402682195165,
+      "discordant_accepted_ids": 10841,
+      "generated": 65616,
+      "matched_tail": {
+        "max": {
+          "delta": 1,
+          "fixed": 46,
+          "moving": 47
+        },
+        "p95": {
+          "delta": 0,
+          "fixed": 45,
+          "moving": 45
+        },
+        "p99": {
+          "delta": 1,
+          "fixed": 46,
+          "moving": 47
+        }
+      },
+      "matched_tail_non_regression": false,
+      "net_as_fraction_of_churn": 0.003228484457153399,
+      "same_flow_efficiency": {
+        "n16": {
+          "break_even_throughput_gain_percent": 77.4238441317458,
+          "comb_cell_cost_ratio": 1.9438265786993403,
+          "depth_cost_ratio": 1.6153846153846154,
+          "observed_throughput_gain_percent": 0.11095674259737898,
+          "throughput_per_comb_cell_ratio": 0.5150200014735057,
+          "throughput_per_total_cell_ratio": 0.5642474788690756,
+          "throughput_per_wire_sink_ratio": 0.5396312055502381,
+          "throughput_ratio": 1.0011095674259738,
+          "total_cell_cost_ratio": 1.774238441317458,
+          "wire_sink_cost_ratio": 1.8551736021366416
+        },
+        "n64": {
+          "break_even_throughput_gain_percent": 71.4113308749581,
+          "comb_cell_cost_ratio": 1.8584669944386234,
+          "depth_cost_ratio": 1.3888888888888888,
+          "observed_throughput_gain_percent": 0.11095674259737898,
+          "throughput_per_comb_cell_ratio": 0.5386749242368833,
+          "throughput_per_total_cell_ratio": 0.5840393177719784,
+          "throughput_per_wire_sink_ratio": 0.5576565540497915,
+          "throughput_ratio": 1.0011095674259738,
+          "total_cell_cost_ratio": 1.714113308749581,
+          "wire_sink_cost_ratio": 1.7952081082088163
+        }
+      },
+      "same_flow_throughput_per_cell_break_even": false
+    },
+    "full50": {
+      "accepted_delta": 41,
+      "accepted_delta_95ci": [
+        23,
+        61
+      ],
+      "accepted_set_jaccard": 0.8762100487388541,
+      "capacity_direction_statistically_detected": true,
+      "capacity_loss_reduction_fraction": 0.0017902366605536634,
+      "discordant_accepted_ids": 11023,
+      "generated": 106416,
+      "matched_tail": {
+        "max": {
+          "delta": 1,
+          "fixed": 46,
+          "moving": 47
+        },
+        "p95": {
+          "delta": 1,
+          "fixed": 42,
+          "moving": 43
+        },
+        "p99": {
+          "delta": 0,
+          "fixed": 46,
+          "moving": 46
+        }
+      },
+      "matched_tail_non_regression": false,
+      "net_as_fraction_of_churn": 0.0037194956001088634,
+      "same_flow_efficiency": {
+        "n16": {
+          "break_even_throughput_gain_percent": 77.4238441317458,
+          "comb_cell_cost_ratio": 1.9438265786993403,
+          "depth_cost_ratio": 1.6153846153846154,
+          "observed_throughput_gain_percent": 0.10765847171843035,
+          "throughput_per_comb_cell_ratio": 0.5150030335458362,
+          "throughput_per_total_cell_ratio": 0.5642288890854131,
+          "throughput_per_wire_sink_ratio": 0.5396134267780782,
+          "throughput_ratio": 1.0010765847171843,
+          "total_cell_cost_ratio": 1.774238441317458,
+          "wire_sink_cost_ratio": 1.8551736021366416
+        },
+        "n64": {
+          "break_even_throughput_gain_percent": 71.4113308749581,
+          "comb_cell_cost_ratio": 1.8584669944386234,
+          "depth_cost_ratio": 1.3888888888888888,
+          "observed_throughput_gain_percent": 0.10765847171843035,
+          "throughput_per_comb_cell_ratio": 0.5386571769705137,
+          "throughput_per_total_cell_ratio": 0.5840200759233671,
+          "throughput_per_wire_sink_ratio": 0.5576381814117455,
+          "throughput_ratio": 1.0010765847171843,
+          "total_cell_cost_ratio": 1.714113308749581,
+          "wire_sink_cost_ratio": 1.7952081082088163
+        }
+      },
+      "same_flow_throughput_per_cell_break_even": false
+    }
+  }
+}
