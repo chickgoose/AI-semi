@@ -22,6 +22,29 @@ for required in "$GENERATOR" "$FULL_MANIFEST" "$CAPACITY_MANIFEST"; do
   fi
 done
 
+python3 - "$GENERATOR" "$FULL_MANIFEST" "$CAPACITY_MANIFEST" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+generator, full_manifest, capacity_manifest = map(Path, sys.argv[1:])
+match = re.search(
+    r'^GENERATOR_VERSION\s*=\s*["\x27]([^"\x27]+)["\x27]',
+    generator.read_text(encoding="utf-8"),
+    re.MULTILINE,
+)
+if match is None or match.group(1) != "4.0":
+    raise SystemExit("ECRF requires common trace generator version 4.0")
+for path, expected in ((full_manifest, 50), (capacity_manifest, 22)):
+    runs = json.loads(path.read_text(encoding="utf-8")).get("runs")
+    actual = len(runs) if isinstance(runs, list) else -1
+    if actual != expected:
+        raise SystemExit(
+            f"ECRF suite count mismatch: {path} expected={expected} actual={actual}"
+        )
+PY
+
 python3 -m unittest discover -s "$ECRF_DIR/tests" -v
 
 python3 "$GENERATOR" --manifest "$FULL_MANIFEST" --output-dir "$FULL_TRACES"
@@ -46,4 +69,3 @@ PY
 
 printf 'ECRF temporary traces: %s\n' "$TMP_ROOT"
 printf 'ECRF committed-size results: %s\n' "$OUT_DIR"
-

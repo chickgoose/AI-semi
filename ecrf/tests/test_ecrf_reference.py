@@ -52,7 +52,7 @@ class EcrfReferenceTest(unittest.TestCase):
         result = exhaustive_check(topology)
         self.assertEqual(0, result["counters"]["p_invariant"])
         self.assertEqual(0, result["counters"]["capacity_failure"])
-        self.assertEqual((1 << 4) * 3, result["counters"]["cases"])
+        self.assertEqual((1 << 4) * (1 << 2), result["counters"]["cases"])
 
     def test_trace_replay_is_exact(self) -> None:
         topology = Topology(
@@ -72,4 +72,3 @@ class EcrfReferenceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

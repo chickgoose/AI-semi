@@ -26,3 +26,6 @@ For the current full50/capacity22 replay, point `ECRF_COMMON_ROOT` at a
 read-only common benchmark checkout containing generator-v4 and both official
 manifests.  Generated traces and temporary data are written below `/tmp`.
 
+The recorded Wave-3 decision is HOLD; see `docs/w3_results.md`.  Because the
+pre-RTL gate failed, this directory intentionally contains no candidate RTL or
+lockstep SV testbench.

@@ -297,7 +297,7 @@ def exhaustive_check(topology: Topology) -> dict[str, object]:
     first: dict[str, object] = {}
     max_rounds = 0
     max_edge_probes = 0
-    lane_masks = range(1, 1 << topology.k)
+    lane_masks = range(1 << topology.k)
 
     for active_mask in range(1 << topology.n):
         active_count = active_mask.bit_count()
@@ -641,7 +641,7 @@ def write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
             if key not in fields:
                 fields.append(key)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -771,6 +771,16 @@ def main() -> int:
     )
     (output_dir / "counterexamples.json").write_text(
         json.dumps({
+            "failed_points": {
+                key: details["first_counterexamples"]
+                for key, details in exhaustive_details.items()
+                if details["first_counterexamples"]
+            },
+            "structural_siphon_candidates": {
+                key: details["smallest_peeling_stopping_set"]
+                for key, details in exhaustive_details.items()
+                if details["smallest_peeling_stopping_set"] is not None
+            },
             "selected": {
                 str(k): {
                     "first_counterexamples": result["exhaustive"]["first_counterexamples"],

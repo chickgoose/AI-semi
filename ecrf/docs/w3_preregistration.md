@@ -26,8 +26,8 @@ risk, and seed.
 
 ## Functional invariants
 
-For every one of the 65,536 active-source masks and every nonzero
-lane-availability mask:
+For every one of the 65,536 active-source masks and every lane-availability
+mask, including the zero-available-lane control:
 
 1. every grant names an active source and an available lane;
 2. a source, intermediate cell, and lane each appear at most once;
@@ -80,4 +80,3 @@ A `(K,B,d,seed)` point is GO only if all conditions hold:
 
 RTL is permitted only for a point passing every gate.  A functional PASS with
 a proxy failure remains HOLD and must not produce candidate RTL.
-
