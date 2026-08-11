@@ -42,7 +42,27 @@ class W5A7EqualFlowTest(unittest.TestCase):
         evidence = run.verify_drain_contract(self.objects)
         self.assertTrue(evidence["same_cycle_launch_guarded"])
         self.assertTrue(evidence["registered_pending_valid_guarded_until_sink_sample"])
-        self.assertEqual(evidence["charged_functional_cells_each_style"], 4)
+        self.assertEqual(evidence["drain_guard_cells_each_style"], 4)
+        self.assertEqual(
+            evidence["drain_guard_cell_attribution"], "inherited_owner_accounting"
+        )
+        self.assertFalse(evidence["independently_derived_from_pinned_base_blobs"])
+
+    def test_warning_allowlists_fail_on_mutation(self) -> None:
+        accepted = run.audit_verilator_warnings(
+            "%Warning-DECLFILENAME: benign extracted filename\n"
+        )
+        self.assertEqual(accepted["observed_allowed_counts"], {"DECLFILENAME": 1})
+        with self.assertRaises(run.base.AuditError):
+            run.audit_verilator_warnings("%Warning-WIDTH: unexpected\n")
+        accepted_abc = run.audit_yosys_abc_warnings(
+            run.ABC_ALLOWED_WARNING_LINES[0] + "\n"
+        )
+        self.assertEqual(sum(accepted_abc["observed_allowed_counts"].values()), 1)
+        with self.assertRaises(run.base.AuditError):
+            run.audit_yosys_abc_warnings("Warning: unexpected synthesis issue\n")
+        with self.assertRaises(run.base.AuditError):
+            run.audit_yosys_abc_warnings("unresolved module foo\n")
 
     def test_frozen_phase_and_continuous_observer(self) -> None:
         evidence = run.verify_phase_contract(self.objects)
@@ -92,6 +112,33 @@ class W5A7EqualFlowTest(unittest.TestCase):
             report["production_digital_regression"]["exact_pass_markers"],
             list(run.DIGITAL_PASS_MARKERS),
         )
+        self.assertFalse(report["diagnostic_policy"]["warning_free_claim"])
+        self.assertEqual(
+            report["diagnostic_policy"]["unexpected_warning_or_unresolved_policy"],
+            "FAIL_CLOSED",
+        )
+        self.assertEqual(
+            report["diagnostic_policy"]["verilator"]["observed_allowed_counts"],
+            {"DECLFILENAME": 8},
+        )
+        for warning_audit in report["diagnostic_policy"]["yosys_abc_by_design"].values():
+            self.assertEqual(sum(warning_audit["observed_allowed_counts"].values()), 1)
+            self.assertEqual(warning_audit["unexpected_count"], 0)
+        semantics = report["accounting_contract"]["link_count_semantics"]
+        self.assertEqual(semantics["reported_values"], {"DDR": 3, "parallel": 5})
+        self.assertFalse(semantics["physical_pad_count"])
+        identity = report["provenance"]["execution_identity"]
+        self.assertFalse(identity["vendored_helper"]["external_w4_import"])
+        self.assertEqual(
+            identity["runner"]["sha256"], run.base.sha256_file(run.LOCAL_RUNNER)
+        )
+        self.assertEqual(
+            identity["vendored_helper"]["sha256"],
+            run.base.sha256_file(run.LOCAL_HELPER),
+        )
+        self.assertEqual(identity["python"]["implementation"], "CPython")
+        self.assertTrue(identity["python"]["executable_sha256"])
+        self.assertNotIn("w4_a4_moving_block_synth", run.LOCAL_RUNNER.read_text())
 
     def test_receipts_are_byte_reproducible(self) -> None:
         with tempfile.TemporaryDirectory(dir=run.REPO_ROOT) as directory:

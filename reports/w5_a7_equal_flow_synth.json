@@ -8,7 +8,15 @@
       "unrelated-clock CDC synchronizer",
       "pads and characterized ICG/ODDR/IDDR cells"
     ],
-    "pins": "unpadded physical link data wires plus forwarded link clock",
+    "link_count_semantics": {
+      "meaning": "logical unpadded link signals: data signals plus forwarded link clock/strobe",
+      "pad_cells_or_package_pins_in_scope": false,
+      "physical_pad_count": false,
+      "reported_values": {
+        "DDR": 3,
+        "parallel": 5
+      }
+    },
     "same_functional_ports": true,
     "same_load": "one address per valid && ready ref-clock posedge",
     "same_reset": "asynchronous active-low rst_n",
@@ -41,9 +49,48 @@
     "total_cells": 4,
     "wire_data_sink_pin_proxy": 8
   },
+  "diagnostic_policy": {
+    "unexpected_warning_or_unresolved_policy": "FAIL_CLOSED",
+    "verilator": {
+      "allowed_codes": [
+        "DECLFILENAME"
+      ],
+      "observed_allowed_counts": {
+        "DECLFILENAME": 8
+      },
+      "policy": "only explicitly allowlisted emitted warning codes are accepted",
+      "unexpected_count": 0
+    },
+    "warning_free_claim": false,
+    "yosys_abc_by_design": {
+      "a7_ddr2_tx_icg_rx_r1": {
+        "allowed_lines": [
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\")."
+        ],
+        "observed_allowed_counts": {
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\").": 1
+        },
+        "policy": "only exact allowlisted emitted warning lines are accepted",
+        "unexpected_count": 0
+      },
+      "complete_parallel4_tx_rx": {
+        "allowed_lines": [
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\")."
+        ],
+        "observed_allowed_counts": {
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\").": 1
+        },
+        "policy": "only exact allowlisted emitted warning lines are accepted",
+        "unexpected_count": 0
+      }
+    }
+  },
   "fail_closed_drain_contract": {
     "active_frame_and_link_clock_guarded": true,
-    "charged_functional_cells_each_style": 4,
+    "drain_guard_cell_attribution": "inherited_owner_accounting",
+    "drain_guard_cells_each_style": 4,
+    "independently_derived_from_pinned_base_blobs": false,
+    "note": "W5 independently synthesizes final charged totals 29/27; the common four-cell decomposition is copied from the pinned owner contract because this audit does not pin and subtract a pre-guard base blob",
     "registered_pending_valid_guarded_until_sink_sample": true,
     "same_cycle_launch_guarded": true,
     "unobserved_raw_toggle_guarded": true
@@ -119,12 +166,48 @@
       "A7_R1_ENDPOINT_REGRESSION_PASS"
     ],
     "pinned_tb_sha256": "b3af920caa6e7242820f1428bf655045fcf2bd8911e4e41c5ae92d4b0c87e950",
+    "simulation_diagnostic_audit": {
+      "allowed_codes": [
+        "DECLFILENAME"
+      ],
+      "observed_allowed_counts": {},
+      "policy": "only explicitly allowlisted emitted warning codes are accepted",
+      "unexpected_count": 0
+    },
     "status": "PASS",
     "verilator_sha256": "672a1ccf3468902f66387049f001b04f254bbcece7d5e816e3861715889bf252",
-    "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
+    "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
+    "warning_audit": {
+      "allowed_codes": [
+        "DECLFILENAME"
+      ],
+      "observed_allowed_counts": {
+        "DECLFILENAME": 8
+      },
+      "policy": "only explicitly allowlisted emitted warning codes are accepted",
+      "unexpected_count": 0
+    }
   },
   "provenance": {
     "a7_production_w5_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
+    "execution_identity": {
+      "python": {
+        "cache_tag": "cpython-314",
+        "executable": "/usr/bin/python3.14",
+        "executable_sha256": "b8d8288faefdd300201f43fcf00f6f539a27218eeed3a3dff5ab10b9c4c99700",
+        "implementation": "CPython",
+        "version": "3.14.4"
+      },
+      "runner": {
+        "path": "scripts/w5_a7_equal_flow_synth/run.py",
+        "sha256": "d1d7ba1d31b2388c0d78fbac3b76924a7d97cef9600ff318308c942821d05bd5"
+      },
+      "vendored_helper": {
+        "external_w4_import": false,
+        "path": "scripts/w5_a7_equal_flow_synth/helper.py",
+        "sha256": "996e9ac0e411f370a11f443e281d0d90c40a0d9db47676822bda1fa3577d4b74"
+      }
+    },
     "git_objects": {
       "constraints/a7_event_triggered_ddr_burst_link_w4.sdc": {
         "sha256": "b45f0b07b790aad7f198bf1a5dffb246ced7da7c29f43185ccb5e18c54446a95"
@@ -233,6 +316,8 @@
       "latch_bits": 1,
       "link_clock_pins": 1,
       "link_data_pins": 4,
+      "link_signal_count_is_physical_pad_count": false,
+      "logical_unpadded_link_signals": 5,
       "max_fanout_all": 20,
       "max_fanout_data": 7,
       "net_bit_count": 38,
@@ -244,7 +329,16 @@
       "shared_consumer_observer_state_bits": 6,
       "shared_reset_arming_state_bits": 1,
       "total_cells": 30,
-      "warning_unresolved_free": true,
+      "warning_audit": {
+        "allowed_lines": [
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\")."
+        ],
+        "observed_allowed_counts": {
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\").": 1
+        },
+        "policy": "only exact allowlisted emitted warning lines are accepted",
+        "unexpected_count": 0
+      },
       "wire_data_sink_pin_proxy": 49,
       "wire_sink_pin_proxy": 82
     },
@@ -274,6 +368,8 @@
       "latch_bits": 1,
       "link_clock_pins": 1,
       "link_data_pins": 2,
+      "link_signal_count_is_physical_pad_count": false,
+      "logical_unpadded_link_signals": 3,
       "max_fanout_all": 22,
       "max_fanout_data": 9,
       "net_bit_count": 44,
@@ -285,12 +381,21 @@
       "shared_consumer_observer_state_bits": 6,
       "shared_reset_arming_state_bits": 1,
       "total_cells": 34,
-      "warning_unresolved_free": true,
+      "warning_audit": {
+        "allowed_lines": [
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\")."
+        ],
+        "observed_allowed_counts": {
+          "ABC: Warning: The network is combinational (run \"fraig\" or \"fraig_sweep\").": 1
+        },
+        "policy": "only exact allowlisted emitted warning lines are accepted",
+        "unexpected_count": 0
+      },
       "wire_data_sink_pin_proxy": 57,
       "wire_sink_pin_proxy": 94
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "PASS",
   "tool": {
     "abc_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",

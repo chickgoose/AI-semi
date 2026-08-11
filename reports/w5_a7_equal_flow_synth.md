@@ -47,11 +47,14 @@ named PASS marker exactly once before synthesis results can be published.
 | Nets / net bits | 26 / 38 | 28 / 44 | +2 / +6 |
 | Max data fanout | 7 | 9 | +2 |
 | Data sink-pin proxy | 49 | 57 | +8 |
-| Charged link pins | 5 | 3 | -2 |
+| Logical unpadded link signals | 5 | 3 | -2 |
 
-DDR saves two charged link signals but costs two sequential bits, two charged
-functional cells, and four ABC-mapped cells in this exact boundary. The common
-four-cell drain guard is included in both functional totals. Generic latch/flop logic does not prove a
+The 5-versus-3 count means logical unpadded data signals plus the forwarded
+clock/strobe; it is not a physical pad or package-pin count. DDR saves two such
+signals but costs two sequential bits, two charged functional cells, and four
+ABC-mapped cells in this exact boundary. The final totals independently reproduce
+27/29; their common four-cell drain-guard decomposition is inherited owner
+accounting, not an A3 base-blob subtraction. Generic latch/flop logic does not prove a
 characterized ICG/ODDR/IDDR implementation, timing closure, routed wire savings,
 or energy benefit; all physical claims remain HOLD.
 
@@ -63,9 +66,12 @@ python3 scripts/w5_a7_equal_flow_synth/run.py \
 python3 -m unittest scripts.w5_a7_equal_flow_synth.test_run
 ```
 
-The runner SHA-checks every pinned A7 git object, the frozen SDC, the independent
-wrapper, Verilator, Yosys, ABC, and its Tcl runtime; missing/duplicate digital
-PASS markers, warnings, unresolved objects, residual
+The runner receipts its own bytes, the vendored W5 helper, and Python identity,
+and SHA-checks every pinned A7 git object, the frozen SDC, the independent
+wrapper, Verilator, Yosys, ABC, and its Tcl runtime. It observes and explicitly
+allows only Verilator `DECLFILENAME` diagnostics and ABC's exact combinational-
+network warning; this is not a warning-free claim. Missing/duplicate digital
+PASS markers, unexpected warnings, unresolved objects, residual
 processes/memories, scopeinfo-contaminated functional counts, state-count changes,
 drain-contract changes, or Yosys check failures fail closed.
 The JSON and this Markdown file are atomically replaced and byte-deterministic.

@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import platform
 import re
 import shutil
 import sys
@@ -19,15 +20,21 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.w4_a4_moving_block_synth import run as base  # noqa: E402
+from scripts.w5_a7_equal_flow_synth import helper as base  # noqa: E402
 
 
 A7_FINAL_COMMIT = "42377ca81340951bfcd453b3bd664e673091f9f3"
 TOP = "a3_w5_r1_endpoint_top"
 LOCAL_WRAPPER = Path(__file__).with_name("a3_w5_r1_endpoint_top.sv")
+LOCAL_HELPER = Path(__file__).with_name("helper.py")
+LOCAL_RUNNER = Path(__file__).resolve()
 LOCAL_WRAPPER_SHA256 = "0a830a60665801b457483bf77c7c4b2dfc79a52bb577e857ffeb2c5826b1c562"
 EXPECTED_VERILATOR_SHA256 = "672a1ccf3468902f66387049f001b04f254bbcece7d5e816e3861715889bf252"
 EXPECTED_VERILATOR_VERSION = "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
+VERILATOR_ALLOWED_WARNING_CODES = ("DECLFILENAME",)
+ABC_ALLOWED_WARNING_LINES = (
+    'ABC: Warning: The network is combinational (run "fraig" or "fraig_sweep").',
+)
 RTL_PATHS = (
     "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv",
     "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv",
@@ -94,6 +101,80 @@ DIGITAL_PASS_MARKERS = (
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def execution_identity() -> dict[str, Any]:
+    python_executable = Path(sys.executable).resolve()
+    return {
+        "runner": {
+            "path": str(LOCAL_RUNNER.relative_to(REPO_ROOT)),
+            "sha256": base.sha256_file(LOCAL_RUNNER),
+        },
+        "vendored_helper": {
+            "path": str(LOCAL_HELPER.relative_to(REPO_ROOT)),
+            "sha256": base.sha256_file(LOCAL_HELPER),
+            "external_w4_import": False,
+        },
+        "python": {
+            "implementation": platform.python_implementation(),
+            "version": platform.python_version(),
+            "cache_tag": sys.implementation.cache_tag,
+            "executable": str(python_executable),
+            "executable_sha256": base.sha256_file(python_executable),
+        },
+    }
+
+
+def audit_verilator_warnings(log_text: str) -> dict[str, Any]:
+    observed: dict[str, int] = {}
+    unexpected = []
+    for line in log_text.splitlines():
+        match = re.match(r"^%Warning-([A-Z0-9_]+):", line)
+        if match:
+            code = match.group(1)
+            if code not in VERILATOR_ALLOWED_WARNING_CODES:
+                unexpected.append(line)
+            observed[code] = observed.get(code, 0) + 1
+        elif re.search(r"(?i)^(?:%Error|warning:)|unresolved|implicitly declared", line):
+            unexpected.append(line)
+    if unexpected:
+        raise base.AuditError(
+            "unexpected Verilator warning/error/unresolved diagnostic: "
+            + " | ".join(unexpected[:8])
+        )
+    return {
+        "policy": "only explicitly allowlisted emitted warning codes are accepted",
+        "allowed_codes": list(VERILATOR_ALLOWED_WARNING_CODES),
+        "observed_allowed_counts": dict(sorted(observed.items())),
+        "unexpected_count": 0,
+    }
+
+
+def audit_yosys_abc_warnings(log_text: str) -> dict[str, Any]:
+    observed: dict[str, int] = {}
+    unexpected = []
+    for line in log_text.splitlines():
+        stripped = line.strip()
+        warning_like = re.search(
+            r"(?i)(?:^|:\s*)warning:|unresolved|implicitly declared", stripped
+        )
+        if not warning_like:
+            continue
+        if stripped in ABC_ALLOWED_WARNING_LINES:
+            observed[stripped] = observed.get(stripped, 0) + 1
+        else:
+            unexpected.append(stripped)
+    if unexpected:
+        raise base.AuditError(
+            "unexpected Yosys/ABC warning or unresolved diagnostic: "
+            + " | ".join(unexpected[:8])
+        )
+    return {
+        "policy": "only exact allowlisted emitted warning lines are accepted",
+        "allowed_lines": list(ABC_ALLOWED_WARNING_LINES),
+        "observed_allowed_counts": dict(sorted(observed.items())),
+        "unexpected_count": 0,
+    }
 
 
 def pinned_inputs(repo: Path) -> dict[str, bytes]:
@@ -261,7 +342,14 @@ def verify_drain_contract(objects: dict[str, bytes]) -> dict[str, Any]:
         "active_frame_and_link_clock_guarded": True,
         "unobserved_raw_toggle_guarded": True,
         "registered_pending_valid_guarded_until_sink_sample": True,
-        "charged_functional_cells_each_style": 4,
+        "drain_guard_cells_each_style": 4,
+        "drain_guard_cell_attribution": "inherited_owner_accounting",
+        "independently_derived_from_pinned_base_blobs": False,
+        "note": (
+            "W5 independently synthesizes final charged totals 29/27; the common "
+            "four-cell decomposition is copied from the pinned owner contract because "
+            "this audit does not pin and subtract a pre-guard base blob"
+        ),
     }
 
 
@@ -423,8 +511,10 @@ def run_digital_regression(
         env=env,
     )
     (work / "compile.log").write_text(compile_result.stdout, encoding="utf-8")
+    warning_audit = audit_verilator_warnings(compile_result.stdout)
     simulation = base.run_command([str(executable)], cwd=work, env=env)
     (work / "simulation.log").write_text(simulation.stdout, encoding="utf-8")
+    simulation_diagnostic_audit = audit_verilator_warnings(simulation.stdout)
     lines = simulation.stdout.splitlines()
     for marker in DIGITAL_PASS_MARKERS:
         if lines.count(marker) != 1:
@@ -437,6 +527,8 @@ def run_digital_regression(
         "exact_pass_markers": list(DIGITAL_PASS_MARKERS),
         "verilator_version": version,
         "verilator_sha256": EXPECTED_VERILATOR_SHA256,
+        "warning_audit": warning_audit,
+        "simulation_diagnostic_audit": simulation_diagnostic_audit,
         "covers": [
             "same-cycle admission drain guard",
             "output availability at cycle 1",
@@ -471,9 +563,8 @@ def synthesize(
     result = base.run_command(
         [str(yosys), "-l", str(log), "-p", script], cwd=work, env=env
     )
-    log_text = log.read_text() + "\n" + result.stdout
-    if re.search(r"(?im)^warning:|unresolved|implicitly declared", log_text):
-        raise base.AuditError(f"warning or unresolved object in {name}")
+    log_text = log.read_text()
+    warning_audit = audit_yosys_abc_warnings(log_text)
     if "Found and reported 0 problems." not in log_text:
         raise base.AuditError(f"Yosys check marker absent in {name}")
     netlist = json.loads((work / "netlist.json").read_text())
@@ -514,11 +605,13 @@ def synthesize(
         "link_data_pins": config["link_data_pins"],
         "link_clock_pins": config["link_clock_pins"],
         "charged_link_signal_pins": config["link_signal_pins"],
+        "logical_unpadded_link_signals": config["link_signal_pins"],
+        "link_signal_count_is_physical_pad_count": False,
         "shared_consumer_observer_state_bits": 6,
         "shared_reset_arming_state_bits": 1,
         "qualifier_state_bits": 0,
         "recipe_sha256": digest((canonical_recipe + "\n").encode()),
-        "warning_unresolved_free": True,
+        "warning_audit": warning_audit,
     }
 
 
@@ -603,11 +696,14 @@ named PASS marker exactly once before synthesis results can be published.
 | Nets / net bits | {parallel['net_count']} / {parallel['net_bit_count']} | {ddr['net_count']} / {ddr['net_bit_count']} | {delta['net_count']:+d} / {delta['net_bit_count']:+d} |
 | Max data fanout | {parallel['max_fanout_data']} | {ddr['max_fanout_data']} | {delta['max_fanout_data']:+d} |
 | Data sink-pin proxy | {parallel['wire_data_sink_pin_proxy']} | {ddr['wire_data_sink_pin_proxy']} | {delta['wire_data_sink_pin_proxy']:+d} |
-| Charged link pins | {parallel['charged_link_signal_pins']} | {ddr['charged_link_signal_pins']} | {delta['charged_link_signal_pins']:+d} |
+| Logical unpadded link signals | {parallel['charged_link_signal_pins']} | {ddr['charged_link_signal_pins']} | {delta['charged_link_signal_pins']:+d} |
 
-DDR saves two charged link signals but costs two sequential bits, two charged
-functional cells, and four ABC-mapped cells in this exact boundary. The common
-four-cell drain guard is included in both functional totals. Generic latch/flop logic does not prove a
+The 5-versus-3 count means logical unpadded data signals plus the forwarded
+clock/strobe; it is not a physical pad or package-pin count. DDR saves two such
+signals but costs two sequential bits, two charged functional cells, and four
+ABC-mapped cells in this exact boundary. The final totals independently reproduce
+27/29; their common four-cell drain-guard decomposition is inherited owner
+accounting, not an A3 base-blob subtraction. Generic latch/flop logic does not prove a
 characterized ICG/ODDR/IDDR implementation, timing closure, routed wire savings,
 or energy benefit; all physical claims remain HOLD.
 
@@ -619,9 +715,12 @@ python3 scripts/w5_a7_equal_flow_synth/run.py \\
 python3 -m unittest scripts.w5_a7_equal_flow_synth.test_run
 ```
 
-The runner SHA-checks every pinned A7 git object, the frozen SDC, the independent
-wrapper, Verilator, Yosys, ABC, and its Tcl runtime; missing/duplicate digital
-PASS markers, warnings, unresolved objects, residual
+The runner receipts its own bytes, the vendored W5 helper, and Python identity,
+and SHA-checks every pinned A7 git object, the frozen SDC, the independent
+wrapper, Verilator, Yosys, ABC, and its Tcl runtime. It observes and explicitly
+allows only Verilator `DECLFILENAME` diagnostics and ABC's exact combinational-
+network warning; this is not a warning-free claim. Missing/duplicate digital
+PASS markers, unexpected warnings, unresolved objects, residual
 processes/memories, scopeinfo-contaminated functional counts, state-count changes,
 drain-contract changes, or Yosys check failures fail closed.
 The JSON and this Markdown file are atomically replaced and byte-deterministic.
@@ -676,7 +775,7 @@ def main(argv: list[str] | None = None) -> int:
         parallel = indexed["complete_parallel4_tx_rx"]
         ddr = indexed["a7_ddr2_tx_icg_rx_r1"]
         report = {
-            "schema_version": 1,
+            "schema_version": 2,
             "audit": "a3_w5_a7_equal_flow_full_endpoint_synthesis",
             "status": "PASS",
             "decision": "PHYSICAL_HOLD",
@@ -690,11 +789,20 @@ def main(argv: list[str] | None = None) -> int:
                 },
                 "same_top": TOP,
                 "source_normalization": "none",
+                "execution_identity": execution_identity(),
             },
             "r1_handshake_and_qualifier_gate": r1,
             "phase_related_consumer_contract": phase,
             "fail_closed_drain_contract": drain,
             "production_digital_regression": digital,
+            "diagnostic_policy": {
+                "warning_free_claim": False,
+                "unexpected_warning_or_unresolved_policy": "FAIL_CLOSED",
+                "verilator": digital["warning_audit"],
+                "yosys_abc_by_design": {
+                    row["design"]: row["warning_audit"] for row in rows
+                },
+            },
             "tool": {
                 "yosys_version": yosys_version,
                 "yosys_sha256": base.sha256_file(args.yosys),
@@ -725,7 +833,15 @@ def main(argv: list[str] | None = None) -> int:
                     "all mapped DFF Q bits plus exactly one generic ICG latch bit; "
                     "each style includes six consumer-observer bits"
                 ),
-                "pins": "unpadded physical link data wires plus forwarded link clock",
+                "link_count_semantics": {
+                    "reported_values": {"DDR": 3, "parallel": 5},
+                    "meaning": (
+                        "logical unpadded link signals: data signals plus forwarded "
+                        "link clock/strobe"
+                    ),
+                    "physical_pad_count": False,
+                    "pad_cells_or_package_pins_in_scope": False,
+                },
                 "excluded": [
                     "upstream producer", "consumer backpressure/FIFO",
                     "unrelated-clock CDC synchronizer",
