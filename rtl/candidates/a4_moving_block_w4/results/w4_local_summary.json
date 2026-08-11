@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "850fbcfa4ad168b1250223610780f11378f6c391",
+  "status": {
+    "exact_lockstep": "PASS",
+    "local_yosys_proxy": "PASS",
+    "selected_local_variant": "shared_clearance_local_enable",
+    "selected_local_variant_decision": "LOCAL_PARETO_CONDITIONAL",
+    "common_qualification": "HOLD",
+    "physical_ppa_qualification": "HOLD",
+    "frozen_baseline_decision": "CONDITIONAL_UNCHANGED"
+  },
+  "provenance": {
+    "common_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "full50_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+    "capacity22_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "frozen_rtl_sha256": "18e00a2acba587af7f81f2f1608268f4c37d9068a3e7e3f2b29611c4f8ea5677",
+    "w4_rtl_sha256": "433ebc7a1d01e8c8d57e52b42235278c9367941abc0519450ee2b3076edda083",
+    "runner_sha256": "0bef496adbedd13b96df44f5174d8bfef98e92acc093554e90f2b7d410549e02",
+    "tail_analyzer_sha256": "3f6ace306e3b6340994486ab07bc774fa2054278df5918e8fa63812fd5457042",
+    "lockstep_tb_sha256": "eb89f27bee7f3baeae2ec0c393261d5da87fecde6231f76e75a7ddf2dd380557",
+    "verilator": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
+    "yosys": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+    "yosys_passes": "proc; flatten; opt; memory; opt; techmap; opt; abc -g simple; clean; check; stat"
+  },
+  "qualification": {
+    "verilator_lint_designs": 3,
+    "verilator_warnings": 0,
+    "full50_exact_rtl_lockstep_traces": 50,
+    "capacity22_exact_rtl_lockstep_traces": 22,
+    "mapped_design_size_cases": 6,
+    "mapped_state_bits_match": true
+  },
+  "mapping": [
+    {
+      "sources": 16,
+      "design": "frozen_850fbcf_normalized",
+      "cells": 11421,
+      "comb_cells": 10259,
+      "state_bits": 1162,
+      "logic_depth": 25,
+      "max_fanout": 40,
+      "p95_fanout": 3,
+      "nets_fanout_ge16": 185,
+      "dffe_cells": 0
+    },
+    {
+      "sources": 16,
+      "design": "shared_clearance",
+      "cells": 9484,
+      "comb_cells": 8322,
+      "state_bits": 1162,
+      "logic_depth": 25,
+      "max_fanout": 75,
+      "p95_fanout": 2,
+      "nets_fanout_ge16": 150,
+      "dffe_cells": 36
+    },
+    {
+      "sources": 16,
+      "design": "shared_clearance_local_enable",
+      "cells": 7699,
+      "comb_cells": 6537,
+      "state_bits": 1162,
+      "logic_depth": 24,
+      "max_fanout": 40,
+      "p95_fanout": 2,
+      "nets_fanout_ge16": 139,
+      "dffe_cells": 1116
+    },
+    {
+      "sources": 64,
+      "design": "frozen_850fbcf_normalized",
+      "cells": 49853,
+      "comb_cells": 44837,
+      "state_bits": 5016,
+      "logic_depth": 31,
+      "max_fanout": 129,
+      "p95_fanout": 2,
+      "nets_fanout_ge16": 733,
+      "dffe_cells": 0
+    },
+    {
+      "sources": 64,
+      "design": "shared_clearance",
+      "cells": 40563,
+      "comb_cells": 35547,
+      "state_bits": 5016,
+      "logic_depth": 32,
+      "max_fanout": 79,
+      "p95_fanout": 2,
+      "nets_fanout_ge16": 612,
+      "dffe_cells": 38
+    },
+    {
+      "sources": 64,
+      "design": "shared_clearance_local_enable",
+      "cells": 33784,
+      "comb_cells": 28768,
+      "state_bits": 5016,
+      "logic_depth": 31,
+      "max_fanout": 92,
+      "p95_fanout": 2,
+      "nets_fanout_ge16": 579,
+      "dffe_cells": 4826
+    }
+  ],
+  "selected_delta_percent": {
+    "n16_cells": -32.58909,
+    "n16_comb_cells": -36.280339,
+    "n16_depth_cycles": -1,
+    "n16_max_fanout": 0,
+    "n64_cells": -32.232764,
+    "n64_comb_cells": -35.838705,
+    "n64_depth_cycles": 0,
+    "n64_max_fanout": -37,
+    "state_bits": 0
+  },
+  "dffe_sensitivity": {
+    "assumption": "charge each generic DFFE as one DFF plus one external mux",
+    "n16_selected_effective_cells": 8815,
+    "n16_effective_delta_percent": -22.817617,
+    "n64_selected_effective_cells": 38610,
+    "n64_effective_delta_percent": -22.552304,
+    "timing_conclusion": "NOT_PROVEN; external enable mux can add a level",
+    "physical_conclusion": "HOLD_PENDING_REAL_LIBRARY"
+  },
+  "workload_metrics": {
+    "full50": {
+      "fixed_accepted": 83514,
+      "moving_accepted": 83555,
+      "fixed_overrun": 22902,
+      "moving_overrun": 22861,
+      "fixed_p99": 46,
+      "moving_p99": 47
+    },
+    "capacity22": {
+      "fixed_accepted": 42948,
+      "moving_accepted": 42983,
+      "fixed_overrun": 22668,
+      "moving_overrun": 22633,
+      "fixed_p99": 46,
+      "moving_p99": 47
+    }
+  },
+  "p99_cause": {
+    "full50": {
+      "common_accepted": 78023,
+      "fixed_common_p99": 46,
+      "moving_common_p99": 46,
+      "moving_only_accepted": 5532,
+      "moving_only_p99": 47,
+      "fixed_only_accepted": 5491,
+      "fixed_only_p99": 46,
+      "moving_latency_ge47_common": 496,
+      "moving_latency_ge47_moving_only": 1054
+    },
+    "capacity22": {
+      "common_accepted": 37545,
+      "fixed_common_p99": 46,
+      "moving_common_p99": 47,
+      "moving_only_accepted": 5438,
+      "moving_only_p99": 47,
+      "fixed_only_accepted": 5403,
+      "fixed_only_p99": 46,
+      "moving_latency_ge47_common": 496,
+      "moving_latency_ge47_moving_only": 1054
+    },
+    "conclusion": "admission-set churn creates most >=47 tail events; two-step phase scheduling also creates >=47 latency inside the common cohort"
+  }
+}
