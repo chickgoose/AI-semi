@@ -12,6 +12,18 @@ ECRF_COMMON_ROOT=/path/to/read-only/common-v4 \
   ECRF_OUT="$PWD/ecrf/results" bash ecrf/run_w3.sh
 ```
 
+The runner enforces the commit and three SHA-256 values below before creating
+temporary traces.  Its decision exit contract is:
+
+- default mode: exit 0 means the evaluation completed, with the printed
+  `decision=GO|HOLD` remaining authoritative;
+- `--require-go`: exit 0 only for GO and exit 3 for a valid HOLD;
+- exit 2: malformed decision or provenance/input contract failure; and
+- exit 64: runner argument error.
+
+Qualification/shortlist automation must use `--require-go`.  Thus the recorded
+HOLD cannot be mistaken for GO from exit status alone.
+
 The recorded run used read-only common commit
 `47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be` with these inputs:
 
