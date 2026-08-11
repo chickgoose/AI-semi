@@ -53,6 +53,7 @@ module a7_r1_parallel_reference_top (
     .raw_toggle_i(raw_retire_toggle), .retire_addr_o(retire_addr_o),
     .retire_valid_o(retire_valid_o), .seen_toggle_o(seen_retire_toggle));
 
-  assign drain_idle_o = ~frame_active_q & ~link_strobe_o &
-                        ~(raw_retire_toggle ^ seen_retire_toggle);
+  assign drain_idle_o = ~launch_fire & ~frame_active_q & ~link_strobe_o &
+                        ~(raw_retire_toggle ^ seen_retire_toggle) &
+                        ~retire_valid_o;
 endmodule

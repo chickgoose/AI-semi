@@ -38,6 +38,9 @@ module a7_r1_candidate_endpoint (
     .raw_toggle_i(raw_retire_toggle), .retire_addr_o(retire_addr_o),
     .retire_valid_o(retire_valid_o), .seen_toggle_o(seen_retire_toggle));
 
-  assign drain_idle_o = ~frame_active & ~burst_clk_o &
-                        ~(raw_retire_toggle ^ seen_retire_toggle);
+  // Idle means no admission, frame, unobserved raw commit, or registered
+  // output remains to be sampled by the always-ready ref-domain consumer.
+  assign drain_idle_o = ~launch_fire & ~frame_active & ~burst_clk_o &
+                        ~(raw_retire_toggle ^ seen_retire_toggle) &
+                        ~retire_valid_o;
 endmodule
