@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed provenance checks for independent A4 W4 qualification."""
+"""Fail-closed input checks for the scoped A4 W4 always-ready replay."""
 
 from __future__ import annotations
 
@@ -80,7 +80,11 @@ def main() -> int:
     except (OSError, RuntimeError) as error:
         print(f"W4_CONTRACT_FAIL {error}", file=sys.stderr)
         return 2
-    print(f"W4_CONTRACT_PASS common={COMMON_COMMIT} a4_object={A4_COMMIT} pins=4")
+    print(
+        "W4_ALWAYS_READY_GENERATOR_V4_INPUT_CONTRACT_PASS "
+        f"common={COMMON_COMMIT} a4_object={A4_COMMIT} pins=4 "
+        "complete_common_qualification=HOLD"
+    )
     return 0
 
 

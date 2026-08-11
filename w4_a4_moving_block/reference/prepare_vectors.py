@@ -211,7 +211,10 @@ def main() -> int:
     if counts != {"full50": 50, "capacity22": 22}:
         raise SystemExit(f"W4 exact suite-count failure: {counts}")
     args.index.write_text(json.dumps({"runs": runs}, indent=2, sort_keys=True) + "\n")
-    print(f"W4_VECTOR_PREP_PASS runs={len(runs)}")
+    print(
+        "W4_ALWAYS_READY_GENERATOR_V4_VECTOR_PREP_PASS "
+        f"runs={len(runs)} complete_common_qualification=HOLD"
+    )
     return 0
 
 

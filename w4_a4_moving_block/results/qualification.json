@@ -2,8 +2,21 @@
   "actual_rtl": true,
   "adapter_state_bits": 0,
   "address_semantics": "source-address-only",
+  "complete_common_qualification": "HOLD",
   "cycle_lockstep_runs": 72,
-  "decision": "PASS",
+  "decision": "HOLD",
+  "economic_gate": "NO-GO",
+  "evidence_origin": {
+    "correction_applied_without_replay": true,
+    "historical_execution_commit": "aef76b8a7def52fa7ea407227f8e54eae0f550f4",
+    "note": "metrics and recorded execution-artifact hashes are preserved from the historical run; only claim scope and qualification disposition are corrected"
+  },
+  "evidence_result": "PASS",
+  "evidence_scope": "always-ready generator-v4 full50+capacity22 actual-RTL lockstep",
+  "missing_qualification_evidence": [
+    "mandatory direct-SV basic_reset_drain",
+    "immutable simulator executable/package/tool-invocation receipt"
+  ],
   "provenance": {
     "a4_commit": "850fbcfa4ad168b1250223610780f11378f6c391",
     "a4_rtl_sha256": "18e00a2acba587af7f81f2f1608268f4c37d9068a3e7e3f2b29611c4f8ea5677",
@@ -14,6 +27,7 @@
     "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
     "reference_sha256": "a3c07065a0c8da1f57d7c0d0c4621fd653e4cf8aa7129f1ccdc51dd983aaa8ee",
     "testbench_sha256": "41a3cd2115e5a6c96e708184e1bff277efa68ef045d79607de5117b6f24982c4",
+    "tool_receipt_status": "MISSING_IMMUTABLE_TOOL_RECEIPT_VERSION_STRING_ONLY",
     "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
   },
   "runs": [
@@ -2106,7 +2120,7 @@
       "vector_sha256": "cd97fedf56bba66fbf34d397eb6f8f5170d4d39446751d4224fa3178c0c04f19"
     }
   ],
-  "schema": "w4-a2-a4-common-qualification-v1",
+  "schema": "w4-a2-a4-scoped-lockstep-evidence-v2",
   "suites": {
     "capacity22": {
       "fixed_max_advance_1": {

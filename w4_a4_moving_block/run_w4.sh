@@ -57,4 +57,4 @@ python3 "$W4_DIR/execute_regression.py" \
   --binary "$MDIR/Va4_w4_common_tb" --index "$INDEX" \
   --output "$OUTPUT" --verilator-version "$VERSION"
 
-printf 'W4_A2_PASS output=%s temp=%s\n' "$OUTPUT" "$TMP_ROOT"
+printf 'W4_A2_ALWAYS_READY_GENERATOR_V4_FULL50_CAP22_ACTUAL_RTL_LOCKSTEP_PASS output=%s temp=%s complete_common_qualification=HOLD\n' "$OUTPUT" "$TMP_ROOT"

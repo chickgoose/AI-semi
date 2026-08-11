@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run every vector against actual RTL and emit the qualification receipt."""
+"""Run always-ready vectors against actual RTL and emit scoped evidence."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import re
 import subprocess
 from pathlib import Path
 
-PASS = re.compile(
-    r"W4_A4_TRACE_PASS rows=(\d+) offered=(\d+) "
+SCOPED_PASS = re.compile(
+    r"W4_A4_ALWAYS_READY_GENERATOR_V4_TRACE_LOCKSTEP_PASS rows=(\d+) offered=(\d+) "
     r"moving=(\d+),(\d+),(\d+),(\d+),(\d+),(\d+) "
     r"fixed=(\d+),(\d+),(\d+),(\d+),(\d+),(\d+)"
 )
@@ -56,9 +56,12 @@ def main() -> int:
                 f"W4 RTL FAIL {run['suite']}/{run['trace']} exit={result.returncode}\n"
                 f"{result.stdout}{result.stderr}"
             )
-        match = PASS.search(result.stdout)
+        match = SCOPED_PASS.search(result.stdout)
         if match is None:
-            raise SystemExit(f"W4 missing PASS sentinel: {run['suite']}/{run['trace']}")
+            raise SystemExit(
+                "W4 missing always-ready generator-v4 actual-RTL lockstep "
+                f"sentinel: {run['suite']}/{run['trace']}"
+            )
         values = list(map(int, match.groups()))
         rows, offered = values[:2]
         moving = values[2:8]
@@ -84,7 +87,10 @@ def main() -> int:
             "trace_sha256": run["trace_sha256"], "vector_sha256": run["vector_sha256"],
             "cycles": rows, "moving": run["moving"], "fixed": run["fixed"],
         })
-        print(f"W4_RTL_PASS {number}/{len(index['runs'])} {run['suite']}/{run['trace']}")
+        print(
+            "W4_ALWAYS_READY_GENERATOR_V4_ACTUAL_RTL_LOCKSTEP_PASS "
+            f"{number}/{len(index['runs'])} {run['suite']}/{run['trace']}"
+        )
 
     suites = {}
     for suite in ("full50", "capacity22"):
@@ -95,8 +101,16 @@ def main() -> int:
             "fixed_max_advance_1": aggregate(selected, "fixed"),
         }
     receipt = {
-        "schema": "w4-a2-a4-common-qualification-v1",
-        "decision": "PASS",
+        "schema": "w4-a2-a4-scoped-lockstep-evidence-v2",
+        "decision": "HOLD",
+        "complete_common_qualification": "HOLD",
+        "evidence_result": "PASS",
+        "evidence_scope": "always-ready generator-v4 full50+capacity22 actual-RTL lockstep",
+        "economic_gate": "NO-GO",
+        "missing_qualification_evidence": [
+            "mandatory direct-SV basic_reset_drain",
+            "immutable simulator executable/package/tool-invocation receipt",
+        ],
         "actual_rtl": True,
         "address_semantics": "source-address-only",
         "adapter_state_bits": 0,
@@ -118,13 +132,17 @@ def main() -> int:
                 (Path(__file__).parent / "tb/a4_w4_common_tb.sv").read_bytes()
             ).hexdigest(),
             "verilator_version": args.verilator_version,
+            "tool_receipt_status": "MISSING_IMMUTABLE_TOOL_RECEIPT_VERSION_STRING_ONLY",
         },
         "suites": suites,
         "runs": actual_rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
-    print(f"W4_A4_COMMON_QUALIFICATION_PASS runs={len(actual_rows)}")
+    print(
+        "W4_A4_ALWAYS_READY_GENERATOR_V4_FULL50_CAP22_ACTUAL_RTL_LOCKSTEP_PASS "
+        f"runs={len(actual_rows)} complete_common_qualification=HOLD"
+    )
     return 0
 
 

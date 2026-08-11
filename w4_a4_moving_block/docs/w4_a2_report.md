@@ -1,7 +1,13 @@
-# W4 A2 independent qualification of A4 moving-block
+# W4 A2 independent always-ready replay of A4 moving-block
 
-Decision: **PASS for common functional qualification at A4 commit `850fbcf`.**
-This is not a PPA qualification.
+Evidence result: **PASS only for always-ready generator-v4 full50+capacity22
+actual-RTL lockstep at A4 commit `850fbcf`.**
+
+Complete common functional qualification: **HOLD**.  The mandatory direct-SV
+`basic_reset_drain` test was not present or executed, and the historical tool
+record is not an immutable tool receipt.  A4's economic gate is **NO-GO**, so
+no expensive replacement qualification is initiated by this correction.  This
+is also not a PPA qualification.
 
 ## Frozen inputs and ownership
 
@@ -19,8 +25,13 @@ fail-closed:
 - full50 manifest: `9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9`;
 - capacity22 manifest: `99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62`.
 
-The executed simulator was Verilator 5.032.  A missing/non-Verilator tool,
-compile error, provenance drift, or absent PASS sentinel exits nonzero.
+The recorded simulator string is Verilator 5.032.  The receipt does not contain
+the simulator executable SHA, package/container identity, or an immutable
+capture of the complete command and options.  It therefore proves neither the
+exact tool binary nor a reproducible tool environment.  A missing/non-Verilator
+tool, compile error, pinned input drift, or absent scoped lockstep sentinel does
+exit nonzero, but that fail-closed behavior is not a substitute for the missing
+immutable receipt.
 
 ## Interface and checks
 
@@ -36,10 +47,16 @@ Two instances of the exact RTL run concurrently:
 
 An independently written Python model produces cycle expectations for each.
 The direct-SV harness checks every source-ready bit and every raw retire
-valid/source cycle, reset quiet, address-only raw event value, accepted-credit
+valid/source cycle, initial-preamble reset quiet, address-only raw event value, accepted-credit
 conservation, phantom/duplicate absence, per-source causal order, complete
 drain, one post-drain quiet cycle, fixed-window delivery, and
 occurrence-to-delivery latency.
+
+The reset coverage is deliberately narrower than common conformance.  Each
+generated vector begins with two reset rows, but there is no drained first
+epoch, second reset, no-traffic stale guard, disjoint post-reset address epoch,
+or post-reset conservation check.  Consequently this evidence must not be
+cited as a `basic_reset_drain` PASS.
 
 Occurrence IDs and timestamps are TB-only bookkeeping and never enter the
 adapter or DUT.  Under address-only semantics, repeated same-source events are
@@ -49,8 +66,9 @@ The harness makes no arbitrary-payload or internal occurrence-identity claim.
 
 ## Results
 
-All 50 full50 and 22 capacity22 traces passed actual-RTL cycle lockstep for
-both configurations: 72 trace invocations and 144 RTL/reference comparisons.
+All 50 full50 and 22 capacity22 traces passed **always-ready generator-v4
+actual-RTL cycle lockstep** for both configurations: 72 trace invocations and
+144 RTL/reference comparisons.
 Every accepted event retired and every trace reached the post-drain quiet
 cycle.
 
@@ -67,8 +85,14 @@ Mean latency improves, but p95, p99, and maximum latency are each one cycle
 worse in both suites.  The accepted populations differ, so the latency result
 is descriptive rather than a same-survivor dominance claim.
 
-The machine-readable receipt is `results/qualification.json`; it includes all
-72 trace and vector hashes plus per-trace metrics.
+The corrected machine-readable evidence record is
+`results/qualification.json`; it includes all 72 trace and vector hashes plus
+per-trace metrics, marks the scoped lockstep evidence PASS, and marks complete
+common qualification HOLD.  Its recorded historical execution hashes are
+preserved, while the absent immutable tool receipt and absent
+`basic_reset_drain` evidence are explicit gaps.  This disposition correction
+does not regenerate the metrics: the record identifies `aef76b8` as the
+historical execution origin and marks the correction as applied without replay.
 
 ## Reproduction
 

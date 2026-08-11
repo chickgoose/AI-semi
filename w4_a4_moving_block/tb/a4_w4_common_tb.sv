@@ -222,7 +222,7 @@ module a4_w4_common_tb;
       if (fixed_read[source] != fixed_write[source])
         $fatal(1, "W4 fixed undrained credit source=%0d", source);
     end
-    $display("W4_A4_TRACE_PASS rows=%0d offered=%0d moving=%0d,%0d,%0d,%0d,%0d,%0d fixed=%0d,%0d,%0d,%0d,%0d,%0d expected=%0d,%0d,%0d,%0d,%0d/%0d,%0d,%0d,%0d,%0d",
+    $display("W4_A4_ALWAYS_READY_GENERATOR_V4_TRACE_LOCKSTEP_PASS rows=%0d offered=%0d moving=%0d,%0d,%0d,%0d,%0d,%0d fixed=%0d,%0d,%0d,%0d,%0d,%0d expected=%0d,%0d,%0d,%0d,%0d/%0d,%0d,%0d,%0d,%0d",
       rows, offered,
       moving_accepted, moving_retired, moving_fixed, moving_sum, moving_max, expected_m_overrun,
       fixed_accepted, fixed_retired, fixed_fixed, fixed_sum, fixed_max, expected_f_overrun,

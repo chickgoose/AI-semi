@@ -14,6 +14,49 @@ from prepare_vectors import load_trace  # noqa: E402
 
 
 class W4HarnessTest(unittest.TestCase):
+    def test_claims_are_scoped_and_complete_qualification_holds(self) -> None:
+        receipt = json.loads(
+            (ROOT / "results/qualification.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(receipt["decision"], "HOLD")
+        self.assertEqual(receipt["complete_common_qualification"], "HOLD")
+        self.assertEqual(receipt["evidence_result"], "PASS")
+        self.assertEqual(
+            receipt["evidence_scope"],
+            "always-ready generator-v4 full50+capacity22 actual-RTL lockstep",
+        )
+        self.assertEqual(receipt["economic_gate"], "NO-GO")
+        self.assertTrue(
+            receipt["evidence_origin"]["correction_applied_without_replay"]
+        )
+        self.assertEqual(
+            receipt["evidence_origin"]["historical_execution_commit"],
+            "aef76b8a7def52fa7ea407227f8e54eae0f550f4",
+        )
+        missing = receipt["missing_qualification_evidence"]
+        self.assertIn("mandatory direct-SV basic_reset_drain", missing)
+        self.assertIn(
+            "immutable simulator executable/package/tool-invocation receipt", missing
+        )
+        self.assertEqual(
+            receipt["provenance"]["tool_receipt_status"],
+            "MISSING_IMMUTABLE_TOOL_RECEIPT_VERSION_STRING_ONLY",
+        )
+
+    def test_no_broad_common_qualification_pass_sentinel_remains(self) -> None:
+        checked = [
+            ROOT / "README.md",
+            ROOT / "docs/w4_a2_report.md",
+            ROOT / "execute_regression.py",
+            ROOT / "run_w4.sh",
+            ROOT / "tb/a4_w4_common_tb.sv",
+        ]
+        joined = "\n".join(path.read_text(encoding="utf-8") for path in checked)
+        self.assertNotIn("W4_A4_COMMON_QUALIFICATION_PASS", joined)
+        self.assertNotIn("W4_A2_PASS", joined)
+        self.assertNotIn("PASS for common functional qualification", joined)
+        self.assertIn("complete_common_qualification=HOLD", joined)
+
     def test_adapter_has_no_behavioral_or_sequential_state(self) -> None:
         adapter = (ROOT / "rtl/a4_w4_zero_state_adapter.sv").read_text()
         for forbidden in ("always_ff", "always_latch", "always_comb", "initial begin"):
@@ -54,7 +97,7 @@ class W4HarnessTest(unittest.TestCase):
         self.assertEqual(fixed_accept, fixed_retire)
         self.assertLess(moving_first, fixed_first)
 
-    def test_reset_is_quiet(self) -> None:
+    def test_initial_reset_preamble_is_quiet(self) -> None:
         model = MovingBlockReference(2)
         result = model.step([1] * 16, rst_n=False)
         self.assertEqual(0, result.ready_mask)
