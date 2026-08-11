@@ -13,10 +13,24 @@ BENCHMARK_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BENCHMARK_DIR))
 
 import a6_w3_elias_fano as codec  # noqa: E402
+import a6_w3_cycle_oracle as cycle_oracle  # noqa: E402
 import a6_w3_evaluate as evaluate  # noqa: E402
 
 
 class EliasFanoCodecTests(unittest.TestCase):
+    def test_cycle_oracle_matches_batch_visible_and_k_slot_contract(self) -> None:
+        rows = cycle_oracle.generate_rows()
+        self.assertEqual([row.cycle for row in rows if row.accepted], [0, 20, 40, 79])
+        # Three one-bit beats are exactly the EF markers.  The third waits from
+        # encoder acceptance at 40 until the same-edge pop creates K free slots.
+        self.assertEqual(
+            [(row.cycle, row.link_data) for row in rows if row.link_count == 1],
+            [(1, 2), (21, 2), (60, 2)],
+        )
+        self.assertFalse(any(row.decoded_valid for row in rows[:19]))
+        self.assertEqual(rows[19].decoded_address, 0)
+        self.assertEqual(sum(row.retired for row in rows), 51)
+
     def test_cap22_manifest_digest_is_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "manifest.json"
@@ -136,6 +150,21 @@ class EliasFanoCodecTests(unittest.TestCase):
         # overrun; it must never be hidden as codec loss.
         self.assertGreater(result.overrun, 0)
         self.assertGreater(result.ef_batches, 0)
+
+    def test_end_to_end_ef_retires_only_after_terminal_beat(self) -> None:
+        events = [codec.Event(0, source, source) for source in range(16)]
+        raw = evaluate.simulate(
+            events, stim_cycles=1, num_sources=16, max_batch=16,
+            window_cycles=0, codec=False,
+        )
+        encoded = evaluate.simulate(
+            events, stim_cycles=1, num_sources=16, max_batch=16,
+            window_cycles=0, codec=True,
+        )
+        self.assertEqual(raw.latencies, tuple(range(3, 34, 2)))
+        self.assertEqual(encoded.latencies, tuple(range(20, 36)))
+        self.assertEqual(encoded.p95_latency, 35)
+        self.assertGreater(encoded.p95_latency, raw.p95_latency)
 
     def test_same_cycle_mode_does_not_merge_backlogged_cycles(self) -> None:
         events = [

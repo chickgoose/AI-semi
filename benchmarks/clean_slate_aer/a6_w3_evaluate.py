@@ -19,7 +19,6 @@ from a6_w3_elias_fano import (
     address_width,
     count_width,
     encode_batch,
-    elias_fano_payload,
 )
 
 
@@ -184,7 +183,8 @@ class SimulationResult:
     stim_cycles: int
     drain_cycle: int
     link_bits: int
-    link_cycles: int
+    link_transfer_cycles: int
+    link_busy_cycles: int
     ef_batches: int
     raw_batches: int
     average_batch_wait: float
@@ -211,8 +211,12 @@ class SimulationResult:
 
     @property
     def events_per_pin_cycle(self) -> float:
-        denominator = PHYSICAL_PINS * self.link_cycles
+        denominator = PHYSICAL_PINS * self.link_busy_cycles
         return self.delivered / denominator if denominator else 0.0
+
+    @property
+    def events_per_elapsed_pin_cycle(self) -> float:
+        return self.delivered / (PHYSICAL_PINS * max(1, self.drain_cycle + 1))
 
     def public(self) -> dict[str, object]:
         row = asdict(self)
@@ -222,34 +226,9 @@ class SimulationResult:
             "drained_throughput": self.drained_throughput,
             "bits_per_event": self.bits_per_event,
             "events_per_pin_cycle": self.events_per_pin_cycle,
+            "events_per_elapsed_pin_cycle": self.events_per_elapsed_pin_cycle,
         })
         return row
-
-
-def _decoder_offsets(frame: EncodedBatch, num_sources: int, max_batch: int) -> list[int]:
-    k = len(frame.sources)
-    if frame.mode == "raw":
-        per_event = math.ceil(address_width(num_sources) / LINK_WIDTH)
-        return [per_event * (index + 1) for index in range(k)]
-    if not k:
-        return []
-    cw = count_width(max_batch)
-    payload, lw, high_length = elias_fano_payload(frame.sources, num_sources)
-    del payload
-    if lw == 0:
-        offsets = []
-        previous_high = 0
-        high_position = 0
-        for source in frame.sources:
-            high = source
-            high_position += high - previous_high + 1
-            previous_high = high
-            offsets.append(1 + math.ceil((cw + high_position) / LINK_WIDTH))
-        return offsets
-    return [
-        1 + math.ceil((cw + high_length + (index + 1) * lw) / LINK_WIDTH)
-        for index in range(k)
-    ]
 
 
 def simulate(
@@ -270,13 +249,13 @@ def simulate(
         arrivals[event.occurrence_cycle].append(event)
     pending: dict[int, Event] = {}
     tx_queue: list[tuple[tuple[Event, ...], EncodedBatch, int]] = []
-    scheduled: dict[int, list[Event]] = defaultdict(list)
     rx_queue: list[Event] = []
-    rx_reserved = 0
     rx_capacity = 2 * max_batch
-    link_free = 0
+    active: tuple[tuple[Event, ...], EncodedBatch, int] | None = None
+    active_beat = 0
     accepted = overrun = delivered = delivered_in_window = 0
-    link_bits = link_cycles = ef_batches = raw_batches = decoder_work = 0
+    link_bits = link_transfer_cycles = link_busy_cycles = 0
+    ef_batches = raw_batches = decoder_work = 0
     waits: list[int] = []
     latencies: list[int] = []
     delivered_sequences: list[int] = []
@@ -291,12 +270,12 @@ def simulate(
             else:
                 pending[event.source] = event
 
-        if scheduled.get(cycle):
-            rx_queue.extend(scheduled.pop(cycle))
+        tx_banks_at_cycle_start = len(tx_queue) + int(active is not None)
 
+        # RTL retirement observes FIFO state from the start of the edge.  A
+        # frame completing on this edge becomes visible only after this pop.
         if rx_queue:
             event = rx_queue.pop(0)
-            rx_reserved -= 1
             delivered += 1
             delivered_sequences.append(event.sequence)
             latency = cycle - event.occurrence_cycle
@@ -304,25 +283,48 @@ def simulate(
             if cycle < stim_cycles:
                 delivered_in_window += 1
 
-        if cycle >= link_free and tx_queue:
-            batch_events, frame, work = tx_queue[0]
-            if rx_reserved + len(batch_events) <= rx_capacity:
-                tx_queue.pop(0)
-                start = cycle
-                offsets = _decoder_offsets(frame, num_sources, max_batch)
-                if len(offsets) != len(batch_events):
-                    raise AssertionError("decoder schedule count mismatch")
-                for event, offset in zip(batch_events, offsets):
-                    scheduled[start + offset].append(event)
-                rx_reserved += len(batch_events)
-                link_free = start + frame.link_cycles
-                link_bits += frame.valid_bits
-                link_cycles += frame.link_cycles
-                decoder_work += work
-                ef_batches += int(frame.mode == "elias_fano")
-                raw_batches += int(frame.mode == "raw")
+        if active is None and tx_queue:
+            active = tx_queue.pop(0)
+            active_beat = 0
 
-        can_capture = len(tx_queue) < 2
+        if active is not None:
+            link_busy_cycles += 1
+            batch_events, frame, work = active
+            free_slots = rx_capacity - len(rx_queue)
+            # This exactly follows committed RTL: an EF marker reserves the
+            # worst-case K slots, subsequent frame beats cannot stall, while
+            # each raw beat requires one currently free FIFO entry.
+            link_ready = (
+                free_slots >= max_batch
+                if frame.mode == "elias_fano" and active_beat == 0
+                else (True if frame.mode == "elias_fano" else free_slots >= 1)
+            )
+            if link_ready:
+                beat = frame.beats[active_beat]
+                link_bits += beat.count
+                link_transfer_cycles += 1
+                active_beat += 1
+                if frame.mode == "raw":
+                    beats_per_event = address_width(num_sources) // LINK_WIDTH
+                    if active_beat % beats_per_event == 0:
+                        rx_queue.append(
+                            batch_events[active_beat // beats_per_event - 1]
+                        )
+                elif active_beat == frame.link_cycles:
+                    # The RTL buffers all high/low components and performs one
+                    # push_count=frame_count update on the terminal beat.
+                    rx_queue.extend(batch_events)
+
+                if active_beat == frame.link_cycles:
+                    decoder_work += work
+                    ef_batches += int(frame.mode == "elias_fano")
+                    raw_batches += int(frame.mode == "raw")
+                    active = None
+                    active_beat = 0
+
+        # Exactly two TX batch banks total: the actively serialized bank counts
+        # against capacity, rather than being a hidden third bank.
+        can_capture = tx_banks_at_cycle_start < 2
         if can_capture and pending:
             oldest = min(event.occurrence_cycle for event in pending.values())
             eligible_sources = sorted(
@@ -363,7 +365,7 @@ def simulate(
 
         done = (
             cycle >= stim_cycles and not pending and not tx_queue
-            and not scheduled and not rx_queue and cycle >= link_free
+            and active is None and not rx_queue
         )
         if done:
             break
@@ -381,7 +383,8 @@ def simulate(
         generated=len(events), accepted=accepted, overrun=overrun,
         delivered=delivered, delivered_in_window=delivered_in_window,
         stim_cycles=stim_cycles, drain_cycle=cycle,
-        link_bits=link_bits, link_cycles=link_cycles,
+        link_bits=link_bits, link_transfer_cycles=link_transfer_cycles,
+        link_busy_cycles=link_busy_cycles,
         ef_batches=ef_batches, raw_batches=raw_batches,
         average_batch_wait=sum(waits) / len(waits) if waits else 0.0,
         max_batch_wait=max(waits, default=0),
@@ -474,8 +477,13 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
         codec_window = sum(row["codec"]["delivered_in_window"] for row in rows)
         raw_overrun = sum(row["overrun"] for row in raw_rows)
         codec_overrun = sum(row["codec"]["overrun"] for row in rows)
-        raw_link_cycles = sum(row["link_cycles"] for row in raw_rows)
-        codec_link_cycles = sum(row["codec"]["link_cycles"] for row in rows)
+        raw_stim_cycles = sum(row["stim_cycles"] for row in raw_rows)
+        codec_stim_cycles = sum(row["codec"]["stim_cycles"] for row in rows)
+        raw_elapsed_cycles = sum(row["drain_cycle"] + 1 for row in raw_rows)
+        codec_elapsed_cycles = sum(
+            row["codec"]["drain_cycle"] + 1 for row in rows)
+        raw_link_cycles = sum(row["link_busy_cycles"] for row in raw_rows)
+        codec_link_cycles = sum(row["codec"]["link_busy_cycles"] for row in rows)
         raw_pin = raw_delivered / (PHYSICAL_PINS * raw_link_cycles)
         codec_pin = codec_delivered / (PHYSICAL_PINS * codec_link_cycles)
         latency_failures = [
@@ -499,6 +507,12 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
             "codec_overrun": codec_overrun,
             "raw_events_per_pin_cycle": raw_pin,
             "codec_events_per_pin_cycle": codec_pin,
+            "raw_events_per_cycle": raw_window / raw_stim_cycles,
+            "codec_events_per_cycle": codec_window / codec_stim_cycles,
+            "raw_events_per_elapsed_pin_cycle": (
+                raw_delivered / (PHYSICAL_PINS * raw_elapsed_cycles)),
+            "codec_events_per_elapsed_pin_cycle": (
+                codec_delivered / (PHYSICAL_PINS * codec_elapsed_cycles)),
             "latency_regression_runs": latency_failures,
             "gate_pass": passed,
         })
@@ -510,7 +524,7 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
         default=None,
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "format": "a6_w3_elias_fano_monotone_dequeue",
         "manifest": str(manifest_path.resolve()),
         "manifest_sha256": manifest_sha256,
@@ -518,6 +532,13 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
         "run_count": len(runs),
         "max_batch": max_batch,
         "windows": list(WINDOWS),
+        "cycle_contract": {
+            "ef_visibility": "all k entries become visible after terminal beat",
+            "ef_marker_admission": "requires MAX_BATCH free RX slots including same-edge pop",
+            "tx_batch_banks_total": 2,
+            "retirement_width": 1,
+            "prior_ac6c0b8_gate": "superseded_model_rtl_mismatch"
+        },
         "trace_provenance": trace_provenance,
         "results": results,
         "gates": gates,
