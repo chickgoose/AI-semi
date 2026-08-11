@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "configuration": {
+    "num_sources": 16,
+    "max_batch": 16,
+    "address_width": 4,
+    "link_data_width": 2,
+    "physical_link_pins": 5
+  },
+  "tool": {
+    "name": "Yosys",
+    "version": "0.52",
+    "flow": "read_verilog -sv; hierarchy -check; proc; opt; memory; opt; stat",
+    "qualification": "local generic-cell structural check only; not server PPA"
+  },
+  "encoder": {
+    "status": "synthesized",
+    "generic_cells": 4306,
+    "wire_bits": 244278,
+    "rtl_registered_bits": 121
+  },
+  "decoder": {
+    "status": "synthesized",
+    "generic_cells": 8130,
+    "wire_bits": 51040,
+    "rtl_registered_bits": 544,
+    "fifo_payload_bits_included": 128
+  },
+  "endpoint_total": {
+    "generic_cells": 12436,
+    "codec_registered_bits": 665,
+    "modeled_two_bank_tx_batch_storage_bits_not_in_codec_modules": 138,
+    "full_modeled_endpoint_storage_bits": 803
+  },
+  "interpretation": "The fixed same-cycle format is executable and synthesizable, but a 4.45% aggregate pin-cycle gain does not justify this unoptimized combinational endpoint. Deployment remains HOLD pending a much smaller serial microarchitecture."
+}

@@ -1,0 +1,1395 @@
+{
+  "format": "a6_w3_elias_fano_monotone_dequeue",
+  "link": {
+    "data_width": 2,
+    "physical_pins": 5
+  },
+  "max_batch": 16,
+  "points": [
+    {
+      "bitmap": {
+        "bits_per_event": null,
+        "cycles": 9,
+        "decoder_work": 16,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": null,
+        "escape_ratio": 0.0,
+        "framing_bits": 6,
+        "max_payload_bits": 0,
+        "mean_decoder_work": 0.0,
+        "mean_payload_bits": 0.0,
+        "mean_selected_bits": 6.0,
+        "mean_selected_cycles": 4.0,
+        "min_payload_bits": 0
+      },
+      "enumerative": {
+        "bits_per_event": null,
+        "cycles": 4,
+        "decoder_work": 0,
+        "framing_bits": 6,
+        "payload_bits": 0
+      },
+      "k": 0,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": null,
+        "cycles": 0,
+        "decoder_work": 0,
+        "framing_bits": 0,
+        "payload_bits": 0
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 17.0,
+        "cycles": 9,
+        "decoder_work": 17,
+        "events_per_pin_cycle": 0.022222222222222223,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 4.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 6,
+        "low_width": 4,
+        "max_payload_bits": 5,
+        "mean_decoder_work": 1.0,
+        "mean_payload_bits": 5.0,
+        "mean_selected_bits": 4.0,
+        "mean_selected_cycles": 2.0,
+        "min_payload_bits": 5
+      },
+      "enumerative": {
+        "bits_per_event": 10.0,
+        "cycles": 6,
+        "decoder_work": 17,
+        "events_per_pin_cycle": 0.03333333333333333,
+        "framing_bits": 6,
+        "payload_bits": 4
+      },
+      "k": 1,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 2,
+        "decoder_work": 1,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 4
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 8.5,
+        "cycles": 9,
+        "decoder_work": 18,
+        "events_per_pin_cycle": 0.044444444444444446,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 4.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 6,
+        "low_width": 3,
+        "max_payload_bits": 9,
+        "mean_decoder_work": 2.0,
+        "mean_payload_bits": 8.766666666666667,
+        "mean_selected_bits": 8.0,
+        "mean_selected_cycles": 4.0,
+        "min_payload_bits": 8
+      },
+      "enumerative": {
+        "bits_per_event": 6.5,
+        "cycles": 7,
+        "decoder_work": 18,
+        "events_per_pin_cycle": 0.05714285714285714,
+        "framing_bits": 6,
+        "payload_bits": 7
+      },
+      "k": 2,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 4,
+        "decoder_work": 2,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 8
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 5.666666666666667,
+        "cycles": 9,
+        "decoder_work": 19,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 4.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 12,
+        "mean_decoder_work": 3.0,
+        "mean_payload_bits": 11.5,
+        "mean_selected_bits": 12.0,
+        "mean_selected_cycles": 6.0,
+        "min_payload_bits": 9
+      },
+      "enumerative": {
+        "bits_per_event": 5.333333333333333,
+        "cycles": 9,
+        "decoder_work": 19,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 6,
+        "payload_bits": 10
+      },
+      "k": 3,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 6,
+        "decoder_work": 3,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 12
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 4.25,
+        "cycles": 9,
+        "decoder_work": 20,
+        "events_per_pin_cycle": 0.08888888888888889,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 4.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 15,
+        "mean_decoder_work": 4.0,
+        "mean_payload_bits": 14.689010989010988,
+        "mean_selected_bits": 16.0,
+        "mean_selected_cycles": 8.0,
+        "min_payload_bits": 12
+      },
+      "enumerative": {
+        "bits_per_event": 4.25,
+        "cycles": 9,
+        "decoder_work": 20,
+        "events_per_pin_cycle": 0.08888888888888889,
+        "framing_bits": 6,
+        "payload_bits": 11
+      },
+      "k": 4,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 8,
+        "decoder_work": 4,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 16
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 3.4,
+        "cycles": 9,
+        "decoder_work": 21,
+        "events_per_pin_cycle": 0.1111111111111111,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 4.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 6,
+        "low_width": 1,
+        "max_payload_bits": 17,
+        "mean_decoder_work": 5.0,
+        "mean_payload_bits": 16.28846153846154,
+        "mean_selected_bits": 20.0,
+        "mean_selected_cycles": 10.0,
+        "min_payload_bits": 12
+      },
+      "enumerative": {
+        "bits_per_event": 3.8,
+        "cycles": 10,
+        "decoder_work": 21,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 6,
+        "payload_bits": 13
+      },
+      "k": 5,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 10,
+        "decoder_work": 5,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 20
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 2.8333333333333335,
+        "cycles": 9,
+        "decoder_work": 22,
+        "events_per_pin_cycle": 0.13333333333333333,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 3.998230935730936,
+        "escape_ratio": 0.9965034965034965,
+        "events_per_pin_cycle": 0.10002914602156807,
+        "framing_bits": 6,
+        "low_width": 1,
+        "max_payload_bits": 19,
+        "mean_decoder_work": 6.052322677322677,
+        "mean_payload_bits": 18.47977022977023,
+        "mean_selected_bits": 23.989385614385615,
+        "mean_selected_cycles": 11.996503496503497,
+        "min_payload_bits": 14
+      },
+      "enumerative": {
+        "bits_per_event": 3.1666666666666665,
+        "cycles": 10,
+        "decoder_work": 22,
+        "events_per_pin_cycle": 0.12,
+        "framing_bits": 6,
+        "payload_bits": 13
+      },
+      "k": 6,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 12,
+        "decoder_work": 6,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 24
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 2.4285714285714284,
+        "cycles": 9,
+        "decoder_work": 23,
+        "events_per_pin_cycle": 0.15555555555555556,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 3.968731268731269,
+        "escape_ratio": 0.9307692307692308,
+        "events_per_pin_cycle": 0.10050200803212851,
+        "framing_bits": 6,
+        "low_width": 1,
+        "max_payload_bits": 21,
+        "mean_decoder_work": 8.304195804195805,
+        "mean_payload_bits": 20.61958041958042,
+        "mean_selected_bits": 27.781118881118882,
+        "mean_selected_cycles": 13.93006993006993,
+        "min_payload_bits": 17
+      },
+      "enumerative": {
+        "bits_per_event": 2.857142857142857,
+        "cycles": 11,
+        "decoder_work": 23,
+        "events_per_pin_cycle": 0.12727272727272726,
+        "framing_bits": 6,
+        "payload_bits": 14
+      },
+      "k": 7,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 14,
+        "decoder_work": 7,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 28
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 2.125,
+        "cycles": 9,
+        "decoder_work": 24,
+        "events_per_pin_cycle": 0.17777777777777778,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 3.5905788655788657,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.10694142941720244,
+        "framing_bits": 6,
+        "low_width": 1,
+        "max_payload_bits": 23,
+        "mean_decoder_work": 30.724630924630926,
+        "mean_payload_bits": 22.724630924630926,
+        "mean_selected_bits": 28.724630924630926,
+        "mean_selected_cycles": 14.961460761460762,
+        "min_payload_bits": 19
+      },
+      "enumerative": {
+        "bits_per_event": 2.5,
+        "cycles": 11,
+        "decoder_work": 24,
+        "events_per_pin_cycle": 0.14545454545454545,
+        "framing_bits": 6,
+        "payload_bits": 14
+      },
+      "k": 8,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 16,
+        "decoder_work": 8,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 32
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.8888888888888888,
+        "cycles": 9,
+        "decoder_work": 25,
+        "events_per_pin_cycle": 0.2,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 3.2555555555555555,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.11616571892770104,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 24,
+        "mean_decoder_work": 41.3,
+        "mean_payload_bits": 23.3,
+        "mean_selected_bits": 29.3,
+        "mean_selected_cycles": 15.495104895104895,
+        "min_payload_bits": 17
+      },
+      "enumerative": {
+        "bits_per_event": 2.2222222222222223,
+        "cycles": 11,
+        "decoder_work": 25,
+        "events_per_pin_cycle": 0.16363636363636364,
+        "framing_bits": 6,
+        "payload_bits": 14
+      },
+      "k": 9,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 18,
+        "decoder_work": 9,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 36
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.7,
+        "cycles": 9,
+        "decoder_work": 26,
+        "events_per_pin_cycle": 0.2222222222222222,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 3.0454545454545454,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.12605068471588224,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 25,
+        "mean_decoder_work": 44.45454545454545,
+        "mean_payload_bits": 24.454545454545453,
+        "mean_selected_bits": 30.454545454545453,
+        "mean_selected_cycles": 15.866633366633367,
+        "min_payload_bits": 19
+      },
+      "enumerative": {
+        "bits_per_event": 1.9,
+        "cycles": 10,
+        "decoder_work": 26,
+        "events_per_pin_cycle": 0.2,
+        "framing_bits": 6,
+        "payload_bits": 13
+      },
+      "k": 10,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 20,
+        "decoder_work": 10,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 40
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.5454545454545454,
+        "cycles": 9,
+        "decoder_work": 27,
+        "events_per_pin_cycle": 0.24444444444444444,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 2.871212121212121,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.13197824534417402,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 26,
+        "mean_decoder_work": 47.583333333333336,
+        "mean_payload_bits": 25.583333333333332,
+        "mean_selected_bits": 31.583333333333332,
+        "mean_selected_cycles": 16.66941391941392,
+        "min_payload_bits": 21
+      },
+      "enumerative": {
+        "bits_per_event": 1.7272727272727273,
+        "cycles": 10,
+        "decoder_work": 27,
+        "events_per_pin_cycle": 0.22,
+        "framing_bits": 6,
+        "payload_bits": 13
+      },
+      "k": 11,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 22,
+        "decoder_work": 11,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 44
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.4166666666666667,
+        "cycles": 9,
+        "decoder_work": 28,
+        "events_per_pin_cycle": 0.26666666666666666,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 2.7243589743589745,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.14159751037344398,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 27,
+        "mean_decoder_work": 50.69230769230769,
+        "mean_payload_bits": 26.692307692307693,
+        "mean_selected_bits": 32.69230769230769,
+        "mean_selected_cycles": 16.94945054945055,
+        "min_payload_bits": 23
+      },
+      "enumerative": {
+        "bits_per_event": 1.4166666666666667,
+        "cycles": 9,
+        "decoder_work": 28,
+        "events_per_pin_cycle": 0.26666666666666666,
+        "framing_bits": 6,
+        "payload_bits": 11
+      },
+      "k": 12,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 24,
+        "decoder_work": 12,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 48
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.3076923076923077,
+        "cycles": 9,
+        "decoder_work": 29,
+        "events_per_pin_cycle": 0.28888888888888886,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 2.598901098901099,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.1459795468217365,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 28,
+        "mean_decoder_work": 53.785714285714285,
+        "mean_payload_bits": 27.785714285714285,
+        "mean_selected_bits": 33.785714285714285,
+        "mean_selected_cycles": 17.810714285714287,
+        "min_payload_bits": 25
+      },
+      "enumerative": {
+        "bits_per_event": 1.2307692307692308,
+        "cycles": 9,
+        "decoder_work": 29,
+        "events_per_pin_cycle": 0.28888888888888886,
+        "framing_bits": 6,
+        "payload_bits": 10
+      },
+      "k": 13,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 26,
+        "decoder_work": 13,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 52
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.2142857142857142,
+        "cycles": 9,
+        "decoder_work": 30,
+        "events_per_pin_cycle": 0.3111111111111111,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 2.4904761904761905,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.15562760537285777,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 29,
+        "mean_decoder_work": 56.86666666666667,
+        "mean_payload_bits": 28.866666666666667,
+        "mean_selected_bits": 34.86666666666667,
+        "mean_selected_cycles": 17.991666666666667,
+        "min_payload_bits": 27
+      },
+      "enumerative": {
+        "bits_per_event": 0.9285714285714286,
+        "cycles": 7,
+        "decoder_work": 30,
+        "events_per_pin_cycle": 0.4,
+        "framing_bits": 6,
+        "payload_bits": 7
+      },
+      "k": 14,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 28,
+        "decoder_work": 14,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 56
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.1333333333333333,
+        "cycles": 9,
+        "decoder_work": 31,
+        "events_per_pin_cycle": 0.3333333333333333,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 2.3958333333333335,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.15841584158415842,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 30,
+        "mean_decoder_work": 59.9375,
+        "mean_payload_bits": 29.9375,
+        "mean_selected_bits": 35.9375,
+        "mean_selected_cycles": 18.9375,
+        "min_payload_bits": 29
+      },
+      "enumerative": {
+        "bits_per_event": 0.6666666666666666,
+        "cycles": 6,
+        "decoder_work": 31,
+        "events_per_pin_cycle": 0.5,
+        "framing_bits": 6,
+        "payload_bits": 4
+      },
+      "k": 15,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 30,
+        "decoder_work": 15,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 60
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 1.0625,
+        "cycles": 9,
+        "decoder_work": 32,
+        "events_per_pin_cycle": 0.35555555555555557,
+        "framing_bits": 1,
+        "payload_bits": 16
+      },
+      "elias_fano": {
+        "bits_per_event": 2.3125,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.16842105263157894,
+        "framing_bits": 6,
+        "low_width": 0,
+        "max_payload_bits": 31,
+        "mean_decoder_work": 63.0,
+        "mean_payload_bits": 31.0,
+        "mean_selected_bits": 37.0,
+        "mean_selected_cycles": 19.0,
+        "min_payload_bits": 31
+      },
+      "enumerative": {
+        "bits_per_event": 0.375,
+        "cycles": 4,
+        "decoder_work": 32,
+        "events_per_pin_cycle": 0.8,
+        "framing_bits": 6,
+        "payload_bits": 0
+      },
+      "k": 16,
+      "num_sources": 16,
+      "raw": {
+        "bits_per_event": 4.0,
+        "cycles": 32,
+        "decoder_work": 16,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 0,
+        "payload_bits": 64
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": null,
+        "cycles": 33,
+        "decoder_work": 64,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": null,
+        "escape_ratio": 0.0,
+        "framing_bits": 6,
+        "max_payload_bits": 0,
+        "mean_decoder_work": 0.0,
+        "mean_payload_bits": 0.0,
+        "mean_selected_bits": 6.0,
+        "mean_selected_cycles": 4.0,
+        "min_payload_bits": 0
+      },
+      "enumerative": {
+        "bits_per_event": null,
+        "cycles": 4,
+        "decoder_work": 0,
+        "framing_bits": 6,
+        "payload_bits": 0
+      },
+      "k": 0,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": null,
+        "cycles": 0,
+        "decoder_work": 0,
+        "framing_bits": 0,
+        "payload_bits": 0
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 65.0,
+        "cycles": 33,
+        "decoder_work": 65,
+        "events_per_pin_cycle": 0.006060606060606061,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 6.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 6,
+        "low_width": 6,
+        "max_payload_bits": 7,
+        "mean_decoder_work": 1.0,
+        "mean_payload_bits": 7.0,
+        "mean_selected_bits": 6.0,
+        "mean_selected_cycles": 3.0,
+        "min_payload_bits": 7
+      },
+      "enumerative": {
+        "bits_per_event": 12.0,
+        "cycles": 7,
+        "decoder_work": 65,
+        "events_per_pin_cycle": 0.02857142857142857,
+        "framing_bits": 6,
+        "payload_bits": 6
+      },
+      "k": 1,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 3,
+        "decoder_work": 1,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 6
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 32.5,
+        "cycles": 33,
+        "decoder_work": 66,
+        "events_per_pin_cycle": 0.012121212121212121,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 6.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 6,
+        "low_width": 5,
+        "max_payload_bits": 13,
+        "mean_decoder_work": 2.0,
+        "mean_payload_bits": 12.753968253968255,
+        "mean_selected_bits": 12.0,
+        "mean_selected_cycles": 6.0,
+        "min_payload_bits": 12
+      },
+      "enumerative": {
+        "bits_per_event": 8.5,
+        "cycles": 9,
+        "decoder_work": 66,
+        "events_per_pin_cycle": 0.044444444444444446,
+        "framing_bits": 6,
+        "payload_bits": 11
+      },
+      "k": 2,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 6,
+        "decoder_work": 2,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 12
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 21.666666666666668,
+        "cycles": 33,
+        "decoder_work": 67,
+        "events_per_pin_cycle": 0.01818181818181818,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 6.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 6,
+        "low_width": 4,
+        "max_payload_bits": 18,
+        "mean_decoder_work": 3.0,
+        "mean_payload_bits": 17.452380952380953,
+        "mean_selected_bits": 18.0,
+        "mean_selected_cycles": 9.0,
+        "min_payload_bits": 15
+      },
+      "enumerative": {
+        "bits_per_event": 7.333333333333333,
+        "cycles": 12,
+        "decoder_work": 67,
+        "events_per_pin_cycle": 0.05,
+        "framing_bits": 6,
+        "payload_bits": 16
+      },
+      "k": 3,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 9,
+        "decoder_work": 3,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 18
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 16.25,
+        "cycles": 33,
+        "decoder_work": 68,
+        "events_per_pin_cycle": 0.024242424242424242,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 6.0,
+        "escape_ratio": 1.0,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 6,
+        "low_width": 4,
+        "max_payload_bits": 23,
+        "mean_decoder_work": 4.0,
+        "mean_payload_bits": 22.63429528342273,
+        "mean_selected_bits": 24.0,
+        "mean_selected_cycles": 12.0,
+        "min_payload_bits": 20
+      },
+      "enumerative": {
+        "bits_per_event": 6.5,
+        "cycles": 14,
+        "decoder_work": 68,
+        "events_per_pin_cycle": 0.05714285714285714,
+        "framing_bits": 6,
+        "payload_bits": 20
+      },
+      "k": 4,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 12,
+        "decoder_work": 4,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 24
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 13.0,
+        "cycles": 33,
+        "decoder_work": 69,
+        "events_per_pin_cycle": 0.030303030303030304,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 5.9996547975791765,
+        "escape_ratio": 0.9994271108760797,
+        "events_per_pin_cycle": 0.0666692129377995,
+        "framing_bits": 6,
+        "low_width": 3,
+        "max_payload_bits": 27,
+        "mean_decoder_work": 5.006294435630766,
+        "mean_payload_bits": 26.155561431341443,
+        "mean_selected_bits": 29.99827398789588,
+        "mean_selected_cycles": 14.999427110876079,
+        "min_payload_bits": 20
+      },
+      "enumerative": {
+        "bits_per_event": 5.8,
+        "cycles": 15,
+        "decoder_work": 69,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 6,
+        "payload_bits": 23
+      },
+      "k": 5,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 15,
+        "decoder_work": 5,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 30
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 10.833333333333334,
+        "cycles": 33,
+        "decoder_work": 70,
+        "events_per_pin_cycle": 0.03636363636363636,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 5.993639586265002,
+        "escape_ratio": 0.9879133092525701,
+        "events_per_pin_cycle": 0.06671185839357155,
+        "framing_bits": 6,
+        "low_width": 3,
+        "max_payload_bits": 31,
+        "mean_decoder_work": 6.1793979510437484,
+        "mean_payload_bits": 30.338078421681395,
+        "mean_selected_bits": 35.96183751759001,
+        "mean_selected_cycles": 17.987806499415907,
+        "min_payload_bits": 24
+      },
+      "enumerative": {
+        "bits_per_event": 5.5,
+        "cycles": 17,
+        "decoder_work": 70,
+        "events_per_pin_cycle": 0.07058823529411765,
+        "framing_bits": 6,
+        "payload_bits": 27
+      },
+      "k": 6,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 18,
+        "decoder_work": 6,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 36
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 9.285714285714286,
+        "cycles": 33,
+        "decoder_work": 71,
+        "events_per_pin_cycle": 0.04242424242424243,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 5.944060380006506,
+        "escape_ratio": 0.8814759290755898,
+        "events_per_pin_cycle": 0.067062529298455,
+        "framing_bits": 6,
+        "low_width": 3,
+        "max_payload_bits": 35,
+        "mean_decoder_work": 9.215952220382562,
+        "mean_payload_bits": 34.47214279952316,
+        "mean_selected_bits": 41.60842266004554,
+        "mean_selected_cycles": 20.876039341872143,
+        "min_payload_bits": 28
+      },
+      "enumerative": {
+        "bits_per_event": 5.142857142857143,
+        "cycles": 19,
+        "decoder_work": 71,
+        "events_per_pin_cycle": 0.07368421052631578,
+        "framing_bits": 6,
+        "payload_bits": 30
+      },
+      "k": 7,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 21,
+        "decoder_work": 7,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 42
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 8.125,
+        "cycles": 33,
+        "decoder_work": 72,
+        "events_per_pin_cycle": 0.048484848484848485,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 5.571736784575555,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.0698312850775984,
+        "framing_bits": 6,
+        "low_width": 3,
+        "max_payload_bits": 39,
+        "mean_decoder_work": 30.57389427660444,
+        "mean_payload_bits": 38.57389427660444,
+        "mean_selected_bits": 44.57389427660444,
+        "mean_selected_cycles": 22.912366544909446,
+        "min_payload_bits": 32
+      },
+      "enumerative": {
+        "bits_per_event": 4.875,
+        "cycles": 20,
+        "decoder_work": 72,
+        "events_per_pin_cycle": 0.08,
+        "framing_bits": 6,
+        "payload_bits": 33
+      },
+      "k": 8,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 24,
+        "decoder_work": 8,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 48
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 7.222222222222222,
+        "cycles": 33,
+        "decoder_work": 73,
+        "events_per_pin_cycle": 0.05454545454545454,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 5.217027205878094,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.07407340529886601,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 42,
+        "mean_decoder_work": 40.95324485290285,
+        "mean_payload_bits": 40.95324485290285,
+        "mean_selected_bits": 46.95324485290285,
+        "mean_selected_cycles": 24.30021939368779,
+        "min_payload_bits": 29
+      },
+      "enumerative": {
+        "bits_per_event": 4.555555555555555,
+        "cycles": 21,
+        "decoder_work": 73,
+        "events_per_pin_cycle": 0.08571428571428572,
+        "framing_bits": 6,
+        "payload_bits": 35
+      },
+      "k": 9,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 27,
+        "decoder_work": 9,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 54
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 6.5,
+        "cycles": 33,
+        "decoder_work": 74,
+        "events_per_pin_cycle": 0.06060606060606061,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 5.009538651486041,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.07777346178890403,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 45,
+        "mean_decoder_work": 44.09538651486041,
+        "mean_payload_bits": 44.09538651486041,
+        "mean_selected_bits": 50.09538651486041,
+        "mean_selected_cycles": 25.71571271224217,
+        "min_payload_bits": 32
+      },
+      "enumerative": {
+        "bits_per_event": 4.4,
+        "cycles": 23,
+        "decoder_work": 74,
+        "events_per_pin_cycle": 0.08695652173913043,
+        "framing_bits": 6,
+        "payload_bits": 38
+      },
+      "k": 10,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 30,
+        "decoder_work": 10,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 60
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 5.909090909090909,
+        "cycles": 33,
+        "decoder_work": 75,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 4.837529988847606,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.08015521463836518,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 48,
+        "mean_decoder_work": 47.21282987732367,
+        "mean_payload_bits": 47.21282987732367,
+        "mean_selected_bits": 53.21282987732367,
+        "mean_selected_cycles": 27.44674828613085,
+        "min_payload_bits": 35
+      },
+      "enumerative": {
+        "bits_per_event": 4.181818181818182,
+        "cycles": 24,
+        "decoder_work": 75,
+        "events_per_pin_cycle": 0.09166666666666666,
+        "framing_bits": 6,
+        "payload_bits": 40
+      },
+      "k": 11,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 33,
+        "decoder_work": 11,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 66
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 5.416666666666667,
+        "cycles": 33,
+        "decoder_work": 76,
+        "events_per_pin_cycle": 0.07272727272727272,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 4.692604788905265,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.08331309573951076,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 51,
+        "mean_decoder_work": 50.311257466863175,
+        "mean_payload_bits": 50.311257466863175,
+        "mean_selected_bits": 56.311257466863175,
+        "mean_selected_cycles": 28.80699581136575,
+        "min_payload_bits": 38
+      },
+      "enumerative": {
+        "bits_per_event": 4.0,
+        "cycles": 25,
+        "decoder_work": 76,
+        "events_per_pin_cycle": 0.096,
+        "framing_bits": 6,
+        "payload_bits": 42
+      },
+      "k": 12,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 36,
+        "decoder_work": 12,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 72
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 5.0,
+        "cycles": 33,
+        "decoder_work": 77,
+        "events_per_pin_cycle": 0.07878787878787878,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 4.568825277081674,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.085094626782887,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 54,
+        "mean_decoder_work": 53.39472860206177,
+        "mean_payload_bits": 53.39472860206177,
+        "mean_selected_bits": 59.39472860206177,
+        "mean_selected_cycles": 30.55422061646405,
+        "min_payload_bits": 42
+      },
+      "enumerative": {
+        "bits_per_event": 3.8461538461538463,
+        "cycles": 26,
+        "decoder_work": 77,
+        "events_per_pin_cycle": 0.1,
+        "framing_bits": 6,
+        "payload_bits": 44
+      },
+      "k": 13,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 39,
+        "decoder_work": 13,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 78
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 4.642857142857143,
+        "cycles": 33,
+        "decoder_work": 78,
+        "events_per_pin_cycle": 0.08484848484848485,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 4.461872894986794,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.08786207421746585,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 57,
+        "mean_decoder_work": 56.46622052981511,
+        "mean_payload_bits": 56.46622052981511,
+        "mean_selected_bits": 62.46622052981511,
+        "mean_selected_cycles": 31.868129963216777,
+        "min_payload_bits": 45
+      },
+      "enumerative": {
+        "bits_per_event": 3.7142857142857144,
+        "cycles": 27,
+        "decoder_work": 78,
+        "events_per_pin_cycle": 0.1037037037037037,
+        "framing_bits": 6,
+        "payload_bits": 46
+      },
+      "k": 14,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 42,
+        "decoder_work": 14,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 84
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 4.333333333333333,
+        "cycles": 33,
+        "decoder_work": 79,
+        "events_per_pin_cycle": 0.09090909090909091,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 4.368531109316382,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.08918759478364226,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 60,
+        "mean_decoder_work": 59.52796663974573,
+        "mean_payload_bits": 59.52796663974573,
+        "mean_selected_bits": 65.52796663974573,
+        "mean_selected_cycles": 33.63696495322716,
+        "min_payload_bits": 48
+      },
+      "enumerative": {
+        "bits_per_event": 3.6,
+        "cycles": 28,
+        "decoder_work": 79,
+        "events_per_pin_cycle": 0.10714285714285714,
+        "framing_bits": 6,
+        "payload_bits": 48
+      },
+      "k": 15,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 45,
+        "decoder_work": 15,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 90
+      }
+    },
+    {
+      "bitmap": {
+        "bits_per_event": 4.0625,
+        "cycles": 33,
+        "decoder_work": 80,
+        "events_per_pin_cycle": 0.09696969696969697,
+        "framing_bits": 1,
+        "payload_bits": 64
+      },
+      "elias_fano": {
+        "bits_per_event": 4.286354707051267,
+        "escape_ratio": 0.0,
+        "events_per_pin_cycle": 0.09166427866413444,
+        "framing_bits": 6,
+        "low_width": 2,
+        "max_payload_bits": 63,
+        "mean_decoder_work": 62.581675312820266,
+        "mean_payload_bits": 62.581675312820266,
+        "mean_selected_bits": 68.58167531282027,
+        "mean_selected_cycles": 34.91000034730068,
+        "min_payload_bits": 51
+      },
+      "enumerative": {
+        "bits_per_event": 3.4375,
+        "cycles": 28,
+        "decoder_work": 80,
+        "events_per_pin_cycle": 0.11428571428571428,
+        "framing_bits": 6,
+        "payload_bits": 49
+      },
+      "k": 16,
+      "num_sources": 64,
+      "raw": {
+        "bits_per_event": 6.0,
+        "cycles": 48,
+        "decoder_work": 16,
+        "events_per_pin_cycle": 0.06666666666666667,
+        "framing_bits": 0,
+        "payload_bits": 96
+      }
+    }
+  ],
+  "schema_version": 1
+}
