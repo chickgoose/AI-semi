@@ -1,0 +1,48 @@
+{
+  "schema": "a4_w5_r1_composition_v1",
+  "status": "LOCAL_R1_COMPOSITION_PASS",
+  "a7_pinned_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
+  "a7_production_object_count": 7,
+  "architecture_contract": {
+    "clocking": "strict_phase_related_synchronous_R1",
+    "admission": "one_frame_per_ref_posedge_valid_and_ready",
+    "qualifier_state_bits_per_endpoint": 1,
+    "consumer_boundary": "registered_retire_valid_sampled_pre_NBA_by_sink_on_following_ref_rise",
+    "parallel_boundary": "same_registered_availability_and_pre_NBA_sink_boundary",
+    "cdc_claim": "none",
+    "sink": "always_ready",
+    "free_queue": false
+  },
+  "counts": {
+    "accepted": 51,
+    "retired": 50,
+    "reset_aborted": 1,
+    "continuous_valid_changing_address": 32,
+    "initial_gapped": 12,
+    "all_gapped": 17,
+    "stalled_held_valid": 1,
+    "reset_after_drain": 4
+  },
+  "timing_ns": {
+    "ddr_native_commit_from_accept": 12,
+    "endpoint_registered_valid_from_accept": 16,
+    "sequential_sink_sample_from_accept": 32
+  },
+  "a4_source_sha256": {
+    "a4_w5_r1_composition.sv": "18e7a2ec329c2048d0c1c4dc71d73ee8145dc307ed84463f1f8de7a529d43fe5",
+    "a4_w5_r1_composition_tb.sv": "bceb320c972113d0fe10be49ccc17f85b98f019a2a61ca32b54ca8cd8f996b79"
+  },
+  "owner_structural_proxy": {
+    "ddr": {"link_pins": 3, "state_bits": 20, "charged_functional_cells": 29},
+    "parallel": {"link_pins": 5, "state_bits": 18, "charged_functional_cells": 27}
+  },
+  "tool": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
+  "pass_marker": "A4_W5_R1_COMPOSITION_PASS accepted=51 retired=50 aborted=1 continuous=32 initial_gapped=12 all_gapped=17 held=1 post_reset=4 endpoint_valid_ns=16 sink_sample_ns=32",
+  "unsupported": [
+    "unrelated_clock_CDC",
+    "sink_backpressure",
+    "R_greater_than_1",
+    "level_request_one_shot_protocol",
+    "mid_frame_delivery_across_reset"
+  ]
+}
