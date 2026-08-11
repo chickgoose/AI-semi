@@ -72,6 +72,7 @@ occurrence conservation, not unrelated-clock qualification.
 | sink duplicate / drop | `SINK_DUPLICATE_OR_PHANTOM` / `SINK_DROP` | FAIL closed |
 | ready asserted without capacity | `FALSE_READY` | FAIL closed |
 | drain idle with launch or registered output pending | `FALSE_DRAIN_IDLE` | FAIL closed |
+| observer delayed one extra ref cycle | exact +1 availability / +2 sink assertion | FAIL closed |
 
 All 14 monitor/mutation tests pass. Reset-in-flight is deliberately reported as
 an invalid protocol action. The owner endpoint promises no delivery for that
@@ -88,6 +89,13 @@ ready-valid input and are compared at four boundaries:
 3. registered output availability and the following-edge pre-NBA sink sample;
 4. exact accepted/observed occurrence counts after drain.
 
+The TB assigns an integer ref-cycle timestamp at every admission. It checks the
+producer's post-NBA registered output at exactly admission +1 and checks what a
+real always-FF sink sees in the pre-NBA region at exactly admission +2. A
+candidate-owned mutation inserts one extra observer register into the
+materialized `/tmp` copy only; the resulting +3-cycle sink path is required to
+exit nonzero with a latency mismatch. The bound owner blobs remain unchanged.
+
 The earlier `ca1a209` owner commit was explicitly rejected by this A8 harness:
 post-NBA observation had hidden a cycle in which `retire_valid_o` was pending
 but `drain_idle_o` was high. The pre-NBA sink model reproduced the failure at the
@@ -97,10 +105,16 @@ The bound follow-up run passed 64 continuously-valid changing-address
 occurrences at one event per ref cycle and one transaction held through
 reset-release arming. Both production and parallel delivered exact
 order/address/count at the common real-sink boundary, and `drain_idle_o` stayed
-low whenever launch fire or registered retire valid was high. The follow-up A7
-owner regression was also rerun read-only; it covers the two-cycle availability
-and sink-retirement distinction, continuous traffic, reset, structural
-comparison, and protected diff.
+low whenever launch fire or registered retire valid was high. The direct RTL TB
+also asserts reset after a real DDR rise but before its fall, checks immediate
+abort with no stale post-reset output, re-arms, and proves clean delivery of a
+fresh occurrence. Delivery of the aborted occurrence is not claimed because
+mid-frame reset is contract-invalid.
+
+`run_all.sh` does not claim or rely on an external owner regression receipt. It
+runs only A8-owned monitor tests, binding/hash negatives, the exact-SHA direct
+normal execution, and the +3-cycle latency negative. The owner regression may
+provide additional evidence, but it is outside this reproducible A8 result.
 
 The final owner generic structural proxy reports DDR at 3 link pins, 20 state
 bits, and 29 charged functional cells; the same-boundary parallel reference is

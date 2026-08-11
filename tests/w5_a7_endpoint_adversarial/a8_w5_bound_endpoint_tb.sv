@@ -10,7 +10,10 @@ module a8_w5_bound_endpoint_tb;
   logic par_ready, par_clk, par_retire_valid, par_idle;
   logic [3:0] par_data, par_addr;
   logic [3:0] expected [0:511];
-  integer accepted, ddr_observed, par_observed;
+  integer admitted_cycle [0:511];
+  integer ref_cycle;
+  integer accepted, ddr_available, par_available;
+  integer ddr_observed, par_observed;
   integer ddr_rises, ddr_falls, par_frames, errors;
 
   a7_r1_candidate_endpoint production (
@@ -30,12 +33,14 @@ module a8_w5_bound_endpoint_tb;
     forever #(HALF) sample_clk_i = ~sample_clk_i; end
 
   always @(posedge ref_clk_i) begin
+    ref_cycle = ref_cycle + 1;
     if (rst_n && (ddr_ready !== par_ready)) begin
       $error("ready mismatch production=%b parallel=%b", ddr_ready, par_ready);
       errors = errors + 1;
     end
     if (rst_n && event_valid_i && ddr_ready) begin
       expected[accepted] = event_addr_i;
+      admitted_cycle[accepted] = ref_cycle;
       accepted = accepted + 1;
     end
     // A real always_ff sink sees the producer's registered retire_valid/address
@@ -46,6 +51,12 @@ module a8_w5_bound_endpoint_tb;
       errors = errors + 1;
     end
     if (rst_n && ddr_retire_valid) begin
+      if (ddr_observed < accepted &&
+          ref_cycle - admitted_cycle[ddr_observed] != 2) begin
+        $error("production sink latency mismatch index=%0d admission=%0d sink=%0d",
+               ddr_observed, admitted_cycle[ddr_observed], ref_cycle);
+        errors = errors + 1;
+      end
       if (ddr_observed >= accepted || ddr_addr !== expected[ddr_observed]) begin
         $error("production observer mismatch index=%0d got=%h", ddr_observed, ddr_addr);
         errors = errors + 1;
@@ -58,6 +69,12 @@ module a8_w5_bound_endpoint_tb;
       ddr_observed = ddr_observed + 1;
     end
     if (rst_n && par_retire_valid) begin
+      if (par_observed < accepted &&
+          ref_cycle - admitted_cycle[par_observed] != 2) begin
+        $error("parallel sink latency mismatch index=%0d admission=%0d sink=%0d",
+               par_observed, admitted_cycle[par_observed], ref_cycle);
+        errors = errors + 1;
+      end
       if (par_observed >= accepted || par_addr !== expected[par_observed]) begin
         $error("parallel observer mismatch index=%0d got=%h", par_observed, par_addr);
         errors = errors + 1;
@@ -72,6 +89,54 @@ module a8_w5_bound_endpoint_tb;
     if (rst_n && par_idle &&
         (par_retire_valid || (event_valid_i && par_ready))) begin
       $error("parallel drain_idle hid pending output/launch");
+      errors = errors + 1;
+    end
+  end
+
+  // The producer updates its registered output in the NBA region one ref edge
+  // before a real always_ff sink can consume it. Observe that availability
+  // boundary separately; this block is intentionally not the sink model.
+  always @(posedge ref_clk_i) begin
+    #1ps;
+    if (rst_n && (ddr_retire_valid !== par_retire_valid)) begin
+      $error("availability-valid mismatch production=%b parallel=%b",
+             ddr_retire_valid, par_retire_valid);
+      errors = errors + 1;
+    end
+    if (rst_n && ddr_retire_valid) begin
+      if (ddr_available >= accepted ||
+          ref_cycle - admitted_cycle[ddr_available] != 1) begin
+        $error("production availability latency mismatch index=%0d admission=%0d available=%0d",
+               ddr_available, admitted_cycle[ddr_available], ref_cycle);
+        errors = errors + 1;
+      end
+      if (ddr_addr !== expected[ddr_available]) begin
+        $error("production availability address mismatch index=%0d got=%h",
+               ddr_available, ddr_addr);
+        errors = errors + 1;
+      end
+      ddr_available = ddr_available + 1;
+    end
+    if (rst_n && par_retire_valid) begin
+      if (par_available >= accepted ||
+          ref_cycle - admitted_cycle[par_available] != 1) begin
+        $error("parallel availability latency mismatch index=%0d admission=%0d available=%0d",
+               par_available, admitted_cycle[par_available], ref_cycle);
+        errors = errors + 1;
+      end
+      if (par_addr !== expected[par_available]) begin
+        $error("parallel availability address mismatch index=%0d got=%h",
+               par_available, par_addr);
+        errors = errors + 1;
+      end
+      par_available = par_available + 1;
+    end
+    if (rst_n && ddr_idle && ddr_retire_valid) begin
+      $error("production drain_idle hid post-NBA available output");
+      errors = errors + 1;
+    end
+    if (rst_n && par_idle && par_retire_valid) begin
+      $error("parallel drain_idle hid post-NBA available output");
       errors = errors + 1;
     end
   end
@@ -110,12 +175,27 @@ module a8_w5_bound_endpoint_tb;
     integer timeout;
     begin
       timeout = 0;
-      while ((ddr_observed != accepted || par_observed != accepted ||
+      while ((ddr_available != accepted || par_available != accepted ||
+              ddr_observed != accepted || par_observed != accepted ||
               !ddr_idle || !par_idle) && timeout < 200) begin
         @(posedge ref_clk_i); timeout = timeout + 1;
       end
       if (timeout == 200) $fatal(1, "drain timeout accepted=%0d ddr=%0d par=%0d",
                                 accepted, ddr_observed, par_observed);
+    end
+  endtask
+
+  task automatic clear_epoch;
+    begin
+      if (rst_n) $fatal(1, "scoreboard epoch may clear only under reset");
+      accepted = 0;
+      ddr_available = 0;
+      par_available = 0;
+      ddr_observed = 0;
+      par_observed = 0;
+      ddr_rises = 0;
+      ddr_falls = 0;
+      par_frames = 0;
     end
   endtask
 
@@ -156,7 +236,9 @@ module a8_w5_bound_endpoint_tb;
     integer accepted_before;
     ref_clk_i = 1'b0; sample_clk_i = 1'b0;
     rst_n = 1'b0; event_valid_i = 1'b0; event_addr_i = '0;
-    accepted = 0; ddr_observed = 0; par_observed = 0;
+    ref_cycle = 0;
+    accepted = 0; ddr_available = 0; par_available = 0;
+    ddr_observed = 0; par_observed = 0;
     ddr_rises = 0; ddr_falls = 0; par_frames = 0; errors = 0;
     repeat (3) @(negedge sample_clk_i);
     rst_n = 1'b1;
@@ -168,7 +250,8 @@ module a8_w5_bound_endpoint_tb;
 
     send_continuous(64, 3);
     wait_drain();
-    if (accepted != 64 || ddr_observed != 64 || par_observed != 64 ||
+    if (accepted != 64 || ddr_available != 64 || par_available != 64 ||
+        ddr_observed != 64 || par_observed != 64 ||
         ddr_rises != 64 || ddr_falls != 64 || par_frames != 64)
       $fatal(1, "continuous one-per-cycle accounting mismatch");
     $display("W5_A8_BOUND_CONTINUOUS_R1_PASS events=64");
@@ -191,9 +274,52 @@ module a8_w5_bound_endpoint_tb;
       $fatal(1, "stalled transaction missing first legal handshake");
     @(negedge ref_clk_i); event_valid_i = 1'b0;
     wait_drain();
-    if (accepted != 65 || ddr_observed != 65 || par_observed != 65)
+    if (accepted != 65 || ddr_available != 65 || par_available != 65 ||
+        ddr_observed != 65 || par_observed != 65)
       $fatal(1, "held transaction did not deliver exactly once");
     $display("W5_A8_BOUND_STALLED_HELD_VALID_PASS events=1");
+
+    // Reset is deliberately asserted after the DDR rise and before its fall.
+    // The in-flight occurrence is contract-invalid and must be aborted without
+    // a stale post-reset retirement; a fresh occurrence must then recover.
+    @(negedge ref_clk_i);
+    accepted_before = accepted;
+    event_valid_i = 1'b1;
+    event_addr_i = 4'hd;
+    @(posedge ref_clk_i); #1ps;
+    if (accepted != accepted_before + 1)
+      $fatal(1, "reset-test occurrence was not admitted");
+    event_valid_i = 1'b0;
+    @(posedge ddr_clk); #1ns;
+    if (ddr_idle || par_idle)
+      $fatal(1, "drain_idle rose during open reset-test frame");
+    rst_n = 1'b0;
+    #1ps;
+    if (ddr_clk !== 1'b0 || ddr_retire_valid || par_retire_valid)
+      $fatal(1, "mid-frame reset did not synchronously abort visible state");
+    clear_epoch();
+    repeat (2) @(negedge sample_clk_i);
+    rst_n = 1'b1;
+    @(posedge ref_clk_i); #1ps;
+    if (!ddr_ready || !par_ready)
+      $fatal(1, "mid-frame reset recovery did not re-arm ready");
+    repeat (2) begin
+      @(posedge ref_clk_i); #1ps;
+      if (ddr_retire_valid || par_retire_valid || ddr_available != 0 ||
+          par_available != 0 || ddr_observed != 0 || par_observed != 0)
+        $fatal(1, "stale post-reset event escaped aborted frame");
+    end
+    @(negedge ref_clk_i);
+    event_addr_i = 4'h6;
+    event_valid_i = 1'b1;
+    @(negedge ref_clk_i);
+    event_valid_i = 1'b0;
+    wait_drain();
+    if (accepted != 1 || ddr_available != 1 || par_available != 1 ||
+        ddr_observed != 1 || par_observed != 1 ||
+        ddr_rises != 1 || ddr_falls != 1 || par_frames != 1)
+      $fatal(1, "mid-frame reset recovery accounting mismatch");
+    $display("W5_A8_BOUND_MIDFRAME_RESET_ABORT_RECOVERY_PASS");
 
     if (errors != 0) $fatal(1, "independent direct-native errors=%0d", errors);
     $display("W5_A8_BOUND_PRODUCTION_PARALLEL_LOCKSTEP_PASS");
