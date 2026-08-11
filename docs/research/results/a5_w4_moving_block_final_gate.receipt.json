@@ -1,0 +1,23 @@
+{
+  "artifact": "docs/research/results/a5_w4_moving_block_final_gate.json",
+  "artifact_sha256": "337b44a6db3cc8c4a3a3cc7c796beb23141b7339848b520e9afcffb047f5017b",
+  "decision": "REJECT_AS_DEFAULT_REPLACEMENT",
+  "decision_exit": 4,
+  "determinism_contract": "same pinned input bytes produce byte-identical sorted JSON",
+  "input_receipts": {
+    "a3_commit": "2696aef01b1df455e19a84cae800719941d2df66",
+    "a3_selected_max1_six_way_receipt_sha256": "77ebf3cea5abe0edf13619c01c2081786166e9237da4391fe221744e1577f550",
+    "a4_commit": "41f239dad4a342277f33d94bb3ed3db53e3497e0",
+    "a4_functional_followup_sha256": "40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4",
+    "a4_local_summary_sha256": "b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a",
+    "a4_predeclared_gate_commit": "0d024152be37846a4fae73c65bcc2cfa73393844",
+    "a4_predeclared_gate_sha256": "f123ab43e2e203b7a4eb9a0e8612b5d2f9dcd14890718697bca6b319f51b7618",
+    "a5_audit_sha256": "1be66e390590593bb63afc41dc7964f8e417ca1851cad37c37a4d27bb7c1674f",
+    "a9_commit": "3450ddf09a590e7e66d9f35dff91efad831dfa87",
+    "a9_report_sha256": "da35c135ff848e4440724f03ac404cda1cb93ed041f02903d3836f67eac9a766",
+    "foreign_current_head_consulted": false
+  },
+  "producer": "tests/a5_w4_moving_block_audit/compute_final_adoption_gate.py",
+  "producer_sha256": "d0bb426c2315c2d52df9f432d6fe1133ee9cecb3acb3f4da09afe553cb7458cd",
+  "schema_version": 1
+}

@@ -1,15 +1,39 @@
 {
-  "a4_optimized_cost_diagnostic": {
-    "n16": {
-      "classification": "DIAGNOSTIC_ONLY_NOT_SAME_FLOW",
-      "cross_flow_total_cell_ratio_vs_a3_fixed": 1.190505644038967,
-      "reason": "A4 optimized mapping and A3 fixed reference use different normalized sources/recipes"
+  "a4_predeclared_gate": {
+    "checks": {
+      "n16": {
+        "checks": {
+          "comb_cells": true,
+          "conservative_comb_cells": false,
+          "conservative_total_cells": false,
+          "depth_fraction": false,
+          "depth_levels": false,
+          "fanout_ge16_nets": false,
+          "max_data_fanout": true,
+          "state_equal": true,
+          "total_cells": false
+        },
+        "depth_premium_levels": 10,
+        "pass": false
+      },
+      "n64": {
+        "checks": {
+          "comb_cells": true,
+          "conservative_comb_cells": false,
+          "conservative_total_cells": false,
+          "depth_fraction": false,
+          "depth_levels": false,
+          "fanout_ge16_nets": false,
+          "max_data_fanout": false,
+          "state_equal": true,
+          "total_cells": true
+        },
+        "depth_premium_levels": 13,
+        "pass": false
+      }
     },
-    "n64": {
-      "classification": "DIAGNOSTIC_ONLY_NOT_SAME_FLOW",
-      "cross_flow_total_cell_ratio_vs_a3_fixed": 1.1325511230305063,
-      "reason": "A4 optimized mapping and A3 fixed reference use different normalized sources/recipes"
-    }
+    "decision": "NO_GO",
+    "gate_id": "A4_W4_STYLE2_VS_MAX1_GATE_V1"
   },
   "a9_citation_audit": {
     "correct_restatement": {
@@ -42,6 +66,7 @@
   "decision": "REJECT_AS_DEFAULT_REPLACEMENT",
   "decision_scope": "unweighted default replacement gate; an explicitly priced tail tradeoff may define a new gate",
   "hard_gates": {
+    "a4_predeclared_same_flow_local_cost_gate": false,
     "capacity_direction_detected_both_suites": true,
     "common_qualification_complete": false,
     "exact_functional_equivalence": true,
@@ -49,12 +74,19 @@
     "physical_ppa_complete": false,
     "same_flow_throughput_per_cell_break_even_both_suites": false
   },
+  "historical_cost_excluded": {
+    "classification": "EXTERNAL_HISTORICAL_DIAGNOSTIC_ONLY",
+    "commit": "d1e979e1ce15a7e96e5aa6c32ef9b96c1d32d029",
+    "reason": "MAX1/MAX2 result is not the selected STYLE2/MAX1 six-way same-flow comparison"
+  },
   "provenance": {
-    "a3_commit": "d1e979e1ce15a7e96e5aa6c32ef9b96c1d32d029",
-    "a3_same_flow_cost_sha256": "9b097a8b5d5152276fdf1342350c93f2aabf6763661e95ec314c2e777cf1b26f",
+    "a3_commit": "2696aef01b1df455e19a84cae800719941d2df66",
+    "a3_selected_max1_six_way_receipt_sha256": "77ebf3cea5abe0edf13619c01c2081786166e9237da4391fe221744e1577f550",
     "a4_commit": "41f239dad4a342277f33d94bb3ed3db53e3497e0",
     "a4_functional_followup_sha256": "40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4",
     "a4_local_summary_sha256": "b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a",
+    "a4_predeclared_gate_commit": "0d024152be37846a4fae73c65bcc2cfa73393844",
+    "a4_predeclared_gate_sha256": "f123ab43e2e203b7a4eb9a0e8612b5d2f9dcd14890718697bca6b319f51b7618",
     "a5_audit_sha256": "1be66e390590593bb63afc41dc7964f8e417ca1851cad37c37a4d27bb7c1674f",
     "a9_commit": "3450ddf09a590e7e66d9f35dff91efad831dfa87",
     "a9_report_sha256": "da35c135ff848e4440724f03ac404cda1cb93ed041f02903d3836f67eac9a766",
@@ -62,23 +94,87 @@
   },
   "same_flow_cost": {
     "n16": {
-      "comb_cells": 1.9438265786993403,
-      "comb_depth_cells": 1.6153846153846154,
+      "comb_cells": 1.1888784165881243,
+      "comb_depth_cells": 1.7692307692307692,
+      "conservative_enable": {
+        "effective_comb_cell_ratio": 1.3953007518796992,
+        "effective_total_cell_ratio": 1.3244369021906819
+      },
+      "data_nets_fanout_ge16": 1.5054945054945055,
       "ff_bits": 1.0,
-      "total_cells": 1.774238441317458,
-      "wire_data_sink_pin_proxy": 1.8551736021366416,
-      "wire_unique_bit_proxy": 1.7154901400400113
+      "max_fanout_data": 0.9285714285714286,
+      "net_bit_count": 1.1433266647613605,
+      "net_count": 1.2369125882639396,
+      "raw": {
+        "max1": {
+          "comb_cells": 5305,
+          "comb_depth_cells": 13,
+          "data_nets_fanout_ge16": 91,
+          "ff_bits": 1162,
+          "max_fanout_data": 42,
+          "net_bit_count": 6998,
+          "net_count": 4107,
+          "total_cells": 6467,
+          "wire_data_sink_pin_proxy": 11607
+        },
+        "selected": {
+          "comb_cells": 6307,
+          "comb_depth_cells": 23,
+          "data_nets_fanout_ge16": 137,
+          "ff_bits": 1162,
+          "max_fanout_data": 39,
+          "net_bit_count": 8001,
+          "net_count": 5080,
+          "total_cells": 7469,
+          "wire_data_sink_pin_proxy": 16081
+        }
+      },
+      "total_cells": 1.1549404669862378,
+      "wire_data_sink_pin_proxy": 1.3854570517790987,
+      "wire_unique_bit_proxy": 1.1431837667905116
     },
     "n64": {
-      "comb_cells": 1.8584669944386234,
-      "comb_depth_cells": 1.3888888888888888,
+      "comb_cells": 1.1124365277665833,
+      "comb_depth_cells": 1.7222222222222223,
+      "conservative_enable": {
+        "effective_comb_cell_ratio": 1.3036137797965992,
+        "effective_total_cell_ratio": 1.2526678486602214
+      },
+      "data_nets_fanout_ge16": 1.4221105527638191,
       "ff_bits": 1.0,
-      "total_cells": 1.714113308749581,
-      "wire_data_sink_pin_proxy": 1.7952081082088163,
-      "wire_unique_bit_proxy": 1.6668336202848646
+      "max_fanout_data": 1.2,
+      "net_bit_count": 1.0873689153232118,
+      "net_count": 1.1351968344155845,
+      "raw": {
+        "max1": {
+          "comb_cells": 24814,
+          "comb_depth_cells": 18,
+          "data_nets_fanout_ge16": 398,
+          "ff_bits": 5016,
+          "max_fanout_data": 55,
+          "net_bit_count": 31945,
+          "net_count": 19712,
+          "total_cells": 29830,
+          "wire_data_sink_pin_proxy": 53674
+        },
+        "selected": {
+          "comb_cells": 27604,
+          "comb_depth_cells": 31,
+          "data_nets_fanout_ge16": 566,
+          "ff_bits": 5016,
+          "max_fanout_data": 66,
+          "net_bit_count": 34736,
+          "net_count": 22377,
+          "total_cells": 32620,
+          "wire_data_sink_pin_proxy": 70060
+        }
+      },
+      "total_cells": 1.0935300033523299,
+      "wire_data_sink_pin_proxy": 1.305287476245482,
+      "wire_unique_bit_proxy": 1.0873376115197997
     }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "suites": {
     "capacity22": {
       "accepted_delta": 35,
@@ -112,28 +208,36 @@
       "net_as_fraction_of_churn": 0.003228484457153399,
       "same_flow_efficiency": {
         "n16": {
-          "break_even_throughput_gain_percent": 77.4238441317458,
-          "comb_cell_cost_ratio": 1.9438265786993403,
-          "depth_cost_ratio": 1.6153846153846154,
+          "break_even_throughput_gain_percent": 15.494046698623777,
+          "comb_cell_cost_ratio": 1.1888784165881243,
+          "depth_cost_ratio": 1.7692307692307692,
+          "fanout_ge16_net_ratio": 1.5054945054945055,
+          "max_data_fanout_ratio": 0.9285714285714286,
+          "net_bit_cost_ratio": 1.1433266647613605,
+          "net_count_cost_ratio": 1.2369125882639396,
           "observed_throughput_gain_percent": 0.11095674259737898,
-          "throughput_per_comb_cell_ratio": 0.5150200014735057,
-          "throughput_per_total_cell_ratio": 0.5642474788690756,
-          "throughput_per_wire_sink_ratio": 0.5396312055502381,
+          "throughput_per_comb_cell_ratio": 0.8420621936253039,
+          "throughput_per_total_cell_ratio": 0.8668062086683321,
+          "throughput_per_wire_sink_ratio": 0.7225843386053902,
           "throughput_ratio": 1.0011095674259738,
-          "total_cell_cost_ratio": 1.774238441317458,
-          "wire_sink_cost_ratio": 1.8551736021366416
+          "total_cell_cost_ratio": 1.1549404669862378,
+          "wire_sink_cost_ratio": 1.3854570517790987
         },
         "n64": {
-          "break_even_throughput_gain_percent": 71.4113308749581,
-          "comb_cell_cost_ratio": 1.8584669944386234,
-          "depth_cost_ratio": 1.3888888888888888,
+          "break_even_throughput_gain_percent": 9.353000335232986,
+          "comb_cell_cost_ratio": 1.1124365277665833,
+          "depth_cost_ratio": 1.7222222222222223,
+          "fanout_ge16_net_ratio": 1.4221105527638191,
+          "max_data_fanout_ratio": 1.2,
+          "net_bit_cost_ratio": 1.0873689153232118,
+          "net_count_cost_ratio": 1.1351968344155845,
           "observed_throughput_gain_percent": 0.11095674259737898,
-          "throughput_per_comb_cell_ratio": 0.5386749242368833,
-          "throughput_per_total_cell_ratio": 0.5840393177719784,
-          "throughput_per_wire_sink_ratio": 0.5576565540497915,
+          "throughput_per_comb_cell_ratio": 0.8999251125238413,
+          "throughput_per_total_cell_ratio": 0.9154843162574126,
+          "throughput_per_wire_sink_ratio": 0.7669648147590882,
           "throughput_ratio": 1.0011095674259738,
-          "total_cell_cost_ratio": 1.714113308749581,
-          "wire_sink_cost_ratio": 1.7952081082088163
+          "total_cell_cost_ratio": 1.0935300033523299,
+          "wire_sink_cost_ratio": 1.305287476245482
         }
       },
       "same_flow_throughput_per_cell_break_even": false
@@ -170,28 +274,36 @@
       "net_as_fraction_of_churn": 0.0037194956001088634,
       "same_flow_efficiency": {
         "n16": {
-          "break_even_throughput_gain_percent": 77.4238441317458,
-          "comb_cell_cost_ratio": 1.9438265786993403,
-          "depth_cost_ratio": 1.6153846153846154,
+          "break_even_throughput_gain_percent": 15.494046698623777,
+          "comb_cell_cost_ratio": 1.1888784165881243,
+          "depth_cost_ratio": 1.7692307692307692,
+          "fanout_ge16_net_ratio": 1.5054945054945055,
+          "max_data_fanout_ratio": 0.9285714285714286,
+          "net_bit_cost_ratio": 1.1433266647613605,
+          "net_count_cost_ratio": 1.2369125882639396,
           "observed_throughput_gain_percent": 0.10765847171843035,
-          "throughput_per_comb_cell_ratio": 0.5150030335458362,
-          "throughput_per_total_cell_ratio": 0.5642288890854131,
-          "throughput_per_wire_sink_ratio": 0.5396134267780782,
+          "throughput_per_comb_cell_ratio": 0.8420344509155959,
+          "throughput_per_total_cell_ratio": 0.8667776507385234,
+          "throughput_per_wire_sink_ratio": 0.7225605322313512,
           "throughput_ratio": 1.0010765847171843,
-          "total_cell_cost_ratio": 1.774238441317458,
-          "wire_sink_cost_ratio": 1.8551736021366416
+          "total_cell_cost_ratio": 1.1549404669862378,
+          "wire_sink_cost_ratio": 1.3854570517790987
         },
         "n64": {
-          "break_even_throughput_gain_percent": 71.4113308749581,
-          "comb_cell_cost_ratio": 1.8584669944386234,
-          "depth_cost_ratio": 1.3888888888888888,
+          "break_even_throughput_gain_percent": 9.353000335232986,
+          "comb_cell_cost_ratio": 1.1124365277665833,
+          "depth_cost_ratio": 1.7222222222222223,
+          "fanout_ge16_net_ratio": 1.4221105527638191,
+          "max_data_fanout_ratio": 1.2,
+          "net_bit_cost_ratio": 1.0873689153232118,
+          "net_count_cost_ratio": 1.1351968344155845,
           "observed_throughput_gain_percent": 0.10765847171843035,
-          "throughput_per_comb_cell_ratio": 0.5386571769705137,
-          "throughput_per_total_cell_ratio": 0.5840200759233671,
-          "throughput_per_wire_sink_ratio": 0.5576381814117455,
+          "throughput_per_comb_cell_ratio": 0.8998954634535652,
+          "throughput_per_total_cell_ratio": 0.9154541545712326,
+          "throughput_per_wire_sink_ratio": 0.7669395462191,
           "throughput_ratio": 1.0010765847171843,
-          "total_cell_cost_ratio": 1.714113308749581,
-          "wire_sink_cost_ratio": 1.7952081082088163
+          "total_cell_cost_ratio": 1.0935300033523299,
+          "wire_sink_cost_ratio": 1.305287476245482
         }
       },
       "same_flow_throughput_per_cell_break_even": false

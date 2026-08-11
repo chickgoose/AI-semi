@@ -16,18 +16,21 @@ A4_REPO_DEFAULT = Path("/home/chickgoose/projects/a4")
 A3_REPO_DEFAULT = Path("/home/chickgoose/projects/a3")
 A9_REPO_DEFAULT = Path("/home/chickgoose/projects/a9")
 A4_COMMIT = "41f239dad4a342277f33d94bb3ed3db53e3497e0"
-A3_COMMIT = "d1e979e1ce15a7e96e5aa6c32ef9b96c1d32d029"
+A4_GATE_COMMIT = "0d024152be37846a4fae73c65bcc2cfa73393844"
+A3_COMMIT = "2696aef01b1df455e19a84cae800719941d2df66"
 A9_COMMIT = "3450ddf09a590e7e66d9f35dff91efad831dfa87"
 A5_AUDIT_SHA256 = "1be66e390590593bb63afc41dc7964f8e417ca1851cad37c37a4d27bb7c1674f"
 A4_LOCAL_PATH = "rtl/candidates/a4_moving_block_w4/results/w4_local_summary.json"
 A4_FOLLOWUP_PATH = "rtl/candidates/a4_moving_block_w4/results/w4_functional_followup.json"
-A3_COST_PATH = "reports/w4_a4_moving_block_synth.json"
+A4_GATE_PATH = "rtl/candidates/a4_moving_block_w4/results/w4_max1_gate_freeze.json"
+A3_COST_PATH = "reports/w4_a4_final_economics.json"
 A9_REPORT_PATH = "experiments/a9_w4_moving_block_ddr_tournament/REPORT.md"
 A9_SUMMARY_PATH = "experiments/a9_w4_moving_block_ddr_tournament/W4_A9_SUMMARY.md"
 PINNED_SHA256 = {
     A4_LOCAL_PATH: "b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a",
     A4_FOLLOWUP_PATH: "40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4",
-    A3_COST_PATH: "9b097a8b5d5152276fdf1342350c93f2aabf6763661e95ec314c2e777cf1b26f",
+    A4_GATE_PATH: "f123ab43e2e203b7a4eb9a0e8612b5d2f9dcd14890718697bca6b319f51b7618",
+    A3_COST_PATH: "77ebf3cea5abe0edf13619c01c2081786166e9237da4391fe221744e1577f550",
     A9_REPORT_PATH: "da35c135ff848e4440724f03ac404cda1cb93ed041f02903d3836f67eac9a766",
     A9_SUMMARY_PATH: "97f16ddc48529f08d114dae1711d63e2fb8b87a432715ee91809d3d5dcf95ce0",
 }
@@ -53,19 +56,11 @@ def pinned_json(repository: Path, commit: str, path: str) -> dict[str, Any]:
     return json.loads(pinned_blob(repository, commit, path))
 
 
-def find_cost(cost: dict[str, Any], sources: int, advance: int) -> dict[str, Any]:
+def find_cost(cost: dict[str, Any], sources: int, variant: str) -> dict[str, Any]:
     matches = [row for row in cost["runs"]
-               if row["num_sources"] == sources and row["max_advance"] == advance]
+               if row["num_sources"] == sources and row["variant"] == variant]
     if len(matches) != 1:
-        raise GateError(f"missing unique cost row N={sources} advance={advance}")
-    return matches[0]
-
-
-def find_mapping(local: dict[str, Any], sources: int, design: str) -> dict[str, Any]:
-    matches = [row for row in local["mapping"]
-               if row["sources"] == sources and row["design"] == design]
-    if len(matches) != 1:
-        raise GateError(f"missing unique local mapping N={sources} design={design}")
+        raise GateError(f"missing unique cost row N={sources} variant={variant}")
     return matches[0]
 
 
@@ -103,6 +98,10 @@ def suite_gate(name: str, aggregate: dict[str, Any], same_flow_cost: dict[str, A
             "total_cell_cost_ratio": ratios["total_cells"],
             "comb_cell_cost_ratio": ratios["comb_cells"],
             "depth_cost_ratio": ratios["comb_depth_cells"],
+            "net_count_cost_ratio": ratios["net_count"],
+            "net_bit_cost_ratio": ratios["net_bit_count"],
+            "max_data_fanout_ratio": ratios["max_fanout_data"],
+            "fanout_ge16_net_ratio": ratios["data_nets_fanout_ge16"],
             "wire_sink_cost_ratio": ratios["wire_data_sink_pin_proxy"],
             "throughput_per_total_cell_ratio": throughput_ratio / ratios["total_cells"],
             "throughput_per_comb_cell_ratio": throughput_ratio / ratios["comb_cells"],
@@ -173,12 +172,15 @@ def evaluate(a5_audit_path: Path, a4_repo: Path, a3_repo: Path,
     audit = json.loads(audit_bytes)
     local = pinned_json(a4_repo, A4_COMMIT, A4_LOCAL_PATH)
     followup = pinned_json(a4_repo, A4_COMMIT, A4_FOLLOWUP_PATH)
+    predeclared_gate = pinned_json(a4_repo, A4_GATE_COMMIT, A4_GATE_PATH)
     cost = pinned_json(a3_repo, A3_COMMIT, A3_COST_PATH)
     a9_report = pinned_blob(a9_repo, A9_COMMIT, A9_REPORT_PATH).decode("utf-8")
     a9_summary = pinned_blob(a9_repo, A9_COMMIT, A9_SUMMARY_PATH).decode("utf-8")
 
-    if cost["status"] != "PASS" or cost["provenance"]["commit"] != local["baseline_commit"]:
-        raise GateError("A3 same-flow cost is not bound to the A4 frozen baseline")
+    if (cost["status"] != "PASS"
+            or cost["provenance"]["a4_commit"] != A4_COMMIT
+            or not predeclared_gate["frozen_before_a3_same_flow_result_review"]):
+        raise GateError("A3 selected/MAX1 receipt or predeclared A4 gate is not pinned")
     functional_pass = (
         local["status"]["exact_lockstep"] == "PASS"
         and followup["summary"]["all_conservation_order_drain"] == "PASS"
@@ -186,31 +188,76 @@ def evaluate(a5_audit_path: Path, a4_repo: Path, a3_repo: Path,
     )
     same_flow_cost = {}
     for sources in (16, 64):
-        fixed = find_cost(cost, sources, 1)
-        moving = find_cost(cost, sources, 2)
+        fixed = find_cost(cost, sources, "w3_max_advance1")
+        moving = find_cost(cost, sources, "shared_clearance_local_enable")
         same_flow_cost[sources] = {
             field: moving[field] / fixed[field]
             for field in (
                 "total_cells", "comb_cells", "comb_depth_cells",
-                "wire_unique_bit_proxy", "wire_data_sink_pin_proxy",
+                "net_count", "net_bit_count", "max_fanout_data",
+                "data_nets_fanout_ge16", "wire_unique_bit_proxy",
+                "wire_data_sink_pin_proxy",
             )
         }
         same_flow_cost[sources]["ff_bits"] = moving["ff_bits"] / fixed["ff_bits"]
+        same_flow_cost[sources]["raw"] = {
+            "max1": {field: fixed[field] for field in (
+                "total_cells", "comb_cells", "comb_depth_cells", "net_count",
+                "net_bit_count", "max_fanout_data", "data_nets_fanout_ge16",
+                "wire_data_sink_pin_proxy", "ff_bits",
+            )},
+            "selected": {field: moving[field] for field in (
+                "total_cells", "comb_cells", "comb_depth_cells", "net_count",
+                "net_bit_count", "max_fanout_data", "data_nets_fanout_ge16",
+                "wire_data_sink_pin_proxy", "ff_bits",
+            )},
+        }
+        fixed_dffe = fixed["cell_types"].get("$_DFFE_PN0P_", 0)
+        selected_dffe = moving["cell_types"].get("$_DFFE_PN0P_", 0)
+        same_flow_cost[sources]["conservative_enable"] = {
+            "effective_total_cell_ratio": (
+                (moving["total_cells"] + selected_dffe)
+                / (fixed["total_cells"] + fixed_dffe)
+            ),
+            "effective_comb_cell_ratio": (
+                (moving["comb_cells"] + selected_dffe)
+                / (fixed["comb_cells"] + fixed_dffe)
+            ),
+        }
+
+    ceiling = predeclared_gate["same_flow_local_cost_ceiling_per_size"]
+    conservative_ceiling = predeclared_gate["conservative_enable_cost_ceiling_per_size"]
+    predeclared_checks: dict[str, Any] = {}
+    for sources, ratios in same_flow_cost.items():
+        raw = ratios["raw"]
+        depth_levels = raw["selected"]["comb_depth_cells"] - raw["max1"]["comb_depth_cells"]
+        checks = {
+            "state_equal": ratios["ff_bits"] == 1,
+            "total_cells": ratios["total_cells"] - 1 <= ceiling["mapped_total_cells_maximum_premium_fraction"],
+            "comb_cells": ratios["comb_cells"] - 1 <= ceiling["mapped_comb_cells_maximum_premium_fraction"],
+            "depth_levels": depth_levels <= ceiling["logic_depth_maximum_premium_levels"],
+            "depth_fraction": ratios["comb_depth_cells"] - 1 <= ceiling["logic_depth_maximum_premium_fraction"],
+            "max_data_fanout": ratios["max_fanout_data"] - 1 <= ceiling["max_fanout_maximum_premium_fraction"],
+            "fanout_ge16_nets": ratios["data_nets_fanout_ge16"] - 1 <= ceiling["nets_fanout_ge16_maximum_premium_fraction"],
+            "conservative_total_cells": (
+                ratios["conservative_enable"]["effective_total_cell_ratio"] - 1
+                <= conservative_ceiling["effective_total_cells_maximum_premium_fraction"]
+            ),
+            "conservative_comb_cells": (
+                ratios["conservative_enable"]["effective_comb_cell_ratio"] - 1
+                <= conservative_ceiling["effective_comb_cells_maximum_premium_fraction"]
+            ),
+        }
+        predeclared_checks[f"n{sources}"] = {
+            "depth_premium_levels": depth_levels,
+            "checks": checks,
+            "pass": all(checks.values()),
+        }
 
     suites = {
         name: suite_gate(name, audit["suites"][name]["aggregate"], same_flow_cost)
         for name in ("full50", "capacity22")
     }
-    optimized_diagnostic = {}
-    for sources in (16, 64):
-        fixed = find_cost(cost, sources, 1)
-        optimized = find_mapping(local, sources, "shared_clearance_local_enable")
-        optimized_diagnostic[f"n{sources}"] = {
-            "cross_flow_total_cell_ratio_vs_a3_fixed": optimized["cells"] / fixed["total_cells"],
-            "classification": "DIAGNOSTIC_ONLY_NOT_SAME_FLOW",
-            "reason": "A4 optimized mapping and A3 fixed reference use different normalized sources/recipes",
-        }
-
     hard_gates = {
         "exact_functional_equivalence": functional_pass,
         "capacity_direction_detected_both_suites": all(
@@ -222,6 +269,9 @@ def evaluate(a5_audit_path: Path, a4_repo: Path, a3_repo: Path,
         "same_flow_throughput_per_cell_break_even_both_suites": all(
             row["same_flow_throughput_per_cell_break_even"] for row in suites.values()
         ),
+        "a4_predeclared_same_flow_local_cost_gate": all(
+            row["pass"] for row in predeclared_checks.values()
+        ),
         "common_qualification_complete": local["status"]["common_qualification"] == "PASS",
         "physical_ppa_complete": local["status"]["physical_ppa_qualification"] == "PASS",
     }
@@ -230,6 +280,7 @@ def evaluate(a5_audit_path: Path, a4_repo: Path, a3_repo: Path,
         "capacity_direction_detected_both_suites",
         "matched_tail_non_regression_both_suites",
         "same_flow_throughput_per_cell_break_even_both_suites",
+        "a4_predeclared_same_flow_local_cost_gate",
     ))
     qualification_complete = (
         hard_gates["common_qualification_complete"]
@@ -241,7 +292,7 @@ def evaluate(a5_audit_path: Path, a4_repo: Path, a3_repo: Path,
         else "ADOPT"
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "decision": decision,
         "decision_scope": (
             "unweighted default replacement gate; an explicitly priced tail tradeoff may define a new gate"
@@ -249,15 +300,27 @@ def evaluate(a5_audit_path: Path, a4_repo: Path, a3_repo: Path,
         "hard_gates": hard_gates,
         "suites": suites,
         "same_flow_cost": {f"n{sources}": row for sources, row in same_flow_cost.items()},
-        "a4_optimized_cost_diagnostic": optimized_diagnostic,
+        "a4_predeclared_gate": {
+            "gate_id": predeclared_gate["gate_id"],
+            "checks": predeclared_checks,
+            "decision": "NO_GO" if not all(row["pass"] for row in predeclared_checks.values())
+                        else "GO_TO_COMMON_AND_PHYSICAL",
+        },
+        "historical_cost_excluded": {
+            "commit": "d1e979e1ce15a7e96e5aa6c32ef9b96c1d32d029",
+            "classification": "EXTERNAL_HISTORICAL_DIAGNOSTIC_ONLY",
+            "reason": "MAX1/MAX2 result is not the selected STYLE2/MAX1 six-way same-flow comparison",
+        },
         "a9_citation_audit": a9_citation_audit(a9_report, a9_summary),
         "provenance": {
             "a5_audit_sha256": A5_AUDIT_SHA256,
             "a4_commit": A4_COMMIT,
             "a4_local_summary_sha256": PINNED_SHA256[A4_LOCAL_PATH],
             "a4_functional_followup_sha256": PINNED_SHA256[A4_FOLLOWUP_PATH],
+            "a4_predeclared_gate_commit": A4_GATE_COMMIT,
+            "a4_predeclared_gate_sha256": PINNED_SHA256[A4_GATE_PATH],
             "a3_commit": A3_COMMIT,
-            "a3_same_flow_cost_sha256": PINNED_SHA256[A3_COST_PATH],
+            "a3_selected_max1_six_way_receipt_sha256": PINNED_SHA256[A3_COST_PATH],
             "a9_commit": A9_COMMIT,
             "a9_report_sha256": PINNED_SHA256[A9_REPORT_PATH],
             "foreign_current_head_consulted": False,
@@ -274,17 +337,36 @@ def main() -> int:
     parser.add_argument("--a3-repo", type=Path, default=A3_REPO_DEFAULT)
     parser.add_argument("--a9-repo", type=Path, default=A9_REPO_DEFAULT)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--receipt", type=Path,
+                        help="optional byte receipt for deterministic result and producer")
     args = parser.parse_args()
     document = evaluate(args.a5_audit, args.a4_repo, args.a3_repo, args.a9_repo)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n",
                            encoding="utf-8")
-    print(f"A5_W4_FINAL_GATE_{document['decision']} output={args.output}")
-    return {
+    decision_exit = {
         "ADOPT": 0,
         "HOLD_PENDING_COMMON_AND_PHYSICAL": 3,
         "REJECT_AS_DEFAULT_REPLACEMENT": 4,
     }[document["decision"]]
+    if args.receipt:
+        producer = Path(__file__).resolve()
+        receipt = {
+            "schema_version": 1,
+            "artifact": str(args.output),
+            "artifact_sha256": sha256_bytes(args.output.read_bytes()),
+            "producer": str(producer.relative_to(project)),
+            "producer_sha256": sha256_bytes(producer.read_bytes()),
+            "decision": document["decision"],
+            "decision_exit": decision_exit,
+            "determinism_contract": "same pinned input bytes produce byte-identical sorted JSON",
+            "input_receipts": document["provenance"],
+        }
+        args.receipt.parent.mkdir(parents=True, exist_ok=True)
+        args.receipt.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+                                encoding="utf-8")
+    print(f"A5_W4_FINAL_GATE_{document['decision']} output={args.output}")
+    return decision_exit
 
 
 if __name__ == "__main__":

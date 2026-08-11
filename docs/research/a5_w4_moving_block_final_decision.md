@@ -19,12 +19,19 @@ current `HEAD`:
   `b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a`
   and functional follow-up SHA
   `40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4`;
-- A3 `d1e979e1ce15a7e96e5aa6c32ef9b96c1d32d029`, same-flow synthesis result
-  SHA `9b097a8b5d5152276fdf1342350c93f2aabf6763661e95ec314c2e777cf1b26f`;
+- A4 predeclared gate `0d024152be37846a4fae73c65bcc2cfa73393844`, SHA
+  `f123ab43e2e203b7a4eb9a0e8612b5d2f9dcd14890718697bca6b319f51b7618`;
+- A3 `2696aef01b1df455e19a84cae800719941d2df66`, true six-way
+  selected/MAX1/MAX2 same-flow receipt SHA
+  `77ebf3cea5abe0edf13619c01c2081786166e9237da4391fe221744e1577f550`;
 - A9 `3450ddf09a590e7e66d9f35dff91efad831dfa87`, audited read-only below.
 
 The machine-readable gate is
 [`a5_w4_moving_block_final_gate.json`](results/a5_w4_moving_block_final_gate.json).
+Its byte receipt is
+[`a5_w4_moving_block_final_gate.receipt.json`](results/a5_w4_moving_block_final_gate.receipt.json);
+the result SHA is
+`337b44a6db3cc8c4a3a3cc7c796beb23141b7339848b520e9afcffb047f5017b`.
 
 ## Gate contract
 
@@ -34,7 +41,8 @@ utility weight:
 1. exact functional equivalence, conservation, order, and drain;
 2. statistically detected generated-event capacity direction;
 3. no p95, p99, or maximum regression on the occurrence-ID matched cohort;
-4. measured throughput ratio at least equal to same-flow total-cell cost ratio,
+4. measured throughput ratio at least equal to selected/MAX1 same-flow
+   total-cell cost ratio,
    so throughput per mapped cell does not fall;
 5. common qualification and physical evidence complete before adoption.
 
@@ -70,36 +78,38 @@ survivor-composition effect because matched p99 remains 46. Capacity22 retains
 the +1 inside the matched cohort, so the tail regression cannot be dismissed as
 survivorship alone.
 
-## Same-flow cost and break-even
+## True selected/MAX1 same-flow cost and break-even
 
-A3 uses the same normalized RTL boundary, tool, recipe, parameters, and
-register/IO contract for `MAX_ADVANCE=1` and `2`. These ratios are the formal
-cost input:
+A3 `2696aef` maps MAX1, frozen MAX2, and selected STYLE2 at N16/N64 with the
+same boundary, tool, canonical top, pass sequence, and generic cell
+interpretation. Only selected STYLE2 versus MAX1 is the formal adoption-cost
+input. The older `d1e979e` MAX1/MAX2 result is excluded from the decision and
+retained only as an external historical diagnostic.
 
-| N | total cells | comb cells | comb depth | data sink-pin wire | FF bits |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 16 | 1.774× | 1.944× | 1.615× | 1.855× | 1.000× |
-| 64 | 1.714× | 1.858× | 1.389× | 1.795× | 1.000× |
+| N | cells MAX1→selected | comb | depth | nets/bits | data max fanout / >=16 nets | sink-pin wire |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 6,467→7,469 (+15.49%) | 5,305→6,307 (+18.89%) | **13→23** | 4,107→5,080 / 6,998→8,001 | 42→39 / 91→137 | 11,607→16,081 |
+| 64 | 29,830→32,620 (+9.35%) | 24,814→27,604 (+11.24%) | **18→31** | 19,712→22,377 / 31,945→34,736 | 55→66 / 398→566 | 53,674→70,060 |
 
 | suite | measured throughput gain | N16 break-even gain | N16 throughput/cell | N64 break-even gain | N64 throughput/cell |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| full50 | +0.1077% | +77.42% | 0.564× | +71.41% | 0.584× |
-| capacity22 | +0.1110% | +77.42% | 0.564× | +71.41% | 0.584× |
+| full50 | +0.1077% | +15.49% | 0.867× | +9.35% | 0.915× |
+| capacity22 | +0.1110% | +15.49% | 0.867× | +9.35% | 0.915× |
 
 Moving preserves state bits but does not recover its combinational and wire
-cost. Its throughput gain is roughly 640--720 times smaller than the total-cell
-break-even gain, and throughput per cell falls by 42--44%.
+cost. Its throughput gain is roughly 84--144 times smaller than the total-cell
+break-even gain, and throughput per cell falls by about 8.5--13.3%.
 
-### A4 STYLE2 optimization boundary
+### Predeclared A4 `0d02415` gate
 
-A4's `shared_clearance_local_enable` is cycle-exact and reduces cells relative
-to A4's moving baseline. It is valuable implementation work, but its comparison
-does not include the fixed one-step reference in the same normalized
-source/recipe. Combining its raw counts with A3 gives diagnostic-only
-STYLE2/fixed ratios of 1.191× at N16 and 1.133× at N64. Even this optimistic
-cross-flow splice yields only about 0.841×/0.884× throughput per cell, and it
-cannot repair the matched tail because STYLE2 intentionally preserves moving
-semantics. It is not promoted to formal same-flow evidence.
+The A4 gate was frozen before A3's result. It permits at most two added logic
+levels and 10% depth premium at each size, with no cross-metric compensation.
+The true receipt reports +10 levels/76.92% at N16 and +13 levels/72.22% at N64,
+so depth alone makes the local result **NO-GO**. Other failures include N16
+total cells (15.49% versus a 15% ceiling), high-fanout-net counts at both sizes,
+and N64 maximum fanout. Conservative DFFE-as-DFF-plus-mux accounting also
+exceeds its total/comb ceilings. No cross-flow synthesis count is used to reach
+this decision.
 
 ## Read-only audit of A9 `3450ddf`
 
@@ -136,12 +146,13 @@ Correct replacement wording is:
 | Exact functional equivalence | PASS |
 | Positive capacity direction in both suites | PASS |
 | Matched-tail non-regression | **FAIL** |
-| Same-flow throughput/cell break-even | **FAIL** |
+| True selected/MAX1 throughput/cell break-even | **FAIL** |
+| A4 predeclared same-flow local-cost gate | **NO-GO** |
 | Common qualification complete | HOLD/open |
 | Physical PPA complete | HOLD/open |
 
 The candidate is **REJECTED as the default fixed-one-step replacement**. The
-small net capacity effect does not amortize the same-flow logic/connectivity
+small net capacity effect does not amortize the true same-flow logic/connectivity
 cost, and cap22 has a real matched p99/max regression. No server PPA run is
 needed to reach this pre-physical decision. A4 STYLE2 may remain a local
 conditional implementation artifact, but it is not an adopted system
@@ -151,7 +162,8 @@ candidate under this gate.
 
 ```bash
 python3 tests/a5_w4_moving_block_audit/compute_final_adoption_gate.py \
-  --output /tmp/a5-w4-final-gate.json
+  --output /tmp/a5-w4-final-gate.json \
+  --receipt /tmp/a5-w4-final-gate.receipt.json
 # Expected decision-specific exit: 4 (REJECT_AS_DEFAULT_REPLACEMENT)
 python3 -m unittest \
   tests/a5_w4_moving_block_audit/test_analysis.py \

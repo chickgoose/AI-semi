@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -55,19 +56,50 @@ class FinalAdoptionGateTest(unittest.TestCase):
         for suite in ("full50", "capacity22"):
             for size in ("n16", "n64"):
                 row = self.document["suites"][suite]["same_flow_efficiency"][size]
-                self.assertGreater(row["total_cell_cost_ratio"], 1.7)
-                self.assertLess(row["throughput_per_total_cell_ratio"], 0.59)
+                self.assertGreater(row["total_cell_cost_ratio"], 1.09)
+                self.assertLess(row["throughput_per_total_cell_ratio"], 0.92)
                 self.assertGreater(
                     row["break_even_throughput_gain_percent"],
-                    600 * row["observed_throughput_gain_percent"],
+                    80 * row["observed_throughput_gain_percent"],
                 )
 
-    def test_a4_optimized_counts_are_not_promoted_to_same_flow_evidence(self):
-        diagnostic = self.document["a4_optimized_cost_diagnostic"]
-        self.assertEqual("DIAGNOSTIC_ONLY_NOT_SAME_FLOW",
-                         diagnostic["n16"]["classification"])
-        self.assertEqual("DIAGNOSTIC_ONLY_NOT_SAME_FLOW",
-                         diagnostic["n64"]["classification"])
+    def test_selected_max1_six_way_counts_are_exact(self):
+        n16 = self.document["same_flow_cost"]["n16"]["raw"]
+        n64 = self.document["same_flow_cost"]["n64"]["raw"]
+        self.assertEqual((6467, 5305, 13, 4107, 6998, 42, 91, 11607),
+                         tuple(n16["max1"][key] for key in (
+                             "total_cells", "comb_cells", "comb_depth_cells",
+                             "net_count", "net_bit_count", "max_fanout_data",
+                             "data_nets_fanout_ge16", "wire_data_sink_pin_proxy")))
+        self.assertEqual((7469, 6307, 23, 5080, 8001, 39, 137, 16081),
+                         tuple(n16["selected"][key] for key in (
+                             "total_cells", "comb_cells", "comb_depth_cells",
+                             "net_count", "net_bit_count", "max_fanout_data",
+                             "data_nets_fanout_ge16", "wire_data_sink_pin_proxy")))
+        self.assertEqual((29830, 24814, 18, 19712, 31945, 55, 398, 53674),
+                         tuple(n64["max1"][key] for key in (
+                             "total_cells", "comb_cells", "comb_depth_cells",
+                             "net_count", "net_bit_count", "max_fanout_data",
+                             "data_nets_fanout_ge16", "wire_data_sink_pin_proxy")))
+        self.assertEqual((32620, 27604, 31, 22377, 34736, 66, 566, 70060),
+                         tuple(n64["selected"][key] for key in (
+                             "total_cells", "comb_cells", "comb_depth_cells",
+                             "net_count", "net_bit_count", "max_fanout_data",
+                             "data_nets_fanout_ge16", "wire_data_sink_pin_proxy")))
+
+    def test_predeclared_depth_gate_is_no_go(self):
+        frozen = self.document["a4_predeclared_gate"]
+        self.assertEqual("NO_GO", frozen["decision"])
+        self.assertEqual(10, frozen["checks"]["n16"]["depth_premium_levels"])
+        self.assertEqual(13, frozen["checks"]["n64"]["depth_premium_levels"])
+        self.assertFalse(frozen["checks"]["n16"]["checks"]["depth_levels"])
+        self.assertFalse(frozen["checks"]["n64"]["checks"]["depth_fraction"])
+
+    def test_d1e979e_is_historical_not_formal(self):
+        excluded = self.document["historical_cost_excluded"]
+        self.assertTrue(excluded["commit"].startswith("d1e979e"))
+        self.assertEqual("EXTERNAL_HISTORICAL_DIAGNOSTIC_ONLY",
+                         excluded["classification"])
 
     def test_a9_citation_is_only_partial(self):
         audit = self.document["a9_citation_audit"]
@@ -80,6 +112,20 @@ class FinalAdoptionGateTest(unittest.TestCase):
         path = PROJECT / "docs/research/results/a5_w4_moving_block_final_gate.json"
         committed = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(self.document, committed)
+
+    def test_committed_byte_receipt_binds_result_and_producer(self):
+        receipt_path = PROJECT / (
+            "docs/research/results/a5_w4_moving_block_final_gate.receipt.json"
+        )
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        result_path = PROJECT / "docs/research/results/a5_w4_moving_block_final_gate.json"
+        producer_path = PROJECT / receipt["producer"]
+        self.assertEqual(hashlib.sha256(result_path.read_bytes()).hexdigest(),
+                         receipt["artifact_sha256"])
+        self.assertEqual(hashlib.sha256(producer_path.read_bytes()).hexdigest(),
+                         receipt["producer_sha256"])
+        self.assertEqual("REJECT_AS_DEFAULT_REPLACEMENT", receipt["decision"])
+        self.assertEqual(4, receipt["decision_exit"])
 
 
 if __name__ == "__main__":
