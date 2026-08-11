@@ -60,4 +60,10 @@ python3 -m unittest -v \
 
 Tool discovery is `--verilator`, `AER_VERILATOR`, `VERILATOR`, `PATH`, then the existing `/tmp/a7-sim-bin/verilator`; absence or an invalid configured path fails closed. Existing output/work paths are not overwritten.
 
+### Canonical tracked receipt
+
+`results/w5_r1_composition.json` is not a hand-written or derived summary. It is the byte-for-byte output of `run_w5_r1.py`, schema `a4_w5_r1_composition_canonical_v2`. Its SHA-256 is `27c0b02c740e57935e392d7ecf7925dae8f8e44fb3eb1540f576b644985e29c6`.
+
+The canonical schema excludes temporary build paths, wall-time-dependent log hashes, local repository paths, and unrelated A7 working-tree status. It retains the exact A7 commit and seven path/blob/content hashes, A4 RTL/TB/runner hashes, Verilator version and executable hash, canonical compile arguments, process return codes, exact PASS marker and marker hash. The unit regression invokes the runner twice with separate clean temporary build roots, requires the two outputs to be byte-identical, and then requires that byte stream to equal the tracked receipt. It separately retains the no-overwrite check.
+
 Status: **LOCAL COMPOSITION GO** for exact A7 `42377ca`, frozen synchronous R1, and always-ready consumption only. Common workload and physical/PPA/phase closure remain **HOLD / not claimed**.

@@ -1,43 +1,121 @@
 {
-  "schema": "a4_w5_r1_composition_v1",
-  "status": "LOCAL_R1_COMPOSITION_PASS",
-  "a7_pinned_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
-  "a7_production_object_count": 7,
+  "a4_sources": {
+    "rtl/candidates/a4_w5_r1_composition/a4_w5_r1_composition.sv": "18e7a2ec329c2048d0c1c4dc71d73ee8145dc307ed84463f1f8de7a529d43fe5",
+    "rtl/candidates/a4_w5_r1_composition/run_w5_r1.py": "6337a938923169c2ee3223806979c38c5e5af53b176f99d2f973b64cc296d6e5",
+    "rtl/candidates/a4_w5_r1_composition/tests/a4_w5_r1_composition_tb.sv": "bceb320c972113d0fe10be49ccc17f85b98f019a2a61ca32b54ca8cd8f996b79"
+  },
+  "a7": {
+    "objects": {
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv": {
+        "blob": "1de1363dee70a722dcd994b517eb6bb73ba452c6",
+        "materialized_sha256": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03",
+        "sha256": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_rx.sv": {
+        "blob": "51306d854c8ce9bebc89e3126b71982dda123f30",
+        "materialized_sha256": "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06",
+        "sha256": "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_tx.sv": {
+        "blob": "544f54353a2bad0fc448765766807d39f59d6514",
+        "materialized_sha256": "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197",
+        "sha256": "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv": {
+        "blob": "e9c29a63f05be1b44e8d651cd7de0fb0ef0d70ae",
+        "materialized_sha256": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9",
+        "sha256": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv": {
+        "blob": "01e3d6b05072df7ac6b06e30f4fcdba03ace43e4",
+        "materialized_sha256": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d",
+        "sha256": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_parallel_reference_top.sv": {
+        "blob": "03d30c5fefb77360d4f0288147d8aac809fa9616",
+        "materialized_sha256": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748",
+        "sha256": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv": {
+        "blob": "77106c061512c03af599939a0fa71a739408f8b1",
+        "materialized_sha256": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f",
+        "sha256": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f"
+      }
+    },
+    "pinned_commit": "42377ca81340951bfcd453b3bd664e673091f9f3"
+  },
   "architecture_contract": {
-    "clocking": "strict_phase_related_synchronous_R1",
     "admission": "one_frame_per_ref_posedge_valid_and_ready",
-    "qualifier_state_bits_per_endpoint": 1,
-    "consumer_boundary": "registered_retire_valid_sampled_pre_NBA_by_sink_on_following_ref_rise",
-    "parallel_boundary": "same_registered_availability_and_pre_NBA_sink_boundary",
     "cdc_claim": "none",
-    "sink": "always_ready",
-    "free_queue": false
+    "clocking": "strict_phase_related_synchronous_R1",
+    "consumer_boundary": "registered_retire_valid_sampled_pre_NBA_by_sink_on_following_ref_rise",
+    "free_queue": false,
+    "parallel_boundary": "same_registered_availability_and_pre_NBA_sink_boundary",
+    "qualifier_state_bits_per_endpoint": 1,
+    "sink": "always_ready"
   },
   "counts": {
     "accepted": 51,
-    "retired": 50,
-    "reset_aborted": 1,
+    "all_gapped": 17,
     "continuous_valid_changing_address": 32,
     "initial_gapped": 12,
-    "all_gapped": 17,
-    "stalled_held_valid": 1,
-    "reset_after_drain": 4
+    "reset_aborted": 1,
+    "reset_after_drain": 4,
+    "retired": 50,
+    "stalled_held_valid": 1
   },
+  "evidence": {
+    "canonical_compile_command": [
+      "VERILATOR",
+      "--binary",
+      "--timing",
+      "--assert",
+      "-Wall",
+      "-Wno-fatal",
+      "-Wno-DECLFILENAME",
+      "--Mdir",
+      "<WORK_DIR>/obj",
+      "--top-module",
+      "a4_w5_r1_composition_tb",
+      "<A7_BLOB:e9c29a63f05be1b44e8d651cd7de0fb0ef0d70ae>",
+      "<A7_BLOB:01e3d6b05072df7ac6b06e30f4fcdba03ace43e4>",
+      "<A7_BLOB:544f54353a2bad0fc448765766807d39f59d6514>",
+      "<A7_BLOB:51306d854c8ce9bebc89e3126b71982dda123f30>",
+      "<A7_BLOB:77106c061512c03af599939a0fa71a739408f8b1>",
+      "<A7_BLOB:1de1363dee70a722dcd994b517eb6bb73ba452c6>",
+      "<A7_BLOB:03d30c5fefb77360d4f0288147d8aac809fa9616>",
+      "rtl/candidates/a4_w5_r1_composition/a4_w5_r1_composition.sv",
+      "rtl/candidates/a4_w5_r1_composition/tests/a4_w5_r1_composition_tb.sv"
+    ],
+    "compile_returncode": 0,
+    "pass_marker": "A4_W5_R1_COMPOSITION_PASS accepted=51 retired=50 aborted=1 continuous=32 initial_gapped=12 all_gapped=17 held=1 post_reset=4 endpoint_valid_ns=16 sink_sample_ns=32",
+    "pass_marker_sha256": "46655cedd419426885a3c4dccfe3895f79c7c3c77c4b0a822f58ef265665e3a8",
+    "simulation_returncode": 0
+  },
+  "owner_structural_proxy": {
+    "ddr": {
+      "charged_functional_cells": 29,
+      "link_pins": 3,
+      "state_bits": 20
+    },
+    "parallel": {
+      "charged_functional_cells": 27,
+      "link_pins": 5,
+      "state_bits": 18
+    }
+  },
+  "schema": "a4_w5_r1_composition_canonical_v2",
+  "status": "LOCAL_R1_COMPOSITION_PASS",
   "timing_ns": {
     "ddr_native_commit_from_accept": 12,
     "endpoint_registered_valid_from_accept": 16,
     "sequential_sink_sample_from_accept": 32
   },
-  "a4_source_sha256": {
-    "a4_w5_r1_composition.sv": "18e7a2ec329c2048d0c1c4dc71d73ee8145dc307ed84463f1f8de7a529d43fe5",
-    "a4_w5_r1_composition_tb.sv": "bceb320c972113d0fe10be49ccc17f85b98f019a2a61ca32b54ca8cd8f996b79"
+  "tool": {
+    "executable_sha256": "1e48c09b042b0d068d6b79671008537fb0b1a63f220267408b6d9230473d51db",
+    "name": "verilator",
+    "version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
   },
-  "owner_structural_proxy": {
-    "ddr": {"link_pins": 3, "state_bits": 20, "charged_functional_cells": 29},
-    "parallel": {"link_pins": 5, "state_bits": 18, "charged_functional_cells": 27}
-  },
-  "tool": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
-  "pass_marker": "A4_W5_R1_COMPOSITION_PASS accepted=51 retired=50 aborted=1 continuous=32 initial_gapped=12 all_gapped=17 held=1 post_reset=4 endpoint_valid_ns=16 sink_sample_ns=32",
   "unsupported": [
     "unrelated_clock_CDC",
     "sink_backpressure",

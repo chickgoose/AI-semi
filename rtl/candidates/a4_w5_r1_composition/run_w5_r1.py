@@ -90,6 +90,7 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[3]
+    runner = Path(__file__).resolve()
     rtl = root / "rtl/candidates/a4_w5_r1_composition/a4_w5_r1_composition.sv"
     tb = root / "rtl/candidates/a4_w5_r1_composition/tests/a4_w5_r1_composition_tb.sv"
     output = args.output.resolve()
@@ -101,8 +102,6 @@ def main() -> int:
     commit_type = git_bytes(repo, "cat-file", "-t", A7_COMMIT).decode().strip()
     if commit_type != "commit":
         raise RuntimeError("pinned A7 object is not a commit")
-    head = git_bytes(repo, "rev-parse", "HEAD").decode().strip()
-    porcelain = git_bytes(repo, "status", "--porcelain").decode().splitlines()
     verilator = find_verilator(args.verilator)
     version = run([str(verilator), "--version"])
     if version.returncode != 0:
@@ -148,8 +147,17 @@ def main() -> int:
         if simulated.returncode != 0 or not PASS_RE.search(simulation_text):
             raise RuntimeError(f"simulation failed or PASS marker absent\n{simulation_text}")
 
+        pass_marker = PASS_RE.search(simulation_text).group(0)
+        canonical_command = [
+            "VERILATOR", "--binary", "--timing", "--assert", "-Wall", "-Wno-fatal",
+            "-Wno-DECLFILENAME", "--Mdir", "<WORK_DIR>/obj", "--top-module",
+            "a4_w5_r1_composition_tb",
+            *[f"<A7_BLOB:{item['blob']}>" for item in A7_OBJECTS.values()],
+            str(rtl.relative_to(root)), str(tb.relative_to(root)),
+        ]
+
         report = {
-            "schema": "a4_w5_r1_composition_v1",
+            "schema": "a4_w5_r1_composition_canonical_v2",
             "status": "LOCAL_R1_COMPOSITION_PASS",
             "architecture_contract": {
                 "clocking": "strict_phase_related_synchronous_R1",
@@ -173,19 +181,27 @@ def main() -> int:
                 "sequential_sink_sample_from_accept": 32,
             },
             "a7": {
-                "repo": str(repo), "pinned_commit": A7_COMMIT,
-                "current_head": head, "working_tree_clean": not porcelain,
-                "working_tree_entries": porcelain, "objects": object_report,
+                "pinned_commit": A7_COMMIT, "objects": object_report,
             },
             "a4_sources": {
                 str(rtl.relative_to(root)): sha256(rtl.read_bytes()),
                 str(tb.relative_to(root)): sha256(tb.read_bytes()),
+                str(runner.relative_to(root)): sha256(runner.read_bytes()),
             },
-            "tool": {"path": str(verilator), "version": version.stdout.strip()},
+            "owner_structural_proxy": {
+                "ddr": {"link_pins": 3, "state_bits": 20, "charged_functional_cells": 29},
+                "parallel": {"link_pins": 5, "state_bits": 18, "charged_functional_cells": 27},
+            },
+            "tool": {
+                "name": "verilator", "version": version.stdout.strip(),
+                "executable_sha256": sha256(verilator.read_bytes()),
+            },
             "evidence": {
-                "command": command, "compile_log_sha256": sha256(compile_text.encode()),
-                "simulation_log_sha256": sha256(simulation_text.encode()),
-                "pass_marker": PASS_RE.search(simulation_text).group(0),
+                "canonical_compile_command": canonical_command,
+                "compile_returncode": compiled.returncode,
+                "simulation_returncode": simulated.returncode,
+                "pass_marker": pass_marker,
+                "pass_marker_sha256": sha256(pass_marker.encode()),
             },
             "unsupported": [
                 "unrelated_clock_CDC", "sink_backpressure", "R_greater_than_1",
