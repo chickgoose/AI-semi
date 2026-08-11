@@ -22,9 +22,11 @@ latency on `core_simultaneous_identity` and `global_fanin_identity` from 33 to
 **HOLD_LATENCY_OR_LINK_GATE** and `selected_gate` is null.
 
 No endpoint PPA claim remains.  The local synthesis numbers cover only the
-standalone encoder and decoder; collector, sorter, two TX banks, ownership and
-launch control, integration, and request capture are excluded.  Their endpoint
-area, timing, power, and storage cost are unknown.
+standalone encoder and decoder.  The active serializer's `send_shift` and
+`send_length` storage is synthesized inside the encoder's 121 registered bits.
+Only the one queued batch, collector, sorter, ownership/launch control,
+integration, and request capture are excluded; their endpoint area, timing,
+power, and storage cost are unknown.
 
 ## Exact representation and framing
 
@@ -71,7 +73,9 @@ The cap22 simulator charges one active serializer bank plus at most one queued
 batch and an RX capacity of `2K`, plus one normalized retirement per cycle.
 The standalone synthesized
 codec modules contain 665 registered bits (121 TX, 544 RX including the
-128-bit RX FIFO), but this is explicitly not full endpoint storage.
+128-bit RX FIFO).  The 121 TX bits include active serializer
+`send_shift`/`send_length`; the queued-batch and collection/control storage is
+not included, so this is explicitly not full endpoint storage.
 Scoreboard-only identity/time storage is excluded from hardware and never
 reconstructed for free.
 
@@ -142,7 +146,7 @@ beat/count/data, decoder-visible head, retirement address, and occurrence-to-
 retirement latency.  It proves three dense frames plus raw fallback, terminal-
 beat batch visibility, and a third marker stalled until exactly K slots exist.
 
-Twelve model tests cover randomized N16/N64 all
+Sixteen model tests cover randomized N16/N64 all
 cardinalities, malformed/truncated streams, refire, partial timeout, provenance,
 conservation, the same-cycle anti-cross-cycle invariant, and the cycle oracle.
 The candidate runner regenerates and diffs the oracle, then actually builds and
