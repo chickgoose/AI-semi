@@ -207,9 +207,26 @@ library (fixture) {
         _, receipt_path = self.valid_receipt(site_path)
         result = self.run_cli("--site-manifest", str(site_path), "--results-receipt",
                           str(receipt_path), "--allow-synthetic-fixture")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("A7_W4_SYNTHETIC_RECEIPT_FIXTURE_PASS", result.stdout)
-        self.assertIn("A7_W4_PHYSICAL_HOLD_EDA_NOT_RUN", result.stdout)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("A7_W4_DECLARATIVE_RESULTS_PRECHECK_PASS", result.stdout)
+        self.assertIn("A7_W4_PRECHECK_ONLY_HOLD", result.stderr)
+        self.assertNotIn("QUALIFIED", result.stdout + result.stderr)
+
+    def test_a8_empty_report_production_attack_never_qualifies(self) -> None:
+        # Exact attack: /bin/true, empty reused report/SAIF files, and entirely
+        # self-declared positive slack and power values.
+        site, _ = self.valid_site()
+        site["synthetic_fixture"] = False
+        site_path = self.write_json("a8-production-site.json", site)
+        receipt, _ = self.valid_receipt(site_path)
+        receipt["synthetic_fixture"] = False
+        receipt_path = self.write_json("a8-production-receipt.json", receipt)
+        result = self.run_cli("--site-manifest", str(site_path), "--results-receipt",
+                              str(receipt_path))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("A7_W4_DECLARATIVE_RESULTS_PRECHECK_PASS", result.stdout)
+        self.assertIn("A7_W4_PRECHECK_ONLY_HOLD", result.stderr)
+        self.assertNotIn("QUALIFIED", result.stdout + result.stderr)
 
     def test_negative_halfcycle_slack_fails(self) -> None:
         _, site_path = self.valid_site()

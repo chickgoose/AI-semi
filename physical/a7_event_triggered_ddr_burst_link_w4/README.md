@@ -2,7 +2,8 @@
 
 This directory freezes the experiment that may later run with Genus, Innovus,
 and a site CDC/RDC tool. It neither contains nor implies a server run. Repository
-state remains `PHYSICAL_HOLD` until non-synthetic site and result receipts pass.
+state remains `PHYSICAL_HOLD`. The results path is declaration checking only
+and always exits nonzero with `A7_W4_PRECHECK_ONLY_HOLD`.
 
 ## Three fail-closed gates
 
@@ -13,15 +14,21 @@ state remains `PHYSICAL_HOLD` until non-synthetic site and result receipts pass.
    setup/hold Liberty, named ICG/ODDR/IDDR or characterized equivalent cells in
    both Liberty views, cell-query evidence, exact loads/transitions, and both
    activity files. This permits a controlled run; it is not physical evidence.
-3. `--results-receipt` requires mapped cells and reports, both-edge and both
+3. `--results-receipt` checks declarations for mapped cells and reports, both-edge and both
    half-cycle setup/hold, clock-gating checks, recovery/removal, pulse width,
    skew, route/extraction, zero unconstrained/DRC/antenna violations, CDC/RDC,
-   annotated power coverage, and recomputed energy/event.
+   annotated power coverage, and recomputed energy/event. It cannot authenticate
+   report contents and therefore never qualifies a result.
 
 Synthetic fixtures require both `--allow-synthetic-fixture` and
 `synthetic_fixture:true` in site and receipt. The flag rejects production-labeled
 manifests, and synthetic manifests are rejected without the flag. Even a
-complete fixture prints `A7_W4_PHYSICAL_HOLD_EDA_NOT_RUN` and can never qualify.
+complete fixture remains HOLD and can never qualify.
+
+Production qualification is disabled until trusted flow provenance plus
+canonical mapped-hierarchy/cell-role, STA, CDC/RDC, activity, and power parsers
+extract values from actual reports. File existence, hashes, executable names,
+and self-declared JSON numbers are not physical evidence.
 
 ## Frozen boundary and activity
 

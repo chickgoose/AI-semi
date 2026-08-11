@@ -4,6 +4,17 @@
   "owner": "A7",
   "rtl_commit": "db3f04fe0e01699e63c596145fe71effc601e57c",
   "status_without_server_eda": "PHYSICAL_HOLD",
+  "results_validation": {
+    "mode": "PRECHECK_ONLY_HOLD",
+    "production_qualification_enabled": false,
+    "missing_trusted_gates": [
+      "trusted flow-origin receipt and provenance verification",
+      "canonical mapped hierarchy and ICG/ODDR/IDDR role extraction",
+      "canonical Genus and Innovus STA report parsers",
+      "canonical CDC and RDC report parsers",
+      "canonical activity coverage and post-route power parsers"
+    ]
+  },
   "top": "a7_event_triggered_ddr_burst_link_w4",
   "filelist": "physical/a7_event_triggered_ddr_burst_link_w4/rtl.f",
   "filelist_sha256": "f8998fe3583d78dfb47f10393e1e0d6311744b7994c21c999da541e2905def91",

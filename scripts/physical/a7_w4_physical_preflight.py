@@ -74,6 +74,13 @@ def validate_contract(path: Path, problems: Problems) -> dict[str, Any]:
     problems.require(contract.get("schema_version") == 1, "contract schema_version must be 1")
     problems.require(contract.get("status_without_server_eda") == "PHYSICAL_HOLD",
                      "contract must remain PHYSICAL_HOLD without server EDA")
+    results_validation = contract.get("results_validation", {})
+    problems.require(results_validation.get("mode") == "PRECHECK_ONLY_HOLD",
+                     "results validation mode must remain PRECHECK_ONLY_HOLD")
+    problems.require(results_validation.get("production_qualification_enabled") is False,
+                     "production qualification must remain disabled")
+    problems.require(len(results_validation.get("missing_trusted_gates", [])) >= 5,
+                     "missing trusted parser/provenance gates are not enumerated")
     problems.require(contract.get("rtl_commit") == "db3f04fe0e01699e63c596145fe71effc601e57c",
                      "RTL commit is not frozen to db3f04f")
     roles = contract.get("technology_mapping", {}).get("required_roles")
@@ -330,11 +337,9 @@ def main() -> int:
     if args.contract_only:
         print("A7_W4_PHYSICAL_HOLD_EDA_NOT_RUN")
     elif args.results_receipt:
-        if args.allow_synthetic_fixture:
-            print("A7_W4_SYNTHETIC_RECEIPT_FIXTURE_PASS")
-            print("A7_W4_PHYSICAL_HOLD_EDA_NOT_RUN")
-        else:
-            print("A7_W4_PHYSICAL_RECEIPT_QUALIFIED")
+        print("A7_W4_DECLARATIVE_RESULTS_PRECHECK_PASS")
+        print("A7_W4_PRECHECK_ONLY_HOLD", file=sys.stderr)
+        return 2
     else:
         print("A7_W4_SITE_PREFLIGHT_PASS")
         print("A7_W4_PHYSICAL_HOLD_EDA_NOT_RUN")
