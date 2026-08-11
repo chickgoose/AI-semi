@@ -320,14 +320,23 @@
   },
   "provenance": {
     "a1_common_commit": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "a1_generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
     "a1_official_policy_sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
     "a4_commit": "850fbcfa4ad168b1250223610780f11378f6c391",
+    "a4_frozen_replay_sha256": "489710451649975b8abfec05e13ee10e7f38822fec3524c3fc189d9d5ecb8f86",
     "a4_frozen_summary_sha256": "b96ceb25f1b01b8bb8c6de3e0ede25cce97764928cf5b576d21cfed005093f39",
     "a4_model_sha256": "fc0d57cbb66c94c1b903ce3e328f962b9ef5345400bab74dbd95fe657116a8bc",
     "bootstrap_replicates": 10000,
-    "bootstrap_seed": 20260811
+    "bootstrap_seed": 20260811,
+    "source_materialization": {
+      "current_head_consulted": false,
+      "mode": "git_cat_file_pinned_commit_blobs",
+      "snapshot_file_mode": "0600",
+      "temporary_directory_mode": "0700",
+      "temporary_snapshot_retained": false
+    }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "suites": {
     "capacity22": {
       "aggregate": {

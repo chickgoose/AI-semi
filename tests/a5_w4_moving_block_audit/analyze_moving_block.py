@@ -11,24 +11,40 @@ import importlib.util
 import itertools
 import json
 import math
+import os
 from pathlib import Path
 import random
 import runpy
+import stat
 import statistics
 import subprocess
 import sys
+import tempfile
 from typing import Any, Iterable
 
 
 A4_COMMIT = "850fbcfa4ad168b1250223610780f11378f6c391"
 A4_MODEL_SHA256 = "fc0d57cbb66c94c1b903ce3e328f962b9ef5345400bab74dbd95fe657116a8bc"
 A4_SUMMARY_SHA256 = "b96ceb25f1b01b8bb8c6de3e0ede25cce97764928cf5b576d21cfed005093f39"
+A4_REPLAY_SHA256 = "489710451649975b8abfec05e13ee10e7f38822fec3524c3fc189d9d5ecb8f86"
 EXPECTED_TRACE_MANIFESTS = {
     "full50": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
     "capacity22": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
 }
 A1_COMMIT = "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be"
 A1_OFFICIAL_POLICY_SHA256 = "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33"
+A1_GENERATOR_SHA256 = "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50"
+A4_MODEL_PATH = "rtl/candidates/a4_moving_block_tree/model.py"
+A4_SUMMARY_PATH = (
+    "rtl/candidates/a4_moving_block_tree/results/generator_v4_replay_summary.json"
+)
+A4_REPLAY_PATH = "rtl/candidates/a4_moving_block_tree/replay_generator_v4.py"
+A1_POLICY_PATH = "scripts/common_suite_official.py"
+A1_GENERATOR_PATH = "benchmarks/clean_slate_aer/generate_trace.py"
+A1_MANIFEST_PATHS = {
+    "full50": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+    "capacity22": "benchmarks/clean_slate_aer/manifest.multilane-n16.json",
+}
 BOOTSTRAP_SEED = 20260811
 BOOTSTRAP_REPLICATES = 10000
 PHASE_RANGES = (
@@ -80,33 +96,102 @@ def jain(values: Iterable[float]) -> float | None:
     return sum(values) ** 2 / denominator if denominator else 1.0
 
 
-def git_output(root: Path, *args: str) -> str:
+def git_output(repository: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", "-C", str(root), *args], text=True, capture_output=True, check=False
+        ["git", "-C", str(repository), *args], text=True, capture_output=True,
+        check=False,
     )
     if result.returncode:
         raise AuditError(result.stderr.strip() or "git command failed")
     return result.stdout.strip()
 
 
-def load_a4_model(a4_root: Path):
-    model_path = a4_root / "rtl/candidates/a4_moving_block_tree/model.py"
-    summary_path = a4_root / (
-        "rtl/candidates/a4_moving_block_tree/results/generator_v4_replay_summary.json"
+def resolve_commit(repository: Path, commit: str) -> str:
+    """Resolve only the named commit object; never consult repository HEAD."""
+    resolved = git_output(repository, "rev-parse", "--verify", f"{commit}^{{commit}}")
+    if resolved != commit:
+        raise AuditError(f"pinned commit resolved unexpectedly: {resolved}")
+    return resolved
+
+
+def git_blob(repository: Path, commit: str, relative_path: str) -> bytes:
+    if Path(relative_path).is_absolute() or ".." in Path(relative_path).parts:
+        raise AuditError(f"unsafe snapshot path: {relative_path}")
+    result = subprocess.run(
+        ["git", "-C", str(repository), "cat-file", "blob",
+         f"{commit}:{relative_path}"],
+        capture_output=True, check=False,
     )
-    if git_output(a4_root, "rev-parse", "HEAD") != A4_COMMIT:
-        raise AuditError("A4 worktree HEAD is not frozen commit 850fbcf")
+    if result.returncode:
+        raise AuditError(
+            f"cannot read pinned blob {commit}:{relative_path}: "
+            + result.stderr.decode("utf-8", "replace").strip()
+        )
+    return result.stdout
+
+
+def write_snapshot_blob(root: Path, relative_path: str, content: bytes) -> Path:
+    relative = Path(relative_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise AuditError(f"unsafe snapshot path: {relative_path}")
+    target = root / relative
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    target.parent.chmod(0o700)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(target, flags, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "wb", closefd=False) as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        os.close(descriptor)
+    return target
+
+
+def materialize_git_snapshot(repository: Path, commit: str,
+                             relative_paths: Iterable[str], destination: Path) -> None:
+    resolve_commit(repository, commit)
+    destination.mkdir(mode=0o700)
+    destination.chmod(0o700)
+    for relative_path in relative_paths:
+        write_snapshot_blob(
+            destination, relative_path,
+            git_blob(repository, commit, relative_path),
+        )
+
+
+def load_a4_model(a4_snapshot: Path):
+    model_path = a4_snapshot / A4_MODEL_PATH
+    summary_path = a4_snapshot / A4_SUMMARY_PATH
+    replay_path = a4_snapshot / A4_REPLAY_PATH
     if sha256(model_path) != A4_MODEL_SHA256:
         raise AuditError("A4 model SHA mismatch")
     if sha256(summary_path) != A4_SUMMARY_SHA256:
         raise AuditError("A4 frozen replay summary SHA mismatch")
+    if sha256(replay_path) != A4_REPLAY_SHA256:
+        raise AuditError("A4 frozen replay tool SHA mismatch")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    provenance = summary.get("provenance", {})
+    expected = {
+        "replay_tool_sha256": A4_REPLAY_SHA256,
+        "generator_sha256": A1_GENERATOR_SHA256,
+        "official_policy_sha256": A1_OFFICIAL_POLICY_SHA256,
+        "full50_manifest_sha256": EXPECTED_TRACE_MANIFESTS["full50"],
+        "capacity22_manifest_sha256": EXPECTED_TRACE_MANIFESTS["capacity22"],
+    }
+    if any(provenance.get(key) != value for key, value in expected.items()):
+        raise AuditError("A4 W3 result does not bind the expected replay/trace provenance")
     spec = importlib.util.spec_from_file_location("a4_w3_frozen_model", model_path)
     if spec is None or spec.loader is None:
         raise AuditError("cannot load frozen A4 model")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module, json.loads(summary_path.read_text(encoding="utf-8"))
+    return module, summary
 
 
 @dataclass
@@ -554,10 +639,8 @@ def pairwise_mapping(pairs_by_name: dict[str, tuple[Replay, Replay]],
     return result
 
 
-def load_official_policy(a1_root: Path) -> dict[str, Any]:
-    policy_path = a1_root / "scripts/common_suite_official.py"
-    if git_output(a1_root, "rev-parse", "HEAD") != A1_COMMIT:
-        raise AuditError("A1 worktree HEAD is not the A4-frozen common commit")
+def load_official_policy(a1_snapshot: Path) -> dict[str, Any]:
+    policy_path = a1_snapshot / A1_POLICY_PATH
     if sha256(policy_path) != A1_OFFICIAL_POLICY_SHA256:
         raise AuditError("official suite policy SHA mismatch")
     policy = runpy.run_path(str(policy_path))
@@ -566,7 +649,32 @@ def load_official_policy(a1_root: Path) -> dict[str, Any]:
     return policy
 
 
-def validate_generation_index(root: Path, a1_root: Path, suite: str,
+def generate_exact_traces(a1_snapshot: Path, generated_root: Path,
+                          official: dict[str, Any]) -> None:
+    generator = a1_snapshot / A1_GENERATOR_PATH
+    if sha256(generator) != A1_GENERATOR_SHA256:
+        raise AuditError("pinned trace generator SHA mismatch")
+    generated_root.mkdir(mode=0o700)
+    generated_root.chmod(0o700)
+    environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    for suite in ("full50", "capacity22"):
+        config = official["SUITES"][suite]
+        manifest = a1_snapshot / "benchmarks/clean_slate_aer" / config["manifest_name"]
+        output = generated_root / suite
+        result = subprocess.run(
+            [sys.executable, "-B", str(generator), "--manifest", str(manifest),
+             "--output-dir", str(output)],
+            cwd=a1_snapshot, env=environment, text=True, capture_output=True,
+            check=False,
+        )
+        if result.returncode:
+            raise AuditError(
+                f"{suite}: pinned generator failed: {result.stdout}{result.stderr}"
+            )
+
+
+def validate_generation_index(root: Path, a1_snapshot: Path, suite: str,
                               official: dict[str, Any]) -> list[dict[str, Any]]:
     index_path = root / suite / "generation-index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
@@ -575,7 +683,7 @@ def validate_generation_index(root: Path, a1_root: Path, suite: str,
     config = official["SUITES"][suite]
     if index.get("input_manifest") != config["manifest_name"]:
         raise AuditError(f"{suite}: input manifest name mismatch")
-    manifest = a1_root / "benchmarks/clean_slate_aer" / config["manifest_name"]
+    manifest = a1_snapshot / "benchmarks/clean_slate_aer" / config["manifest_name"]
     if sha256(manifest) != EXPECTED_TRACE_MANIFESTS[suite]:
         raise AuditError(f"{suite}: official manifest SHA mismatch")
     if config["manifest_sha256"] != EXPECTED_TRACE_MANIFESTS[suite]:
@@ -625,58 +733,88 @@ def validate_frozen_aggregate(suite: str, pairs: list[tuple[Replay, Replay]],
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--a4-root", type=Path, default=Path("/home/chickgoose/projects/a4"))
-    parser.add_argument("--a1-root", type=Path, default=Path("/home/chickgoose/projects/a1"))
-    parser.add_argument("--generated-root", type=Path, required=True)
+    parser.add_argument("--a4-repo", type=Path, default=Path("/home/chickgoose/projects/a4"))
+    parser.add_argument("--a1-repo", type=Path, default=Path("/home/chickgoose/projects/a1"))
+    parser.add_argument("--temp-parent", type=Path, default=Path("/tmp"))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    module, frozen_summary = load_a4_model(args.a4_root.resolve())
-    official = load_official_policy(args.a1_root.resolve())
-    all_output: dict[str, Any] = {
-        "schema_version": 1,
-        "decision": "INDEPENDENT_AUDIT_ONLY",
-        "provenance": {
-            "a4_commit": A4_COMMIT,
-            "a4_model_sha256": A4_MODEL_SHA256,
-            "a4_frozen_summary_sha256": A4_SUMMARY_SHA256,
-            "bootstrap_seed": BOOTSTRAP_SEED,
-            "bootstrap_replicates": BOOTSTRAP_REPLICATES,
-            "a1_common_commit": A1_COMMIT,
-            "a1_official_policy_sha256": A1_OFFICIAL_POLICY_SHA256,
-        },
-        "suites": {},
-    }
-    full_pairs_by_name: dict[str, tuple[Replay, Replay]] = {}
-    full_metadata_by_name: dict[str, dict[str, Any]] = {}
-    for suite in ("full50", "capacity22"):
-        metadata_rows = validate_generation_index(
-            args.generated_root, args.a1_root.resolve(), suite, official
+    args.temp_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="a5-w4-pinned.", dir=args.temp_parent) as temporary:
+        secure_root = Path(temporary)
+        secure_root.chmod(0o700)
+        if stat.S_IMODE(secure_root.stat().st_mode) != 0o700:
+            raise AuditError("secure temporary root is not mode 0700")
+        a4_snapshot = secure_root / "a4-850fbcf"
+        a1_snapshot = secure_root / "a1-47e1f2f"
+        materialize_git_snapshot(
+            args.a4_repo.resolve(), A4_COMMIT,
+            (A4_MODEL_PATH, A4_SUMMARY_PATH, A4_REPLAY_PATH), a4_snapshot,
         )
-        run_rows = []
-        replay_pairs = []
-        for metadata in metadata_rows:
-            name = metadata["run"]["name"]
-            rows = read_trace(args.generated_root / suite / metadata["trace_file"])
-            fixed = replay(module.MovingBlockTreeModel, rows, metadata, 1)
-            moving = replay(module.MovingBlockTreeModel, rows, metadata, 2)
-            replay_pairs.append((fixed, moving))
-            run_rows.append(run_comparison(name, metadata, fixed, moving))
-            if suite == "full50":
-                full_pairs_by_name[name] = (fixed, moving)
-                full_metadata_by_name[name] = metadata
-        frozen = frozen_summary["full50" if suite == "full50" else "capacity22"]
-        reproduction = validate_frozen_aggregate(suite, replay_pairs, frozen)
-        aggregate = aggregate_suite(run_rows, replay_pairs, suite)
-        all_output["suites"][suite] = {
-            "generation_index_sha256": sha256(args.generated_root / suite / "generation-index.json"),
-            "frozen_aggregate_reproduction": reproduction,
-            "aggregate": aggregate,
-            "runs": run_rows,
+        materialize_git_snapshot(
+            args.a1_repo.resolve(), A1_COMMIT,
+            (A1_POLICY_PATH, A1_GENERATOR_PATH, *A1_MANIFEST_PATHS.values()),
+            a1_snapshot,
+        )
+        module, frozen_summary = load_a4_model(a4_snapshot)
+        official = load_official_policy(a1_snapshot)
+        generated_root = secure_root / "generated"
+        generate_exact_traces(a1_snapshot, generated_root, official)
+        all_output: dict[str, Any] = {
+            "schema_version": 2,
+            "decision": "INDEPENDENT_AUDIT_ONLY",
+            "provenance": {
+                "a4_commit": A4_COMMIT,
+                "a4_model_sha256": A4_MODEL_SHA256,
+                "a4_frozen_summary_sha256": A4_SUMMARY_SHA256,
+                "a4_frozen_replay_sha256": A4_REPLAY_SHA256,
+                "bootstrap_seed": BOOTSTRAP_SEED,
+                "bootstrap_replicates": BOOTSTRAP_REPLICATES,
+                "a1_common_commit": A1_COMMIT,
+                "a1_official_policy_sha256": A1_OFFICIAL_POLICY_SHA256,
+                "a1_generator_sha256": A1_GENERATOR_SHA256,
+                "source_materialization": {
+                    "mode": "git_cat_file_pinned_commit_blobs",
+                    "current_head_consulted": False,
+                    "temporary_directory_mode": "0700",
+                    "snapshot_file_mode": "0600",
+                    "temporary_snapshot_retained": False,
+                },
+            },
+            "suites": {},
         }
-    all_output["phase_recovery"] = phase_recovery(full_pairs_by_name)
-    all_output["pairwise_mapping"] = pairwise_mapping(
-        full_pairs_by_name, full_metadata_by_name
-    )
+        full_pairs_by_name: dict[str, tuple[Replay, Replay]] = {}
+        full_metadata_by_name: dict[str, dict[str, Any]] = {}
+        for suite in ("full50", "capacity22"):
+            metadata_rows = validate_generation_index(
+                generated_root, a1_snapshot, suite, official
+            )
+            run_rows = []
+            replay_pairs = []
+            for metadata in metadata_rows:
+                name = metadata["run"]["name"]
+                rows = read_trace(generated_root / suite / metadata["trace_file"])
+                fixed = replay(module.MovingBlockTreeModel, rows, metadata, 1)
+                moving = replay(module.MovingBlockTreeModel, rows, metadata, 2)
+                replay_pairs.append((fixed, moving))
+                run_rows.append(run_comparison(name, metadata, fixed, moving))
+                if suite == "full50":
+                    full_pairs_by_name[name] = (fixed, moving)
+                    full_metadata_by_name[name] = metadata
+            frozen = frozen_summary["full50" if suite == "full50" else "capacity22"]
+            reproduction = validate_frozen_aggregate(suite, replay_pairs, frozen)
+            aggregate = aggregate_suite(run_rows, replay_pairs, suite)
+            all_output["suites"][suite] = {
+                "generation_index_sha256": sha256(
+                    generated_root / suite / "generation-index.json"
+                ),
+                "frozen_aggregate_reproduction": reproduction,
+                "aggregate": aggregate,
+                "runs": run_rows,
+            }
+        all_output["phase_recovery"] = phase_recovery(full_pairs_by_name)
+        all_output["pairwise_mapping"] = pairwise_mapping(
+            full_pairs_by_name, full_metadata_by_name
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(all_output, indent=2, sort_keys=True) + "\n",
                            encoding="utf-8")

@@ -12,17 +12,37 @@ the exact address-only generator-v4 occurrences and retains
 models see identical generated occurrences and an always-ready single retire
 lane.
 
+Repository arguments are object-database locators only. The audit never reads
+the current A4/A1 checkout, index, branch, or `HEAD`. It resolves the explicit
+commit objects and obtains only named blobs with
+`git cat-file blob <commit>:<path>`. The A4 model, W3 replay tool, and frozen W3
+result plus the A1 generator-v4, official policy, and two official manifests
+are materialized under a fresh mode-`0700` temporary directory. Snapshot files
+are created mode `0600` with exclusive/no-follow creation and fsync. Exact
+trace bytes are then regenerated inside that snapshot and checked against all
+official per-trace SHA values before analysis; the snapshot is removed on
+exit. The traces were not committed as A4 blobs, so claiming otherwise would
+be inaccurate.
+
 The analysis fails closed unless all of the following match:
 
 - A4 model SHA
   `fc0d57cbb66c94c1b903ce3e328f962b9ef5345400bab74dbd95fe657116a8bc`;
 - A4 frozen summary SHA
   `b96ceb25f1b01b8bb8c6de3e0ede25cce97764928cf5b576d21cfed005093f39`;
+- A4 frozen W3 replay-tool SHA
+  `489710451649975b8abfec05e13ee10e7f38822fec3524c3fc189d9d5ecb8f86`;
 - A1 common commit `47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be` and official-policy SHA
   `7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33`;
 - exact official run names/order/cardinality, manifest SHA, and every trace SHA;
 - the previously published offered, accepted, overrun, retired, cycles,
   bubbles, p95, and p99 aggregates for both models and both suites.
+
+The fixed W4 integration replay succeeded while the A4 owner worktree was at
+`8918829b777f4167dd6bb7d8c8195c5d1cf63610`, not `850fbcf`. A separate
+two-commit repository mutation test moves `HEAD` after the pinned commit and
+proves that snapshot materialization still returns the pinned blob. Neither
+test permits the analysis path to query `HEAD`.
 
 The machine-readable result is
 [`a5_w4_moving_block_audit.json`](results/a5_w4_moving_block_audit.json). The
@@ -210,14 +230,9 @@ nor such a value judgment.
 ## 11. Reproduction
 
 ```bash
-tmp_base=$(mktemp -d /tmp/a5-w4-moving-block.XXXXXX)
-python3 /home/chickgoose/projects/a4/rtl/candidates/a4_moving_block_tree/replay_generator_v4.py \
-  --common-root /home/chickgoose/projects/a1 --suite all \
-  --generated-root "$tmp_base/generated" --output "$tmp_base/a4-replay.json"
 python3 tests/a5_w4_moving_block_audit/analyze_moving_block.py \
-  --a1-root /home/chickgoose/projects/a1 \
-  --a4-root /home/chickgoose/projects/a4 \
-  --generated-root "$tmp_base/generated" \
-  --output "$tmp_base/a5-w4-audit.json"
+  --a1-repo /home/chickgoose/projects/a1 \
+  --a4-repo /home/chickgoose/projects/a4 \
+  --output /tmp/a5-w4-audit.json
 python3 -m unittest tests/a5_w4_moving_block_audit/test_analysis.py
 ```

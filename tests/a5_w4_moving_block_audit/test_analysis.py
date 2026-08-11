@@ -5,7 +5,9 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -23,14 +25,66 @@ class MovingBlockAuditTest(unittest.TestCase):
             "docs/research/results/a5_w4_moving_block_audit.json"
         )
         result = json.loads(result_path.read_text(encoding="utf-8"))
+        self.assertEqual(2, result["schema_version"])
         self.assertEqual(audit.A4_COMMIT, result["provenance"]["a4_commit"])
+        materialization = result["provenance"]["source_materialization"]
+        self.assertEqual("git_cat_file_pinned_commit_blobs", materialization["mode"])
+        self.assertIs(False, materialization["current_head_consulted"])
         self.assertEqual(50, len(result["suites"]["full50"]["runs"]))
         self.assertEqual(22, len(result["suites"]["capacity22"]["runs"]))
-        self.assertEqual(41, result["suites"]["full50"]["aggregate"]["accepted_delta"])
-        self.assertEqual(35, result["suites"]["capacity22"]["aggregate"]["accepted_delta"])
+        full = result["suites"]["full50"]["aggregate"]
+        capacity = result["suites"]["capacity22"]["aggregate"]
+        self.assertEqual((41, 5491 + 5532),
+                         (full["accepted_delta"], full["fixed_only"] + full["moving_only"]))
+        self.assertEqual((35, 5403 + 5438),
+                         (capacity["accepted_delta"],
+                          capacity["fixed_only"] + capacity["moving_only"]))
+        self.assertEqual((46, 46), (full["fixed_matched_latency"]["p99"],
+                                    full["moving_matched_latency"]["p99"]))
+        self.assertEqual((46, 47), (capacity["fixed_matched_latency"]["p99"],
+                                    capacity["moving_matched_latency"]["p99"]))
         pairwise = result["pairwise_mapping"]["per_mapping_moving_minus_fixed"]
         self.assertEqual(240, pairwise["identity"]["matched_complete_pairs"])
         self.assertEqual(240, pairwise["affine"]["matched_complete_pairs"])
+
+    def test_git_object_snapshot_is_independent_of_current_head(self):
+        def git(repository: Path, *arguments: str) -> str:
+            result = subprocess.run(
+                ["git", "-C", str(repository), *arguments], text=True,
+                capture_output=True, check=True,
+            )
+            return result.stdout.strip()
+
+        with tempfile.TemporaryDirectory(prefix="a5-w4-head-test.") as temporary:
+            root = Path(temporary)
+            repository = root / "repository"
+            repository.mkdir()
+            git(repository, "init", "-q")
+            git(repository, "config", "user.name", "A5 W4 Test")
+            git(repository, "config", "user.email", "a5-w4@example.invalid")
+            source = repository / "evidence.txt"
+            source.write_text("pinned evidence\n", encoding="utf-8")
+            git(repository, "add", "evidence.txt")
+            git(repository, "commit", "-q", "-m", "pinned")
+            pinned = git(repository, "rev-parse", "HEAD")
+            source.write_text("new owner head\n", encoding="utf-8")
+            git(repository, "add", "evidence.txt")
+            git(repository, "commit", "-q", "-m", "owner moved")
+            self.assertNotEqual(pinned, git(repository, "rev-parse", "HEAD"))
+
+            snapshot = root / "snapshot"
+            audit.materialize_git_snapshot(
+                repository, pinned, ("evidence.txt",), snapshot
+            )
+            self.assertEqual("pinned evidence\n",
+                             (snapshot / "evidence.txt").read_text(encoding="utf-8"))
+            self.assertEqual(0o700, audit.stat.S_IMODE(snapshot.stat().st_mode))
+            self.assertEqual(
+                0o600,
+                audit.stat.S_IMODE((snapshot / "evidence.txt").stat().st_mode),
+            )
+            with self.assertRaises(audit.AuditError):
+                audit.git_blob(repository, pinned, "../current-worktree-file")
 
     def test_percentile_is_frozen_nearest_rank(self):
         self.assertEqual(1, audit.percentile([1, 2, 3, 4], 0.01))
