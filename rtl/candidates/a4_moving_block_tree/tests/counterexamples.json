@@ -1,0 +1,27 @@
+[
+  {
+    "name": "retire_refill_clear_after_write",
+    "cycles": 24,
+    "failure": "replacement root event is lost when retire clear wins over refill"
+  },
+  {
+    "name": "two_microstep_double_inject",
+    "cycles": 8,
+    "failure": "one continuously asserted source is accepted twice in one clock"
+  },
+  {
+    "name": "stalled_root_clearance_leak",
+    "cycles": 48,
+    "failure": "held root payload is overwritten while retire_ready is low"
+  },
+  {
+    "name": "dual_child_single_parent",
+    "cycles": 16,
+    "failure": "both children are acknowledged for one empty parent"
+  },
+  {
+    "name": "no_reset_shock_recovery",
+    "cycles": 320,
+    "failure": "stale occupancy or phase prevents post-shock drain"
+  }
+]
