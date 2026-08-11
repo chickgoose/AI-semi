@@ -85,32 +85,44 @@ Moving-block is worthwhile only if the measured latency and shock recovery
 benefit justify the doubled local control-touch proxy.  It does not claim a
 peak rate above the single output's one event/cycle.
 
-## 5. Preserved failure counterexamples
+## 5. Executed failure counterexamples
 
-Candidate-owned regression fixtures retain these falsifiers:
+Candidate-owned regression fixtures retain these falsifiers and execute a
+corresponding mutated model.  A fixture passes only when its named detector
+fires; checking fixture names is not qualification.
 
-1. retire/refill with a full root: clearing after refill loses the replacement;
-2. repeated injection in two microsteps: one asserted source is duplicated;
-3. long root stall: allowing clearance through the root overwrites the held
-   event;
-4. two children targeting one empty parent: accepting both loses an event;
-5. no-reset sparse/overload/recovery transition: stale phase or occupancy state
-   can deadlock after the shock.
+1. `retire_refill_clear_after_write`: the mutated clear deletes the root
+   replacement and triggers `conservation`;
+2. `two_microstep_double_inject`: repeated injection duplicates an accepted
+   event and triggers `duplicate`;
+3. `stalled_root_clearance_leak`: clearance overwrites a stalled root and
+   triggers `stall stability`;
+4. `dual_child_single_parent`: committing two contenders to one parent loses
+   one and triggers `conservation`;
+5. `no_reset_shock_recovery`: a shock-induced frozen state triggers `deadlock`.
 
 ## 6. Qualification gate
 
-The RTL is eligible only when the Python cycle model, adversarial conservation
-tests, Verilator lint, and cycle-by-cycle SV lockstep all pass for the frozen
-skip bound.  Server tools and common TB/manifests are outside W3 scope.
+The RTL is locally eligible only when the Python cycle model, executable
+mutation falsifiers, adversarial conservation tests, Verilator lint, and
+cycle-by-cycle SV lockstep all pass for the frozen skip bound.  `run.sh`
+resolves Verilator in strict order: `AER_VERILATOR`, `VERILATOR`, then `PATH`.
+An absent, non-executable, or non-Verilator command terminates with exit 2; a
+silent skip is forbidden.
+
+This remains **HOLD for common qualification and PPA**.  The generator-v4
+replay below neither binds the frozen common scoreboard nor supplies timing,
+area, power, or routed evidence.
 
 ## 7. Local W3 results
 
-The candidate-owned regression executed seven tests, including 1,200 cycles of
+The candidate-owned regression executed nine tests, including 1,200 cycles of
 random branch contention, a 64-cycle continuous root stall, repeated B16/global
 fan-in, overload-to-sparse recovery without reset, and 760-cycle Verilator
 lockstep runs for both `MAX_ADVANCE=1` and `2`.  Every accepted event retired
 exactly once in source order; both models drained without deadlock.  Verilator
-`-Wall` lint produced no warnings.
+`-Wall` lint produced no warnings.  All five intentionally broken models were
+also rejected by their frozen detector.
 
 Measured Python cycle-model comparisons use identical occurrence streams and
 sink patterns.  Latency is occurrence-to-retire; throughput includes fill and
@@ -145,9 +157,45 @@ predeclared combinational chain at two merge decisions for both N=16 and N=64.
 Physical adoption therefore remains conditional on two-level logic meeting the
 target period; no server PPA claim is made.
 
+## 8. Frozen generator-v4 replay
+
+The candidate-owned replay tool reads (and never edits) the A1 generator-v4
+contract.  Before generation it verifies the exact generator, official-policy,
+and suite-manifest SHA-256 values; after generation it verifies version 4.0,
+the exact 50/22 run names and ordering, every official trace SHA, 4x4 geometry,
+always-ready sink metadata, and address-only identity semantics.  The recorded
+common HEAD was `47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be`, with an empty tracked
+status.  Full provenance and exact aggregate values are frozen in
+`results/generator_v4_replay_summary.json`.
+
+| suite | model | accepted / overrun | throughput | bubbles | mean e2e | p95 / p99 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| full50 | fixed one-step | 83,514 / 22,902 | 0.729214 | 19,465 | 14.943 | 44 / 46 |
+| full50 | moving two-step | 83,555 / 22,861 | 0.729999 | 14,211 | 14.073 | 45 / 47 |
+| cap22 | fixed one-step | 42,948 / 22,668 | 0.789979 | 5,919 | 22.742 | 45 / 46 |
+| cap22 | moving two-step | 42,983 / 22,633 | 0.790856 | 3,126 | 22.586 | 46 / 47 |
+
+The moving model accepts 41 more full50 events and 35 more cap22 events and
+reduces bubbles, but aggregate latency distributions contain different
+survivor sets.  Their means and tails are descriptive and are not qualified
+latency rankings; in particular, p95/p99 are one cycle worse for moving-block.
+
+Four representative frozen full50 traces are converted into normalized local
+vectors and replayed cycle-by-cycle against the parameterized RTL: simultaneous
+fanin (259 cycles), `shape_b16` (4,099), global fanin (2,051), and no-reset
+`mixed_phase_always_ready_identity` (4,117).  All four pass.  This harness uses
+the same trace occurrences and address-only event identity, but it is
+candidate-owned and does not claim frozen common-TB qualification.
+
 Reproduction:
 
 ```bash
-bash rtl/candidates/a4_moving_block_tree/tests/run.sh
+AER_VERILATOR=/absolute/path/to/verilator \
+  bash rtl/candidates/a4_moving_block_tree/tests/run.sh
 python3 rtl/candidates/a4_moving_block_tree/compare_fixed.py
+tmp_base=$(mktemp -d /tmp/a4-w3-replay.XXXXXX)
+python3 rtl/candidates/a4_moving_block_tree/replay_generator_v4.py \
+  --common-root /home/chickgoose/projects/a1 --suite all \
+  --generated-root "$tmp_base/generated" --output "$tmp_base/report.json" \
+  --rtl-vectors-dir "$tmp_base/vectors"
 ```

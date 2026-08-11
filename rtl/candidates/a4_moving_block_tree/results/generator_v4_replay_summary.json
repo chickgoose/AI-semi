@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "status": {
+    "local_model_replay": "PASS",
+    "representative_rtl_lockstep": "PASS",
+    "common_qualification": "HOLD",
+    "ppa_qualification": "HOLD"
+  },
+  "provenance": {
+    "common_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "common_declared_source_commit": "abd6a721b515ded8a9ef76cb96129b7e0af21e2b",
+    "generator_version": "4.0",
+    "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "official_policy_sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
+    "full50_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+    "capacity22_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "candidate_rtl_sha256": "18e00a2acba587af7f81f2f1608268f4c37d9068a3e7e3f2b29611c4f8ea5677",
+    "candidate_model_sha256": "fc0d57cbb66c94c1b903ce3e328f962b9ef5345400bab74dbd95fe657116a8bc",
+    "replay_tool_sha256": "489710451649975b8abfec05e13ee10e7f38822fec3524c3fc189d9d5ecb8f86"
+  },
+  "full50": {
+    "runs": 50,
+    "fixed": {
+      "offered": 106416,
+      "accepted": 83514,
+      "overrun": 22902,
+      "retired": 83514,
+      "cycles": 114526,
+      "throughput": 0.729214327,
+      "output_bubbles": 19465,
+      "mean_e2e_latency": 14.942955672,
+      "p95_e2e_latency": 44,
+      "p99_e2e_latency": 46
+    },
+    "moving": {
+      "offered": 106416,
+      "accepted": 83555,
+      "overrun": 22861,
+      "retired": 83555,
+      "cycles": 114459,
+      "throughput": 0.729999388,
+      "output_bubbles": 14211,
+      "mean_e2e_latency": 14.073328945,
+      "p95_e2e_latency": 45,
+      "p99_e2e_latency": 47
+    },
+    "latency_ranking": "DESCRIPTIVE_ONLY_DIFFERENT_ACCEPTED_SETS"
+  },
+  "capacity22": {
+    "runs": 22,
+    "fixed": {
+      "offered": 65616,
+      "accepted": 42948,
+      "overrun": 22668,
+      "retired": 42948,
+      "cycles": 54366,
+      "throughput": 0.789979031,
+      "output_bubbles": 5919,
+      "mean_e2e_latency": 22.741547918,
+      "p95_e2e_latency": 45,
+      "p99_e2e_latency": 46
+    },
+    "moving": {
+      "offered": 65616,
+      "accepted": 42983,
+      "overrun": 22633,
+      "retired": 42983,
+      "cycles": 54350,
+      "throughput": 0.790855566,
+      "output_bubbles": 3126,
+      "mean_e2e_latency": 22.586208501,
+      "p95_e2e_latency": 46,
+      "p99_e2e_latency": 47
+    },
+    "latency_ranking": "DESCRIPTIVE_ONLY_DIFFERENT_ACCEPTED_SETS"
+  },
+  "representative_rtl": [
+    {
+      "name": "core_simultaneous_identity",
+      "trace_sha256": "a9a81664fc2117e72df8739b816eaffdeb8a4ab734576ab7c96336d0d232f045",
+      "cycles": 259
+    },
+    {
+      "name": "shape_b16",
+      "trace_sha256": "b622e934385346d3a6f976535b813d07af650846abe1011bc7644ca4a931f545",
+      "cycles": 4099
+    },
+    {
+      "name": "global_fanin_identity",
+      "trace_sha256": "82d86a633f1359d484cc0b780b9b3447048cb76a122422e02da3bf0f6ff800ab",
+      "cycles": 2051
+    },
+    {
+      "name": "mixed_phase_always_ready_identity",
+      "trace_sha256": "9fde0ee816a80975d219b57e9799e73c198efc85d6e9aec4cb2a2e4816974705",
+      "cycles": 4117
+    }
+  ]
+}

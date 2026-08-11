@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import random
 import statistics
@@ -18,6 +19,7 @@ sys.path.insert(0, str(CANDIDATE))
 
 from generate_lockstep import generate  # noqa: E402
 from model import MovingBlockTreeModel, run_occurrences  # noqa: E402
+from mutations import exercise_mutation  # noqa: E402
 
 
 class MovingBlockModelTest(unittest.TestCase):
@@ -33,6 +35,12 @@ class MovingBlockModelTest(unittest.TestCase):
                 "no_reset_shock_recovery",
             ],
         )
+        for fixture in fixtures:
+            with self.subTest(mutation=fixture["name"]):
+                with self.assertRaisesRegex(
+                    AssertionError, fixture["expected_detector"]
+                ):
+                    exercise_mutation(fixture["name"])
 
     def test_same_cycle_retire_refill_has_no_steady_bubble(self) -> None:
         model = MovingBlockTreeModel(16, 2)
@@ -171,9 +179,9 @@ class MovingBlockModelTest(unittest.TestCase):
 
 class MovingBlockRTLTest(unittest.TestCase):
     def test_verilator_lint_and_lockstep(self) -> None:
-        verilator = pathlib.Path("/tmp/a7-sim-bin/verilator")
-        if not verilator.exists():
-            self.skipTest("local Verilator package is unavailable")
+        resolved = os.environ.get("AER_VERILATOR_RESOLVED")
+        self.assertTrue(resolved, "run.sh must resolve Verilator fail-closed")
+        verilator = pathlib.Path(resolved)
         rtl = CANDIDATE / "a4_moving_block_tree.sv"
         tb = HERE / "a4_moving_block_lockstep_tb.sv"
         with tempfile.TemporaryDirectory(prefix="a4-moving-block-") as tmp_name:
@@ -217,6 +225,21 @@ class MovingBlockRTLTest(unittest.TestCase):
                 self.assertIn(
                     "A4_MOVING_BLOCK_LOCKSTEP_PASS cycles=760", run.stdout
                 )
+
+    def test_runner_rejects_missing_explicit_verilator(self) -> None:
+        environment = os.environ.copy()
+        environment["AER_VERILATOR"] = "/definitely/missing/a4-verilator"
+        environment.pop("VERILATOR", None)
+        result = subprocess.run(
+            ["bash", str(HERE / "run.sh")],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("requires Verilator", result.stderr)
 
 
 if __name__ == "__main__":
