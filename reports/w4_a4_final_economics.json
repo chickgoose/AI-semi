@@ -1,0 +1,435 @@
+{
+  "audit": "a3_w4_final_a4_moving_block_economics",
+  "functional_evidence": {
+    "generator_v4_lockstep_traces": 72,
+    "selected_exactly_matches_frozen_max_advance2": true,
+    "source_receipts": {
+      "followup_path": "rtl/candidates/a4_moving_block_w4/results/w4_functional_followup.json",
+      "followup_sha256": "40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4",
+      "local_summary_path": "rtl/candidates/a4_moving_block_w4/results/w4_local_summary.json",
+      "local_summary_sha256": "b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a"
+    },
+    "stall_reset_n64_lockstep_cycles": 2982,
+    "suites": {
+      "capacity22": {
+        "accepted_delta": 35,
+        "accepted_delta_percent": 0.0814938995995157,
+        "fixed_accepted": 42948,
+        "fixed_overrun": 22668,
+        "fixed_p99": 46,
+        "moving_accepted": 42983,
+        "moving_overrun": 22633,
+        "moving_p99": 47,
+        "overrun_delta": -35,
+        "p99_delta": 1
+      },
+      "full50": {
+        "accepted_delta": 41,
+        "accepted_delta_percent": 0.049093565150753166,
+        "fixed_accepted": 83514,
+        "fixed_overrun": 22902,
+        "fixed_p99": 46,
+        "moving_accepted": 83555,
+        "moving_overrun": 22861,
+        "moving_p99": 47,
+        "overrun_delta": -41,
+        "p99_delta": 1
+      }
+    }
+  },
+  "gate": {
+    "deltas": {
+      "n16": {
+        "selected_vs_max1_percent": {
+          "comb_cells": 18.88784165881244,
+          "comb_depth_cells": 76.92307692307692,
+          "max_fanout_data": -7.142857142857143,
+          "net_bit_count": 14.332666476136039,
+          "net_count": 23.691258826393963,
+          "seq_cells": 0.0,
+          "total_cells": 15.494046698623782,
+          "wire_data_sink_pin_proxy": 38.54570517790988
+        },
+        "selected_vs_max2_percent": {
+          "comb_cells": -38.83824670287044,
+          "comb_depth_cells": 9.523809523809524,
+          "max_fanout_data": 0.0,
+          "net_bit_count": -33.352769679300295,
+          "net_count": -44.26157559798113,
+          "seq_cells": 0.0,
+          "total_cells": -34.905002614606936,
+          "wire_data_sink_pin_proxy": -25.319277388194863
+        }
+      },
+      "n64": {
+        "selected_vs_max1_percent": {
+          "comb_cells": 11.243652776658339,
+          "comb_depth_cells": 72.22222222222223,
+          "max_fanout_data": 20.0,
+          "net_bit_count": 8.736891532321177,
+          "net_count": 13.519683441558442,
+          "seq_cells": 0.0,
+          "total_cells": 9.353000335232988,
+          "wire_data_sink_pin_proxy": 30.5287476245482
+        },
+        "selected_vs_max2_percent": {
+          "comb_cells": -40.142249978315554,
+          "comb_depth_cells": 24.0,
+          "max_fanout_data": 37.5,
+          "net_bit_count": -34.764399872293275,
+          "net_count": -45.440581264933925,
+          "seq_cells": 0.0,
+          "total_cells": -36.204333880935614,
+          "wire_data_sink_pin_proxy": -27.29046452737764
+        }
+      }
+    },
+    "final_decision": "HOLD__MAX2_PARETO_AND_MAX1_ECONOMIC_GATES_FAIL",
+    "functional_p99_nonworse": false,
+    "functional_positive_service": true,
+    "rule": "MAX2 replacement requires exact functional equivalence, no regression in every reported generic proxy at N16/N64, and a strict cell reduction. MAX1 economic GO additionally requires positive service delta with no p99 or generic-proxy regression; no conversion rate is invented.",
+    "selected_as_max2_replacement_pass": false,
+    "selected_over_max1_economic_go": false,
+    "selected_vs_max1_checks": {
+      "n16_comb_cells_nonworse": false,
+      "n16_comb_depth_cells_nonworse": false,
+      "n16_max_fanout_data_nonworse": true,
+      "n16_net_bit_count_nonworse": false,
+      "n16_net_count_nonworse": false,
+      "n16_seq_cells_nonworse": true,
+      "n16_total_cells_nonworse": false,
+      "n16_wire_data_sink_pin_proxy_nonworse": false,
+      "n64_comb_cells_nonworse": false,
+      "n64_comb_depth_cells_nonworse": false,
+      "n64_max_fanout_data_nonworse": false,
+      "n64_net_bit_count_nonworse": false,
+      "n64_net_count_nonworse": false,
+      "n64_seq_cells_nonworse": true,
+      "n64_total_cells_nonworse": false,
+      "n64_wire_data_sink_pin_proxy_nonworse": false
+    },
+    "selected_vs_max2_checks": {
+      "n16_comb_cells_nonworse": true,
+      "n16_comb_depth_cells_nonworse": false,
+      "n16_max_fanout_data_nonworse": true,
+      "n16_net_bit_count_nonworse": true,
+      "n16_net_count_nonworse": true,
+      "n16_seq_cells_nonworse": true,
+      "n16_total_cells_nonworse": true,
+      "n16_wire_data_sink_pin_proxy_nonworse": true,
+      "n64_comb_cells_nonworse": true,
+      "n64_comb_depth_cells_nonworse": false,
+      "n64_max_fanout_data_nonworse": false,
+      "n64_net_bit_count_nonworse": true,
+      "n64_net_count_nonworse": true,
+      "n64_seq_cells_nonworse": true,
+      "n64_total_cells_nonworse": true,
+      "n64_wire_data_sink_pin_proxy_nonworse": true
+    }
+  },
+  "metric_contract": {
+    "cells": "post-ABC generic mapped instances",
+    "depth": "longest mapped combinational-cell dependency chain",
+    "fanout": "mapped sink counts; data excludes clk and rst_n",
+    "net_count": "Yosys stat num_wires/net_bit_count; connected_net_bit_proxy counts integer bits referenced by mapped cells or ports",
+    "seq_cells": "mapped sequential Q bits/cells; latches forbidden",
+    "wire_proxy": "mapped input sink-pin bits excluding clk/rst_n loads"
+  },
+  "normalization": {
+    "contract": "declaration packing only, plus W3 unpacked-event indexing to the identical flat source_event bus",
+    "same_boundary": "clk/rst_n, source_valid/ready, N*32 source_event_flat, retire_valid/ready/event/source",
+    "state_or_function_added": false,
+    "w3_normalized_sha256": "632a403fdfcf2bcebb84800d237e46c10e2a417bd352e9322247de02e2c0e525",
+    "w3_rewrite_count": 10,
+    "w4_normalized_sha256": "2507117cbbf87de1a075d110635a247dc4979545f21d23bc242e2ba377ec7ddb",
+    "w4_rewrite_count": 9
+  },
+  "parameters": [
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE_parameter": 1,
+      "NUM_SOURCES": 16,
+      "SOURCE_WIDTH": 4,
+      "STYLE_parameter": null,
+      "effective_advance_semantics": 1,
+      "variant": "w3_max_advance1"
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE_parameter": 2,
+      "NUM_SOURCES": 16,
+      "SOURCE_WIDTH": 4,
+      "STYLE_parameter": null,
+      "effective_advance_semantics": 2,
+      "variant": "frozen_max_advance2"
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE_parameter": null,
+      "NUM_SOURCES": 16,
+      "SOURCE_WIDTH": 4,
+      "STYLE_parameter": 2,
+      "effective_advance_semantics": 2,
+      "variant": "shared_clearance_local_enable"
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE_parameter": 1,
+      "NUM_SOURCES": 64,
+      "SOURCE_WIDTH": 6,
+      "STYLE_parameter": null,
+      "effective_advance_semantics": 1,
+      "variant": "w3_max_advance1"
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE_parameter": 2,
+      "NUM_SOURCES": 64,
+      "SOURCE_WIDTH": 6,
+      "STYLE_parameter": null,
+      "effective_advance_semantics": 2,
+      "variant": "frozen_max_advance2"
+    },
+    {
+      "ADDR_WIDTH": 32,
+      "MAX_ADVANCE_parameter": null,
+      "NUM_SOURCES": 64,
+      "SOURCE_WIDTH": 6,
+      "STYLE_parameter": 2,
+      "effective_advance_semantics": 2,
+      "variant": "shared_clearance_local_enable"
+    }
+  ],
+  "provenance": {
+    "a4_commit": "41f239dad4a342277f33d94bb3ed3db53e3497e0",
+    "filelists": {
+      "selected": [
+        "rtl/candidates/a4_moving_block_w4/a4_moving_block_w4.sv"
+      ],
+      "w3": [
+        "rtl/candidates/a4_moving_block_tree/a4_moving_block_tree.sv"
+      ]
+    },
+    "git_objects": {
+      "rtl/candidates/a4_moving_block_tree/a4_moving_block_tree.f": {
+        "sha256": "d7a70ae9e7764e35b26618bdd0411f34c8d85d0ca01bf179423d25a3a8f2799e"
+      },
+      "rtl/candidates/a4_moving_block_tree/a4_moving_block_tree.sv": {
+        "sha256": "18e00a2acba587af7f81f2f1608268f4c37d9068a3e7e3f2b29611c4f8ea5677"
+      },
+      "rtl/candidates/a4_moving_block_w4/a4_moving_block_w4.f": {
+        "sha256": "7874d0822a2d2c51e502b16a6084d0a3bfd0486c747bd08ee08e0b16168e4ca1"
+      },
+      "rtl/candidates/a4_moving_block_w4/a4_moving_block_w4.sv": {
+        "sha256": "433ebc7a1d01e8c8d57e52b42235278c9367941abc0519450ee2b3076edda083"
+      },
+      "rtl/candidates/a4_moving_block_w4/results/w4_functional_followup.json": {
+        "sha256": "40d81275ebee63380508d12dad240836f0e5ef84ae6c7f83a7ef6b601f41fbd4"
+      },
+      "rtl/candidates/a4_moving_block_w4/results/w4_local_summary.json": {
+        "sha256": "b3124911730c9d634a3708d3bda3ea96833f2468538d627bbc90a6babca4bf1a"
+      }
+    },
+    "tops": {
+      "mapped_canonical_top": "a4_moving_block_tree",
+      "selected_source": "a4_w4_shared_clearance_local_enable",
+      "w3": "a4_moving_block_tree"
+    }
+  },
+  "runs": [
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 3287,
+        "$_DFFE_PN0P_": 15,
+        "$_DFF_PN0_": 1147,
+        "$_MUX_": 593,
+        "$_NOT_": 112,
+        "$_OR_": 1313
+      },
+      "comb_cells": 5305,
+      "comb_depth_cells": 13,
+      "connected_net_bit_proxy": 6998,
+      "data_nets_fanout_ge16": 91,
+      "ff_bits": 1162,
+      "max_fanout_all": 1823,
+      "max_fanout_data": 42,
+      "net_bit_count": 6998,
+      "net_count": 4107,
+      "num_sources": 16,
+      "p95_fanout_data": 2,
+      "recipe_sha256": "c8beab38258f7ef9a545539cfabaad79fcaebf1581b2503d4185a267ec38589d",
+      "seq_cells": 1162,
+      "source_width": 4,
+      "total_cells": 6467,
+      "variant": "w3_max_advance1",
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 11607,
+      "wire_sink_pin_proxy": 14592,
+      "wire_unique_bit_proxy": 6998
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 6302,
+        "$_DFF_PN0_": 1162,
+        "$_MUX_": 548,
+        "$_NOT_": 139,
+        "$_OR_": 3323
+      },
+      "comb_cells": 10312,
+      "comb_depth_cells": 21,
+      "connected_net_bit_proxy": 12005,
+      "data_nets_fanout_ge16": 168,
+      "ff_bits": 1162,
+      "max_fanout_all": 1824,
+      "max_fanout_data": 39,
+      "net_bit_count": 12005,
+      "net_count": 9114,
+      "num_sources": 16,
+      "p95_fanout_data": 2,
+      "recipe_sha256": "e090834cbdbc14aab74c152f6767cf5c024a1aad4a88a63e08ca40991ed21813",
+      "seq_cells": 1162,
+      "source_width": 4,
+      "total_cells": 11474,
+      "variant": "frozen_max_advance2",
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 21533,
+      "wire_sink_pin_proxy": 24519,
+      "wire_unique_bit_proxy": 12005
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 2149,
+        "$_DFFE_PN0P_": 1116,
+        "$_DFF_PN0_": 46,
+        "$_MUX_": 2560,
+        "$_NOT_": 205,
+        "$_OR_": 1393
+      },
+      "comb_cells": 6307,
+      "comb_depth_cells": 23,
+      "connected_net_bit_proxy": 8000,
+      "data_nets_fanout_ge16": 137,
+      "ff_bits": 1162,
+      "max_fanout_all": 2328,
+      "max_fanout_data": 39,
+      "net_bit_count": 8001,
+      "net_count": 5080,
+      "num_sources": 16,
+      "p95_fanout_data": 2,
+      "recipe_sha256": "989c1d8757bfb48db8aa3d8110712d5d4ae00537c0987478fce7aa6751d73978",
+      "seq_cells": 1162,
+      "source_width": 4,
+      "total_cells": 7469,
+      "variant": "shared_clearance_local_enable",
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 16081,
+      "wire_sink_pin_proxy": 19571,
+      "wire_unique_bit_proxy": 8000
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 15282,
+        "$_DFFE_PN0P_": 63,
+        "$_DFF_PN0_": 4953,
+        "$_MUX_": 2146,
+        "$_NOT_": 451,
+        "$_OR_": 6935
+      },
+      "comb_cells": 24814,
+      "comb_depth_cells": 18,
+      "connected_net_bit_proxy": 31945,
+      "data_nets_fanout_ge16": 398,
+      "ff_bits": 5016,
+      "max_fanout_all": 7744,
+      "max_fanout_data": 55,
+      "net_bit_count": 31945,
+      "net_count": 19712,
+      "num_sources": 64,
+      "p95_fanout_data": 3,
+      "recipe_sha256": "419d8516221447d025158c572a83fd2d7e4ebc9248a8536f1e091566ef6fca65",
+      "seq_cells": 5016,
+      "source_width": 6,
+      "total_cells": 29830,
+      "variant": "w3_max_advance1",
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 53674,
+      "wire_sink_pin_proxy": 66434,
+      "wire_unique_bit_proxy": 31945
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 27959,
+        "$_DFF_PN0_": 5016,
+        "$_MUX_": 3357,
+        "$_NOT_": 545,
+        "$_OR_": 14255
+      },
+      "comb_cells": 46116,
+      "comb_depth_cells": 25,
+      "connected_net_bit_proxy": 53247,
+      "data_nets_fanout_ge16": 719,
+      "ff_bits": 5016,
+      "max_fanout_all": 8720,
+      "max_fanout_data": 48,
+      "net_bit_count": 53247,
+      "net_count": 41014,
+      "num_sources": 64,
+      "p95_fanout_data": 2,
+      "recipe_sha256": "c3bfb6bb77d97d9514f2930249b8e955be0956a2d3e46f31a2f4546fcd388a91",
+      "seq_cells": 5016,
+      "source_width": 6,
+      "total_cells": 51132,
+      "variant": "frozen_max_advance2",
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 96356,
+      "wire_sink_pin_proxy": 110092,
+      "wire_unique_bit_proxy": 53247
+    },
+    {
+      "addr_width": 32,
+      "cell_types": {
+        "$_AND_": 9781,
+        "$_DFFE_PN0P_": 4826,
+        "$_DFF_PN0_": 190,
+        "$_MUX_": 10715,
+        "$_NOT_": 782,
+        "$_OR_": 6326
+      },
+      "comb_cells": 27604,
+      "comb_depth_cells": 31,
+      "connected_net_bit_proxy": 34735,
+      "data_nets_fanout_ge16": 566,
+      "ff_bits": 5016,
+      "max_fanout_all": 9939,
+      "max_fanout_data": 66,
+      "net_bit_count": 34736,
+      "net_count": 22377,
+      "num_sources": 64,
+      "p95_fanout_data": 2,
+      "recipe_sha256": "b830618b6396aa3cd689ec77f85af7dc8df5dd69ea4b3ee4aa0b692c444ab15d",
+      "seq_cells": 5016,
+      "source_width": 6,
+      "total_cells": 32620,
+      "variant": "shared_clearance_local_enable",
+      "warning_latch_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 70060,
+      "wire_sink_pin_proxy": 85015,
+      "wire_unique_bit_proxy": 34735
+    }
+  ],
+  "schema_version": 1,
+  "status": "PASS",
+  "tool": {
+    "abc_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",
+    "abc_version": "UC Berkeley, ABC 1.01 (compiled May  4 2025 16:37:33)",
+    "mapping": "synth -top canonical -flatten -noabc; delete t:$scopeinfo; abc -g simple; clean -purge",
+    "tcl_runtime_sha256": "6dfbe2faf2a776485be94cb87bed369337bcf9236ee4c955e45004f8253ade8a",
+    "yosys_sha256": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f",
+    "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+  }
+}
