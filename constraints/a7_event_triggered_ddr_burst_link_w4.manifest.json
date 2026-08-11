@@ -1,0 +1,44 @@
+{
+  "candidate": "a7_event_triggered_ddr_burst_link_w4",
+  "status": "physical_hold",
+  "address_semantics": "address-only N16 identity",
+  "address_width_bits": 4,
+  "data_wires": 2,
+  "forwarded_clock_wires": 1,
+  "reference_period_ns": 16.0,
+  "sample_clock_phase_from_reference_rise_ns": 4.0,
+  "nominal_high_ns": 8.0,
+  "nominal_low_ns": 8.0,
+  "minimum_high_ns": 7.0,
+  "minimum_low_ns": 7.0,
+  "maximum_clock_uncertainty_or_skew_ns": 0.5,
+  "event_edges": {
+    "rising": "capture address[1:0]",
+    "falling": "capture address[3:2] and commit exactly once"
+  },
+  "technology_boundary": {
+    "module": "a7_w4_icg_boundary",
+    "required_mapping": "characterized glitch-free integrated clock gate",
+    "generic_model": "low-transparent enable latch plus phase-preserving gate",
+    "prohibited_mapping": "unqualified fabric combinational clock AND"
+  },
+  "clock_domains": {
+    "tx_admission": "ref_clk_i",
+    "forwarded_link": "burst_clk_o derived synchronously from sample_clk_i",
+    "rx_retirement": "burst_clk_o falling-edge domain",
+    "core_cdc": "not included; receiver integration must synchronize retire_toggle_o and coherently capture retire_addr_o"
+  },
+  "reset_contract": "assert only after full drain while burst clock is low; no mid-frame delivery guarantee",
+  "proof_scope": [
+    "RTL edge lockstep",
+    "glitch-free enable functional model",
+    "generic local synthesis cell/state/depth proxy"
+  ],
+  "unproved": [
+    "library ICG mapping",
+    "duty-cycle distortion",
+    "post-route clock/data skew",
+    "recovery/removal and metastability MTBF",
+    "PVT and extracted full-link power"
+  ]
+}

@@ -1,0 +1,2 @@
+rtl/candidates/a7_event_triggered_ddr_burst_link_w4/a7_w4_icg_boundary.sv
+tb/candidates/a7_event_triggered_ddr_burst_link_w4/a7_w4_icg_boundary_tb.sv
