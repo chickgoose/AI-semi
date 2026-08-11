@@ -70,11 +70,12 @@ module a6_ef_batch_encoder #(
           (((1 << (width_index + 1)) * batch_count) <= NUM_SOURCES))
         low_width_comb = width_index + 1;
     cursor = 0;
-    input_error_comb = (batch_count > MAX_BATCH);
+    input_error_comb = ($unsigned(batch_count) > MAX_BATCH);
     previous_source = -1;
 
     for (i = 0; i < MAX_BATCH; i = i + 1) begin
-      source_value = batch_sources[i*ADDRESS_WIDTH +: ADDRESS_WIDTH];
+      source_value = $unsigned(
+        batch_sources[i*ADDRESS_WIDTH +: ADDRESS_WIDTH]);
       if (i < batch_count) begin
         if ((source_value >= NUM_SOURCES) ||
             ((previous_source >= 0) && (source_value <= previous_source)))
@@ -94,7 +95,8 @@ module a6_ef_batch_encoder #(
 
     previous_high = 0;
     for (i = 0; i < MAX_BATCH; i = i + 1) begin
-      source_value = batch_sources[i*ADDRESS_WIDTH +: ADDRESS_WIDTH];
+      source_value = $unsigned(
+        batch_sources[i*ADDRESS_WIDTH +: ADDRESS_WIDTH]);
       high_value = source_value >> low_width_comb;
       if (i < batch_count) begin
         for (zero_index = 0; zero_index < NUM_SOURCES; zero_index = zero_index + 1)
@@ -109,7 +111,8 @@ module a6_ef_batch_encoder #(
     end
 
     for (i = 0; i < MAX_BATCH; i = i + 1) begin
-      source_value = batch_sources[i*ADDRESS_WIDTH +: ADDRESS_WIDTH];
+      source_value = $unsigned(
+        batch_sources[i*ADDRESS_WIDTH +: ADDRESS_WIDTH]);
       if (i < batch_count)
         for (bit_index = 0; bit_index < ADDRESS_WIDTH; bit_index = bit_index + 1)
           if (bit_index < low_width_comb) begin

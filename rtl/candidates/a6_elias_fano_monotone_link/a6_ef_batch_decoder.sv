@@ -72,7 +72,7 @@ module a6_ef_batch_decoder #(
     event_valid = (fifo_count != 0);
     event_address = fifo_memory[read_pointer];
     pop_event = event_valid && event_ready;
-    free_slots = FIFO_DEPTH - fifo_count + (pop_event ? 1 : 0);
+    free_slots = FIFO_DEPTH - $unsigned(fifo_count) + (pop_event ? 1 : 0);
     link_ready = !decode_error;
     if (state == RAW) begin
       if (link_count == 1)
@@ -128,7 +128,7 @@ module a6_ef_batch_decoder #(
             serial_bit = (beat_index == 0) ? link_data[1] : link_data[0];
             case (state_next)
               RAW: begin
-                raw_accum_next = (raw_accum_next << 1) | serial_bit;
+                raw_accum_next = {raw_accum_next[ADDRESS_WIDTH-2:0], serial_bit};
                 raw_count_next = raw_count_next + 1;
                 if (raw_count_next == ADDRESS_WIDTH) begin
                   push_values[0] = raw_accum_next;
@@ -138,10 +138,11 @@ module a6_ef_batch_decoder #(
                 end
               end
               HEADER: begin
-                header_accum_next = (header_accum_next << 1) | serial_bit;
+                header_accum_next = {
+                  header_accum_next[COUNT_WIDTH-2:0], serial_bit};
                 header_count_next = header_count_next + 1;
                 if (header_count_next == COUNT_WIDTH) begin
-                  parsed_count = header_accum_next;
+                  parsed_count = $unsigned(header_accum_next);
                   if (parsed_count > MAX_BATCH) begin
                     parser_error = 1'b1;
                   end else if (parsed_count == 0) begin
@@ -170,14 +171,14 @@ module a6_ef_batch_decoder #(
                   if ((high_cursor_next << low_width_next) >= NUM_SOURCES)
                     parser_error = 1'b1;
                 end else begin
-                  high_values_next[high_index_next] = high_cursor_next;
+                  high_values_next[high_index_next] =
+                    ADDRESS_WIDTH'(high_cursor_next);
                   high_index_next = high_index_next + 1;
                   if (high_index_next == frame_count_next) begin
                     if (low_width_next == 0) begin
                       for (comb_i = 0; comb_i < MAX_BATCH; comb_i = comb_i + 1)
                         if (comb_i < frame_count_next) begin
-                          if ((high_values_next[comb_i] >= NUM_SOURCES) ||
-                              ((comb_i > 0) &&
+                          if (((comb_i > 0) &&
                                (high_values_next[comb_i] <= high_values_next[comb_i-1])))
                             parser_error = 1'b1;
                           push_values[comb_i] = high_values_next[comb_i];
@@ -195,17 +196,19 @@ module a6_ef_batch_decoder #(
                 end
               end
               LOW: begin
-                low_accum_next = (low_accum_next << 1) | serial_bit;
+                low_accum_next = {
+                  low_accum_next[ADDRESS_WIDTH-2:0], serial_bit};
                 low_count_next = low_count_next + 1;
                 if (low_count_next == low_width_next) begin
-                  value_comb = (high_values_next[low_index_next]
-                                << low_width_next) | low_accum_next;
+                  value_comb = ($unsigned(high_values_next[low_index_next])
+                                << low_width_next) | $unsigned(low_accum_next);
                   if ((value_comb >= NUM_SOURCES) ||
                       ((low_index_next > 0) &&
                        (value_comb <= decoded_values_next[low_index_next-1]))) begin
                     parser_error = 1'b1;
                   end else begin
-                    decoded_values_next[low_index_next] = value_comb;
+                    decoded_values_next[low_index_next] =
+                      ADDRESS_WIDTH'(value_comb);
                     low_index_next = low_index_next + 1;
                     low_accum_next = '0;
                     low_count_next = 0;
@@ -225,7 +228,7 @@ module a6_ef_batch_decoder #(
             // A completed frame/raw word must end exactly at a beat boundary.
             if ((push_count != 0 ||
                  (state == HEADER && frame_count_next == 0 && state_next == RAW))
-                && (beat_index + 1 != link_count))
+                && (beat_index + 1 != $unsigned(link_count)))
               parser_error = 1'b1;
           end
         end
@@ -286,7 +289,8 @@ module a6_ef_batch_decoder #(
 
       for (seq_i = 0; seq_i < MAX_BATCH; seq_i = seq_i + 1)
         if (seq_i < push_count)
-          fifo_memory[(write_pointer + seq_i) % FIFO_DEPTH] <= push_values[seq_i];
+          fifo_memory[write_pointer + FIFO_PTR_WIDTH'(seq_i)] <=
+            push_values[seq_i];
       if (push_count != 0)
         write_pointer <= write_pointer + FIFO_PTR_WIDTH'(push_count);
       if (pop_event)
