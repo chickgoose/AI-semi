@@ -1,0 +1,78 @@
+{
+  "candidate": "a9_w5_ddr_technology_boundary",
+  "status": "mapping_plan_only_physical_hold",
+  "reference": {
+    "candidate": "a7_r1_candidate_endpoint",
+    "commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
+    "address_semantics": "address-only N16 identity",
+    "address_width_bits": 4,
+    "data_width_bits": 2,
+    "source_sha256": {
+      "a7_r1_launch_qualifier.sv": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d",
+      "a7_r1_icg_boundary.sv": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9",
+      "a7_r1_ddr_tx.sv": "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197",
+      "a7_r1_ddr_rx.sv": "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06",
+      "a7_r1_retire_observer.sv": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f",
+      "a7_r1_candidate_endpoint.sv": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03",
+      "a7_r1_parallel_reference_top.sv": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748",
+      "a7_r1_candidate_endpoint_tb.sv": "b3af920caa6e7242820f1428bf655045fcf2bd8911e4e41c5ae92d4b0c87e950"
+    }
+  },
+  "selection": {
+    "exactly_one_required": true,
+    "macros": [
+      "A9_W5_TECH_GENERIC",
+      "A9_W5_TECH_ASIC",
+      "A9_W5_TECH_XILINX_7SERIES"
+    ],
+    "no_selection": "compile failure",
+    "multiple_selection": "compile failure",
+    "no_implicit_generic_fallback": true
+  },
+  "asic_required_adapter_modules": [
+    "a9_w5_asic_icg_cell_adapter",
+    "a9_w5_asic_oddr2_cell_adapter",
+    "a9_w5_asic_iddr2_cell_adapter"
+  ],
+  "xilinx_7series_required_unisim": [
+    "BUFGCE",
+    "ODDR",
+    "IDDR"
+  ],
+  "edge_contract": {
+    "admission": "event_valid_i && armed event_ready_o at ref_clk_i rising edge",
+    "reset_release": "first safe ref rising edge arms ready but cannot launch",
+    "low_symbol": "address[1:0], launched at ref rising and captured at burst rising",
+    "high_symbol": "address[3:2], launched at ref falling and captured at burst falling",
+    "nominal_launch_to_capture_ns": 4.0,
+    "raw_retirement": "falling burst edge toggles once after IDDR outputs update",
+    "observed_retirement": "phase-related seen-toggle observer emits complete ref-domain retire_valid/address at the next ref rising edge",
+    "availability_latency_ref_cycles": 1,
+    "synchronous_consumer_latency_ref_cycles": 2,
+    "drain_idle": "no same-cycle launch, frame inactive, burst clock low, raw toggle equals seen toggle, and no registered retire_valid awaiting synchronous consume"
+  },
+  "parallel_reference": {
+    "module": "a7_r1_parallel_reference_top",
+    "same_ready_reset_observer_boundary": true,
+    "complete_reference_required": true
+  },
+  "owner_charged_generic_reference": {
+    "scope": "A7 42377ca generic complete endpoints; not mapped A9 wrapper or physical PPA",
+    "ddr2": {"pins": 3, "state_bits": 20, "charged_functional_cells": 29},
+    "parallel4": {"pins": 5, "state_bits": 18, "charged_functional_cells": 27}
+  },
+  "timing_hold_reasons": [
+    "no selected ASIC library or characterized ICG/ODDR/IDDR adapter",
+    "no selected FPGA part, package pins, IOSTANDARD, DRIVE, SLEW or IOB placement",
+    "no target pad/load and board/package skew budget",
+    "no STA of quarter-cycle setup/hold, generated clock or recovery/removal",
+    "no post-route duty-cycle, CDC/RDC, PVT or physical-link evidence"
+  ],
+  "synthesis_excludes": [
+    "tests/a9_w5_ddr_technology_boundary/mock_asic_cells.sv",
+    "tests/a9_w5_ddr_technology_boundary/mock_xilinx_unisim.sv",
+    "tests/a9_w5_ddr_technology_boundary/a9_w5_equivalence_tb.sv",
+    "all temporary A7 reference materializations"
+  ],
+  "physical_ppa_executed": false
+}
