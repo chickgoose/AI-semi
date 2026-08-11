@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "qualification": "A5_W5_COMMON_ENDPOINT_PRODUCTION_REPLAY",
+  "endpoint_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
+  "superseded_negative_commit": "ca1a20971ee7bc32520aef47a3a97c89747c7fa5",
+  "boundary_index_sha256": "e745167e136b332902553aed3758521a8770ec7672b8c99c4dd9d7b3b0dc7b62",
+  "full_evaluation_sha256": "e1550d5f8f3abc6f586f0744a60ff9e69355b80457ae9ec1e132f0e7e3df0e90",
+  "endpoint_manifest_sha256": "8de7a8a22e8503c867e62201b453089e271096f114d5511fc25beb945eb0c484",
+  "driver_sha256": "b27b8661f22db39c8678647578a0ed09d89fc28ff7c7fbdf0851a74057ae7d98",
+  "compile_log_sha256": "87f25402068f80c74aba71157f2b557dd1e8ba4fa3b764a7bd50c15b348b8f2b",
+  "binary_sha256": "3b811ae74176607786721ded80177c9e167e5fe789e7defb3b818f5de76d8f6a",
+  "simulator": {
+    "identity": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
+    "executable_sha256": "1e48c09b042b0d068d6b79671008537fb0b1a63f220267408b6d9230473d51db"
+  },
+  "cohort": {
+    "full50_runs": 50,
+    "full50_events": 106416,
+    "capacity22_runs": 22,
+    "capacity22_events": 65616,
+    "same_parallel_ddr_occurrence_ids": true
+  },
+  "metrics": {
+    "full50": {
+      "accepted_each": 106416,
+      "delivered_each": 106416,
+      "fixed_window_delivered_each": 85049,
+      "latency_ticks_each": {"mean": 2651.7472560517217, "p50": 268,
+        "p95": 15216, "p99": 19472, "max": 20536},
+      "parallel_toggles": {"data": 828396, "control": 301334, "clock": 758776},
+      "parallel_toggles_per_event": {"data": 7.784506089309878,
+        "control": 2.831660652533454, "clock": 7.13028116072771},
+      "ddr_toggles": {"data": 1196261, "control": 301334, "clock": 758776},
+      "ddr_toggles_per_event": {"data": 11.241364080589385,
+        "control": 2.831660652533454, "clock": 7.13028116072771},
+      "reset_cycles_total_each": 100
+    },
+    "capacity22": {
+      "accepted_each": 65616,
+      "delivered_each": 65616,
+      "fixed_window_delivered_each": 44520,
+      "latency_ticks_each": {"mean": 4264.473360156059, "p50": 1996,
+        "p95": 17256, "p99": 19880, "max": 20536},
+      "parallel_toggles": {"data": 535584, "control": 146596, "clock": 435832},
+      "parallel_toggles_per_event": {"data": 8.162399414776884,
+        "control": 2.2341502072665205, "clock": 6.6421604486710555},
+      "ddr_toggles": {"data": 748670, "control": 146596, "clock": 435832},
+      "ddr_toggles_per_event": {"data": 11.409869544013656,
+        "control": 2.2341502072665205, "clock": 6.6421604486710555},
+      "reset_cycles_total_each": 44
+    }
+  },
+  "reset": {
+    "initial_cycles_per_run": 2,
+    "retired_during_reset": 0,
+    "phantom_after_reset": 0,
+    "state_clear_observed": true
+  },
+  "limits": [
+    "Toggle counts are deterministic RTL/interface transition proxies, not power.",
+    "Toggle counting starts after reset-release arming and ends after complete drain; reset is reported separately.",
+    "The TB serializer and observer IDs are excluded from DUT state and toggle counts.",
+    "Physical ICG, clock tree, DDR hard cells, routed capacitance, STA and PVT remain HOLD."
+  ]
+}

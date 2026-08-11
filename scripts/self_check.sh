@@ -104,4 +104,6 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s "$PROJECT_ROOT/benchmarks/clean_slate_aer/tests"
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s "$PROJECT_ROOT/tests/common_suite_receipt" -p 'test_*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+  -s "$PROJECT_ROOT/tests/a5_w5_common_endpoint" -p 'test_*.py'
 printf 'structural self-check passed\n'
