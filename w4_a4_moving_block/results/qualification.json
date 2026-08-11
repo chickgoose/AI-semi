@@ -1,0 +1,2158 @@
+{
+  "actual_rtl": true,
+  "adapter_state_bits": 0,
+  "address_semantics": "source-address-only",
+  "cycle_lockstep_runs": 72,
+  "decision": "PASS",
+  "provenance": {
+    "a4_commit": "850fbcfa4ad168b1250223610780f11378f6c391",
+    "a4_rtl_sha256": "18e00a2acba587af7f81f2f1608268f4c37d9068a3e7e3f2b29611c4f8ea5677",
+    "adapter_sha256": "48d8907b5dd431975454017b9f569c4edbd25fa873e712a0a0eeba3115ae6205",
+    "capacity22_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "common_commit": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "full50_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+    "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "reference_sha256": "a3c07065a0c8da1f57d7c0d0c4621fd653e4cf8aa7129f1ccdc51dd983aaa8ee",
+    "testbench_sha256": "41a3cd2115e5a6c96e708184e1bff277efa68ef045d79607de5117b6f24982c4",
+    "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
+  },
+  "runs": [
+    {
+      "cycles": 260,
+      "fixed": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 200,
+        "max_occurrence_to_delivery": 20,
+        "mean_occurrence_to_delivery": 12.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 20,
+        "p99_occurrence_to_delivery": 20,
+        "retired": 16
+      },
+      "moving": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 168,
+        "max_occurrence_to_delivery": 18,
+        "mean_occurrence_to_delivery": 10.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 18,
+        "p99_occurrence_to_delivery": 18,
+        "retired": 16
+      },
+      "suite": "full50",
+      "trace": "core_simultaneous_identity",
+      "trace_sha256": "a9a81664fc2117e72df8739b816eaffdeb8a4ab734576ab7c96336d0d232f045",
+      "vector_sha256": "15f1f4a4fbf9ef94c6bfe10ac805c548318a2b93cdca2b82f7cfd481f637ecc2"
+    },
+    {
+      "cycles": 516,
+      "fixed": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 80,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 16
+      },
+      "moving": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 48,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 16
+      },
+      "suite": "full50",
+      "trace": "core_sparse_identity",
+      "trace_sha256": "5258daa401e16ffccfe80e47a7bc3b3dcf313883a2098929d129a178ec5e6b80",
+      "vector_sha256": "0521c2508e89569d65b5de6e3e0b49b574cdc7f65ed1b79e623bf6667a6103ab"
+    },
+    {
+      "cycles": 516,
+      "fixed": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 80,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 16
+      },
+      "moving": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 48,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 16
+      },
+      "suite": "full50",
+      "trace": "core_sparse_rotate180",
+      "trace_sha256": "afc988806e810c026947341813ec989570f1b469c0189c12f6e09b3faaa1e93f",
+      "vector_sha256": "972ee2c7cfb3e2cc24bd9f99d42954848c2e1ebb3132d1ea729ceb7d81ea238c"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1827,
+        "fixed_window_delivered": 1823,
+        "latency_sum": 9135,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1827
+      },
+      "moving": {
+        "accepted": 1827,
+        "fixed_window_delivered": 1825,
+        "latency_sum": 5481,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1827
+      },
+      "suite": "full50",
+      "trace": "elephant_mouse_affine",
+      "trace_sha256": "cbfdc0993396f30d16bb987ce381a324e53cbe852dce15bd0f5d95a687790c2d",
+      "vector_sha256": "082a4e644074624dc3413e1c9621bb9d1ae2d44bc85fff58b4a257b9e91c817d"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1827,
+        "fixed_window_delivered": 1823,
+        "latency_sum": 9135,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1827
+      },
+      "moving": {
+        "accepted": 1827,
+        "fixed_window_delivered": 1825,
+        "latency_sum": 5481,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1827
+      },
+      "suite": "full50",
+      "trace": "elephant_mouse_identity",
+      "trace_sha256": "0fbec1a87125b199ce8e5b389d108481e238d64d5e7a3a1ee6e74786d1b3fabb",
+      "vector_sha256": "291873d48ad7dae0e3d5207df2cdaf84f086413008efbbafb5f3e5993fded9d7"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 6400,
+        "max_occurrence_to_delivery": 20,
+        "mean_occurrence_to_delivery": 12.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 20,
+        "p99_occurrence_to_delivery": 20,
+        "retired": 512
+      },
+      "moving": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 5376,
+        "max_occurrence_to_delivery": 18,
+        "mean_occurrence_to_delivery": 10.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 18,
+        "p99_occurrence_to_delivery": 18,
+        "retired": 512
+      },
+      "suite": "full50",
+      "trace": "global_fanin_identity",
+      "trace_sha256": "82d86a633f1359d484cc0b780b9b3447048cb76a122422e02da3bf0f6ff800ab",
+      "vector_sha256": "23b6db5e0c8456fe13cf8540e92511d2784bd30f0ff926fe9af499b9950f2421"
+    },
+    {
+      "cycles": 4119,
+      "fixed": {
+        "accepted": 4111,
+        "fixed_window_delivered": 4092,
+        "latency_sum": 108523,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 26.398199951350037,
+        "overrun": 5117,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 4111
+      },
+      "moving": {
+        "accepted": 4114,
+        "fixed_window_delivered": 4094,
+        "latency_sum": 112433,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 27.329363150218764,
+        "overrun": 5114,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 4114
+      },
+      "suite": "full50",
+      "trace": "mixed_phase_always_ready_bit_reverse",
+      "trace_sha256": "4e0ff22112dba73d984cfcc50d6ce2e726f74d4ce2a70b9b7dec5399a7dbe822",
+      "vector_sha256": "9ff02d70d5de9342c42cfe4ee44f4b8e12176839889c2d94f7caeec03d24e98b"
+    },
+    {
+      "cycles": 4118,
+      "fixed": {
+        "accepted": 4111,
+        "fixed_window_delivered": 4092,
+        "latency_sum": 111107,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 27.02675747993189,
+        "overrun": 5117,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 4111
+      },
+      "moving": {
+        "accepted": 4113,
+        "fixed_window_delivered": 4094,
+        "latency_sum": 113897,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 27.691952346219306,
+        "overrun": 5115,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 4113
+      },
+      "suite": "full50",
+      "trace": "mixed_phase_always_ready_identity",
+      "trace_sha256": "9fde0ee816a80975d219b57e9799e73c198efc85d6e9aec4cb2a2e4816974705",
+      "vector_sha256": "b9540836f11077285e6c6ebc44f0c8365e7dbe4d75113f0bd1ba234446354bf3"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1817,
+        "latency_sum": 9105,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1821
+      },
+      "moving": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1819,
+        "latency_sum": 5463,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1821
+      },
+      "suite": "full50",
+      "trace": "moving_hotspot_multi_column_s3301",
+      "trace_sha256": "5538b98dc8bf9e3ac58f47cd1127cf59be0bf930f236ae82d3b225fe5a910f78",
+      "vector_sha256": "bb4c2931f34bdda7115d394ee305ad82bf9e86fbcc51d05bd0465ed76010483e"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1817,
+        "latency_sum": 9105,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1821
+      },
+      "moving": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1819,
+        "latency_sum": 5463,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1821
+      },
+      "suite": "full50",
+      "trace": "moving_hotspot_multi_disperse_s3301",
+      "trace_sha256": "0ce16196ad82c5dba864ed678b2cab036d4a56b94fa99dda62da492d6ba6ec17",
+      "vector_sha256": "5c3e8d8c59ddf78392facaf6b265e8492b96b036f2795092f158a7fcc7655984"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1817,
+        "latency_sum": 9105,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1821
+      },
+      "moving": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1819,
+        "latency_sum": 5463,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1821
+      },
+      "suite": "full50",
+      "trace": "moving_hotspot_multi_row_s3301",
+      "trace_sha256": "d3bbf76b74a9bf981752f9021e09ebc683a50a163be2a92a71cd6b0c5892c4ab",
+      "vector_sha256": "e75eda36737f38d5a956ac54dea6cd90f1d129be3b4130e9a8e7684210deeaa0"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1817,
+        "latency_sum": 9105,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1821
+      },
+      "moving": {
+        "accepted": 1821,
+        "fixed_window_delivered": 1819,
+        "latency_sum": 5463,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1821
+      },
+      "suite": "full50",
+      "trace": "moving_hotspot_single_s3301",
+      "trace_sha256": "63645d3abae7210d74dbd16176bc5d4b17cb7d800eaefe59dfde721cd98eca5f",
+      "vector_sha256": "b01d00649ea3587000dfd01ffa42e09972ed2fa432dfee70edfbe0ad3fe4302b"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1827,
+        "fixed_window_delivered": 1823,
+        "latency_sum": 9135,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1827
+      },
+      "moving": {
+        "accepted": 1827,
+        "fixed_window_delivered": 1825,
+        "latency_sum": 5481,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1827
+      },
+      "suite": "full50",
+      "trace": "moving_hotspot_single_s3302",
+      "trace_sha256": "6eb1fd67c9ef8ec6327708525887893c08bdbe764ada3d98c1a7b7fec8c8fa04",
+      "vector_sha256": "8f2e565009c7f9550a17333bfe27f01261003989600667b3dd826763f4df5e7c"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 2640,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 5.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 480
+      },
+      "moving": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 1680,
+        "max_occurrence_to_delivery": 4,
+        "mean_occurrence_to_delivery": 3.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 4,
+        "p99_occurrence_to_delivery": 4,
+        "retired": 480
+      },
+      "suite": "full50",
+      "trace": "pairwise_contention_affine",
+      "trace_sha256": "c8b2340e57c81603708a2ec1978a6c0d74d6fbfa24141f3070e336989ebb0821",
+      "vector_sha256": "747ba7098edc8a8d34c0f09bd3fae9e45d5c6c80c3b1a9234944d0e0b1a2e862"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 2640,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 5.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 480
+      },
+      "moving": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 1680,
+        "max_occurrence_to_delivery": 4,
+        "mean_occurrence_to_delivery": 3.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 4,
+        "p99_occurrence_to_delivery": 4,
+        "retired": 480
+      },
+      "suite": "full50",
+      "trace": "pairwise_contention_identity",
+      "trace_sha256": "e1df1600f2c15d17e15c9cdad60b51529eea9d0f685279840dcbbe9079d1f15a",
+      "vector_sha256": "bd1dd80be8a49103c930490503289a7aded7697793d5b79a23b3b595a52c49ec"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2147,
+        "fixed_window_delivered": 2147,
+        "latency_sum": 44276,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 20.62226362366092,
+        "overrun": 992,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2147
+      },
+      "moving": {
+        "accepted": 2151,
+        "fixed_window_delivered": 2151,
+        "latency_sum": 43220,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 20.092980009298,
+        "overrun": 988,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2151
+      },
+      "suite": "full50",
+      "trace": "phase_transition_s3501",
+      "trace_sha256": "0c0d47f9559f5ca454a9a2b2c04918f63b9b6a2be7fd1c2385f916939f7bcb17",
+      "vector_sha256": "a13bdd721f37471e46b323695b867f443e9f6f25a7d0780f3b93a811ca813f82"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2174,
+        "fixed_window_delivered": 2174,
+        "latency_sum": 43756,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 20.12695492180313,
+        "overrun": 993,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2174
+      },
+      "moving": {
+        "accepted": 2177,
+        "fixed_window_delivered": 2177,
+        "latency_sum": 42366,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 19.460725769407443,
+        "overrun": 990,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2177
+      },
+      "suite": "full50",
+      "trace": "phase_transition_s3502",
+      "trace_sha256": "1342bdafe2a9820d136b66d1afacb3f6f4eac672223adcf1d963a5edf0910d11",
+      "vector_sha256": "40886e1bcad75e5978f062ff0709c942b639e5ec43b98b4805ef7f68b2511e30"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 2560,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 512
+      },
+      "moving": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 1536,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 512
+      },
+      "suite": "full50",
+      "trace": "retrigger_affine",
+      "trace_sha256": "182e985be382ec997671a9f5b5a0532f4ed8138a22dbc826e8035ef1e2a99fa7",
+      "vector_sha256": "aa121d4b8dcf9d27050c3091669e8c2e432e252a85b088c75587075d55e9b45c"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 2560,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 512
+      },
+      "moving": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 1536,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 512
+      },
+      "suite": "full50",
+      "trace": "retrigger_identity",
+      "trace_sha256": "0d381e1a6e3da84cbd146c231870879346f63996ebf95d138a8481b4a071d6b4",
+      "vector_sha256": "b99da9eb334b6abfafb3c9413599a74cc8e5ce0032a428ac25cdfcff83f9fd76"
+    },
+    {
+      "cycles": 4109,
+      "fixed": {
+        "accepted": 4101,
+        "fixed_window_delivered": 4092,
+        "latency_sum": 52711,
+        "max_occurrence_to_delivery": 45,
+        "mean_occurrence_to_delivery": 12.853206534991466,
+        "overrun": 116,
+        "p95_occurrence_to_delivery": 27,
+        "p99_occurrence_to_delivery": 35,
+        "retired": 4101
+      },
+      "moving": {
+        "accepted": 4104,
+        "fixed_window_delivered": 4094,
+        "latency_sum": 52257,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 12.733187134502923,
+        "overrun": 113,
+        "p95_occurrence_to_delivery": 29,
+        "p99_occurrence_to_delivery": 37,
+        "retired": 4104
+      },
+      "suite": "full50",
+      "trace": "rotating_victim_affine",
+      "trace_sha256": "36466f8c889421a738c8b97b38968b587abbbef1b7a6db003b88fcc6aca6e277",
+      "vector_sha256": "060059631fb053db2625db1307e20ff2c3591d4e036413496893b4ca7d7348f5"
+    },
+    {
+      "cycles": 4108,
+      "fixed": {
+        "accepted": 4099,
+        "fixed_window_delivered": 4090,
+        "latency_sum": 49196,
+        "max_occurrence_to_delivery": 45,
+        "mean_occurrence_to_delivery": 12.001951695535496,
+        "overrun": 118,
+        "p95_occurrence_to_delivery": 27,
+        "p99_occurrence_to_delivery": 35,
+        "retired": 4099
+      },
+      "moving": {
+        "accepted": 4102,
+        "fixed_window_delivered": 4093,
+        "latency_sum": 48214,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 11.753778644563628,
+        "overrun": 115,
+        "p95_occurrence_to_delivery": 29,
+        "p99_occurrence_to_delivery": 36,
+        "retired": 4102
+      },
+      "suite": "full50",
+      "trace": "rotating_victim_identity",
+      "trace_sha256": "3711822e5250bcf2917cedf6569e5f47f8a2af7d33fb467b744958d7941339e8",
+      "vector_sha256": "3e4a2801e3641ba2b53cd0f74234850d87a417bdb822843bb8d92d1e5297e043"
+    },
+    {
+      "cycles": 4102,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 10240,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2047,
+        "latency_sum": 6144,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 2048
+      },
+      "suite": "full50",
+      "trace": "shape_b1",
+      "trace_sha256": "6b4e2984771d7c23dd6bc68e01e9125d72e68af24afdd70a38988bf0b6be0bf4",
+      "vector_sha256": "ff238ba69ca66c514df362e35ed56f7dac22224453a28c6699e75ba4175c9e1e"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 25600,
+        "max_occurrence_to_delivery": 20,
+        "mean_occurrence_to_delivery": 12.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 20,
+        "p99_occurrence_to_delivery": 20,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 21504,
+        "max_occurrence_to_delivery": 18,
+        "mean_occurrence_to_delivery": 10.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 18,
+        "p99_occurrence_to_delivery": 18,
+        "retired": 2048
+      },
+      "suite": "full50",
+      "trace": "shape_b16",
+      "trace_sha256": "b622e934385346d3a6f976535b813d07af650846abe1011bc7644ca4a931f545",
+      "vector_sha256": "d9b984abbae48e5d7e0f74ed555ccc92ad58fa656243f75ce26e2014eaad533a"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 13312,
+        "max_occurrence_to_delivery": 8,
+        "mean_occurrence_to_delivery": 6.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 8,
+        "p99_occurrence_to_delivery": 8,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 9216,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 4.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 2048
+      },
+      "suite": "full50",
+      "trace": "shape_b4",
+      "trace_sha256": "90eb9c4173de5cf92d98bbb70512b3f3bb7a1aff94803c4e7f4d4d73f8ef59b7",
+      "vector_sha256": "394b83f96073867427011ba26b284998b39e11b4b11f4cbfd84009d782e29f8a"
+    },
+    {
+      "cycles": 2053,
+      "fixed": {
+        "accepted": 1536,
+        "fixed_window_delivered": 1534,
+        "latency_sum": 9984,
+        "max_occurrence_to_delivery": 8,
+        "mean_occurrence_to_delivery": 6.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 8,
+        "p99_occurrence_to_delivery": 8,
+        "retired": 1536
+      },
+      "moving": {
+        "accepted": 1536,
+        "fixed_window_delivered": 1536,
+        "latency_sum": 6912,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 4.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 1536
+      },
+      "suite": "full50",
+      "trace": "spatial_dispersed",
+      "trace_sha256": "87ac5ad6f73f9e9e1be70aa6495acbe1cdf3f2bbff6c11d8afa5414f8d1680da",
+      "vector_sha256": "8e4f924a8092a0c68acd55a385e88dac221117b4cf40e67433f433b8486fe0be"
+    },
+    {
+      "cycles": 2053,
+      "fixed": {
+        "accepted": 1536,
+        "fixed_window_delivered": 1534,
+        "latency_sum": 9984,
+        "max_occurrence_to_delivery": 8,
+        "mean_occurrence_to_delivery": 6.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 8,
+        "p99_occurrence_to_delivery": 8,
+        "retired": 1536
+      },
+      "moving": {
+        "accepted": 1536,
+        "fixed_window_delivered": 1536,
+        "latency_sum": 6912,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 4.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 1536
+      },
+      "suite": "full50",
+      "trace": "spatial_local",
+      "trace_sha256": "2805554231a8e60e48f1025eff6df959935083a566656ba327d64e9c8b67ecb0",
+      "vector_sha256": "24cc54389c0240aad446b1a8c83ea7a3b9e33e0e55cd8d8e9f0890ec872df502"
+    },
+    {
+      "cycles": 2053,
+      "fixed": {
+        "accepted": 1536,
+        "fixed_window_delivered": 1534,
+        "latency_sum": 9984,
+        "max_occurrence_to_delivery": 8,
+        "mean_occurrence_to_delivery": 6.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 8,
+        "p99_occurrence_to_delivery": 8,
+        "retired": 1536
+      },
+      "moving": {
+        "accepted": 1536,
+        "fixed_window_delivered": 1536,
+        "latency_sum": 6912,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 4.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 1536
+      },
+      "suite": "full50",
+      "trace": "spatial_local_mirror",
+      "trace_sha256": "1f9aca8d5cdefa0b8d81c98c7ae37b9cd1923b77ff1bdba7a6a3cda9b56cedc8",
+      "vector_sha256": "4b4eea076a16d3dcea87aa7cafd25642273e1b75946f30007dd028450f150a99"
+    },
+    {
+      "cycles": 2054,
+      "fixed": {
+        "accepted": 1259,
+        "fixed_window_delivered": 1258,
+        "latency_sum": 6554,
+        "max_occurrence_to_delivery": 8,
+        "mean_occurrence_to_delivery": 5.20571882446386,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 7,
+        "retired": 1259
+      },
+      "moving": {
+        "accepted": 1259,
+        "fixed_window_delivered": 1258,
+        "latency_sum": 4036,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 3.2057188244638604,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 4,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1259
+      },
+      "suite": "full50",
+      "trace": "timing_pair_s3901",
+      "trace_sha256": "ef7c353c2fb509b17ff8a2e133461c983f61d73ba877bea311d0eb7c2a9fd4b3",
+      "vector_sha256": "00401d23d3772ca7510b3f1193fdd4793f1d159c163e91aa4d65af06dbaa8220"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1279,
+        "fixed_window_delivered": 1277,
+        "latency_sum": 6729,
+        "max_occurrence_to_delivery": 11,
+        "mean_occurrence_to_delivery": 5.2611415168100075,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 7,
+        "p99_occurrence_to_delivery": 8,
+        "retired": 1279
+      },
+      "moving": {
+        "accepted": 1279,
+        "fixed_window_delivered": 1278,
+        "latency_sum": 4171,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 3.261141516810008,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 4,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1279
+      },
+      "suite": "full50",
+      "trace": "timing_pair_s3902",
+      "trace_sha256": "04eeba16b1c8c90cc69a457e56b7319cb7361952d71ffc79f89800c3a139d73b",
+      "vector_sha256": "6ef4377cdee000196840a409be12db3b67a812e7dc1421d1334124e267aa654a"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 251,
+        "fixed_window_delivered": 251,
+        "latency_sum": 1255,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 251
+      },
+      "moving": {
+        "accepted": 251,
+        "fixed_window_delivered": 251,
+        "latency_sum": 753,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 251
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p125_s2001",
+      "trace_sha256": "850e064e2dfe61567e4fd275fb2c200ec23b995f810f4fa40c87322e640e4ffc",
+      "vector_sha256": "61a96de8153664fa035ddf988e4b0c55e26ed3fd042951887c63fbd6ae309563"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 261,
+        "fixed_window_delivered": 261,
+        "latency_sum": 1305,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 261
+      },
+      "moving": {
+        "accepted": 261,
+        "fixed_window_delivered": 261,
+        "latency_sum": 783,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 261
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p125_s2002",
+      "trace_sha256": "e1a7cdc62d914a7e0b92d4cd3e9d7289655e8ad0eb27b513b6859bef694c741d",
+      "vector_sha256": "e4a2db63de86c78095ed6452501195c3cd169260c5f232e51e0238c2bfdbd4f8"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 231,
+        "fixed_window_delivered": 231,
+        "latency_sum": 1155,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 231
+      },
+      "moving": {
+        "accepted": 231,
+        "fixed_window_delivered": 231,
+        "latency_sum": 693,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 231
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p125_s2003",
+      "trace_sha256": "cecd8707640657715f9b69c57640a49aa5777bb7d3aea61d7038e07b114f9528",
+      "vector_sha256": "9243de8f6b89e534ea3ebfb0f372aa02a748ee76fc389f84b984d7522f6a3d52"
+    },
+    {
+      "cycles": 2053,
+      "fixed": {
+        "accepted": 982,
+        "fixed_window_delivered": 980,
+        "latency_sum": 4910,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 982
+      },
+      "moving": {
+        "accepted": 982,
+        "fixed_window_delivered": 982,
+        "latency_sum": 2946,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 982
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p50_s2001",
+      "trace_sha256": "5e897c984eaf929c1b3af994c9776a5d776abc82e78b2660bb90ea5169cb76ab",
+      "vector_sha256": "fcff63cfc74f1125ba31b7779bf361254d660866b303b925241e5e8830c6a85b"
+    },
+    {
+      "cycles": 2054,
+      "fixed": {
+        "accepted": 1038,
+        "fixed_window_delivered": 1035,
+        "latency_sum": 5190,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1038
+      },
+      "moving": {
+        "accepted": 1038,
+        "fixed_window_delivered": 1037,
+        "latency_sum": 3114,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1038
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p50_s2002",
+      "trace_sha256": "a3049c9c22c391dd3447362a260e149dd12da4debd43ddb8dc452de01d2fc6e2",
+      "vector_sha256": "15ef0245a88433c642959c0a521395d9fbc20ad218e07f15ba20f285b5fabd77"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1032,
+        "fixed_window_delivered": 1030,
+        "latency_sum": 5160,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1032
+      },
+      "moving": {
+        "accepted": 1032,
+        "fixed_window_delivered": 1031,
+        "latency_sum": 3096,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1032
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p50_s2003",
+      "trace_sha256": "d5811bc9e953d5e617818235b119d302429f6edd99978315ad3d5195388672d1",
+      "vector_sha256": "b7eca9c4f7279512a2c6c62c06a6211786ecbdd6df8be217fc4e9f147407b1cc"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1868,
+        "fixed_window_delivered": 1864,
+        "latency_sum": 9340,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1868
+      },
+      "moving": {
+        "accepted": 1868,
+        "fixed_window_delivered": 1866,
+        "latency_sum": 5604,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1868
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p90_s2001",
+      "trace_sha256": "b5324f571be19993e812191adf744a5b7d0626b5a9030592d29e2e7ce401b4a8",
+      "vector_sha256": "c852e1c1554ec1eeb5cb8a082f6a841e5de0cd2f3fd7e34b74d6a141931d25fa"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1851,
+        "fixed_window_delivered": 1848,
+        "latency_sum": 9255,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1851
+      },
+      "moving": {
+        "accepted": 1851,
+        "fixed_window_delivered": 1849,
+        "latency_sum": 5553,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1851
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p90_s2002",
+      "trace_sha256": "c2698ed1703f87d3f3081584c7f7ca7cfe2b345ce1e477247c70dbc1948bc569",
+      "vector_sha256": "722e49e2aa5c379447851ea1b9a88f75d3643b8f5efcee9c69867051ea756e7f"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 1837,
+        "fixed_window_delivered": 1833,
+        "latency_sum": 9185,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 1837
+      },
+      "moving": {
+        "accepted": 1837,
+        "fixed_window_delivered": 1835,
+        "latency_sum": 5511,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 1837
+      },
+      "suite": "full50",
+      "trace": "uniform_l0p90_s2003",
+      "trace_sha256": "c11484a731935911ade2028a2c7bdce20604278c9f8862491166b3276a677be6",
+      "vector_sha256": "d0e9d2a9447107a6a1c37a89cb3d8cc3c94b64042afd13492370f76b1bcf6dcb"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 10240,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 6144,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 2048
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p00_s2001",
+      "trace_sha256": "8554d7917b4a06bbc2e0dd1fc3e06286182a0bf64dff8de01883d2674ecb737d",
+      "vector_sha256": "2b583447521147448289256c4bbca6a40636837de8d842591b5ea2a712c51fbb"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 10240,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 6144,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 2048
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p00_s2002",
+      "trace_sha256": "262f9f91597666910d43bfb5e4a6e9a999272207c22e07f0449ccac707348a5d",
+      "vector_sha256": "4c7035e4a7fb4612a9cb208e96346f1a56df806831dd442eb52eb09dcfdbb1bd"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 10240,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 6144,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 2048
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p00_s2003",
+      "trace_sha256": "513b8baed3695aed416b8c8fd15808cb5047b006e60bd606d439f73948a8b399",
+      "vector_sha256": "8e9e4fc8cd7505df6217117b0e26ba02e79f44ef53141ce863c1d98dca6d56fd"
+    },
+    {
+      "cycles": 2078,
+      "fixed": {
+        "accepted": 2070,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 51560,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 24.908212560386474,
+        "overrun": 466,
+        "p95_occurrence_to_delivery": 44,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2070
+      },
+      "moving": {
+        "accepted": 2073,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 52902,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 25.519536903039075,
+        "overrun": 463,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2073
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p25_s2001",
+      "trace_sha256": "a77a87fb0f1a081c183460d5f5f9274fd19114f0d4ae06d4c97360d243661090",
+      "vector_sha256": "09127dca70f3ae56a7bceb3e617a97143fee7865ef1baf9344e4f83ca4abaf73"
+    },
+    {
+      "cycles": 2078,
+      "fixed": {
+        "accepted": 2070,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 53748,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 25.965217391304346,
+        "overrun": 504,
+        "p95_occurrence_to_delivery": 44,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2070
+      },
+      "moving": {
+        "accepted": 2073,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 55606,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 26.82392667631452,
+        "overrun": 501,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2073
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p25_s2002",
+      "trace_sha256": "d73514e45ecfec672b2f2034c9ccf1f6c7d040e4ca228015c2fb664a81c4f5bb",
+      "vector_sha256": "0d28866ab8a9eb672cf7f5a445b48b8de996de98ed762b2d1ee7bd0ee0773d9f"
+    },
+    {
+      "cycles": 2081,
+      "fixed": {
+        "accepted": 2074,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 54310,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 26.186113789778208,
+        "overrun": 476,
+        "p95_occurrence_to_delivery": 44,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2074
+      },
+      "moving": {
+        "accepted": 2076,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 55286,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 26.631021194605008,
+        "overrun": 474,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2076
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p25_s2003",
+      "trace_sha256": "d3076dbcc97c3b9b10136be192181528eee8bf0ad2d07549effd1c1cf7d33ddb",
+      "vector_sha256": "477248c7a44cc162ac79f4be9be6a9b75dc858db8b5baf9f1ac48a2cc7b47f22"
+    },
+    {
+      "cycles": 2082,
+      "fixed": {
+        "accepted": 2075,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 65880,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 31.749397590361447,
+        "overrun": 964,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2075
+      },
+      "moving": {
+        "accepted": 2075,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 67055,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 32.31566265060241,
+        "overrun": 964,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2075
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p50_s2001",
+      "trace_sha256": "7653c20cb03953592a0727f73ee66761a6e719d06019234cf61fd4e471393839",
+      "vector_sha256": "d269fc9e199355e1adb3402b61086da1516ffea9827174e575f0e20650b8ac2c"
+    },
+    {
+      "cycles": 2083,
+      "fixed": {
+        "accepted": 2076,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 66052,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 31.816955684007706,
+        "overrun": 1018,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2076
+      },
+      "moving": {
+        "accepted": 2078,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 67618,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 32.539942252165545,
+        "overrun": 1016,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2078
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p50_s2002",
+      "trace_sha256": "6193ccd24af9f7c182b3a2fa6f355d6a2c210bd43476bca8e2242897ae1ee8ab",
+      "vector_sha256": "86eff8bee2cd5e4625e9eff5e6f666bc86063a7a4684ca4bc446e7a20c879d47"
+    },
+    {
+      "cycles": 2080,
+      "fixed": {
+        "accepted": 2072,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 64974,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 31.35810810810811,
+        "overrun": 973,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2072
+      },
+      "moving": {
+        "accepted": 2075,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 66210,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 31.90843373493976,
+        "overrun": 970,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2075
+      },
+      "suite": "full50",
+      "trace": "uniform_l1p50_s2003",
+      "trace_sha256": "d301da0e4dba7a64c4c1154fe617612368d3908779bf3204be5471bfae847bad",
+      "vector_sha256": "75b3fceca02691925e14445c5a7822b07455627cd38e13695c0491227559d134"
+    },
+    {
+      "cycles": 2088,
+      "fixed": {
+        "accepted": 2079,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 77987,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 37.51178451178451,
+        "overrun": 2017,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2079
+      },
+      "moving": {
+        "accepted": 2083,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 79271,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 38.05616898703793,
+        "overrun": 2013,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2083
+      },
+      "suite": "full50",
+      "trace": "uniform_l2p00_s2001",
+      "trace_sha256": "5ee63712c80a14a42901e2bc6c7fab121eb129ba12be16c615f8228e3944f627",
+      "vector_sha256": "3ab37d7c312487bc8159b9230fa080e8a39e00fc82f01bf59787b561f3c47ad1"
+    },
+    {
+      "cycles": 2088,
+      "fixed": {
+        "accepted": 2080,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 76945,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 36.99278846153846,
+        "overrun": 2016,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2080
+      },
+      "moving": {
+        "accepted": 2083,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 78587,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 37.72779644743159,
+        "overrun": 2013,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2083
+      },
+      "suite": "full50",
+      "trace": "uniform_l2p00_s2002",
+      "trace_sha256": "8b32d69a0ac8d591e810320510f1657d685fb0e79951b992035d82d50e9bb72a",
+      "vector_sha256": "21f6ddb788bd0ea81b70621d2c94dbcc5ea3301bb3f1ae7dc629eadee56b2bb9"
+    },
+    {
+      "cycles": 2089,
+      "fixed": {
+        "accepted": 2081,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 76074,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 36.55646323882749,
+        "overrun": 2015,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2081
+      },
+      "moving": {
+        "accepted": 2084,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 78316,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 37.57965451055662,
+        "overrun": 2012,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2084
+      },
+      "suite": "full50",
+      "trace": "uniform_l2p00_s2003",
+      "trace_sha256": "ef15eb066fb4ee69eebae96d495e20f73def720bb5da5428d5480f603189d75d",
+      "vector_sha256": "cd97fedf56bba66fbf34d397eb6f8f5170d4d39446751d4224fa3178c0c04f19"
+    },
+    {
+      "cycles": 260,
+      "fixed": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 200,
+        "max_occurrence_to_delivery": 20,
+        "mean_occurrence_to_delivery": 12.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 20,
+        "p99_occurrence_to_delivery": 20,
+        "retired": 16
+      },
+      "moving": {
+        "accepted": 16,
+        "fixed_window_delivered": 16,
+        "latency_sum": 168,
+        "max_occurrence_to_delivery": 18,
+        "mean_occurrence_to_delivery": 10.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 18,
+        "p99_occurrence_to_delivery": 18,
+        "retired": 16
+      },
+      "suite": "capacity22",
+      "trace": "core_simultaneous_identity",
+      "trace_sha256": "a9a81664fc2117e72df8739b816eaffdeb8a4ab734576ab7c96336d0d232f045",
+      "vector_sha256": "15f1f4a4fbf9ef94c6bfe10ac805c548318a2b93cdca2b82f7cfd481f637ecc2"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 6400,
+        "max_occurrence_to_delivery": 20,
+        "mean_occurrence_to_delivery": 12.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 20,
+        "p99_occurrence_to_delivery": 20,
+        "retired": 512
+      },
+      "moving": {
+        "accepted": 512,
+        "fixed_window_delivered": 512,
+        "latency_sum": 5376,
+        "max_occurrence_to_delivery": 18,
+        "mean_occurrence_to_delivery": 10.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 18,
+        "p99_occurrence_to_delivery": 18,
+        "retired": 512
+      },
+      "suite": "capacity22",
+      "trace": "global_fanin_identity",
+      "trace_sha256": "82d86a633f1359d484cc0b780b9b3447048cb76a122422e02da3bf0f6ff800ab",
+      "vector_sha256": "23b6db5e0c8456fe13cf8540e92511d2784bd30f0ff926fe9af499b9950f2421"
+    },
+    {
+      "cycles": 4119,
+      "fixed": {
+        "accepted": 4111,
+        "fixed_window_delivered": 4092,
+        "latency_sum": 108523,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 26.398199951350037,
+        "overrun": 5117,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 4111
+      },
+      "moving": {
+        "accepted": 4114,
+        "fixed_window_delivered": 4094,
+        "latency_sum": 112433,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 27.329363150218764,
+        "overrun": 5114,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 4114
+      },
+      "suite": "capacity22",
+      "trace": "mixed_phase_always_ready_bit_reverse",
+      "trace_sha256": "4e0ff22112dba73d984cfcc50d6ce2e726f74d4ce2a70b9b7dec5399a7dbe822",
+      "vector_sha256": "9ff02d70d5de9342c42cfe4ee44f4b8e12176839889c2d94f7caeec03d24e98b"
+    },
+    {
+      "cycles": 4118,
+      "fixed": {
+        "accepted": 4111,
+        "fixed_window_delivered": 4092,
+        "latency_sum": 111107,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 27.02675747993189,
+        "overrun": 5117,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 4111
+      },
+      "moving": {
+        "accepted": 4113,
+        "fixed_window_delivered": 4094,
+        "latency_sum": 113897,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 27.691952346219306,
+        "overrun": 5115,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 4113
+      },
+      "suite": "capacity22",
+      "trace": "mixed_phase_always_ready_identity",
+      "trace_sha256": "9fde0ee816a80975d219b57e9799e73c198efc85d6e9aec4cb2a2e4816974705",
+      "vector_sha256": "b9540836f11077285e6c6ebc44f0c8365e7dbe4d75113f0bd1ba234446354bf3"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 2640,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 5.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 480
+      },
+      "moving": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 1680,
+        "max_occurrence_to_delivery": 4,
+        "mean_occurrence_to_delivery": 3.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 4,
+        "p99_occurrence_to_delivery": 4,
+        "retired": 480
+      },
+      "suite": "capacity22",
+      "trace": "pairwise_contention_affine",
+      "trace_sha256": "c8b2340e57c81603708a2ec1978a6c0d74d6fbfa24141f3070e336989ebb0821",
+      "vector_sha256": "747ba7098edc8a8d34c0f09bd3fae9e45d5c6c80c3b1a9234944d0e0b1a2e862"
+    },
+    {
+      "cycles": 2052,
+      "fixed": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 2640,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 5.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 480
+      },
+      "moving": {
+        "accepted": 480,
+        "fixed_window_delivered": 480,
+        "latency_sum": 1680,
+        "max_occurrence_to_delivery": 4,
+        "mean_occurrence_to_delivery": 3.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 4,
+        "p99_occurrence_to_delivery": 4,
+        "retired": 480
+      },
+      "suite": "capacity22",
+      "trace": "pairwise_contention_identity",
+      "trace_sha256": "e1df1600f2c15d17e15c9cdad60b51529eea9d0f685279840dcbbe9079d1f15a",
+      "vector_sha256": "bd1dd80be8a49103c930490503289a7aded7697793d5b79a23b3b595a52c49ec"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2147,
+        "fixed_window_delivered": 2147,
+        "latency_sum": 44276,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 20.62226362366092,
+        "overrun": 992,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2147
+      },
+      "moving": {
+        "accepted": 2151,
+        "fixed_window_delivered": 2151,
+        "latency_sum": 43220,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 20.092980009298,
+        "overrun": 988,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2151
+      },
+      "suite": "capacity22",
+      "trace": "phase_transition_s3501",
+      "trace_sha256": "0c0d47f9559f5ca454a9a2b2c04918f63b9b6a2be7fd1c2385f916939f7bcb17",
+      "vector_sha256": "a13bdd721f37471e46b323695b867f443e9f6f25a7d0780f3b93a811ca813f82"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2174,
+        "fixed_window_delivered": 2174,
+        "latency_sum": 43756,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 20.12695492180313,
+        "overrun": 993,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2174
+      },
+      "moving": {
+        "accepted": 2177,
+        "fixed_window_delivered": 2177,
+        "latency_sum": 42366,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 19.460725769407443,
+        "overrun": 990,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2177
+      },
+      "suite": "capacity22",
+      "trace": "phase_transition_s3502",
+      "trace_sha256": "1342bdafe2a9820d136b66d1afacb3f6f4eac672223adcf1d963a5edf0910d11",
+      "vector_sha256": "40886e1bcad75e5978f062ff0709c942b639e5ec43b98b4805ef7f68b2511e30"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 25600,
+        "max_occurrence_to_delivery": 20,
+        "mean_occurrence_to_delivery": 12.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 20,
+        "p99_occurrence_to_delivery": 20,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 21504,
+        "max_occurrence_to_delivery": 18,
+        "mean_occurrence_to_delivery": 10.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 18,
+        "p99_occurrence_to_delivery": 18,
+        "retired": 2048
+      },
+      "suite": "capacity22",
+      "trace": "shape_b16",
+      "trace_sha256": "b622e934385346d3a6f976535b813d07af650846abe1011bc7644ca4a931f545",
+      "vector_sha256": "d9b984abbae48e5d7e0f74ed555ccc92ad58fa656243f75ce26e2014eaad533a"
+    },
+    {
+      "cycles": 4100,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 13312,
+        "max_occurrence_to_delivery": 8,
+        "mean_occurrence_to_delivery": 6.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 8,
+        "p99_occurrence_to_delivery": 8,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2048,
+        "latency_sum": 9216,
+        "max_occurrence_to_delivery": 6,
+        "mean_occurrence_to_delivery": 4.5,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 6,
+        "p99_occurrence_to_delivery": 6,
+        "retired": 2048
+      },
+      "suite": "capacity22",
+      "trace": "shape_b4",
+      "trace_sha256": "90eb9c4173de5cf92d98bbb70512b3f3bb7a1aff94803c4e7f4d4d73f8ef59b7",
+      "vector_sha256": "394b83f96073867427011ba26b284998b39e11b4b11f4cbfd84009d782e29f8a"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 10240,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 6144,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 2048
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p00_s2001",
+      "trace_sha256": "8554d7917b4a06bbc2e0dd1fc3e06286182a0bf64dff8de01883d2674ecb737d",
+      "vector_sha256": "2b583447521147448289256c4bbca6a40636837de8d842591b5ea2a712c51fbb"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 10240,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 6144,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 2048
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p00_s2002",
+      "trace_sha256": "262f9f91597666910d43bfb5e4a6e9a999272207c22e07f0449ccac707348a5d",
+      "vector_sha256": "4c7035e4a7fb4612a9cb208e96346f1a56df806831dd442eb52eb09dcfdbb1bd"
+    },
+    {
+      "cycles": 2055,
+      "fixed": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 10240,
+        "max_occurrence_to_delivery": 5,
+        "mean_occurrence_to_delivery": 5.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 5,
+        "p99_occurrence_to_delivery": 5,
+        "retired": 2048
+      },
+      "moving": {
+        "accepted": 2048,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 6144,
+        "max_occurrence_to_delivery": 3,
+        "mean_occurrence_to_delivery": 3.0,
+        "overrun": 0,
+        "p95_occurrence_to_delivery": 3,
+        "p99_occurrence_to_delivery": 3,
+        "retired": 2048
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p00_s2003",
+      "trace_sha256": "513b8baed3695aed416b8c8fd15808cb5047b006e60bd606d439f73948a8b399",
+      "vector_sha256": "8e9e4fc8cd7505df6217117b0e26ba02e79f44ef53141ce863c1d98dca6d56fd"
+    },
+    {
+      "cycles": 2078,
+      "fixed": {
+        "accepted": 2070,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 51560,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 24.908212560386474,
+        "overrun": 466,
+        "p95_occurrence_to_delivery": 44,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2070
+      },
+      "moving": {
+        "accepted": 2073,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 52902,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 25.519536903039075,
+        "overrun": 463,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2073
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p25_s2001",
+      "trace_sha256": "a77a87fb0f1a081c183460d5f5f9274fd19114f0d4ae06d4c97360d243661090",
+      "vector_sha256": "09127dca70f3ae56a7bceb3e617a97143fee7865ef1baf9344e4f83ca4abaf73"
+    },
+    {
+      "cycles": 2078,
+      "fixed": {
+        "accepted": 2070,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 53748,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 25.965217391304346,
+        "overrun": 504,
+        "p95_occurrence_to_delivery": 44,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2070
+      },
+      "moving": {
+        "accepted": 2073,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 55606,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 26.82392667631452,
+        "overrun": 501,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2073
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p25_s2002",
+      "trace_sha256": "d73514e45ecfec672b2f2034c9ccf1f6c7d040e4ca228015c2fb664a81c4f5bb",
+      "vector_sha256": "0d28866ab8a9eb672cf7f5a445b48b8de996de98ed762b2d1ee7bd0ee0773d9f"
+    },
+    {
+      "cycles": 2081,
+      "fixed": {
+        "accepted": 2074,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 54310,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 26.186113789778208,
+        "overrun": 476,
+        "p95_occurrence_to_delivery": 44,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2074
+      },
+      "moving": {
+        "accepted": 2076,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 55286,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 26.631021194605008,
+        "overrun": 474,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2076
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p25_s2003",
+      "trace_sha256": "d3076dbcc97c3b9b10136be192181528eee8bf0ad2d07549effd1c1cf7d33ddb",
+      "vector_sha256": "477248c7a44cc162ac79f4be9be6a9b75dc858db8b5baf9f1ac48a2cc7b47f22"
+    },
+    {
+      "cycles": 2082,
+      "fixed": {
+        "accepted": 2075,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 65880,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 31.749397590361447,
+        "overrun": 964,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2075
+      },
+      "moving": {
+        "accepted": 2075,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 67055,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 32.31566265060241,
+        "overrun": 964,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2075
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p50_s2001",
+      "trace_sha256": "7653c20cb03953592a0727f73ee66761a6e719d06019234cf61fd4e471393839",
+      "vector_sha256": "d269fc9e199355e1adb3402b61086da1516ffea9827174e575f0e20650b8ac2c"
+    },
+    {
+      "cycles": 2083,
+      "fixed": {
+        "accepted": 2076,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 66052,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 31.816955684007706,
+        "overrun": 1018,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2076
+      },
+      "moving": {
+        "accepted": 2078,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 67618,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 32.539942252165545,
+        "overrun": 1016,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2078
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p50_s2002",
+      "trace_sha256": "6193ccd24af9f7c182b3a2fa6f355d6a2c210bd43476bca8e2242897ae1ee8ab",
+      "vector_sha256": "86eff8bee2cd5e4625e9eff5e6f666bc86063a7a4684ca4bc446e7a20c879d47"
+    },
+    {
+      "cycles": 2080,
+      "fixed": {
+        "accepted": 2072,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 64974,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 31.35810810810811,
+        "overrun": 973,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2072
+      },
+      "moving": {
+        "accepted": 2075,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 66210,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 31.90843373493976,
+        "overrun": 970,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2075
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l1p50_s2003",
+      "trace_sha256": "d301da0e4dba7a64c4c1154fe617612368d3908779bf3204be5471bfae847bad",
+      "vector_sha256": "75b3fceca02691925e14445c5a7822b07455627cd38e13695c0491227559d134"
+    },
+    {
+      "cycles": 2088,
+      "fixed": {
+        "accepted": 2079,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 77987,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 37.51178451178451,
+        "overrun": 2017,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2079
+      },
+      "moving": {
+        "accepted": 2083,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 79271,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 38.05616898703793,
+        "overrun": 2013,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2083
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l2p00_s2001",
+      "trace_sha256": "5ee63712c80a14a42901e2bc6c7fab121eb129ba12be16c615f8228e3944f627",
+      "vector_sha256": "3ab37d7c312487bc8159b9230fa080e8a39e00fc82f01bf59787b561f3c47ad1"
+    },
+    {
+      "cycles": 2088,
+      "fixed": {
+        "accepted": 2080,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 76945,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 36.99278846153846,
+        "overrun": 2016,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2080
+      },
+      "moving": {
+        "accepted": 2083,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 78587,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 37.72779644743159,
+        "overrun": 2013,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2083
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l2p00_s2002",
+      "trace_sha256": "8b32d69a0ac8d591e810320510f1657d685fb0e79951b992035d82d50e9bb72a",
+      "vector_sha256": "21f6ddb788bd0ea81b70621d2c94dbcc5ea3301bb3f1ae7dc629eadee56b2bb9"
+    },
+    {
+      "cycles": 2089,
+      "fixed": {
+        "accepted": 2081,
+        "fixed_window_delivered": 2044,
+        "latency_sum": 76074,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 36.55646323882749,
+        "overrun": 2015,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 2081
+      },
+      "moving": {
+        "accepted": 2084,
+        "fixed_window_delivered": 2046,
+        "latency_sum": 78316,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 37.57965451055662,
+        "overrun": 2012,
+        "p95_occurrence_to_delivery": 47,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 2084
+      },
+      "suite": "capacity22",
+      "trace": "uniform_l2p00_s2003",
+      "trace_sha256": "ef15eb066fb4ee69eebae96d495e20f73def720bb5da5428d5480f603189d75d",
+      "vector_sha256": "cd97fedf56bba66fbf34d397eb6f8f5170d4d39446751d4224fa3178c0c04f19"
+    }
+  ],
+  "schema": "w4-a2-a4-common-qualification-v1",
+  "suites": {
+    "capacity22": {
+      "fixed_max_advance_1": {
+        "accepted": 42948,
+        "fixed_window_delivered": 42617,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 22.741547918412966,
+        "overrun": 22668,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 42948
+      },
+      "moving_max_advance_2": {
+        "accepted": 42983,
+        "fixed_window_delivered": 42652,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 22.586208501035294,
+        "overrun": 22633,
+        "p95_occurrence_to_delivery": 46,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 42983
+      },
+      "runs": 22
+    },
+    "full50": {
+      "fixed_max_advance_1": {
+        "accepted": 83514,
+        "fixed_window_delivered": 83108,
+        "max_occurrence_to_delivery": 46,
+        "mean_occurrence_to_delivery": 14.942955672102881,
+        "overrun": 22902,
+        "p95_occurrence_to_delivery": 44,
+        "p99_occurrence_to_delivery": 46,
+        "retired": 83514
+      },
+      "moving_max_advance_2": {
+        "accepted": 83555,
+        "fixed_window_delivered": 83180,
+        "max_occurrence_to_delivery": 47,
+        "mean_occurrence_to_delivery": 14.073328945006283,
+        "overrun": 22861,
+        "p95_occurrence_to_delivery": 45,
+        "p99_occurrence_to_delivery": 47,
+        "retired": 83555
+      },
+      "runs": 50
+    }
+  }
+}
