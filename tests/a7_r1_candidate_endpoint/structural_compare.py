@@ -28,20 +28,23 @@ EXPECTED_CHARGED = {
 DEPTH_RE = re.compile(r"Longest topological path .*\(length=(\d+)\)")
 
 
-def synthesize(yosys: str, link: str) -> dict[str, object]:
+def synthesize(yosys: str, link: str, log_dir: Path) -> dict[str, object]:
     top, physical_pins = TOPS[link]
     with tempfile.TemporaryDirectory(prefix="a7-r1-yosys-") as tmp:
         stat_path = Path(tmp) / "stat.json"
         command = (
             "read_verilog -sv " + " ".join(map(str, SOURCES)) + "; "
-            f"hierarchy -top {top}; proc; flatten; opt; "
+            f"hierarchy -check -top {top}; proc; check -assert; "
+            "flatten; opt; check -assert; "
             f"tee -o {stat_path} stat -json -width; ltp -noff; "
-            "techmap; opt; ltp -noff"
+            "techmap; opt; check -assert; ltp -noff"
         )
         result = subprocess.run(
             [yosys, "-Q", "-p", command], cwd=ROOT, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False
         )
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / f"yosys-{link}.log").write_text(result.stdout)
         if result.returncode:
             raise RuntimeError(result.stdout[-6000:])
         document = json.loads(stat_path.read_text())
@@ -98,8 +101,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--yosys", default=os.environ.get("YOSYS", "yosys"))
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--log-dir", required=True, type=Path)
     args = parser.parse_args()
-    rows = [synthesize(args.yosys, link) for link in TOPS]
+    rows = [synthesize(args.yosys, link, args.log_dir) for link in TOPS]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
@@ -107,6 +111,7 @@ def main() -> int:
         writer.writerows(rows)
     for row in rows:
         print(" ".join(f"{key}={value}" for key, value in row.items()))
+    print("A7_R1_STRUCTURAL_CONTRACT_PASS")
     return 0
 
 
