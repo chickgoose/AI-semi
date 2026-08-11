@@ -1,0 +1,486 @@
+{
+  "architecture": "a3_passivity_energy_tank_credit_fabric",
+  "capacity22": {
+    "aggregate": {
+      "baseline_elastic_credit": {
+        "avoidable_idle_cycles": 0,
+        "bootstrap_admissions": 0,
+        "fixed_window_retired": 63156,
+        "generated": 65616,
+        "max_latency": 7,
+        "mean_latency": 3.2169111248239743,
+        "overrun": 2415,
+        "retired": 63201,
+        "runs": 22,
+        "state_bits": 72,
+        "state_toggles": 743235,
+        "toggle_per_retired": 11.759861394598186
+      },
+      "empty_lane_bootstrap_escape": {
+        "avoidable_idle_cycles": 0,
+        "bootstrap_admissions": 5,
+        "fixed_window_retired": 63155,
+        "generated": 65616,
+        "max_latency": 7,
+        "mean_latency": 3.221091772151899,
+        "overrun": 2416,
+        "retired": 63200,
+        "runs": 22,
+        "state_bits": 76,
+        "state_toggles": 746309,
+        "toggle_per_retired": 11.80868670886076
+      },
+      "raw_energy_tank": {
+        "avoidable_idle_cycles": 0,
+        "bootstrap_admissions": 0,
+        "fixed_window_retired": 63155,
+        "generated": 65616,
+        "max_latency": 7,
+        "mean_latency": 3.2211550632911394,
+        "overrun": 2416,
+        "retired": 63200,
+        "runs": 22,
+        "state_bits": 76,
+        "state_toggles": 746253,
+        "toggle_per_retired": 11.807800632911393
+      }
+    },
+    "manifest": "manifest.multilane-n16.json",
+    "randomized_invariant_replays": 132,
+    "randomized_ready_trials_per_trace": 2
+  },
+  "directed_energy_island": {
+    "baseline_elastic_credit": {
+      "bootstrap_admissions": 0,
+      "history": [
+        {
+          "cycle": 0,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 0,
+          "stored": 4
+        },
+        {
+          "cycle": 1,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 4,
+          "retired": 0,
+          "stored": 4
+        },
+        {
+          "cycle": 2,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 3,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 3,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 4,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 5,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 6,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 7,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        }
+      ],
+      "pending_after_8": 0,
+      "retired_after_8": 3,
+      "stored_after_8": 1
+    },
+    "counterexample_pass": true,
+    "empty_lane_bootstrap_escape": {
+      "bootstrap_admissions": 3,
+      "history": [
+        {
+          "cycle": 0,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 0,
+          "stored": 4
+        },
+        {
+          "cycle": 1,
+          "energy": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pending": 0,
+          "progress": 4,
+          "retired": 0,
+          "stored": 4
+        },
+        {
+          "cycle": 2,
+          "energy": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pending": 0,
+          "progress": 3,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 3,
+          "energy": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 4,
+          "energy": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 5,
+          "energy": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 6,
+          "energy": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        },
+        {
+          "cycle": 7,
+          "energy": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "pending": 0,
+          "progress": 0,
+          "retired": 3,
+          "stored": 1
+        }
+      ],
+      "pending_after_8": 0,
+      "retired_after_8": 3,
+      "stored_after_8": 1
+    },
+    "occurrence_sources": [
+      0,
+      4,
+      8,
+      12
+    ],
+    "raw_energy_tank": {
+      "bootstrap_admissions": 0,
+      "history": [
+        {
+          "cycle": 0,
+          "energy": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "pending": 3,
+          "progress": 0,
+          "retired": 0,
+          "stored": 1
+        },
+        {
+          "cycle": 1,
+          "energy": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "pending": 2,
+          "progress": 1,
+          "retired": 0,
+          "stored": 2
+        },
+        {
+          "cycle": 2,
+          "energy": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "pending": 2,
+          "progress": 0,
+          "retired": 0,
+          "stored": 2
+        },
+        {
+          "cycle": 3,
+          "energy": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "pending": 2,
+          "progress": 0,
+          "retired": 0,
+          "stored": 2
+        },
+        {
+          "cycle": 4,
+          "energy": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "pending": 2,
+          "progress": 0,
+          "retired": 0,
+          "stored": 2
+        },
+        {
+          "cycle": 5,
+          "energy": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "pending": 2,
+          "progress": 0,
+          "retired": 0,
+          "stored": 2
+        },
+        {
+          "cycle": 6,
+          "energy": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "pending": 2,
+          "progress": 0,
+          "retired": 0,
+          "stored": 2
+        },
+        {
+          "cycle": 7,
+          "energy": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "pending": 2,
+          "progress": 0,
+          "retired": 0,
+          "stored": 2
+        }
+      ],
+      "pending_after_8": 2,
+      "retired_after_8": 0,
+      "stored_after_8": 2
+    },
+    "ready_mask": "0b1110"
+  },
+  "exhaustive_n16": {
+    "bounded_invariants_pass": true,
+    "escape_improved_masks": 20,
+    "examined": 262144,
+    "first_witness": {
+      "escaped_pending": 0,
+      "escaped_retired": 2,
+      "occurrence_mask": "0x0111",
+      "raw_pending": 1,
+      "raw_retired": 0,
+      "sources": [
+        0,
+        4,
+        8
+      ],
+      "stalled_lane": 0
+    },
+    "raw_energy_island_masks": 20,
+    "scope": "all 2^16 one-cycle occurrence masks x four one-lane stalls; depth 8"
+  },
+  "full50": {
+    "aggregate": {
+      "baseline_elastic_credit": {
+        "avoidable_idle_cycles": 0,
+        "bootstrap_admissions": 0,
+        "fixed_window_retired": 101642,
+        "generated": 106416,
+        "max_latency": 7,
+        "mean_latency": 3.18268871541774,
+        "overrun": 4702,
+        "retired": 101714,
+        "runs": 50,
+        "state_bits": 72,
+        "state_toggles": 1256625,
+        "toggle_per_retired": 12.354493973297679
+      },
+      "empty_lane_bootstrap_escape": {
+        "avoidable_idle_cycles": 0,
+        "bootstrap_admissions": 11,
+        "fixed_window_retired": 101641,
+        "generated": 106416,
+        "max_latency": 7,
+        "mean_latency": 3.1852860499641147,
+        "overrun": 4703,
+        "retired": 101713,
+        "runs": 50,
+        "state_bits": 76,
+        "state_toggles": 1263877,
+        "toggle_per_retired": 12.425914091610709
+      },
+      "raw_energy_tank": {
+        "avoidable_idle_cycles": 0,
+        "bootstrap_admissions": 0,
+        "fixed_window_retired": 101640,
+        "generated": 106416,
+        "max_latency": 7,
+        "mean_latency": 3.200438492999843,
+        "overrun": 4704,
+        "retired": 101712,
+        "runs": 50,
+        "state_bits": 76,
+        "state_toggles": 1248435,
+        "toggle_per_retired": 12.274215431807457
+      }
+    },
+    "manifest": "manifest.neutrality-n16.json",
+    "randomized_invariant_replays": 300,
+    "randomized_ready_trials_per_trace": 2
+  },
+  "go_gate": {
+    "checks": {
+      "cap_fixed_window_at_least_99pct_baseline": true,
+      "cap_overrun_not_worse": false,
+      "full_max_latency_not_worse": true,
+      "state_or_toggle_efficiency": false,
+      "strict_target_benefit": false
+    },
+    "definition": "all invariants plus >=99% cap22 fixed-window service, no cap22 overrun or full50 max-latency regression, >=5% toggle/event saving or no state premium, and one strict cap22 service/overrun benefit",
+    "go": false,
+    "sv_permitted": false
+  },
+  "parameters": {
+    "depth": 2,
+    "energy_max": 1,
+    "lanes": 4,
+    "sources": 16
+  },
+  "schema_version": 1
+}
