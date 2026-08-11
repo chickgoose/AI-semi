@@ -106,16 +106,16 @@
       "dffe_cells": 4826
     }
   ],
-  "selected_delta_percent": {
-    "n16_cells": -32.58909,
-    "n16_comb_cells": -36.280339,
-    "n16_depth_cycles": -1,
-    "n16_max_fanout": 0,
-    "n64_cells": -32.232764,
-    "n64_comb_cells": -35.838705,
-    "n64_depth_cycles": 0,
-    "n64_max_fanout": -37,
-    "state_bits": 0
+  "selected_delta": {
+    "n16_cells_percent": -32.58909,
+    "n16_comb_cells_percent": -36.280339,
+    "n16_logic_depth_levels": -1,
+    "n16_max_fanout_absolute": 0,
+    "n64_cells_percent": -32.232764,
+    "n64_comb_cells_percent": -35.838705,
+    "n64_logic_depth_levels": 0,
+    "n64_max_fanout_absolute": -37,
+    "state_bits_absolute": 0
   },
   "dffe_sensitivity": {
     "assumption": "charge each generic DFFE as one DFF plus one external mux",
