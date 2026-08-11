@@ -19,6 +19,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+from collections import deque
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, Iterable
@@ -139,6 +140,13 @@ def encoded_node(event: Any | None) -> int:
     return (1 << 36) | ((int(event.source) & 0xF) << 32) | (int(event.payload) & 0xFFFFFFFF)
 
 
+def assert_address_only_event(event: Any | None) -> None:
+    if event is None:
+        return
+    if not 0 <= int(event.source) < 16 or int(event.payload) != int(event.source):
+        raise TournamentError("event violates zero-extended address-only identity")
+
+
 @dataclass
 class CoreRun:
     offered: int
@@ -152,6 +160,9 @@ class CoreRun:
     delivered_addresses: list[int]
     delivered_cycles: list[int]
     state_toggle_proxy: int
+    max_core_node_occupancy: int
+    max_source_latches_occupied: int
+    max_dut_visible_word: int
 
 
 def run_core(model_module: Any, max_advance: int, occurrences: Iterable[tuple[int, int]]) -> CoreRun:
@@ -164,10 +175,15 @@ def run_core(model_module: Any, max_advance: int, occurrences: Iterable[tuple[in
     last_offer = max(by_cycle, default=-1)
     pending: list[int | None] = [None] * 16
     pending_created: list[int | None] = [None] * 16
-    sequence = [0] * 16
-    accepted_at: dict[tuple[int, int], int] = {}
-    occurrence_at: dict[tuple[int, int], int] = {}
+    pending_scoreboard_id: list[int | None] = [None] * 16
+    accepted_sidecar: list[deque[tuple[int, int, int]]] = [
+        deque() for _ in range(16)
+    ]
+    next_scoreboard_id = 0
     accepted = delivered = overrun = bubbles = state_toggles = 0
+    max_core_occupancy = 0
+    max_source_latches = 0
+    max_dut_word = 0
     occurrence_latencies: list[int] = []
     accepted_latencies: list[int] = []
     delivered_addresses: list[int] = []
@@ -175,18 +191,33 @@ def run_core(model_module: Any, max_advance: int, occurrences: Iterable[tuple[in
 
     for cycle in range(100_000):
         for source in by_cycle.get(cycle, ()):
+            next_scoreboard_id += 1
             if pending[source] is not None:
                 overrun += 1
             else:
-                sequence[source] += 1
-                pending[source] = (source << 24) | sequence[source]
+                # DUT-visible event identity is address-only.  The unique ID
+                # exists only in this TB scoreboard sidecar and never enters a
+                # model node or the state-toggle proxy.
+                pending[source] = source
                 pending_created[source] = cycle
+                pending_scoreboard_id[source] = next_scoreboard_id
+        max_source_latches = max(
+            max_source_latches, sum(item is not None for item in pending)
+        )
         valid = [item is not None for item in pending]
-        payload = [item or 0 for item in pending]
+        payload = [
+            source if item is not None else 0
+            for source, item in enumerate(pending)
+        ]
         before_nodes = [encoded_node(item) for item in model.nodes]
         before_phase = tuple(model.phase)
         had_work = any(valid) or model.occupancy() > 0
         result = model.step(valid, payload, True)
+        for item in model.nodes:
+            assert_address_only_event(item)
+            if item is not None:
+                max_dut_word = max(max_dut_word, int(item.payload))
+        max_core_occupancy = max(max_core_occupancy, model.occupancy())
         after_nodes = [encoded_node(item) for item in model.nodes]
         state_toggles += sum((a ^ b).bit_count() for a, b in zip(before_nodes, after_nodes))
         state_toggles += sum(a != b for a, b in zip(before_phase, model.phase))
@@ -194,69 +225,113 @@ def run_core(model_module: Any, max_advance: int, occurrences: Iterable[tuple[in
             bubbles += 1
         for source, did_accept in enumerate(result.source_ready):
             if did_accept:
-                key = (source, payload[source])
-                accepted_at[key] = cycle
-                occurrence_at[key] = int(pending_created[source])
+                scoreboard_id = pending_scoreboard_id[source]
+                if scoreboard_id is None or pending_created[source] is None:
+                    raise TournamentError("accepted event lacks TB sidecar identity")
+                accepted_sidecar[source].append(
+                    (scoreboard_id, cycle, pending_created[source])
+                )
                 accepted += 1
                 pending[source] = None
                 pending_created[source] = None
+                pending_scoreboard_id[source] = None
         if result.retired is not None:
-            key = (result.retired.source, result.retired.payload)
-            accepted_latencies.append(cycle - accepted_at.pop(key) + 1)
-            occurrence_latencies.append(cycle - occurrence_at.pop(key) + 1)
+            assert_address_only_event(result.retired)
+            source = result.retired.source
+            if not accepted_sidecar[source]:
+                raise TournamentError("phantom or duplicate retirement")
+            _scoreboard_id, accepted_cycle, occurrence_cycle = (
+                accepted_sidecar[source].popleft()
+            )
+            accepted_latencies.append(cycle - accepted_cycle + 1)
+            occurrence_latencies.append(cycle - occurrence_cycle + 1)
             delivered_addresses.append(result.retired.source)
             delivered_cycles.append(cycle)
             delivered += 1
         if cycle > last_offer and not any(item is not None for item in pending) and model.occupancy() == 0:
-            if accepted != delivered:
+            if accepted != delivered or any(accepted_sidecar):
                 raise TournamentError("core did not drain accepted events")
             return CoreRun(
                 offered, accepted, delivered, overrun, cycle + 1, bubbles,
                 occurrence_latencies, accepted_latencies, delivered_addresses,
-                delivered_cycles, state_toggles,
+                delivered_cycles, state_toggles, max_core_occupancy,
+                max_source_latches, max_dut_word,
             )
     raise TournamentError("core drain limit exceeded")
 
 
-def link_wire_toggles(kind: str, addresses: list[int]) -> int:
-    total = 0
-    previous = 0
-    for address in addresses:
-        if kind == "parallel4":
+def link_wire_toggles(
+    kind: str,
+    addresses: list[int],
+    event_cycles: list[int],
+    core_cycles: int,
+    ratio: int,
+) -> int:
+    """Count old-commit external wire activity, including its idle DDR mux.
+
+    Commit 31947a7 leaves ``burst_data_o`` driven by a ref-clock-selected mux
+    even when its forwarded burst clock is stopped.  Therefore the two data
+    pins can alternate low/high address symbols throughout idle; event-only
+    transition accounting would undercount this exact RTL.
+    """
+
+    if kind == "parallel4":
+        total = 0
+        previous = 0
+        for address in addresses:
             total += (previous ^ address).bit_count() + 2
-        elif kind == "ddr2":
-            previous_high = (previous >> 2) & 3
-            low = address & 3
-            high = (address >> 2) & 3
-            total += (previous_high ^ low).bit_count()
-            total += (low ^ high).bit_count() + 2
-        else:
-            raise TournamentError(f"unknown link: {kind}")
-        previous = address
+            previous = address
+        return total
+    if kind != "ddr2":
+        raise TournamentError(f"unknown link: {kind}")
+
+    events = dict(zip(event_cycles, addresses))
+    held_address = 0
+    previous_pin_symbol = 0
+    total = 0
+    for core_cycle in range(core_cycles):
+        for link_slot in range(ratio):
+            address = events.get(core_cycle) if link_slot == 0 else None
+            if address is not None:
+                held_address = address
+            low = held_address & 3
+            high = (held_address >> 2) & 3
+            total += (previous_pin_symbol ^ low).bit_count()
+            total += (low ^ high).bit_count()
+            if address is not None:
+                total += 2  # one rising and one falling forwarded-clock edge
+            previous_pin_symbol = high
     return total
 
 
-def ddr_register_toggles(addresses: list[int], cycles: list[int]) -> int:
-    """12-bit A7 TX/RX register proxy, including final frame-enable drop."""
+def ddr_register_toggles(
+    addresses: list[int], event_cycles: list[int], core_cycles: int, ratio: int
+) -> int:
+    """Exact old-commit 12-bit TX/RX state proxy under a legal launch envelope."""
 
-    previous_addr = previous_low = previous_retire = 0
-    previous_cycle: int | None = None
+    events = dict(zip(event_cycles, addresses))
+    tx_address = low_symbol = retire_address = 0
+    frame_enable = 0
     total = 0
-    for address, cycle in zip(addresses, cycles):
-        total += (previous_addr ^ address).bit_count()  # TX event_addr_q
-        if previous_cycle is None or cycle != previous_cycle + 1:
-            total += 1  # frame_enable_q rises after an idle interval
-        low = address & 3
-        total += (previous_low ^ low).bit_count()       # RX low_symbol_q
-        total += (previous_retire ^ address).bit_count()  # RX retire_addr_o
-        total += 1                                      # retire_toggle_o
-        if previous_cycle is not None and cycle != previous_cycle + 1:
-            total += 1  # preceding frame_enable_q fall
-        previous_addr = previous_retire = address
-        previous_low = low
-        previous_cycle = cycle
-    if addresses:
-        total += 1  # eventual idle frame_enable_q fall
+    for core_cycle in range(core_cycles):
+        for link_slot in range(ratio):
+            address = events.get(core_cycle) if link_slot == 0 else None
+            event_valid = address is not None
+            if event_valid:
+                total += (tx_address ^ address).bit_count()
+                tx_address = address
+            next_enable = int(event_valid)
+            total += frame_enable != next_enable
+            frame_enable = next_enable
+            if event_valid:
+                low = address & 3
+                total += (low_symbol ^ low).bit_count()
+                total += (retire_address ^ address).bit_count()
+                total += 1  # retire_toggle_o
+                low_symbol = low
+                retire_address = address
+    if frame_enable:
+        total += 1  # next idle ref edge deasserts frame_enable_q
     return total
 
 
@@ -280,14 +355,23 @@ def aggregate_core(runs: list[CoreRun]) -> dict[str, Any]:
         "max_core_e2e_latency": max(latencies),
         "mean_accept_to_core_delivery": round(statistics.mean(accepted_latencies), 9),
         "core_state_toggle_proxy": sum(run_item.state_toggle_proxy for run_item in runs),
+        "max_core_node_occupancy": max(
+            run_item.max_core_node_occupancy for run_item in runs
+        ),
+        "max_source_latches_occupied": max(
+            run_item.max_source_latches_occupied for run_item in runs
+        ),
+        "max_dut_visible_word": max(run_item.max_dut_visible_word for run_item in runs),
         "addresses_by_run": [run_item.delivered_addresses for run_item in runs],
         "delivery_cycles_by_run": [run_item.delivered_cycles for run_item in runs],
+        "core_cycles_by_run": [run_item.cycles for run_item in runs],
     }
 
 
 def architecture_row(core: dict[str, Any], advance: int, link: str, ratio: int) -> dict[str, Any]:
     addresses_by_run = core["addresses_by_run"]
     cycles_by_run = core["delivery_cycles_by_run"]
+    core_cycles_by_run = core["core_cycles_by_run"]
     is_ddr = link == "ddr2"
     # Exact A7 phase contract: admission at ref rising edge, burst rising edge
     # one quarter period later, and commit at the following burst falling edge.
@@ -296,16 +380,33 @@ def architecture_row(core: dict[str, Any], advance: int, link: str, ratio: int) 
     # constant link commit delay; no survivor set changes at the link.
     # The core summary retains only its aggregate, so shift those exact order
     # statistics rather than fabricate a link queue distribution.
-    wire_toggles = sum(link_wire_toggles(link, item) for item in addresses_by_run)
+    wire_toggles = sum(
+        link_wire_toggles(link, addresses, cycles, core_cycles, ratio)
+        for addresses, cycles, core_cycles in zip(
+            addresses_by_run, cycles_by_run, core_cycles_by_run
+        )
+    )
     register_toggles = (
-        sum(ddr_register_toggles(addresses, cycles) for addresses, cycles in zip(addresses_by_run, cycles_by_run))
+        sum(
+            ddr_register_toggles(addresses, cycles, core_cycles, ratio)
+            for addresses, cycles, core_cycles in zip(
+                addresses_by_run, cycles_by_run, core_cycles_by_run
+            )
+        )
         if is_ddr else 0
     )
+    # Old A7 has two continuously toggling unit clocks at the link boundary:
+    # ref_clk_i drives TX state/mux phase and sample_clk_i drives the gate
+    # input.  Keep their unweighted edge count explicit because clock-tree
+    # capacitance is unknown and must not be disguised as a data-bit toggle.
+    internal_clock_edges = 4 * ratio * core["cycles"] if is_ddr else 0
     delivered = core["core_delivered"]
     direct_compatible = ratio == 1
     row = {
         key: value for key, value in core.items()
-        if key not in {"addresses_by_run", "delivery_cycles_by_run"}
+        if key not in {
+            "addresses_by_run", "delivery_cycles_by_run", "core_cycles_by_run"
+        }
     }
     row.update({
         "core": "moving_two_step" if advance == 2 else "fixed_one_step",
@@ -317,6 +418,8 @@ def architecture_row(core: dict[str, Any], advance: int, link: str, ratio: int) 
         "link_service_utilization": round(delivered / (ratio * core["cycles"]), 9),
         "boundary_buffer_required_events": 0,
         "max_boundary_backlog_events": 0,
+        "core_internal_event_slots": 31,
+        "ingress_source_latch_slots": 16,
         "pins": 3 if is_ddr else 5,
         "core_state_bits": 1162,
         "link_state_bits": 12 if is_ddr else 0,
@@ -326,8 +429,16 @@ def architecture_row(core: dict[str, Any], advance: int, link: str, ratio: int) 
         "max_local_merge_depth": advance,
         "link_wire_toggle_proxy": wire_toggles,
         "link_register_toggle_proxy": register_toggles,
+        "link_internal_clock_edge_proxy": internal_clock_edges,
         "total_toggle_proxy": core["core_state_toggle_proxy"] + wire_toggles + register_toggles,
+        "total_activity_proxy_including_unit_clock_edges": (
+            core["core_state_toggle_proxy"] + wire_toggles
+            + register_toggles + internal_clock_edges
+        ),
         "mean_link_toggles_per_event": round((wire_toggles + register_toggles) / delivered, 9),
+        "mean_link_activity_per_event_including_unit_clock_edges": round(
+            (wire_toggles + register_toggles + internal_clock_edges) / delivered, 9
+        ),
         "link_commit_delay_core_cycles": str(link_delay),
         "mean_end_to_end_latency": round(core["mean_core_e2e_latency"] + float(link_delay), 9),
         "p95_end_to_end_latency": core["p95_core_e2e_latency"] + float(link_delay),
@@ -409,6 +520,7 @@ def evaluate() -> dict[str, Any]:
         "clock_boundary_rule": {
             "R1": "exact direct level-valid sampling is compatible",
             "R2_R4": "capacity envelope only; exact A4 level-valid to faster A7 ref clock duplicates/early-samples frames without an unimplemented one-link-period launch qualifier",
+            "qualifier_cost": "unknown_and_not_included",
             "added_queue_or_adapter": False,
         },
         "provenance": {
@@ -417,17 +529,26 @@ def evaluate() -> dict[str, Any]:
             "a4_model_sha256": a4_model_hash,
             "a7_commit": A7_COMMIT,
             "a7_rtl_sha256": a7_hashes,
+            "a7_scope": "frozen pre-ICG commit 31947a7 only",
+            "a7_latest_observed_but_excluded": {
+                "commit": "a349d64d8b8b3d4398a258926af493b5da1e3ac2",
+                "state_bits": 13,
+                "difference": "separate W4 ICG latch boundary; not substituted into requested exact 31947a7 tournament",
+            },
             "common_commit": COMMON_COMMIT,
             "generator_version": "4.0",
             "generator_sha256": EXPECTED_GENERATOR_SHA256,
             "official_policy_sha256": EXPECTED_OFFICIAL_SHA256,
         },
         "accounting": {
-            "core_register_proxy": "31*(32 payload + 4 source + 1 valid)+15 phase = 1162 bits",
+            "dut_visible_event_word": "32-bit zero-extension of 4-bit logical source/address; equality asserted in every occupied node and retirement",
+            "tb_identity_sidecar": "monotonic occurrence ID and timing kept only in source-local scoreboard deques",
+            "core_register_proxy": "31*(32 address + 4 source + 1 valid)+15 phase = 1162 bits",
             "a7_link_register_proxy": "TX(4 address + 1 enable)+RX(2 partial + 4 address + 1 toggle)=12 bits",
             "core_toggle_proxy": "Hamming transitions of valid event blocks (invalid encoded zero) plus phase bits",
-            "link_toggle_proxy": "actual address sequence wire transitions/edges plus A7 register transitions",
+            "link_toggle_proxy": "old-commit actual address sequence, forwarded-clock edges, 12 register transitions, burst_data low/high mux transitions during idle, plus separately exposed ref/sample unit-clock edges",
             "parallel_link_state": "zero added state; direct registered-core output boundary",
+            "storage_boundary": "zero means only no added A4-to-A7 FIFO; A4 retains 31 internal slots and the workload driver retains 16 source latches",
         },
         "suites": suites,
     }
