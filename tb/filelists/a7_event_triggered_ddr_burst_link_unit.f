@@ -1,0 +1,4 @@
+rtl/candidates/a7_event_triggered_ddr_burst_link/a7_ddr_burst_tx.sv
+rtl/candidates/a7_event_triggered_ddr_burst_link/a7_ddr_burst_rx.sv
+rtl/candidates/a7_event_triggered_ddr_burst_link/a7_event_triggered_ddr_burst_link.sv
+tb/candidates/a7_event_triggered_ddr_burst_link/a7_event_triggered_ddr_burst_link_tb.sv
