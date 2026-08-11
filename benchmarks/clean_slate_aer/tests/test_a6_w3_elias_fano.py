@@ -129,6 +129,20 @@ class EliasFanoCodecTests(unittest.TestCase):
         self.assertGreater(result.overrun, 0)
         self.assertGreater(result.ef_batches, 0)
 
+    def test_same_cycle_mode_does_not_merge_backlogged_cycles(self) -> None:
+        events = [
+            codec.Event(0, 0, 0), codec.Event(0, 1, 1),
+            codec.Event(1, 2, 2), codec.Event(1, 3, 3),
+        ]
+        # The transport can queue batches, but a window-zero batch is never
+        # allowed to manufacture a four-source set spanning cycles 0 and 1.
+        result = evaluate.simulate(
+            events, stim_cycles=2, num_sources=16, max_batch=16,
+            window_cycles=0, codec=True,
+        )
+        self.assertEqual(result.ef_batches, 0)
+        self.assertEqual(result.raw_batches, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

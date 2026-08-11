@@ -313,16 +313,26 @@ def simulate(
         can_capture = len(tx_queue) < 2
         if can_capture and pending:
             oldest = min(event.occurrence_cycle for event in pending.values())
+            eligible_sources = sorted(
+                source for source, event in pending.items()
+                if event.occurrence_cycle <= oldest + window_cycles
+            )
             ready = (
-                len(pending) >= max_batch
+                len(eligible_sources) >= max_batch
                 or cycle - oldest >= window_cycles
                 or cycle >= stim_cycles
             )
             if ready:
-                selected_sources = sorted(pending)[:max_batch]
+                selected_sources = eligible_sources[:max_batch]
                 selected = tuple(pending.pop(source) for source in selected_sources)
                 # The source-monotone order is the arbitration order and wire order.
                 selected = tuple(sorted(selected, key=lambda event: event.source))
+                if selected and (
+                    max(event.occurrence_cycle for event in selected)
+                    - min(event.occurrence_cycle for event in selected)
+                    > window_cycles
+                ):
+                    raise AssertionError("batch exceeded its occurrence window")
                 frame = encode_batch(
                     tuple(event.source for event in selected),
                     num_sources=num_sources,
@@ -428,20 +438,29 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
             })
 
     gates = []
+    raw_zero_by_name = {
+        row["name"]: row["raw"] for row in results if row["window_cycles"] == 0
+    }
     for window in WINDOWS:
         rows = [row for row in results if row["window_cycles"] == window]
-        raw_delivered = sum(row["raw"]["delivered"] for row in rows)
+        # Every bounded-window codec is compared with the natural no-wait raw
+        # reference.  Comparing window four only with a deliberately delayed
+        # window-four raw transport would hide batching latency.
+        raw_rows = [raw_zero_by_name[row["name"]] for row in rows]
+        raw_delivered = sum(row["delivered"] for row in raw_rows)
         codec_delivered = sum(row["codec"]["delivered"] for row in rows)
-        raw_window = sum(row["raw"]["delivered_in_window"] for row in rows)
+        raw_window = sum(row["delivered_in_window"] for row in raw_rows)
         codec_window = sum(row["codec"]["delivered_in_window"] for row in rows)
-        raw_overrun = sum(row["raw"]["overrun"] for row in rows)
+        raw_overrun = sum(row["overrun"] for row in raw_rows)
         codec_overrun = sum(row["codec"]["overrun"] for row in rows)
-        raw_link_cycles = sum(row["raw"]["link_cycles"] for row in rows)
+        raw_link_cycles = sum(row["link_cycles"] for row in raw_rows)
         codec_link_cycles = sum(row["codec"]["link_cycles"] for row in rows)
         raw_pin = raw_delivered / (PHYSICAL_PINS * raw_link_cycles)
         codec_pin = codec_delivered / (PHYSICAL_PINS * codec_link_cycles)
         latency_failures = [
-            row["name"] for row in rows if not row["latency_non_regression"]
+            row["name"] for row in rows
+            if row["codec"]["p95_latency"]
+            > raw_zero_by_name[row["name"]]["p95_latency"]
         ]
         passed = (
             codec_window >= raw_window
