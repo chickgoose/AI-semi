@@ -1,66 +1,84 @@
 {
-  "schema_version": 1,
-  "status": "PASS",
-  "qualification": "A5_W5_COMMON_ENDPOINT_PRODUCTION_REPLAY",
+  "schema_version": 2,
+  "status": "EXACT_SERIALIZED_LINK_REPLAY_PASS",
+  "scope": "GENERATOR_V4_ADDRESS_ONLY_UNBOUNDED_TB_SERIALIZER",
+  "not_qualified": [
+    "common workload service capacity",
+    "capacity22 capacity",
+    "bounded ingress buffering",
+    "power or energy"
+  ],
   "endpoint_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
   "superseded_negative_commit": "ca1a20971ee7bc32520aef47a3a97c89747c7fa5",
-  "boundary_index_sha256": "e745167e136b332902553aed3758521a8770ec7672b8c99c4dd9d7b3b0dc7b62",
-  "full_evaluation_sha256": "e1550d5f8f3abc6f586f0744a60ff9e69355b80457ae9ec1e132f0e7e3df0e90",
-  "endpoint_manifest_sha256": "8de7a8a22e8503c867e62201b453089e271096f114d5511fc25beb945eb0c484",
-  "driver_sha256": "b27b8661f22db39c8678647578a0ed09d89fc28ff7c7fbdf0851a74057ae7d98",
-  "compile_log_sha256": "87f25402068f80c74aba71157f2b557dd1e8ba4fa3b764a7bd50c15b348b8f2b",
-  "binary_sha256": "3b811ae74176607786721ded80177c9e167e5fe789e7defb3b818f5de76d8f6a",
-  "simulator": {
-    "identity": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
-    "executable_sha256": "1e48c09b042b0d068d6b79671008537fb0b1a63f220267408b6d9230473d51db"
+  "source_provenance": {
+    "runner_sha256": "e7bab26c60771ed063e4e5397436971c62189a5564891cccd6d77960c4735a23",
+    "driver_sha256": "46b8165387f030763a65561dd323f355b2efcd3442dbecf04947f6922da5059a",
+    "harness_sha256": "dda9eadca78641f3080562e176337fb8988ac14f3ea42087ec5d22086646e26b",
+    "simulator_identity": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
+    "simulator_executable_sha256": "1e48c09b042b0d068d6b79671008537fb0b1a63f220267408b6d9230473d51db"
+  },
+  "serializer_audit": {
+    "unbounded_tb_serializer": true,
+    "worst_backlog_events": 5133,
+    "max_occurrence_to_launch_wait_cycles": 5132,
+    "full50_launches_after_stimulus_window": 21306,
+    "capacity22_launches_after_stimulus_window": 21064,
+    "capacity22_is_name_subset_of_full50": true
   },
   "cohort": {
     "full50_runs": 50,
-    "full50_events": 106416,
+    "full50_events_each_endpoint": 106416,
     "capacity22_runs": 22,
-    "capacity22_events": 65616,
-    "same_parallel_ddr_occurrence_ids": true
+    "capacity22_events_each_endpoint": 65616,
+    "parallel_ddr_same_occurrence_and_address_order": true
   },
   "metrics": {
     "full50": {
-      "accepted_each": 106416,
-      "delivered_each": 106416,
       "fixed_window_delivered_each": 85049,
-      "latency_ticks_each": {"mean": 2651.7472560517217, "p50": 268,
-        "p95": 15216, "p99": 19472, "max": 20536},
-      "parallel_toggles": {"data": 828396, "control": 301334, "clock": 758776},
-      "parallel_toggles_per_event": {"data": 7.784506089309878,
-        "control": 2.831660652533454, "clock": 7.13028116072771},
-      "ddr_toggles": {"data": 1196261, "control": 301334, "clock": 758776},
-      "ddr_toggles_per_event": {"data": 11.241364080589385,
-        "control": 2.831660652533454, "clock": 7.13028116072771},
-      "reset_cycles_total_each": 100
+      "launched_after_stimulus_window_each": 21306,
+      "latency_ticks_each": {
+        "occurrence_to_launch": {"mean": 2643.7472560517217, "p50": 260,
+          "p95": 15208, "p99": 19464, "max": 20528},
+        "launch_to_retire": {"mean": 8.0, "p50": 8, "p95": 8, "p99": 8, "max": 8},
+        "total": {"mean": 2651.7472560517217, "p50": 268,
+          "p95": 15216, "p99": 19472, "max": 20536}
+      },
+      "shared_value_transitions_per_event": {"input_data": 1.9461265223274695,
+        "input_control": 0.18923846038189746, "base_clocks": 5.13028116072771},
+      "parallel_endpoint_value_transitions_per_event": {"internal_data": 5.838379566982408,
+        "internal_control": 2.6424221921515563, "link_clock": 2.0},
+      "ddr_endpoint_value_transitions_per_event": {"internal_data": 9.295237558261915,
+        "internal_control": 2.6424221921515563, "link_clock": 2.0}
     },
     "capacity22": {
-      "accepted_each": 65616,
-      "delivered_each": 65616,
       "fixed_window_delivered_each": 44520,
-      "latency_ticks_each": {"mean": 4264.473360156059, "p50": 1996,
-        "p95": 17256, "p99": 19880, "max": 20536},
-      "parallel_toggles": {"data": 535584, "control": 146596, "clock": 435832},
-      "parallel_toggles_per_event": {"data": 8.162399414776884,
-        "control": 2.2341502072665205, "clock": 6.6421604486710555},
-      "ddr_toggles": {"data": 748670, "control": 146596, "clock": 435832},
-      "ddr_toggles_per_event": {"data": 11.409869544013656,
-        "control": 2.2341502072665205, "clock": 6.6421604486710555},
-      "reset_cycles_total_each": 44
+      "launched_after_stimulus_window_each": 21064,
+      "latency_ticks_each": {
+        "occurrence_to_launch": {"mean": 4256.473360156059, "p50": 1988,
+          "p95": 17248, "p99": 19872, "max": 20528},
+        "launch_to_retire": {"mean": 8.0, "p50": 8, "p95": 8, "p99": 8, "max": 8},
+        "total": {"mean": 4264.473360156059, "p50": 1996,
+          "p95": 17256, "p99": 19880, "max": 20536}
+      },
+      "shared_value_transitions_per_event": {"input_data": 2.040599853694221,
+        "input_control": 0.04797610338941721, "base_clocks": 4.6421604486710555},
+      "parallel_endpoint_value_transitions_per_event": {"internal_data": 6.121799561082662,
+        "internal_control": 2.186174103877103, "link_clock": 2.0},
+      "ddr_endpoint_value_transitions_per_event": {"internal_data": 9.369269690319435,
+        "internal_control": 2.186174103877103, "link_clock": 2.0}
     }
   },
-  "reset": {
-    "initial_cycles_per_run": 2,
-    "retired_during_reset": 0,
-    "phantom_after_reset": 0,
-    "state_clear_observed": true
+  "direct_reset_probe": {
+    "after_complete_drain": true,
+    "second_reset_cycles_per_run": 2,
+    "post_reset_quiet_cycles_per_run": 3,
+    "retired_during_second_reset": 0,
+    "stale_or_phantom_during_quiet": 0,
+    "post_reset_sentinel_exact_once": true
   },
-  "limits": [
-    "Toggle counts are deterministic RTL/interface transition proxies, not power.",
-    "Toggle counting starts after reset-release arming and ends after complete drain; reset is reported separately.",
-    "The TB serializer and observer IDs are excluded from DUT state and toggle counts.",
-    "Physical ICG, clock tree, DDR hard cells, routed capacitance, STA and PVT remain HOLD."
-  ]
+  "canonicality": {
+    "this_stored_summary_is_path_independent": true,
+    "attempt_compile_log_and_binary_hashes_are_excluded": true,
+    "reason": "those hashes may embed temporary build paths"
+  }
 }

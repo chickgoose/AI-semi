@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare exact common streams and evaluate a pinned A7 W5 R1 endpoint bundle."""
+"""Prepare and run the exact generator-v4 unbounded serialized-link replay."""
 
 from __future__ import annotations
 
@@ -48,11 +48,21 @@ A7_W5_SOURCE_SHA256 = {
     "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03",
     "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_parallel_reference_top.sv": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748",
 }
+A5_PRODUCTION_SHA256 = {
+    "driver": "46b8165387f030763a65561dd323f355b2efcd3442dbecf04947f6922da5059a",
+    "harness": "dda9eadca78641f3080562e176337fb8988ac14f3ea42087ec5d22086646e26b",
+}
 PRIMARY_CLOCK_CONTRACT = "phase_related_synchronous_frozen_source_v1"
 HANDSHAKE_CONTRACT = "ready_valid_posedge_each_handshake_v1"
 RETIRE_CONTRACT = "consumer_observation_next_ref_rise_v1"
 TICKS_PER_CORE_CYCLE = 4
 RESET_CYCLES_PER_RUN = 2
+EXPECTED_SERIALIZER_AUDIT = {
+    "max_occurrence_to_launch_wait_cycles": 5132,
+    "worst_backlog_events": 5133,
+    "full50_launches_after_stimulus_window": 21306,
+    "capacity22_launches_after_stimulus_window": 21064,
+}
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 
 
@@ -160,6 +170,14 @@ def percentile(values: list[int], fraction: float) -> int | None:
     return ordered[math.ceil(len(ordered) * fraction) - 1]
 
 
+def distribution(values: list[int]) -> dict[str, int | float | None]:
+    return {
+        "mean": sum(values) / len(values) if values else None,
+        "p50": percentile(values, 0.50), "p95": percentile(values, 0.95),
+        "p99": percentile(values, 0.99), "max": max(values) if values else None,
+    }
+
+
 def write_json(path: Path, document: Any) -> None:
     exclusive_write(
         path, (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
@@ -259,6 +277,7 @@ def prepare_boundary(common_repo: Path, output: Path) -> dict[str, Any]:
                     "fixed_window": "0 <= retire_tick < stim_cycles*4",
                     "initial_reset_cycles_per_run": RESET_CYCLES_PER_RUN,
                     "tb_serializer_is_not_dut_hardware": True,
+                    "tb_serializer_capacity": "unbounded",
                     "ids_enter_dut": False,
                 },
                 "suites": {},
@@ -298,7 +317,31 @@ def prepare_boundary(common_repo: Path, output: Path) -> dict[str, Any]:
                     "run_count": len(suite_rows),
                     "runs": suite_rows,
                 }
+                index["suites"][suite]["launches_after_stimulus_window"] = sum(
+                    sum(row["launch_cycle"] >= metadata["run"]["stim_cycles"]
+                        for row in read_jsonl(
+                            staging / (Path(suite) / f"{metadata['run']['name']}.single-lane.jsonl")))
+                    for metadata in generated_index["runs"]
+                )
             index["total_boundary_events_including_suite_overlap"] = total_events
+            all_runs = [run for suite in index["suites"].values() for run in suite["runs"]]
+            max_wait = max(
+                row["launch_cycle"] - row["occurrence_cycle"]
+                for run in all_runs for row in read_jsonl(staging / run["boundary_file"])
+            )
+            index["serializer_audit"] = {
+                "unbounded_tb_serializer": True,
+                "max_occurrence_to_launch_wait_cycles": max_wait,
+                "worst_backlog_events": max_wait + 1,
+                "full50_launches_after_stimulus_window":
+                    index["suites"]["full50"]["launches_after_stimulus_window"],
+                "capacity22_launches_after_stimulus_window":
+                    index["suites"]["capacity22"]["launches_after_stimulus_window"],
+                "capacity22_is_name_subset_of_full50": (
+                    {run["name"] for run in index["suites"]["capacity22"]["runs"]}
+                    <= {run["name"] for run in index["suites"]["full50"]["runs"]}
+                ),
+            }
             write_json(staging / "boundary-index.json", index)
             directory_fd = os.open(staging, os.O_RDONLY)
             try:
@@ -328,6 +371,12 @@ def validate_boundary(root: Path) -> dict[str, Any]:
             or index.get("boundary", {}).get("clock_contract") != PRIMARY_CLOCK_CONTRACT
             or index.get("boundary", {}).get("retire_contract") != RETIRE_CONTRACT):
         raise ContractError("boundary handshake/clock/retire contract mismatch")
+    audit = index.get("serializer_audit", {})
+    if (audit.get("unbounded_tb_serializer") is not True
+            or audit.get("capacity22_is_name_subset_of_full50") is not True
+            or {key: audit.get(key) for key in EXPECTED_SERIALIZER_AUDIT}
+            != EXPECTED_SERIALIZER_AUDIT):
+        raise ContractError("serialized-boundary backlog/window/subset audit mismatch")
     for suite, expected_count in (("full50", 50), ("capacity22", 22)):
         suite_doc = index["suites"].get(suite, {})
         if suite_doc.get("run_count") != expected_count:
@@ -371,6 +420,9 @@ def load_endpoint_bundle(repository: Path, commit: str, manifest_path: str,
     tb_source = Path(__file__).resolve().parent / "a5_w5_production_tb.sv"
     if not driver_source.is_file() or not tb_source.is_file():
         raise ContractError("A5 production driver/TB is missing")
+    if (sha256(driver_source) != A5_PRODUCTION_SHA256["driver"]
+            or sha256(tb_source) != A5_PRODUCTION_SHA256["harness"]):
+        raise ContractError("A5 production driver/harness immutable SHA mismatch")
     manifest = {
         "schema_version": 1, "contract": ENDPOINT_CONTRACT,
         "timebase_ticks_per_core_cycle": TICKS_PER_CORE_CYCLE,
@@ -380,7 +432,10 @@ def load_endpoint_bundle(repository: Path, commit: str, manifest_path: str,
         "clock_contract": PRIMARY_CLOCK_CONTRACT,
         "retire_contract": RETIRE_CONTRACT,
         "sink_ready_policy": "always_ready",
-        "toggle_groups": ["data", "control", "clock"],
+        "value_transition_proxy_groups": {
+            "shared": ["input_data", "input_control", "base_clocks"],
+            "endpoint": ["internal_data", "internal_control", "link_clock"],
+        },
         "endpoints": [
             {"name": "parallel_r1_full",
              "observation_boundary": "next_ref_rise_after_transmit_commit"},
@@ -408,7 +463,9 @@ def load_endpoint_bundle(repository: Path, commit: str, manifest_path: str,
             or manifest.get("clock_contract") != PRIMARY_CLOCK_CONTRACT
             or manifest.get("retire_contract") != RETIRE_CONTRACT
             or manifest.get("sink_ready_policy") != "always_ready"
-            or manifest.get("toggle_groups") != ["data", "control", "clock"]):
+            or manifest.get("value_transition_proxy_groups") != {
+                "shared": ["input_data", "input_control", "base_clocks"],
+                "endpoint": ["internal_data", "internal_control", "link_clock"]}):
         raise ContractError("endpoint manifest contract mismatch")
     endpoint_docs = {item["name"]: item for item in manifest["endpoints"]}
     if (endpoint_docs["parallel_r1_full"].get("observation_boundary")
@@ -471,8 +528,11 @@ def validate_run_result(boundary_rows_: list[dict[str, Any]], result: dict[str, 
         raise ContractError("endpoint did not accept the exact required cohort")
     if [row.get("presentation_index") for row in retired] != expected_indices:
         raise ContractError("endpoint loss/duplicate/reorder or incomplete drain")
-    latencies = []
+    occurrence_to_launch_ticks = []
+    launch_to_retire_ticks = []
+    total_latency_ticks = []
     fixed_window = 0
+    launched_after_window = 0
     previous_accept_tick = None
     for boundary, accept, retire in zip(boundary_rows_, accepted, retired):
         if accept.get("address") != boundary["address"] or retire.get("address") != boundary["address"]:
@@ -491,18 +551,26 @@ def validate_run_result(boundary_rows_: list[dict[str, Any]], result: dict[str, 
             raise ContractError(
                 "retire must be sampled by the registered consumer, not post-NBA producer output"
             )
+        if retire_tick - accept_tick != 2 * TICKS_PER_CORE_CYCLE:
+            raise ContractError("production serialized-link internal latency must be exactly 2 cycles")
         if (previous_accept_tick is not None
                 and accept_tick < previous_accept_tick + TICKS_PER_CORE_CYCLE):
             raise ContractError("more than one ready-valid handshake in a core cycle")
         previous_accept_tick = accept_tick
-        latencies.append(retire_tick - occurrence_tick)
+        occurrence_to_launch_ticks.append(launch_tick - occurrence_tick)
+        launch_to_retire_ticks.append(retire_tick - accept_tick)
+        total_latency_ticks.append(retire_tick - occurrence_tick)
         fixed_window += int(retire_tick < run["stim_cycles"] * TICKS_PER_CORE_CYCLE)
-    reset = result.get("reset", {})
-    if (reset.get("initial_reset_cycles") != RESET_CYCLES_PER_RUN
-            or reset.get("retired_during_reset") != 0
-            or reset.get("phantom_after_reset") != 0
-            or reset.get("state_clear_observed") is not True):
-        raise ContractError("endpoint reset evidence failed")
+        launched_after_window += int(launch_tick >= run["stim_cycles"] * TICKS_PER_CORE_CYCLE)
+    reset = result.get("reset_probe", {})
+    if (reset.get("second_reset_after_complete_drain") is not True
+            or reset.get("second_reset_cycles") != RESET_CYCLES_PER_RUN
+            or reset.get("post_reset_quiet_cycles") != 3
+            or reset.get("retired_during_second_reset") != 0
+            or reset.get("stale_or_phantom_during_quiet") != 0
+            or reset.get("post_reset_sentinel_delivered") != 1
+            or reset.get("post_reset_sentinel_exact_once") is not True):
+        raise ContractError("direct drain/second-reset/quiet/post-reset probe failed")
     handshake = result.get("handshake", {})
     if (handshake.get("accepted_on_valid_and_ready_posedge") is not True
             or handshake.get("continuous_valid_back_to_back_supported") is not True
@@ -522,20 +590,26 @@ def validate_run_result(boundary_rows_: list[dict[str, Any]], result: dict[str, 
     if endpoint == "parallel_r1_full" and observation.get("fair_boundary") \
             != "next_ref_rise_after_transmit_commit":
         raise ContractError("parallel endpoint does not use the fair consumer boundary")
-    toggles = result.get("toggles", {})
-    if set(toggles) != {"data", "control", "clock"}:
-        raise ContractError("endpoint toggle split must be data/control/clock")
+    transitions = result.get("value_transition_proxy", {})
+    if (set(transitions) != {"shared", "endpoint"}
+            or set(transitions["shared"]) != {"input_data", "input_control", "base_clocks"}
+            or set(transitions["endpoint"]) != {
+                "internal_data", "internal_control", "link_clock"}):
+        raise ContractError("value-transition proxy split mismatch")
     if any(isinstance(value, bool) or not isinstance(value, int) or value < 0
-           for value in toggles.values()):
-        raise ContractError("endpoint toggle counters must be nonnegative integers")
+           for group in transitions.values() for value in group.values()):
+        raise ContractError("value-transition proxy counters must be nonnegative integers")
     delivered = len(retired)
     return {
         "accepted": len(accepted),
         "delivered": delivered,
         "fixed_window_delivered": fixed_window,
-        "latency_ticks": latencies,
-        "toggles": toggles,
-        "reset_cycles": reset["initial_reset_cycles"],
+        "launched_after_stimulus_window": launched_after_window,
+        "occurrence_to_launch_ticks": occurrence_to_launch_ticks,
+        "launch_to_retire_ticks": launch_to_retire_ticks,
+        "total_latency_ticks": total_latency_ticks,
+        "value_transition_proxy": transitions,
+        "second_reset_cycles": reset["second_reset_cycles"],
     }
 
 
@@ -559,6 +633,7 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
             "--boundary-index-sha256", boundary_index_sha,
             "--endpoint-commit", endpoint_commit,
             "--endpoint-manifest-sha256", manifest_sha,
+            "--runner-sha256", sha256(Path(__file__)),
             "--output-dir", str(driver_output),
         ]
         result = subprocess.run(command, cwd=bundle_root, text=True,
@@ -573,6 +648,9 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
                 or provenance.get("endpoint_manifest_sha256") != manifest_sha
                 or provenance.get("boundary_index_sha256") != boundary_index_sha
                 or provenance.get("driver_sha256") != sha256(driver)
+                or provenance.get("runner_sha256") != sha256(Path(__file__))
+                or provenance.get("harness_sha256")
+                    != sha256(bundle_root / "a5/a5_w5_production_tb.sv")
                 or not isinstance(provenance.get("simulator"), dict)
                 or not provenance["simulator"].get("identity")
                 or not re.fullmatch(r"[0-9a-f]{64}",
@@ -603,8 +681,11 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
         per_run = []
         for endpoint in ENDPOINT_NAMES:
             for suite in ("full50", "capacity22"):
-                latency_ticks: list[int] = []
+                latency = {name: [] for name in (
+                    "occurrence_to_launch_ticks", "launch_to_retire_ticks",
+                    "total_latency_ticks")}
                 totals = Counter()
+                transition_totals = {"shared": Counter(), "endpoint": Counter()}
                 for run in boundary["suites"][suite]["runs"]:
                     key = (endpoint, suite, run["name"])
                     if key not in entry_by_key:
@@ -613,27 +694,33 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
                     metrics = validate_run_result(
                         boundary_rows_, entry_by_key[key], run, endpoint, suite
                     )
-                    latency_ticks.extend(metrics.pop("latency_ticks"))
-                    toggles = metrics.pop("toggles")
+                    run_latency = {}
+                    for name in latency:
+                        run_latency[name] = metrics.pop(name)
+                        latency[name].extend(run_latency[name])
+                    transitions = metrics.pop("value_transition_proxy")
                     totals.update(metrics)
-                    totals.update({f"toggle_{name}": value for name, value in toggles.items()})
+                    for group in transition_totals:
+                        transition_totals[group].update(transitions[group])
                     per_run.append({"endpoint": endpoint, "suite": suite,
-                                    "name": run["name"], **metrics, **{
-                                        f"toggle_{name}": value for name, value in toggles.items()
-                                    }})
+                                    "name": run["name"], **metrics,
+                                    "latency_ticks": {
+                                        name.removesuffix("_ticks"): distribution(values)
+                                        for name, values in run_latency.items()},
+                                    "value_transition_proxy": transitions})
                 delivered = totals["delivered"]
                 aggregates[f"{endpoint}:{suite}"] = {
                     **dict(totals),
-                    "mean_occurrence_to_retire_ticks": (
-                        sum(latency_ticks) / len(latency_ticks) if latency_ticks else None
-                    ),
-                    "p50_occurrence_to_retire_ticks": percentile(latency_ticks, 0.50),
-                    "p95_occurrence_to_retire_ticks": percentile(latency_ticks, 0.95),
-                    "p99_occurrence_to_retire_ticks": percentile(latency_ticks, 0.99),
-                    "max_occurrence_to_retire_ticks": max(latency_ticks) if latency_ticks else None,
-                    "toggle_per_delivered": {
-                        name: totals[f"toggle_{name}"] / delivered if delivered else None
-                        for name in ("data", "control", "clock")
+                    "latency_ticks": {
+                        name.removesuffix("_ticks"): distribution(values)
+                        for name, values in latency.items()
+                    },
+                    "value_transition_proxy": {
+                        group: {
+                            name: {"total": value,
+                                   "per_delivered": value / delivered if delivered else None}
+                            for name, value in counts.items()
+                        } for group, counts in transition_totals.items()
                     },
                 }
         for suite in ("full50", "capacity22"):
@@ -643,15 +730,17 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
                 raise ContractError(f"{suite}: endpoints accepted different cohorts")
         document = {
             "schema_version": 1,
-            "status": "PASS",
+            "status": "EXACT_SERIALIZED_LINK_REPLAY_PASS",
             "contract": ENDPOINT_CONTRACT,
-            "qualification": "COMMON_WORKLOAD_ENDPOINT_EVALUATION",
+            "scope": "EXACT_GENERATOR_V4_UNBOUNDED_TB_SERIALIZER_LINK_REPLAY",
             "provenance": {
                 "endpoint_commit": endpoint_commit,
                 "endpoint_manifest_path": endpoint_manifest_path,
                 "endpoint_manifest_sha256": manifest_sha,
                 "boundary_index_sha256": boundary_index_sha,
                 "driver_sha256": sha256(driver),
+                "runner_sha256": sha256(Path(__file__)),
+                "harness_sha256": sha256(bundle_root / "a5/a5_w5_production_tb.sv"),
                 "compile_log_sha256": provenance["compile_log_sha256"],
                 "binary_sha256": provenance["binary_sha256"],
                 "simulator": provenance["simulator"],
@@ -665,8 +754,12 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
                 "address_only_dut": True,
                 "ids_reconstructed_in_dut": False,
                 "loss_duplicate_phantom_order": "PASS",
-                "reset": "PASS",
+                "direct_drain_second_reset_quiet_postreset_probe": "PASS",
             },
+            "non_qualification": [
+                "common workload service capacity", "capacity qualification",
+                "bounded ingress implementation", "power or energy qualification"],
+            "serializer_audit": boundary["serializer_audit"],
             "aggregates": aggregates,
             "runs": per_run,
         }
@@ -707,7 +800,7 @@ def main() -> int:
             args.boundary_root, args.endpoint_repo, args.endpoint_commit,
             args.endpoint_manifest_path, args.output,
         )
-        print(f"A5_W5_ENDPOINT_EVALUATION_PASS output={args.output}")
+        print(f"A5_W5_EXACT_SERIALIZED_LINK_REPLAY_PASS output={args.output}")
         return 0
     except ContractError as exc:
         print(f"A5_W5_FAIL_CLOSED: {exc}", file=sys.stderr)

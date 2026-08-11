@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -33,6 +34,14 @@ class W5ContractTest(unittest.TestCase):
         index = W5.validate_boundary(self.boundary)
         self.assertEqual(index["suites"]["full50"]["run_count"], 50)
         self.assertEqual(index["suites"]["capacity22"]["run_count"], 22)
+        self.assertEqual(index["serializer_audit"], {
+            "unbounded_tb_serializer": True,
+            "max_occurrence_to_launch_wait_cycles": 5132,
+            "worst_backlog_events": 5133,
+            "full50_launches_after_stimulus_window": 21306,
+            "capacity22_launches_after_stimulus_window": 21064,
+            "capacity22_is_name_subset_of_full50": True,
+        })
         for suite in ("full50", "capacity22"):
             for run in index["suites"][suite]["runs"]:
                 rows = W5.read_jsonl(self.boundary / run["boundary_file"])
@@ -45,7 +54,7 @@ class W5ContractTest(unittest.TestCase):
         report = W5.evaluate_endpoint(
             self.boundary, Path("/home/chickgoose/projects/a7"),
             W5.A7_W5_ENDPOINT_COMMIT, "A5_BUILTIN_PINNED_A7_W5", output)
-        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["status"], "EXACT_SERIALIZED_LINK_REPLAY_PASS")
         self.assertEqual(len(report["runs"]), 144)
         for suite in ("full50", "capacity22"):
             left = report["aggregates"][f"parallel_r1_full:{suite}"]
@@ -53,6 +62,33 @@ class W5ContractTest(unittest.TestCase):
             self.assertEqual(left["accepted"], right["accepted"])
             self.assertEqual(left["delivered"], left["accepted"])
             self.assertEqual(right["delivered"], right["accepted"])
+            self.assertEqual(left["latency_ticks"]["launch_to_retire"]["max"], 8)
+            self.assertEqual(right["latency_ticks"]["launch_to_retire"]["max"], 8)
+        self.assertEqual(report["provenance"]["driver_sha256"],
+                         W5.A5_PRODUCTION_SHA256["driver"])
+        self.assertEqual(report["provenance"]["harness_sha256"],
+                         W5.A5_PRODUCTION_SHA256["harness"])
+        canonical = json.loads((HERE.parents[1] /
+            "docs/research/results/a5_w5_common_endpoint_summary.json").read_text())
+        self.assertEqual(canonical["status"], "EXACT_SERIALIZED_LINK_REPLAY_PASS")
+        self.assertEqual(canonical["serializer_audit"], report["serializer_audit"])
+        self.assertEqual(canonical["source_provenance"]["runner_sha256"],
+            hashlib.sha256((HERE / "w5_common_endpoint_runner.py").read_bytes()).hexdigest())
+        self.assertNotIn("full_evaluation_sha256", canonical)
+        self.assertNotIn("compile_log_sha256", canonical["source_provenance"])
+        self.assertNotIn("binary_sha256", canonical["source_provenance"])
+        self.assertNotIn("/tmp/", json.dumps(canonical, sort_keys=True))
+        for suite in ("full50", "capacity22"):
+            measured = report["aggregates"][f"parallel_r1_full:{suite}"]
+            stored = canonical["metrics"][suite]
+            self.assertEqual(stored["fixed_window_delivered_each"],
+                             measured["fixed_window_delivered"])
+            self.assertEqual(stored["latency_ticks_each"]["occurrence_to_launch"],
+                             measured["latency_ticks"]["occurrence_to_launch"])
+            self.assertEqual(stored["latency_ticks_each"]["launch_to_retire"],
+                             measured["latency_ticks"]["launch_to_retire"])
+            self.assertEqual(stored["latency_ticks_each"]["total"],
+                             measured["latency_ticks"]["total_latency"])
 
     def test_missing_or_pre_fix_endpoint_fails_closed(self):
         for commit in ("0" * 40, "ca1a20971ee7bc32520aef47a3a97c89747c7fa5"):
@@ -61,6 +97,19 @@ class W5ContractTest(unittest.TestCase):
             with self.assertRaises(W5.ContractError):
                 W5.evaluate_endpoint(self.boundary, Path("/home/chickgoose/projects/a7"),
                     commit, "A5_BUILTIN_PINNED_A7_W5", self.root / f"bad-{commit[:7]}.json")
+
+    def test_a5_driver_and_harness_bundle_sha_mutations_rejected(self):
+        for key in ("driver", "harness"):
+            original = W5.A5_PRODUCTION_SHA256[key]
+            W5.A5_PRODUCTION_SHA256[key] = "0" * 64
+            try:
+                with self.assertRaises(W5.ContractError):
+                    W5.load_endpoint_bundle(
+                        Path("/home/chickgoose/projects/a7"), W5.A7_W5_ENDPOINT_COMMIT,
+                        "A5_BUILTIN_PINNED_A7_W5",
+                        self.root / f"mutated-{key}-source-load")
+            finally:
+                W5.A5_PRODUCTION_SHA256[key] = original
 
     def test_ca1a209_negative_control_hits_real_drain_assertion(self):
         commit = "ca1a20971ee7bc32520aef47a3a97c89747c7fa5"
@@ -81,6 +130,7 @@ class W5ContractTest(unittest.TestCase):
             "--bundle-root", str(root), "--boundary-root", str(self.boundary),
             "--boundary-index-sha256", boundary_sha, "--endpoint-commit", commit,
             "--endpoint-manifest-sha256", "0" * 64, "--output-dir", str(output),
+            "--runner-sha256", "1" * 64,
         ], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("drain_idle high during launch_fire", result.stdout)
@@ -113,9 +163,16 @@ class W5ContractTest(unittest.TestCase):
                             "phase_related_synchronous": True,
                             "unrelated_cdc_claimed": False,
                             "fair_boundary": "next_ref_rise_after_transmit_commit"},
-            "reset": {"initial_reset_cycles": 2, "retired_during_reset": 0,
-                      "phantom_after_reset": 0, "state_clear_observed": True},
-            "toggles": {"data": 1, "control": 1, "clock": 1},
+            "reset_probe": {"second_reset_after_complete_drain": True,
+                "second_reset_cycles": 2, "post_reset_quiet_cycles": 3,
+                "retired_during_second_reset": 0,
+                "stale_or_phantom_during_quiet": 0,
+                "post_reset_sentinel_delivered": 1,
+                "post_reset_sentinel_exact_once": True},
+            "value_transition_proxy": {
+                "shared": {"input_data": 1, "input_control": 1, "base_clocks": 1},
+                "endpoint": {"internal_data": 1, "internal_control": 1,
+                             "link_clock": 1}},
         }
         W5.validate_run_result(rows, base, run, "parallel_r1_full", "full50")
         bad_edge = copy.deepcopy(base)
@@ -132,6 +189,28 @@ class W5ContractTest(unittest.TestCase):
         # the registered consumer retirement required by the production TB.
         with self.assertRaises(W5.ContractError):
             W5.validate_run_result(rows, post_nba, run, "parallel_r1_full", "full50")
+        bad_reset = copy.deepcopy(base)
+        bad_reset["reset_probe"]["stale_or_phantom_during_quiet"] = 1
+        with self.assertRaises(W5.ContractError):
+            W5.validate_run_result(rows, bad_reset, run, "parallel_r1_full", "full50")
+        bad_proxy = copy.deepcopy(base)
+        del bad_proxy["value_transition_proxy"]["endpoint"]["link_clock"]
+        with self.assertRaises(W5.ContractError):
+            W5.validate_run_result(rows, bad_proxy, run, "parallel_r1_full", "full50")
+
+    def test_boundary_backlog_provenance_mutation_rejected(self):
+        path = self.boundary / "boundary-index.json"
+        document = W5.read_json(path)
+        document["serializer_audit"]["max_occurrence_to_launch_wait_cycles"] -= 1
+        mutated = self.root / "mutated-boundary"
+        mutated.mkdir()
+        # Reuse immutable run artifacts; only the machine audit is mutated.
+        for suite in ("full50", "capacity22"):
+            (mutated / suite).symlink_to(self.boundary / suite, target_is_directory=True)
+        (mutated / "boundary-index.json").write_text(
+            json.dumps(document, sort_keys=True) + "\n")
+        with self.assertRaises(W5.ContractError):
+            W5.validate_boundary(mutated)
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--boundary-index-sha256", required=True)
     parser.add_argument("--endpoint-commit", required=True)
     parser.add_argument("--endpoint-manifest-sha256", required=True)
+    parser.add_argument("--runner-sha256", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True)
@@ -61,7 +62,9 @@ def main():
     entries = []
     accept_re = re.compile(r"^ACCEPT ([DP]) (\d+) (\d+) (\d+)$")
     retire_re = re.compile(r"^RETIRE ([DP]) (\d+) (\d+) (\d+)$")
-    summary_re = re.compile(r"^SUMMARY ([DP]) (\d+) (\d+) (\d+)$")
+    shared_re = re.compile(r"^SHARED (\d+) (\d+) (\d+)$")
+    endpoint_re = re.compile(r"^ENDPOINT ([DP]) (\d+) (\d+) (\d+)$")
+    reset_re = re.compile(r"^RESET_PROBE (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)$")
     for suite in ("full50", "capacity22"):
         for run in boundary["suites"][suite]["runs"]:
             rows = [json.loads(line) for line in
@@ -76,8 +79,9 @@ def main():
                 raise SystemExit(f"{suite}/{run['name']}:\n{executed.stdout[-8000:]}")
             accepted = {key: [] for key in ENDPOINTS}
             retired = {key: [] for key in ENDPOINTS}
-            toggles = {}
-            reset_seen = False
+            endpoint_transitions = {}
+            shared_transitions = None
+            reset_probe = None
             for line in executed.stdout.splitlines():
                 match = accept_re.match(line)
                 if match:
@@ -91,14 +95,22 @@ def main():
                     retired[key].append({"presentation_index": int(index),
                                          "address": int(address), "retire_tick": int(tick)})
                     continue
-                match = summary_re.match(line)
+                match = shared_re.match(line)
                 if match:
-                    key, data, control, clock = match.groups()
-                    toggles[key] = {"data": int(data), "control": int(control),
-                                    "clock": int(clock)}
-                if line == "RESET 2 0 0 1":
-                    reset_seen = True
-            if set(toggles) != set(ENDPOINTS) or not reset_seen:
+                    data, control, clock = match.groups()
+                    shared_transitions = {"input_data": int(data),
+                                          "input_control": int(control),
+                                          "base_clocks": int(clock)}
+                match = endpoint_re.match(line)
+                if match:
+                    key, data, control, link_clock = match.groups()
+                    endpoint_transitions[key] = {"internal_data": int(data),
+                        "internal_control": int(control), "link_clock": int(link_clock)}
+                match = reset_re.match(line)
+                if match:
+                    reset_probe = tuple(map(int, match.groups()))
+            if (set(endpoint_transitions) != set(ENDPOINTS)
+                    or shared_transitions is None or reset_probe != (2, 3, 0, 0, 1, 1)):
                 raise SystemExit(f"{suite}/{run['name']}: incomplete simulator evidence")
             for key, endpoint in ENDPOINTS.items():
                 result = {
@@ -123,9 +135,15 @@ def main():
                         "retire_detector": "charged_seen_toggle",
                         "seen_toggle_charged_before_traffic": True,
                         "fair_boundary": "next_ref_rise_after_transmit_commit"},
-                    "reset": {"initial_reset_cycles": 2, "retired_during_reset": 0,
-                              "phantom_after_reset": 0, "state_clear_observed": True},
-                    "toggles": toggles[key],
+                    "reset_probe": {"second_reset_after_complete_drain": True,
+                        "second_reset_cycles": reset_probe[0],
+                        "post_reset_quiet_cycles": reset_probe[1],
+                        "retired_during_second_reset": reset_probe[2],
+                        "stale_or_phantom_during_quiet": reset_probe[3],
+                        "post_reset_sentinel_delivered": reset_probe[4],
+                        "post_reset_sentinel_exact_once": bool(reset_probe[5])},
+                    "value_transition_proxy": {"shared": shared_transitions,
+                                                "endpoint": endpoint_transitions[key]},
                 }
                 relative = Path("runs") / endpoint / suite / f"{run['name']}.json"
                 artifact = args.output_dir / relative
@@ -138,6 +156,8 @@ def main():
             "endpoint_manifest_sha256": args.endpoint_manifest_sha256,
             "boundary_index_sha256": args.boundary_index_sha256,
             "driver_sha256": digest(Path(__file__)),
+            "runner_sha256": args.runner_sha256,
+            "harness_sha256": digest(tb),
             "compile_log_sha256": digest(args.output_dir / "compile.log"),
             "binary_sha256": digest(binary),
             "simulator": {"identity": version,
