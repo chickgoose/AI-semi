@@ -1,0 +1,8 @@
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_tx.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_rx.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_parallel_reference_top.sv
+tb/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint_tb.sv
