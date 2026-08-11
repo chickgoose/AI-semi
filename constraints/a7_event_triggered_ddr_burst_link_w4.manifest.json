@@ -28,17 +28,35 @@
     "rx_retirement": "burst_clk_o falling-edge domain",
     "core_cdc": "not included; receiver integration must synchronize retire_toggle_o and coherently capture retire_addr_o"
   },
+  "structural_proxy_scope": {
+    "included": [
+      "generic TX state and data selection",
+      "generic RX rising/falling-edge registers",
+      "generic ICG low-phase latch and logic gate"
+    ],
+    "excluded": [
+      "mapped characterized ICG",
+      "mapped ODDR or IDDR cells",
+      "clock tree synthesis and buffers",
+      "physical link routing, pads, load and wire capacitance",
+      "downstream core CDC synchronizer"
+    ],
+    "classification": "generic RTL structural proxy, not physical PPA"
+  },
   "reset_contract": "assert only after full drain while burst clock is low; no mid-frame delivery guarantee",
+  "reset_false_path_allowed": false,
   "proof_scope": [
     "RTL edge lockstep",
     "glitch-free enable functional model",
-    "generic local synthesis cell/state/depth proxy"
+    "generic local synthesis cell/state/depth proxy",
+    "strict action-edge-symbol-reset oracle, test-only"
   ],
   "unproved": [
     "library ICG mapping",
     "duty-cycle distortion",
     "post-route clock/data skew",
     "recovery/removal and metastability MTBF",
-    "PVT and extracted full-link power"
+    "PVT and extracted full-link power",
+    "synthesizable runtime fault detection or containment"
   ]
 }

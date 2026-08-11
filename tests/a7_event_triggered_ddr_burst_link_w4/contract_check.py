@@ -14,10 +14,13 @@ def main() -> int:
     assert manifest["data_wires"] == 2
     assert manifest["minimum_high_ns"] == manifest["minimum_low_ns"] == 7.0
     assert manifest["technology_boundary"]["module"] == "a7_w4_icg_boundary"
+    assert manifest["reset_false_path_allowed"] is False
+    assert manifest["structural_proxy_scope"]["classification"].endswith("not physical PPA")
     sdc = (ROOT / "constraints/a7_event_triggered_ddr_burst_link_w4.sdc").read_text()
     for token in ("create_generated_clock", "set_min_pulse_width -high",
                   "set_min_pulse_width -low", "set_clock_uncertainty"):
         assert token in sdc, token
+    assert "set_false_path -from [get_ports rst_n]" not in sdc
     with args.structural_csv.open(newline="") as stream:
         rows = {row["link"]: row for row in csv.DictReader(stream)}
     assert {name: int(row["physical_pins"]) for name, row in rows.items()} == {

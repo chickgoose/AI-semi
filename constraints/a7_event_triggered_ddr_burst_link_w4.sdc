@@ -30,7 +30,8 @@ set_input_delay $A7_W4_IO_DELAY_NS -clock a7_ref_clk \
 set_output_delay $A7_W4_IO_DELAY_NS -clock a7_burst_clk \
   [get_ports {burst_data_o[*] retire_addr_o[*] retire_toggle_o}]
 
-# rst_n is asynchronous. Its functional contract permits assertion only after
-# the link drains and burst_clk_o is low; recovery/removal still needs library
-# checks. No core-clock synchronizer is included for retire_* outputs.
-set_false_path -from [get_ports rst_n]
+# rst_n is asynchronous. Do not false-path it here: a blanket reset false path
+# can suppress the recovery/removal evidence that W4 still requires. The target
+# flow must constrain reset release, retain library recovery/removal checks, and
+# run RDC analysis. Its functional contract permits assertion only after drain
+# with burst_clk_o low. No core synchronizer is included for retire_* outputs.

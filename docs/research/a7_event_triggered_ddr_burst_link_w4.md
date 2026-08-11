@@ -36,7 +36,13 @@ consumer clock is unrelated. Reset is asynchronous but supported only after
 full drain while the burst clock is low. Mid-frame reset can truncate a clock
 pulse and has no delivery guarantee.
 
-## Lockstep and malformed-edge evidence
+The SDC deliberately does **not** apply a blanket false path from `rst_n`.
+Doing so could suppress recovery/removal analysis while creating the appearance
+of closure. Target-library recovery/removal constraints, reset-release timing,
+and RDC analysis remain required and are **HOLD**; the candidate SDC alone does
+not close them.
+
+## Lockstep and observer-only fault evidence
 
 W4 reuses the exact committed W3 testbench through test-only module aliases; W3
 RTL and TB are not edited. Ratios 1, 2, and 4 pass idle stop, 16-event continuous
@@ -44,11 +50,23 @@ burst merge, edge-by-edge symbol comparison, 96-event sustained traffic,
 full-drain reset, and post-reset identity. The observed maxima remain 1, 2, and
 4 logical events per core cycle.
 
-The same raw-clock negative tests detect runt, missing rise, and missing fall.
-The additional ICG boundary test deliberately changes enable during clock high:
-the current pulse completes, the next complete cycle alone reflects the new
-enable, and no shortened high pulse appears. This is event-driven RTL evidence,
-not a cell-delay or analog glitch simulation.
+Independent audit `f92196b` showed that the inherited manual checker is not a
+general fault detector: a new rise can overwrite an open frame, and extra normal
+edge pairs, high/low duty distortion, a removed merged boundary, and unknown or
+unstable symbols can false-pass that checker. Its runt/missing-rise/missing-fall
+markers are therefore retained only as legacy directed observations.
+
+W4 now has an independent, test-only action/edge/symbol/reset schedule oracle.
+It accepts the exact legal two-event merged schedule and rejects missing-fall
+before a next rise, an extra edge pair, high and low duty distortion, a removed
+back-to-back boundary, unstable and unknown symbols, runt, missing rise, and
+reset with traffic in flight. The oracle is not connected to the RTL and cannot
+contain or resynchronize a live fault. There is no synthesizable runtime fault
+monitor in W4; fault detection and containment are explicitly **not claimed**.
+
+The separate ICG boundary test still establishes one narrower digital property:
+changing enable during clock high does not shorten the modeled pulse. This is
+event-driven RTL evidence, not cell-delay or analog glitch simulation.
 
 ## Same-top local structural comparison
 
@@ -60,9 +78,16 @@ unpadded boundary semantics: four data plus strobe for parallel, two data plus
 clock for DDR2, and one data plus clock for serial1.
 
 Yosys 0.52 runs `proc; flatten; opt`, then reports generic functional cells and
-state bits; `$scopeinfo` cells are excluded. `ltp -noff` reports combinational
-operator depth before and after generic `techmap`. No standard-cell library,
-wire estimate, CTS, pad model, or timing-driven mapping is used.
+state bits; `$scopeinfo` cells are excluded. Included are generic TX state/data
+selection, generic RX rising/falling-edge registers, and the generic ICG
+latch-and-gate model. `ltp -noff` reports combinational operator depth before and
+after generic `techmap`.
+
+Excluded are characterized ICG, ODDR/IDDR cells, clock-tree buffers/CTS, link
+routing, pads, wire/load capacitance, and downstream CDC synchronization. No
+standard-cell library or timing-driven mapping is used. The table is a same-top
+generic RTL structural proxy and must not be called physical area, physical PPA,
+or full-link PPA.
 
 | Link | Physical pins | Events/link cycle | Functional cells | State bits | Operator/generic depth |
 |---|---:|---:|---:|---:|---:|
@@ -78,9 +103,11 @@ model; a characterized ICG/DDR cell can change the area result.
 
 ## Decision
 
-Digital implementation evidence is **GO**: exact framing is preserved, the only
-generated-clock logic is isolated behind a replaceable ICG contract, malformed
-edges remain observable, and the generic structural comparison is reproducible.
+Digital implementation evidence is **GO** only for exact nominal framing and
+technology-boundary exploration. The only generated-clock logic is isolated
+behind a replaceable ICG contract, and the generic structural comparison is
+reproducible. Malformed schedules are rejected by a test-only oracle; W4 has no
+synthesizable fault detection or containment.
 
 Physical status remains **HOLD** until a target library maps the ICG and dual-edge
 capture boundary, STA validates half-cycle setup/hold and recovery/removal,

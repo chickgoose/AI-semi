@@ -29,6 +29,7 @@ for ratio in 1 2 4; do
     | tee "$out/normal-ratio${ratio}.log"
 done
 "$out/link-obj/a7_w4_link" +TEST=faults +LINK_RATIO=1 | tee "$out/faults.log"
+printf 'A7_W4_LEGACY_DIRECTED_CHECKER_OBSERVER_ONLY\n'
 
 "$verilator_bin" --binary --timing -Wall -Wno-fatal -Wno-BLKSEQ \
   --top-module a7_w4_icg_boundary_tb --Mdir "$out/icg-obj" -o a7_w4_icg \
@@ -49,6 +50,11 @@ LD_LIBRARY_PATH="${yosys_lib}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
   --yosys "$yosys_bin" --output "$out/structural.csv" | tee "$out/structural.log"
 PYTHONDONTWRITEBYTECODE=1 tests/a7_event_triggered_ddr_burst_link_w4/contract_check.py \
   --structural-csv "$out/structural.csv"
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=tests/a7_event_triggered_ddr_burst_link_w4 \
+  python3 -m unittest -v \
+  tests/a7_event_triggered_ddr_burst_link_w4/test_strict_protocol_oracle.py
+printf 'A7_W4_STRICT_ORACLE_MUTATIONS_PASS mutations=10\n'
 
 git diff --exit-code "$base" -- tb/clean \
   benchmarks/clean_slate_aer/manifest.example.json \
