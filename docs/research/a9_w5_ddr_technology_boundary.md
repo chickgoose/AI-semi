@@ -197,7 +197,13 @@ explicit test-only macro. These results make no Genus/Vivado unresolved-module
 claim. A source-closure test separately proves that checked-in production
 filelists contain exactly the eight candidate RTL sources and no mock/test path.
 The same-flow structural regression locks A9 at 33 cells/22 bits versus A7 DDR2
-at 29/20, a charged delta of +4 cells/+2 bits.
+at 29/20, a charged delta of +4 cells/+2 bits. The mapping manifest receipt
+binds each production profile's ordered compile macros to the exact ordered
+eight-file primary closure, each primary-file SHA-256, and the transitive
+`a9_w5_tech_select.svh` SHA-256. The external ASIC adapter remains explicitly
+unbound and cannot become evidence until its target source path and SHA-256 are
+supplied. The generic 33/22 receipt also pins the executed Yosys 0.52 binary
+path, SHA-256, and version; this does not change its structural-proxy status.
 
 This establishes wrapper behavioral equivalence under the nominal digital
 contract only. It does not establish primitive timing equivalence, glitch-free

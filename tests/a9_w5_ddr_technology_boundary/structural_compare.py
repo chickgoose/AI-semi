@@ -41,6 +41,8 @@ EXPECTED = {
     "a9_generic_ddr2": {"charged_functional_cells": 33, "state_bits": 22,
                         "operator_depth": 7, "generic_gate_depth": 7},
 }
+EXPECTED_YOSYS_VERSION = "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+EXPECTED_YOSYS_SHA256 = "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f"
 DEPTH_RE = re.compile(r"Longest topological path .*\(length=(\d+)\)")
 
 
@@ -139,6 +141,16 @@ def main() -> int:
     yosys = tool_path(args.yosys, "yosys", "/tmp/a7-yosys/usr/bin/yosys")
     git = tool_path(None, "git", "/usr/bin/git")
     environment = yosys_environment(yosys)
+    yosys_hash = hashlib.sha256(yosys.read_bytes()).hexdigest()
+    yosys_version = subprocess.run(
+        [str(yosys), "-V"], env=environment, check=True,
+        text=True, stdout=subprocess.PIPE
+    ).stdout.strip()
+    if yosys_hash != EXPECTED_YOSYS_SHA256 or yosys_version != EXPECTED_YOSYS_VERSION:
+        raise RuntimeError(
+            f"Yosys receipt mismatch: path={yosys} sha256={yosys_hash} "
+            f"version={yosys_version!r}"
+        )
     with tempfile.TemporaryDirectory(prefix="a9-w5-a7-rtl-") as directory:
         a7_sources = materialize_a7(git, args.a7_repo.resolve(), pathlib.Path(directory))
         rows = {
@@ -164,10 +176,9 @@ def main() -> int:
     }
     document = {
         "classification": "generic same-flow structural proxy, not physical PPA",
-        "yosys_version": subprocess.run(
-            [str(yosys), "-V"], env=environment, check=True,
-            text=True, stdout=subprocess.PIPE
-        ).stdout.strip(),
+        "yosys_executable": str(yosys),
+        "yosys_sha256": yosys_hash,
+        "yosys_version": yosys_version,
         "flow": "read_verilog -sv; hierarchy; proc; flatten; opt; stat -json -width; ltp -noff; techmap; opt; ltp -noff",
         "rows": rows,
         "a9_minus_a7_ddr2": delta,

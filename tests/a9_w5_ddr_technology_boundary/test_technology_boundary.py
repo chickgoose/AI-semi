@@ -46,6 +46,20 @@ W5_SOURCES = [
     RTL / "a9_w5_ddr_rx_endpoint.sv",
     RTL / "a9_w5_ddr_link.sv",
 ]
+TECH_SELECT = RTL / "a9_w5_tech_select.svh"
+TECH_SELECT_SHA256 = "26a58232c07238de6a1fc5b51841beded987d72761b35fa6c312cabf3aaf0e92"
+W5_SOURCE_SHA256 = {
+    "a9_w5_launch_qualifier.sv": "f25efff13b09d21511cedc7ef5df254ce245b567ae52a3f6f73f9c4c1c1a305a",
+    "a9_w5_retire_observer.sv": "242cc534e7de00ba65bdf7b5e3573b883c9e30a84f6501b28763cb8d37e1d87f",
+    "a9_w5_clock_gate.sv": "c3d524d11edb3662c2df8b3cbd8339f8db73f599bb1e0f2e8b6f43f9de437bc3",
+    "a9_w5_tx_launch.sv": "25ad21c72052c8b499feaa3bbb3f4ca84a9392a6f5d72bbddbf75b7a8136ad72",
+    "a9_w5_rx_capture.sv": "643b56c93d509c92d1e0e0a4c14788e6b5126191b89f37200f59caa862128906",
+    "a9_w5_ddr_tx_endpoint.sv": "27312cd08260aae2da694ab1b478f94bdcbe6854c5eead59ee038ec82fee69ab",
+    "a9_w5_ddr_rx_endpoint.sv": "696320a70c60cb96568f2b582694f226818655daff0e72515ad1ab1f0861ef18",
+    "a9_w5_ddr_link.sv": "4b2c220eaeae7df9ae86604dd9f5e6551b0848972fa4897e378448ad6de31654",
+}
+YOSYS_SHA256 = "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f"
+YOSYS_VERSION = "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
 
 
 def find_tool(env_name: str, name: str) -> str:
@@ -202,6 +216,11 @@ class TechnologyBoundaryTest(unittest.TestCase):
                 document["classification"],
                 "generic same-flow structural proxy, not physical PPA",
             )
+            self.assertEqual(document["yosys_sha256"], YOSYS_SHA256)
+            self.assertEqual(document["yosys_version"], YOSYS_VERSION)
+            self.assertEqual(
+                document["yosys_executable"], "/tmp/a7-yosys/usr/bin/yosys"
+            )
 
     def test_manifest_filelists_and_constraint_boundary(self) -> None:
         manifest = json.loads((RTL / "a9_w5_mapping_manifest.json").read_text())
@@ -244,6 +263,11 @@ class TechnologyBoundaryTest(unittest.TestCase):
             "state_bits": 22,
             "operator_depth": 7,
             "generic_gate_depth": 7,
+            "tool_receipt": {
+                "executable_path_at_execution": "/tmp/a7-yosys/usr/bin/yosys",
+                "executable_sha256": YOSYS_SHA256,
+                "version": YOSYS_VERSION,
+            },
             "delta_vs_a7_ddr2": {
                 "charged_functional_cells": 4,
                 "state_bits": 2,
@@ -268,6 +292,41 @@ class TechnologyBoundaryTest(unittest.TestCase):
         self.assertEqual(
             manifest["production_source_closure"], expected_closure
         )
+        receipt = manifest["compile_receipt"]
+        self.assertEqual(receipt["ordered_primary_source_closure"], expected_closure)
+        self.assertEqual(
+            receipt["transitive_sources"],
+            [{"path": str(TECH_SELECT.relative_to(ROOT)),
+              "sha256": TECH_SELECT_SHA256}],
+        )
+        self.assertEqual(hashlib.sha256(TECH_SELECT.read_bytes()).hexdigest(),
+                         TECH_SELECT_SHA256)
+        expected_source_hashes = {
+            str(path.relative_to(ROOT)): W5_SOURCE_SHA256[path.name]
+            for path in W5_SOURCES
+        }
+        self.assertEqual(receipt["primary_source_sha256"], expected_source_hashes)
+        for path in W5_SOURCES:
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+                             W5_SOURCE_SHA256[path.name], path.name)
+        profiles = receipt["production_profiles"]
+        self.assertEqual(profiles["generic"]["ordered_defines"],
+                         ["A9_W5_TECH_GENERIC"])
+        self.assertEqual(profiles["asic"]["ordered_defines"],
+                         ["A9_W5_TECH_ASIC"])
+        self.assertEqual(profiles["xilinx_7series"]["ordered_defines"],
+                         ["A9_W5_TECH_XILINX_7SERIES"])
+        for profile in profiles.values():
+            self.assertEqual(profile["ordered_source_closure_ref"],
+                             "compile_receipt.ordered_primary_source_closure")
+        self.assertEqual(profiles["asic"]["external_adapter_binding"],
+                         "UNBOUND_NOT_SUPPLIED")
+        self.assertIsNone(profiles["asic"]["external_adapter_path"])
+        self.assertIsNone(profiles["asic"]["external_adapter_sha256"])
+        self.assertEqual(receipt["behavioral_mock_profiles"], {
+            "asic_mock": ["A9_W5_TECH_ASIC", "A9_W5_TEST_ONLY"],
+            "xilinx_mock": ["A9_W5_TECH_XILINX_7SERIES", "A9_W5_TEST_ONLY"],
+        })
         sdc = (ROOT / "constraints/a9_w5_ddr_technology_boundary.sdc").read_text()
         for required in (
             "create_generated_clock", "-clock_fall", "set_load",
