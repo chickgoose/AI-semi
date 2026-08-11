@@ -1,0 +1,305 @@
+{
+  "accounting_contract": {
+    "boundary": "complete TX + link + ICG + RX + identical ref-domain always-ready consumer observation endpoint",
+    "endpoint_vs_sink_latency": "retire output available after 1 ref cycle; distinct synchronous sink consumes after 2 ref cycles",
+    "excluded": [
+      "upstream producer",
+      "consumer backpressure/FIFO",
+      "unrelated-clock CDC synchronizer",
+      "pads and characterized ICG/ODDR/IDDR cells"
+    ],
+    "pins": "unpadded physical link data wires plus forwarded link clock",
+    "same_functional_ports": true,
+    "same_load": "one address per valid && ready ref-clock posedge",
+    "same_reset": "asynchronous active-low rst_n",
+    "state": "all mapped DFF Q bits plus exactly one generic ICG latch bit; each style includes six consumer-observer bits"
+  },
+  "architecture_decision": {
+    "always_ready_primary_only": true,
+    "future_variants": [
+      "consumer backpressure handshake/FIFO",
+      "unrelated-clock CDC"
+    ],
+    "primary_endpoint": "strict phase-related synchronous R1",
+    "production_w5_endpoint_bound": true,
+    "reason": "42377ca provides both complete tops with identical reset arming, fail-closed drain, and ref-rise observer under the pinned 4 ns phase relationship"
+  },
+  "audit": "a3_w5_a7_equal_flow_full_endpoint_synthesis",
+  "decision": "PHYSICAL_HOLD",
+  "delta_ddr_minus_parallel": {
+    "charged_link_signal_pins": -2,
+    "comb_cells": 2,
+    "comb_depth_cells": 0,
+    "dff_bits": 2,
+    "functional_cells_scopeinfo_removed": 2,
+    "latch_bits": 0,
+    "max_fanout_data": 2,
+    "net_bit_count": 6,
+    "net_count": 2,
+    "qualifier_state_bits": 0,
+    "sequential_bits": 2,
+    "total_cells": 4,
+    "wire_data_sink_pin_proxy": 8
+  },
+  "fail_closed_drain_contract": {
+    "active_frame_and_link_clock_guarded": true,
+    "charged_functional_cells_each_style": 4,
+    "registered_pending_valid_guarded_until_sink_sample": true,
+    "same_cycle_launch_guarded": true,
+    "unobserved_raw_toggle_guarded": true
+  },
+  "gate": {
+    "cdc_claim": "NONE",
+    "continuous_one_event_per_cycle_preserved": true,
+    "exact_state_and_pin_accounting": true,
+    "generic_structural_comparison": "PASS",
+    "one_shot_qualifier_rejected": true,
+    "phase_related_observer_charged_equally": true,
+    "physical_claim": "HOLD",
+    "r1_standard_handshake_preserved": true,
+    "reason": "generic latch/gate and opposite-edge flops are not characterized ICG/ODDR/IDDR cells; no STA/CDC/RDC/route/power evidence",
+    "reset_arming_qualifier_state_charged_each_style": 1,
+    "valid_edge_one_shot_state_charged": 0
+  },
+  "phase_related_consumer_contract": {
+    "always_ready_sink": true,
+    "backpressure_supported_at_consumer": false,
+    "clock_relationship": "strict_phase_related_synchronous",
+    "commit_to_observation_setup_ns": 4.0,
+    "continuous_consumer_pulse_witness": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "continuous_retire_toggle_witness": [
+      1,
+      0,
+      1,
+      0,
+      1,
+      0
+    ],
+    "endpoint_output_available_ref_cycles_after_launch": 1,
+    "endpoint_output_register_edge": "following ref rising edge at 16 ns modulo period",
+    "latency_distinction": "retire_valid/address become endpoint outputs just after the first ref rise; a separate posedge sink sees their prior values at that edge and therefore consumes them on the second ref rise",
+    "observer": "one-bit seen-toggle detector plus registered valid/address",
+    "observer_state_bits_charged_each_style": 6,
+    "real_synchronous_sink_consumes_ref_cycles_after_launch": 2,
+    "reference_period_ns": 16.0,
+    "rx_commit_edge": "burst/sample falling edge at 12 ns modulo period",
+    "sample_phase_ns": 4.0,
+    "two_ff_cdc_claim": false,
+    "unrelated_clocks_supported": false
+  },
+  "production_digital_regression": {
+    "covers": [
+      "same-cycle admission drain guard",
+      "output availability at cycle 1",
+      "pending-valid drain guard",
+      "synchronous consumption at cycle 2",
+      "continuous 16-event exact-once/order/address"
+    ],
+    "exact_pass_markers": [
+      "A7_R1_NOMINAL_PASS",
+      "A7_R1_SAME_CYCLE_ADMISSION_RESET_BLOCK_PASS",
+      "A7_R1_OUTPUT_AVAILABLE_CYCLE1_PASS",
+      "A7_R1_PENDING_OUTPUT_RESET_BLOCK_PASS",
+      "A7_R1_CONSUMER_RETIRE_CYCLE2_PASS",
+      "A7_R1_CONTINUOUS_VALID_CHANGING_ADDRESS_PASS events=16",
+      "A7_R1_BACK_TO_BACK_PASS events=16",
+      "A7_R1_GAPPED_PASS events=3",
+      "A7_R1_RESET_RELEASE_ARMING_PASS",
+      "A7_R1_STALLED_HELD_VALID_PASS events=1",
+      "A7_R1_DRAIN_RESET_PASS",
+      "A7_R1_INVALID_MIDFRAME_RESET_OBSERVED_PASS",
+      "A7_R1_EXACT_ONCE_ORDER_ADDRESS_PASS",
+      "A7_R1_ENDPOINT_REGRESSION_PASS"
+    ],
+    "pinned_tb_sha256": "b3af920caa6e7242820f1428bf655045fcf2bd8911e4e41c5ae92d4b0c87e950",
+    "status": "PASS",
+    "verilator_sha256": "672a1ccf3468902f66387049f001b04f254bbcece7d5e816e3861715889bf252",
+    "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
+  },
+  "provenance": {
+    "a7_production_w5_commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
+    "git_objects": {
+      "constraints/a7_event_triggered_ddr_burst_link_w4.sdc": {
+        "sha256": "b45f0b07b790aad7f198bf1a5dffb246ced7da7c29f43185ccb5e18c54446a95"
+      },
+      "docs/research/a7_r1_candidate_endpoint_contract.md": {
+        "sha256": "9fb0dbdfb66df6f8306525b5703399b38d38403fb0d9314fb9a1c116a3a6294a"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv": {
+        "sha256": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_rx.sv": {
+        "sha256": "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_tx.sv": {
+        "sha256": "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv": {
+        "sha256": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv": {
+        "sha256": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_parallel_reference_top.sv": {
+        "sha256": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748"
+      },
+      "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv": {
+        "sha256": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f"
+      },
+      "tb/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint_tb.sv": {
+        "sha256": "b3af920caa6e7242820f1428bf655045fcf2bd8911e4e41c5ae92d4b0c87e950"
+      },
+      "tb/filelists/a7_r1_candidate_endpoint_unit.f": {
+        "sha256": "8cdb53fe75c9e1f07c68d5547e85f96c1c6bdbf4ee7ea4acbc451c1a1eedb850"
+      },
+      "tests/a7_r1_candidate_endpoint/structural_compare.py": {
+        "sha256": "2c0de42e77db3640d306c21405693a66cf5ab12cacf3e25cb0ed5fc2d9521d88"
+      }
+    },
+    "independent_a3_wrapper": {
+      "path": "scripts/w5_a7_equal_flow_synth/a3_w5_r1_endpoint_top.sv",
+      "role": "stateless same-top selector and observation padding only",
+      "sha256": "0a830a60665801b457483bf77c7c4b2dfc79a52bb577e857ffeb2c5826b1c562"
+    },
+    "same_top": "a3_w5_r1_endpoint_top",
+    "source_normalization": "none"
+  },
+  "r1_handshake_and_qualifier_gate": {
+    "continuous_valid_new_address_each_accepted_cycle": "LEGAL",
+    "contract": "one frame per event_valid_i && event_ready_o ref_clk_i posedge",
+    "directed_ready": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "directed_valid": [
+      1,
+      1,
+      1,
+      0,
+      1
+    ],
+    "edge_suppressed_cycles": [
+      0,
+      4
+    ],
+    "edge_suppression_loses_legal_frames": 2,
+    "first_ref_edge_after_reset_release_accepts": false,
+    "independent_qualifier_rtl_implemented": false,
+    "legal_handshake_cycles": [
+      0,
+      1,
+      2,
+      4
+    ],
+    "one_shot_qualifier_required": false,
+    "production_reset_arming_qualifier_state_bits_charged": 1,
+    "reason": "both production TX endpoints share the charged reset arming qualifier and load one frame on every subsequent valid/ready posedge; a valid-edge one-shot would violate R1",
+    "reset_release_arming_state_bits_charged_each_style": 1,
+    "stable_requirement": "transaction held stable only while ready is low",
+    "valid_edge_one_shot_state_bits_charged": 0
+  },
+  "runs": [
+    {
+      "canonical_input_bits_including_clocks_reset": 8,
+      "canonical_output_bits_including_observation_padding": 12,
+      "cell_types": {
+        "$_AND_": 5,
+        "$_DFFE_PN0P_": 8,
+        "$_DFF_PN0_": 9,
+        "$_DLATCH_N_": 1,
+        "$_NOT_": 2,
+        "$_OR_": 4,
+        "$_XOR_": 1
+      },
+      "charged_link_signal_pins": 5,
+      "comb_cells": 12,
+      "comb_depth_cells": 5,
+      "data_nets_fanout_ge4": 3,
+      "design": "complete_parallel4_tx_rx",
+      "dff_bits": 17,
+      "functional_cells_scopeinfo_removed": 27,
+      "functional_input_bits_excluding_clocks_reset": 5,
+      "functional_output_bits_excluding_link_clock_unpadded": 11,
+      "latch_bits": 1,
+      "link_clock_pins": 1,
+      "link_data_pins": 4,
+      "max_fanout_all": 20,
+      "max_fanout_data": 7,
+      "net_bit_count": 38,
+      "net_count": 26,
+      "p95_fanout_data": 6,
+      "qualifier_state_bits": 0,
+      "recipe_sha256": "727b86f8809d62ff52316ad812f855e60933d67e8e41303ec35a69b67696c221",
+      "sequential_bits": 18,
+      "shared_consumer_observer_state_bits": 6,
+      "shared_reset_arming_state_bits": 1,
+      "total_cells": 30,
+      "warning_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 49,
+      "wire_sink_pin_proxy": 82
+    },
+    {
+      "canonical_input_bits_including_clocks_reset": 8,
+      "canonical_output_bits_including_observation_padding": 12,
+      "cell_types": {
+        "$_AND_": 5,
+        "$_DFFE_PN0P_": 8,
+        "$_DFF_NN0_": 5,
+        "$_DFF_PN0_": 6,
+        "$_DLATCH_N_": 1,
+        "$_MUX_": 2,
+        "$_NOT_": 2,
+        "$_OR_": 4,
+        "$_XOR_": 1
+      },
+      "charged_link_signal_pins": 3,
+      "comb_cells": 14,
+      "comb_depth_cells": 5,
+      "data_nets_fanout_ge4": 3,
+      "design": "a7_ddr2_tx_icg_rx_r1",
+      "dff_bits": 19,
+      "functional_cells_scopeinfo_removed": 29,
+      "functional_input_bits_excluding_clocks_reset": 5,
+      "functional_output_bits_excluding_link_clock_unpadded": 9,
+      "latch_bits": 1,
+      "link_clock_pins": 1,
+      "link_data_pins": 2,
+      "max_fanout_all": 22,
+      "max_fanout_data": 9,
+      "net_bit_count": 44,
+      "net_count": 28,
+      "p95_fanout_data": 6,
+      "qualifier_state_bits": 0,
+      "recipe_sha256": "cbb23c68c385dc3afee375a093c1e260e4f9570d86b675637b5dfa06e5d0df95",
+      "sequential_bits": 20,
+      "shared_consumer_observer_state_bits": 6,
+      "shared_reset_arming_state_bits": 1,
+      "total_cells": 34,
+      "warning_unresolved_free": true,
+      "wire_data_sink_pin_proxy": 57,
+      "wire_sink_pin_proxy": 94
+    }
+  ],
+  "schema_version": 1,
+  "status": "PASS",
+  "tool": {
+    "abc_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",
+    "abc_version": "UC Berkeley, ABC 1.01 (compiled May  4 2025 16:37:33)",
+    "mapping": "same top/style chparam; proc/flatten/opt and delete scopeinfo functional stat; synth -flatten -noabc; delete scopeinfo; abc -g simple; clean/check/stat/write_json",
+    "tcl_runtime_sha256": "6dfbe2faf2a776485be94cb87bed369337bcf9236ee4c955e45004f8253ade8a",
+    "verilator_sha256": "672a1ccf3468902f66387049f001b04f254bbcece7d5e816e3861715889bf252",
+    "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
+    "yosys_sha256": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f",
+    "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+  }
+}
