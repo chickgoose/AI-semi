@@ -53,6 +53,9 @@ Reset assertion is asynchronous in the RTL but is legal only when
 both source clocks are low, after a sample-clock falling edge and at least the
 quarter-cycle phase interval before the next reference rising edge. Reset clears
 TX state, the RX partial symbol, retirement address, and retirement toggle.
+`drain_idle_o` is fail-closed across the whole digital endpoint: it is low for
+a same-cycle `launch_fire`, an active frame/clock, an unobserved raw toggle, or
+a registered `retire_valid_o` that the downstream consumer has not yet sampled.
 
 Mid-frame reset is invalid input behavior. It can truncate the forwarded clock;
 the in-flight occurrence has no delivery guarantee. The endpoint exposes
@@ -67,7 +70,11 @@ Recovery/removal and RDC remain physical **HOLD**.
 The RX raw address/toggle commits on the forwarded burst-clock falling edge.
 Because R1 freezes `ref_clk_i` and `sample_clk_i` to one source with known phase,
 a charged `seen_toggle` register observes that raw toggle at the next reference
-rising edge and emits `retire_valid_o` with the complete registered address.
+rising edge and makes `retire_valid_o` plus the complete registered address
+available one reference cycle after admission. An always-ready synchronous
+consumer samples those registered outputs in the pre-NBA region of the next
+reference edge, so architectural consumer retirement is two cycles after
+admission. `drain_idle_o` remains low during the intervening valid cycle.
 This is a phase-related synchronous half-cycle path, not a 2FF CDC synchronizer.
 There is no retire ready/backpressure and no queue; the primary sink is always
 ready. Backpressure or unrelated consumer clocks require a future explicitly
@@ -102,13 +109,19 @@ parallel link occurrence.
 The local generic Yosys proxy includes reset-release arming, TX storage, generic
 ICG latch, RX state, raw address/toggle, and ref-domain observer for both tops:
 
-| link | link pins | generic cells | state bits | operator/gate depth |
-|---|---:|---:|---:|---:|
-| DDR2 | 3 | 30 | 20 | 5 / 5 |
-| parallel4 | 5 | 26 | 18 | 5 / 5 |
+| link | pins | pre-guard functional | drain guard | charged total | state bits | charged depth |
+|---|---:|---:|---:|---:|---:|---:|
+| DDR2 | 3 | 25 | 4 | 29 | 20 | 7 / 7 |
+| parallel4 | 5 | 23 | 4 | 27 | 18 | 7 / 7 |
 
 These counts demonstrate that the two-wire saving is not free: this model adds
-two state bits and four generic cells versus the same-boundary parallel top.
+two state bits and two functional generic cells versus the same-boundary
+parallel top. The reset-safety fix adds and charges four common drain-guard
+cells to each endpoint; it is not folded out of the charged total. Yosys
+`$scopeinfo` bookkeeping cells alone are excluded (five for DDR2 and three for
+parallel4); registers and latches remain counted. The pre-guard functional
+column records the corrected ca1a209 core comparison (25 versus 23), while the
+charged total is the current synthesizable RTL (29 versus 27).
 The numbers are structural proxies only. Because characterized ICG/DDR cells,
 clock-tree cost, routing/load activity, half-cycle STA, recovery/removal, PVT,
 and power are absent, the full endpoint remains physical **HOLD**.

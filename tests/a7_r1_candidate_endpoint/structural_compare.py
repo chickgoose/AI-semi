@@ -18,6 +18,13 @@ TOPS = {
     "ddr2": ("a7_r1_candidate_endpoint", 3),
     "parallel4": ("a7_r1_parallel_reference_top", 5),
 }
+# ca1a209 functional datapath after removing Yosys $scopeinfo. The follow-up
+# drain guard is intentionally reported as a separate, fully charged delta.
+PRE_GUARD_FUNCTIONAL = {"ddr2": 25, "parallel4": 23}
+EXPECTED_CHARGED = {
+    "ddr2": {"functional": 29, "drain_guard": 4, "state_bits": 20},
+    "parallel4": {"functional": 27, "drain_guard": 4, "state_bits": 18},
+}
 DEPTH_RE = re.compile(r"Longest topological path .*\(length=(\d+)\)")
 
 
@@ -52,11 +59,33 @@ def synthesize(yosys: str, link: str) -> dict[str, object]:
         for name, count in state_types.items():
             width = re.search(r"_(\d+)$", name)
             state_bits += count * (int(width.group(1)) if width else 1)
+        scopeinfo_cells = sum(
+            count for name, count in histogram.items()
+            if "scopeinfo" in name.lower()
+        )
+
+        charged_functional = module["num_cells"] - scopeinfo_cells
+        drain_guard_cells = charged_functional - PRE_GUARD_FUNCTIONAL[link]
+        if drain_guard_cells < 0:
+            raise RuntimeError("charged endpoint smaller than frozen pre-guard core")
+        observed = {
+            "functional": charged_functional,
+            "drain_guard": drain_guard_cells,
+            "state_bits": state_bits,
+        }
+        if observed != EXPECTED_CHARGED[link]:
+            raise RuntimeError(
+                f"{link} structural contract changed: "
+                f"observed={observed} expected={EXPECTED_CHARGED[link]}"
+            )
 
         return {
             "link": link,
             "physical_link_pins": physical_pins,
-            "functional_cells": module["num_cells"],
+            "pre_guard_functional_cells": PRE_GUARD_FUNCTIONAL[link],
+            "drain_guard_cells": drain_guard_cells,
+            "charged_functional_cells": charged_functional,
+            "excluded_scopeinfo_cells": scopeinfo_cells,
             "register_or_latch_cells": sum(state_types.values()),
             "state_bits": state_bits,
             "operator_depth": depths[0],

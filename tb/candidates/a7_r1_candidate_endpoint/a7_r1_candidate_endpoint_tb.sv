@@ -9,8 +9,11 @@ module a7_r1_candidate_endpoint_tb;
   logic [3:0] ddr_addr;
   logic par_ready, par_clk, par_valid, par_idle;
   logic [3:0] par_data, par_addr;
+  logic ddr_consumer_valid_q, par_consumer_valid_q;
+  logic [3:0] ddr_consumer_addr_q, par_consumer_addr_q;
   logic [3:0] expected [0:255];
-  integer accepted, ddr_retired, par_retired, errors;
+  integer accepted, ddr_available, par_available;
+  integer ddr_retired, par_retired, errors;
   integer ddr_rises, ddr_falls, par_rises;
   bit scoreboard_enable;
 
@@ -30,6 +33,26 @@ module a7_r1_candidate_endpoint_tb;
   initial begin sample_clk_i = 1'b0; #12ns; sample_clk_i = 1'b1;
     forever #(HALF) sample_clk_i = ~sample_clk_i; end
 
+  // The primary sink is an always-ready synchronous consumer. These registers
+  // sample the prior-cycle endpoint outputs in the pre-NBA region. The
+  // endpoint can therefore make an output available one ref cycle after
+  // admission, while actual consumer retirement occurs on the following edge.
+  always_ff @(posedge ref_clk_i or negedge rst_n) begin
+    if (!rst_n) begin
+      ddr_consumer_valid_q <= 1'b0;
+      ddr_consumer_addr_q <= '0;
+      par_consumer_valid_q <= 1'b0;
+      par_consumer_addr_q <= '0;
+    end else begin
+      ddr_consumer_valid_q <= ddr_valid;
+      par_consumer_valid_q <= par_valid;
+      if (ddr_valid)
+        ddr_consumer_addr_q <= ddr_addr;
+      if (par_valid)
+        par_consumer_addr_q <= par_addr;
+    end
+  end
+
   always @(posedge ref_clk_i) begin
     if (rst_n && scoreboard_enable && event_valid_i && ddr_ready) begin
       if (!par_ready) begin $error("reference ready mismatch"); errors = errors + 1; end
@@ -43,15 +66,38 @@ module a7_r1_candidate_endpoint_tb;
         errors = errors + 1;
       end
       if (ddr_valid) begin
-        if (ddr_retired >= accepted || ddr_addr !== expected[ddr_retired]) begin
-          $error("DDR observed retire mismatch index=%0d got=%h", ddr_retired, ddr_addr);
+        if (ddr_available >= accepted || ddr_addr !== expected[ddr_available]) begin
+          $error("DDR available mismatch index=%0d got=%h", ddr_available, ddr_addr);
+          errors = errors + 1;
+        end
+        ddr_available = ddr_available + 1;
+      end
+      if (par_valid) begin
+        if (par_available >= accepted || par_addr !== expected[par_available]) begin
+          $error("parallel available mismatch index=%0d got=%h", par_available, par_addr);
+          errors = errors + 1;
+        end
+        par_available = par_available + 1;
+      end
+      if (ddr_consumer_valid_q !== par_consumer_valid_q) begin
+        $error("consumer-valid mismatch DDR=%b parallel=%b",
+               ddr_consumer_valid_q, par_consumer_valid_q);
+        errors = errors + 1;
+      end
+      if (ddr_consumer_valid_q) begin
+        if (ddr_retired >= accepted ||
+            ddr_consumer_addr_q !== expected[ddr_retired]) begin
+          $error("DDR consumer mismatch index=%0d got=%h",
+                 ddr_retired, ddr_consumer_addr_q);
           errors = errors + 1;
         end
         ddr_retired = ddr_retired + 1;
       end
-      if (par_valid) begin
-        if (par_retired >= accepted || par_addr !== expected[par_retired]) begin
-          $error("parallel observed retire mismatch index=%0d got=%h", par_retired, par_addr);
+      if (par_consumer_valid_q) begin
+        if (par_retired >= accepted ||
+            par_consumer_addr_q !== expected[par_retired]) begin
+          $error("parallel consumer mismatch index=%0d got=%h",
+                 par_retired, par_consumer_addr_q);
           errors = errors + 1;
         end
         par_retired = par_retired + 1;
@@ -61,37 +107,38 @@ module a7_r1_candidate_endpoint_tb;
 
   always @(posedge ddr_clk) begin
     if (rst_n && scoreboard_enable) begin
-      ddr_rises = ddr_rises + 1;
-      if (ddr_retired >= accepted || ddr_data !== expected[ddr_retired][1:0]) begin
-        $error("DDR rise mismatch index=%0d data=%b", ddr_retired, ddr_data);
+      if (ddr_rises >= accepted || ddr_data !== expected[ddr_rises][1:0]) begin
+        $error("DDR rise mismatch index=%0d data=%b", ddr_rises, ddr_data);
         errors = errors + 1;
       end
+      ddr_rises = ddr_rises + 1;
     end
   end
 
   always @(negedge ddr_clk) begin
     if (rst_n && scoreboard_enable) begin
-      ddr_falls = ddr_falls + 1;
-      if (ddr_retired >= accepted || ddr_data !== expected[ddr_retired][3:2]) begin
-        $error("DDR fall mismatch index=%0d data=%b", ddr_retired, ddr_data);
+      if (ddr_falls >= accepted || ddr_data !== expected[ddr_falls][3:2]) begin
+        $error("DDR fall mismatch index=%0d data=%b", ddr_falls, ddr_data);
         errors = errors + 1;
       end
+      ddr_falls = ddr_falls + 1;
     end
   end
 
   always @(posedge par_clk) begin
     if (rst_n && scoreboard_enable) begin
-      par_rises = par_rises + 1;
-      if (par_retired >= accepted || par_data !== expected[par_retired]) begin
-        $error("parallel link mismatch index=%0d data=%h", par_retired, par_data);
+      if (par_rises >= accepted || par_data !== expected[par_rises]) begin
+        $error("parallel link mismatch index=%0d data=%h", par_rises, par_data);
         errors = errors + 1;
       end
+      par_rises = par_rises + 1;
     end
   end
 
   task automatic clear_scoreboard;
     begin
-      accepted = 0; ddr_retired = 0; par_retired = 0;
+      accepted = 0; ddr_available = 0; par_available = 0;
+      ddr_retired = 0; par_retired = 0;
       ddr_rises = 0; ddr_falls = 0; par_rises = 0;
     end
   endtask
@@ -101,6 +148,7 @@ module a7_r1_candidate_endpoint_tb;
     begin
       timeout = 0;
       while (((ddr_retired != accepted) || (par_retired != accepted) ||
+              ddr_consumer_valid_q || par_consumer_valid_q ||
               !ddr_idle || !par_idle) && timeout < 80) begin
         @(posedge ref_clk_i); timeout = timeout + 1;
       end
@@ -155,14 +203,41 @@ module a7_r1_candidate_endpoint_tb;
 
     send_pulse(4'h9, 0);
     wait_drain();
-    if (accepted != 1 || ddr_retired != 1 || par_retired != 1)
+    if (accepted != 1 || ddr_available != 1 || par_available != 1 ||
+        ddr_retired != 1 || par_retired != 1)
       $fatal(1, "nominal count mismatch");
     $display("A7_R1_NOMINAL_PASS");
+
+    // At the first ref edge after raw RX commit the registered output is
+    // available, but the real consumer has sampled the preceding value. The
+    // valid output must keep drain_idle low until the following ref edge.
+    clear_scoreboard();
+    @(negedge ref_clk_i);
+    event_valid_i = 1'b1; event_addr_i = 4'he;
+    #2ps;
+    if (!ddr_ready || !par_ready || ddr_idle || par_idle)
+      $fatal(1, "same-cycle launch request incorrectly reported drain idle");
+    $display("A7_R1_SAME_CYCLE_ADMISSION_RESET_BLOCK_PASS");
+    @(negedge ref_clk_i); event_valid_i = 1'b0;
+    do begin @(posedge ref_clk_i); #2ps; end while (!ddr_valid);
+    if (!par_valid || ddr_available != 1 || par_available != 1 ||
+        ddr_retired != 0 || par_retired != 0)
+      $fatal(1, "availability/consumer latency boundary mismatch");
+    if (ddr_idle || par_idle)
+      $fatal(1, "pending registered output incorrectly reported drain idle");
+    $display("A7_R1_OUTPUT_AVAILABLE_CYCLE1_PASS");
+    $display("A7_R1_PENDING_OUTPUT_RESET_BLOCK_PASS");
+    @(posedge ref_clk_i); #2ps;
+    if (ddr_retired != 1 || par_retired != 1)
+      $fatal(1, "consumer did not retire at cycle 2");
+    $display("A7_R1_CONSUMER_RETIRE_CYCLE2_PASS");
+    legal_reset_idle();
 
     clear_scoreboard();
     send_continuous(16, 3);
     wait_drain();
-    if (accepted != 16 || ddr_retired != 16 || par_retired != 16 ||
+    if (accepted != 16 || ddr_available != 16 || par_available != 16 ||
+        ddr_retired != 16 || par_retired != 16 ||
         ddr_rises != 16 || ddr_falls != 16 || par_rises != 16)
       $fatal(1, "continuous-valid/back-to-back count mismatch");
     $display("A7_R1_CONTINUOUS_VALID_CHANGING_ADDRESS_PASS events=16");
@@ -171,7 +246,8 @@ module a7_r1_candidate_endpoint_tb;
     clear_scoreboard();
     send_pulse(4'h2, 3); send_pulse(4'hf, 1); send_pulse(4'h4, 5);
     wait_drain();
-    if (accepted != 3 || ddr_retired != 3 || par_retired != 3)
+    if (accepted != 3 || ddr_available != 3 || par_available != 3 ||
+        ddr_retired != 3 || par_retired != 3)
       $fatal(1, "gapped count mismatch");
     $display("A7_R1_GAPPED_PASS events=3");
 
@@ -195,7 +271,8 @@ module a7_r1_candidate_endpoint_tb;
     @(posedge ref_clk_i);
     @(negedge ref_clk_i); event_valid_i = 1'b0;
     wait_drain();
-    if (accepted != 1 || ddr_retired != 1 || par_retired != 1)
+    if (accepted != 1 || ddr_available != 1 || par_available != 1 ||
+        ddr_retired != 1 || par_retired != 1)
       $fatal(1, "stalled-held transaction count mismatch");
     $display("A7_R1_STALLED_HELD_VALID_PASS events=1");
 
@@ -222,7 +299,8 @@ module a7_r1_candidate_endpoint_tb;
     repeat (2) @(negedge sample_clk_i);
     clear_scoreboard(); rst_n = 1'b1; scoreboard_enable = 1'b1;
     @(negedge ref_clk_i); send_pulse(4'ha, 0); wait_drain();
-    if (accepted != 1 || ddr_retired != 1 || par_retired != 1)
+    if (accepted != 1 || ddr_available != 1 || par_available != 1 ||
+        ddr_retired != 1 || par_retired != 1)
       $fatal(1, "post-invalid-reset clean epoch mismatch");
     $display("A7_R1_INVALID_MIDFRAME_RESET_OBSERVED_PASS");
 
