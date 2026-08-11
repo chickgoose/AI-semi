@@ -49,8 +49,8 @@ A7_W5_SOURCE_SHA256 = {
     "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_parallel_reference_top.sv": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748",
 }
 A5_PRODUCTION_SHA256 = {
-    "driver": "46b8165387f030763a65561dd323f355b2efcd3442dbecf04947f6922da5059a",
-    "harness": "dda9eadca78641f3080562e176337fb8988ac14f3ea42087ec5d22086646e26b",
+    "driver": "49c9522545b75a5300cc5f3e7109deb43c630138915fdf427ae77f1801d96fb4",
+    "harness": "14f94ab208706ea789cbfafe69de8d965d689a6555081418aae8474116aa7c95",
 }
 PRIMARY_CLOCK_CONTRACT = "phase_related_synchronous_frozen_source_v1"
 HANDSHAKE_CONTRACT = "ready_valid_posedge_each_handshake_v1"
@@ -182,6 +182,26 @@ def write_json(path: Path, document: Any) -> None:
     exclusive_write(
         path, (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
     )
+
+
+def canonicalize(evaluation: dict[str, Any]) -> dict[str, Any]:
+    """Remove only attempt build products; preserve the complete evaluation."""
+    canonical = json.loads(json.dumps(evaluation))
+    if (canonical.get("status") != "EXACT_SERIALIZED_LINK_REPLAY_PASS"
+            or not isinstance(canonical.get("runs"), list)
+            or len(canonical["runs"]) != 144):
+        raise ContractError("evaluation is not a complete serialized-link replay")
+    provenance = canonical.get("provenance", {})
+    for field in ("compile_log_sha256", "binary_sha256"):
+        value = provenance.pop(field, None)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ContractError(f"missing path-dependent attempt field: {field}")
+    return canonical
+
+
+def canonical_bytes(evaluation: dict[str, Any]) -> bytes:
+    return (json.dumps(canonicalize(evaluation), sort_keys=True,
+                       separators=(",", ":")) + "\n").encode()
 
 
 def generate_common_snapshot(common_repo: Path, temporary: Path) -> tuple[Path, dict[str, Any]]:
@@ -569,12 +589,16 @@ def validate_run_result(boundary_rows_: list[dict[str, Any]], result: dict[str, 
             or reset.get("retired_during_second_reset") != 0
             or reset.get("stale_or_phantom_during_quiet") != 0
             or reset.get("post_reset_sentinel_delivered") != 1
-            or reset.get("post_reset_sentinel_exact_once") is not True):
+            or reset.get("post_reset_sentinel_exact_once") is not True
+            or reset.get("ready_retire_normalized_during_reset") is not True
+            or reset.get("ready_retire_normalized_during_quiet") is not True):
         raise ContractError("direct drain/second-reset/quiet/post-reset probe failed")
     handshake = result.get("handshake", {})
     if (handshake.get("accepted_on_valid_and_ready_posedge") is not True
             or handshake.get("continuous_valid_back_to_back_supported") is not True
-            or handshake.get("held_address_stable_while_not_ready") is not True
+            or handshake.get("held_address_check_applicable") is not False
+            or handshake.get("held_address_reason")
+                != "always_ready_primary_has_no_stall_sample"
             or handshake.get("edge_suppression_used") is not False):
         raise ContractError("ready-valid handshake evidence failed")
     observation = result.get("observation", {})
@@ -610,6 +634,7 @@ def validate_run_result(boundary_rows_: list[dict[str, Any]], result: dict[str, 
         "total_latency_ticks": total_latency_ticks,
         "value_transition_proxy": transitions,
         "second_reset_cycles": reset["second_reset_cycles"],
+        "reset_probe": reset,
     }
 
 
@@ -699,11 +724,16 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
                         run_latency[name] = metrics.pop(name)
                         latency[name].extend(run_latency[name])
                     transitions = metrics.pop("value_transition_proxy")
+                    reset_probe = metrics.pop("reset_probe")
                     totals.update(metrics)
                     for group in transition_totals:
                         transition_totals[group].update(transitions[group])
                     per_run.append({"endpoint": endpoint, "suite": suite,
-                                    "name": run["name"], **metrics,
+                                    "name": run["name"],
+                                    "trace_sha256": run["trace_sha256"],
+                                    "boundary_sha256": run["boundary_sha256"],
+                                    "event_count": run["event_count"], **metrics,
+                                    "reset_probe": reset_probe,
                                     "latency_ticks": {
                                         name.removesuffix("_ticks"): distribution(values)
                                         for name, values in run_latency.items()},
@@ -744,6 +774,13 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
                 "compile_log_sha256": provenance["compile_log_sha256"],
                 "binary_sha256": provenance["binary_sha256"],
                 "simulator": provenance["simulator"],
+                "common": boundary["provenance"],
+                "a7_rtl_blob_sha256": A7_W5_SOURCE_SHA256,
+                "a5_source_sha256": {
+                    "runner": sha256(Path(__file__)),
+                    "driver": sha256(driver),
+                    "harness": sha256(bundle_root / "a5/a5_w5_production_tb.sv"),
+                },
             },
             "invariants": {
                 "same_accepted_cohort": True,
@@ -758,7 +795,8 @@ def evaluate_endpoint(boundary_root: Path, endpoint_repo: Path, endpoint_commit:
             },
             "non_qualification": [
                 "common workload service capacity", "capacity qualification",
-                "bounded ingress implementation", "power or energy qualification"],
+                "bounded ingress implementation", "backpressure behavior",
+                "power or energy qualification"],
             "serializer_audit": boundary["serializer_audit"],
             "aggregates": aggregates,
             "runs": per_run,
@@ -787,6 +825,9 @@ def main() -> int:
     evaluate.add_argument("--endpoint-commit", required=True)
     evaluate.add_argument("--endpoint-manifest-path", default="A5_BUILTIN_PINNED_A7_W5")
     evaluate.add_argument("--output", type=Path, required=True)
+    canonical = subparsers.add_parser("canonicalize")
+    canonical.add_argument("--evaluation", type=Path, required=True)
+    canonical.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "prepare":
@@ -796,11 +837,15 @@ def main() -> int:
                   f"capacity22={document['suites']['capacity22']['run_count']} "
                   f"output={args.output}")
             return 0
-        evaluate_endpoint(
-            args.boundary_root, args.endpoint_repo, args.endpoint_commit,
-            args.endpoint_manifest_path, args.output,
-        )
-        print(f"A5_W5_EXACT_SERIALIZED_LINK_REPLAY_PASS output={args.output}")
+        if args.command == "evaluate":
+            evaluate_endpoint(
+                args.boundary_root, args.endpoint_repo, args.endpoint_commit,
+                args.endpoint_manifest_path, args.output,
+            )
+            print(f"A5_W5_EXACT_SERIALIZED_LINK_REPLAY_PASS output={args.output}")
+            return 0
+        exclusive_write(args.output, canonical_bytes(read_json(args.evaluation)))
+        print(f"A5_W5_CANONICAL_SERIALIZED_LINK_REPLAY_PASS output={args.output}")
         return 0
     except ContractError as exc:
         print(f"A5_W5_FAIL_CLOSED: {exc}", file=sys.stderr)

@@ -64,7 +64,8 @@ def main():
     retire_re = re.compile(r"^RETIRE ([DP]) (\d+) (\d+) (\d+)$")
     shared_re = re.compile(r"^SHARED (\d+) (\d+) (\d+)$")
     endpoint_re = re.compile(r"^ENDPOINT ([DP]) (\d+) (\d+) (\d+)$")
-    reset_re = re.compile(r"^RESET_PROBE (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)$")
+    reset_re = re.compile(
+        r"^RESET_PROBE (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)$")
     for suite in ("full50", "capacity22"):
         for run in boundary["suites"][suite]["runs"]:
             rows = [json.loads(line) for line in
@@ -110,7 +111,8 @@ def main():
                 if match:
                     reset_probe = tuple(map(int, match.groups()))
             if (set(endpoint_transitions) != set(ENDPOINTS)
-                    or shared_transitions is None or reset_probe != (2, 3, 0, 0, 1, 1)):
+                    or shared_transitions is None
+                    or reset_probe != (2, 3, 0, 0, 1, 1, 1, 1)):
                 raise SystemExit(f"{suite}/{run['name']}: incomplete simulator evidence")
             for key, endpoint in ENDPOINTS.items():
                 result = {
@@ -127,7 +129,8 @@ def main():
                     "accepted": accepted[key], "retired": retired[key],
                     "handshake": {"accepted_on_valid_and_ready_posedge": True,
                         "continuous_valid_back_to_back_supported": True,
-                        "held_address_stable_while_not_ready": True,
+                        "held_address_check_applicable": False,
+                        "held_address_reason": "always_ready_primary_has_no_stall_sample",
                         "edge_suppression_used": False},
                     "observation": {"consumer_boundary": "next_ref_rise",
                         "phase_related_synchronous": True, "unrelated_cdc_claimed": False,
@@ -141,7 +144,9 @@ def main():
                         "retired_during_second_reset": reset_probe[2],
                         "stale_or_phantom_during_quiet": reset_probe[3],
                         "post_reset_sentinel_delivered": reset_probe[4],
-                        "post_reset_sentinel_exact_once": bool(reset_probe[5])},
+                        "post_reset_sentinel_exact_once": bool(reset_probe[5]),
+                        "ready_retire_normalized_during_reset": bool(reset_probe[6]),
+                        "ready_retire_normalized_during_quiet": bool(reset_probe[7])},
                     "value_transition_proxy": {"shared": shared_transitions,
                                                 "endpoint": endpoint_transitions[key]},
                 }

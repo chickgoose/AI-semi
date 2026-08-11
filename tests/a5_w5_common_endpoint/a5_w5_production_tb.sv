@@ -88,8 +88,8 @@ module a5_w5_production_tb;
     par_link_clock_transitions = par_link_clock_transitions + 1;
 
   always @(posedge ref_clk_i) begin
-    // A real registered consumer samples the producer's pre-NBA outputs here.
-    // Deliberately do not delay this observation past the producer always_ff.
+    // Sequential-consumer observation samples the producer's pre-NBA outputs.
+    // Deliberately do not delay this observation into producer availability.
     if (rst_n && dut_ddr.launch_fire && ddr_idle) begin
       errors=errors+1; $error("DDR drain_idle high during launch_fire");
     end
@@ -169,15 +169,17 @@ module a5_w5_production_tb;
     @(negedge sample_clk_i); rst_n=0;
     repeat (2) begin
       @(posedge ref_clk_i); #1ps;
-      if (ddr_retire_valid || par_retire_valid || ddr_ready || par_ready)
+      if (ddr_retire_valid!==0 || par_retire_valid!==0 ||
+          ddr_ready!==0 || par_ready!==0)
         $fatal(1,"non-quiet output during second reset");
     end
     @(negedge sample_clk_i); rst_n=1;
     @(posedge ref_clk_i); #1ps; // re-arm only
     repeat (3) begin
       @(posedge ref_clk_i);
-      if (ddr_retire_valid || par_retire_valid)
-        $fatal(1,"stale/phantom retirement in quiet post-reset epoch");
+      if (ddr_retire_valid!==0 || par_retire_valid!==0 ||
+          ddr_ready!==1 || par_ready!==1)
+        $fatal(1,"non-normalized ready/retire in quiet post-reset epoch");
     end
     @(negedge ref_clk_i); event_addr_i=4'ha; event_valid_i=1;
     @(posedge ref_clk_i);
@@ -201,7 +203,7 @@ module a5_w5_production_tb;
              ddr_control_transitions,ddr_link_clock_transitions);
     $display("ENDPOINT P %0d %0d %0d",par_data_transitions,
              par_control_transitions,par_link_clock_transitions);
-    $display("RESET_PROBE 2 3 0 0 1 1");
+    $display("RESET_PROBE 2 3 0 0 1 1 1 1");
     $finish;
   end
 endmodule

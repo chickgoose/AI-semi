@@ -37,21 +37,24 @@ occurrence/address order; that same-address cohort result remains valid.
 
 Every `valid && ready` ref-clock posedge accepts one frame.  Continuous valid
 with a new address each accepted cycle is legal; valid-edge suppression is a
-failure.  Address stability is required only while `valid && !ready`.  The
+failure.  Address stability would be required only while `valid && !ready`, but
+the primary endpoint is always-ready after arming, so the condition is vacuous
+and provides no backpressure evidence.  The
 primary clocks are phase-related synchronous clocks from the frozen source, not
 an unrelated-clock or 2FF CDC claim.
 
 DDR commits at burst fall.  Its charged seen-toggle observer makes registered
-output available one cycle after launch.  A real `always_ff` sink samples the
-producer's pre-NBA output and consumes exactly two cycles after launch.  The
+output available one cycle after launch.  Pre-NBA sequential-consumer
+observation consumes exactly two cycles after launch.  The
 parallel reference uses the same consumer boundary.  `drain_idle` must remain
 low during `launch_fire` and while registered `retire_valid` is pending.
 
 ## Direct reset probe
 
 Every replay run now performs an actual second reset after complete drain.  The
-TB holds reset for two cycles, checks quiet outputs, releases and observes three
-quiet ref cycles, then sends address `0xa`.  It asserts zero retirement during
+TB holds reset for two cycles and checks normalized ready-low/retire-low
+signals, then observes three quiet ref cycles after release with normalized
+ready-high/retire-low signals before sending address `0xa`.  It asserts zero retirement during
 reset, zero stale/phantom retirement during the quiet epoch, and exact-once
 delivery of only the post-reset sentinel.  These are direct endpoint assertions,
 not a driver-authored PASS sentinel.  Mid-frame reset remains outside contract.
@@ -74,8 +77,10 @@ deliver all serialized events after drain, while fixed-window delivery is
 serialized replay.
 
 Activity is named an **RTL/interface value-transition proxy**, never energy.
-It is split into shared input data/control/base clocks and endpoint-only
-internal data/control/link clock.  The shared part is identical by construction
+Its state-transition window ends after complete traffic drain and before the
+second-reset probe.  It is split into shared input data/control/base clocks and endpoint-only
+internal data/control/link clock; `internal_data` includes endpoint state and
+encoded or parallel link-data nets.  The shared part is identical by construction
 and is not attributed to an encoding.  Endpoint-internal transitions/event are:
 
 | suite | endpoint | internal data | internal control | link clock |
@@ -98,11 +103,12 @@ artifact, trace, and boundary hashes.  Mutation tests cover backlog metadata,
 run identity, edge suppression, post-NBA mismeasurement, reset evidence,
 transition schema, stale endpoint commit, and the real `ca1a209` negative RTL.
 
-Attempt compile/binary hashes may include temporary build paths.  They are kept
-in attempt output but deliberately excluded from the stored canonical machine
-summary.  The path-independent canonical metrics are in
-`docs/research/results/a5_w5_common_endpoint_summary.json`; no unreproducible
-full-output hash is claimed.
+`canonicalize(evaluation)` removes only attempt compile-log and binary hashes,
+which may embed temporary build paths.  It preserves all 144 run/cohort records,
+reset probes, transition proxies, aggregate metrics, common identities, seven
+A7 RTL blob identities, and A5 source/simulator provenance.  Replays from two
+independent clean temporary roots must produce bytes identical to each other
+and to `docs/research/results/a5_w5_common_endpoint_summary.json`.
 
 ```sh
 python3 tests/a5_w5_common_endpoint/w5_common_endpoint_runner.py prepare \
@@ -112,6 +118,9 @@ python3 tests/a5_w5_common_endpoint/w5_common_endpoint_runner.py evaluate \
   --endpoint-repo /home/chickgoose/projects/a7 \
   --endpoint-commit 42377ca81340951bfcd453b3bd664e673091f9f3 \
   --output /new/unique/serialized-link-replay.json
+python3 tests/a5_w5_common_endpoint/w5_common_endpoint_runner.py canonicalize \
+  --evaluation /new/unique/serialized-link-replay.json \
+  --output /new/unique/canonical.json
 ```
 
 Preparation prints `A5_W5_BOUNDARY_READY_NOT_ENDPOINT_PASS`.  Evaluation alone

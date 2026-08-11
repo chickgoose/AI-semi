@@ -68,27 +68,37 @@ class W5ContractTest(unittest.TestCase):
                          W5.A5_PRODUCTION_SHA256["driver"])
         self.assertEqual(report["provenance"]["harness_sha256"],
                          W5.A5_PRODUCTION_SHA256["harness"])
-        canonical = json.loads((HERE.parents[1] /
-            "docs/research/results/a5_w5_common_endpoint_summary.json").read_text())
-        self.assertEqual(canonical["status"], "EXACT_SERIALIZED_LINK_REPLAY_PASS")
-        self.assertEqual(canonical["serializer_audit"], report["serializer_audit"])
-        self.assertEqual(canonical["source_provenance"]["runner_sha256"],
+        second_root = self.root / "independent-clean-root"
+        second_boundary = second_root / "boundary"
+        W5.prepare_boundary(Path("/home/chickgoose/projects/a1"), second_boundary)
+        second_report = W5.evaluate_endpoint(
+            second_boundary, Path("/home/chickgoose/projects/a7"),
+            W5.A7_W5_ENDPOINT_COMMIT, "A5_BUILTIN_PINNED_A7_W5",
+            second_root / "evaluation.json")
+        first_bytes = W5.canonical_bytes(report)
+        second_bytes = W5.canonical_bytes(second_report)
+        tracked = (HERE.parents[1] /
+            "docs/research/results/a5_w5_common_endpoint_summary.json").read_bytes()
+        self.assertEqual(first_bytes, second_bytes)
+        self.assertEqual(first_bytes, tracked)
+        canonical = json.loads(first_bytes)
+        self.assertNotIn("compile_log_sha256", canonical["provenance"])
+        self.assertNotIn("binary_sha256", canonical["provenance"])
+        self.assertEqual(canonical["provenance"]["common"]["common_commit"],
+                         W5.COMMON_COMMIT)
+        self.assertEqual(canonical["provenance"]["a7_rtl_blob_sha256"],
+                         W5.A7_W5_SOURCE_SHA256)
+        self.assertEqual(canonical["provenance"]["a5_source_sha256"]["runner"],
             hashlib.sha256((HERE / "w5_common_endpoint_runner.py").read_bytes()).hexdigest())
-        self.assertNotIn("full_evaluation_sha256", canonical)
-        self.assertNotIn("compile_log_sha256", canonical["source_provenance"])
-        self.assertNotIn("binary_sha256", canonical["source_provenance"])
+        self.assertEqual(len(canonical["runs"]), 144)
         self.assertNotIn("/tmp/", json.dumps(canonical, sort_keys=True))
-        for suite in ("full50", "capacity22"):
-            measured = report["aggregates"][f"parallel_r1_full:{suite}"]
-            stored = canonical["metrics"][suite]
-            self.assertEqual(stored["fixed_window_delivered_each"],
-                             measured["fixed_window_delivered"])
-            self.assertEqual(stored["latency_ticks_each"]["occurrence_to_launch"],
-                             measured["latency_ticks"]["occurrence_to_launch"])
-            self.assertEqual(stored["latency_ticks_each"]["launch_to_retire"],
-                             measured["latency_ticks"]["launch_to_retire"])
-            self.assertEqual(stored["latency_ticks_each"]["total"],
-                             measured["latency_ticks"]["total_latency"])
+
+    def test_canonicalize_rejects_missing_attempt_identity(self):
+        malformed = {"status": "EXACT_SERIALIZED_LINK_REPLAY_PASS",
+                     "runs": [{}] * 144, "provenance": {
+                         "compile_log_sha256": "1" * 64}}
+        with self.assertRaises(W5.ContractError):
+            W5.canonicalize(malformed)
 
     def test_missing_or_pre_fix_endpoint_fails_closed(self):
         for commit in ("0" * 40, "ca1a20971ee7bc32520aef47a3a97c89747c7fa5"):
@@ -157,7 +167,8 @@ class W5ContractTest(unittest.TestCase):
                         for r in rows],
             "handshake": {"accepted_on_valid_and_ready_posedge": True,
                           "continuous_valid_back_to_back_supported": True,
-                          "held_address_stable_while_not_ready": True,
+                          "held_address_check_applicable": False,
+                          "held_address_reason": "always_ready_primary_has_no_stall_sample",
                           "edge_suppression_used": False},
             "observation": {"consumer_boundary": "next_ref_rise",
                             "phase_related_synchronous": True,
@@ -168,7 +179,9 @@ class W5ContractTest(unittest.TestCase):
                 "retired_during_second_reset": 0,
                 "stale_or_phantom_during_quiet": 0,
                 "post_reset_sentinel_delivered": 1,
-                "post_reset_sentinel_exact_once": True},
+                "post_reset_sentinel_exact_once": True,
+                "ready_retire_normalized_during_reset": True,
+                "ready_retire_normalized_during_quiet": True},
             "value_transition_proxy": {
                 "shared": {"input_data": 1, "input_control": 1, "base_clocks": 1},
                 "endpoint": {"internal_data": 1, "internal_control": 1,
