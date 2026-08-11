@@ -1,0 +1,2 @@
+rtl/candidates/a6_w5_rx_core_boundary/a6_w5_phase_related_rx_boundary.sv
+rtl/candidates/a6_w5_rx_core_boundary/a6_w5_phase_related_rx_boundary_tb.sv

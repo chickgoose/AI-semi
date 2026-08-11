@@ -1,0 +1,38 @@
+{
+  "address_semantics": "address-only N16 event identity",
+  "boundary_classification": "phase-related synchronous observation, not asynchronous CDC",
+  "consumer": {
+    "always_ready": true,
+    "maximum_events_per_core_cycle": 1,
+    "state_bits": 6
+  },
+  "downstream_core_clock": "same frozen source as ref_clk_i",
+  "link_ratio": 1,
+  "lossless_requirements": [
+    "no more than one RX retirement between consecutive core rising edges",
+    "RX retirement address and toggle settle at burst/sample falling edge",
+    "next core/reference rising edge occurs 4 ns after RX commit",
+    "the complete bundled address path meets setup and hold by STA",
+    "reset follows the drained ordered RDC sequence"
+  ],
+  "nominal_period_ns": 16.0,
+  "phase": {
+    "rx_commit": "sample/burst falling edge at 12 ns modulo 16 ns",
+    "core_observation": "reference/core rising edge at 16 ns modulo 16 ns",
+    "rx_commit_to_core_observation_ns": 4.0
+  },
+  "prohibited_claims": [
+    "unrelated-clock CDC safety",
+    "R greater than 1 losslessness",
+    "metastability protection by a free or implicit synchronizer",
+    "losslessness across an in-flight or one-sided reset"
+  ],
+  "reset_sequence": [
+    "stop admission and drain A7",
+    "assert A7 reset while burst clock is low",
+    "assert synchronous core_reset_i for at least one core edge",
+    "release A7 reset while core_reset_i remains asserted",
+    "release core_reset_i synchronously before new admission"
+  ],
+  "same_boundary_required_for_fair_parallel_reference": true
+}
