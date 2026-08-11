@@ -1,5 +1,6 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "prior_claim_status": "superseded_endpoint_ppa_claim",
   "configuration": {
     "num_sources": 16,
     "max_batch": 16,
@@ -11,7 +12,7 @@
     "name": "Yosys",
     "version": "0.52",
     "flow": "read_verilog -sv; hierarchy -check; proc; opt; memory; opt; stat",
-    "qualification": "local generic-cell structural check only; not server PPA"
+    "qualification": "codec-unit-only local generic-cell structural check; not endpoint PPA and not server PPA"
   },
   "encoder": {
     "status": "synthesized",
@@ -26,11 +27,17 @@
     "rtl_registered_bits": 544,
     "fifo_payload_bits_included": 128
   },
-  "endpoint_total": {
+  "codec_unit_total": {
     "generic_cells": 12436,
-    "codec_registered_bits": 665,
-    "modeled_two_bank_tx_batch_storage_bits_not_in_codec_modules": 138,
-    "full_modeled_endpoint_storage_bits": 803
+    "codec_registered_bits": 665
   },
-  "interpretation": "The fixed same-cycle format is executable and synthesizable, but a 4.45% aggregate pin-cycle gain does not justify this unoptimized combinational endpoint. Deployment remains HOLD pending a much smaller serial microarchitecture."
+  "excluded_from_synthesis": [
+    "same-cycle request collector",
+    "source-monotone sorter",
+    "two TX batch banks",
+    "bank ownership and launch control",
+    "candidate integration and request capture"
+  ],
+  "endpoint_ppa_claim": null,
+  "interpretation": "The numbers qualify only the standalone codec units. The earlier full-endpoint storage and endpoint-PPA interpretation is withdrawn because the collector/sorter/two-bank/control path was not synthesized."
 }

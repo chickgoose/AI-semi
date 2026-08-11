@@ -1,20 +1,28 @@
 # A6 W3 — Elias–Fano monotone-dequeue address-event batch link
 
+> **SUPERSEDED RESULT NOTICE (W3 audit fix):** The `GO_RTL`, zero-latency-
+> regression, 4.45% link-gate pass, and endpoint-PPA interpretations recorded at
+> commit `ac6c0b8` are invalid.  The old model exposed EF entries progressively,
+> while the RTL exposes all k entries only after the terminal beat; it also hid
+> a third TX bank and failed to model the RTL's K-slot marker admission rule.
+> The corrected results below replace those claims.
+
 ## Decision
 
-The executable model finds one honest link-level pass point: `N=16`, `K=16`,
-two data pins, and a **same-cycle-only** (`window=0`) source-monotone batch.  On
-the frozen capacity22 manifest it preserves every accepted occurrence and
-improves aggregate link efficiency from `0.100000` to `0.104447`
-events/pin-cycle without p95-latency or overrun regression.  Therefore a
-standalone synthesizable TX/RX and lockstep TB were built.
+The explicitly selected contract is **reference follows committed RTL**.  An
+EF frame becomes decoder-visible as one k-entry push only after its terminal
+beat.  Its marker is admitted only with at least K free RX slots, including a
+same-edge retirement.  Raw words remain progressively visible.  Exactly two TX
+batch banks total are modeled, including the bank currently being serialized.
 
-Bounded batching at windows 1, 2, and 4 is **HOLD**: each improves link
-efficiency slightly, but regresses p95 latency against the natural zero-wait raw
-reference on 18–19 of 22 runs.  The built fixed point adds no collection wait.
-Deployment is also **HOLD on endpoint PPA**: local generic synthesis reports
-12,436 TX+RX cells for only 4.45% aggregate pin-cycle gain.  This is an honest
-structural result, not qualified server PPA.
+With that contract, no window passes capacity22.  Even `window=0` regresses p95
+latency on `core_simultaneous_identity` and `global_fanin_identity` from 33 to
+35 cycles.  Windows 1, 2, and 4 regress 21 of 22 runs.  Final decision is
+**HOLD_LATENCY_OR_LINK_GATE** and `selected_gate` is null.
+
+No endpoint PPA claim remains.  The local synthesis numbers cover only the
+standalone encoder and decoder; collector, sorter, two TX banks, ownership and
+launch control, integration, and request capture are excluded.
 
 ## Exact representation and framing
 
@@ -57,12 +65,13 @@ at its declared finite deadline.  Conservation and the complete accepted
 source sequence are asserted independently, so overrun is reported as capacity
 loss rather than codec correctness loss.
 
-The cap22 simulator charges two TX batch banks and an RX capacity of `2K`, plus
-one normalized retirement per cycle.  For N16/K16, two address/count TX banks
-would add 138 bits.  The synthesized modules contain 665 registered bits
-(121 TX, 544 RX including the 128-bit RX FIFO), for 803 bits of full modeled
-endpoint storage.  Scoreboard-only identity/time storage is correctly excluded
-from hardware and never reconstructed for free.
+The cap22 simulator charges exactly two TX batch banks total and an RX capacity
+of `2K`, plus one normalized retirement per cycle.  An active serializer bank
+therefore cannot silently become a third buffer.  The standalone synthesized
+codec modules contain 665 registered bits (121 TX, 544 RX including the
+128-bit RX FIFO), but this is explicitly not full endpoint storage.
+Scoreboard-only identity/time storage is excluded from hardware and never
+reconstructed for free.
 
 ## N16/N64 comparison
 
@@ -97,36 +106,46 @@ all generated event traces and their SHA-256 digests are recorded in the JSON.
 
 | window | delivered raw/EF | overrun raw/EF | delivered during stimulus raw/EF | events/pin-cycle raw→EF | latency-regression runs | gate |
 |---:|---:|---:|---:|---:|---:|:---:|
-| 0 | 24577 / 24577 | 41039 / 41039 | 24370 / 24387 | 0.100000 → 0.104447 | 0 | PASS |
-| 1 | 24577 / 24577 | 41039 / 41039 | 24370 / 24371 | 0.100000 → 0.104463 | 18 | HOLD |
-| 2 | 24577 / 24601 | 41039 / 41015 | 24370 / 24383 | 0.100000 → 0.104514 | 19 | HOLD |
-| 4 | 24577 / 24847 | 41039 / 40769 | 24370 / 24588 | 0.100000 → 0.105436 | 19 | HOLD |
+| 0 | 24560 / 24560 | 41056 / 41056 | 24369 / 24382 | 0.100000 → 0.104455 | 2 | HOLD |
+| 1 | 24560 / 24568 | 41056 / 41048 | 24369 / 24373 | 0.100000 → 0.104485 | 21 | HOLD |
+| 2 | 24560 / 24575 | 41056 / 41041 | 24369 / 24371 | 0.100000 → 0.104499 | 21 | HOLD |
+| 4 | 24560 / 24794 | 41056 / 40822 | 24369 / 24567 | 0.100000 → 0.105414 | 21 | HOLD |
 
-At window zero only three dense families change: `core_simultaneous_identity`
-and `global_fanin_identity` improve p95 latency 33→20 cycles, while `shape_b16`
-improves 55→20 and in-window throughput about 0.49585→0.50000.  Their local
-link efficiency is 0.10000→0.16842 events/pin-cycle.  Pairwise, uniform sweeps,
-shape_b4, phase-transition, and mixed runs select raw and remain unchanged.
-The 41,039 overruns are identical raw/codec capacity loss, not dropped or
-coalesced decoded events.
+The active-link ratio remains numerically smaller for dense EF frames, but it is
+not a passing gate.  At window zero, `core_simultaneous_identity` and
+`global_fanin_identity` regress p95 latency 33→35 because all 16 entries become
+visible only after frame completion.  `shape_b16` improves p95 55→35 and
+in-window throughput about 0.49585→0.49902, but cannot erase those regressions.
+Pairwise, uniform, shape_b4, phase-transition, and mixed runs mainly select raw.
+The raw/codec overrun equality at window zero is capacity loss, not codec loss.
+
+Aggregate event/cycle at window zero is 0.438670 raw versus 0.438904 coded;
+events/elapsed-pin-cycle is 0.087812 versus 0.087860.  These small improvements
+also do not override the per-run latency rejection.
 
 ## RTL, cost, and verification
 
 The dedicated RTL path contains a parameterized batch encoder, fail-closed
-stream decoder with `2K` FIFO, and direct lockstep TB.  The TB exercises raw
+stream decoder with `2K` FIFO, and direct lockstep TB.  The original TB exercises raw
 singletons/sparse sets, k8/k16 compressed frames, 80 deterministic random
 masks, randomized output backpressure, and reset mid-frame.  Exact order and no
-phantom events are asserted.  Eleven model tests cover randomized N16/N64 all
+phantom events are asserted.  A second TB consumes an independently generated
+102-cycle oracle and checks, on every cycle, batch acceptance, accepted link
+beat/count/data, decoder-visible head, retirement address, and occurrence-to-
+retirement latency.  It proves three dense frames plus raw fallback, terminal-
+beat batch visibility, and a third marker stalled until exactly K slots exist.
+
+Twelve model tests cover randomized N16/N64 all
 cardinalities, malformed/truncated streams, refire, partial timeout, provenance,
-conservation, and the same-cycle anti-cross-cycle invariant.  Icarus and
-Verilator both pass the lockstep simulation.
+conservation, the same-cycle anti-cross-cycle invariant, and the cycle oracle.
+The candidate runner regenerates and diffs the oracle, then actually builds and
+runs both TBs with both Icarus and Verilator.  All four simulations pass.
 
 Local Yosys 0.52 structural synthesis at N16/K16 gives 4,306 generic encoder
-cells and 8,130 generic decoder cells.  This includes both endpoints and the RX
-FIFO, but is neither mapped area nor timing.  No server was used.  The large
-combinational set-to-bitstream construction makes this proof RTL unsuitable as
-a PPA candidate despite its link gate, and the attempted N64 elaboration is not
-claimed as a qualified cost result.
+cells and 8,130 generic decoder cells.  This includes the codec RX FIFO, but not
+the collector/sorter/two-bank/control path and therefore is not endpoint PPA.
+It is neither mapped area nor timing.  No server was used, and the attempted
+N64 elaboration is not claimed as a qualified cost result.
 
 Reproduction:
 
