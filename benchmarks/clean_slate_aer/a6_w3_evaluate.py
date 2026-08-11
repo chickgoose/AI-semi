@@ -7,6 +7,8 @@ import argparse
 import hashlib
 import json
 import math
+import re
+import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -28,6 +30,7 @@ WINDOWS = (0, 1, 2, 4)
 OFFICIAL_CAP22_MANIFEST_SHA256 = (
     "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62"
 )
+EXPECTED_CAP22_RUN_COUNT = 22
 
 
 def sha256_file(path: Path) -> str:
@@ -36,6 +39,97 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def validate_provenance(
+    manifest_path: Path,
+    generator_path: Path,
+    registry_path: Path,
+    trace_dir: Path | None,
+    *,
+    require_capacity22: bool = True,
+) -> dict[str, object]:
+    """Validate immutable generation inputs and outputs before any metrics."""
+
+    try:
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise CodecError(f"cannot read provenance contract: {error}") from error
+    if registry.get("schema_version") != 1 or registry.get("suite") != "capacity22":
+        raise CodecError("invalid A6 W3 capacity22 registry schema")
+
+    generator_contract = registry.get("generator", {})
+    generator_sha256 = sha256_file(generator_path)
+    if generator_sha256 != generator_contract.get("sha256"):
+        raise CodecError("generator byte SHA does not match canonical registry")
+    generator_source = generator_path.read_text(encoding="utf-8")
+    version_match = re.search(
+        r'^GENERATOR_VERSION\s*=\s*["\']([^"\']+)["\']',
+        generator_source,
+        re.MULTILINE,
+    )
+    if not version_match or version_match.group(1) != generator_contract.get("version"):
+        raise CodecError("generator version does not match canonical registry")
+
+    manifest_contract = registry.get("manifest", {})
+    manifest_sha256 = sha256_file(manifest_path)
+    if manifest_sha256 != manifest_contract.get("sha256"):
+        raise CodecError("manifest byte SHA does not match canonical registry")
+    runs = manifest.get("runs")
+    if not isinstance(runs, list):
+        raise CodecError("capacity22 manifest runs must be a list")
+    run_names = [run.get("name") if isinstance(run, dict) else None for run in runs]
+    canonical_names = manifest_contract.get("run_names")
+    if run_names != canonical_names or len(run_names) != len(set(run_names)):
+        raise CodecError("manifest ordered run set does not match canonical registry")
+    if require_capacity22 and len(run_names) != EXPECTED_CAP22_RUN_COUNT:
+        raise CodecError("canonical capacity22 registry must contain exactly 22 runs")
+    trace_contracts = registry.get("traces")
+    if not isinstance(trace_contracts, dict) or set(trace_contracts) != set(run_names):
+        raise CodecError("registry trace set does not match canonical manifest run set")
+
+    trace_records = []
+    if trace_dir is not None:
+        for name in run_names:
+            contract = trace_contracts[name]
+            trace_path = trace_dir / f"{name}.events.jsonl"
+            metadata_path = trace_dir / f"{name}.manifest.json"
+            if not trace_path.is_file() or trace_path.stat().st_size == 0:
+                raise CodecError(f"missing or empty canonical trace: {trace_path}")
+            if not metadata_path.is_file() or metadata_path.stat().st_size == 0:
+                raise CodecError(f"missing or empty trace metadata: {metadata_path}")
+            trace_sha256 = sha256_file(trace_path)
+            metadata_sha256 = sha256_file(metadata_path)
+            if trace_sha256 != contract.get("sha256"):
+                raise CodecError(f"{name}: trace SHA does not match canonical registry")
+            if metadata_sha256 != contract.get("metadata_sha256"):
+                raise CodecError(f"{name}: metadata SHA does not match canonical registry")
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata.get("generator_version") != generator_contract.get("version"):
+                raise CodecError(f"{name}: generated metadata version mismatch")
+            if metadata.get("trace_sha256") != trace_sha256:
+                raise CodecError(f"{name}: metadata trace SHA mismatch")
+            if metadata.get("event_count") != contract.get("event_count"):
+                raise CodecError(f"{name}: canonical event count mismatch")
+            if metadata.get("run", {}).get("name") != name:
+                raise CodecError(f"{name}: metadata run identity mismatch")
+            trace_records.append({
+                "name": name,
+                "sha256": trace_sha256,
+                "metadata_sha256": metadata_sha256,
+                "generated_events": contract["event_count"],
+            })
+    return {
+        "registry": str(registry_path.resolve()),
+        "registry_sha256": sha256_file(registry_path),
+        "generator": str(generator_path.resolve()),
+        "generator_sha256": generator_sha256,
+        "generator_version": generator_contract["version"],
+        "manifest_sha256": manifest_sha256,
+        "run_names": run_names,
+        "trace_records": trace_records,
+    }
 
 
 def nearest_rank(values: Sequence[int], percentile: int) -> int:
@@ -420,16 +514,27 @@ def load_trace(path: Path, *, num_sources: int) -> list[Event]:
     return events
 
 
-def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict[str, object]:
+def evaluate_cap22(
+    manifest_path: Path,
+    trace_dir: Path,
+    max_batch: int,
+    *,
+    generator_path: Path | None = None,
+    registry_path: Path | None = None,
+) -> dict[str, object]:
     manifest_sha256 = sha256_file(manifest_path)
     if manifest_sha256 != OFFICIAL_CAP22_MANIFEST_SHA256:
         raise CodecError("cap22 manifest digest is not the frozen official contract")
+    if generator_path is None or registry_path is None:
+        raise CodecError("cap22 requires explicit generator and canonical registry")
+    provenance = validate_provenance(
+        manifest_path, generator_path, registry_path, trace_dir)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     runs = manifest.get("runs")
     if not isinstance(runs, list) or len(runs) != 22:
         raise CodecError("cap22 evaluation requires the official 22-run manifest")
     results = []
-    trace_provenance = []
+    trace_provenance = provenance["trace_records"]
     for run in runs:
         width = run["geometry"]["width"]
         height = run["geometry"]["height"]
@@ -440,11 +545,11 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
         if not trace.is_file() or trace.stat().st_size == 0:
             raise CodecError(f"missing or empty generated trace: {trace}")
         events = load_trace(trace, num_sources=num_sources)
-        trace_provenance.append({
-            "name": run["name"],
-            "sha256": sha256_file(trace),
-            "generated_events": len(events),
-        })
+        if len(events) != next(
+            row["generated_events"] for row in trace_provenance
+            if row["name"] == run["name"]
+        ):
+            raise CodecError(f"{run['name']}: parsed event count mismatch")
         for window in WINDOWS:
             raw = simulate(
                 events, stim_cycles=run["stim_cycles"], num_sources=num_sources,
@@ -528,6 +633,10 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
         "format": "a6_w3_elias_fano_monotone_dequeue",
         "manifest": str(manifest_path.resolve()),
         "manifest_sha256": manifest_sha256,
+        "provenance": {
+            key: value for key, value in provenance.items()
+            if key != "trace_records"
+        },
         "suite": "capacity22",
         "run_count": len(runs),
         "max_batch": max_batch,
@@ -561,8 +670,16 @@ def parse_args() -> argparse.Namespace:
     cap_parser = subparsers.add_parser("cap22")
     cap_parser.add_argument("--manifest", type=Path, required=True)
     cap_parser.add_argument("--trace-dir", type=Path, required=True)
+    cap_parser.add_argument("--generator", type=Path, required=True)
+    cap_parser.add_argument("--registry", type=Path, required=True)
     cap_parser.add_argument("--max-batch", type=int, default=16)
     cap_parser.add_argument("--output", type=Path, required=True)
+    cap_parser.add_argument("--require-go", action="store_true")
+    verify_parser = subparsers.add_parser("verify-contract")
+    verify_parser.add_argument("--manifest", type=Path, required=True)
+    verify_parser.add_argument("--generator", type=Path, required=True)
+    verify_parser.add_argument("--registry", type=Path, required=True)
+    verify_parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -570,10 +687,24 @@ def main() -> int:
     args = parse_args()
     if args.command == "sweep":
         report = sweep(args.max_batch)
+    elif args.command == "verify-contract":
+        report = validate_provenance(
+            args.manifest, args.generator, args.registry, None)
+        report["status"] = "contract_verified"
     else:
-        report = evaluate_cap22(args.manifest, args.trace_dir, args.max_batch)
+        report = evaluate_cap22(
+            args.manifest, args.trace_dir, args.max_batch,
+            generator_path=args.generator, registry_path=args.registry,
+        )
     write_json(args.output, report)
     print(f"A6_W3_REPORT output={args.output} decision={report.get('decision', 'n/a')}")
+    if args.command == "cap22" and args.require_go and report.get("decision") != "GO_RTL":
+        print(
+            "A6_W3_REQUIRE_GO_FAIL diagnostic_json="
+            f"{args.output} decision={report.get('decision')}",
+            file=sys.stderr,
+        )
+        return 2
     return 0
 
 

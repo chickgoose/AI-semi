@@ -1,0 +1,148 @@
+{
+  "generator": {
+    "canonical_filename": "generate_trace.py",
+    "sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "version": "4.0"
+  },
+  "manifest": {
+    "run_names": [
+      "core_simultaneous_identity",
+      "pairwise_contention_identity",
+      "pairwise_contention_affine",
+      "uniform_l1p00_s2001",
+      "uniform_l1p00_s2002",
+      "uniform_l1p00_s2003",
+      "uniform_l1p25_s2001",
+      "uniform_l1p25_s2002",
+      "uniform_l1p25_s2003",
+      "uniform_l1p50_s2001",
+      "uniform_l1p50_s2002",
+      "uniform_l1p50_s2003",
+      "uniform_l2p00_s2001",
+      "uniform_l2p00_s2002",
+      "uniform_l2p00_s2003",
+      "shape_b4",
+      "shape_b16",
+      "global_fanin_identity",
+      "phase_transition_s3501",
+      "phase_transition_s3502",
+      "mixed_phase_always_ready_identity",
+      "mixed_phase_always_ready_bit_reverse"
+    ],
+    "sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62"
+  },
+  "schema_version": 1,
+  "suite": "capacity22",
+  "traces": {
+    "core_simultaneous_identity": {
+      "event_count": 16,
+      "metadata_sha256": "5b33769d60d6b4d6ae88753ba9d88bc316a4ccd7b70095597db8037c0e766611",
+      "sha256": "a9a81664fc2117e72df8739b816eaffdeb8a4ab734576ab7c96336d0d232f045"
+    },
+    "global_fanin_identity": {
+      "event_count": 512,
+      "metadata_sha256": "4e586c8e4fa4f7fda11fdecb0801a885eca20abb654a3d2fae6c9f42d19b61df",
+      "sha256": "82d86a633f1359d484cc0b780b9b3447048cb76a122422e02da3bf0f6ff800ab"
+    },
+    "mixed_phase_always_ready_bit_reverse": {
+      "event_count": 9228,
+      "metadata_sha256": "981ea469d3aa213f42f43a438d83ac14b4978fcbd533586c0fd5d55a0e833448",
+      "sha256": "4e0ff22112dba73d984cfcc50d6ce2e726f74d4ce2a70b9b7dec5399a7dbe822"
+    },
+    "mixed_phase_always_ready_identity": {
+      "event_count": 9228,
+      "metadata_sha256": "5ecd7d07e906e20a92e18103b72bd4fd0d74099547e57a357e7376657fee8372",
+      "sha256": "9fde0ee816a80975d219b57e9799e73c198efc85d6e9aec4cb2a2e4816974705"
+    },
+    "pairwise_contention_affine": {
+      "event_count": 480,
+      "metadata_sha256": "15b0d76769cfa246e6e4be6cb816b02be09c1df1299f4737cea498ca66ba15d6",
+      "sha256": "c8b2340e57c81603708a2ec1978a6c0d74d6fbfa24141f3070e336989ebb0821"
+    },
+    "pairwise_contention_identity": {
+      "event_count": 480,
+      "metadata_sha256": "90fed45169c1dd54af125725655f2fde9acb35fb0de4d5802c0790de0ede3147",
+      "sha256": "e1df1600f2c15d17e15c9cdad60b51529eea9d0f685279840dcbbe9079d1f15a"
+    },
+    "phase_transition_s3501": {
+      "event_count": 3139,
+      "metadata_sha256": "667d704d311c005c90947b4e94a5a34f422187ba8c25b5dcd8600c8758b2fd45",
+      "sha256": "0c0d47f9559f5ca454a9a2b2c04918f63b9b6a2be7fd1c2385f916939f7bcb17"
+    },
+    "phase_transition_s3502": {
+      "event_count": 3167,
+      "metadata_sha256": "f509f800147aa7fb65a521f1a1e54ddb636fa7b796f29f2d6be2a6254535b9b9",
+      "sha256": "1342bdafe2a9820d136b66d1afacb3f6f4eac672223adcf1d963a5edf0910d11"
+    },
+    "shape_b16": {
+      "event_count": 2048,
+      "metadata_sha256": "7188c3c30447808617585b44d672326e9f219a09d718f23d99e355fb6591f131",
+      "sha256": "b622e934385346d3a6f976535b813d07af650846abe1011bc7644ca4a931f545"
+    },
+    "shape_b4": {
+      "event_count": 2048,
+      "metadata_sha256": "387796a9718b4b9020af07082c1933b85db1b4b816a6838e0c31af6b4713ff9e",
+      "sha256": "90eb9c4173de5cf92d98bbb70512b3f3bb7a1aff94803c4e7f4d4d73f8ef59b7"
+    },
+    "uniform_l1p00_s2001": {
+      "event_count": 2048,
+      "metadata_sha256": "7df7b42298566b2e08adba79f9137886e3bcedf628911e2bcfd0505f5824be94",
+      "sha256": "8554d7917b4a06bbc2e0dd1fc3e06286182a0bf64dff8de01883d2674ecb737d"
+    },
+    "uniform_l1p00_s2002": {
+      "event_count": 2048,
+      "metadata_sha256": "5158a73dc9f147cd809dd31efccc5f93779f346badd24ca6f2ecd07b924ff35b",
+      "sha256": "262f9f91597666910d43bfb5e4a6e9a999272207c22e07f0449ccac707348a5d"
+    },
+    "uniform_l1p00_s2003": {
+      "event_count": 2048,
+      "metadata_sha256": "378ac84a53a031ecc1dfca7ec45a48aaeac3c86b2c34246592ec1c3a2c3ca50c",
+      "sha256": "513b8baed3695aed416b8c8fd15808cb5047b006e60bd606d439f73948a8b399"
+    },
+    "uniform_l1p25_s2001": {
+      "event_count": 2536,
+      "metadata_sha256": "b5ebfbbc50bf5b34d6683f52dcde7981fd26b437b9a5e75081b061cc9ba4e6e8",
+      "sha256": "a77a87fb0f1a081c183460d5f5f9274fd19114f0d4ae06d4c97360d243661090"
+    },
+    "uniform_l1p25_s2002": {
+      "event_count": 2574,
+      "metadata_sha256": "f17407fa1c822c71fe7210bddb5a66d888961441a36bbdeeca28ef72e67462be",
+      "sha256": "d73514e45ecfec672b2f2034c9ccf1f6c7d040e4ca228015c2fb664a81c4f5bb"
+    },
+    "uniform_l1p25_s2003": {
+      "event_count": 2550,
+      "metadata_sha256": "de72083adfdd7633e8327031ac1105163a0a9732df57da1b7dc42ac592863a4b",
+      "sha256": "d3076dbcc97c3b9b10136be192181528eee8bf0ad2d07549effd1c1cf7d33ddb"
+    },
+    "uniform_l1p50_s2001": {
+      "event_count": 3039,
+      "metadata_sha256": "7dccce5fa762c1eae66c66809c69a63ef0461635501b45909b64fd6c8180dd2f",
+      "sha256": "7653c20cb03953592a0727f73ee66761a6e719d06019234cf61fd4e471393839"
+    },
+    "uniform_l1p50_s2002": {
+      "event_count": 3094,
+      "metadata_sha256": "498cffa3b0840d1753d5e113c409f884c96dabe8b380d35149485b080073ef45",
+      "sha256": "6193ccd24af9f7c182b3a2fa6f355d6a2c210bd43476bca8e2242897ae1ee8ab"
+    },
+    "uniform_l1p50_s2003": {
+      "event_count": 3045,
+      "metadata_sha256": "23135ee36ecfaeb8535c351fcbe25e067342e108bd204ea9856b28af1f59ba8a",
+      "sha256": "d301da0e4dba7a64c4c1154fe617612368d3908779bf3204be5471bfae847bad"
+    },
+    "uniform_l2p00_s2001": {
+      "event_count": 4096,
+      "metadata_sha256": "c61ec57c0e1db32cc2adcd75a2bcda3dfa862c553c09abe8ee8fd55b120e2e00",
+      "sha256": "5ee63712c80a14a42901e2bc6c7fab121eb129ba12be16c615f8228e3944f627"
+    },
+    "uniform_l2p00_s2002": {
+      "event_count": 4096,
+      "metadata_sha256": "4882848fecac0a133cde14d9656e044808dc5982e209d18517a28cf95cd206d0",
+      "sha256": "8b32d69a0ac8d591e810320510f1657d685fb0e79951b992035d82d50e9bb72a"
+    },
+    "uniform_l2p00_s2003": {
+      "event_count": 4096,
+      "metadata_sha256": "2044d69993f12c48d491dddeeecb4dfa90321a0b7857dda213912b51ed09ccc3",
+      "sha256": "ef15eb066fb4ee69eebae96d495e20f73def720bb5da5428d5480f603189d75d"
+    }
+  }
+}

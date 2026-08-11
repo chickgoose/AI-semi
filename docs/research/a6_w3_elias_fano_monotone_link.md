@@ -12,8 +12,9 @@
 The explicitly selected contract is **reference follows committed RTL**.  An
 EF frame becomes decoder-visible as one k-entry push only after its terminal
 beat.  Its marker is admitted only with at least K free RX slots, including a
-same-edge retirement.  Raw words remain progressively visible.  Exactly two TX
-batch banks total are modeled, including the bank currently being serialized.
+same-edge retirement.  Raw words remain progressively visible.  TX storage is
+modeled exactly as **one active serializer bank plus one queued batch**.  There
+is no hidden third bank.
 
 With that contract, no window passes capacity22.  Even `window=0` regresses p95
 latency on `core_simultaneous_identity` and `global_fanin_identity` from 33 to
@@ -22,7 +23,8 @@ latency on `core_simultaneous_identity` and `global_fanin_identity` from 33 to
 
 No endpoint PPA claim remains.  The local synthesis numbers cover only the
 standalone encoder and decoder; collector, sorter, two TX banks, ownership and
-launch control, integration, and request capture are excluded.
+launch control, integration, and request capture are excluded.  Their endpoint
+area, timing, power, and storage cost are unknown.
 
 ## Exact representation and framing
 
@@ -65,9 +67,9 @@ at its declared finite deadline.  Conservation and the complete accepted
 source sequence are asserted independently, so overrun is reported as capacity
 loss rather than codec correctness loss.
 
-The cap22 simulator charges exactly two TX batch banks total and an RX capacity
-of `2K`, plus one normalized retirement per cycle.  An active serializer bank
-therefore cannot silently become a third buffer.  The standalone synthesized
+The cap22 simulator charges one active serializer bank plus at most one queued
+batch and an RX capacity of `2K`, plus one normalized retirement per cycle.
+The standalone synthesized
 codec modules contain 665 registered bits (121 TX, 544 RX including the
 128-bit RX FIFO), but this is explicitly not full endpoint storage.
 Scoreboard-only identity/time storage is excluded from hardware and never
@@ -102,7 +104,12 @@ sets, which sharply limits novelty and the attainable Pareto point.
 
 The manifest digest is fail-closed at
 `99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62`;
-all generated event traces and their SHA-256 digests are recorded in the JSON.
+the ordered 22-run set is exact.  The candidate-owned canonical registry also
+pins generator version `4.0`, generator byte SHA
+`59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50`,
+and every generated trace, per-run metadata SHA, and event count.  All of these
+are checked before any event is loaded for metrics.  Generator bytes/version,
+manifest order/set, metadata, or trace mutation fails closed.
 
 | window | delivered raw/EF | overrun raw/EF | delivered during stimulus raw/EF | events/pin-cycle raw→EF | latency-regression runs | gate |
 |---:|---:|---:|---:|---:|---:|:---:|
@@ -139,7 +146,12 @@ Twelve model tests cover randomized N16/N64 all
 cardinalities, malformed/truncated streams, refire, partial timeout, provenance,
 conservation, the same-cycle anti-cross-cycle invariant, and the cycle oracle.
 The candidate runner regenerates and diffs the oracle, then actually builds and
-runs both TBs with both Icarus and Verilator.  All four simulations pass.
+runs a freshly generated canonical capacity22 suite and both TBs with both
+Icarus and Verilator.  In default `A6_W3_GATE_MODE=research`, it accepts only
+the explicit machine-readable HOLD with null selected gate.  In
+`A6_W3_GATE_MODE=qualification`, it invokes `--require-go`; the diagnostic JSON
+is written first and the runner exits 2 because this candidate is HOLD.  All
+four RTL simulations pass in research mode.
 
 Local Yosys 0.52 structural synthesis at N16/K16 gives 4,306 generic encoder
 cells and 8,130 generic decoder cells.  This includes the codec RX FIFO, but not
@@ -153,6 +165,17 @@ Reproduction:
 python3 benchmarks/clean_slate_aer/a6_w3_evaluate.py sweep \
   --max-batch 16 --output /tmp/a6_w3_sweep.json
 scripts/run_a6_w3_elias_fano_checks.sh
+```
+
+Direct qualification deliberately fails while preserving diagnostics:
+
+```sh
+python3 benchmarks/clean_slate_aer/a6_w3_evaluate.py cap22 \
+  --manifest /path/to/manifest.multilane-n16.json \
+  --trace-dir /path/to/fresh-capacity22 \
+  --generator /path/to/generate_trace.py \
+  --registry rtl/candidates/a6_elias_fano_monotone_link/a6_w3_capacity22_registry.json \
+  --output /tmp/a6_w3_cap22.json --require-go
 ```
 
 The cap22 command additionally requires the frozen manifest and fresh generated

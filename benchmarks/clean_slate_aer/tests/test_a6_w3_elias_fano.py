@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import random
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 BENCHMARK_DIR = Path(__file__).resolve().parents[1]
@@ -17,7 +20,128 @@ import a6_w3_cycle_oracle as cycle_oracle  # noqa: E402
 import a6_w3_evaluate as evaluate  # noqa: E402
 
 
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_provenance_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
+    generator = root / "generate_trace.py"
+    manifest = root / "manifest.json"
+    trace_dir = root / "traces"
+    registry = root / "registry.json"
+    trace_dir.mkdir()
+    generator.write_text('GENERATOR_VERSION = "4.0"\n', encoding="utf-8")
+    manifest.write_text(
+        json.dumps({"runs": [{"name": "r0"}]}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    trace = trace_dir / "r0.events.jsonl"
+    trace.write_text('{"logical_source":0}\n', encoding="utf-8")
+    metadata = trace_dir / "r0.manifest.json"
+    metadata.write_text(json.dumps({
+        "generator_version": "4.0",
+        "trace_sha256": _sha256(trace),
+        "event_count": 1,
+        "run": {"name": "r0"},
+    }, sort_keys=True) + "\n", encoding="utf-8")
+    registry.write_text(json.dumps({
+        "schema_version": 1,
+        "suite": "capacity22",
+        "generator": {
+            "version": "4.0", "sha256": _sha256(generator),
+            "canonical_filename": "generate_trace.py",
+        },
+        "manifest": {"sha256": _sha256(manifest), "run_names": ["r0"]},
+        "traces": {"r0": {
+            "sha256": _sha256(trace), "metadata_sha256": _sha256(metadata),
+            "event_count": 1,
+        }},
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return manifest, generator, registry, trace_dir
+
+
 class EliasFanoCodecTests(unittest.TestCase):
+    def test_provenance_rejects_generator_byte_and_version_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, generator, registry, trace_dir = _write_provenance_fixture(root)
+            evaluate.validate_provenance(
+                manifest, generator, registry, trace_dir, require_capacity22=False)
+            generator.write_text(
+                generator.read_text(encoding="utf-8") + "# mutation\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(codec.CodecError, "generator byte SHA"):
+                evaluate.validate_provenance(
+                    manifest, generator, registry, trace_dir,
+                    require_capacity22=False)
+
+            contract = json.loads(registry.read_text(encoding="utf-8"))
+            generator.write_text('GENERATOR_VERSION = "999"\n', encoding="utf-8")
+            contract["generator"]["sha256"] = _sha256(generator)
+            registry.write_text(
+                json.dumps(contract, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(codec.CodecError, "generator version"):
+                evaluate.validate_provenance(
+                    manifest, generator, registry, trace_dir,
+                    require_capacity22=False)
+
+    def test_provenance_rejects_manifest_run_set_and_trace_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, generator, registry, trace_dir = _write_provenance_fixture(root)
+            contract = json.loads(registry.read_text(encoding="utf-8"))
+            manifest.write_text(
+                json.dumps({"runs": [{"name": "r0"}, {"name": "r1"}]},
+                           sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            contract["manifest"]["sha256"] = _sha256(manifest)
+            registry.write_text(
+                json.dumps(contract, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(codec.CodecError, "ordered run set"):
+                evaluate.validate_provenance(
+                    manifest, generator, registry, trace_dir,
+                    require_capacity22=False)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest, generator, registry, trace_dir = _write_provenance_fixture(root)
+            trace = trace_dir / "r0.events.jsonl"
+            trace.write_text(
+                trace.read_text(encoding="utf-8") + '{"logical_source":1}\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(codec.CodecError, "trace SHA"):
+                evaluate.validate_provenance(
+                    manifest, generator, registry, trace_dir,
+                    require_capacity22=False)
+
+    def test_cli_require_go_preserves_hold_diagnostic_and_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "diagnostic.json"
+            argv = [
+                "a6_w3_evaluate.py", "cap22", "--manifest", "manifest.json",
+                "--trace-dir", "traces", "--generator", "generate_trace.py",
+                "--registry", "registry.json", "--output", str(output),
+                "--require-go",
+            ]
+            with mock.patch.object(sys, "argv", argv), mock.patch.object(
+                evaluate, "evaluate_cap22",
+                return_value={"decision": "HOLD_LATENCY_OR_LINK_GATE",
+                              "selected_gate": None},
+            ):
+                self.assertEqual(evaluate.main(), 2)
+            self.assertTrue(output.is_file())
+            self.assertEqual(
+                json.loads(output.read_text(encoding="utf-8"))["decision"],
+                "HOLD_LATENCY_OR_LINK_GATE",
+            )
+
     def test_cycle_oracle_matches_batch_visible_and_k_slot_contract(self) -> None:
         rows = cycle_oracle.generate_rows()
         self.assertEqual([row.cycle for row in rows if row.accepted], [0, 20, 40, 79])

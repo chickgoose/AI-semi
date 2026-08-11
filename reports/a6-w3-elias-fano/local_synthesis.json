@@ -34,10 +34,10 @@
   "excluded_from_synthesis": [
     "same-cycle request collector",
     "source-monotone sorter",
-    "two TX batch banks",
+    "one active serializer bank plus one queued batch storage",
     "bank ownership and launch control",
     "candidate integration and request capture"
   ],
   "endpoint_ppa_claim": null,
-  "interpretation": "The numbers qualify only the standalone codec units. The earlier full-endpoint storage and endpoint-PPA interpretation is withdrawn because the collector/sorter/two-bank/control path was not synthesized."
+  "interpretation": "The numbers qualify only the standalone codec units. The earlier full-endpoint storage and endpoint-PPA interpretation is withdrawn because collector, sorter, active-plus-one-queued storage, ownership/control, integration, and request capture were not synthesized; their endpoint cost is unknown."
 }
