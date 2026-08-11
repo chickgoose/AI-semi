@@ -1,3 +1,4 @@
 rtl/candidates/a6_elias_fano_monotone_link/a6_ef_batch_encoder.sv
 rtl/candidates/a6_elias_fano_monotone_link/a6_ef_batch_decoder.sv
 rtl/candidates/a6_elias_fano_monotone_link/a6_ef_lockstep_tb.sv
+rtl/candidates/a6_elias_fano_monotone_link/a6_ef_cycle_lockstep_tb.sv
