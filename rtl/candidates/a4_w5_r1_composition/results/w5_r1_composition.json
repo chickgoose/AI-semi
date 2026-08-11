@@ -1,8 +1,8 @@
 {
   "a4_sources": {
     "rtl/candidates/a4_w5_r1_composition/a4_w5_r1_composition.sv": "18e7a2ec329c2048d0c1c4dc71d73ee8145dc307ed84463f1f8de7a529d43fe5",
-    "rtl/candidates/a4_w5_r1_composition/run_w5_r1.py": "6337a938923169c2ee3223806979c38c5e5af53b176f99d2f973b64cc296d6e5",
-    "rtl/candidates/a4_w5_r1_composition/tests/a4_w5_r1_composition_tb.sv": "bceb320c972113d0fe10be49ccc17f85b98f019a2a61ca32b54ca8cd8f996b79"
+    "rtl/candidates/a4_w5_r1_composition/run_w5_r1.py": "2a6b21e86ec1c03ec0187d866fb300552195396caa6e3dbd86865e6c945198c9",
+    "rtl/candidates/a4_w5_r1_composition/tests/a4_w5_r1_composition_tb.sv": "c912aaca0f33950368fbb8c0147459224195a2bcd910d3318bcae08f7d8ba83b"
   },
   "a7": {
     "objects": {
@@ -58,6 +58,7 @@
     "accepted": 51,
     "all_gapped": 17,
     "continuous_valid_changing_address": 32,
+    "exact_4ns_release_phase_checks": 4,
     "initial_gapped": 12,
     "reset_aborted": 1,
     "reset_after_drain": 4,
@@ -88,8 +89,8 @@
       "rtl/candidates/a4_w5_r1_composition/tests/a4_w5_r1_composition_tb.sv"
     ],
     "compile_returncode": 0,
-    "pass_marker": "A4_W5_R1_COMPOSITION_PASS accepted=51 retired=50 aborted=1 continuous=32 initial_gapped=12 all_gapped=17 held=1 post_reset=4 endpoint_valid_ns=16 sink_sample_ns=32",
-    "pass_marker_sha256": "46655cedd419426885a3c4dccfe3895f79c7c3c77c4b0a822f58ef265665e3a8",
+    "pass_marker": "A4_W5_R1_COMPOSITION_PASS accepted=51 retired=50 aborted=1 continuous=32 initial_gapped=12 all_gapped=17 held=1 post_reset=4 endpoint_valid_ns=16 sink_sample_ns=32 release_phase_ns=4 phase_checks=4",
+    "pass_marker_sha256": "3eb301832ff62edb039fe39396a112aa4e531059b2401c960cff94af00c6a926",
     "simulation_returncode": 0
   },
   "owner_structural_proxy": {

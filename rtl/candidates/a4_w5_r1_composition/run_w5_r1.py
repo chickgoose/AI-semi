@@ -48,8 +48,10 @@ A7_OBJECTS = {
 PASS_RE = re.compile(
     r"A4_W5_R1_COMPOSITION_PASS accepted=51 retired=50 aborted=1 "
     r"continuous=32 initial_gapped=12 all_gapped=17 held=1 post_reset=4 "
-    r"endpoint_valid_ns=16 sink_sample_ns=32"
+    r"endpoint_valid_ns=16 sink_sample_ns=32 release_phase_ns=4 phase_checks=4"
 )
+PHASE_MUTATION_MARKER = "RESET_RELEASE_PHASE_FAIL"
+SAFE_RELEASE_MARKER = "rst_n = 1'b1; // SAFE_RELEASE_EXACT_4NS"
 
 
 def sha256(data: bytes) -> str:
@@ -87,6 +89,10 @@ def main() -> int:
     parser.add_argument("--verilator")
     parser.add_argument("--work-dir", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--phase-mutation", action="store_true",
+        help="delay every legal release by 1ns and require the phase assertion to reject it",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[3]
@@ -131,11 +137,21 @@ def main() -> int:
             pinned_files.append(materialized)
             object_report[source_path] = {**expected, "materialized_sha256": actual_sha}
 
+        compile_tb = tb
+        mutation_count = 0
+        if args.phase_mutation:
+            original_tb = tb.read_text()
+            mutation_count = original_tb.count(SAFE_RELEASE_MARKER)
+            if mutation_count != 4:
+                raise RuntimeError(f"expected four frozen safe-release sites, found {mutation_count}")
+            compile_tb = work / "phase_mutated_tb.sv"
+            compile_tb.write_text(original_tb.replace(SAFE_RELEASE_MARKER, f"#1ns {SAFE_RELEASE_MARKER}"))
+
         obj_dir = work / "obj"
         command = [
             str(verilator), "--binary", "--timing", "--assert", "-Wall", "-Wno-fatal",
             "-Wno-DECLFILENAME", "--Mdir", str(obj_dir), "--top-module",
-            "a4_w5_r1_composition_tb", *map(str, pinned_files), str(rtl), str(tb),
+            "a4_w5_r1_composition_tb", *map(str, pinned_files), str(rtl), str(compile_tb),
         ]
         compiled = run(command, cwd=root)
         compile_text = compiled.stdout + compiled.stderr
@@ -144,6 +160,30 @@ def main() -> int:
         executable = obj_dir / "Va4_w5_r1_composition_tb"
         simulated = run([str(executable)], cwd=root)
         simulation_text = simulated.stdout + simulated.stderr
+        if args.phase_mutation:
+            if simulated.returncode == 0 or PHASE_MUTATION_MARKER not in simulation_text:
+                raise RuntimeError(
+                    "phase mutation was not rejected by the exact-4ns assertion\n" + simulation_text
+                )
+            mutation_report = {
+                "schema": "a4_w5_r1_phase_mutation_v1",
+                "status": "EXPECTED_PHASE_MUTATION_REJECTED",
+                "a7_pinned_commit": A7_COMMIT,
+                "mutation": "delay_all_legal_reset_releases_by_1ns",
+                "mutated_release_sites": mutation_count,
+                "expected_marker": PHASE_MUTATION_MARKER,
+                "simulation_returncode_nonzero": True,
+                "tb_sha256_before_mutation": sha256(tb.read_bytes()),
+                "tb_sha256_after_mutation": sha256(compile_tb.read_bytes()),
+            }
+            temporary = output.with_name(output.name + ".tmp")
+            if temporary.exists() or temporary.is_symlink():
+                raise RuntimeError(f"refusing stale temporary result: {temporary}")
+            temporary.write_text(json.dumps(mutation_report, indent=2, sort_keys=True) + "\n")
+            os.replace(temporary, output)
+            print(f"A4_W5_PHASE_MUTATION_REJECTED sites={mutation_count}")
+            print(f"RESULT {output}")
+            return 0
         if simulated.returncode != 0 or not PASS_RE.search(simulation_text):
             raise RuntimeError(f"simulation failed or PASS marker absent\n{simulation_text}")
 
@@ -174,6 +214,7 @@ def main() -> int:
                 "continuous_valid_changing_address": 32,
                 "initial_gapped": 12, "all_gapped": 17,
                 "stalled_held_valid": 1, "reset_after_drain": 4,
+                "exact_4ns_release_phase_checks": 4,
             },
             "timing_ns": {
                 "ddr_native_commit_from_accept": 12,

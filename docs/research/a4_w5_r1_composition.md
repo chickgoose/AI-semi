@@ -14,6 +14,8 @@ Every reference edge satisfying `valid && ready` creates one frame. Keeping `val
 
 Each exact A7 production endpoint charges one `reset_release_armed_q` bit. Ready stays low through the first safe reference edge after reset release and rises after that arming edge. A transaction held stable over reset/arming is accepted exactly once at the following reference edge. This arming bit is reset safety state, not R1 request deduplication. The A4 shell ANDs the two production-ready outputs and feeds both endpoints only the resulting jointly-qualified valid.
 
+All four legal-reset paths now release reset immediately on `sample_clk_i` falling edge. With the frozen phase, the next reference rise must be exactly 4 ns later. A runtime assertion records every reset posedge, requires sample clock low, and requires `next_ref_rise - reset_release == 4ns`; the passing regression reports `phase_checks=4`. The former `#1ns` release left only 3 ns and is superseded.
+
 ## Pinned production objects
 
 The runner reads the following seven git blobs, never A7 working-tree paths:
@@ -54,6 +56,8 @@ Owner same-flow structural counts, recorded but not independently re-synthesized
 rtl/candidates/a4_w5_r1_composition/run_w5_r1.py \
   --a7-repo /home/chickgoose/projects/a7 \
   --output /tmp/a4_w5_r1_result.json
+rtl/candidates/a4_w5_r1_composition/run_w5_r1.py \
+  --phase-mutation --output /tmp/a4_w5_phase_mutation.json
 python3 -m unittest -v \
   rtl/candidates/a4_w5_r1_composition/tests/test_w5_r1.py
 ```
@@ -62,8 +66,10 @@ Tool discovery is `--verilator`, `AER_VERILATOR`, `VERILATOR`, `PATH`, then the 
 
 ### Canonical tracked receipt
 
-`results/w5_r1_composition.json` is not a hand-written or derived summary. It is the byte-for-byte output of `run_w5_r1.py`, schema `a4_w5_r1_composition_canonical_v2`. Its SHA-256 is `27c0b02c740e57935e392d7ecf7925dae8f8e44fb3eb1540f576b644985e29c6`.
+`results/w5_r1_composition.json` is not a hand-written or derived summary. It is the byte-for-byte output of `run_w5_r1.py`, schema `a4_w5_r1_composition_canonical_v2`. Its SHA-256 is `ada64b1a37b9e29da87fa1ffbe82c916169525fe779ce540372d219fcd3c6591`.
 
 The canonical schema excludes temporary build paths, wall-time-dependent log hashes, local repository paths, and unrelated A7 working-tree status. It retains the exact A7 commit and seven path/blob/content hashes, A4 RTL/TB/runner hashes, Verilator version and executable hash, canonical compile arguments, process return codes, exact PASS marker and marker hash. The unit regression invokes the runner twice with separate clean temporary build roots, requires the two outputs to be byte-identical, and then requires that byte stream to equal the tracked receipt. It separately retains the no-overwrite check.
+
+The same unit regression also invokes `--phase-mutation`, which changes all four frozen legal releases from immediate to `#1ns`. The mutated simulation must terminate nonzero with `RESET_RELEASE_PHASE_FAIL`; its receipt records four mutated sites plus pre/post-mutation TB hashes. This falsifies the prior 3 ns release window rather than merely checking source text.
 
 Status: **LOCAL COMPOSITION GO** for exact A7 `42377ca`, frozen synchronous R1, and always-ready consumption only. Common workload and physical/PPA/phase closure remain **HOLD / not claimed**.

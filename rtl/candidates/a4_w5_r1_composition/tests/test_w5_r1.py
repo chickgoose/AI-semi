@@ -52,6 +52,17 @@ class W5R1CompositionTest(unittest.TestCase):
                 "tracked evidence is not the canonical runner output",
             )
 
+            mutation_result = Path(temp) / "phase-mutation.json"
+            mutation = subprocess.run(
+                [str(runner), "--phase-mutation", "--output", str(mutation_result)],
+                cwd=ROOT, env=env, text=True, capture_output=True,
+            )
+            self.assertEqual(mutation.returncode, 0, mutation.stdout + mutation.stderr)
+            mutation_report = json.loads(mutation_result.read_text())
+            self.assertEqual(mutation_report["status"], "EXPECTED_PHASE_MUTATION_REJECTED")
+            self.assertEqual(mutation_report["mutated_release_sites"], 4)
+            self.assertEqual(mutation_report["expected_marker"], "RESET_RELEASE_PHASE_FAIL")
+
             repeated = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True)
             self.assertNotEqual(repeated.returncode, 0)
             self.assertIn("refusing to overwrite output", repeated.stderr)
