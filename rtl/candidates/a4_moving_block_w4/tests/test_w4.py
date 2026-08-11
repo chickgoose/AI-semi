@@ -6,6 +6,7 @@ import hashlib
 import json
 import pathlib
 import sys
+import tempfile
 import unittest
 
 
@@ -17,6 +18,8 @@ sys.path.insert(0, str(W3))
 sys.path.insert(0, str(W4))
 
 from analyze_p99 import detailed_replay  # noqa: E402
+from generate_stall_reset_vectors import generate as generate_followup  # noqa: E402
+from run_functional_followup import audit_vector  # noqa: E402
 
 
 def sha256(path: pathlib.Path) -> str:
@@ -27,6 +30,9 @@ class W4ResultContractTest(unittest.TestCase):
     def setUp(self) -> None:
         self.result = json.loads(
             (W4 / "results/w4_local_summary.json").read_text()
+        )
+        self.functional = json.loads(
+            (W4 / "results/w4_functional_followup.json").read_text()
         )
 
     def test_locked_sources_and_qualification_boundaries(self) -> None:
@@ -101,6 +107,71 @@ class W4ResultContractTest(unittest.TestCase):
             self.assertEqual(replay.offered, replay.accepted | replay.dropped)
             self.assertEqual(replay.accepted, set(replay.latency))
             self.assertFalse(replay.accepted & replay.dropped)
+
+    def test_followup_tool_hashes_and_hold(self) -> None:
+        provenance = self.functional["provenance"]
+        self.assertEqual(
+            sha256(W4 / "run_functional_followup.py"),
+            provenance["followup_runner_sha256"],
+        )
+        self.assertEqual(
+            sha256(HERE / "generate_stall_reset_vectors.py"),
+            provenance["followup_vector_generator_sha256"],
+        )
+        self.assertEqual(
+            sha256(HERE / "a4_w4_stall_reset_lockstep_tb.sv"),
+            provenance["followup_tb_sha256"],
+        )
+        self.assertEqual(
+            self.functional["promotion"], "HOLD_PENDING_COMMON_AND_PHYSICAL_PPA"
+        )
+        self.assertEqual(self.functional["summary"]["n16_cases"], 4)
+        self.assertEqual(self.functional["summary"]["n64_cases"], 1)
+        self.assertEqual(self.functional["summary"]["total_cycles"], 2982)
+
+    def test_followup_cases_conserve_order_and_drain(self) -> None:
+        cases = {case["name"]: case for case in self.functional["cases"]}
+        self.assertEqual(
+            set(cases),
+            {
+                "w3_frozen_760",
+                "long_root_stall",
+                "no_reset_shock",
+                "random_ready_midstream_reset",
+                "bounded_n64",
+            },
+        )
+        self.assertEqual(cases["bounded_n64"]["sources"], 64)
+        self.assertEqual(cases["bounded_n64"]["max_outstanding"], 127)
+        self.assertGreaterEqual(
+            cases["long_root_stall"]["max_continuous_valid_root_stall"], 160
+        )
+        for case in cases.values():
+            self.assertEqual(case["exact_all_variants_lockstep"], "PASS")
+            self.assertEqual(case["conservation"], "PASS")
+            self.assertEqual(case["source_order"], "PASS")
+            self.assertEqual(case["drain"], "PASS")
+            self.assertEqual(
+                case["accepted"], case["retired"] + case["reset_discarded"]
+            )
+
+    def test_followup_custom_vectors_are_deterministic_and_auditable(self) -> None:
+        recorded = {case["name"]: case for case in self.functional["cases"]}
+        with tempfile.TemporaryDirectory(prefix="a4-w4-followup-vectors-") as tmp_name:
+            tmp = pathlib.Path(tmp_name)
+            for name in (
+                "long_root_stall",
+                "no_reset_shock",
+                "random_ready_midstream_reset",
+                "bounded_n64",
+            ):
+                with self.subTest(name=name):
+                    vector = tmp / f"{name}.vectors.txt"
+                    generated = generate_followup(name, vector)
+                    audited = audit_vector(vector, int(generated["sources"]), name)
+                    self.assertEqual(sha256(vector), recorded[name]["vector_sha256"])
+                    self.assertEqual(audited["accepted"], recorded[name]["accepted"])
+                    self.assertEqual(audited["retired"], recorded[name]["retired"])
 
 
 if __name__ == "__main__":

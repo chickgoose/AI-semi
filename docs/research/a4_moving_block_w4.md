@@ -147,3 +147,49 @@ python3 rtl/candidates/a4_moving_block_w4/run_w4_qualification.py \
 The runner refuses an existing work or output path.  Detailed reproducible
 metrics and locked source hashes are summarized in
 `rtl/candidates/a4_moving_block_w4/results/w4_local_summary.json`.
+
+## Audit follow-up: stalled/reset and N64 equivalence
+
+The original 72 generator-v4 traces all use an always-ready sink and exercise
+only N=16.  They therefore did not by themselves qualify STYLE2's retained
+invalid-slot payload under stall, reset, or N64 elaboration.  The follow-up gate
+keeps all structural numbers above unchanged and adds five exact functional
+cases:
+
+| case | N | cycles | accepted / retired / reset-discarded | maximum outstanding | continuous valid-root stall |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| frozen W3 random-ready | 16 | 760 | 379 / 379 / 0 | 31 | 57 |
+| directed long root stall | 16 | 291 | 80 / 80 / 0 | 31 | 160 |
+| no-reset shock/recovery | 16 | 501 | 280 / 280 / 0 | 31 | 70 |
+| random-ready + midstream reset | 16 | 621 | 386 / 355 / 31 | 31 | 41 |
+| bounded N64 | 64 | 809 | 658 / 531 / 127 | 127 | 93 |
+
+For all 2,982 cycles, the original frozen RTL, normalized baseline, STYLE1,
+and STYLE2 compare `source_ready`, `retire_valid`, `retire_event`, and
+`retire_source` exactly.  Each vector is also checked against the Python cycle
+model's expected signals.  A separate vector auditor maintains per-source
+accepted queues, rejects phantom/duplicate/reordered retirement, accounts for
+state intentionally discarded by reset, and requires a final idle drain cycle.
+Every case passes conservation, source order, and bounded drain.
+
+The N64 case reaches the complete tree's 127-slot maximum outstanding proxy,
+then covers random backpressure, a 93-cycle valid-root stall, a midstream reset,
+and post-reset drain.  The no-reset shock case has only the initial two reset
+cycles and does not reset between overload and recovery.
+
+This closes the local STYLE2 stall/reset/N64 equivalence blocker.  It does not
+change the selection status: `shared_clearance_local_enable` remains
+`LOCAL_PARETO_CONDITIONAL`, while common qualification and physical PPA remain
+**HOLD**.  Frozen 72-trace evidence and every structural metric remain in their
+original result file; the additive follow-up evidence is in
+`results/w4_functional_followup.json`.
+
+Reproduce the additive gate without overwriting prior evidence:
+
+```bash
+w4_functional_tmp=$(mktemp -d /tmp/a4-w4-functional.XXXXXX)
+python3 rtl/candidates/a4_moving_block_w4/run_functional_followup.py \
+  --verilator /tmp/a7-sim-bin/verilator \
+  --work-dir "$w4_functional_tmp/work" \
+  --output "$w4_functional_tmp/result.json"
+```
