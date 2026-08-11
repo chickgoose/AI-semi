@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -62,13 +63,6 @@ def validate_common(
     head_resolver: Callable[[Path], str] = git_head,
 ) -> None:
     root = root.resolve()
-    actual_commit = head_resolver(root)
-    if actual_commit != expected_commit:
-        raise ContractError(
-            "common commit mismatch: "
-            f"expected={expected_commit} actual={actual_commit}"
-        )
-
     for relative, expected in expected_hashes.items():
         path = root / relative
         if not path.is_file():
@@ -79,6 +73,13 @@ def validate_common(
                 f"common input SHA-256 mismatch: {relative} "
                 f"expected={expected} actual={actual}"
             )
+
+    actual_commit = head_resolver(root)
+    if actual_commit != expected_commit:
+        raise ContractError(
+            "common commit mismatch: "
+            f"expected={expected_commit} actual={actual_commit}"
+        )
 
     generator = root / "benchmarks/clean_slate_aer/generate_trace.py"
     match = re.search(

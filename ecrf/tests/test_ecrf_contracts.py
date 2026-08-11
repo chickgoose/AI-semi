@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +13,7 @@ from ecrf.tools.contracts import ContractError, decision_exit, validate_common
 
 class EcrfContractMutationTest(unittest.TestCase):
     COMMIT = "1" * 40
+    CONTRACT_CLI = Path(__file__).resolve().parents[1] / "tools/contracts.py"
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="ecrf-contract-")
@@ -48,6 +51,24 @@ class EcrfContractMutationTest(unittest.TestCase):
             head_resolver=lambda _root: head or self.COMMIT,
         )
 
+    def run_cli(self, *arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(self.CONTRACT_CLI), *arguments],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    def assert_cli_contract_failure(
+        self, result: subprocess.CompletedProcess[str], diagnostic: str
+    ) -> None:
+        self.assertEqual(2, result.returncode)
+        self.assertEqual("", result.stdout)
+        self.assertTrue(
+            result.stderr.startswith("ECRF_CONTRACT_FAIL "), result.stderr
+        )
+        self.assertIn(diagnostic, result.stderr)
+
     def test_pinned_inputs_pass_unmodified(self) -> None:
         self.validate()
 
@@ -81,3 +102,25 @@ class EcrfContractMutationTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(ContractError, "inconsistent"):
             decision_exit(path, True)
+
+    def test_cli_nonexistent_common_root_is_exact_exit_two(self) -> None:
+        result = self.run_cli(
+            "inputs", "--common-root", str(self.root / "does-not-exist")
+        )
+        self.assert_cli_contract_failure(result, "missing pinned common input")
+
+    def test_cli_common_sha_mutation_is_exact_exit_two(self) -> None:
+        generator = self.root / "benchmarks/clean_slate_aer/generate_trace.py"
+        generator.write_bytes(self.files[
+            "benchmarks/clean_slate_aer/generate_trace.py"
+        ] + b"mutation")
+        result = self.run_cli("inputs", "--common-root", str(self.root))
+        self.assert_cli_contract_failure(result, "SHA-256 mismatch")
+
+    def test_cli_schema_error_is_exact_exit_two(self) -> None:
+        summary = self.root / "bad-summary.json"
+        summary.write_text(json.dumps({"decision": "MAYBE"}), encoding="utf-8")
+        result = self.run_cli("decision", "--summary", str(summary))
+        self.assert_cli_contract_failure(
+            result, "invalid ECRF decision summary schema"
+        )
