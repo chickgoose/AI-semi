@@ -1,7 +1,9 @@
 `timescale 1ns/1ps
 
 // Test-only behavioral adapters.  These are not library cells and must never
-// appear in an ASIC synthesis filelist.
+// appear in an ASIC synthesis filelist.  Without the explicit test macro this
+// file defines no adapter modules, so it cannot satisfy a production closure.
+`ifdef A9_W5_TEST_ONLY
 module a9_w5_asic_icg_cell_adapter (
   input logic clock_i,
   input logic enable_i,
@@ -43,3 +45,4 @@ module a9_w5_asic_iddr2_cell_adapter (
   always @(negedge clock_i or negedge rst_n)
     if (!rst_n) q_fall_o <= '0; else q_fall_o <= d_i;
 endmodule
+`endif

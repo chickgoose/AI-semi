@@ -1,6 +1,6 @@
 {
   "candidate": "a9_w5_ddr_technology_boundary",
-  "status": "mapping_plan_only_physical_hold",
+  "status": "behavioral_mapping_prototype_go_physical_hold",
   "reference": {
     "candidate": "a7_r1_candidate_endpoint",
     "commit": "42377ca81340951bfcd453b3bd664e673091f9f3",
@@ -25,10 +25,20 @@
       "A9_W5_TECH_ASIC",
       "A9_W5_TECH_XILINX_7SERIES"
     ],
-    "no_selection": "compile failure",
-    "multiple_selection": "compile failure",
+    "no_selection": "local Icarus compile failure",
+    "multiple_selection": "local Icarus compile failure",
     "no_implicit_generic_fallback": true
   },
+  "production_source_closure": [
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_launch_qualifier.sv",
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_retire_observer.sv",
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_clock_gate.sv",
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_tx_launch.sv",
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_rx_capture.sv",
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_ddr_tx_endpoint.sv",
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_ddr_rx_endpoint.sv",
+    "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_ddr_link.sv"
+  ],
   "asic_required_adapter_modules": [
     "a9_w5_asic_icg_cell_adapter",
     "a9_w5_asic_oddr2_cell_adapter",
@@ -39,6 +49,17 @@
     "ODDR",
     "IDDR"
   ],
+  "mock_policy": {
+    "required_macro": "A9_W5_TEST_ONLY",
+    "production_filelist_allowed": false,
+    "synthesis_evidence_allowed": false
+  },
+  "external_tool_elaboration_policy": {
+    "genus_unresolved_or_blackbox_fatal_verified": false,
+    "vivado_unresolved_or_blackbox_fatal_verified": false,
+    "require_target_flow_to_make_unresolved_modules_and_blackboxes_fatal": true,
+    "local_negative_compile_scope": "Icarus only"
+  },
   "edge_contract": {
     "admission": "event_valid_i && armed event_ready_o at ref_clk_i rising edge",
     "reset_release": "first safe ref rising edge arms ready but cannot launch",
@@ -61,6 +82,19 @@
     "ddr2": {"pins": 3, "state_bits": 20, "charged_functional_cells": 29},
     "parallel4": {"pins": 5, "state_bits": 18, "charged_functional_cells": 27}
   },
+  "a9_generic_same_flow_proxy": {
+    "scope": "A9 generic combined wrapper; Yosys 0.52 proc/flatten/opt with scopeinfo excluded; not physical PPA",
+    "charged_functional_cells": 33,
+    "state_bits": 22,
+    "operator_depth": 7,
+    "generic_gate_depth": 7,
+    "delta_vs_a7_ddr2": {
+      "charged_functional_cells": 4,
+      "state_bits": 2,
+      "operator_depth": 0,
+      "generic_gate_depth": 0
+    }
+  },
   "timing_hold_reasons": [
     "no selected ASIC library or characterized ICG/ODDR/IDDR adapter",
     "no selected FPGA part, package pins, IOSTANDARD, DRIVE, SLEW or IOB placement",
@@ -72,7 +106,12 @@
     "tests/a9_w5_ddr_technology_boundary/mock_asic_cells.sv",
     "tests/a9_w5_ddr_technology_boundary/mock_xilinx_unisim.sv",
     "tests/a9_w5_ddr_technology_boundary/a9_w5_equivalence_tb.sv",
+    "tests/a9_w5_ddr_technology_boundary/structural_compare.py",
+    "tests/a9_w5_ddr_technology_boundary/test_technology_boundary.py",
     "all temporary A7 reference materializations"
   ],
+  "real_asic_library_compile_executed": false,
+  "real_vivado_unisim_compile_executed": false,
+  "bufgce_output_clock_legality_verified": false,
   "physical_ppa_executed": false
 }

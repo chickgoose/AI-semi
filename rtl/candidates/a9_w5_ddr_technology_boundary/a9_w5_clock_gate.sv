@@ -23,7 +23,8 @@ module a9_w5_clock_gate (
   assign clock_o = clock_i & enable_latched_q & rst_n;
 `elsif A9_W5_TECH_ASIC
   // The target-owned adapter must be supplied explicitly.  No black-box stub
-  // is shipped because an unresolved cell must fail elaboration.
+  // is shipped.  The target Genus flow must separately make unresolved or
+  // black-box adapters fatal; only the local Icarus negative gate was run.
   a9_w5_asic_icg_cell_adapter icg (
     .clock_i(clock_i),
     .enable_i(enable_i),

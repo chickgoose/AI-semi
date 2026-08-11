@@ -2,13 +2,14 @@
 
 ## Outcome
 
-W5 provides an optional, fail-closed technology wrapper for the production R1
+W5 provides an optional behavioral mapping prototype for the production R1
 endpoint contract of exact A7 commit
 `42377ca81340951bfcd453b3bd664e673091f9f3`. It does not change A7 and does not claim
 that generic RTL, an ASIC cell library, and a Xilinx device are interchangeable
-for free. The implementation status is **digital mapping-plan GO, physical
-HOLD**. No physical PPA, STA, Vivado implementation, or standard-cell mapping
-was run.
+for free. The implementation status is **behavioral mapping prototype GO only;
+real-library compile, STA, implementation, and physical PPA HOLD**. No real
+UNISIM simulation, Vivado compile/implementation, ASIC library compile/mapping,
+or physical PPA/STA was run.
 
 Exactly one compile macro is mandatory:
 
@@ -18,10 +19,15 @@ Exactly one compile macro is mandatory:
 | `A9_W5_TECH_ASIC` | `a9_w5_asic_icg_cell_adapter` | `a9_w5_asic_oddr2_cell_adapter` | `a9_w5_asic_iddr2_cell_adapter` | target-owned, characterized adapter source and exact library cells |
 | `A9_W5_TECH_XILINX_7SERIES` | `BUFGCE` | two `ODDR` primitives | two `IDDR` primitives | Vivado UNISIM, selected part/package, legal clock/IO placement and XDC |
 
-No selection, multiple selections, an ASIC selection without all adapter
-modules, and a Xilinx selection without UNISIM all fail elaboration. The ASIC
-filelist intentionally does not ship a permissive black-box stub. Test-only
-mock cells are excluded from every synthesis filelist and from PPA evidence.
+Local Icarus tests reject no selection, multiple selections, an ASIC selection
+without adapters, and a Xilinx selection without mock UNISIM definitions. This
+is **not** evidence that Genus or Vivado will reject unresolved modules: either
+tool may preserve a black box unless its target flow is configured to make
+unresolved/black-box cells fatal. That policy and report check remain required
+and unexecuted. The ASIC filelist intentionally ships no permissive black-box
+stub. Test-only mock modules exist only under explicit `A9_W5_TEST_ONLY`, and
+the production source-closure regression forbids the macro, test paths, and mock
+filenames in every synthesis filelist.
 `a9_w5_ddr_tx_endpoint` and `a9_w5_ddr_rx_endpoint` are the separately placeable
 pad-side boundaries. `a9_w5_ddr_link` connects them only as a local loopback for
 exact A7 comparison; it is not the physical two-chip top.
@@ -90,6 +96,20 @@ drain guard. They are recorded as the comparison contract, not reused as A9
 ASIC/Vivado mapped counts and not presented as physical PPA. Primitive and
 adapter mapping can change the charged cell/state representation.
 
+The A9 generic wrapper was separately executed through the same Yosys 0.52
+`proc; flatten; opt` accounting flow, excluding only `$scopeinfo`:
+
+| Generic complete endpoint | Charged cells | State bits | Operator/gate depth |
+|---|---:|---:|---:|
+| A7 `42377ca` DDR2 | 29 | 20 | 7 / 7 |
+| A9 wrapper DDR2 | 33 | 22 | 7 / 7 |
+| A9 minus A7 DDR2 | **+4** | **+2** | **0 / 0** |
+
+The A9 total includes its explicit four-bit low-phase commit hold and separate
+rise/fall capture representation. It must not be reported using the owner's
+20-bit/29-cell number. This is a reproducible generic structural proxy, not
+ASIC/Vivado cells, area, frequency, power, or physical PPA.
+
 ## ASIC mapping plan
 
 1. Choose one characterized glitch-free ICG whose enable aperture admits the
@@ -100,8 +120,9 @@ adapter mapping can change the charged cell/state representation.
    clear behavior. If the library has only separate positive/negative flops,
    treat the replacement as a new target adapter and prove that its output
    mux, clocking, test mode, and reset cannot glitch.
-3. Add the target adapter source explicitly before `filelists/asic.f`. Resolve
-   all three adapter modules and reject unresolved black boxes in synthesis.
+3. Add the target adapter source explicitly before `filelists/asic.f`. Configure
+   the actual Genus flow to make every unresolved or black-box adapter fatal and
+   verify its reports. W5 has not executed or proven that policy.
 4. Bind exact Liberty corners and retain ICG enable, minimum-pulse,
    recovery/removal, and both-edge setup/hold arcs. Run clock-gating checks and
    generated-clock propagation through the mapped ICG.
@@ -113,17 +134,21 @@ only the required Boolean/edge contract.
 
 ## Vivado 7-series mapping plan
 
-The optional Xilinx branch names actual `BUFGCE`, `ODDR`, and `IDDR` UNISIM
-interfaces. `ODDR` and `IDDR` use `DDR_CLK_EDGE="OPPOSITE_EDGE"` and async reset.
-The build must use a selected 7-series part whose primitive parameters and
-clocking rules match these interfaces; another family requires a new branch,
+The optional Xilinx branch names `BUFGCE`, `ODDR`, and `IDDR` interfaces, but
+only the candidate-owned test substitutes were executed. No real UNISIM library
+was compiled. `ODDR` and `IDDR` request `DDR_CLK_EDGE="OPPOSITE_EDGE"` and async
+reset. The build must use a selected 7-series part whose primitive parameters
+and clocking rules match these interfaces; another family requires a new branch,
 not macro reuse.
 
 Before implementation eligibility, the target XDC must specify every clock,
 `PACKAGE_PIN`, `IOSTANDARD`, data/clock `DRIVE`, `SLEW`, input/output delay, and
 board timing assumption. ODDR/IDDR placement in IOB resources and the legality
 of routing `BUFGCE` to the forwarded-clock output must be checked from actual
-Vivado reports. Data and forwarded-clock package/board skew must fit inside the
+Vivado reports. In particular, whether the selected device can legally route
+the `BUFGCE` output to the intended forwarded-clock output pad with the required
+clock/duty behavior is explicitly **HOLD**, not inferred from mock lockstep.
+Data and forwarded-clock package/board skew must fit inside the
 4 ns nominal window after jitter, duty-cycle distortion, primitive clock-to-Q,
 pad delay, receiver setup/hold, and margin. The test UNISIM subset contains no
 timing and cannot support any of those conclusions.
@@ -134,7 +159,9 @@ timing and cannot support any of those conclusions.
 defines related 16 ns reference/sample clocks, the 4 ns phase, and a
 phase-preserving generated burst clock. It constrains rising and falling output
 delays separately and refuses to load unless target-specific uncertainty,
-receiver setup/hold, data-pad load, and clock-pad load variables are supplied.
+receiver setup/hold, data-pad load, clock-pad load, and ref-output delay are
+numeric and strictly greater than zero. Every referenced port and created clock
+is checked for a nonempty collection.
 The generated-clock sink must be rebound to the actual ICG/BUFGCE output pin if
 the top-level burst port is not the propagated clock object.
 
@@ -143,6 +170,8 @@ are visible in one specification. It is not a drop-in physical script for the
 split TX and RX pad tops. A target flow must split and rebind the constraints to
 its exact endpoint hierarchy and must treat every missing clock, port, pad, or
 primitive pin as an error rather than allowing an empty collection.
+The template itself was not executed by Genus, Vivado, or another STA engine;
+its checks are preparation, not timing evidence.
 
 Do not false-path the ref-to-burst relationship, the burst-fall-to-next-ref-rise
 observer path, or replace either nominal 4 ns path with a full-cycle exception.
@@ -162,8 +191,13 @@ mid-frame-reset case. Generic, ASIC-adapter-mock, and Xilinx-UNISIM-mock branche
 then each pass an 18-event comparison against both the exact A7 DDR endpoint and
 its complete parallel reference at ready, raw link, one-cycle availability,
 two-cycle synchronous consumption, and launch/pending-valid guarded drain
-boundaries. Four negative tests prove fail-closed compilation for
-missing/multiple selection and missing ASIC/Xilinx closures.
+boundaries. Local Icarus negative tests cover missing/multiple selection,
+missing ASIC/Xilinx definitions, and inclusion of mock files without the
+explicit test-only macro. These results make no Genus/Vivado unresolved-module
+claim. A source-closure test separately proves that checked-in production
+filelists contain exactly the eight candidate RTL sources and no mock/test path.
+The same-flow structural regression locks A9 at 33 cells/22 bits versus A7 DDR2
+at 29/20, a charged delta of +4 cells/+2 bits.
 
 This establishes wrapper behavioral equivalence under the nominal digital
 contract only. It does not establish primitive timing equivalence, glitch-free

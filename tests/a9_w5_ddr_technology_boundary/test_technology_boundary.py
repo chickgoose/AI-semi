@@ -9,6 +9,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -109,7 +110,8 @@ class TechnologyBoundaryTest(unittest.TestCase):
             work = pathlib.Path(directory)
             a7_sources = self.materialize_a7(work)
             extras = ([mock] if mock else []) + a7_sources + [TESTS / "a9_w5_equivalence_tb.sv"]
-            self.compile(work, [macro], extras, "a9_w5_equivalence_tb", True)
+            defines = [macro] + (["A9_W5_TEST_ONLY"] if mock else [])
+            self.compile(work, defines, extras, "a9_w5_equivalence_tb", True)
             result = subprocess.run([self.vvp, str(work / "simv")], text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             self.assertEqual(result.returncode, 0, result.stdout)
@@ -165,6 +167,42 @@ class TechnologyBoundaryTest(unittest.TestCase):
                          ["A9_W5_TECH_XILINX_7SERIES"], [],
                          "a9_w5_ddr_link", False)
 
+    def test_mock_files_require_explicit_test_only_macro(self) -> None:
+        cases = (
+            ("A9_W5_TECH_ASIC", TESTS / "mock_asic_cells.sv"),
+            ("A9_W5_TECH_XILINX_7SERIES", TESTS / "mock_xilinx_unisim.sv"),
+        )
+        for macro, mock in cases:
+            with self.subTest(macro=macro), tempfile.TemporaryDirectory(
+                prefix="a9-w5-mock-guard-"
+            ) as directory:
+                self.compile(pathlib.Path(directory), [macro], [mock],
+                             "a9_w5_ddr_link", False)
+
+    def test_same_flow_generic_structural_delta(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="a9-w5-structural-") as directory:
+            output = pathlib.Path(directory) / "structural.json"
+            environment = os.environ.copy()
+            environment["A7_REPO"] = str(self.a7_repo)
+            result = subprocess.run(
+                [sys.executable, str(TESTS / "structural_compare.py"),
+                 "--output", str(output)],
+                cwd=ROOT, env=environment, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout)
+            document = json.loads(output.read_text())
+            self.assertEqual(document["a9_minus_a7_ddr2"], {
+                "charged_functional_cells": 4,
+                "state_bits": 2,
+                "operator_depth": 0,
+                "generic_gate_depth": 0,
+            })
+            self.assertEqual(
+                document["classification"],
+                "generic same-flow structural proxy, not physical PPA",
+            )
+
     def test_manifest_filelists_and_constraint_boundary(self) -> None:
         manifest = json.loads((RTL / "a9_w5_mapping_manifest.json").read_text())
         self.assertEqual(manifest["reference"]["commit"], A7_COMMIT)
@@ -173,7 +211,26 @@ class TechnologyBoundaryTest(unittest.TestCase):
             {pathlib.Path(path).name: digest for path, digest in A7_FILES.items()},
         )
         self.assertTrue(manifest["selection"]["exactly_one_required"])
+        self.assertEqual(
+            manifest["status"], "behavioral_mapping_prototype_go_physical_hold"
+        )
         self.assertFalse(manifest["physical_ppa_executed"])
+        self.assertFalse(manifest["real_asic_library_compile_executed"])
+        self.assertFalse(manifest["real_vivado_unisim_compile_executed"])
+        self.assertFalse(manifest["bufgce_output_clock_legality_verified"])
+        self.assertEqual(manifest["mock_policy"], {
+            "required_macro": "A9_W5_TEST_ONLY",
+            "production_filelist_allowed": False,
+            "synthesis_evidence_allowed": False,
+        })
+        self.assertFalse(
+            manifest["external_tool_elaboration_policy"]
+                    ["genus_unresolved_or_blackbox_fatal_verified"]
+        )
+        self.assertFalse(
+            manifest["external_tool_elaboration_policy"]
+                    ["vivado_unresolved_or_blackbox_fatal_verified"]
+        )
         owner = manifest["owner_charged_generic_reference"]
         self.assertEqual(owner["ddr2"], {
             "pins": 3, "state_bits": 20, "charged_functional_cells": 29
@@ -181,18 +238,45 @@ class TechnologyBoundaryTest(unittest.TestCase):
         self.assertEqual(owner["parallel4"], {
             "pins": 5, "state_bits": 18, "charged_functional_cells": 27
         })
-        filelists = "\n".join(
-            path.read_text() for path in sorted((RTL / "filelists").glob("*.f"))
-        )
+        self.assertEqual(manifest["a9_generic_same_flow_proxy"], {
+            "scope": "A9 generic combined wrapper; Yosys 0.52 proc/flatten/opt with scopeinfo excluded; not physical PPA",
+            "charged_functional_cells": 33,
+            "state_bits": 22,
+            "operator_depth": 7,
+            "generic_gate_depth": 7,
+            "delta_vs_a7_ddr2": {
+                "charged_functional_cells": 4,
+                "state_bits": 2,
+                "operator_depth": 0,
+                "generic_gate_depth": 0,
+            },
+        })
+        filelist_paths = sorted((RTL / "filelists").glob("*.f"))
+        filelists = "\n".join(path.read_text() for path in filelist_paths)
         self.assertNotIn("mock_asic_cells.sv", filelists)
         self.assertNotIn("mock_xilinx_unisim.sv", filelists)
         self.assertNotIn("a9_w5_equivalence_tb.sv", filelists)
+        self.assertNotIn("A9_W5_TEST_ONLY", filelists)
+        expected_closure = [str(path.relative_to(ROOT)) for path in W5_SOURCES]
+        for path in filelist_paths:
+            actual_closure = [
+                line.strip() for line in path.read_text().splitlines()
+                if line.strip() and not line.lstrip().startswith(("#", "+"))
+            ]
+            self.assertEqual(actual_closure, expected_closure, path.name)
+            self.assertTrue(all(not item.startswith("tests/") for item in actual_closure))
+        self.assertEqual(
+            manifest["production_source_closure"], expected_closure
+        )
         sdc = (ROOT / "constraints/a9_w5_ddr_technology_boundary.sdc").read_text()
         for required in (
             "create_generated_clock", "-clock_fall", "set_load",
             "A9_W5_DATA_PAD_LOAD", "A9_W5_CLOCK_PAD_LOAD",
             "A9_W5_RX_SETUP_BUDGET_NS", "A9_W5_RX_HOLD_BUDGET_NS",
             "A9_W5_REF_OUTPUT_DELAY_NS",
+            "a9_w5_require_positive_variable", "numeric_value <= 0.0",
+            "a9_w5_require_nonempty", "sizeof_collection",
+            "get_ports", "get_clocks",
         ):
             self.assertIn(required, sdc)
 

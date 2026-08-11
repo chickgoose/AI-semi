@@ -2,6 +2,8 @@
 
 // Test-only functional subset of the 7-series UNISIM interfaces used by W5.
 // It proves wrapper wiring and edge identity, not Vivado primitive timing.
+// Without the explicit test macro this file defines no UNISIM substitutes.
+`ifdef A9_W5_TEST_ONLY
 module BUFGCE (input logic I, input logic CE, output logic O);
   logic ce_latched_q = 1'b0;
   always_latch begin
@@ -63,3 +65,4 @@ module IDDR #(
     else if (CE) Q2 <= D;
   end
 endmodule
+`endif
