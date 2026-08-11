@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from collections import defaultdict
@@ -25,6 +26,17 @@ from a6_w3_elias_fano import (
 LINK_WIDTH = 2
 PHYSICAL_PINS = 5  # two data, two valid-count, one ready
 WINDOWS = (0, 1, 2, 4)
+OFFICIAL_CAP22_MANIFEST_SHA256 = (
+    "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62"
+)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def nearest_rank(values: Sequence[int], percentile: int) -> int:
@@ -406,11 +418,15 @@ def load_trace(path: Path, *, num_sources: int) -> list[Event]:
 
 
 def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict[str, object]:
+    manifest_sha256 = sha256_file(manifest_path)
+    if manifest_sha256 != OFFICIAL_CAP22_MANIFEST_SHA256:
+        raise CodecError("cap22 manifest digest is not the frozen official contract")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     runs = manifest.get("runs")
     if not isinstance(runs, list) or len(runs) != 22:
         raise CodecError("cap22 evaluation requires the official 22-run manifest")
     results = []
+    trace_provenance = []
     for run in runs:
         width = run["geometry"]["width"]
         height = run["geometry"]["height"]
@@ -421,6 +437,11 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
         if not trace.is_file() or trace.stat().st_size == 0:
             raise CodecError(f"missing or empty generated trace: {trace}")
         events = load_trace(trace, num_sources=num_sources)
+        trace_provenance.append({
+            "name": run["name"],
+            "sha256": sha256_file(trace),
+            "generated_events": len(events),
+        })
         for window in WINDOWS:
             raw = simulate(
                 events, stim_cycles=run["stim_cycles"], num_sources=num_sources,
@@ -492,10 +513,12 @@ def evaluate_cap22(manifest_path: Path, trace_dir: Path, max_batch: int) -> dict
         "schema_version": 1,
         "format": "a6_w3_elias_fano_monotone_dequeue",
         "manifest": str(manifest_path.resolve()),
+        "manifest_sha256": manifest_sha256,
         "suite": "capacity22",
         "run_count": len(runs),
         "max_batch": max_batch,
         "windows": list(WINDOWS),
+        "trace_provenance": trace_provenance,
         "results": results,
         "gates": gates,
         "decision": "GO_RTL" if selected else "HOLD_LATENCY_OR_LINK_GATE",

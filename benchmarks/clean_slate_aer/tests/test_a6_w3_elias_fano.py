@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,6 +17,13 @@ import a6_w3_evaluate as evaluate  # noqa: E402
 
 
 class EliasFanoCodecTests(unittest.TestCase):
+    def test_cap22_manifest_digest_is_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text('{"runs": []}\n', encoding="utf-8")
+            with self.assertRaisesRegex(codec.CodecError, "digest"):
+                evaluate.evaluate_cap22(manifest, Path(directory), max_batch=16)
+
     def test_known_monotone_batch_uses_real_elias_fano(self) -> None:
         sources = (0, 1, 2, 3, 8, 9, 10, 11)
         frame = codec.encode_batch(
