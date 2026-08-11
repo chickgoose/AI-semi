@@ -119,6 +119,20 @@ deadlock.  This produced 300 full50 and 132 cap22 randomized mode/trace replays.
 All completed, drained, and passed energy, potential, conservation, duplicate,
 and per-source order assertions.
 
+Replay is fail-closed against the following byte and version pins before any
+workload is evaluated:
+
+| input | required version / SHA256 | required run set |
+| --- | --- | ---: |
+| `generate_trace.py` | generator `4.0`; `9e2857029f953315d2c353317fa4888a784579f43980a935ec6eb13e4688cd53` | n/a |
+| `manifest.neutrality-n16.json` | `9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9` | exact ordered full50, unique names |
+| `manifest.multilane-n16.json` | `99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62` | exact ordered cap22, unique names |
+
+The receipt records expected and observed versions, hashes, counts, and names.
+A byte mismatch, version mismatch, reordered/missing/extra run, or duplicate
+name stops evaluation before replay with exit status 2 and preserves a
+`PROVENANCE_MISMATCH` JSON diagnostic when `--output` is supplied.
+
 ### Always-ready full50 aggregate
 
 | model | fixed-window retired | overrun | mean/max latency | state bits | toggle/retired |
@@ -173,15 +187,31 @@ formal wrapper, or assertion TB was created.
 Fast self-check:
 
 ```sh
-python3 -m unittest -v tests.a3_passivity_energy_tank.test_passivity_model
+python3 -m unittest -v \
+  tests.a3_passivity_energy_tank.test_passivity_model \
+  tests.a3_passivity_energy_tank.test_evaluate_contract
 ```
 
 Complete exhaustive and full50/cap22 replay:
 
 ```sh
 python3 tests/a3_passivity_energy_tank/evaluate.py \
-  --random-trials 2 --compact \
+  --random-trials 2 --compact --require-go \
   --output tests/a3_passivity_energy_tank/w3_results.json
 ```
 
-The committed `w3_results.json` is the compact machine-readable receipt.
+This exact command intentionally returns exit status 3 because the preserved
+GO gate is false.  It first atomically writes the compact receipt, including
+the `REQUIRED_GO_FAILED` diagnostic and failed check names.  Exit semantics are:
+
+- provenance failure: status 2 in both default and `--require-go` modes, with
+  no workload replay;
+- default mode with valid provenance: status 0 after evaluation even when the
+  recorded `go_gate.go` is false (interactive evidence generation only);
+- `--require-go` with valid provenance: status 0 only for GO, otherwise status
+  3 after preserving the diagnostic receipt.
+
+The committed `w3_results.json` is the compact machine-readable receipt from
+the full 262,144-case bounded exhaustive search and random2 full50/cap22 replay.
+Its exit-3 diagnostic is expected evidence of the unchanged A3 NO-GO decision,
+not a failed receipt write.
