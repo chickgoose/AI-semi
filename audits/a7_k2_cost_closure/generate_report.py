@@ -294,6 +294,10 @@ def generate(repo: Path, paths: dict[str, str]) -> dict[str, Any]:
             "status": "HOLD_NO_LIBERTY_STA_ACTIVITY_OR_POWER_RECEIPT",
         },
         "interpretation": (
+            "Boundary-specific headline comparison: at the normalized common seam, "
+            "A2 has lower mapped state (22 < 26), while at the full-P6 boundary A3 "
+            "has lower mapped state (66 < 73). Within the full-P6 headline set, "
+            "A2's only win is maximum fanout (15 < 31). "
             "Full-minus-normalized values are whole-cone generic structural deltas. "
             "They charge all adapter/P6 state but are not additive physical area or power."
         ),

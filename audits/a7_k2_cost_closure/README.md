@@ -53,6 +53,7 @@ byte-identical to `HEAD`.
 | adapter state residual | 11 bits | 0 bits |
 
 The shared isolated P6 seam is 95 mapped cells, 40 state bits, and depth 5.
-Both A2 and A3 remain on the selected structural Pareto set: A3 wins mapped
-cells, depth, p95 fanout, and wire proxy, while A2 wins state and maximum
-fanout. No physical ranking is inferred.
+Both A2 and A3 remain on the selected structural Pareto set. At the normalized
+common seam, A2 has lower mapped state (22 < 26). At the full-P6 boundary, A3
+has lower mapped state (66 < 73); within the full-P6 headline comparison, A2's
+only win is maximum fanout (15 < 31). No physical ranking is inferred.
