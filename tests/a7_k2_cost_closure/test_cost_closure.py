@@ -72,6 +72,13 @@ class CostClosureTests(unittest.TestCase):
             report["candidates"]["a3"]["integration_adapter_seam"]
             ["measured_state_residual_full_minus_normalized_minus_p6"],
             {"generic": 0, "mapped": 0})
+        self.assertEqual(
+            report["candidates"]["a4"]["integration_adapter_seam"]
+            ["measured_state_residual_full_minus_normalized_minus_p6"],
+            {"generic": 0, "mapped": 0})
+        self.assertEqual(
+            report["candidates"]["a4"]["full_composition_metrics"]
+            ["mapped_state_bits"], 89)
         self.assertEqual(report["physical_metrics"]["area"], None)
         self.assertEqual(report["physical_metrics"]["power"], None)
         self.assertIn("HOLD", report["physical_metrics"]["status"])
@@ -126,6 +133,16 @@ class CostClosureTests(unittest.TestCase):
             self.assertIn(clause, readme)
         self.assertNotIn("only win", readme)
         self.assertNotIn("only win", report["interpretation"])
+        self.assertIn("A3 strictly dominates A4", readme)
+        self.assertIn("A3 strictly dominates A4", report["interpretation"])
+        self.assertIn("all seven input receipts", readme)
+        self.assertNotIn("all five input receipts", readme)
+
+    def test_a4_integration_identity_is_pinned(self):
+        self.mutate("a4_integration", lambda row: row["candidate"].__setitem__(
+            "integration_commit_sha", "0" * 40))
+        with self.assertRaisesRegex(self.module.ClosureError, "not pinned to 602d24b"):
+            self.module.generate(self.repo, self.paths)
 
     def test_dirty_receipt_is_rejected(self):
         self.mutate("a2_integration", lambda row: row["metrics"].__setitem__(
