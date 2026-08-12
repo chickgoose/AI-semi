@@ -1,0 +1,4 @@
+candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv
+candidates/a2_batched_iwrr_k2/rtl/a2_k2_ordered_link_adapter.sv
+candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2_normalized.sv
+candidates/a2_batched_iwrr_k2/tb/a2_batched_iwrr_k2_normalized_tb.sv

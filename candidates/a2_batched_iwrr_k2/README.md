@@ -3,9 +3,10 @@
 Status: **local candidate functional GO; physical and widened-A7 integration
 HOLD**.
 
-This directory is additions-only and self-contained.  It does not modify or
-instantiate the frozen common TB, manifests, or team RTL.  The synthesizable
-candidate implements the N16 atomic K2 boundary frozen in [CONTRACT.md](CONTRACT.md).
+This directory is additions-only and self-contained.  It does not modify the
+frozen common TB, manifests, or team RTL.  The normalized runner compiles the
+common TB in place without changing it.  The synthesizable candidate implements
+the N16 atomic K2 boundary frozen in [CONTRACT.md](CONTRACT.md).
 
 ## Result
 
@@ -30,6 +31,35 @@ count one or two plus ordered addresses.  A stalled offer is internally held
 stable, and all valid addresses commit together.  Partial-lane backpressure is
 permitted only behind a separate buffered link adapter and never advances this
 scheduler's policy.
+
+## Frozen RETIRE_LANES=2 normalized binding
+
+`rtl/a2_batched_iwrr_k2_normalized.sv` promotes the native N16 scheduler onto
+the common two-lane ready/valid seam.  The separately instantiated
+`a2_k2_ordered_link_adapter` is charged DUT RTL: for the default 16-bit event
+identity it contains 42 state bits (two-bit occupancy plus two ordered copies
+of `{event[15:0], source[3:0]}`).  The interface binding itself is storage-free.
+
+The scheduler still has exactly one acceptance signal.  Its `bundle_ready` is
+the link's complete-offer capacity result, and `source_ready` is the exact
+native grant bitmap only on an atomic 1- or 2-entry commit.  A two-entry offer
+does not split when only one link slot is free.  On the retire side, a blocked
+head hides the younger entry; head-only retirement compacts it to lane 0, and
+both lanes are exposed together only when both are ready.  Partial drain
+changes link state only and never advances IWRR policy.
+
+The wrapper gates ready/valid during active-low normalized reset and reports
+`drain_idle` only when both native request/hold state and the charged link are
+empty.  It is fixed to `NUM_SOURCES=16`, `RETIRE_LANES=2`, and four-bit source
+identity; elaboration fails closed for another boundary.
+
+The isolated normalized suite runs directed count0/1/2, back-to-back,
+partial-ready, hold/order, exact source-ready, reset/drain, and conservation
+checks, then six frozen common-TB scenarios and a Yosys structural check:
+
+```sh
+candidates/a2_batched_iwrr_k2/run_normalized.sh
+```
 
 ## Qualification
 
@@ -69,8 +99,9 @@ separate random/directed lockstep, not by an RTL execution of all 72 traces.
 
 ## Explicit limits
 
-- No widened low-pin A7 endpoint, serialization, lane backpressure adapter,
-  timing closure, physical mapping, power, or PVT evidence is present.
+- No widened low-pin A7 endpoint, serialization, timing closure, physical
+  mapping, power, or PVT evidence is present.  The normalized lane adapter has
+  local RTL simulation and generic synthesis checks only.
 - Held offer payload and policy are stable through backpressure, even if `req`
   changes; protocol correctness still requires offered sources to remain
   pending until the atomic commit.
