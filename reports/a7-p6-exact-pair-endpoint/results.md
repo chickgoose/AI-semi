@@ -10,6 +10,11 @@ cycle after reset arm, transmits it in one five-data-wire DDR cell, and retires
 one or two addresses together in original lane order.  It contains no queue,
 aggregation wait, predictor, or scheduler state.
 
+Follow-up audit of commit `4dcafd8` added a normalized scheduler wrapper.  A
+valid bundle carries `grant_count=0/1/2`; one `bundle_ready` handshake commits
+all valid lanes and reports exactly 0/1/2 policy microsteps.  A count-zero
+commit launches no P6 cell.  No per-lane scheduler ready or commit exists.
+
 The fair parallel reference has the same input guard, commit edge, ref-domain
 observer, retirement semantics, and maximum two-event/cycle capacity.  It
 differs only in physical link representation: ten signals rather than P6's six.
@@ -25,7 +30,14 @@ differs only in physical link representation: ten signals rather than P6's six.
 - illegal-count/overflow mutation: expected fail;
 - early-ready/stall mutation: expected fail;
 - retained-reset/phantom mutation: expected fail;
-- pair-order-swap mutation: expected fail; and
+- pair-order-swap mutation: expected fail;
+- atomic partial-pair policy-step mutation: expected fail;
+- normalized atomic bundle RTL: 7 bundles, including one count-zero no-op,
+  11 committed/retired policy events, zero partial scheduler commits;
+- held legal bundle across reset/arm stall: stable and committed once;
+- A5 evaluator commit `41c425b`: 5/5 unit tests and 7/7 declared mutations
+  PASS in an isolated read-only extraction; this qualifies the evaluator only,
+  not A7 scheduler RTL; and
 - protected common/team paths: zero diff.
 
 ## Frozen trace replay
@@ -63,6 +75,17 @@ operator cells, eleven generic combinational gates, and six state bits versus
 the fair parallel endpoint.  These are technology-independent generic proxies,
 not area, Fmax, or power results.
 
+The structural table remains the nonempty link-core comparison from commit
+`4dcafd8`.  The follow-up atomic frontend is scheduler-side normalization,
+adds no physical link pin, and is shared identically by P6 and parallel
+wrappers; it is not folded into either endpoint's published core proxy.
+
+Independent `retire_ready[1:0]` stalls from the A5 evaluator are downstream of
+this always-ready receiver.  A separately buffered lane adapter is required
+where those stalls exist and its queue/state must be charged equally.  It may
+drain its own lanes independently, but it cannot create partial scheduler
+commits or advance scheduler policy.  No hidden Q2 was added here.
+
 ## Qualification
 
 **Digital functional GO** is limited to the frozen phase-related, always-ready
@@ -73,7 +96,7 @@ CTS/routing, signal integrity, extracted power, and energy/event all remain
 
 ## Reproducibility hashes
 
-The release run at `/tmp/a7-p6-release` recorded:
+The follow-up release run at `/tmp/a7-p6-contract-final` reproduced:
 
 ```text
 799a3ab7fda211f9cda8109fce09df88e1462deae0e72bc2e775262c9bc8890e  frozen.expected.json
