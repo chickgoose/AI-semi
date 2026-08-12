@@ -17,27 +17,36 @@ DEFAULT_OWNER = Path("/home/chickgoose/projects/a7")
 DEFAULT_FIXTURE = Path(
     "/home/chickgoose/projects/a5/tests/a5_fovea_a7_structural/fixtures"
 )
-DEFAULT_COMMIT = "e9f27e6"
+DEFAULT_COMMIT = "eaf3cf7"
 PASS_SENTINEL = "A7_W6_SHA_PINNED_DIRECTED_RTL_PASS"
 ALLOWED_COMMITS = {
-    "e9f27e6aed302491011a5deb803a7b42a0c712b3",
-    "0f49816b48a4cba027d40733a09edb590bfc7a86",
+    "eaf3cf7260e3268fb9519d570cc4e825fe5b187c",
+    "61b7fb5ab298d6b25c23655c92538350fcf7041b",
 }
+BASELINE_MARKERS = (
+    "A7_W6_OUTPUT_AVAILABLE_CYCLE1_PASS events=146",
+    "A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=146",
+    "A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=146 available=146 retired=146",
+    "A7_W6_WEIGHTED_FOVEA_DDR_DIRECTED_RTL_REGRESSION_PASS",
+    "A7_W6_FIVE_MUTANT_GATE_PASS count=5",
+)
 EXPECTED_BLOBS = {
     "rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv":
         "7064bdc7fcc5bbb4a7ab59c4a90a490bce9052b1",
     "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv":
-        "ecde2d6e5d6ee589b808c6413f45f7155eb6adb7",
+        "3e2f871bcddd06b2495f82e95f350b9164fd0fc7",
     "scripts/run_a7_weighted_fovea_ddr_qualification.sh":
-        "fa6f6412863affdfac33916e926b9047d5389e15",
+        "b091a79b6e9511b291ac665004d604b94c78763e",
     "scripts/run_a7_weighted_fovea_ddr_fault.sh":
-        "1193b63da55c94b653cca57d7eda3cad930e16a0",
+        "716240d9cfdf925d73a6cf8f39c1c7038596b848",
     "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_fault_tb.sv":
         "27d7b527ffca84efa8be670ac943702bb72fb465",
     "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_stale_no_live_fixture.sv":
         "94b7c676b669467c24f7f94f6dcc5839ed5fea29",
     "tests/a7_weighted_fovea_ddr/contract_check.py":
-        "2d7909ad80a4dbb44aaaba1f5affedf6e744e07f",
+        "99c91dc86552a5e12f8d7586c5294e207ebdcc59",
+    "tests/a7_weighted_fovea_ddr/mutation_gate.py":
+        "50ee3fa814935be402e841a9060b0b1970929c48",
 }
 MUTANT_DIAGNOSTICS = {
     "premature_drain": "A8_ACTUAL_PREMATURE_DRAIN_FAIL",
@@ -232,13 +241,28 @@ def materialize(owner: Path, commit: str, destination: Path) -> None:
         raise AuditFailure(f"temporary checkout failed:\n{result.stdout}")
 
 
-def qualify(repo: Path, fixture: Path, output: Path, base_commit: str) -> tuple[int, str]:
+def commit_temp_changes(repo: Path, name: str) -> None:
+    for key, value in (
+        ("user.name", "A8 mutation audit"),
+        ("user.email", "a8-mutation-audit@invalid"),
+    ):
+        result = run(["git", "config", key, value], cwd=repo)
+        if result.returncode:
+            raise AuditFailure(f"temporary git config failed:\n{result.stdout}")
+    result = run(["git", "add", "--all"], cwd=repo)
+    if result.returncode:
+        raise AuditFailure(f"temporary git add failed:\n{result.stdout}")
+    result = run(
+        ["git", "commit", "--quiet", "-m", f"A8 audit-only {name}"], cwd=repo
+    )
+    if result.returncode:
+        raise AuditFailure(f"temporary audit commit failed:\n{result.stdout}")
+
+
+def qualify(repo: Path, fixture: Path, output: Path) -> tuple[int, str]:
     env = os.environ.copy()
     env["A7_W6_CANONICAL_DIR"] = str(fixture)
     env["A7_W6_QUAL_OUT"] = str(output)
-    # The owner runner exposes this input because a cherry-pick must compare
-    # protected paths with its own first parent, not the source branch parent.
-    env["A7_W6_BASE_COMMIT"] = base_commit
     result = run(
         ["bash", "scripts/run_a7_weighted_fovea_ddr_qualification.sh"],
         cwd=repo, env=env,
@@ -250,9 +274,10 @@ def validate_outcome(name: str, rc: int, sentinel: bool,
                      diagnostic_found: bool = True) -> None:
     """Require a real baseline PASS and reject either form of mutant escape."""
     if name == "baseline":
-        if rc != 0 or not sentinel:
+        if rc != 0 or not sentinel or not diagnostic_found:
             raise AuditFailure(
-                f"baseline exact qualification did not PASS: rc={rc} sentinel={sentinel}"
+                "baseline exact qualification did not PASS: "
+                f"rc={rc} sentinel={sentinel} markers={diagnostic_found}"
             )
     elif rc == 0 or sentinel or not diagnostic_found:
         raise AuditFailure(
@@ -277,9 +302,8 @@ def main() -> int:
     commit = git(owner, "rev-parse", f"{args.commit}^{{commit}}")
     if commit not in ALLOWED_COMMITS:
         raise AuditFailure(
-            f"owner commit is not pinned to e9f27e6/0f49816: {commit}"
+            f"owner commit is not pinned to eaf3cf7/61b7fb5: {commit}"
         )
-    base_commit = git(owner, "rev-parse", f"{commit}^")
     for path, expected in EXPECTED_BLOBS.items():
         actual = git(owner, "rev-parse", f"{commit}:{path}")
         if actual != expected:
@@ -293,23 +317,34 @@ def main() -> int:
         for name in ("baseline", "premature_drain", "plus_latency", "stale_no_live"):
             repo = temp_root / f"repo-{name}"
             materialize(owner, commit, repo)
-            install_audit_monitor(repo)
+            if name in ("premature_drain", "plus_latency"):
+                install_audit_monitor(repo)
             if name != "baseline":
                 mutate(repo, name)
             if name == "stale_no_live":
                 install_stale_no_live_monitor(repo)
+            if name != "baseline":
+                # Final owner qualification binds every provenance input to a
+                # clean HEAD. Commit only inside this disposable shared clone.
+                commit_temp_changes(repo, name)
             output = temp_root / f"out-{name}"
-            rc, log = qualify(repo, fixture, output, base_commit)
+            rc, log = qualify(repo, fixture, output)
             log_path = temp_root / f"{name}.log"
             log_path.write_text(log, encoding="utf-8")
             sentinel = PASS_SENTINEL in log
-            diagnostic = name == "baseline" or MUTANT_DIAGNOSTICS[name] in log
+            diagnostic = (
+                all(marker in log for marker in BASELINE_MARKERS)
+                if name == "baseline" else MUTANT_DIAGNOSTICS[name] in log
+            )
             digest = hashlib.sha256(log.encode("utf-8")).hexdigest()
             records.append(
                 f"{name} rc={rc} pass_sentinel={int(sentinel)} "
                 f"independent_diagnostic={int(diagnostic)} log_sha256={digest}"
             )
-            validate_outcome(name, rc, sentinel, diagnostic)
+            try:
+                validate_outcome(name, rc, sentinel, diagnostic)
+            except AuditFailure as exc:
+                raise AuditFailure(f"{exc}\nqualification tail:\n{log[-4000:]}") from exc
         for record in records:
             print(record)
         print(f"A8_W6_ACTUAL_OWNER_MUTATION_PASS commit={commit} mutants=3")
