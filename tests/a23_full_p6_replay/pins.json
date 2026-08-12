@@ -1,0 +1,37 @@
+{
+  "schema": "a23_full_p6_replay_pins_v1",
+  "files": {
+    "benchmarks/clean_slate_aer/generate_trace.py": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "benchmarks/clean_slate_aer/prepare_sv_trace.py": "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826",
+    "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
+    "rtl/candidates/a2_batched_iwrr_p6/a2_batched_iwrr_p6.f": "645197b9fc529853df479032798e1dc6b36b13c143e4c45c34933b8afafbd043",
+    "rtl/candidates/a2_batched_iwrr_p6/a2_batched_iwrr_p6_top.sv": "d095c0dd79a76d0a2027757258f006e6913bed45273b1bba22af22c0ce0ac29b",
+    "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+    "rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6.f": "ed04b6ac6dc76b6b993180763f116257c1188a6e9b71da3d299d0dd9746ef3fc",
+    "rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6_top.sv": "b5c2eab34dec9a3c6dc7879a587508fcbd38ae10ac2dd927ef420e0e091ae793",
+    "rtl/candidates/a4_paired_cortical_column_k2/a4_paired_cortical_column_k2.sv": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
+    "rtl/candidates/a4_paired_cortical_column_k2_p6/a4_paired_cortical_column_k2_p6.f": "ee46bb4aa608588162939f167a987dcd9dc2c552d8d7d141955d42de7d1a2349",
+    "rtl/candidates/a4_paired_cortical_column_k2_p6/a4_paired_cortical_column_k2_p6_top.sv": "70149f52015419f97a53fe9b6a96ba40c5be7de01aa22208cda57f147b7a9614",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb",
+    "scripts/common_suite_official.py": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
+    "tests/a23_full_p6_replay/rtl/a23_a2_p6_observer_wrapper.sv": "dcc2113cc0ef0143811b8e3e854bd2b3a10c706abb3859217b592a7926010bea",
+    "tests/a23_full_p6_replay/rtl/a23_a3_p6_observer_wrapper.sv": "edbab45282a9b647072c8f7d4e0417c3d7218f3635018dc4e06c0628a5efe26c",
+    "tests/a23_full_p6_replay/rtl/a23_a4_p6_observer_wrapper.sv": "627c3ebf254a9250fd6d8ba3796e13240c48ce28ea750e2e6039372879131f24",
+    "tests/a23_full_p6_replay/run_all.sh": "0809e6e845dea2587809c2ade31f7703a8f0e16881f7468e92a43c109af84785",
+    "tests/a23_full_p6_replay/run_replay.py": "353c1f1cbe11e67e6a1e51e072f78cd9de6e9b1579349f9269430b44e16ae8db",
+    "tests/a23_full_p6_replay/tb/a23_full_p6_replay_tb.sv": "481879647d621f90c4dcdbec079dfc50c5cdd8dfcb621305d38c02290bafd5b7",
+    "tests/common_suite_receipt/fixtures/manifest.multilane-n16.json": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "tests/common_suite_receipt/fixtures/manifest.neutrality-n16.json": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
+  },
+  "tools": {
+    "/tmp/a7-toolchain/usr/bin/verilator": "672a1ccf3468902f66387049f001b04f254bbcece7d5e816e3861715889bf252",
+    "/tmp/a7-toolchain/usr/bin/verilator_bin": "90fe12f3b2c752b607690cb05a566646398d1e07f38e83f5f7a7f35c20560247"
+  },
+  "tool_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
+}
