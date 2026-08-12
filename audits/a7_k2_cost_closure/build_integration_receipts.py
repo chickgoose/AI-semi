@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild same-flow full A2/A3 plus charged-P6 structural receipts."""
+"""Rebuild same-flow full A2/A3/A4 plus charged-P6 structural receipts."""
 
 from __future__ import annotations
 
@@ -117,6 +117,37 @@ endmodule
 """
 
 
+WRAPPER_A4 = """module k2_p6_cost_boundary (
+  input logic ref_clk, sample_clk, rst_n, link_enable,
+  input logic [15:0] pending,
+  output logic p6_clk,
+  output logic [4:0] p6_data,
+  output logic [1:0] retire_valid,
+  output logic [3:0] retire_addr0, retire_addr1,
+  output logic protocol_error, drain_idle
+);
+  logic [15:0] unused_source_ready;
+  logic unused_valid, unused_ready, unused_commit;
+  logic [1:0] unused_count, unused_steps;
+  logic [3:0] unused_addr0, unused_addr1;
+  logic bundle_error, retire_error;
+  a4_paired_cortical_column_k2_p6_top dut (
+    .ref_clk_i(ref_clk), .sample_clk_i(sample_clk), .rst_n(rst_n),
+    .link_enable_i(link_enable), .source_pending_i(pending),
+    .source_ready_o(unused_source_ready), .bundle_valid_o(unused_valid),
+    .bundle_ready_o(unused_ready), .bundle_commit_o(unused_commit),
+    .grant_count_o(unused_count), .grant_addr0_o(unused_addr0),
+    .grant_addr1_o(unused_addr1), .policy_microsteps_o(unused_steps),
+    .bundle_protocol_error_o(bundle_error), .p6_clk_o(p6_clk),
+    .p6_data_o(p6_data), .retire_valid_o(retire_valid),
+    .retire_addr0_o(retire_addr0), .retire_addr1_o(retire_addr1),
+    .retire_protocol_error_o(retire_error), .drain_idle_o(drain_idle)
+  );
+  assign protocol_error = bundle_error | retire_error;
+endmodule
+"""
+
+
 P6_WRAPPER = """module k2_p6_endpoint_cost_boundary (
   input logic ref_clk, sample_clk, rst_n,
   input logic bundle_valid,
@@ -180,6 +211,20 @@ SPECS = (
         "scheduler_rtl_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
         "adapter_contract_state_bits": 0,
         "wrapper": WRAPPER_A3,
+    },
+    {
+        "key": "a4", "name": "A4 paired cortical column plus P6",
+        "commit": "602d24bb1d5ebf9e66dac8f9ee64f1e967f2efb3",
+        "filelist": (
+            "rtl/candidates/a4_paired_cortical_column_k2_p6/"
+            "a4_paired_cortical_column_k2_p6.f"
+        ),
+        "filelist_sha256": "ee46bb4aa608588162939f167a987dcd9dc2c552d8d7d141955d42de7d1a2349",
+        "closure_sha256": "5cdc14f1202312924bdafefcd984d94a7d58f5f6c7a6e2ee29ef81ce7eeffb10",
+        "scheduler_commit": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+        "scheduler_rtl_sha256": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
+        "adapter_contract_state_bits": 0,
+        "wrapper": WRAPPER_A4,
     },
 )
 
@@ -315,7 +360,7 @@ def main() -> int:
             (args.output_dir / f"{spec['key']}_p6_integration.json").write_bytes(canonical(document))
         p6 = build_p6(yosys, env, tool, Path(temporary) / "p6")
         (args.output_dir / "p6_endpoint.json").write_bytes(canonical(p6))
-    print("A7_K2_P6_COST_RECEIPTS_PASS candidates=2 isolated_p6=1")
+    print(f"A7_K2_P6_COST_RECEIPTS_PASS candidates={len(SPECS)} isolated_p6=1")
     return 0
 
 
