@@ -22,10 +22,34 @@ class CommonTraceSmokeTest(unittest.TestCase):
                 text=True, capture_output=True, check=False)
             self.assertEqual(0, completed.returncode, completed.stderr)
             receipt = json.loads((output / "receipt.json").read_text())
-            self.assertEqual("LOCAL_RTL", receipt["status"])
-            self.assertEqual(0, receipt["queue_entries"])
-            self.assertEqual(2, receipt["consumer_latency_cycles"])
+            self.assertEqual("a4_fovea_a7_common_trace_v2", receipt["schema"])
+            self.assertEqual("LOCAL_RTL_TRACE_REPLAY_PASS", receipt["status"])
+            self.assertEqual(
+                "e9f27e6aed302491011a5deb803a7b42a0c712b3",
+                receipt["provenance"]["owner_hardening_commit"])
+            capacity = receipt["capacity_accounting"]
+            self.assertEqual(0, capacity["candidate_event_queue_entries"])
+            self.assertEqual(16, capacity["benchmark_ingress_pending_slots"])
+            self.assertEqual(1, capacity["candidate_sustained_output_cap_events_per_cycle"])
+            self.assertFalse(capacity["free_queue_used"])
+            self.assertEqual(16, capacity["totals"]["accepted"])
+            self.assertEqual(0, capacity["totals"]["accepted_not_delivered"])
+            self.assertEqual(0, capacity["totals"]["pending_at_end"])
+            scope = receipt["functional_scope"]
+            self.assertEqual(2, scope["consumer_latency_cycles"])
+            self.assertEqual("initial_release_only_sample_fall_to_ref_rise_4ns",
+                             scope["reset"])
+            self.assertIn("frozen_aer_clean_tb_not_executed", receipt["hold_scope"])
+            self.assertIn("physical_and_PPA_qualification_not_claimed",
+                          receipt["hold_scope"])
             self.assertEqual(1, len(receipt["runs"]))
+            execution = receipt["execution_scope"]
+            self.assertEqual("full50", execution["official_suite"])
+            self.assertEqual(50, execution["official_stems_generated"])
+            self.assertEqual(1, execution["official_stems_executed"])
+            self.assertTrue(execution["smoke_subset"])
+            self.assertEqual("22_official_runs_not_queue_depth",
+                             execution["capacity22_means"])
             events = output / "runs/core_simultaneous_identity/trace.events.csv"
             with events.open(newline="") as stream:
                 rows = list(csv.DictReader(stream))
@@ -35,6 +59,8 @@ class CommonTraceSmokeTest(unittest.TestCase):
             self.assertTrue(all(int(row["delivery_cycle"]) - int(row["accept_cycle"]) == 2
                                 for row in delivered))
             self.assertEqual(list(range(16)), sorted(int(row["logical_source"]) for row in delivered))
+            self.assertIn("PASS status=LOCAL_RTL_TRACE_REPLAY_PASS", completed.stdout)
+            self.assertIn("HOLD frozen_common_tb", completed.stdout)
 
     def test_explicit_missing_verilator_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
