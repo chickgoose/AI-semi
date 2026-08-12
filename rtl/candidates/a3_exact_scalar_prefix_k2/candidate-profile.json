@@ -11,18 +11,22 @@
   },
   "common_boundary": {
     "top": "aer_legacy_candidate_adapter",
+    "synthesis_top": "a3_k2_common_wrapper",
     "source_count": 16,
     "retire_lanes": 2,
+    "fifo_depth_compatibility_parameter": 0,
     "binding_storage": 0,
     "charged_transport": "ordered_two_entry_source_and_event_adapter",
+    "charged_event_mux": "two_16_to_1_common_event_identity_muxes",
     "lane_normalization": "lane1_valid_only_when_both_ordered_entries_retire",
-    "source_acceptance": "all_addresses_in_fitting_atomic_owner_bundle"
+    "source_acceptance": "all_addresses_in_fitting_atomic_owner_bundle",
+    "sink_ready_capability": "uniform_00_or_11_only"
   },
   "capabilities": {
     "address_event_correctness": {"supported": true},
     "ordered_scalar_prefix": {"supported": true},
-    "output_backpressure": {"supported": true, "scope": "native owner uses atomic bundle-ready; charged common adapter normalizes independent lane-ready"},
-    "independent_lane_backpressure": {"supported": true, "scope": "charged post-owner ordered adapter; owner commit remains atomic"},
+    "output_backpressure": {"supported": true, "scope": "uniform two-lane sink ready only; 00 stalls and 11 retires"},
+    "independent_lane_backpressure": {"supported": false, "reason": "common binding fails closed unless retire_ready is 00 or 11"},
     "multi_lane_retirement": {"supported": true, "maximum": 2},
     "payload": {"supported": false, "reason": "native owner is address-only; charged common transport preserves accepted scoreboard event identity"}
   }

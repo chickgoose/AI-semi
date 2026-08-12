@@ -92,6 +92,34 @@ module a3_k2_ordered_adapter_tb;
     if (!empty || retire_valid != 2'b00)
       $fatal(1, "adapter failed to drain");
 
+    // With exactly one buffered entry, lane-1 ready is irrelevant.  Toggling
+    // it while lane 0 is blocked cannot expose or consume anything, and lane 0
+    // consumes the singleton whether lane 1 is ready or not.
+    @(negedge clk);
+    retire_ready = 2'b00;
+    offer_count = 2'd1;
+    offer_source0 = 4'd9;
+    offer_event0 = 16'h9909;
+    @(posedge clk);
+    #1;
+    offer_count = 2'd0;
+    if (retire_valid != 2'b01 || retire_source0 != 4'd9 ||
+        retire_event0 != 16'h9909)
+      $fatal(1, "count1 setup failed");
+    @(negedge clk);
+    retire_ready = 2'b10;
+    @(posedge clk);
+    #1;
+    if (retire_valid != 2'b01 || retire_source0 != 4'd9 ||
+        retire_event0 != 16'h9909)
+      $fatal(1, "count1 incorrectly depended on lane1 ready while stalled");
+    @(negedge clk);
+    retire_ready = 2'b01;
+    @(posedge clk);
+    #1;
+    if (!empty || retire_valid != 2'b00)
+      $fatal(1, "count1 lane0 handshake depended on lane1 ready");
+
     // Reset must discard charged transport state and produce no phantom.
     @(negedge clk);
     retire_ready = 2'b00;
