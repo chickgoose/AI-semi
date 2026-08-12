@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "common": {
+    "repo_commit": "2a3a3be94be8f12585f484b5b1da2b372f7282d9",
+    "paths": {
+      "benchmarks/clean_slate_aer/generate_trace.py": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+      "benchmarks/clean_slate_aer/manifest.multilane-n16.json": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+      "benchmarks/clean_slate_aer/manifest.neutrality-n16.json": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+      "benchmarks/clean_slate_aer/prepare_sv_trace.py": "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826",
+      "scripts/common_suite_official.py": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
+      "scripts/run_ganghee_native_benchmark.sh": "d80a23434f3cf878f75dc2c5c11c2323d7c7ffbe064a980e3b3d8a8fa2df969c",
+      "tb/clean/aer_clean_tb.sv": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2",
+      "tb/clean/files.f": "f33e50b2efc5616e3be78e96125d17d4c2eac22702681f6dc89b72bdbd1108e0",
+      "tb/clean/native/aer_ganghee_native_binding.sv": "26f988e34384e59f97417b544ab86abe59f9a0c54a7e34ec35903a262bbdcdef"
+    }
+  },
+  "fovea": {
+    "canonical_commit": "0558c89285acd79f639d3e2c5e11fddb204d3e13",
+    "canonical_repo": "/home/aiasic26911/semi-ai",
+    "origin_untracked_repo": "/home/aiasic26911/redred-faer",
+    "top": "aer_tx16_trad_rowcol_fovea",
+    "weight": 5,
+    "files": {
+      "tests/a5_fovea_a7_structural/fixtures/aer_tx16_trad_rowcol_fovea.v": "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e",
+      "tests/a5_fovea_a7_structural/fixtures/arbiter2.v": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684",
+      "tests/a5_fovea_a7_structural/fixtures/arbiter4_tree.v": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"
+    }
+  },
+  "suites": {
+    "capacity22": {
+      "count": 22,
+      "manifest": "benchmarks/clean_slate_aer/manifest.multilane-n16.json"
+    },
+    "full50": {
+      "count": 50,
+      "manifest": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json"
+    }
+  }
+}
