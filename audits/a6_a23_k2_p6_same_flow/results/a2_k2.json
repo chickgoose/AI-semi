@@ -1,0 +1,98 @@
+{
+  "boundary": "normalized_atomic_K2_scheduler",
+  "commit": "d74ff962aaf07c5209f1a1d1c69832735c654a0d",
+  "flow": "read_verilog -sv -DSYNTHESIS <all exact sources>; hierarchy -check -top <top>; proc; opt; memory_map; opt; setundef -zero; opt; write_json hierarchy; flatten; opt; write_json generic; techmap; opt; abc -g simple; clean; check; stat; write_json mapped",
+  "included_components": [
+    "scheduler",
+    "A6 normalized observation wrapper"
+  ],
+  "k2_wrapper_sha256": "f71f713aa342fad4ec6cbf3696726639260e077257477a2cb0a33ea6cb92dd93",
+  "metrics": {
+    "generic": {
+      "cell_types": {
+        "$add": 20,
+        "$and": 1,
+        "$eq": 16,
+        "$logic_and": 2,
+        "$logic_not": 4,
+        "$mux": 85,
+        "$ne": 2,
+        "$neg": 1,
+        "$not": 3,
+        "$or": 1,
+        "$pmux": 18,
+        "$reduce_and": 2,
+        "$reduce_bool": 2,
+        "$reduce_or": 24,
+        "$sdff": 1,
+        "$sdffe": 8,
+        "$shift": 2,
+        "$shiftx": 18
+      },
+      "cells": 210,
+      "state_bits": 22
+    },
+    "hierarchy": {
+      "hierarchical_instance_types": {
+        "a2_batched_iwrr_k2": 1
+      },
+      "reachable_module_count": 2,
+      "reachable_modules": [
+        "a2_batched_iwrr_k2",
+        "a6_a2_k2_normalized_top"
+      ]
+    },
+    "mapped": {
+      "cell_types": {
+        "$_AND_": 274,
+        "$_MUX_": 63,
+        "$_NOT_": 94,
+        "$_OR_": 274,
+        "$_SDFFE_PP0P_": 21,
+        "$_SDFF_PP0_": 1,
+        "$_XOR_": 14
+      },
+      "cells": 741,
+      "combinational_cells": 719,
+      "depth_levels": 52,
+      "fanout_max": 13,
+      "fanout_p95": 6,
+      "nets": 759,
+      "nets_fanout_ge16": 0,
+      "sink_pin_net_proxy": 1450,
+      "state_bits": 22
+    }
+  },
+  "qualification": {
+    "digital_structural_proxy": "PASS",
+    "functional_equivalence": "NOT_TESTED_BY_THIS_RUNNER",
+    "physical_ppa": "HOLD_GENERIC_YOSYS_ONLY"
+  },
+  "registry_sha256": "f295ff978181e20ce3982ec6c033c188924f3b14e38ceaac1493cee2fde23a1a",
+  "runner_sha256": "d38cfdb0d0f040d22a166334008da610925754216b09c6652df17f996f5a1045",
+  "schema": "a6-a23-k2-p6-same-flow-result-v1",
+  "source_bundle_sha256": "64991f611055ada67212cc6b73567f6b4ff67b8fa69fe4d35b2430a4ceea8202",
+  "source_inventory_closed": true,
+  "sources": [
+    {
+      "path": "candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv",
+      "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+    }
+  ],
+  "target": "a2_k2",
+  "tool": {
+    "abc_path": "/tmp/a7-toolchain/usr/bin/yosys-abc",
+    "abc_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",
+    "datdir": "/tmp/a7-toolchain/usr/share/yosys",
+    "yosys_path": "/tmp/a7-toolchain/usr/bin/yosys",
+    "yosys_sha256": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f",
+    "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+  },
+  "top": "a6_a2_k2_normalized_top",
+  "warnings": {
+    "abc_combinational_network": 1,
+    "memory_to_register": 3,
+    "total": 4,
+    "unclassified": 0
+  }
+}
