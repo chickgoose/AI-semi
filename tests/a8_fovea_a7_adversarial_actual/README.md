@@ -1,10 +1,13 @@
 # A8 actual-owner W6 mutation regression
 
-This audit materializes owner commit `d3c52f0` in a temporary shared clone and
+This audit materializes owner commit `e9f27e6` in a temporary shared clone and
 runs its exact canonical qualification against the pinned three-file fovea.
-Neither the A7 nor A1 worktree is modified.  Set `A8_W6_OWNER_COMMIT=b520125`
-to audit the integration cherry-pick, whose W6 patch and relevant blobs are
-identical.
+Neither the A7 nor A1 worktree is modified. Set
+`A8_W6_OWNER_COMMIT=0f49816` to audit the source commit instead of the default
+integration commit. The only allowed identities are latest owner integration
+`e9f27e6aed302491011a5deb803a7b42a0c712b3` and source
+`0f49816b48a4cba027d40733a09edb590bfc7a86`. Their qualification, directed TB,
+fault TB, fixture, contract checker, and wrapper blobs are pinned explicitly.
 
 The owner runner's supported `A7_W6_BASE_COMMIT` input is bound to the audited
 commit's first parent.  This preserves the protected-path check for both the A7
@@ -24,12 +27,13 @@ Three temporary source mutations are then qualified independently:
 | --- | --- |
 | premature drain | nonzero and no exact qualification PASS |
 | extra retire latency | nonzero and no exact qualification PASS |
-| stale same-address retrigger caused by bypassing the current-result mask | nonzero and no exact qualification PASS |
+| stale/no-live native result hidden from endpoint | nonzero, no directed PASS, and A8 raw-causality diagnostic |
 
-The outer runner fails if a mutant returns zero **or** emits
-`A7_W6_EXACT_CANONICAL_QUALIFICATION_PASS`.  A baseline exact qualification must
-first return zero and emit that sentinel, preventing an unavailable tool or a
-broken fixture from masquerading as successful mutation killing.
+The outer runner fails if a mutant returns zero, emits
+`A7_W6_SHA_PINNED_DIRECTED_RTL_PASS`, or lacks its A8 independent-monitor
+diagnostic. A baseline exact qualification must first return zero and emit that
+new sentinel, preventing an unavailable tool or broken fixture from
+masquerading as successful mutation killing.
 
 Run:
 
