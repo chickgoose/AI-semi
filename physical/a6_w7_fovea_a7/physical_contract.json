@@ -1,0 +1,24 @@
+{
+  "schema": "a6-w7-physical-boundary-v1",
+  "ppa_top_boundary": {
+    "ddr_top": "a7_weighted_fovea_ddr",
+    "parallel_top": "a5_owner_semantics_parallel_top",
+    "retire_observer_included": true,
+    "drain_idle_included": true,
+    "protocol_fault_included": true,
+    "external_outputs_included": true
+  },
+  "reset_release": {
+    "contract": "single coordinated asynchronous deassertion at 13ns, one ns after sample_clk falls, while both clocks are low and three ns before ref_clk rises",
+    "virtual_clock_waveform_ns": [13.0, 15.0],
+    "period_ns": 16.0,
+    "timed_checks": ["ref-clock recovery/removal", "generated-clock recovery/removal", "sample-clock ICG/latch setup/hold"],
+    "blanket_false_path": false
+  },
+  "staged_boolean_equivalence": {
+    "rule": "clock_o implies frame_active while reset is released",
+    "ddr_removed_redundant_term": "~burst_clk_o from endpoint drain conjunction",
+    "parallel_removed_redundant_term": "~link_strobe_o from endpoint drain conjunction",
+    "reason": "prevent a generated clock used only as redundant drain data from being misclassified as a clock-gating endpoint"
+  }
+}

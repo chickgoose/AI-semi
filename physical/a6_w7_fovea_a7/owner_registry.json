@@ -1,0 +1,19 @@
+{
+  "schema": "a6-w7-owner-registry-v1",
+  "owner_repository": "/home/chickgoose/projects/a1",
+  "owner_commit": "2a3a3be94be8f12585f484b5b1da2b372f7282d9",
+  "files": {
+    "rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv": "b125dc3cfc51f5c898d41f9b82660c346aafc9c7613433cee622514eb3456ec7",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_rx.sv": "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_tx.sv": "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_parallel_reference_top.sv": "151046ee203e9e667726c7279704b297fb6d19696673e43b8d63e6ab418f0748",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f",
+    "tests/a5_fovea_a7_structural/a5_owner_semantics_parallel_top.sv": "d51cf96cdac873e871e2cc777152caabb509d13f131eac9b7ff52f433ba00d92",
+    "tests/a5_fovea_a7_structural/fixtures/aer_tx16_trad_rowcol_fovea.v": "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e",
+    "tests/a5_fovea_a7_structural/fixtures/arbiter2.v": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684",
+    "tests/a5_fovea_a7_structural/fixtures/arbiter4_tree.v": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"
+  }
+}
