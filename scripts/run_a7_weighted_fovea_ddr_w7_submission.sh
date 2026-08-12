@@ -56,6 +56,8 @@ owned_inputs=(
   tb/filelists/a7_weighted_fovea_ddr_w7_exhaustive.f
   tests/a7_weighted_fovea_ddr/submission_contract_check.py
   tests/a7_weighted_fovea_ddr/contract_mutation_gate.py
+  tests/a7_weighted_fovea_ddr/validate_submission_evidence.py
+  tests/a7_weighted_fovea_ddr/evidence_mutation_gate.py
   scripts/run_a7_weighted_fovea_ddr_w7_submission.sh
   docs/research/a7_weighted_fovea_ddr_w7.md
 )
@@ -88,8 +90,18 @@ if rg -n '(^|[[:space:]])(%Warning|%Error|Warning:|ERROR:|FATAL:|FAILED:)' "$out
   printf 'fail-closed diagnostic found in exhaustive build\n' >&2
   exit 1
 fi
-"$exhaustive_obj/a7_w7_exhaustive" | tee "$out/exhaustive-run.log"
-rg -Fxq 'A7_W7_N16_BITMAP_EXHAUSTIVE_PASS bitmaps=65536 nonempty=65535 accepted=65535 retired=65535' "$out/exhaustive-run.log"
+events_csv="$out/exhaustive.events.csv"
+"$exhaustive_obj/a7_w7_exhaustive" \
+  "+A7_W7_EVENTS_CSV=$events_csv" | tee "$out/exhaustive-run.log"
+python3 tests/a7_weighted_fovea_ddr/validate_submission_evidence.py \
+  --events-csv "$events_csv" --run-log "$out/exhaustive-run.log" \
+  | tee "$out/evidence-validation.log"
+rg -Fxq 'A7_W7_EVIDENCE_VALIDATION_PASS rows=65535 address_bound=1 exact_sentinel=1' \
+  "$out/evidence-validation.log"
+python3 tests/a7_weighted_fovea_ddr/evidence_mutation_gate.py \
+  --events-csv "$events_csv" --run-log "$out/exhaustive-run.log" \
+  --output "$out/evidence-mutants" | tee "$out/evidence-mutation.log"
+rg -Fxq 'A7_W7_THREE_EVIDENCE_MUTANT_GATE_PASS count=3' "$out/evidence-mutation.log"
 
 # Reuse the SHA-pinned W6 directed/Yosys/five-RTL-mutant gate unchanged.  Its
 # marker remains deliberately directed; W7 does not turn it into a full50 claim.
@@ -113,6 +125,9 @@ rg -Fq 'A7_W6_SHA_PINNED_DIRECTED_RUN_PASS physical_status=HOLD' "$out/w6-direct
   printf 'n16_bitmap_exhaustive=65536\n'
   printf 'rtl_mutants_expected_fail=5\n'
   printf 'contract_mutants_expected_fail=5\n'
+  printf 'evidence_mutants_expected_fail=3\n'
+  printf 'logical_source_retire_addr_binding=PASS\n'
+  printf 'producer_rc0_requires_csv_and_exact_sentinel=PASS\n'
   printf 'output_backpressure=SKIP_UNSUPPORTED\n'
   printf 'unrelated_clock_cdc=SKIP_UNSUPPORTED\n'
   printf 'queue_depth=0\n'

@@ -15,8 +15,11 @@ module a7_weighted_fovea_ddr_exhaustive_tb;
   logic consumer_valid_q;
   logic [3:0] consumer_addr_q;
   integer accepted, available, retired, ref_cycle;
-  integer accept_cycle;
+  integer accept_cycle, output_cycle;
   logic [3:0] expected_addr;
+  logic [15:0] current_bitmap;
+  integer events_fd;
+  string events_csv_path;
 
   a7_weighted_fovea_ddr dut (.*);
 
@@ -62,12 +65,16 @@ module a7_weighted_fovea_ddr_exhaustive_tb;
           $fatal(1, "A7_W7_EXHAUSTIVE_OUTPUT_MISMATCH got=%h expected=%h cycle=%0d accept=%0d",
                  retire_addr_o, expected_addr, ref_cycle, accept_cycle);
         available = available + 1;
+        output_cycle = ref_cycle;
       end
       if (consumer_valid_q) begin
         if (retired + 1 != accepted || consumer_addr_q !== expected_addr ||
             ref_cycle != accept_cycle + 2)
           $fatal(1, "A7_W7_EXHAUSTIVE_CONSUMER_MISMATCH got=%h expected=%h cycle=%0d accept=%0d",
                  consumer_addr_q, expected_addr, ref_cycle, accept_cycle);
+        $fwrite(events_fd, "%0d,%0d,%0d,%0d,%0d,%0d\n",
+                current_bitmap, expected_addr, consumer_addr_q,
+                accept_cycle, output_cycle, ref_cycle);
         retired = retired + 1;
       end
       if (protocol_fault_o)
@@ -103,6 +110,7 @@ module a7_weighted_fovea_ddr_exhaustive_tb;
     logic [15:0] selected;
     begin
       wait_drain();
+      current_bitmap = mask;
       source_valid = mask;
       timeout = 0;
       while (!(|source_ready) && timeout < 8) begin
@@ -132,7 +140,16 @@ module a7_weighted_fovea_ddr_exhaustive_tb;
     retired = 0;
     ref_cycle = 0;
     accept_cycle = -1;
+    output_cycle = -1;
     expected_addr = '0;
+    current_bitmap = '0;
+    if (!$value$plusargs("A7_W7_EVENTS_CSV=%s", events_csv_path))
+      $fatal(1, "A7_W7_EVIDENCE_CSV_PATH_REQUIRED");
+    events_fd = $fopen(events_csv_path, "w");
+    if (events_fd == 0)
+      $fatal(1, "A7_W7_EVIDENCE_CSV_OPEN_FAILED path=%s", events_csv_path);
+    $fwrite(events_fd,
+            "bitmap,logical_source,retire_addr,accept_cycle,output_cycle,consumer_cycle\n");
     repeat (3) @(negedge sample_clk_i);
     rst_n = 1'b1;
     repeat (2) @(posedge ref_clk_i);
@@ -153,6 +170,7 @@ module a7_weighted_fovea_ddr_exhaustive_tb;
     if (accepted != 65535 || available != 65535 || retired != 65535)
       $fatal(1, "A7_W7_EXHAUSTIVE_COUNT_MISMATCH accepted=%0d available=%0d retired=%0d",
              accepted, available, retired);
+    $fclose(events_fd);
     $display("A7_W7_N16_BITMAP_EXHAUSTIVE_PASS bitmaps=65536 nonempty=65535 accepted=65535 retired=65535");
     $finish;
   end

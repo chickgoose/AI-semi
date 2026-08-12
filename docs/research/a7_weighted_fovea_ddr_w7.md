@@ -55,17 +55,25 @@ scripts/run_a7_weighted_fovea_ddr_w7_submission.sh
 ```
 
 The runner requires the three canonical SHA-256 pins, tracked/clean W7 inputs,
-the prior exact W6 directed/Yosys gate, and ten expected-fail mutations. Five
+the prior exact W6 directed/Yosys gate, and thirteen expected-fail mutations. Five
 RTL mutants cover continuous-throughput bubbles, early/late reset arming,
 endpoint-drain escape, and same-address second-grant suppression. Five contract
 mutants reject false backpressure, unrelated-CDC, free-queue, mid-traffic-reset,
-and phase-drift claims with unique diagnostics.
+and phase-drift claims with unique diagnostics. Three evidence mutants reproduce
+the independent A8 attacks: an in-range/live `logical_source` substitution, a
+zero-return producer with no CSV, and a zero-return producer with no exact PASS
+sentinel. Each must fail with its own diagnostic.
 
 The new canonical exhaustive TB evaluates all 65,536 N16 live bitmaps. Empty is
 required quiet; every non-empty bitmap must produce one one-hot live-source
 acceptance and exactly one identical output/consumer retirement at the frozen
 +1/+2 ref-cycle boundaries, with full drain before the next bitmap. This proves
-all static request sets, not every possible temporal sequence.
+all static request sets, not every possible temporal sequence. It also writes a
+candidate-owned event CSV. `validate_submission_evidence.py` requires exactly
+65,535 rows in bitmap order, binds each `logical_source` to a live input bit and
+the independently observed `retire_addr`, rechecks +1/+2 timing, and requires
+exactly one full exhaustive sentinel. Simulator exit code zero alone is never a
+PASS; absent/empty CSV or absent/duplicated/partial sentinel exits nonzero.
 
 The only final marker is `A7_W7_DIGITAL_SUBMISSION_PASS`; it is not a full50 or
 physical qualification receipt. Unsupported optional suites remain explicit
