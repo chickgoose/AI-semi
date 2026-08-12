@@ -2,6 +2,7 @@
 
 module a4_fovea_a7_common_trace_tb;
   localparam integer MAX_EVENTS = 131072;
+  localparam integer QUIET_GUARD_CYCLES = 8;
   localparam time HALF = 8ns;
 
   logic ref_clk_i = 1'b0;
@@ -26,7 +27,7 @@ module a4_fovea_a7_common_trace_tb;
   integer request_wait [0:15];
   integer delivered_by_source [0:15];
   integer accepted_order [0:MAX_EVENTS-1];
-  integer generated, accepted, delivered, overrun, errors;
+  integer generated, accepted, delivered, delivered_in_measurement, overrun, errors;
   integer accepted_head, accepted_tail, sim_cycle;
   integer event_cursor, stim_cycle, timeout, source, id;
   integer trace_fd, event_fd, summary_fd, scan_count;
@@ -34,9 +35,11 @@ module a4_fovea_a7_common_trace_tb;
   integer load_milli, sink_mode, sink_arg0, sink_arg1, trace_seed;
   integer e2e_sum, internal_sum, max_e2e, max_internal;
   integer max_request_wait;
+  integer guard_generated, guard_accepted, guard_delivered, guard_overrun, guard_errors;
   string trace_path, events_path, summary_path, trace_name;
   realtime reset_release_time;
   bit traffic_active;
+  bit measurement_active;
 
   function automatic real service_fairness;
     integer fairness_source, service_sum, square_sum;
@@ -128,6 +131,8 @@ module a4_fovea_a7_common_trace_tb;
           delivery_cycle[id] = sim_cycle;
           event_state[id] = 3;
           delivered = delivered + 1;
+          if (measurement_active)
+            delivered_in_measurement = delivered_in_measurement + 1;
           delivered_by_source[trace_source[id]] =
             delivered_by_source[trace_source[id]] + 1;
           e2e_sum = e2e_sum + sim_cycle - occurrence[id];
@@ -207,27 +212,27 @@ module a4_fovea_a7_common_trace_tb;
         endcase
         if (accept_cycle[id] < 0)
           $fdisplay(event_fd, "a7-weighted-fovea-ddr,%s,%0d,%0d,%0d,%0d,16,%0d,,,%0d,%0d,%s",
-            trace_name, trace_seed, load_milli/10, id, trace_source[id],
+            trace_name, trace_seed, (load_milli+5)/10, id, trace_source[id],
             occurrence[id], deadline[id], sim_cycle, state_text);
         else if (delivery_cycle[id] < 0)
           $fdisplay(event_fd, "a7-weighted-fovea-ddr,%s,%0d,%0d,%0d,%0d,16,%0d,%0d,,%0d,%0d,%s",
-            trace_name, trace_seed, load_milli/10, id, trace_source[id],
+            trace_name, trace_seed, (load_milli+5)/10, id, trace_source[id],
             occurrence[id], accept_cycle[id], deadline[id], sim_cycle, state_text);
         else
           $fdisplay(event_fd, "a7-weighted-fovea-ddr,%s,%0d,%0d,%0d,%0d,16,%0d,%0d,%0d,%0d,%0d,%s",
-            trace_name, trace_seed, load_milli/10, id, trace_source[id], occurrence[id],
+            trace_name, trace_seed, (load_milli+5)/10, id, trace_source[id], occurrence[id],
             accept_cycle[id], delivery_cycle[id], deadline[id], sim_cycle, state_text);
       end
       $fdisplay(summary_fd,
         "candidate,test,seed,load_pct,stim_cycles,generated,source_overrun,accepted,delivered,errors,total_cycles,avg_e2e_latency,max_e2e_latency,avg_internal_latency,max_internal_latency,throughput,fairness,max_request_wait,avg_timing_error,max_timing_error,measurement_delivered,measurement_cycles");
       $fdisplay(summary_fd,
         "a7-weighted-fovea-ddr,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0f,%0d,%0f,%0d,%0f,%0f,%0d,0.0,0,%0d,%0d",
-        trace_name, trace_seed, load_milli/10, trace_stim_cycles, generated,
+        trace_name, trace_seed, (load_milli+5)/10, trace_stim_cycles, generated,
         overrun, accepted, delivered, errors, sim_cycle,
         (delivered != 0) ? real'(e2e_sum)/delivered : 0.0, max_e2e,
         (delivered != 0) ? real'(internal_sum)/delivered : 0.0, max_internal,
-        (trace_stim_cycles != 0) ? real'(delivered)/trace_stim_cycles : 0.0,
-        service_fairness(), max_request_wait, delivered, trace_stim_cycles);
+        (trace_stim_cycles != 0) ? real'(delivered_in_measurement)/trace_stim_cycles : 0.0,
+        service_fairness(), max_request_wait, delivered_in_measurement, trace_stim_cycles);
       $fclose(event_fd);
       $fclose(summary_fd);
     end
@@ -239,11 +244,13 @@ module a4_fovea_a7_common_trace_tb;
         !$value$plusargs("SUMMARY_OUT=%s", summary_path) ||
         !$value$plusargs("TRACE_NAME=%s", trace_name))
       $fatal(1, "TRACE_FILE/EVENTS_OUT/SUMMARY_OUT/TRACE_NAME required");
-    generated = 0; accepted = 0; delivered = 0; overrun = 0; errors = 0;
+    generated = 0; accepted = 0; delivered = 0; delivered_in_measurement = 0;
+    overrun = 0; errors = 0;
     accepted_head = 0; accepted_tail = 0; sim_cycle = 0; event_cursor = 0;
     e2e_sum = 0; internal_sum = 0; max_e2e = 0; max_internal = 0;
     max_request_wait = 0;
     traffic_active = 1'b0;
+    measurement_active = 1'b0;
     for (source = 0; source < 16; source = source + 1) begin
       pending_id[source] = -1;
       request_wait[source] = 0;
@@ -260,11 +267,27 @@ module a4_fovea_a7_common_trace_tb;
       $fatal(1, "reset release phase is not exact 4ns");
     $display("A4_COMMON_TRACE_RESET_PHASE_PASS fall_to_ref=4ns scope=initial_only");
     while (!dut.endpoint_ready) @(posedge ref_clk_i);
+    @(negedge ref_clk_i);
+    if (!dut.endpoint_ready || sim_cycle != 0)
+      $fatal(1, "traffic epoch precondition failed ready=%0b sim_cycle=%0d",
+        dut.endpoint_ready, sim_cycle);
     traffic_active = 1'b1;
+    measurement_active = 1'b1;
+    $display("A4_COMMON_TRACE_EPOCH_PASS activation=negedge first_stim_cycle=0 sim_cycle=0");
 
     for (stim_cycle = 0; stim_cycle < trace_stim_cycles; stim_cycle = stim_cycle + 1) begin
-      @(negedge ref_clk_i);
+      if (stim_cycle != 0) @(negedge ref_clk_i);
+      if (sim_cycle != stim_cycle)
+        $fatal(1, "stimulus epoch mismatch stim_cycle=%0d sim_cycle=%0d",
+          stim_cycle, sim_cycle);
       while (event_cursor < generated && occurrence[event_cursor] == stim_cycle) begin
+        if (event_cursor == 0) begin
+          if (sim_cycle != occurrence[event_cursor])
+            $fatal(1, "first occurrence epoch mismatch occurrence=%0d sim_cycle=%0d",
+              occurrence[event_cursor], sim_cycle);
+          $display("A4_COMMON_TRACE_FIRST_OCCURRENCE_PASS occurrence=%0d sim_cycle=%0d",
+            occurrence[event_cursor], sim_cycle);
+        end
         offer(event_cursor);
         event_cursor = event_cursor + 1;
       end
@@ -272,6 +295,11 @@ module a4_fovea_a7_common_trace_tb;
         $fatal(1, "trace cursor missed event=%0d", event_cursor);
     end
     if (event_cursor != generated) $fatal(1, "trace not fully consumed");
+
+    // Match aer_clean_tb: include the service edge after the final offered
+    // occurrence, then freeze performance counters before drain time.
+    @(negedge ref_clk_i);
+    measurement_active = 1'b0;
 
     timeout = 0;
     while (((|source_valid) || accepted != delivered || !drain_idle_o) && timeout < 20000) begin
@@ -282,6 +310,22 @@ module a4_fovea_a7_common_trace_tb;
       $fatal(1, "conservation/drain failure generated=%0d accepted=%0d delivered=%0d overrun=%0d",
         generated, accepted, delivered, overrun);
     if (errors != 0) $fatal(1, "scoreboard errors=%0d", errors);
+    guard_generated = generated;
+    guard_accepted = accepted;
+    guard_delivered = delivered;
+    guard_overrun = overrun;
+    guard_errors = errors;
+    repeat (QUIET_GUARD_CYCLES) begin
+      @(negedge ref_clk_i);
+      if (retire_valid_o !== 1'b0 || protocol_fault_o !== 1'b0 ||
+          generated != guard_generated || accepted != guard_accepted ||
+          delivered != guard_delivered || overrun != guard_overrun ||
+          errors != guard_errors)
+        $fatal(1, "post-drain quiet guard failure valid=%0b fault=%0b counts=%0d/%0d/%0d/%0d errors=%0d",
+          retire_valid_o, protocol_fault_o, generated, accepted, delivered, overrun, errors);
+    end
+    $display("A4_COMMON_TRACE_QUIET_PASS cycles=%0d accepted=%0d delivered=%0d overrun=%0d",
+      QUIET_GUARD_CYCLES, accepted, delivered, overrun);
     write_results();
     $display("A4_FOVEA_A7_COMMON_TRACE_PASS name=%s generated=%0d accepted=%0d delivered=%0d overrun=%0d latency=2",
       trace_name, generated, accepted, delivered, overrun);

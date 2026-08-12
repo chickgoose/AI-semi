@@ -66,6 +66,18 @@ class RunError(RuntimeError):
     pass
 
 
+def expected_load_pct(load: Any) -> int:
+    load_milli = Decimal(str(load)) * Decimal(1000)
+    if load_milli != load_milli.to_integral_value():
+        raise RunError("load cannot be represented in frozen millipercent format")
+    return (int(load_milli) + 5) // 10
+
+
+def validate_load_pct(actual: int, load: Any) -> None:
+    if actual != expected_load_pct(load):
+        raise RunError("load_pct does not use frozen nearest-integer rounding")
+
+
 def bytes_digest(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -163,11 +175,12 @@ def validate_generation(index: dict[str, Any], official: Any, suite: str,
 
 
 def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
-                    log: Path) -> dict[str, int | str]:
+                    log: Path, expected_first_occurrence: int) -> dict[str, int | str]:
     name = metadata["run"]["name"]
     expected_count = metadata["event_count"]
     expected_seed = metadata["run"]["seed"]
-    expected_load = int(Decimal(str(metadata["run"]["load"])) * 100)
+    expected_load = expected_load_pct(metadata["run"]["load"])
+    stim_cycles = metadata["run"]["stim_cycles"]
     with events.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames != EVENT_COLUMNS:
@@ -175,7 +188,10 @@ def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
         rows = list(reader)
     if len(rows) != expected_count:
         raise RunError(f"{name}: event result cardinality mismatch")
+    if not rows or int(rows[0]["occurrence_cycle"]) != expected_first_occurrence:
+        raise RunError(f"{name}: first occurrence provenance mismatch")
     counts = {"delivered": 0, "source_overrun": 0, "accepted": 0, "pending": 0}
+    delivered_in_measurement_from_events = 0
     for expected_id, row in enumerate(rows):
         try:
             event_id = int(row["tb_only_event_id"])
@@ -185,6 +201,7 @@ def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
             load = int(row["load_pct"])
         except ValueError as exc:
             raise RunError(f"{name}: non-integer result provenance") from exc
+        validate_load_pct(load, metadata["run"]["load"])
         if (event_id != expected_id or row["candidate"] != CANDIDATE or
                 row["test"] != name or source_count != 16 or seed != expected_seed or
                 load != expected_load or not 0 <= source < 16):
@@ -198,6 +215,8 @@ def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
                 raise RunError(f"{name}: delivered event lacks cycle evidence")
             if int(row["delivery_cycle"]) - int(row["accept_cycle"]) != 2:
                 raise RunError(f"{name}: consumer latency is not exactly +2")
+            if int(row["delivery_cycle"]) < stim_cycles:
+                delivered_in_measurement_from_events += 1
         elif row["accept_cycle"] or row["delivery_cycle"]:
             raise RunError(f"{name}: non-delivered event gained accept/delivery evidence")
     if counts["accepted"] or counts["pending"]:
@@ -215,6 +234,7 @@ def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
     item = summaries[0]
     if (item["candidate"] != CANDIDATE or item["test"] != name or
             int(item["seed"]) != expected_seed or int(item["load_pct"]) != expected_load or
+            int(item["stim_cycles"]) != stim_cycles or
             int(item["generated"]) != expected_count or
             int(item["source_overrun"]) != counts["source_overrun"] or
             int(item["accepted"]) != counts["delivered"] or
@@ -222,6 +242,14 @@ def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
             int(item["errors"]) != 0 or float(item["avg_internal_latency"]) != 2.0 or
             int(item["max_internal_latency"]) != 2):
         raise RunError(f"{name}: summary/result mismatch")
+    measurement_delivered = int(item["measurement_delivered"])
+    measurement_cycles = int(item["measurement_cycles"])
+    expected_throughput = Decimal(measurement_delivered) / Decimal(stim_cycles)
+    if (measurement_cycles != stim_cycles or
+            measurement_delivered != delivered_in_measurement_from_events or
+            measurement_delivered > counts["delivered"] or
+            abs(Decimal(item["throughput"]) - expected_throughput) > Decimal("0.000001")):
+        raise RunError(f"{name}: frozen measurement-window mismatch")
 
     lines = log.read_text(encoding="utf-8").splitlines()
     marker = (f"A4_FOVEA_A7_COMMON_TRACE_PASS name={name} generated={expected_count} "
@@ -232,11 +260,28 @@ def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
     phase_marker = "A4_COMMON_TRACE_RESET_PHASE_PASS fall_to_ref=4ns scope=initial_only"
     if lines.count(phase_marker) != 1:
         raise RunError(f"{name}: reset phase marker missing or duplicated")
+    epoch_marker = "A4_COMMON_TRACE_EPOCH_PASS activation=negedge first_stim_cycle=0 sim_cycle=0"
+    if lines.count(epoch_marker) != 1:
+        raise RunError(f"{name}: traffic epoch marker missing or duplicated")
+    first_occurrence_marker = (
+        f"A4_COMMON_TRACE_FIRST_OCCURRENCE_PASS "
+        f"occurrence={expected_first_occurrence} sim_cycle={expected_first_occurrence}")
+    if lines.count(first_occurrence_marker) != 1:
+        raise RunError(f"{name}: first occurrence epoch marker missing or duplicated")
+    quiet_marker = (f"A4_COMMON_TRACE_QUIET_PASS cycles=8 "
+                    f"accepted={counts['delivered']} delivered={counts['delivered']} "
+                    f"overrun={counts['source_overrun']}")
+    if lines.count(quiet_marker) != 1:
+        raise RunError(f"{name}: post-drain quiet marker missing or duplicated")
     return {
         "generated": expected_count,
         "accepted": counts["delivered"],
         "delivered": counts["delivered"],
         "source_overrun": counts["source_overrun"],
+        "delivered_in_measurement": measurement_delivered,
+        "delivered_after_measurement": counts["delivered"] - measurement_delivered,
+        "measurement_cycles": measurement_cycles,
+        "throughput": item["throughput"],
         "accepted_not_delivered": counts["accepted"],
         "pending_at_end": counts["pending"],
     }
@@ -244,7 +289,8 @@ def validate_result(metadata: dict[str, Any], events: Path, summary: Path,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=("smoke", "full50", "capacity22"),
+    parser.add_argument("--suite", choices=(
+        "smoke", "highload-smoke", "full50", "capacity22"),
                         default="smoke")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--a1-root", type=Path, default=Path("/home/chickgoose/projects/a1"))
@@ -276,6 +322,8 @@ def main(argv: list[str] | None = None) -> int:
                                  tools / "common_suite_official.py", OFFICIAL_SHA)
         official = load_official(official_path)
         suite = "full50" if args.suite == "smoke" else args.suite
+        if args.suite == "highload-smoke":
+            suite = "capacity22"
         manifest_name = ("manifest.neutrality-n16.json" if suite == "full50"
                          else "manifest.multilane-n16.json")
         manifest = snapshot(
@@ -300,9 +348,11 @@ def main(argv: list[str] | None = None) -> int:
         index = json.loads(index_path.read_text(encoding="utf-8"))
         generated_rows = validate_generation(index, official, suite, trace_root, manifest)
         rows = generated_rows
-        if args.suite == "smoke":
+        if args.suite in ("smoke", "highload-smoke"):
+            smoke_name = ("core_simultaneous_identity" if args.suite == "smoke"
+                          else "uniform_l2p00_s2001")
             rows = [row for row in rows
-                    if row["run"]["name"] == "core_simultaneous_identity"]
+                    if row["run"]["name"] == smoke_name]
             if len(rows) != 1:
                 raise RunError("smoke trace missing or duplicated")
 
@@ -321,6 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         reports = []
         totals = {key: 0 for key in (
             "generated", "accepted", "delivered", "source_overrun",
+            "delivered_in_measurement", "delivered_after_measurement",
             "accepted_not_delivered", "pending_at_end",
         )}
         for row in rows:
@@ -338,7 +389,13 @@ def main(argv: list[str] | None = None) -> int:
             log = run_root / "run.log"
             run([str(binary), f"+TRACE_FILE={prepared}", f"+TRACE_NAME={name}",
                  f"+EVENTS_OUT={events}", f"+SUMMARY_OUT={summary}"], log)
-            counts = validate_result(row, events, summary, log)
+            trace_path = trace_root / row["trace_file"]
+            with trace_path.open(encoding="utf-8") as stream:
+                first_trace_event = json.loads(stream.readline())
+            first_occurrence = first_trace_event.get("occurrence_cycle")
+            if isinstance(first_occurrence, bool) or not isinstance(first_occurrence, int):
+                raise RunError(f"{name}: invalid first trace occurrence")
+            counts = validate_result(row, events, summary, log, first_occurrence)
             for key in totals:
                 totals[key] += int(counts[key])
             reports.append({
@@ -358,7 +415,7 @@ def main(argv: list[str] | None = None) -> int:
                 digest(tb_path) != tb_pre):
             raise RunError("runner/TB/Verilator changed during execution")
         receipt = {
-            "schema": "a4_fovea_a7_common_trace_v2",
+            "schema": "a4_fovea_a7_common_trace_v4",
             "status": "LOCAL_RTL_TRACE_REPLAY_PASS",
             "suite": args.suite,
             "executed_run_count": len(rows),
@@ -384,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
                 "official_suite": suite,
                 "official_stems_generated": len(generated_rows),
                 "official_stems_executed": len(rows),
-                "smoke_subset": args.suite == "smoke",
+                "smoke_subset": args.suite in ("smoke", "highload-smoke"),
                 "capacity22_means": "22_official_runs_not_queue_depth",
             },
             "functional_scope": {
@@ -395,6 +452,15 @@ def main(argv: list[str] | None = None) -> int:
                 "reset": "initial_release_only_sample_fall_to_ref_rise_4ns",
                 "conservation": "generated=delivered+source_overrun_after_full_drain",
                 "ordering": "global_accepted_address_order_exact",
+                "measurement_window": (
+                    "stim_window_plus_final_service_edge_before_candidate_dependent_drain"),
+                "measurement_delivered_definition": "delivery_cycle < stim_cycles",
+                "throughput_definition": "delivered_in_measurement/stim_cycles",
+                "load_pct_definition": "(load_milli+5)/10_integer",
+                "traffic_epoch": "negedge_activation_with_sim_cycle_zero_assertion",
+                "post_drain_quiet_guard_cycles": 8,
+                "post_drain_quiet_guard": (
+                    "retire_valid=0,protocol_fault=0,and_generation_transport_counts_stable"),
             },
             "capacity_accounting": {
                 "candidate_event_queue_entries": 0,
