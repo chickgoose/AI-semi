@@ -7,31 +7,15 @@ verilator_bin="${VERILATOR:-verilator}"
 yosys_bin="${YOSYS:-yosys}"
 out_dir="${A3_P6_TEST_OUT:-/tmp/a3-exact-scalar-prefix-k2-p6}"
 filelist="$project_root/rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6.f"
+provenance="$project_root/rtl/candidates/a3_exact_scalar_prefix_k2_p6/provenance.json"
+provenance_check="$test_dir/verify_provenance.py"
 
 mkdir -p "$out_dir"
 command -v "$verilator_bin" >/dev/null
 command -v "$yosys_bin" >/dev/null
 
-check_sha() {
-  local expected="$1"
-  local path="$2"
-  local actual
-  actual="$(sha256sum "$project_root/$path")"
-  actual="${actual%% *}"
-  if [[ "$actual" != "$expected" ]]; then
-    printf 'A3_P6_OWNER_PIN_FAIL path=%s expected=%s actual=%s\n' \
-      "$path" "$expected" "$actual" >&2
-    exit 1
-  fi
-}
-
-check_sha bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9 \
-  rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv
-check_sha 6945c4e65b16b389ccb9dd2161d7eb6c8a31fb33b2e7d1e4b466ab7665da7a59 \
-  rtl/candidates/a3_exact_scalar_prefix_k2/candidate-profile.json
-check_sha a4574344a3181676de011c144c95818ea990f5a2d0438d815a45d00a01b3ae9d \
-  rtl/candidates/a3_exact_scalar_prefix_k2/files.f
-printf '%s\n' 'A3_P6_OWNER_PINS_PASS blobs=3'
+python3 "$provenance_check" --project-root "$project_root" \
+  --provenance "$provenance" --self-test | tee "$out_dir/provenance.log"
 
 rtl_sources=()
 while IFS= read -r source; do
