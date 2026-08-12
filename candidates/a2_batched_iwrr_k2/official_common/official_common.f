@@ -1,0 +1,3 @@
+candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv
+candidates/a2_batched_iwrr_k2/official_common/rtl/a2_k2_official_always_ready_wrapper.sv
+candidates/a2_batched_iwrr_k2/official_common/binding/a2_k2_official_common_binding.sv
