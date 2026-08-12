@@ -1,4 +1,82 @@
 {
-  "schema_version": 2,
-  "bindings": []
+  "schema_version": 3,
+  "bindings": [
+    {
+      "name": "a2-batched-iwrr-model-selftest",
+      "contract": "batched_iwrr_k2",
+      "evidence_scope": "owner_selftest",
+      "owner_repo": "/home/chickgoose/projects/a8",
+      "owner_commit": "7c30d54866d81e856f9aa652db236c3a9face924",
+      "sources": [
+        {
+          "path": "candidates/a2_batched_iwrr_k2/CONTRACT.md",
+          "sha256": "b36519cbb9e2ada9bd31414109d830fd50411071c1b00811afd45d82edd2a41b"
+        },
+        {
+          "path": "candidates/a2_batched_iwrr_k2/model/batched_iwrr_k2.py",
+          "sha256": "2af628bbdca23ad6abca30b0b84a2bb209d460fe7718df2d2f3a5f003f0cd268"
+        },
+        {
+          "path": "candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv",
+          "sha256": "256f24cb47d266962125429e8df076c9b314e853deb826b28e45ba53c9af3565"
+        },
+        {
+          "path": "candidates/a2_batched_iwrr_k2/tests/test_model.py",
+          "sha256": "6424b462577f26a14e722be24bf2081a5d5df2b7129a5abc9faa7dfc3637d496"
+        }
+      ],
+      "execution": {
+        "tool": {
+          "path": "/usr/bin/python3.14",
+          "sha256": "b8d8288faefdd300201f43fcf00f6f539a27218eeed3a3dff5ab10b9c4c99700"
+        },
+        "artifact": "candidates/a2_batched_iwrr_k2/tests/test_model.py",
+        "argv": [],
+        "env": {
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PYTHONHASHSEED": "0"
+        },
+        "required_output": ["Ran 8 tests", "OK"]
+      }
+    },
+    {
+      "name": "a3-exact-scalar-prefix-owner-model",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "evidence_scope": "owner_model",
+      "owner_repo": "/home/chickgoose/projects/a8",
+      "owner_commit": "632e68d247ec36a35b62dbd5c100b0a23d47cf7b",
+      "sources": [
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2/README.md",
+          "sha256": "1425e5b83599f78e0e34840c5c47e17189af0165811cd3decf02967e67e43b11"
+        },
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2/oracle.py",
+          "sha256": "c2c793a284cb6d58507de6e2d62c25ce54d7120bbd6f9ee642bd210528f0ff9c"
+        },
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+          "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+        }
+      ],
+      "execution": {
+        "tool": {
+          "path": "/usr/bin/python3.14",
+          "sha256": "b8d8288faefdd300201f43fcf00f6f539a27218eeed3a3dff5ab10b9c4c99700"
+        },
+        "artifact": "rtl/candidates/a3_exact_scalar_prefix_k2/oracle.py",
+        "argv": [],
+        "env": {
+          "LANG": "C.UTF-8",
+          "LC_ALL": "C.UTF-8",
+          "PYTHONHASHSEED": "0"
+        },
+        "required_output": [
+          "'address_grants': 240",
+          "'row_opportunities_0_1_2_3': [20, 100, 100, 20]"
+        ]
+      }
+    }
+  ]
 }

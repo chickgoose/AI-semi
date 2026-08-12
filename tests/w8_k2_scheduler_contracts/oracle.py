@@ -21,8 +21,8 @@ CONTRACTS = (
     CONTRACT_PAIRED_ROW_PROPOSAL,
 )
 
-# IWRR rounds: all rows at round 1, then rows 1/2 at rounds 2..5.
-BATCHED_IWRR_ROWS = (0, 1, 2, 3, 1, 2, 1, 2, 1, 2, 1, 2)
+# Exact A2 owner calendar, paired into six atomic phases.
+BATCHED_IWRR_ROWS = (1, 2, 0, 1, 2, 3, 1, 2, 1, 2, 1, 2)
 # Engineering proposal only: fixed row-token pairing, with no column-pair claim.
 PAIRED_ROW_PROPOSAL_ROWS = (0, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 3)
 
@@ -53,10 +53,8 @@ class FoveaState:
 
 @dataclass(frozen=True)
 class CalendarState:
-    token_index: int = 0
+    phase: int = 0
     column_rr: tuple[int, int, int, int] = (0, 0, 0, 0)
-    # Positive means owed service; negative means it borrowed service.
-    fallback_debt: tuple[int, int, int, int] = (0, 0, 0, 0)
 
 
 PolicyState = FoveaState | CalendarState
@@ -201,9 +199,13 @@ def check_weight_schedule(tokens: Sequence[int]) -> None:
         )
 
 
-def _eligible_rows(request: int) -> tuple[int, ...]:
-    rows = _row_request(request)
-    return tuple(row for row in range(4) if rows & (1 << row))
+def check_batched_iwrr_contract(tokens: Sequence[int]) -> None:
+    if tuple(tokens) != BATCHED_IWRR_ROWS:
+        raise ContractViolation(
+            "BATCHED_IWRR_CALENDAR_MISMATCH "
+            f"expected={BATCHED_IWRR_ROWS} actual={tuple(tokens)}"
+        )
+    check_weight_schedule(tokens)
 
 
 def _pick_column(request: int, row: int, start: int) -> int:
@@ -215,34 +217,14 @@ def _pick_column(request: int, row: int, start: int) -> int:
     raise ContractViolation(f"EMPTY_SELECTED_ROW row={row}")
 
 
-def _calendar_step(
-    request: int, state: CalendarState, tokens: Sequence[int]
-) -> tuple[Optional[int], CalendarState]:
-    """One successful token is one microstep; an empty request advances none."""
-
-    eligible = _eligible_rows(request)
-    if not eligible:
-        return None, state
-    nominal = tokens[state.token_index]
-    debt = list(state.fallback_debt)
-    rr = list(state.column_rr)
-    owed = [row for row in eligible if debt[row] > 0]
-    if debt[nominal] < 0 and owed:
-        selected = min(owed, key=lambda row: (-debt[row], row))
-    elif nominal in eligible:
-        selected = nominal
-    else:
-        selected = min(eligible)
-    column = _pick_column(request, selected, rr[selected])
-    rr[selected] = (column + 1) & 3
-    if selected != nominal:
-        debt[nominal] += 1
-        debt[selected] -= 1
-    return 4 * selected + column, CalendarState(
-        token_index=(state.token_index + 1) % len(tokens),
-        column_rr=tuple(rr),  # type: ignore[arg-type]
-        fallback_debt=tuple(debt),  # type: ignore[arg-type]
-    )
+def _calendar_source(
+    request: int, row: int, column_rr: list[int]
+) -> Optional[int]:
+    if not request & (0xF << (4 * row)):
+        return None
+    column = _pick_column(request, row, column_rr[row])
+    column_rr[row] = (column + 1) & 3
+    return 4 * row + column
 
 
 def _state_dict(state: PolicyState) -> dict:
@@ -306,24 +288,30 @@ class K2Scheduler:
         assert isinstance(self.policy, CalendarState)
         tokens = list(_tokens_for_contract(self.contract))
         if self.fault == "false_aggregate_1551":
-            tokens[3] = 2
-        remaining, state = request, self.policy
+            tokens[5] = 2
+        pair = tokens[2 * self.policy.phase : 2 * self.policy.phase + 2]
+        rr = list(self.policy.column_rr)
         sources: list[Optional[int]] = []
         nominal: list[Optional[int]] = []
-        for _ in range(2):
-            nominal.append(tokens[state.token_index])
-            source, next_state = _calendar_step(remaining, state, tokens)
+        for row in pair:
+            nominal.append(row)
+            source = _calendar_source(request, row, rr)
+            if source is None and self.fault == "sparse_fallback_debt":
+                # Incorrect debt/borrowing model: an absent entitlement is
+                # replaced by an unrelated eligible row instead of waived.
+                for borrower in range(4):
+                    source = _calendar_source(request, borrower, rr)
+                    if source is not None and source not in sources:
+                        break
+                if source in sources:
+                    source = None
             sources.append(source)
-            if source is None:
-                break
-            remaining &= ~(1 << source)
-            state = next_state
-        while len(sources) < 2:
-            sources.append(None)
-            nominal.append(None)
-        if self.fault == "sparse_fallback_debt":
-            state = replace(state, fallback_debt=(0, 0, 0, 0))
-        source_tuple = tuple(sources)
+        compact = [source for source in sources if source is not None]
+        source_tuple = tuple(compact + [None] * (2 - len(compact)))
+        next_state = CalendarState(
+            phase=(self.policy.phase + 1) % 6,
+            column_rr=tuple(rr),  # type: ignore[arg-type]
+        )
         extra: tuple[int, ...] = ()
         if self.fault == "bitmap_popcount_confusion":
             extra = tuple(
@@ -334,7 +322,7 @@ class K2Scheduler:
             sum(source is not None for source in source_tuple),
             source_tuple,  # type: ignore[arg-type]
             request,
-            state,
+            next_state,
             tuple(nominal),  # type: ignore[arg-type]
             extra,
         )
@@ -376,7 +364,12 @@ class K2Scheduler:
         bundle = self.bundle
         committed = bundle.addresses if cycle_input.bundle_ready else (None, None)
         held = (None, None) if cycle_input.bundle_ready else bundle.addresses
-        if cycle_input.bundle_ready:
+        # A2's exact contract waives an all-empty phase automatically.  A
+        # nonempty offer is atomic and advances only when bundle_ready.
+        automatic_empty_waive = bundle.grant_count == 0 and (
+            self.contract == CONTRACT_BATCHED_IWRR
+        )
+        if cycle_input.bundle_ready or automatic_empty_waive:
             self.policy = bundle.next_policy
             self.bundle = None
         elif self.fault == "calendar_advance_uncommitted_lane":
@@ -467,7 +460,7 @@ def validate_observation(observation: Observation) -> None:
         )
     if observation.reset and observation.grant_count:
         raise ContractViolation("RESET_PHANTOM")
-    if not observation.bundle_ready:
+    if not observation.bundle_ready and observation.grant_count:
         if observation.committed != (None, None):
             raise ContractViolation("ATOMIC_BUNDLE_PARTIAL_COMMIT")
         if observation.policy_after != observation.policy_before:

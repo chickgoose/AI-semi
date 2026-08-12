@@ -84,9 +84,9 @@
       "name": "batched_sparse_debt_repay",
       "contract": "batched_iwrr_k2",
       "cycles": [
-        {"request": "0100", "bundle_ready": true},
-        {"request": "ffff", "bundle_ready": true},
-        {"request": "ffff", "bundle_ready": true}
+        {"request": "1000", "bundle_ready": false},
+        {"request": "1000", "bundle_ready": false},
+        {"request": "1000", "bundle_ready": true}
       ]
     },
     {

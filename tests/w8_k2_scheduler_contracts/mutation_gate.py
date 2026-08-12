@@ -17,6 +17,7 @@ from oracle import (
     CycleInput,
     TwoLaneBufferedLink,
     WEIGHTS,
+    check_batched_iwrr_contract,
     check_weight_schedule,
     flatten_committed,
     run_trace,
@@ -80,7 +81,7 @@ def load_vectors(path: Path = VECTORS) -> dict[str, tuple[str, list[CycleInput]]
 
 
 def run_positive_controls(vectors: dict[str, tuple[str, list[CycleInput]]]) -> int:
-    check_weight_schedule(BATCHED_IWRR_ROWS)
+    check_batched_iwrr_contract(BATCHED_IWRR_ROWS)
     for contract, trace in vectors.values():
         for observation in run_trace(contract, trace):
             validate_observation(observation)
@@ -133,8 +134,8 @@ def _exercise_mutant(
     elif mutation.fault == "sparse_fallback_debt":
         _raise_if_equal(
             "SPARSE_FALLBACK_DEBT",
-            expected[0].policy_after["fallback_debt"],
-            actual[0].policy_after["fallback_debt"],
+            expected[0].addresses,
+            actual[0].addresses,
         )
     else:
         raise ContractViolation(f"MUTATION_UNROUTED fault={mutation.fault}")

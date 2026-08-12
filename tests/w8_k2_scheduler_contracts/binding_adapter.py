@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize and execute only SHA-pinned owner artifacts with provenance."""
+"""Execute only immutable owner artifacts from exact materialized commits."""
 
 from __future__ import annotations
 
@@ -7,14 +7,12 @@ import argparse
 import hashlib
 import json
 import re
-import secrets
 import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-from mutation_gate import VECTORS, load_vectors
-from oracle import CONTRACTS, ContractViolation, run_trace
+from oracle import CONTRACTS, ContractViolation
 
 
 ROOT = Path(__file__).resolve().parent
@@ -26,6 +24,12 @@ FIXED_ENV_KEYS = {"LANG", "LC_ALL", "PYTHONHASHSEED"}
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _canonical_hash(value: object) -> str:
+    return _sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    )
 
 
 def _git(repo: Path, *args: str, binary: bool = False) -> str | bytes:
@@ -55,7 +59,7 @@ def _safe_relative(text: str) -> PurePosixPath:
 
 def _load_registry(path: Path) -> list[dict]:
     document = json.loads(path.read_text(encoding="utf-8"))
-    if set(document) != {"schema_version", "bindings"} or document["schema_version"] != 2:
+    if set(document) != {"schema_version", "bindings"} or document["schema_version"] != 3:
         raise ContractViolation("OWNER_REGISTRY_SCHEMA")
     if not isinstance(document["bindings"], list):
         raise ContractViolation("OWNER_BINDINGS_NOT_LIST")
@@ -65,7 +69,7 @@ def _load_registry(path: Path) -> list[dict]:
 def _validate_execution(binding: dict, source_paths: set[str]) -> dict:
     execution = binding["execution"]
     if not isinstance(execution, dict) or set(execution) != {
-        "tool", "artifact", "argv", "env"
+        "tool", "artifact", "argv", "env", "required_output"
     }:
         raise ContractViolation("OWNER_EXECUTION_SCHEMA")
     tool = execution["tool"]
@@ -84,24 +88,32 @@ def _validate_execution(binding: dict, source_paths: set[str]) -> dict:
     argv = execution["argv"]
     if not isinstance(argv, list) or not all(isinstance(item, str) for item in argv):
         raise ContractViolation("OWNER_ARGV_SCHEMA")
-    joined = "\0".join(argv)
-    for marker in ("{snapshot}", "{vectors}", "{result}", "{challenge}"):
-        if marker not in joined:
-            raise ContractViolation(f"OWNER_ARGV_MARKER_MISSING marker={marker}")
+    if any("{" in item or "}" in item for item in argv):
+        raise ContractViolation("OWNER_ARGV_PLACEHOLDER_FORBIDDEN")
     env = execution["env"]
     if not isinstance(env, dict) or set(env) != FIXED_ENV_KEYS or not all(
         isinstance(key, str) and isinstance(value, str) for key, value in env.items()
     ):
         raise ContractViolation("OWNER_ENV_NOT_CLOSED")
+    required_output = execution["required_output"]
+    if not isinstance(required_output, list) or not required_output or not all(
+        isinstance(item, str) and item for item in required_output
+    ):
+        raise ContractViolation("OWNER_REQUIRED_OUTPUT_SCHEMA")
     return execution
 
 
-def materialize_binding(binding: dict, destination: Path) -> tuple[Path, str, dict]:
-    required = {"name", "contract", "owner_repo", "owner_commit", "sources", "execution"}
+def materialize_binding(binding: dict, destination: Path) -> tuple[Path, dict]:
+    required = {
+        "name", "contract", "evidence_scope", "owner_repo", "owner_commit",
+        "sources", "execution"
+    }
     if set(binding) != required:
         raise ContractViolation("OWNER_BINDING_FIELDS")
     if binding["contract"] not in CONTRACTS:
         raise ContractViolation("OWNER_BINDING_CONTRACT")
+    if binding["evidence_scope"] not in {"owner_model", "owner_selftest", "owner_rtl"}:
+        raise ContractViolation("OWNER_EVIDENCE_SCOPE")
     commit = binding["owner_commit"]
     if not isinstance(commit, str) or HEX40.fullmatch(commit) is None:
         raise ContractViolation(f"OWNER_COMMIT_NOT_FULL_SHA commit={commit}")
@@ -136,95 +148,54 @@ def materialize_binding(binding: dict, destination: Path) -> tuple[Path, str, di
         target.write_bytes(data)
         manifest.append({"path": normalized, "sha256": expected_hash})
     execution = _validate_execution(binding, source_paths)
-    manifest_hash = _sha256(
-        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
-    )
     artifact_hash = next(
         row["sha256"] for row in manifest if row["path"] == execution["artifact"]
     )
     provenance = {
         "owner_commit": commit,
+        "artifact": execution["artifact"],
         "artifact_sha256": artifact_hash,
-        "snapshot_manifest_sha256": manifest_hash,
+        "tool_path": execution["tool"]["path"],
+        "tool_sha256": execution["tool"]["sha256"],
+        "argv_sha256": _canonical_hash(execution["argv"]),
+        "env_sha256": _canonical_hash(execution["env"]),
+        "snapshot_manifest_sha256": _canonical_hash(manifest),
     }
-    return snapshot, commit, provenance
+    return snapshot, provenance
 
 
-def _external_expected(contract: str) -> dict[str, list[dict]]:
-    expected = {}
-    for name, (case_contract, trace) in load_vectors().items():
-        if case_contract != contract:
-            continue
-        expected[name] = [
-            {
-                "grant_count": observation.grant_count,
-                "addresses": list(observation.addresses),
-                "committed": list(observation.committed),
-                "held_after": list(observation.held_after),
-            }
-            for observation in run_trace(contract, trace)
-        ]
-    return expected
+def execute_binding(binding: dict, snapshot: Path, provenance: dict) -> dict:
+    """The process shape cannot name an external adapter or arbitrary command."""
 
-
-def execute_binding(
-    binding: dict, snapshot: Path, result_path: Path, provenance: dict
-) -> dict:
     execution = binding["execution"]
-    challenge_path = snapshot / ".w8-binding-challenge.json"
-    challenge = {**provenance, "nonce": secrets.token_hex(32)}
-    challenge_bytes = json.dumps(challenge, sort_keys=True).encode()
-    challenge_path.write_bytes(challenge_bytes)
-    expected_provenance = {
-        **provenance,
-        "challenge_sha256": _sha256(challenge_bytes),
-    }
-    replacements = {
-        "{snapshot}": str(snapshot),
-        "{vectors}": str(VECTORS),
-        "{result}": str(result_path),
-        "{challenge}": str(challenge_path),
-        "{contract}": binding["contract"],
-    }
-    argv = [execution["tool"]["path"], str(snapshot / execution["artifact"])]
-    for item in execution["argv"]:
-        expanded = item
-        for marker, value in replacements.items():
-            expanded = expanded.replace(marker, value)
-        argv.append(expanded)
+    artifact = snapshot.joinpath(*PurePosixPath(execution["artifact"]).parts)
+    if not artifact.is_file() or _sha256(artifact.read_bytes()) != provenance["artifact_sha256"]:
+        raise ContractViolation("OWNER_ARTIFACT_CHANGED_BEFORE_EXEC")
+    argv = [execution["tool"]["path"], str(artifact), *execution["argv"]]
     completed = subprocess.run(
         argv,
-        cwd=snapshot,
+        cwd=artifact.parent,
         env=dict(execution["env"]),
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
+    if _sha256(artifact.read_bytes()) != provenance["artifact_sha256"]:
+        raise ContractViolation("OWNER_ARTIFACT_CHANGED_AFTER_EXEC")
     if completed.returncode:
         raise ContractViolation(
             f"OWNER_ARTIFACT_FAILED rc={completed.returncode} output={completed.stdout}"
         )
-    if not result_path.is_file():
-        raise ContractViolation("OWNER_RESULT_MISSING")
-    return expected_provenance
-
-
-def validate_owner_result(binding: dict, result_path: Path, provenance: dict) -> int:
-    document = json.loads(result_path.read_text(encoding="utf-8"))
-    required = {"schema_version", "contract", "vectors_sha256", "provenance", "cases"}
-    if set(document) != required or document["schema_version"] != 2:
-        raise ContractViolation("OWNER_RESULT_SCHEMA")
-    if document["contract"] != binding["contract"]:
-        raise ContractViolation("OWNER_RESULT_CONTRACT")
-    if document["vectors_sha256"] != _sha256(VECTORS.read_bytes()):
-        raise ContractViolation("OWNER_RESULT_VECTOR_SHA")
-    if document["provenance"] != provenance:
-        raise ContractViolation("OWNER_SNAPSHOT_PROOF_MISSING")
-    expected = _external_expected(binding["contract"])
-    if document["cases"] != expected:
-        raise ContractViolation("OWNER_RESULT_DIVERGENCE")
-    return len(expected)
+    for marker in execution["required_output"]:
+        if marker not in completed.stdout:
+            raise ContractViolation(f"OWNER_REQUIRED_OUTPUT_MISSING marker={marker!r}")
+    return {
+        **provenance,
+        "process_argv": argv,
+        "output_sha256": _sha256(completed.stdout.encode()),
+        "required_output": list(execution["required_output"]),
+    }
 
 
 def run_registry(registry: Path, work_root: Path) -> dict:
@@ -234,20 +205,19 @@ def run_registry(registry: Path, work_root: Path) -> dict:
         if not isinstance(name, str) or not name or name in names:
             raise ContractViolation("OWNER_BINDING_NAME")
         names.add(name)
-        snapshot, commit, provenance = materialize_binding(binding, work_root)
-        result_path = work_root / f"{name}.result.json"
-        expected_provenance = execute_binding(binding, snapshot, result_path, provenance)
-        cases = validate_owner_result(binding, result_path, expected_provenance)
+        snapshot, provenance = materialize_binding(binding, work_root)
+        execution = execute_binding(binding, snapshot, provenance)
         rows.append({
             "name": name,
             "contract": binding["contract"],
-            "commit": commit,
+            "evidence_scope": binding["evidence_scope"],
+            "commit": provenance["owner_commit"],
             "sources": len(binding["sources"]),
-            "cases": cases,
+            "execution": execution,
             "status": "PASS",
         })
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "decision": "PASS" if rows else "SKIP_NO_OWNER_BINDINGS",
         "bindings": rows,
         "count": len(rows),
@@ -269,7 +239,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     elif report["count"]:
-        print(f"W8_A8_K2_OWNER_BINDING_PASS bindings={report['count']}")
+        scopes = ",".join(row["evidence_scope"] for row in report["bindings"])
+        print(f"W8_A8_K2_OWNER_BINDING_PASS bindings={report['count']} scopes={scopes}")
     else:
         print("W8_A8_K2_OWNER_BINDING_SKIP bindings=0")
     return 0

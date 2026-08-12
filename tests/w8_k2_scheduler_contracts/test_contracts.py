@@ -27,6 +27,7 @@ from oracle import (
     CycleInput,
     TwoLaneBufferedLink,
     canonical_fovea_step,
+    check_batched_iwrr_contract,
     check_weight_schedule,
     flatten_committed,
     run_trace,
@@ -35,8 +36,7 @@ from oracle import (
 
 
 ROOT = Path(__file__).resolve().parent
-FAKE_ADAPTER = ROOT / "fake_owner_adapter.py"
-ORACLE = ROOT / "oracle.py"
+IMMUTABLE_FIXTURE = ROOT / "immutable_owner_fixture.py"
 
 
 class ContractTest(unittest.TestCase):
@@ -47,8 +47,11 @@ class ContractTest(unittest.TestCase):
         self.assertIn(CONTRACT_PAIRED_ROW_PROPOSAL, CONTRACTS)
 
     def test_batched_iwrr_round_and_batch_semantics(self) -> None:
-        self.assertEqual(BATCHED_IWRR_ROWS[:4], (0, 1, 2, 3))
-        self.assertEqual(BATCHED_IWRR_ROWS[4:], (1, 2, 1, 2, 1, 2, 1, 2))
+        self.assertEqual(
+            BATCHED_IWRR_ROWS,
+            (1, 2, 0, 1, 2, 3, 1, 2, 1, 2, 1, 2),
+        )
+        check_batched_iwrr_contract(BATCHED_IWRR_ROWS)
         check_weight_schedule(BATCHED_IWRR_ROWS)
         observations = run_trace(
             CONTRACT_BATCHED_IWRR,
@@ -59,6 +62,12 @@ class ContractTest(unittest.TestCase):
             list(BATCHED_IWRR_ROWS),
         )
 
+    def test_obsolete_batched_calendar_is_rejected_even_with_same_weights(self) -> None:
+        obsolete = (0, 1, 2, 3, 1, 2, 1, 2, 1, 2, 1, 2)
+        self.assertEqual(tuple(obsolete.count(row) for row in range(4)), WEIGHTS)
+        with self.assertRaisesRegex(ContractViolation, "^BATCHED_IWRR_CALENDAR_MISMATCH"):
+            check_batched_iwrr_contract(obsolete)
+
     def test_paired_design_is_honestly_narrow_row_proposal(self) -> None:
         check_weight_schedule(PAIRED_ROW_PROPOSAL_ROWS)
         self.assertEqual(PAIRED_ROW_PROPOSAL_ROWS[0:2], (0, 1))
@@ -66,7 +75,7 @@ class ContractTest(unittest.TestCase):
 
     def test_false_aggregate_is_rejected_with_exact_diagnostic(self) -> None:
         bad = list(BATCHED_IWRR_ROWS)
-        bad[3] = 2
+        bad[5] = 2
         with self.assertRaisesRegex(ContractViolation, "^FALSE_AGGREGATE_1551"):
             check_weight_schedule(bad)
 
@@ -109,17 +118,22 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(observations[1].grant_count, first.grant_count)
         self.assertEqual(observations[1].policy_after, first.policy_after)
         self.assertEqual(observations[2].committed, first.addresses)
-        self.assertEqual(observations[2].policy_after["token_index"], 2)
+        self.assertEqual(observations[2].policy_after["phase"], 1)
 
-    def test_policy_advances_exactly_grant_count_microsteps(self) -> None:
+    def test_batched_iwrr_pointer_steps_equal_valid_grants(self) -> None:
         one = run_trace(
-            CONTRACT_BATCHED_IWRR, [CycleInput(request=0x0001)]
+            CONTRACT_BATCHED_IWRR, [CycleInput(request=0x0010)]
         )[0]
-        zero = run_trace(
-            CONTRACT_BATCHED_IWRR, [CycleInput(request=0)]
+        self.assertEqual(one.grant_count, 1)
+        self.assertEqual(one.policy_after["column_rr"], (0, 1, 0, 0))
+
+    def test_batched_iwrr_all_empty_phase_is_waived_without_ready(self) -> None:
+        observation = run_trace(
+            CONTRACT_BATCHED_IWRR,
+            [CycleInput(request=0x1000, bundle_ready=False)],
         )[0]
-        self.assertEqual((one.grant_count, one.policy_after["token_index"]), (1, 1))
-        self.assertEqual((zero.grant_count, zero.policy_after["token_index"]), (0, 0))
+        self.assertEqual(observation.grant_count, 0)
+        self.assertEqual(observation.policy_after["phase"], 1)
 
     def test_link_lane_stall_is_separate_and_policy_free(self) -> None:
         link = TwoLaneBufferedLink()
@@ -131,12 +145,13 @@ class ContractTest(unittest.TestCase):
         second = link.step((True, True))
         self.assertEqual(second.outputs, (None, 11))
 
-    def test_sparse_fallback_debt_is_recorded(self) -> None:
+    def test_sparse_entitlements_are_waived_without_debt_or_borrow(self) -> None:
         contract, trace = load_vectors()["batched_sparse_debt_repay"]
         observations = run_trace(contract, trace)
-        self.assertEqual(observations[0].policy_after["fallback_debt"], (1, 0, -1, 0))
-        self.assertEqual(observations[1].addresses[1] // 4, 0)
-        self.assertEqual(observations[1].policy_after["fallback_debt"], (0, 0, 0, 0))
+        self.assertEqual(observations[0].addresses, (None, None))
+        self.assertEqual(observations[1].addresses, (None, None))
+        self.assertEqual(observations[2].addresses, (12, None))
+        self.assertNotIn("fallback_debt", observations[2].policy_after)
 
     def test_reset_clears_pending_offer(self) -> None:
         contract, trace = load_vectors()["reset_pending_bundle"]
@@ -180,8 +195,7 @@ class BindingAdapterTest(unittest.TestCase):
         (repo / "owner_scheduler.sv").write_text(
             "module owner_scheduler; endmodule\n", encoding="utf-8"
         )
-        shutil.copy2(FAKE_ADAPTER, repo / "owner_adapter.py")
-        shutil.copy2(ORACLE, repo / "oracle.py")
+        shutil.copy2(IMMUTABLE_FIXTURE, repo / "owner_probe.py")
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
         subprocess.run(["git", "-C", str(repo), "config", "user.name", "W8 Test"], check=True)
         subprocess.run(["git", "-C", str(repo), "config", "user.email", "w8@example.invalid"], check=True)
@@ -191,7 +205,7 @@ class BindingAdapterTest(unittest.TestCase):
             ["git", "-C", str(repo), "rev-parse", "HEAD"],
             check=True, text=True, stdout=subprocess.PIPE,
         ).stdout.strip()
-        paths = ["owner_scheduler.sv", "owner_adapter.py", "oracle.py"]
+        paths = ["owner_scheduler.sv", "owner_probe.py"]
         sources = [
             {"path": path, "sha256": hashlib.sha256((repo / path).read_bytes()).hexdigest()}
             for path in paths
@@ -200,38 +214,65 @@ class BindingAdapterTest(unittest.TestCase):
         binding = {
             "name": "fixture-owner",
             "contract": CONTRACT_BATCHED_IWRR,
+            "evidence_scope": "owner_selftest",
             "owner_repo": str(repo),
             "owner_commit": commit,
             "sources": sources,
             "execution": {
                 "tool": {"path": str(tool), "sha256": hashlib.sha256(tool.read_bytes()).hexdigest()},
-                "artifact": "owner_adapter.py",
-                "argv": [
-                    "--snapshot", "{snapshot}", "--vectors", "{vectors}",
-                    "--result", "{result}", "--challenge", "{challenge}",
-                    "--contract", "{contract}"
-                ],
+                "artifact": "owner_probe.py",
+                "argv": [],
                 "env": {"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "PYTHONHASHSEED": "0"},
+                "required_output": ["W8_FIXTURE_IMMUTABLE_ARTIFACT_PASS"],
             },
         }
         return binding, commit
 
     def test_empty_registry_is_explicit_skip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            report = run_registry(ROOT / "owner_bindings.json", Path(temporary))
+            root = Path(temporary)
+            registry = root / "empty.json"
+            registry.write_text(json.dumps({"schema_version": 3, "bindings": []}))
+            report = run_registry(registry, root / "work")
         self.assertEqual(report["decision"], "SKIP_NO_OWNER_BINDINGS")
+
+    def test_tracked_owner_registry_binds_exact_a2_and_a3_commits(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report = run_registry(ROOT / "owner_bindings.json", Path(temporary))
+        self.assertEqual(report["decision"], "PASS")
+        self.assertEqual(
+            {row["commit"] for row in report["bindings"]},
+            {
+                "7c30d54866d81e856f9aa652db236c3a9face924",
+                "632e68d247ec36a35b62dbd5c100b0a23d47cf7b",
+            },
+        )
+        self.assertEqual(
+            {row["evidence_scope"] for row in report["bindings"]},
+            {"owner_selftest", "owner_model"},
+        )
+
+    def test_no_unbound_paired_column_owner_claim(self) -> None:
+        registry = json.loads((ROOT / "owner_bindings.json").read_text())
+        self.assertNotIn(
+            "paired_cortical_column_k2",
+            {binding["contract"] for binding in registry["bindings"]},
+        )
 
     def test_exact_materialized_artifact_and_snapshot_proof_pass(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             binding, commit = self._repo_binding(root)
             registry = root / "registry.json"
-            registry.write_text(json.dumps({"schema_version": 2, "bindings": [binding]}))
+            registry.write_text(json.dumps({"schema_version": 3, "bindings": [binding]}))
             work = root / "work"
             work.mkdir()
             report = run_registry(registry, work)
         self.assertEqual(report["decision"], "PASS")
         self.assertEqual(report["bindings"][0]["commit"], commit)
+        process = report["bindings"][0]["execution"]["process_argv"]
+        self.assertEqual(process[0], binding["execution"]["tool"]["path"])
+        self.assertIn("/fixture-owner/owner_probe.py", process[1])
 
     def test_external_unmaterialized_artifact_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -263,33 +304,37 @@ class BindingAdapterTest(unittest.TestCase):
             with self.assertRaisesRegex(ContractViolation, "OWNER_ENV_NOT_CLOSED"):
                 materialize_binding(binding, destination)
 
-    def test_missing_snapshot_challenge_marker_is_rejected(self) -> None:
+    def test_arbitrary_command_or_placeholder_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             binding, _ = self._repo_binding(root)
-            binding["execution"]["argv"] = [
-                item for item in binding["execution"]["argv"] if "{challenge}" not in item
-            ]
+            binding["execution"]["argv"] = ["{external_adapter}"]
             destination = root / "snapshot"
             destination.mkdir()
-            with self.assertRaisesRegex(ContractViolation, "OWNER_ARGV_MARKER_MISSING"):
+            with self.assertRaisesRegex(ContractViolation, "OWNER_ARGV_PLACEHOLDER_FORBIDDEN"):
                 materialize_binding(binding, destination)
 
-    def test_result_without_snapshot_proof_is_rejected(self) -> None:
+    def test_materialized_artifact_tamper_is_rejected_before_execution(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             binding, _ = self._repo_binding(root)
             destination = root / "snapshot"
             destination.mkdir()
-            snapshot, _, provenance = materialize_binding(binding, destination)
-            result = root / "result.json"
-            expected = execute_binding(binding, snapshot, result, provenance)
-            document = json.loads(result.read_text())
-            document["provenance"] = {}
-            result.write_text(json.dumps(document))
-            from binding_adapter import validate_owner_result
-            with self.assertRaisesRegex(ContractViolation, "OWNER_SNAPSHOT_PROOF_MISSING"):
-                validate_owner_result(binding, result, expected)
+            snapshot, provenance = materialize_binding(binding, destination)
+            (snapshot / "owner_probe.py").write_text("print('forged')\n")
+            with self.assertRaisesRegex(ContractViolation, "OWNER_ARTIFACT_CHANGED_BEFORE_EXEC"):
+                execute_binding(binding, snapshot, provenance)
+
+    def test_missing_actual_owner_output_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binding, _ = self._repo_binding(root)
+            binding["execution"]["required_output"] = ["OWNER_RTL_WAS_NOT_RUN"]
+            destination = root / "snapshot"
+            destination.mkdir()
+            snapshot, provenance = materialize_binding(binding, destination)
+            with self.assertRaisesRegex(ContractViolation, "OWNER_REQUIRED_OUTPUT_MISSING"):
+                execute_binding(binding, snapshot, provenance)
 
 
 if __name__ == "__main__":

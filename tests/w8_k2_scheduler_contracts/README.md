@@ -1,100 +1,94 @@
 # W8 A8 independent K2 scheduler falsification suite
 
-This additions-only directory defines an independent executable oracle for the
-final three proposed scheduler contracts. `owner_bindings.json` stays empty
-until head supplies immutable owner SHAs. Nothing here imports team RTL,
-manifests, common tests, or an owner worktree.
+This additions-only directory owns its oracle, vectors, mutation models, and
+read-only bindings. It does not edit or import an owner worktree, team RTL,
+common tests, or manifests.
 
-## Common atomic scheduler boundary
+## Re-audit disposition
 
-Every scheduler exposes one offer consisting of `grant_count` (0, 1, or 2) and
-two ordered address slots. It has one `bundle_ready` handshake:
+| Blocker | Executable disposition |
+|---|---|
+| immutable executed snapshot | schema-3 binder forces `pinned_tool materialized_artifact fixed_argv`; artifact/tool/source hashes, argv, and closed environment are bound; pre/post artifact tamper, external artifact, placeholder command, changed tool, inherited environment, and missing real output are negative-tested |
+| actual diagnostic matching | mutation success requires the first token of the caught `ContractViolation` to equal the required diagnostic; a deliberately wrong label must fail |
+| exact paired-column relationship | no immutable A4 paired-column contract exists in the visible Git refs, so this suite rejects that identifier and makes no column-pair claim; the third local oracle is named only `paired_row_calendar_proposal_k2` |
+| real batched-IWRR | the oracle now uses A2's exact calendar `[1,2,0,1,2,3,1,2,1,2,1,2]`, fixed two-token phases, compacted survivors, per-row RR pointers, waive-empty/no-borrow sparse behavior, and automatic all-empty phase advance |
 
-- when `bundle_ready=0`, count, addresses, and policy state stay stable;
-- no lane commits separately at this boundary;
-- on commit, all valid addresses retire atomically;
-- policy advances by exactly `grant_count` successful scalar microsteps.
+## Atomic boundary
 
-The independent-lane-stall falsifier is applied only to
-`TwoLaneBufferedLink`, a post-scheduler adapter. It proves that a stalled link
-lane retains its payload and never reaches back into scheduler policy.
+A nonempty scheduler offer contains `grant_count` 1 or 2 and ordered addresses.
+It has one `bundle_ready`: no lane commits separately; while stalled, count,
+addresses, and policy state remain stable; acceptance retires every valid lane
+atomically. `grant_count=0` represents no offer.
 
-## The three proposed contracts
+The exact A2 owner contract automatically waives an all-empty phase without
+consulting `bundle_ready`. The suite models and tests that behavior explicitly.
+If the shared boundary instead requires a count-zero phase to be a held offer,
+A2 is not compatible with that stronger interpretation; A8 does not conceal
+the difference.
 
-`exact_weighted_scalar_prefix_k2` is strong equivalence to two successive
-canonical WEIGHT=5 Fovea scalar steps on one stable request snapshot. `g0` is
-removed before `g1`, and `g1` uses the intermediate RR state.
+Independent lane stalls are modeled only by `TwoLaneBufferedLink`, downstream
+of the scheduler. A stalled link lane retains its address and cannot mutate
+scheduler policy.
 
-`batched_iwrr_k2` is an explicit interleaved weighted-round-robin calendar. One
-12-microstep batch is:
+## Contracts
+
+`exact_weighted_scalar_prefix_k2` equals two successive canonical WEIGHT=5
+Fovea scalar steps on one stable request snapshot. `g0` is removed before `g1`,
+and `g1` consumes every intermediate RR transition.
+
+`batched_iwrr_k2` follows immutable A2 commit
+`7c30d54866d81e856f9aa652db236c3a9face924`. Its six phases are
+`(1,2),(0,1),(2,3),(1,2),(1,2),(1,2)`. Empty row entitlements are waived,
+never borrowed or banked. Under persistent all-row demand the exact row total
+is `[1,5,5,1]`.
+
+`paired_row_calendar_proposal_k2` uses
+`(0,1),(2,1),(2,1),(2,1),(2,1),(2,3)` and asserts only row opportunities and
+aggregate `[1,5,5,1]`. It makes no cortical-column, same-column, paired-column,
+or cross-lane column claim. `paired_cortical_column_k2` and the obsolete
+staggered identifier are rejected until an exact immutable owner contract can
+replace this proposal.
+
+## Mutation diagnostics
+
+The ten actual required diagnostics are:
 
 ```text
-round 1: 0,1,2,3
-round 2: 1,2
-round 3: 1,2
-round 4: 1,2
-round 5: 1,2
+FALSE_AGGREGATE_1551
+CALENDAR_ADVANCE_ON_UNCOMMITTED_LANE
+STALE_G1
+DUPLICATE_SOURCE
+WRONG_RR_STATE_AFTER_G0
+FUTURE_ARRIVAL_OVERCLAIM
+INDEPENDENT_LANE_STALL_CORRUPTION
+RESET_PHANTOM
+SPARSE_FALLBACK_DEBT
+BITMAP_POPCOUNT_CONFUSION
 ```
 
-A K2 offer executes the next zero, one, or two successful token microsteps;
-the token index advances by that count only at atomic commit. A missing nominal
-row may lend to an eligible row, producing equal-and-opposite signed debt. When
-an indebted nominal is reached, eligible positive debt is repaid first. This
-sparse fallback/debt law is an engineering proposal, not a biology claim.
+`SPARSE_FALLBACK_DEBT` now kills the incorrect behavior—creating cross-row
+borrow/debt where A2 requires waive-empty—not the former A8 debt proposal.
 
-`paired_row_calendar_proposal_k2` uses the token sequence
-`0,1,2,1,2,1,2,1,2,1,2,3`. It asserts row opportunities and aggregate
-`[1,5,5,1]` only. It intentionally makes **no cortical-column or cross-lane
-column relationship claim**, because no exact immutable A4 owner contract was
-provided. The obsolete identifiers `staggered_two_slot_epoch_k2` and
-`paired_cortical_column_k2` are rejected.
+## Owner bindings
 
-For the two calendars, `[1,5,5,1]` is aggregate service under continuous
-eligibility. Only scalar-prefix claims exact canonical scalar order. A row
-bitmap is eligibility data, never multiple scalar events.
+Schema 3 binds and executes two immutable owners:
 
-## Required mutation diagnostics
+- A2 `7c30d54866d81e856f9aa652db236c3a9face924`: the materialized committed
+  model self-test, including its 1,572,864 bitmap/phase/pointer cases;
+- A3 `632e68d247ec36a35b62dbd5c100b0a23d47cf7b`: the materialized committed
+  exact-scalar owner model and persistent `[20,100,100,20]` probe.
 
-The mutation runner catches the actual `ContractViolation` and requires its
-first token to equal the diagnostic below. A difference with the wrong label is
-a test failure.
+Both bindings include their RTL source hash, but their evidence scopes are
+`owner_selftest` and `owner_model`, not `owner_rtl`. No Verilog simulator is
+installed in this environment, so claiming executed RTL would be false. The
+binder reports the exact scope in its PASS sentinel. No A4 paired-column owner
+binding is present because no such immutable commit was found.
 
-| Mutant | Required actual diagnostic |
-|---|---|
-| false aggregate | `FALSE_AGGREGATE_1551` |
-| policy advance while atomic offer is uncommitted | `CALENDAR_ADVANCE_ON_UNCOMMITTED_LANE` |
-| stale second address | `STALE_G1` |
-| repeated address | `DUPLICATE_SOURCE` |
-| pre-g0 RR state used by g1 | `WRONG_RR_STATE_AFTER_G0` |
-| next-cycle request sampled by g1 | `FUTURE_ARRIVAL_OVERCLAIM` |
-| separately buffered stalled lane overwritten/policy-touched | `INDEPENDENT_LANE_STALL_CORRUPTION` |
-| reset retains an offer | `RESET_PHANTOM` |
-| signed sparse debt discarded | `SPARSE_FALLBACK_DEBT` |
-| bitmap population emitted as extra grants | `BITMAP_POPCOUNT_CONFUSION` |
-
-## Immutable owner binding
-
-Binding schema version 2 requires:
-
-- a full 40-hex owner commit and SHA-256 for every materialized source;
-- an adapter artifact that is itself one of those committed sources;
-- an absolute execution tool with an exact SHA-256;
-- fixed argv containing `{snapshot}`, `{vectors}`, `{result}`, and a fresh
-  `{challenge}` path;
-- a closed environment containing only fixed `LANG`, `LC_ALL`, and
-  `PYTHONHASHSEED` values.
-
-The binder materializes blobs with `git show <commit>:<path>`, invokes only the
-pinned tool plus the materialized adapter, and requires the result to echo a
-fresh snapshot challenge bound to the owner commit, adapter hash, and complete
-source-manifest hash. Missing proof, external adapters, changed tools, inherited
-environment, unsafe paths, moving/short commits, and output differences fail.
-This establishes which immutable artifact ran; an adapter result is still only
-evidence for its listed vectors, not proof of arbitrary RTL behavior.
-
-The included fake adapter is solely a positive transport fixture. It and its
-oracle dependency are copied into a temporary git commit and materialized by
-the tests; it is never treated as owner evidence.
+The executable shape cannot be supplied by the registry: it is always the
+hash-pinned absolute tool, then the hash-verified materialized artifact, then
+fixed placeholder-free argv, under a three-variable closed environment. The
+artifact is hash-checked immediately before and after execution and required
+owner output must actually appear.
 
 ## Run and limits
 
@@ -102,13 +96,12 @@ the tests; it is never treated as owner evidence.
 tests/w8_k2_scheduler_contracts/run_all.sh
 ```
 
-The suite exhausts all 65,536 initial request masks for each Python contract,
-runs directed atomic hold/reset/debt/RR cases, kills all ten mutations with
-matched diagnostics, and emits an explicit owner PASS or SKIP sentinel.
+The suite exhausts all 65,536 initial request masks for each of three Python
+contracts, runs directed atomic hold/reset/sparse/RR cases, kills ten mutations
+with exact diagnostics, and executes the two immutable owner-model bindings.
 
-Coverage is limited to the independent N=16, WEIGHT=5, K2 models and committed
-vectors. Exhaustive masks are one initial bundle-ready-high oracle cycle, not owner RTL
-exhaustion. No owner RTL is compiled while the binding registry is empty. Owner
-binding later checks only the exact listed sources and vectors. Deep queues,
-multiple occurrences per source per cycle, bitmap transport, CDC, link PHY,
-pins, PVT, power, area, timing, and post-route behavior are outside scope.
+This is limited to N=16, WEIGHT=5, K2, the directed vectors, and the stated
+owner-model scopes. It does not simulate owner RTL, establish the unavailable
+paired-column relationship, or cover deep queues, multiple same-source
+occurrences, bitmap transport, CDC, PHY, pins, PVT, power, area, timing, or
+post-route behavior.
