@@ -9,12 +9,21 @@
     "offer": "grant_count_0_1_2_plus_ordered_addresses",
     "commit": "one_bundle_ready_advances_exactly_grant_count_policy_microsteps"
   },
+  "common_boundary": {
+    "top": "aer_legacy_candidate_adapter",
+    "source_count": 16,
+    "retire_lanes": 2,
+    "binding_storage": 0,
+    "charged_transport": "ordered_two_entry_source_and_event_adapter",
+    "lane_normalization": "lane1_valid_only_when_both_ordered_entries_retire",
+    "source_acceptance": "all_addresses_in_fitting_atomic_owner_bundle"
+  },
   "capabilities": {
     "address_event_correctness": {"supported": true},
     "ordered_scalar_prefix": {"supported": true},
-    "output_backpressure": {"supported": true, "scope": "one ready for the complete bundle"},
-    "independent_lane_backpressure": {"supported": false, "reason": "policy state cannot safely partially commit an ordered prefix"},
+    "output_backpressure": {"supported": true, "scope": "native owner uses atomic bundle-ready; charged common adapter normalizes independent lane-ready"},
+    "independent_lane_backpressure": {"supported": true, "scope": "charged post-owner ordered adapter; owner commit remains atomic"},
     "multi_lane_retirement": {"supported": true, "maximum": 2},
-    "payload": {"supported": false, "reason": "address-only candidate boundary"}
+    "payload": {"supported": false, "reason": "native owner is address-only; charged common transport preserves accepted scoreboard event identity"}
   }
 }
