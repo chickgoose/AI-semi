@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 
 from tests.a4_w7_fovea_cluster2_compare.run_w7_compare import (
     W7Error, discover_xrun, expected_load_pct, filelist_sources, scan_xcelium,
+)
+from tests.a4_w7_fovea_cluster2_compare.verify_legacy_attempt import (
+    ARTIFACT_COUNT, ATTEMPT_ID, W7Error as LegacyW7Error, expected_artifacts,
+    safe_extract_archive, validate_artifact_manifest, validate_provenance,
 )
 
 
@@ -126,6 +132,96 @@ class W7CompareTest(unittest.TestCase):
             filelist=root/'candidate.f'; filelist.write_text('relative.v\n')
             with self.assertRaisesRegex(W7Error,'must be absolute'):
                 filelist_sources(filelist)
+
+
+class W7LegacyImportTest(unittest.TestCase):
+    def make_artifact_contract(self, parent: Path) -> tuple[Path, list[str]]:
+        root = parent / ATTEMPT_ID
+        root.mkdir()
+        stems = [f"stem_{index:02d}" for index in range(50)]
+        lines = []
+        for relative in sorted(expected_artifacts(stems)):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((relative + "\n").encode())
+            digest = __import__('hashlib').sha256(path.read_bytes()).hexdigest()
+            lines.append(f"{digest}  /tmp/aer-eval-47e1f2f/{ATTEMPT_ID}/{relative}")
+        self.assertEqual(ARTIFACT_COUNT, len(lines))
+        (root / 'result-artifacts.sha256').write_text('\n'.join(lines) + '\n')
+        return root, stems
+
+    def test_exact_338_manifest_relocation_hash_and_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root, stems = self.make_artifact_contract(Path(directory))
+            self.assertEqual(338, len(validate_artifact_manifest(root, stems)))
+            victim = root / 'results/fovea/elaborate.log'
+            victim.write_text('mutated\n')
+            with self.assertRaisesRegex(LegacyW7Error, 'digest mismatch'):
+                validate_artifact_manifest(root, stems)
+
+    def test_workspace_diff_provenance_is_mandatory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provenance = (
+                'snapshot_head=47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be\n'
+                'binding_reset_quiet_arming_patch=workspace-diff\n'
+                'snapshot_archive_sha256=3a970fd551e9ec7e2cc645e559889e30eaac4d9ec64152631e2e336e2c9664c3\n'
+                'canonical_rtl_date_kst=2026-08-09\n'
+                f'attempt=/tmp/aer-eval-47e1f2f/{ATTEMPT_ID}\n'
+                'hostname=snu.polaris.09\nstart_utc=2026-08-12T03:48:15Z\n'
+                'finish_utc=2026-08-12T03:49:51Z\n'
+            )
+            (root / 'provenance.txt').write_text(provenance)
+            self.assertEqual('workspace-diff', validate_provenance(root)[
+                'binding_reset_quiet_arming_patch'])
+            (root / 'provenance.txt').write_text(provenance.replace('workspace-diff', 'clean'))
+            with self.assertRaisesRegex(LegacyW7Error, 'binding_reset'):
+                validate_provenance(root)
+
+    def make_archive(self, path: Path, malicious: bool = False) -> None:
+        with tarfile.open(path, 'w:gz') as stream:
+            directory = tarfile.TarInfo(f'{ATTEMPT_ID}/')
+            directory.type = tarfile.DIRTYPE
+            stream.addfile(directory)
+            for name in ('run_ganghee_fovea_cluster2_v4_eval.sh', 'eval-driver-final.log'):
+                data = name.encode()
+                member = tarfile.TarInfo(name); member.size = len(data)
+                stream.addfile(member, io.BytesIO(data))
+            link = tarfile.TarInfo(f'{ATTEMPT_ID}/results/fovea/xcelium.d/snapshot.d')
+            link.type = tarfile.SYMTYPE; link.linkname = 'elsewhere'
+            stream.addfile(link)
+            if malicious:
+                data = b'escape'
+                member = tarfile.TarInfo('../escape'); member.size = len(data)
+                stream.addfile(member, io.BytesIO(data))
+
+    def test_archive_import_ignores_only_known_unmanifested_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); archive = root / 'attempt.tar.gz'; self.make_archive(archive)
+            extracted, links, supplements = safe_extract_archive(archive, root / 'extract')
+            self.assertEqual((1, 2), (links, supplements))
+            self.assertTrue(extracted.is_dir())
+            self.assertFalse((root / 'extract/run_ganghee_fovea_cluster2_v4_eval.sh').exists())
+            bad = root / 'bad.tar.gz'; self.make_archive(bad, malicious=True)
+            with self.assertRaisesRegex(LegacyW7Error, 'unsafe'):
+                safe_extract_archive(bad, root / 'bad-extract')
+
+    def test_receipt_name_is_rejected_before_source_access(self) -> None:
+        command = [sys.executable, str(HERE / 'verify_legacy_attempt.py'),
+                   '--attempt-root', '/does/not/exist', '--audit-output', '/tmp/receipt.json']
+        completed = subprocess.run(command, text=True, capture_output=True, check=False)
+        self.assertEqual(2, completed.returncode)
+        self.assertIn('must not be named', completed.stderr)
+
+    def test_attempt_root_cannot_be_written_by_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / ATTEMPT_ID; root.mkdir()
+            command = [sys.executable, str(HERE / 'verify_legacy_attempt.py'),
+                       '--attempt-root', str(root), '--audit-output', str(root / 'audit.json')]
+            completed = subprocess.run(command, text=True, capture_output=True, check=False)
+            self.assertEqual(2, completed.returncode)
+            self.assertIn('outside the read-only attempt root', completed.stderr)
+            self.assertFalse((root / 'audit.json').exists())
 
 
 if __name__ == '__main__':

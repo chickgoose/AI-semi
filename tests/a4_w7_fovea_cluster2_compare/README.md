@@ -36,3 +36,26 @@ pairwise, two phase-transition, two timing-pair, two mixed-phase reports, and on
 identity-versus-affine cross-map report. A cross-map non-rankable result is not a
 functional failure: both candidates and all analyzers finish, a HOLD receipt is
 published, and the orchestrator exits 3. Other failures exit 2 without receipt.
+
+## Historical attempt 0FfaT8kp (import-only HOLD)
+
+`verify_legacy_attempt.py` can read either the archived tarball or an existing
+extracted attempt. It validates the exact 338-entry result manifest, two exact
+50-run candidate sets, two reset runs, full50/capacity22 generator-v4 hashes,
+address-only provenance, CSV conservation, PASS/error scans, analyzer candidate
+provenance, and the capacity22-as-subset contract. Archive extraction is confined
+to a private temporary directory; archived Xcelium snapshot links are ignored
+and cannot be referenced by the evidence manifest.
+
+```sh
+python3 tests/a4_w7_fovea_cluster2_compare/verify_legacy_attempt.py \
+  --archive /read-only/fovea-cluster2-0FfaT8kp.tar.gz \
+  --audit-output /fresh/0FfaT8kp.import-audit.json
+```
+
+A successful validation is always `IMPORTED_LEGACY_EVIDENCE_HOLD`, never an
+official receipt. The verifier requires and records
+`binding_reset_quiet_arming_patch=workspace-diff`: the archived binding change
+is not reconstructible from a clean immutable commit. Naming the output as a
+receipt, overwriting an output, a missing/mutated artifact, a relocated path
+escape, or any provenance mismatch fails closed with exit 2.
