@@ -1,0 +1,190 @@
+{
+  "candidate": "a3_exact_scalar_prefix_k2",
+  "execution": {
+    "directed_lockstep_vectors": 18,
+    "directed_markers": [
+      "A3_K2_PERSISTENT_PASS",
+      "A3_K2_SPARSE_FALLBACK_PASS",
+      "A3_K2_STALL_ATOMIC_PASS",
+      "A3_K2_RESET_DRAIN_PASS",
+      "A3_K2_RETRIGGER_PASS",
+      "A3_EXACT_SCALAR_PREFIX_K2_DIRECT_PASS"
+    ],
+    "frozen_lockstep_runs": 72,
+    "frozen_lockstep_vectors": 171641,
+    "icarus_identity": "Icarus Verilog version 12.0 (stable) ()",
+    "python": "3.14.4"
+  },
+  "frozen_v4": {
+    "capacity_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "full_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+    "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "generator_version": "4.0"
+  },
+  "limits": [
+    "local Icarus and independent Python oracle only; no Xcelium/formal qualification",
+    "atomic bundle ready only; independent per-lane backpressure is unsupported",
+    "independently stalled transport requires a separate buffered link adapter that cannot mutate scheduler policy",
+    "one outstanding event per address; same-edge occurrence identity is not carried by the bitmap",
+    "Yosys metrics are generic logic proxies, not physical PPA or timing closure"
+  ],
+  "mutations": {
+    "A3_K2_MUT_DUP": {
+      "diagnostic": "LOCKSTEP_MISMATCH",
+      "status": "EXPECTED_FAIL_CAUGHT"
+    },
+    "A3_K2_MUT_STALE": {
+      "diagnostic": "LOCKSTEP_MISMATCH",
+      "status": "EXPECTED_FAIL_CAUGHT"
+    },
+    "A3_K2_MUT_STATE_ADV": {
+      "diagnostic": "LOCKSTEP_MISMATCH",
+      "status": "EXPECTED_FAIL_CAUGHT"
+    }
+  },
+  "oracle_sha256": "c2c793a284cb6d58507de6e2d62c25ce54d7120bbd6f9ee642bd210528f0ff9c",
+  "persistent_probe": {
+    "address_grants": 240,
+    "bundle_commits": 120,
+    "cycles_including_initial_fill": 121,
+    "row_opportunities_0_1_2_3": [
+      20,
+      100,
+      100,
+      20
+    ]
+  },
+  "rtl_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+  "schema": "a3-exact-scalar-prefix-k2-evidence-v1",
+  "semantics": {
+    "architecture": "two replicated canonical scalar selectors in combinational lookahead; no shared population-prefix rank topology",
+    "boundary": "N16 level-held pending bitmap; up to two ordered address grants per atomic bundle",
+    "commit": "grant_count 0/1/2 plus ordered addresses; all count lanes commit on grant_count!=0 && bundle_ready; policy advances exactly count scalar microsteps; stalled offer and state hold",
+    "ordering": "lane1 is one canonical scalar transition after lane0, with lane0 address masked and all Fovea/RR next state applied"
+  },
+  "status": "PASS",
+  "suites": {
+    "capacity22": {
+      "accepted": 61029,
+      "delivered": 61029,
+      "fixed_window_delivered": 61005,
+      "generated": 65616,
+      "latency_sum": 156218,
+      "max_latency": 271,
+      "mean_latency": 2.559733897,
+      "measurement_cycles": 55552,
+      "overrun": 4587,
+      "p99_latency": 8,
+      "run_count": 22,
+      "run_names": [
+        "core_simultaneous_identity",
+        "pairwise_contention_identity",
+        "pairwise_contention_affine",
+        "uniform_l1p00_s2001",
+        "uniform_l1p00_s2002",
+        "uniform_l1p00_s2003",
+        "uniform_l1p25_s2001",
+        "uniform_l1p25_s2002",
+        "uniform_l1p25_s2003",
+        "uniform_l1p50_s2001",
+        "uniform_l1p50_s2002",
+        "uniform_l1p50_s2003",
+        "uniform_l2p00_s2001",
+        "uniform_l2p00_s2002",
+        "uniform_l2p00_s2003",
+        "shape_b4",
+        "shape_b16",
+        "global_fanin_identity",
+        "phase_transition_s3501",
+        "phase_transition_s3502",
+        "mixed_phase_always_ready_identity",
+        "mixed_phase_always_ready_bit_reverse"
+      ],
+      "throughput": 1.098160282,
+      "vector_cycles": 55591
+    },
+    "full50": {
+      "accepted": 99535,
+      "delivered": 99535,
+      "fixed_window_delivered": 99494,
+      "generated": 106416,
+      "latency_sum": 240463,
+      "max_latency": 271,
+      "mean_latency": 2.415863767,
+      "measurement_cycles": 115968,
+      "overrun": 6881,
+      "p99_latency": 8,
+      "run_count": 50,
+      "run_names": [
+        "core_sparse_identity",
+        "core_sparse_rotate180",
+        "core_simultaneous_identity",
+        "pairwise_contention_identity",
+        "pairwise_contention_affine",
+        "uniform_l0p125_s2001",
+        "uniform_l0p125_s2002",
+        "uniform_l0p125_s2003",
+        "uniform_l0p50_s2001",
+        "uniform_l0p50_s2002",
+        "uniform_l0p50_s2003",
+        "uniform_l0p90_s2001",
+        "uniform_l0p90_s2002",
+        "uniform_l0p90_s2003",
+        "uniform_l1p00_s2001",
+        "uniform_l1p00_s2002",
+        "uniform_l1p00_s2003",
+        "uniform_l1p25_s2001",
+        "uniform_l1p25_s2002",
+        "uniform_l1p25_s2003",
+        "uniform_l1p50_s2001",
+        "uniform_l1p50_s2002",
+        "uniform_l1p50_s2003",
+        "uniform_l2p00_s2001",
+        "uniform_l2p00_s2002",
+        "uniform_l2p00_s2003",
+        "shape_b1",
+        "shape_b4",
+        "shape_b16",
+        "spatial_local",
+        "spatial_dispersed",
+        "spatial_local_mirror",
+        "moving_hotspot_single_s3301",
+        "moving_hotspot_single_s3302",
+        "moving_hotspot_multi_disperse_s3301",
+        "moving_hotspot_multi_row_s3301",
+        "moving_hotspot_multi_column_s3301",
+        "rotating_victim_identity",
+        "rotating_victim_affine",
+        "phase_transition_s3501",
+        "phase_transition_s3502",
+        "elephant_mouse_identity",
+        "elephant_mouse_affine",
+        "global_fanin_identity",
+        "retrigger_identity",
+        "retrigger_affine",
+        "timing_pair_s3901",
+        "timing_pair_s3902",
+        "mixed_phase_always_ready_identity",
+        "mixed_phase_always_ready_bit_reverse"
+      ],
+      "throughput": 0.857943571,
+      "vector_cycles": 116050
+    }
+  },
+  "synthesis": {
+    "interpretation": "generic Yosys/ABC proxy; not standard-cell area, routed delay, Fmax, or power",
+    "longest_topological_path_cells": 42,
+    "mapped_cell_count": 667,
+    "mapped_cells_by_type": {
+      "$_AND_": 268,
+      "$_MUX_": 18,
+      "$_NOT_": 91,
+      "$_OR_": 255,
+      "$_SDFFE_PP0P_": 16,
+      "$_SDFFE_PP1P_": 10,
+      "$_XOR_": 9
+    },
+    "registered_state_bits": 34,
+    "yosys_identity": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+  }
+}
