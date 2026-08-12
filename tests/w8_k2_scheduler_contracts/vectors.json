@@ -1,0 +1,98 @@
+{
+  "schema_version": 2,
+  "cases": [
+    {
+      "name": "batched_iwrr_full_epoch",
+      "contract": "batched_iwrr_k2",
+      "cycles": [
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "paired_row_full_epoch",
+      "contract": "paired_row_calendar_proposal_k2",
+      "cycles": [
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "scalar_full_epoch",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "cycles": [
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "calendar_atomic_hold",
+      "contract": "batched_iwrr_k2",
+      "cycles": [
+        {"request": "ffff", "bundle_ready": false},
+        {"request": "8000", "bundle_ready": false},
+        {"request": "8000", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "scalar_stale_g1",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "cycles": [
+        {"request": "0001", "bundle_ready": true},
+        {"request": "0110", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "scalar_duplicate",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "cycles": [{"request": "0010", "bundle_ready": true}]
+    },
+    {
+      "name": "scalar_intermediate_rr",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "cycles": [{"request": "0130", "bundle_ready": true}]
+    },
+    {
+      "name": "scalar_future_arrival",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "cycles": [
+        {"request": "0010", "future_request": "0100", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "reset_pending_bundle",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "cycles": [
+        {"request": "ffff", "bundle_ready": false},
+        {"request": "0000", "bundle_ready": false, "reset": true},
+        {"request": "0001", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "batched_sparse_debt_repay",
+      "contract": "batched_iwrr_k2",
+      "cycles": [
+        {"request": "0100", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true},
+        {"request": "ffff", "bundle_ready": true}
+      ]
+    },
+    {
+      "name": "scalar_bitmap_confusion",
+      "contract": "exact_weighted_scalar_prefix_k2",
+      "cycles": [{"request": "0ff0", "bundle_ready": true}]
+    }
+  ]
+}
