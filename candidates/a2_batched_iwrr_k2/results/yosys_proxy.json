@@ -1,0 +1,14 @@
+{
+  "cell_count": 197,
+  "cell_types": {
+    "$_SDFFE_PP0P_": 11,
+    "$lut": 186
+  },
+  "combinational_depth_cells": 11,
+  "lut_cells": 186,
+  "mapping": "abc_fast_lut4_generic_proxy_not_physical_PPA",
+  "schema": "a2_batched_iwrr_k2_yosys_proxy_v1",
+  "state_bits": 11,
+  "top": "a2_batched_iwrr_k2",
+  "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+}
