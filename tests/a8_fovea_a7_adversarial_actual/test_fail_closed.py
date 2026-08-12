@@ -33,11 +33,14 @@ class FailClosedHelpersTest(unittest.TestCase):
                     validate_outcome("baseline", rc, sentinel)
 
     def test_mutant_rejects_rc_zero_or_pass_sentinel(self) -> None:
-        validate_outcome("premature_drain", 134, False)
-        for rc, sentinel in ((0, False), (134, True), (0, True)):
-            with self.subTest(rc=rc, sentinel=sentinel):
+        validate_outcome("premature_drain", 134, False, True)
+        for rc, sentinel, diagnostic in (
+            (0, False, True), (134, True, True), (0, True, True),
+            (134, False, False),
+        ):
+            with self.subTest(rc=rc, sentinel=sentinel, diagnostic=diagnostic):
                 with self.assertRaises(AuditFailure):
-                    validate_outcome("mutant", rc, sentinel)
+                    validate_outcome("mutant", rc, sentinel, diagnostic)
 
 
 if __name__ == "__main__":

@@ -17,15 +17,32 @@ DEFAULT_OWNER = Path("/home/chickgoose/projects/a7")
 DEFAULT_FIXTURE = Path(
     "/home/chickgoose/projects/a5/tests/a5_fovea_a7_structural/fixtures"
 )
-DEFAULT_COMMIT = "d3c52f0"
-PASS_SENTINEL = "A7_W6_EXACT_CANONICAL_QUALIFICATION_PASS"
+DEFAULT_COMMIT = "e9f27e6"
+PASS_SENTINEL = "A7_W6_SHA_PINNED_DIRECTED_RTL_PASS"
+ALLOWED_COMMITS = {
+    "e9f27e6aed302491011a5deb803a7b42a0c712b3",
+    "0f49816b48a4cba027d40733a09edb590bfc7a86",
+}
 EXPECTED_BLOBS = {
     "rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv":
         "7064bdc7fcc5bbb4a7ab59c4a90a490bce9052b1",
     "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv":
-        "3379f887288a251e7e360a85cae9404dc3696a32",
+        "ecde2d6e5d6ee589b808c6413f45f7155eb6adb7",
     "scripts/run_a7_weighted_fovea_ddr_qualification.sh":
-        "6fc9dc74ca801d1bc943d7dd36da6b8cb16ea9cc",
+        "fa6f6412863affdfac33916e926b9047d5389e15",
+    "scripts/run_a7_weighted_fovea_ddr_fault.sh":
+        "1193b63da55c94b653cca57d7eda3cad930e16a0",
+    "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_fault_tb.sv":
+        "27d7b527ffca84efa8be670ac943702bb72fb465",
+    "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_stale_no_live_fixture.sv":
+        "94b7c676b669467c24f7f94f6dcc5839ed5fea29",
+    "tests/a7_weighted_fovea_ddr/contract_check.py":
+        "2d7909ad80a4dbb44aaaba1f5affedf6e744e07f",
+}
+MUTANT_DIAGNOSTICS = {
+    "premature_drain": "A8_ACTUAL_PREMATURE_DRAIN_FAIL",
+    "plus_latency": "A8_ACTUAL_AVAILABILITY_LATENCY_FAIL",
+    "stale_no_live": "A8_ACTUAL_STALE_NO_LIVE_FAIL",
 }
 
 
@@ -96,14 +113,55 @@ def install_audit_monitor(repo: Path) -> None:
     tb = repo / "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv"
     anchor = "  initial begin\n    rst_n = 1'b0;"
     replace_once(tb, anchor, AUDIT_MONITOR + "\n" + anchor)
-    reset_anchor = "    errors = 0;\n    full_contention_mode = 1'b0;"
+    reset_anchor = "    errors = 0;\n    ref_cycle = 0;\n    full_contention_mode = 1'b0;"
     reset_new = (
         "    errors = 0;\n"
+        "    ref_cycle = 0;\n"
         "    a8_cycle = 0; a8_admit_count = 0;\n"
         "    a8_available_count = 0; a8_sink_count = 0;\n"
         "    full_contention_mode = 1'b0;"
     )
     replace_once(tb, reset_anchor, reset_new)
+    drain_anchor = "      if ((|source_valid) && drain_idle_o) begin"
+    drain_guard = (
+        "      if ((|source_valid) && drain_idle_o)\n"
+        "        $fatal(1, \"A8_ACTUAL_PREMATURE_DRAIN_FAIL cycle=%0d\", ref_cycle);\n"
+        + drain_anchor
+    )
+    replace_once(tb, drain_anchor, drain_guard)
+    available_anchor = (
+        "        end else if (ref_cycle != accept_cycle[available] + 1) begin"
+    )
+    available_guard = (
+        "        end else if (ref_cycle != accept_cycle[available] + 1) begin\n"
+        "          $fatal(1, \"A8_ACTUAL_AVAILABILITY_LATENCY_FAIL cycle=%0d index=%0d\",\n"
+        "                 ref_cycle, available);"
+    )
+    replace_once(tb, available_anchor, available_guard)
+    sink_anchor = (
+        "        end else if (ref_cycle != accept_cycle[retired] + 2) begin"
+    )
+    sink_guard = (
+        "        end else if (ref_cycle != accept_cycle[retired] + 2) begin\n"
+        "          $fatal(1, \"A8_ACTUAL_SINK_LATENCY_FAIL cycle=%0d index=%0d\",\n"
+        "                 ref_cycle, retired);"
+    )
+    replace_once(tb, sink_anchor, sink_guard)
+
+
+def install_stale_no_live_monitor(repo: Path) -> None:
+    tb = repo / "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_fault_tb.sv"
+    anchor = "  initial begin\n    rst_n = 1'b0;"
+    monitor = r'''
+  // Independent A8 monitor: raw native valid needs a currently live address.
+  always @(posedge ref_clk_i) begin
+    #1ps;
+    if (rst_n && dut.fovea_valid &&
+        !source_valid[dut.fovea_addr])
+      $fatal(1, "A8_ACTUAL_STALE_NO_LIVE_FAIL addr=%h", dut.fovea_addr);
+  end
+'''
+    replace_once(tb, anchor, monitor + "\n" + anchor)
 
 
 def mutate(repo: Path, name: str) -> None:
@@ -149,11 +207,14 @@ def mutate(repo: Path, name: str) -> None:
             "        retire_addr_o <= a8_delay_addr_q;"
         )
         replace_once(observer, old_body, new_body)
-    elif name == "stale_retrigger":
-        old = "? (source_valid & ~current_result_mask) : '0;"
-        # The required static expression remains present, but the OR restores
-        # the just-returned address and permits stale immediate retrigger.
-        new = "? ((source_valid & ~current_result_mask) | current_result_mask) : '0;"
+    elif name == "stale_no_live":
+        old = "assign endpoint_valid = rst_n & fovea_valid;"
+        # Hide the stale/no-live raw result from the endpoint.  The independent
+        # monitor must still see and kill the native causality violation.
+        new = (
+            "assign endpoint_valid = rst_n & fovea_valid & "
+            "source_valid[fovea_addr];"
+        )
         replace_once(wrapper, old, new)
     else:
         raise AuditFailure(f"unknown mutant: {name}")
@@ -185,16 +246,18 @@ def qualify(repo: Path, fixture: Path, output: Path, base_commit: str) -> tuple[
     return result.returncode, result.stdout
 
 
-def validate_outcome(name: str, rc: int, sentinel: bool) -> None:
+def validate_outcome(name: str, rc: int, sentinel: bool,
+                     diagnostic_found: bool = True) -> None:
     """Require a real baseline PASS and reject either form of mutant escape."""
     if name == "baseline":
         if rc != 0 or not sentinel:
             raise AuditFailure(
                 f"baseline exact qualification did not PASS: rc={rc} sentinel={sentinel}"
             )
-    elif rc == 0 or sentinel:
+    elif rc == 0 or sentinel or not diagnostic_found:
         raise AuditFailure(
-            f"mutant escaped exact qualification: {name} rc={rc} sentinel={sentinel}"
+            "mutant escaped independent qualification: "
+            f"{name} rc={rc} sentinel={sentinel} diagnostic={diagnostic_found}"
         )
 
 
@@ -212,6 +275,10 @@ def main() -> int:
     owner = args.owner.resolve()
     fixture = args.fixture.resolve()
     commit = git(owner, "rev-parse", f"{args.commit}^{{commit}}")
+    if commit not in ALLOWED_COMMITS:
+        raise AuditFailure(
+            f"owner commit is not pinned to e9f27e6/0f49816: {commit}"
+        )
     base_commit = git(owner, "rev-parse", f"{commit}^")
     for path, expected in EXPECTED_BLOBS.items():
         actual = git(owner, "rev-parse", f"{commit}:{path}")
@@ -223,20 +290,26 @@ def main() -> int:
     temp_root = Path(tempfile.mkdtemp(prefix="a8-w6-actual-mutants.", dir="/tmp"))
     records: list[str] = []
     try:
-        for name in ("baseline", "premature_drain", "plus_latency", "stale_retrigger"):
+        for name in ("baseline", "premature_drain", "plus_latency", "stale_no_live"):
             repo = temp_root / f"repo-{name}"
             materialize(owner, commit, repo)
             install_audit_monitor(repo)
             if name != "baseline":
                 mutate(repo, name)
+            if name == "stale_no_live":
+                install_stale_no_live_monitor(repo)
             output = temp_root / f"out-{name}"
             rc, log = qualify(repo, fixture, output, base_commit)
             log_path = temp_root / f"{name}.log"
             log_path.write_text(log, encoding="utf-8")
             sentinel = PASS_SENTINEL in log
+            diagnostic = name == "baseline" or MUTANT_DIAGNOSTICS[name] in log
             digest = hashlib.sha256(log.encode("utf-8")).hexdigest()
-            records.append(f"{name} rc={rc} pass_sentinel={int(sentinel)} log_sha256={digest}")
-            validate_outcome(name, rc, sentinel)
+            records.append(
+                f"{name} rc={rc} pass_sentinel={int(sentinel)} "
+                f"independent_diagnostic={int(diagnostic)} log_sha256={digest}"
+            )
+            validate_outcome(name, rc, sentinel, diagnostic)
         for record in records:
             print(record)
         print(f"A8_W6_ACTUAL_OWNER_MUTATION_PASS commit={commit} mutants=3")
