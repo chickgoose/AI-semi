@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -51,24 +52,63 @@ def git_output(repo: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def verify_owner(repo: Path, owner: str) -> Path:
+def materialize_git_source(repo: Path, commit: str, source_path: str,
+                           expected_sha256: str, destination: Path,
+                           label: str) -> dict[str, Any]:
+    """Materialize one regular source blob from an exact commit object.
+
+    Mutable HEAD, index, and worktree bytes are deliberately never consulted
+    for source selection or content validation.
+    """
+    if not repo.is_absolute():
+        raise ReplayError(f"{label}: owner repository path must be absolute")
+    if git_output(repo, "rev-parse", "--is-inside-work-tree") != "true":
+        raise ReplayError(f"{label}: owner repository is not a Git worktree")
+    if git_output(repo, "cat-file", "-t", commit) != "commit":
+        raise ReplayError(f"{label}: pinned owner object is not a commit")
+
+    tree_line = git_output(repo, "ls-tree", commit, "--", source_path)
+    metadata, separator, listed_path = tree_line.partition("\t")
+    fields = metadata.split()
+    if (separator != "\t" or listed_path != source_path or len(fields) != 3 or
+            fields[0] != "100644" or fields[1] != "blob"):
+        raise ReplayError(f"{label}: pinned owner source is not one regular Git blob")
+    blob_oid = fields[2]
+
+    extracted = subprocess.run(
+        ["git", "-C", str(repo), "show", f"{commit}:{source_path}"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if extracted.returncode:
+        diagnostic = extracted.stderr.decode("utf-8", errors="replace").strip()
+        raise ReplayError(f"{label}: cannot extract pinned owner source: {diagnostic}")
+    observed_sha256 = hashlib.sha256(extracted.stdout).hexdigest()
+    if observed_sha256 != expected_sha256:
+        raise ReplayError(
+            f"{label}: pinned owner blob SHA-256 mismatch expected={expected_sha256} "
+            f"observed={observed_sha256}")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(extracted.stdout)
+    if exporter.file_sha256(destination) != expected_sha256:
+        raise ReplayError(f"{label}: materialized owner source changed after extraction")
+    return {
+        "path": destination,
+        "commit": commit,
+        "source_path": source_path,
+        "source_blob_oid": blob_oid,
+        "source_sha256": expected_sha256,
+        "source_origin": "exact_git_commit_object",
+    }
+
+
+def materialize_owner(repo: Path, owner: str, work_root: Path) -> dict[str, Any]:
     pin = OWNER_PINS[owner]
-    if not repo.is_absolute() or not (repo / ".git").exists():
-        raise ReplayError(f"{owner}: owner repository must be an absolute Git worktree")
-    observed_head = git_output(repo, "rev-parse", "HEAD")
-    if observed_head != pin["commit"]:
-        raise ReplayError(f"{owner}: expected final owner commit {pin['commit']}, observed {observed_head}")
-    source = repo / str(pin["source"])
-    if exporter.file_sha256(source) != pin["source_sha256"]:
-        raise ReplayError(f"{owner}: final owner source SHA-256 mismatch")
-    tree = git_output(repo, "ls-tree", pin["commit"], str(pin["source"])).split()
-    if len(tree) != 4 or tree[0] != "100644" or tree[1] != "blob":
-        raise ReplayError(f"{owner}: owner source is not a regular committed blob")
-    committed = command(["git", "-C", str(repo), "show",
-                         f"{pin['commit']}:{pin['source']}"])
-    if committed.returncode or committed.stdout.encode() != source.read_bytes():
-        raise ReplayError(f"{owner}: worktree source differs from pinned commit blob")
-    return source
+    destination = work_root / "owner-sources" / owner / Path(str(pin["source"])).name
+    return materialize_git_source(
+        repo, str(pin["commit"]), str(pin["source"]),
+        str(pin["source_sha256"]), destination, owner)
 
 
 def resolve_tool(explicit: Path | None, name: str) -> Path:
@@ -271,13 +311,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         a1_repo = args.a1_repo.resolve()
-        owner_sources = {
-            "a2": verify_owner(args.a2_repo.resolve(), "a2"),
-            "a3": verify_owner(args.a3_repo.resolve(), "a3"),
-        }
         iverilog = resolve_tool(args.iverilog, "iverilog")
         vvp = resolve_tool(args.vvp, "vvp")
         args.work_dir.mkdir(parents=True)
+        owner_materialization = {
+            "a2": materialize_owner(args.a2_repo.resolve(), "a2", args.work_dir),
+            "a3": materialize_owner(args.a3_repo.resolve(), "a3", args.work_dir),
+        }
+        owner_sources = {owner: record["path"]
+                         for owner, record in owner_materialization.items()}
         trace_root = args.work_dir / "traces"
         vector_root = args.work_dir / "vectors"
         bundle = exporter.build_export(a1_repo, trace_root, vector_root)
@@ -302,7 +344,9 @@ def main(argv: list[str] | None = None) -> int:
                 owner: {
                     "commit": OWNER_PINS[owner]["commit"],
                     "source_path": OWNER_PINS[owner]["source"],
+                    "source_blob_oid": owner_materialization[owner]["source_blob_oid"],
                     "source_sha256": OWNER_PINS[owner]["source_sha256"],
+                    "source_origin": owner_materialization[owner]["source_origin"],
                     "binding_sha256": exporter.file_sha256(OWNER_PINS[owner]["binding"]),
                 } for owner in ("a2", "a3")
             },

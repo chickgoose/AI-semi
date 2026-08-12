@@ -17,6 +17,12 @@ adapted by separate, storage-free A4 bindings to one atomic boundary:
 - TB-only occurrence identity carried beside the owner, never into scheduler
   policy inputs.
 
+Owner source is extracted with `git show <pinned-commit>:<source-path>` into
+the caller's temporary work directory. The runner verifies the commit object,
+regular blob mode/OID, and source SHA-256, and never compiles mutable HEAD,
+index, or worktree bytes. A unit negative control advances HEAD and dirties the
+same source path, then proves that only the pinned commit blob is materialized.
+
 Every vector has one row for every original stimulus cycle and every drain
 cycle. Its header records the exact generated-event count, half-open
 measurement window, generated events inside that window, and allowed
