@@ -114,7 +114,9 @@ def main() -> int:
     if not all(isinstance(value, str)
                for value in (commit, owner_path, expected_blob)):
         die("owner-fields")
-    git_output(root, "merge-base", "--is-ancestor", commit, "HEAD")
+    # Integration may cherry-pick the owner into a release branch, so ancestry
+    # is not a valid identity test.  Bind the immutable commit object and its
+    # exact owner blob instead; the live compile bytes were checked above.
     actual_blob = git_output(root, "rev-parse", f"{commit}:{owner_path}")
     if actual_blob != expected_blob:
         die(f"owner-blob expected={expected_blob} got={actual_blob}")

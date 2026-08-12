@@ -1,6 +1,7 @@
 {
   "schema": "a2-k2-official-always-ready-provenance-v1",
   "decision_scope": "official-common-uniform-always-ready-only",
+  "common_anchor_commit": "2a3a3be94be8f12585f484b5b1da2b372f7282d9",
   "normalized_contract": {
     "num_sources": 16,
     "address_width": 16,
@@ -28,9 +29,9 @@
     "candidates/a2_batched_iwrr_k2/official_common/rtl/a2_k2_official_always_ready_wrapper.sv": "824a24bf1fec409f4f7b1f8ae3c683e8f874a0ad818ed21390734c0727e7c082",
     "candidates/a2_batched_iwrr_k2/official_common/binding/a2_k2_official_common_binding.sv": "0295245a9525b4ee84e11cc95f9b49139c9736e7382aeae5f33cffd413d0f0af",
     "candidates/a2_batched_iwrr_k2/official_common/official_common.f": "e7cad0219ffecfeb118e3bb6cce2f0e93123d7b0bae7d76c53cd51ab3d17f7e4",
-    "tb/clean/aer_bench_if.sv": "beb820213b9e47b89460ecb30494b62e5e37190bc4406d183c1379edd335c9d5",
-    "tb/clean/aer_clean_tb.sv": "0eee9fd6cb8c37f2a7f6d616a4aef20e4c3c154d9b64abeb9d95d7c3c0e38e3f",
-    "tb/clean/aer_clean_assertions.sv": "6759e397c90d55527036ba042e5291becc0c8a64721da7f3af09a47e2f051237",
-    "benchmarks/clean_slate_aer/manifest.neutrality-n16.json": "77da0c02a1db2755653195790a1af43f82e4f1be27be2f9570d9014f648b9726"
+    "tb/clean/aer_bench_if.sv": "fbca24e710e74c988592d79aa40a15fed3464a7a37147922cfbd23966535e163",
+    "tb/clean/aer_clean_tb.sv": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2",
+    "tb/clean/aer_clean_assertions.sv": "ab3bca49bb660ece4c353b145ac21a81b8ed91c607657e196473e74f0cbefc3f",
+    "benchmarks/clean_slate_aer/manifest.neutrality-n16.json": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
   }
 }

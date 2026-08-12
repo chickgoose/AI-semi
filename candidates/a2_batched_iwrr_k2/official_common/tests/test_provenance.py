@@ -64,7 +64,19 @@ def main() -> int:
         path.write_text(json.dumps(missing), encoding="utf-8")
         require_failure(invoke(path), "missing file")
 
-    print("A2_K2_PROVENANCE_MUTATION_PASS cases=3")
+        bad_commit = json.loads(json.dumps(original))
+        bad_commit["owner"]["commit"] = "0" * 40
+        path = temp / "bad-commit.json"
+        path.write_text(json.dumps(bad_commit), encoding="utf-8")
+        require_failure(invoke(path), "owner commit mutation")
+
+        bad_blob = json.loads(json.dumps(original))
+        bad_blob["owner"]["git_blob"] = "0" * 40
+        path = temp / "bad-blob.json"
+        path.write_text(json.dumps(bad_blob), encoding="utf-8")
+        require_failure(invoke(path), "owner blob mutation")
+
+    print("A2_K2_PROVENANCE_MUTATION_PASS cases=5")
     return 0
 
 
