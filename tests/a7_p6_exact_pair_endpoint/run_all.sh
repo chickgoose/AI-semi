@@ -12,6 +12,20 @@ mkdir -p "$out_dir"
 command -v "$verilator_bin" >/dev/null
 command -v "$yosys_bin" >/dev/null
 
+# A relocatable Yosys package may keep Tcl beside its own prefix rather than
+# in the host loader's default search path.  Resolve that prefix explicitly so
+# the structural gate runs from a clean shell as well as from a developer
+# environment that already exports LD_LIBRARY_PATH.
+yosys_resolved="$(command -v "$yosys_bin")"
+yosys_prefix="$(cd "$(dirname "$yosys_resolved")/.." && pwd)"
+yosys_ld_path="${LD_LIBRARY_PATH:-}"
+for candidate_lib_dir in "$yosys_prefix"/lib/*-linux-gnu; do
+  if [[ -e "$candidate_lib_dir/libtcl8.6.so" ]]; then
+    yosys_ld_path="$candidate_lib_dir${yosys_ld_path:+:$yosys_ld_path}"
+    break
+  fi
+done
+
 rtl_sources=(
   "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv"
   "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv"
@@ -121,7 +135,8 @@ python3 "$test_dir/p6_exact_pair_model.py" check \
   --expected "$out_dir/frozen.expected.json" \
   --observed "$out_dir/frozen.observed.csv" | tee "$out_dir/replay-check.log"
 
-python3 "$test_dir/structural_compare.py" --yosys "$yosys_bin" \
+env LD_LIBRARY_PATH="$yosys_ld_path" \
+  python3 "$test_dir/structural_compare.py" --yosys "$yosys_bin" \
   --output "$out_dir/structural.csv" --log-dir "$out_dir/yosys-logs" |
   tee "$out_dir/structural.log"
 
