@@ -1,0 +1,192 @@
+{
+  "candidates": {
+    "a2": {
+      "full_composition_metrics": {
+        "fanout_proxy_max": 15,
+        "fanout_proxy_p95": 6,
+        "generic_cells": 304,
+        "generic_state_bits": 73,
+        "logic_depth_levels": 55,
+        "mapped_cells": 778,
+        "mapped_comb_cells": 705,
+        "mapped_state_bits": 73,
+        "nets_fanout_ge16": 0,
+        "sink_pin_wire_proxy": 1514
+      },
+      "integration_adapter_seam": {
+        "charged_state_bits": 11,
+        "combinational_cost": "NOT_ADDITIVELY_ATTRIBUTED_WHOLE_CONE_MAPPING_INTERACTION",
+        "measured_state_residual_full_minus_normalized_minus_p6": {
+          "generic": 11,
+          "mapped": 11
+        }
+      },
+      "normalized_common_seam_metrics": {
+        "fanout_proxy_max": 12,
+        "fanout_proxy_p95": 7,
+        "generic_cells": 210,
+        "generic_state_bits": 22,
+        "logic_depth_levels": 52,
+        "mapped_cells": 720,
+        "mapped_comb_cells": 698,
+        "mapped_state_bits": 22,
+        "nets_fanout_ge16": 0,
+        "sink_pin_wire_proxy": 1415
+      },
+      "semantic_grade": "WEIGHTED_AGGREGATE_NOT_A5_SCALAR_PREFIX",
+      "whole_cone_delta_full_minus_normalized": {
+        "fanout_proxy_max": 3,
+        "fanout_proxy_p95": -1,
+        "generic_cells": 94,
+        "generic_state_bits": 51,
+        "logic_depth_levels": 3,
+        "mapped_cells": 58,
+        "mapped_comb_cells": 7,
+        "mapped_state_bits": 51,
+        "nets_fanout_ge16": 0,
+        "sink_pin_wire_proxy": 99
+      }
+    },
+    "a3": {
+      "full_composition_metrics": {
+        "fanout_proxy_max": 31,
+        "fanout_proxy_p95": 5,
+        "generic_cells": 361,
+        "generic_state_bits": 74,
+        "logic_depth_levels": 43,
+        "mapped_cells": 728,
+        "mapped_comb_cells": 662,
+        "mapped_state_bits": 66,
+        "nets_fanout_ge16": 3,
+        "sink_pin_wire_proxy": 1372
+      },
+      "integration_adapter_seam": {
+        "charged_state_bits": 0,
+        "combinational_cost": "NOT_ADDITIVELY_ATTRIBUTED_WHOLE_CONE_MAPPING_INTERACTION",
+        "measured_state_residual_full_minus_normalized_minus_p6": {
+          "generic": 0,
+          "mapped": 0
+        }
+      },
+      "normalized_common_seam_metrics": {
+        "fanout_proxy_max": 20,
+        "fanout_proxy_p95": 5,
+        "generic_cells": 283,
+        "generic_state_bits": 34,
+        "logic_depth_levels": 42,
+        "mapped_cells": 644,
+        "mapped_comb_cells": 618,
+        "mapped_state_bits": 26,
+        "nets_fanout_ge16": 3,
+        "sink_pin_wire_proxy": 1225
+      },
+      "semantic_grade": "EXACT_SCALAR_PREFIX_K2",
+      "whole_cone_delta_full_minus_normalized": {
+        "fanout_proxy_max": 11,
+        "fanout_proxy_p95": 0,
+        "generic_cells": 78,
+        "generic_state_bits": 40,
+        "logic_depth_levels": 1,
+        "mapped_cells": 84,
+        "mapped_comb_cells": 44,
+        "mapped_state_bits": 40,
+        "nets_fanout_ge16": 0,
+        "sink_pin_wire_proxy": 147
+      }
+    }
+  },
+  "comparability": {
+    "full_p6": {
+      "boundary": "ref_clk,sample_clk,rst_n,link_enable,pending[15:0] -> p6_clk,p6_data[4:0],retire_valid[1:0],retire_addr0[3:0],retire_addr1[3:0],protocol_error,drain_idle",
+      "flow": "read_verilog -sv -DSYNTHESIS; hierarchy -check -top k2_p6_cost_boundary; proc; flatten; opt; memory_map; opt; setundef -zero; opt; techmap; opt; abc -g simple; clean; check; stat",
+      "tool": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+      "tool_identity": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f",
+      "top": "k2_p6_cost_boundary"
+    },
+    "isolated_p6": {
+      "boundary": "ref_clk,sample_clk,rst_n,bundle_valid,grant_count[1:0],grant_addr0[3:0],grant_addr1[3:0] -> bundle_ready,bundle_commit,policy_microsteps[1:0],bundle_protocol_error,p6_clk,p6_data[4:0],retire_valid[1:0],retire_addr0[3:0],retire_addr1[3:0],retire_protocol_error,drain_idle",
+      "flow": "read_verilog -sv -DSYNTHESIS; hierarchy -check -top k2_p6_endpoint_cost_boundary; proc; flatten; opt; memory_map; opt; setundef -zero; opt; techmap; opt; abc -g simple; clean; check; stat",
+      "tool": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+      "tool_identity": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f",
+      "top": "k2_p6_endpoint_cost_boundary"
+    },
+    "normalized": {
+      "boundary": "clk,rst,pending[15:0],bundle_ready -> grant_count[1:0],grant_addr0[3:0],grant_addr1[3:0]",
+      "flow": "read_verilog -sv -DSYNTHESIS; hierarchy -check -top k2_common_boundary; proc; flatten; opt; memory_map; opt; setundef -zero; opt; techmap; opt; abc -g simple; clean; check; stat",
+      "tool": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+      "tool_identity": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f"
+    },
+    "same_recipe_and_tool": true,
+    "top_boundary_rule": "identical within each normalized/full-P6 cohort"
+  },
+  "inputs": {
+    "a2_integration": {
+      "path": "audits/a7_k2_cost_closure/receipts/a2_p6_integration.json",
+      "sha256": "595d7d41119f3242661d302476454883724716b92d4c1fcf37a3eae6f3a1d303"
+    },
+    "a2_normalized": {
+      "path": "audits/a7_k2_same_flow_structural/a2_batched_iwrr.json",
+      "sha256": "e13434d16d651552787ecf09feeb74a47567749b3e42e8ce372e7c3ad634a3a4"
+    },
+    "a3_integration": {
+      "path": "audits/a7_k2_cost_closure/receipts/a3_p6_integration.json",
+      "sha256": "ee6327a0b437ed79883e82e3439ffbadd907330e353b95db5e93f9db2e9ffc32"
+    },
+    "a3_normalized": {
+      "path": "audits/a7_k2_same_flow_structural/a3_exact_scalar_prefix.json",
+      "sha256": "f482d0637696d7a76e684573e3d7c97e6aa7a287229430dfe7761b6c05142258"
+    },
+    "p6_endpoint": {
+      "path": "audits/a7_k2_cost_closure/receipts/p6_endpoint.json",
+      "sha256": "4f571f854b1f0f2fa8f660bcea3552eb1ce6c4773fe3063e48470f4b6ba315bf"
+    }
+  },
+  "interpretation": "Full-minus-normalized values are whole-cone generic structural deltas. They charge all adapter/P6 state but are not additive physical area or power.",
+  "isolated_p6_seam": {
+    "charged_state_bits": 40,
+    "metrics": {
+      "fanout_proxy_max": 12,
+      "fanout_proxy_p95": 3,
+      "generic_cells": 74,
+      "generic_state_bits": 40,
+      "logic_depth_levels": 5,
+      "mapped_cells": 95,
+      "mapped_comb_cells": 55,
+      "mapped_state_bits": 40,
+      "nets_fanout_ge16": 0,
+      "sink_pin_wire_proxy": 158
+    },
+    "shared_identically_by": [
+      "a2",
+      "a3"
+    ]
+  },
+  "pareto": {
+    "full_p6": [
+      "a2",
+      "a3"
+    ],
+    "metrics_lower_is_better": [
+      "mapped_cells",
+      "mapped_state_bits",
+      "logic_depth_levels",
+      "fanout_proxy_max",
+      "fanout_proxy_p95",
+      "nets_fanout_ge16",
+      "sink_pin_wire_proxy"
+    ],
+    "normalized": [
+      "a2",
+      "a3"
+    ]
+  },
+  "physical_metrics": {
+    "area": null,
+    "energy_per_event": null,
+    "fmax": null,
+    "power": null,
+    "status": "HOLD_NO_LIBERTY_STA_ACTIVITY_OR_POWER_RECEIPT"
+  },
+  "schema": "a7_k2_cost_closure_report_v1",
+  "status": "STRUCTURAL_PROXY_COMPLETE_PHYSICAL_HOLD"
+}
