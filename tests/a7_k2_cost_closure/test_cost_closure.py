@@ -76,6 +76,38 @@ class CostClosureTests(unittest.TestCase):
         self.assertEqual(report["physical_metrics"]["power"], None)
         self.assertIn("HOLD", report["physical_metrics"]["status"])
 
+    def test_boundary_specific_interpretation_matches_metrics_and_readme(self):
+        report = self.module.generate(self.repo, self.paths)
+        normalized = {
+            key: report["candidates"][key]["normalized_common_seam_metrics"]
+            for key in ("a2", "a3")
+        }
+        full_p6 = {
+            key: report["candidates"][key]["full_composition_metrics"]
+            for key in ("a2", "a3")
+        }
+        normalized_clause = "A2 has lower mapped state (22 < 26)"
+        full_state_clause = "A3 has lower mapped state (66 < 73)"
+        full_fanout_clause = "A2's only win is maximum fanout (15 < 31)"
+
+        self.assertEqual((normalized["a2"]["mapped_state_bits"],
+                          normalized["a3"]["mapped_state_bits"]), (22, 26))
+        self.assertEqual((full_p6["a3"]["mapped_state_bits"],
+                          full_p6["a2"]["mapped_state_bits"]), (66, 73))
+        self.assertEqual((full_p6["a2"]["fanout_proxy_max"],
+                          full_p6["a3"]["fanout_proxy_max"]), (15, 31))
+        for clause in (normalized_clause, full_state_clause, full_fanout_clause):
+            self.assertIn(clause, report["interpretation"])
+
+        committed = json.loads((ROOT / "audits/a7_k2_cost_closure/result.json").read_text())
+        self.assertEqual(committed, report)
+        readme = " ".join(
+            (ROOT / "audits/a7_k2_cost_closure/README.md").read_text().split()
+        )
+        for clause in (normalized_clause, full_state_clause, full_fanout_clause):
+            self.assertIn(clause, readme)
+        self.assertNotIn("A2 wins state and maximum", readme)
+
     def test_dirty_receipt_is_rejected(self):
         self.mutate("a2_integration", lambda row: row["metrics"].__setitem__(
             "mapped_cells", row["metrics"]["mapped_cells"] + 1), commit=False)

@@ -18,5 +18,6 @@ cmp "$root/audits/a7_k2_cost_closure/receipts/p6_endpoint.json" \
     "$out/rebuilt/p6_endpoint.json"
 python3 "$root/audits/a7_k2_cost_closure/generate_report.py" \
   --output "$out/report.json"
+cmp "$root/audits/a7_k2_cost_closure/result.json" "$out/report.json"
 grep -Fq '"status": "STRUCTURAL_PROXY_COMPLETE_PHYSICAL_HOLD"' "$out/report.json"
 printf '%s\n' 'A7_K2_COST_CLOSURE_TEST_PASS receipts=5 physical=HOLD'
