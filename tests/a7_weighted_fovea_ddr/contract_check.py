@@ -58,6 +58,12 @@ for token in (
     "retire_valid_o) begin",
     "A7_W6_SAME_ADDRESS_RETRIGGER_PASS",
     "A7_W6_WEIGHTED_FOVEA_DDR_DIRECTED_RTL_REGRESSION_PASS",
+    "A7_W6_FULL_CONTENTION_BUBBLE_CAUGHT",
+    "A7_W6_RESET_R0_PRE_BOUNDARY_CAUGHT",
+    "A7_W6_RESET_R0_POST_ARM_CAUGHT",
+    "A7_W6_ENDPOINT_DRAIN_TERM_REMOVAL_CAUGHT",
+    "A7_W6_SECOND_GRANT_SUPPRESSION_CAUGHT attempt=%0d",
+    "A7_W6_RESET_DISJOINT_EPOCH_PASS",
 ):
     if token not in tb_text:
         fail(f"missing directed timing/drain/retrigger evidence: {token}")
@@ -85,6 +91,8 @@ for token in (
     "git ls-files --error-unmatch",
     "git diff --quiet HEAD",
     "A7_W6_SHA_PINNED_DIRECTED_RTL_PASS",
+    "A7_W6_BASELINE_COMPILE_PASS",
+    "A7_W6_FIVE_MUTANT_GATE_PASS count=5",
 ):
     if token not in runner_text:
         fail(f"missing directed runner fail-closed contract: {token}")
