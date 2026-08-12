@@ -1,0 +1,54 @@
+{
+  "schema": "a3-w7-cluster2-provenance-v1",
+  "authoritative_repository": "/home/aiasic26911/semi-ai",
+  "authoritative_head_observed_2026_08_13": "ba603bd409d4b086a8476c6ee600c1814acafde0",
+  "introduction_commit": "3fb6a70592addcd5b3094987223c474d70f3db22",
+  "introduction_parent": "d36744257df1ebed3be4f0389eaa9786ce7e047d",
+  "introduction_author_date": "2026-08-09 15:11:36 +0900",
+  "introduction_committer_date": "2026-08-09 15:11:36 +0900",
+  "introduction_subject": "Add GangHee cluster2 as team-adopted base (2026-08-09)",
+  "top": "aer_tx16_trad_rowcol_fovea_cluster2",
+  "closure": [
+    {
+      "path": "rtl/arbiter2.v",
+      "semi_ai_path": "rtl/ganghee_cluster2/arbiter2.v",
+      "git_blob": "c5f512f1f3a685c30991ef5cf1ef76da42341348",
+      "sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"
+    },
+    {
+      "path": "rtl/arbiter4_tree.v",
+      "semi_ai_path": "rtl/ganghee_cluster2/arbiter4_tree.v",
+      "git_blob": "a772cac49d7f10282f6b467ceaabcd51155cc63e",
+      "sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"
+    },
+    {
+      "path": "rtl/aer_tx16_trad_rowcol_fovea_cluster2.v",
+      "semi_ai_path": "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea_cluster2.v",
+      "git_blob": "2e795bf616e558db393875b258ac7cc868c2799f",
+      "sha256": "97151241b642d5db1c5974233439dfcea14c4ec325b1d3e91c9caa9d4917c44a"
+    }
+  ],
+  "redred_faer_observation": {
+    "repository_head": "5e564d7f3aebc561ef5419f1a09b64deba9f1276",
+    "path": "rtl/aer_tx16_trad_rowcol_fovea_cluster2.v",
+    "status": "untracked copy",
+    "content_matches_authoritative_sha256": true
+  },
+  "scalar_fovea_reference": {
+    "path": "reference/aer_tx16_trad_rowcol_fovea.v",
+    "semi_ai_path": "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea.v",
+    "git_blob": "c57c2ffda5cb03ce0370b286f7460c356b429b68",
+    "sha256": "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e",
+    "role": "counterfactual metric reference only; not in Cluster2 elaboration closure"
+  },
+  "benchmark": {
+    "generator_version": "4.0",
+    "generator_sha256": "9e2857029f953315d2c353317fa4888a784579f43980a935ec6eb13e4688cd53",
+    "full50_manifest": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+    "full50_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+    "full50_run_count": 50,
+    "capacity22_manifest": "benchmarks/clean_slate_aer/manifest.multilane-n16.json",
+    "capacity22_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "capacity22_run_count": 22
+  }
+}
