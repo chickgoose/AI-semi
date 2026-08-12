@@ -1,6 +1,13 @@
 `timescale 1ns/1ps
 
 module a6_w7_smoke_tb;
+  localparam integer REF_PERIOD_TICKS = 16;
+  localparam integer RESET_ASSERT_TICK = 1;
+  localparam integer RESET_RELEASE_TICK = 29;
+  localparam integer RESET_RELEASE_PHASE_TICKS = 13;
+  localparam integer SAMPLE_RISE_PHASE_TICKS = 4;
+  localparam integer SAMPLE_FALL_PHASE_TICKS = 12;
+
   logic ref_clk_i = 1'b0;
   logic sample_clk_i = 1'b0;
   logic rst_n = 1'b1;
@@ -66,14 +73,17 @@ module a6_w7_smoke_tb;
 
   always @(negedge rst_n) begin
     reset_assert_seen = 1;
-    if ($time != 1ns) $fatal(1, "reset assertion must be 1ns: %0t", $time);
+    if ($time != RESET_ASSERT_TICK)
+      $fatal(1, "reset assertion must be tick 1: %0t", $time);
   end
 
   always @(posedge rst_n) begin
     if (!reset_assert_seen)
       $fatal(1, "reset released without an observed assertion edge");
-    if ($time != 29ns || ($time % 16ns) != 13ns)
-      $fatal(1, "reset release must be 29ns and phase 13 modulo 16: %0t", $time);
+    if ($time != RESET_RELEASE_TICK ||
+        ($time % REF_PERIOD_TICKS) != RESET_RELEASE_PHASE_TICKS)
+      $fatal(1, "reset release must be tick 29 and phase 13 modulo 16: %0t",
+             $time);
     if (reset_active_ref_edges < 1)
       $fatal(1, "reset assertion covered no ref-clock posedge");
     if (ref_clk_i !== 1'b0 || sample_clk_i !== 1'b0)
@@ -83,11 +93,14 @@ module a6_w7_smoke_tb;
              reset_active_ref_edges);
   end
   always @(posedge ref_clk_i)
-    if (($time % 16ns) != 0) $fatal(1, "ref rise phase mismatch: %0t", $time);
+    if (($time % REF_PERIOD_TICKS) != 0)
+      $fatal(1, "ref rise phase mismatch: %0t", $time);
   always @(posedge sample_clk_i)
-    if (($time % 16ns) != 4ns) $fatal(1, "sample rise phase mismatch: %0t", $time);
+    if (($time % REF_PERIOD_TICKS) != SAMPLE_RISE_PHASE_TICKS)
+      $fatal(1, "sample rise phase mismatch: %0t", $time);
   always @(negedge sample_clk_i)
-    if (($time % 16ns) != 12ns) $fatal(1, "sample fall phase mismatch: %0t", $time);
+    if (($time % REF_PERIOD_TICKS) != SAMPLE_FALL_PHASE_TICKS)
+      $fatal(1, "sample fall phase mismatch: %0t", $time);
 
 `ifdef W7_PARALLEL
   a5_owner_semantics_parallel_top dut (

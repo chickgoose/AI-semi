@@ -31,7 +31,14 @@ for edge_name in sample_pos sample_neg link_pos link_neg; do
 done
 rg -Fq '#1 rst_n = 1'"'"'b0;' "$bundle/smoke_tb.sv"
 rg -Fq '#28 rst_n = 1'"'"'b1;' "$bundle/smoke_tb.sv"
-rg -q '\(\$time % 16ns\) != 13ns' "$bundle/smoke_tb.sv"
+rg -q '\$time % REF_PERIOD_TICKS' "$bundle/smoke_tb.sv"
+rg -q 'RESET_RELEASE_PHASE_TICKS = 13' "$bundle/smoke_tb.sv"
+rg -q 'SAMPLE_RISE_PHASE_TICKS = 4' "$bundle/smoke_tb.sv"
+rg -q 'SAMPLE_FALL_PHASE_TICKS = 12' "$bundle/smoke_tb.sv"
+if rg -n '\$time[^;\n]*%[^;\n]*(fs|ps|ns|us|ms|s)\b' "$bundle/smoke_tb.sv"; then
+  echo 'time-unit literal used as modulus operand' >&2
+  exit 1
+fi
 rg -q 'reset_active_ref_edges < 1' "$bundle/smoke_tb.sv"
 rg -q 'W7_INNOVUS_CLEAN_END' "$bundle/innovus.tcl"
 rg -q 'CoreSiteDouble' "$bundle/innovus.tcl"
