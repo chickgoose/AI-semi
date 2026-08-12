@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "tools": {
+    "k2-driver": {
+      "version_argv": ["--version"]
+    }
+  },
+  "stages": [
+    {
+      "name": "compile",
+      "optional": false,
+      "argv": [
+        "@K2_TOOL:k2-driver@", "compile",
+        "--top", "@K2_TOP@",
+        "--filelist", "@K2_FILELIST@",
+        "--defines", "@K2_DEFINES@",
+        "--parameters", "@K2_PARAMS@",
+        "--output", "@K2_OUTPUT:simulator-image@"
+      ],
+      "outputs": [
+        {
+          "name": "simulator-image",
+          "path": "artifacts/build/simulator-image",
+          "role": "build",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "name": "directed_trace",
+      "optional": false,
+      "argv": [
+        "@K2_TOOL:k2-driver@", "run", "--suite", "directed_trace",
+        "--image", "@K2_OUTPUT:simulator-image@",
+        "--result", "@K2_OUTPUT:directed-result@"
+      ],
+      "outputs": [
+        {
+          "name": "directed-result",
+          "path": "artifacts/directed/result.json",
+          "role": "suite_result",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "name": "reset_drain",
+      "optional": false,
+      "argv": [
+        "@K2_TOOL:k2-driver@", "run", "--suite", "reset_drain",
+        "--image", "@K2_OUTPUT:simulator-image@",
+        "--result", "@K2_OUTPUT:reset-result@"
+      ],
+      "outputs": [
+        {
+          "name": "reset-result",
+          "path": "artifacts/reset/result.json",
+          "role": "suite_result",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "name": "full50",
+      "optional": true,
+      "argv": [
+        "@K2_TOOL:k2-driver@", "run", "--suite", "full50",
+        "--image", "@K2_OUTPUT:simulator-image@",
+        "--result", "@K2_OUTPUT:full50-result@"
+      ],
+      "outputs": [
+        {
+          "name": "full50-result",
+          "path": "artifacts/full50/result.json",
+          "role": "suite_result",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "name": "capacity22",
+      "optional": true,
+      "argv": [
+        "@K2_TOOL:k2-driver@", "run", "--suite", "capacity22",
+        "--image", "@K2_OUTPUT:simulator-image@",
+        "--result", "@K2_OUTPUT:capacity22-result@"
+      ],
+      "outputs": [
+        {
+          "name": "capacity22-result",
+          "path": "artifacts/capacity22/result.json",
+          "role": "suite_result",
+          "kind": "file"
+        }
+      ]
+    }
+  ]
+}
