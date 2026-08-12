@@ -1,0 +1,63 @@
+{
+  "schema": "a6-a23-k2-p6-source-registry-v1",
+  "targets": {
+    "a2_k2": {
+      "commit": "d74ff962aaf07c5209f1a1d1c69832735c654a0d",
+      "top": "a6_a2_k2_normalized_top",
+      "expected_modules": ["a2_batched_iwrr_k2", "a6_a2_k2_normalized_top"],
+      "sources": {
+        "candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+      }
+    },
+    "a3_k2": {
+      "commit": "29a5003bb47c9c502a3bec9a727de2ed14afcfeb",
+      "top": "a6_a3_k2_normalized_top",
+      "expected_modules": ["a3_exact_scalar_prefix_k2", "a6_a3_k2_normalized_top"],
+      "sources": {
+        "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+      }
+    },
+    "a2_p6": {
+      "commit": "e1d5598f1aa53dfadbdad47cce07afa51caac32c",
+      "top": "a2_batched_iwrr_p6_top",
+      "expected_modules": [
+        "a2_batched_iwrr_k2", "a2_batched_iwrr_p6_top",
+        "a7_p6_atomic_bundle_adapter", "a7_p6_atomic_bundle_frontend",
+        "a7_p6_exact_pair_endpoint", "a7_p6_pair_launch",
+        "a7_p6_pair_observer", "a7_p6_pair_rx", "a7_p6_pair_tx"
+      ],
+      "sources": {
+        "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
+        "rtl/candidates/a2_batched_iwrr_p6/a2_batched_iwrr_p6_top.sv": "d095c0dd79a76d0a2027757258f006e6913bed45273b1bba22af22c0ce0ac29b",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4"
+      }
+    },
+    "a3_p6": {
+      "commit": "599f24c948b06d2cf8ebbf112542b7b25fba3742",
+      "top": "a3_exact_scalar_prefix_k2_p6_top",
+      "expected_modules": [
+        "a3_exact_scalar_prefix_k2", "a3_exact_scalar_prefix_k2_p6_top",
+        "a7_p6_atomic_bundle_adapter", "a7_p6_atomic_bundle_frontend",
+        "a7_p6_exact_pair_endpoint", "a7_p6_pair_launch",
+        "a7_p6_pair_observer", "a7_p6_pair_rx", "a7_p6_pair_tx"
+      ],
+      "sources": {
+        "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+        "rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6_top.sv": "b5c2eab34dec9a3c6dc7879a587508fcbd38ae10ac2dd927ef420e0e091ae793",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170",
+        "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4"
+      }
+    }
+  }
+}
