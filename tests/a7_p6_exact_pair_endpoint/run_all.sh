@@ -19,6 +19,9 @@ rtl_sources=(
   "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv"
   "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv"
   "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_parallel_reference.sv"
+  "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv"
+  "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv"
+  "$project_root/rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_parallel_reference.sv"
 )
 verilator_flags=(
   --binary --timing --assert -Wall -Wno-fatal -Wno-BLKSEQ
@@ -52,6 +55,31 @@ build_lockstep() {
 build_lockstep baseline
 "$out_dir/baseline-obj/lockstep" | tee "$out_dir/baseline-run.log"
 grep -q 'A7_P6_LOCKSTEP_PASS' "$out_dir/baseline-run.log"
+
+mkdir -p "$out_dir/atomic-obj"
+"$verilator_bin" "${verilator_flags[@]}" \
+  --top-module a7_p6_atomic_bundle_contract_tb \
+  --Mdir "$out_dir/atomic-obj" -o sim_atomic \
+  "${rtl_sources[@]}" "$test_dir/a7_p6_atomic_bundle_contract_tb.sv" \
+  >"$out_dir/atomic-build.log" 2>&1
+"$out_dir/atomic-obj/sim_atomic" | tee "$out_dir/atomic-run.log"
+grep -q 'A7_P6_ATOMIC_BUNDLE_PASS' "$out_dir/atomic-run.log"
+
+mkdir -p "$out_dir/atomic-partial-obj"
+"$verilator_bin" "${verilator_flags[@]}" \
+  -DA7_P6_MUTATE_PARTIAL_PAIR_COMMIT \
+  --top-module a7_p6_atomic_bundle_contract_tb \
+  --Mdir "$out_dir/atomic-partial-obj" -o sim_atomic_partial \
+  "${rtl_sources[@]}" "$test_dir/a7_p6_atomic_bundle_contract_tb.sv" \
+  >"$out_dir/atomic-partial-build.log" 2>&1
+if "$out_dir/atomic-partial-obj/sim_atomic_partial" \
+    >"$out_dir/atomic-partial-run.log" 2>&1; then
+  printf '%s\n' 'atomic partial-commit mutation unexpectedly passed' >&2
+  exit 1
+fi
+grep -q 'A7_P6_PARTIAL_COMMIT_MUTATION_CAUGHT' \
+  "$out_dir/atomic-partial-run.log"
+printf '%s\n' 'A7_P6_ATOMIC_MUTATION_CAUGHT name=partial_pair_commit'
 
 mutations=(
   "overflow:A7_P6_MUTATE_OVERFLOW_ACCEPT:A7_P6_OVERFLOW_MUTATION_CAUGHT"

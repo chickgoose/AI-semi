@@ -22,23 +22,47 @@ The candidate, reference, tests, model, runner, and report are isolated under:
 No frozen common benchmark, team RTL, native binding, or scheduler RTL is
 modified.
 
-## Atomic 0/1/2-address input contract
+## Atomic 0/1/2-address scheduler contract
 
-At each rising `ref_clk_i`, one scheduler transaction is accepted exactly when
-`input_valid_i && input_ready_o` is sampled true.
+The normalized top-three comparison boundary is
+`a7_p6_atomic_bundle_adapter`.  At each rising `ref_clk_i`, one scheduler
+bundle is accepted exactly when `bundle_valid_i && bundle_ready_o` is sampled
+true.
 
-- zero addresses: `input_valid_i=0`, `input_count_i=0`;
-- singleton: `input_valid_i=1`, `input_count_i=1`, lane 0 is meaningful;
-- ordered pair: `input_valid_i=1`, `input_count_i=2`, lane 0 precedes lane 1;
-- count 3, valid with count 0, or invalid with nonzero count is a protocol
-  error and cannot handshake;
-- while valid and not ready, count and both addresses must remain stable; and
-- one handshake accepts the entire singleton or pair atomically.
+- zero addresses: valid bundle with `grant_count_i=0`; it commits as an
+  atomic no-op, launches no link cell, and advances zero policy microsteps;
+- singleton: valid bundle with `grant_count_i=1`, lane 0 is meaningful;
+- ordered pair: valid bundle with `grant_count_i=2`, lane 0 precedes lane 1;
+- count 3, or an invalid bundle with nonzero count, is a protocol error and
+  cannot handshake;
+- while a legal valid bundle is not ready, count and both addresses must stay
+  stable through the eventual commit edge; and
+- one `bundle_commit_o` accepts all valid lanes together.  There is no
+  per-lane ready or per-lane scheduler commit.
+
+`policy_microsteps_o` is zero without a commit and is exactly `grant_count_i`
+on a commit.  The scheduler owns policy state and advances it by precisely
+that many sequential scalar transitions.  The adapter does not inspect or
+mutate scheduler policy.  A scheduler binding must use the single bundle fire
+as its only policy-state write enable, so `bundle_ready_o=0` implies zero
+microsteps and stable policy state.
+
+The original `a7_p6_exact_pair_endpoint` remains the nonempty link-record
+core: its `input_valid_i=0,input_count_i=0` encoding means no link cell.  The
+atomic frontend maps a valid count-zero scheduler offer onto that no-cell
+encoding.  This distinction closes the contract-expression gap in commit
+`4dcafd8`; it does not change the P6 code word or nonempty endpoint behavior.
 
 Ready is low during reset and through the first charged reference edge after
 reset release.  Thereafter the endpoint can accept one transaction every
 reference cycle.  There is no valid-edge detector: held valid produces one
 transaction on every edge on which ready remains high.
+
+The fair reference is wrapped by
+`a7_p6_atomic_bundle_parallel_reference`, which uses the same atomic frontend,
+reset arm, commit edge, and policy-microstep evidence.  Thus a pair can never
+be counted as one scheduler acceptance on P6 and two independent lane
+acceptances on the parallel reference.
 
 ## P6 word and physical signals
 
@@ -74,7 +98,12 @@ Accordingly, the endpoint reports `queue_state_bits=0`.  Reset-arm and illegal
 transactions are handled by ready-low backpressure.  Output backpressure is
 not supported: the declared receiver boundary is always-ready.  A product that
 requires an independently stalled consumer must add and charge explicit
-retire buffers and is not this endpoint.
+retire buffers and is not this endpoint.  In particular, the A5 evaluator's
+independent `retire_ready[1:0]` adversaries belong only behind a separately
+buffered and charged link adapter.  That adapter may change its own queue/lane
+state, but it must not split a scheduler bundle commit or independently
+advance scheduler policy.  No such retire buffer is included or hidden in the
+six-pin P6 cost.
 
 ## Reset and drain
 
@@ -93,7 +122,34 @@ The independent Python model exhausts all 16 singleton and 256 ordered-pair
 code words.  RTL lockstep exhausts the same code space at the raw P6 pins and
 compares final retirement against the equal-latency parallel reference.
 Expected-fail mutations cover accepting a third address, early-ready stall
-violation, reset phantom state, and swapped pair order.
+violation, reset phantom state, swapped pair order, and advancing a committed
+pair by only one policy microstep.  The atomic wrapper test also covers a
+valid count-zero no-op, held count/addresses across reset-arm stall, whole-pair
+commit, same-cycle order, drain/reset/rearm, and lockstep against the wrapped
+parallel reference.
+
+## Alignment with A5 evaluator `41c425b`
+
+The A5 evaluator defines `accepts` as one ordered contiguous scalar prefix of
+length 0, 1, or 2 and advances its oracle once for each accepted event.  The
+normalized mapping is direct:
+
+```text
+A5 accepts=[]       -> grant_count=0 -> one no-op bundle commit -> 0 steps
+A5 accepts=[g0]     -> grant_count=1 -> one bundle commit       -> 1 step
+A5 accepts=[g0,g1]  -> grant_count=2 -> one bundle commit       -> 2 steps
+```
+
+The evaluator evidence array must be emitted from the single bundle fire; it
+must not be constructed from two independently ready scheduler lanes.  A5's
+independent `retire_ready` checks are downstream retirement checks, not
+permission to split the scheduler acceptance boundary.
+
+The exact `41c425b` tree was extracted read-only and its five unit tests plus
+seven-mutation self-falsification suite passed.  That qualifies the evaluator,
+not this endpoint as one of the three scheduler candidates.  The A7 RTL test
+independently checks the normalized bundle mapping at the actual P6 and fair
+parallel boundaries.
 
 The frozen 46 traces are regenerated to `/tmp`, projected through a
 deterministic rotating K2 source-latch seam, replayed through RTL, and checked
