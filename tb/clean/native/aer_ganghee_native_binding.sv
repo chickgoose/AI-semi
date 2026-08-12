@@ -29,15 +29,26 @@ module aer_ganghee_native_binding #(
   logic [3:0]  native_addr;
   logic        native_ack;
   logic [15:0] native_ack_mask;
+  // Assertion-only state. It never drives the DUT or normalized seam.
+  logic        reset_quiet_armed = 1'b0;
   integer lane;
 
   assign native_rst = ~bench.rst_n;
 
   // The normalizer masks results that do not correspond to a live pending
   // request.  Check reset quiet at the unmasked native boundary so that mask
-  // behavior cannot make a stale native completion pass for free.
+  // behavior cannot make a stale native completion pass for free. Arm only
+  // after a reset-active sampling edge: synchronously-reset native registers
+  // may be X before that edge, and may retain a pre-reset result until it.
+  always @(posedge bench.clk or posedge bench.rst_n) begin
+    if (bench.rst_n)
+      reset_quiet_armed <= 1'b0;
+    else
+      reset_quiet_armed <= 1'b1;
+  end
+
   always @(negedge bench.clk) begin
-    if (!bench.rst_n && (native_valid !== 1'b0))
+    if (!bench.rst_n && reset_quiet_armed && (native_valid !== 1'b0))
       $fatal(1, "GANGHEE_NATIVE_BINDING native valid active during reset value=%b",
              native_valid);
   end

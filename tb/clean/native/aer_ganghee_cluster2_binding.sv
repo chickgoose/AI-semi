@@ -33,6 +33,8 @@ module aer_ganghee_cluster2_binding #(
   logic [15:0] native_ack_mask;
   // Assertion-only history. It never drives the DUT or normalized seam.
   logic [15:0] previous_native_result_mask;
+  // Assertion-only state. It never drives the DUT or normalized seam.
+  logic        reset_quiet_armed = 1'b0;
   integer mask_col;
   integer map_col;
   integer source;
@@ -42,8 +44,18 @@ module aer_ganghee_cluster2_binding #(
 
   // Reset quiet is checked at the unmasked native boundary. A normalizer may
   // not make a stale native result disappear merely because no request lives.
+  // Arm only after a reset-active sampling edge: synchronously-reset native
+  // registers may be X before that edge, and may retain a pre-reset result
+  // until it.
+  always @(posedge bench.clk or posedge bench.rst_n) begin
+    if (bench.rst_n)
+      reset_quiet_armed <= 1'b0;
+    else
+      reset_quiet_armed <= 1'b1;
+  end
+
   always @(negedge bench.clk) begin
-    if (!bench.rst_n &&
+    if (!bench.rst_n && reset_quiet_armed &&
         ((native_valid0 !== 1'b0) || (native_valid1 !== 1'b0)))
       $fatal(1, "GANGHEE_CLUSTER2_BINDING native valid active during reset lane0=%b lane1=%b",
              native_valid0, native_valid1);
