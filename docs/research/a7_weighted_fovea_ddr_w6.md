@@ -65,7 +65,7 @@ The composition wrapper has zero functional sequential state.  The existing R1
 TX, RX, framing, ICG technology boundary, and ref-domain retire observer remain
 unchanged and fully charged.
 
-## Candidate-only regression
+## Candidate-only directed RTL evidence
 
 The synthesizable `a7_weighted_fovea_weight_contract_fixture` has the native
 interface and a 12-slot `1:5:5:1` aggregate row schedule.  It is explicitly
@@ -107,7 +107,9 @@ The runner prefers the repository-local
 to the read-only sibling A5 fixture directory.  `A7_W6_CANONICAL_DIR` explicitly
 overrides both.
 
-The qualification runner requires and hashes exactly `arbiter2.v`,
+The SHA-pinned directed runner (retaining the historical
+`run_a7_weighted_fovea_ddr_qualification.sh` filename) requires and hashes
+exactly `arbiter2.v`,
 `arbiter4_tree.v`, and `aer_tx16_trad_rowcol_fovea.v`.  Frozen SHA-256 values
 are respectively
 `25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684`,
@@ -125,11 +127,19 @@ files to add tool pragmas.  All other warnings and errors remain fail-closed.
 Both runners record source/tool hashes, refuse output overwrite, require every
 directed PASS sentinel plus the exact expected-fail diagnostic, and check that
 common benchmarks/TB and existing R1 RTL have no diff from the W6 base commit.
+The SHA-pinned path also rejects any untracked execution input or any execution
+input whose worktree content differs from `git_head`; the registry therefore
+cannot label dirty directed sources with an unrelated commit.
 The SHA-pinned runner additionally requires
 Yosys `hierarchy -check`, process lowering, and `check -assert` on the complete
-canonical+composition+R1 hierarchy.  Neither mode is full qualification.
+canonical+composition+R1 hierarchy, plus a nonempty JSON structural netlist
+containing the composition top.  Tool version output must identify Verilator
+and Yosys; a no-op executable cannot manufacture the hierarchy PASS marker.
+The protected-diff override accepts only the two frozen source/integration base
+commits and rejects arbitrary or non-ancestor revisions.  Neither mode is
+full50, full functional qualification, or physical qualification.
 
-## Qualification boundary
+## Evidence boundary
 
 RTL simulation establishes the logical phase contract only.  ICG/DDR cell
 mapping, generated-clock STA, half-cycle rise/fall constraints, duty/skew,
