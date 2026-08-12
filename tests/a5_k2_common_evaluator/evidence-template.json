@@ -1,0 +1,28 @@
+{
+  "schema": "a5_k2_candidate_evidence_v1",
+  "candidate": {
+    "id": "REPLACE_WITH_CANDIDATE_ID",
+    "source_sha256": "REPLACE_WITH_64_HEX",
+    "binding_sha256": "REPLACE_WITH_64_HEX",
+    "runner_sha256": "REPLACE_WITH_64_HEX",
+    "claims": {"full_future_trace_equivalence": false}
+  },
+  "vector_bundle_sha256": "REPLACE_WITH_VECTOR_BUNDLE_SHA256",
+  "runs": [
+    {
+      "name": "REPLACE_WITH_VECTOR_RUN_NAME",
+      "run_sha256": "REPLACE_WITH_VECTOR_RUN_SHA256",
+      "cycles": [
+        {
+          "cycle": 0,
+          "accepts": [],
+          "outputs": [
+            {"lane": 0, "valid": false},
+            {"lane": 1, "valid": false}
+          ],
+          "drain_idle": false
+        }
+      ]
+    }
+  ]
+}
