@@ -294,7 +294,7 @@ def generate(repo: Path, paths: dict[str, str]) -> dict[str, Any]:
         "isolated_p6_seam": {
             "metrics": p6_metrics,
             "charged_state_bits": 40,
-            "shared_identically_by": ["a2", "a3"],
+            "shared_identically_by": list(CANDIDATES),
         },
         "pareto": {
             "normalized": pareto(normalized_metrics),

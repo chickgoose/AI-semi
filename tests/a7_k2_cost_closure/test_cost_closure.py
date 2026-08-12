@@ -65,6 +65,9 @@ class CostClosureTests(unittest.TestCase):
             ["mapped_state_bits"], 40)
         self.assertEqual(report["isolated_p6_seam"]["metrics"]["mapped_state_bits"], 40)
         self.assertEqual(
+            report["isolated_p6_seam"]["shared_identically_by"],
+            ["a2", "a3", "a4"])
+        self.assertEqual(
             report["candidates"]["a2"]["integration_adapter_seam"]
             ["measured_state_residual_full_minus_normalized_minus_p6"],
             {"generic": 11, "mapped": 11})

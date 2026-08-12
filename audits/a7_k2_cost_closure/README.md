@@ -15,7 +15,7 @@ A4 each charge a zero-state admission seam plus the same 40-bit P6 endpoint.
 The report keeps three costs distinct: normalized common-seam metrics, the
 isolated P6 seam, and the full composition. Adapter state is closed by
 `full - normalized - isolated P6` and must equal 11 bits for A2 and zero for
-A3 in both generic and mapped state. Combinational cells are deliberately not
+A3 and A4 in both generic and mapped state. Combinational cells are deliberately not
 split by subtraction because whole-cone ABC rewriting is not additive.
 
 `generate_report.py` refuses an input unless it is tracked and byte-identical to
