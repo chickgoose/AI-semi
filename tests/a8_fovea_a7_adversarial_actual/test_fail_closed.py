@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from run_actual_owner_mutations import AuditFailure, replace_once, validate_outcome
+
+
+class FailClosedHelpersTest(unittest.TestCase):
+    def test_replace_once_rejects_missing_or_ambiguous_anchor(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            path = Path(directory) / "source.sv"
+            path.write_text("alpha alpha\n", encoding="utf-8")
+            with self.assertRaises(AuditFailure):
+                replace_once(path, "alpha", "beta")
+            with self.assertRaises(AuditFailure):
+                replace_once(path, "missing", "beta")
+
+    def test_replace_once_changes_exactly_one_anchor(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            path = Path(directory) / "source.sv"
+            path.write_text("alpha\n", encoding="utf-8")
+            replace_once(path, "alpha", "beta")
+            self.assertEqual(path.read_text(encoding="utf-8"), "beta\n")
+
+    def test_baseline_requires_zero_and_exact_pass_sentinel(self) -> None:
+        validate_outcome("baseline", 0, True)
+        for rc, sentinel in ((1, True), (0, False), (1, False)):
+            with self.subTest(rc=rc, sentinel=sentinel):
+                with self.assertRaises(AuditFailure):
+                    validate_outcome("baseline", rc, sentinel)
+
+    def test_mutant_rejects_rc_zero_or_pass_sentinel(self) -> None:
+        validate_outcome("premature_drain", 134, False)
+        for rc, sentinel in ((0, False), (134, True), (0, True)):
+            with self.subTest(rc=rc, sentinel=sentinel):
+                with self.assertRaises(AuditFailure):
+                    validate_outcome("mutant", rc, sentinel)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
