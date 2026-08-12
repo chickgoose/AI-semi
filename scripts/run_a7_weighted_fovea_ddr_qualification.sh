@@ -3,7 +3,16 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$script_dir/.." && pwd)"
-base="${A7_W6_BASE_COMMIT:-0f2db4b}"
+if [[ -n "${A7_W6_BASE_COMMIT:-}" ]]; then
+  base="$A7_W6_BASE_COMMIT"
+elif git merge-base --is-ancestor 0f2db4b HEAD 2>/dev/null; then
+  base=0f2db4b
+elif git merge-base --is-ancestor 229df7b HEAD 2>/dev/null; then
+  base=229df7b
+else
+  printf 'cannot resolve W6 protected-diff baseline for this lineage\n' >&2
+  exit 1
+fi
 fixture_dir="${A7_W6_CANONICAL_DIR:-/home/chickgoose/projects/a5/tests/a5_fovea_a7_structural/fixtures}"
 
 if [[ -v A7_W6_QUAL_OUT ]]; then

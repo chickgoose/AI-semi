@@ -3,7 +3,16 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$script_dir/.." && pwd)"
-base="${A7_R1_BASE_COMMIT:-ab97aba}"
+if [[ -n "${A7_R1_BASE_COMMIT:-}" ]]; then
+  base="$A7_R1_BASE_COMMIT"
+elif git merge-base --is-ancestor ab97aba HEAD 2>/dev/null; then
+  base=ab97aba
+elif git merge-base --is-ancestor 95e0ab5 HEAD 2>/dev/null; then
+  base=95e0ab5
+else
+  printf 'cannot resolve protected-diff baseline for this lineage\n' >&2
+  exit 1
+fi
 if [[ -v A7_R1_OUT ]]; then
   out="$A7_R1_OUT"
   [[ ! -e "$out" ]] || {
