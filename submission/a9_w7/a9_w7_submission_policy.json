@@ -1,0 +1,115 @@
+{
+  "schema": "a9-w7-trusted-policy-v1",
+  "bootstrap": {
+    "git": {
+      "path": "/usr/bin/git",
+      "sha256": "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a",
+      "version": "git version 2.53.0"
+    }
+  },
+  "physical_release": {
+    "enabled": false,
+    "approved_tools": [],
+    "trusted_result_parsers": [],
+    "reason": "NO_APPROVED_PHYSICAL_TOOL_LIBRARY_PVT_OR_EXECUTED_RESULT_PARSER"
+  },
+  "profiles": {
+    "static_n64_timing": {
+      "top": "a9_static_n64_timing_top",
+      "filelist": "rtl/candidates/a9_distributed_token_fabric/physical/static_n64_timing.f",
+      "ordered_sources": [
+        "rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_phase4_synth_top.sv",
+        "rtl/candidates/a9_distributed_token_fabric/physical/a9_static_n64_timing_top.sv"
+      ],
+      "defines": ["A9_YOSYS"],
+      "parameters": {
+        "ADDR_WIDTH": 16,
+        "NUM_SOURCES": 64,
+        "RETIRE_LANES": 8,
+        "SOURCE_WIDTH": 6
+      },
+      "sdc": {"status": "UNBOUND", "path": null, "sha256": null},
+      "library": {"status": "UNBOUND", "path": null, "sha256": null},
+      "pvt": {"status": "UNBOUND", "name": null},
+      "decision": "DIAGNOSTIC_ONLY_NOT_N16_SHORTLIST"
+    },
+    "h2_n64_asymmetric_stall": {
+      "top": "a9_h2_n64_asymmetric_stall_top",
+      "filelist": "rtl/candidates/a9_distributed_token_fabric/physical/h2_n64_asymmetric_stall.f",
+      "ordered_sources": [
+        "rtl/candidates/a9_distributed_token_fabric/a9_empty_slot_cell.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_distributed_token_fabric.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_neighbor_handoff_fabric.sv",
+        "rtl/candidates/a9_distributed_token_fabric/a9_phase4_synth_top.sv",
+        "rtl/candidates/a9_distributed_token_fabric/physical/a9_h2_n64_asymmetric_stall_top.sv"
+      ],
+      "defines": ["A9_YOSYS", "A9_PHASE4_DIFFUSIVE"],
+      "parameters": {
+        "ADDR_WIDTH": 16,
+        "NUM_SOURCES": 64,
+        "RETIRE_LANES": 8,
+        "SOURCE_WIDTH": 6
+      },
+      "sdc": {"status": "UNBOUND", "path": null, "sha256": null},
+      "library": {"status": "UNBOUND", "path": null, "sha256": null},
+      "pvt": {"status": "UNBOUND", "name": null},
+      "decision": "CONDITIONAL_STALL_DIAGNOSTIC_ONLY"
+    },
+    "w5_generic_ddr2": {
+      "top": "a9_w5_ddr_link",
+      "filelist": "rtl/candidates/a9_w5_ddr_technology_boundary/filelists/generic.f",
+      "ordered_sources": [
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_launch_qualifier.sv",
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_retire_observer.sv",
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_clock_gate.sv",
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_tx_launch.sv",
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_rx_capture.sv",
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_ddr_tx_endpoint.sv",
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_ddr_rx_endpoint.sv",
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_ddr_link.sv"
+      ],
+      "transitive_sources": [
+        "rtl/candidates/a9_w5_ddr_technology_boundary/a9_w5_tech_select.svh"
+      ],
+      "defines": ["A9_W5_TECH_GENERIC"],
+      "parameters": {"ADDR_WIDTH": 4, "DATA_WIDTH": 2},
+      "sdc": {
+        "status": "TEMPLATE_ONLY_NOT_EXECUTED_STA",
+        "path": "constraints/a9_w5_ddr_technology_boundary.sdc",
+        "sha256": null
+      },
+      "library": {"status": "UNBOUND", "path": null, "sha256": null},
+      "pvt": {"status": "UNBOUND", "name": null},
+      "decision": "BEHAVIORAL_MAPPING_PROTOTYPE_ONLY"
+    }
+  },
+  "windows_handoff": {
+    "destination_root": "C:\\Users\\박준영\\AI-semi",
+    "include_prefixes": [
+      "constraints/a9_",
+      "docs/research/a9_",
+      "experiments/a9_",
+      "rtl/candidates/a9_",
+      "submission/a9_w7/",
+      "tests/a9/",
+      "tests/a9_w5_",
+      "tests/a9_w7_"
+    ],
+    "include_exact": [
+      "scripts/a9_physical_handoff_preflight.py",
+      "scripts/analyze_a9_stripes.py",
+      "scripts/analyze_a9_yosys_json.py",
+      "scripts/explore_a9_neighbor_handoff.py",
+      "scripts/run_a9_benchmark.sh",
+      "scripts/run_a9_phase4_yosys.sh",
+      "scripts/run_a9_w5_ddr_technology_boundary.sh",
+      "scripts/a9_w7_submission_gate.py"
+    ],
+    "excluded_prefixes": [
+      ".agents/", ".codex/", "build/", "reports/", "results/", "vivado/"
+    ],
+    "excluded_names": ["__pycache__", ".git", "*.log", "*.vcd", "*.fst"]
+  }
+}

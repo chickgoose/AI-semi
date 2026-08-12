@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "a9-w7-submission-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "binding", "bootstrap", "profile",
+    "physical_evidence", "windows_handoff", "receipt"
+  ],
+  "properties": {
+    "schema": {"const": "a9-w7-submission-v1"},
+    "status": {"enum": ["HOLD", "GO"]},
+    "binding": {"type": "object"},
+    "bootstrap": {"type": "object"},
+    "profile": {"type": "object"},
+    "physical_evidence": {"type": "object"},
+    "windows_handoff": {"type": "object"},
+    "receipt": {"type": "object"}
+  }
+}
