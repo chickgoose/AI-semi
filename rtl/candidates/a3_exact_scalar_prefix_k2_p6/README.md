@@ -23,8 +23,12 @@ not accepted internal work. Reset must be asserted only after drain; the owner
 uses its pinned synchronous active-high reset while P6 uses its pinned
 asynchronous active-low reset.
 
-The imported owner RTL, profile, and owner file list are pinned in
-`provenance.json`. Reproduce the digital checks with:
+The current integrated owner RTL/profile/file list, all seven P6 RTL sources,
+and this integration's top/testbench/file list are pinned in
+`provenance.json`. The runner reads that single manifest rather than carrying a
+second set of hash constants. Its mutation self-test proves that both changed
+source bytes and a changed expected hash fail closed. Reproduce the digital
+checks with:
 
 ```sh
 VERILATOR=/path/to/verilator YOSYS=/path/to/yosys \

@@ -1,16 +1,81 @@
 {
-  "schema": "a3_exact_scalar_prefix_k2_p6_integration_v1",
-  "a3_owner": {
-    "branch_commit_sha": "bd1c1ee955685fc077afe930116a03bc49a8218f",
-    "rtl_origin_commit_sha": "632e68d247ec36a35b62dbd5c100b0a23d47cf7b",
-    "audit_candidate_commit_sha": "29a5003bb47c9c502a3bec9a727de2ed14afcfeb",
-    "rtl_path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
-    "rtl_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
-    "candidate_profile_sha256": "6945c4e65b16b389ccb9dd2161d7eb6c8a31fb33b2e7d1e4b466ab7665da7a59",
-    "owner_filelist_sha256": "a4574344a3181676de011c144c95818ea990f5a2d0438d815a45d00a01b3ae9d"
+  "schema": "a3_exact_scalar_prefix_k2_p6_integration_v2",
+  "origins": {
+    "a3_owner_rtl_commit_sha": "a6f997ade5c60c4c91027addb74e2a59c1ce5d6c",
+    "a3_common_shim_commit_sha": "b3555e2ba8cc544d7420f2e0d10f0330396f2f6c",
+    "p6_atomic_endpoint_commit_sha": "a891cc4f99e2a2955f5294ef066f933d1ffbf5ef",
+    "a3_p6_integration_commit_sha": "4960b09da2abc8b735fe65f520fec2286d0e4da4"
   },
-  "p6_endpoint": {
-    "atomic_contract_commit_sha": "747db00c0913a0681f482443c66e22a0f75c7373",
+  "artifacts": [
+    {
+      "role": "a3_owner_rtl",
+      "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+      "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+    },
+    {
+      "role": "a3_candidate_profile",
+      "path": "rtl/candidates/a3_exact_scalar_prefix_k2/candidate-profile.json",
+      "sha256": "f8ba804531635f8dd9ecb5d0b807c79ed2bdd3c7847e5042674ae7343204c823"
+    },
+    {
+      "role": "a3_owner_filelist",
+      "path": "rtl/candidates/a3_exact_scalar_prefix_k2/files.f",
+      "sha256": "bfd2187a87e28a1eeb14154dabf51dd31720f18b1f98146cb856ce3a292978ab"
+    },
+    {
+      "role": "p6_pair_launch",
+      "path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv",
+      "sha256": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c"
+    },
+    {
+      "role": "p6_pair_tx",
+      "path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv",
+      "sha256": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb"
+    },
+    {
+      "role": "p6_pair_rx",
+      "path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv",
+      "sha256": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018"
+    },
+    {
+      "role": "p6_pair_observer",
+      "path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv",
+      "sha256": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877"
+    },
+    {
+      "role": "p6_exact_pair_endpoint",
+      "path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv",
+      "sha256": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68"
+    },
+    {
+      "role": "p6_atomic_bundle_frontend",
+      "path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv",
+      "sha256": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170"
+    },
+    {
+      "role": "p6_atomic_bundle_adapter",
+      "path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv",
+      "sha256": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4"
+    },
+    {
+      "role": "a3_p6_integration_top",
+      "path": "rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6_top.sv",
+      "sha256": "b5c2eab34dec9a3c6dc7879a587508fcbd38ae10ac2dd927ef420e0e091ae793"
+    },
+    {
+      "role": "a3_p6_integration_tb",
+      "path": "tests/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6_tb.sv",
+      "sha256": "b13a4dc61bd97bafe4763129f4e7a231247f3ae15929864d2a510ed693ed0b0c"
+    },
+    {
+      "role": "a3_p6_integration_filelist",
+      "path": "rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6.f",
+      "sha256": "ed04b6ac6dc76b6b993180763f116257c1188a6e9b71da3d299d0dd9746ef3fc"
+    }
+  ],
+  "contract": {
+    "artifact_count": 13,
+    "p6_rtl_source_count": 7,
     "queue_state_bits": 0,
     "digital_p6_signal_count": 6
   },
