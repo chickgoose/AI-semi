@@ -37,3 +37,13 @@ Run:
 tests/w7_a8_adversarial/run_all.sh
 tests/w7_a8_adversarial/run_all.sh --require-go
 ```
+
+## Follow-up commits
+
+`run_followup_cross_audit.py` binds A7 `0233690` and A4 `63c4f2a` and reruns
+the three original attacks. The A7 digital submission baseline, exhaustive
+65,536-bitmap run, W6 timing/reset/retrigger checks, five RTL mutants, and stale
+negative all pass. The new A4 orchestrator closes both no-output/rc0 attacks by
+requiring an actual Xcelium log before accepting either candidate. The overall
+decision remains **HOLD** because its result validator still accepts an in-range
+`logical_source` rebound that disagrees with the corresponding input occurrence.
