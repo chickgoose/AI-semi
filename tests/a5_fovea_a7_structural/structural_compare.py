@@ -23,6 +23,13 @@ FOVEA_BLOBS = {
 }
 A7_EVIDENCE_COMMIT = "0f2db4b460fab0e45c4c22756209cad400789944"
 A7_ENDPOINT_COMMIT = "42377ca81340951bfcd453b3bd664e673091f9f3"
+OWNER_COMMITS = (
+    "d3c52f01c91be65b75c6e5fbb6419b711de6145a",
+    "b5201254bceb39b3563370567355efe17a3b5e16",
+)
+OWNER_PATH = "rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv"
+OWNER_BLOB_GIT = "7064bdc7fcc5bbb4a7ab59c4a90a490bce9052b1"
+OWNER_BLOB_SHA256 = "b125dc3cfc51f5c898d41f9b82660c346aafc9c7613433cee622514eb3456ec7"
 A7_EVIDENCE_PATH = "tests/a7_r1_candidate_endpoint/structural_compare.py"
 A7_EVIDENCE_SHA256 = "419c104454e44b3d8245a877550de3158b3863530d95009bdaf0df23ec84f84d"
 A7_RTL_BLOBS = {
@@ -35,18 +42,40 @@ A7_RTL_BLOBS = {
     "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f",
 }
 TOPS = {
-    # top, physical link pins, top input bits, top output bits
-    "ddr2": ("a5_fovea_a7_ddr_top", 3, 19, 10),
-    "parallel4": ("a5_fovea_a7_parallel_top", 5, 19, 12),
+    # top, physical link pins, top input bits, top output bits, boundary
+    "owner_ddr2": ("a7_weighted_fovea_ddr", 3, 19, 26, "owner_semantics"),
+    "owner_parallel4": (
+        "a5_owner_semantics_parallel_top", 5, 19, 28, "owner_semantics"
+    ),
+    "legacy_ddr2": ("a5_fovea_a7_ddr_top", 3, 19, 10, "legacy_mismatch"),
+    "legacy_parallel4": (
+        "a5_fovea_a7_parallel_top", 5, 19, 12, "legacy_mismatch"
+    ),
 }
 DEPTH_RE = re.compile(r"Longest topological path .*\(length=(\d+)\)")
 EXPECTED_STRUCTURE = {
-    "ddr2": {
+    "owner_ddr2": {
+        "wrapper_state_bits": 0, "wrapper_combinational_cells": 77,
+        "state_bits": 37, "register_or_latch_cells": 24,
+        "charged_functional_cells": 198, "excluded_scopeinfo_cells": 19,
+        "operator_depth": 40, "generic_gate_depth": 35,
+    },
+    # Filled from the same portable Yosys flow; unlike the legacy rows this has
+    # the exact owner source_ready/mask/fault/drain boundary.
+    "owner_parallel4": {
+        "wrapper_state_bits": 0, "wrapper_combinational_cells": 77,
+        "state_bits": 35, "register_or_latch_cells": 23,
+        "charged_functional_cells": 196, "excluded_scopeinfo_cells": 17,
+        "operator_depth": 40, "generic_gate_depth": 35,
+    },
+    "legacy_ddr2": {
+        "wrapper_state_bits": 0, "wrapper_combinational_cells": 1,
         "state_bits": 37, "register_or_latch_cells": 24,
         "charged_functional_cells": 150, "excluded_scopeinfo_cells": 19,
         "operator_depth": 28, "generic_gate_depth": 33,
     },
-    "parallel4": {
+    "legacy_parallel4": {
+        "wrapper_state_bits": 0, "wrapper_combinational_cells": 1,
         "state_bits": 35, "register_or_latch_cells": 23,
         "charged_functional_cells": 148, "excluded_scopeinfo_cells": 17,
         "operator_depth": 28, "generic_gate_depth": 33,
@@ -62,6 +91,37 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def normalized(text: str) -> str:
+    return "".join(text.split())
+
+
+def verify_owner_semantics(owner_text: str, parallel_text: str) -> None:
+    """Require the audit parallel shell to retain every owner seam equation."""
+    fragments = (
+        "current_result_mask = '0;",
+        "if (fovea_valid && !$isunknown(fovea_addr))",
+        "current_result_mask[fovea_addr] = 1'b1;",
+        "assign fovea_req = endpoint_ready ? "
+        "(source_valid & ~current_result_mask) : '0;",
+        "assign endpoint_valid = rst_n & fovea_valid;",
+        "assign source_ready = (endpoint_valid & endpoint_ready) ? "
+        "(current_result_mask & source_valid) : '0;",
+        "if ($isunknown(fovea_addr)) protocol_fault_o = 1'b1;",
+        "else if (!source_valid[fovea_addr]) protocol_fault_o = 1'b1;",
+        "assign drain_idle_o = rst_n & endpoint_ready & endpoint_drain_idle & "
+        "~(|source_valid) & ~(|fovea_req) & ~fovea_valid & "
+        "~(|source_ready) & ~retire_valid_o & ~protocol_fault_o;",
+    )
+    for fragment in fragments:
+        token = normalized(fragment)
+        if token not in normalized(owner_text):
+            raise ContractError(f"pinned owner missing seam equation: {fragment}")
+        if token not in normalized(parallel_text):
+            raise ContractError(f"parallel reference changed owner seam equation: {fragment}")
+    if "always_ff" in parallel_text or "always_latch" in parallel_text:
+        raise ContractError("parallel owner-semantics wrapper contains sequential state")
+
+
 def git(repo: Path, *args: str) -> bytes:
     result = subprocess.run(
         ["git", "-C", str(repo), *args], stdout=subprocess.PIPE,
@@ -75,7 +135,7 @@ def git(repo: Path, *args: str) -> bytes:
 def verify_and_materialize(fixture_dir: Path, a7_repo: Path, output: Path) -> list[Path]:
     if not a7_repo.is_dir():
         raise ContractError(f"missing A7 repository: {a7_repo}")
-    for commit in (A7_EVIDENCE_COMMIT, A7_ENDPOINT_COMMIT):
+    for commit in (A7_EVIDENCE_COMMIT, A7_ENDPOINT_COMMIT, *OWNER_COMMITS):
         observed = git(a7_repo, "rev-parse", f"{commit}^{{commit}}").decode().strip()
         if observed != commit:
             raise ContractError(f"A7 commit mismatch: expected={commit} observed={observed}")
@@ -101,10 +161,28 @@ def verify_and_materialize(fixture_dir: Path, a7_repo: Path, output: Path) -> li
         path.write_bytes(data)
         sources.append(path)
 
-    wrapper = HERE / "a5_fovea_a7_tops.sv"
-    if not wrapper.is_file():
-        raise ContractError(f"missing comparison wrapper: {wrapper}")
-    sources.append(wrapper)
+    owner_data = None
+    for commit in OWNER_COMMITS:
+        blob = git(a7_repo, "rev-parse", f"{commit}:{OWNER_PATH}").decode().strip()
+        data = git(a7_repo, "show", f"{commit}:{OWNER_PATH}")
+        if blob != OWNER_BLOB_GIT or digest(data) != OWNER_BLOB_SHA256:
+            raise ContractError(f"owner composition blob mismatch at {commit}")
+        if owner_data is not None and data != owner_data:
+            raise ContractError("d3c52f0 and b520125 owner compositions differ")
+        owner_data = data
+    owner_path = output / "a7_weighted_fovea_ddr.sv"
+    owner_path.write_bytes(owner_data or b"")
+    sources.append(owner_path)
+
+    parallel_text = ""
+    for name in ("a5_fovea_a7_tops.sv", "a5_owner_semantics_parallel_top.sv"):
+        wrapper = HERE / name
+        if not wrapper.is_file():
+            raise ContractError(f"missing comparison wrapper: {wrapper}")
+        sources.append(wrapper)
+        if name == "a5_owner_semantics_parallel_top.sv":
+            parallel_text = wrapper.read_text()
+    verify_owner_semantics((owner_data or b"").decode(), parallel_text)
     return sources
 
 
@@ -122,12 +200,14 @@ def state_bits(histogram: dict[str, int]) -> tuple[int, int]:
 
 
 def synthesize(yosys: str, sources: list[Path], variant: str, output: Path) -> dict[str, object]:
-    top, link_pins, input_bits, output_bits = TOPS[variant]
+    top, link_pins, input_bits, output_bits, boundary = TOPS[variant]
+    pre_path = output / f"{variant}.pre.stat.json"
     stat_path = output / f"{variant}.stat.json"
     quoted = " ".join("\"" + str(path).replace("\"", "\\\"") + "\"" for path in sources)
     command = (
         f"read_verilog -sv {quoted}; hierarchy -check -top {top}; "
-        "proc; check -assert; flatten; opt; check -assert; "
+        f"proc; check -assert; tee -o {pre_path} stat -json -width; "
+        "flatten; opt; check -assert; "
         f"tee -o {stat_path} stat -json -width; ltp -noff; "
         "techmap; opt; check -assert; ltp -noff"
     )
@@ -139,11 +219,18 @@ def synthesize(yosys: str, sources: list[Path], variant: str, output: Path) -> d
     if result.returncode:
         raise ContractError(f"Yosys failed for {variant}:\n{result.stdout[-4000:]}")
     try:
+        pre_document = json.loads(pre_path.read_text())
         document = json.loads(stat_path.read_text())
+        pre_module = pre_document["modules"][f"\\{top}"]
         module = document["modules"][f"\\{top}"]
     except (OSError, KeyError, json.JSONDecodeError) as error:
         raise ContractError(f"invalid Yosys stat for {variant}: {error}") from error
     histogram = module["num_cells_by_type"]
+    pre_histogram = pre_module["num_cells_by_type"]
+    wrapper_bits, wrapper_sequential_cells = state_bits(pre_histogram)
+    wrapper_combinational_cells = sum(
+        value for key, value in pre_histogram.items() if key.startswith("$")
+    )
     scopeinfo = sum(value for key, value in histogram.items() if "scopeinfo" in key.lower())
     bits, sequential_cells = state_bits(histogram)
     depths = [int(value) for value in DEPTH_RE.findall(result.stdout)]
@@ -154,10 +241,14 @@ def synthesize(yosys: str, sources: list[Path], variant: str, output: Path) -> d
         raise ContractError(f"nonsensical structural result for {variant}")
     row = {
         "variant": variant,
+        "boundary": boundary,
         "top": top,
         "physical_link_pins": link_pins,
         "top_input_bits": input_bits,
         "top_output_bits": output_bits,
+        "wrapper_state_bits": wrapper_bits,
+        "wrapper_sequential_cells": wrapper_sequential_cells,
+        "wrapper_combinational_cells": wrapper_combinational_cells,
         "state_bits": bits,
         "register_or_latch_cells": sequential_cells,
         "charged_functional_cells": charged,
@@ -207,14 +298,28 @@ def main() -> int:
                 raise ContractError("--output is required for synthesis")
             args.output.mkdir(parents=True, exist_ok=False)
             rows = [synthesize(str(yosys), sources, variant, args.output) for variant in TOPS]
+            owner_rows = [row for row in rows if row["boundary"] == "owner_semantics"]
+            if len(owner_rows) != 2:
+                raise ContractError("expected exactly two owner-semantics rows")
+            if any(row["wrapper_state_bits"] != 0 for row in owner_rows):
+                raise ContractError("owner wrapper acquired sequential state")
+            if len({row["wrapper_combinational_cells"] for row in owner_rows}) != 1:
+                raise ContractError("owner DDR/parallel wrapper combinational boundaries differ")
             write_csv(args.output / "structural.csv", rows)
             provenance = {
-                "schema": "a5_fovea_a7_structural_v1",
+                "schema": "a5_fovea_a7_structural_v2_owner_semantics",
                 "fovea_blobs": FOVEA_BLOBS,
                 "a7_evidence_commit": A7_EVIDENCE_COMMIT,
                 "a7_evidence_blob_sha256": A7_EVIDENCE_SHA256,
                 "a7_endpoint_commit": A7_ENDPOINT_COMMIT,
                 "a7_rtl_blobs": A7_RTL_BLOBS,
+                "owner_commits": OWNER_COMMITS,
+                "owner_path": OWNER_PATH,
+                "owner_blob_git": OWNER_BLOB_GIT,
+                "owner_blob_sha256": OWNER_BLOB_SHA256,
+                "parallel_reference_sha256": digest(
+                    (HERE / "a5_owner_semantics_parallel_top.sv").read_bytes()
+                ),
                 "expected_structure": EXPECTED_STRUCTURE,
                 "yosys_identity": subprocess.run(
                     [str(yosys), "-V"], text=True, stdout=subprocess.PIPE,
