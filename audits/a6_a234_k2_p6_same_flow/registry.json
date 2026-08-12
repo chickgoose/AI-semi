@@ -1,0 +1,20 @@
+{
+  "schema": "a6-a234-k2-p6-extension-registry-v1",
+  "target": {
+    "key": "a4_k2",
+    "commit": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+    "top": "a6_a4_k2_normalized_top",
+    "expected_modules": [
+      "a4_paired_cortical_column_k2",
+      "a6_a4_k2_normalized_top"
+    ],
+    "sources": {
+      "rtl/candidates/a4_paired_cortical_column_k2/a4_paired_cortical_column_k2.sv": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185"
+    }
+  },
+  "p6": {
+    "a4_p6": null,
+    "status": "HOLD_NO_A4_INTEGRATED_P6_TOP",
+    "reason": "No exact committed A4 plus P6 integration top exists; no cost is synthesized or inferred."
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "base_runner_sha256": "d38cfdb0d0f040d22a166334008da610925754216b09c6652df17f996f5a1045",
+  "boundary": "normalized_atomic_K2_scheduler",
+  "commit": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+  "extension_runner_sha256": "a3d4886ac905c3acaaea9558baede04502a7775d17faf57f876f6eee01579049",
+  "flow": "read_verilog -sv -DSYNTHESIS <all exact sources>; hierarchy -check -top <top>; proc; opt; memory_map; opt; setundef -zero; opt; write_json hierarchy; flatten; opt; write_json generic; techmap; opt; abc -g simple; clean; check; stat; write_json mapped",
+  "included_components": [
+    "scheduler",
+    "A6 normalized observation wrapper"
+  ],
+  "metrics": {
+    "generic": {
+      "cell_types": {
+        "$add": 60,
+        "$adffe": 14,
+        "$and": 10,
+        "$eq": 44,
+        "$ge": 2,
+        "$logic_and": 41,
+        "$logic_not": 47,
+        "$lt": 7,
+        "$mux": 239,
+        "$ne": 2,
+        "$neg": 11,
+        "$not": 11,
+        "$or": 10,
+        "$pmux": 44,
+        "$reduce_and": 6,
+        "$reduce_bool": 7,
+        "$reduce_or": 24,
+        "$shift": 16,
+        "$shiftx": 30,
+        "$sub": 4
+      },
+      "cells": 629,
+      "state_bits": 49
+    },
+    "hierarchy": {
+      "hierarchical_instance_types": {
+        "a4_paired_cortical_column_k2": 1
+      },
+      "reachable_module_count": 2,
+      "reachable_modules": [
+        "a4_paired_cortical_column_k2",
+        "a6_a4_k2_normalized_top"
+      ]
+    },
+    "mapped": {
+      "cell_types": {
+        "$_AND_": 711,
+        "$_DFFE_PP0P_": 49,
+        "$_MUX_": 217,
+        "$_NOT_": 193,
+        "$_OR_": 582,
+        "$_XOR_": 42
+      },
+      "cells": 1794,
+      "combinational_cells": 1745,
+      "depth_levels": 102,
+      "fanout_max": 33,
+      "fanout_p95": 6,
+      "nets": 1812,
+      "nets_fanout_ge16": 15,
+      "sink_pin_net_proxy": 3612,
+      "state_bits": 49
+    }
+  },
+  "p6": {
+    "metrics": null,
+    "reason": "No exact committed A4 plus P6 integration top exists; no cost is synthesized or inferred.",
+    "status": "HOLD_NO_A4_INTEGRATED_P6_TOP"
+  },
+  "qualification": {
+    "digital_structural_proxy": "PASS",
+    "functional_equivalence": "NOT_TESTED_BY_THIS_RUNNER",
+    "physical_ppa": "HOLD_GENERIC_YOSYS_ONLY"
+  },
+  "registry_sha256": "b16212bbae66f0481ae276e87134ca57e169268b805aebc8c59e3f1f8ada66d8",
+  "schema": "a6-a234-k2-p6-same-flow-result-v1",
+  "source_bundle_sha256": "c054df1a6d64f881ef7cc0cf5333e42cc5324e7bcf90daf350385f5d22c9504d",
+  "source_inventory_closed": true,
+  "sources": [
+    {
+      "path": "rtl/candidates/a4_paired_cortical_column_k2/a4_paired_cortical_column_k2.sv",
+      "sha256": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185"
+    }
+  ],
+  "target": "a4_k2",
+  "tool": {
+    "abc_path": "/tmp/a7-toolchain/usr/bin/yosys-abc",
+    "abc_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",
+    "datdir": "/tmp/a7-toolchain/usr/share/yosys",
+    "yosys_path": "/tmp/a7-toolchain/usr/bin/yosys",
+    "yosys_sha256": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f",
+    "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
+  },
+  "top": "a6_a4_k2_normalized_top",
+  "warnings": {
+    "abc_combinational_network": 1,
+    "memory_to_register": 6,
+    "total": 7,
+    "unclassified": 0
+  },
+  "wrapper_sha256": "d557d4cd8f355e877ab9f9e6b8e9916eb830c06741f69819997f21c69f3c965c"
+}
