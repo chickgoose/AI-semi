@@ -1,0 +1,1 @@
+module k2_fixture_owner_alpha; endmodule

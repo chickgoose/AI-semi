@@ -4,20 +4,53 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+import hashlib
 import json
+import os
 from pathlib import Path
+from pathlib import PurePath
+import stat
 import sys
 from typing import Any
 
 from k2_oracle import (
-    ContractError, EVIDENCE_SCHEMA, PolicyState, RESULT_SCHEMA, RETIRE_LANES,
-    SOURCE_COUNT, advance_actual, file_sha256, fold_prefix, latency_summary,
+    ContractError, EVIDENCE_SCHEMA, PolicyState, RESULT_SCHEMA, RUN_ARTIFACT_SCHEMA, RETIRE_LANES,
+    SOURCE_COUNT, advance_actual, fold_prefix, latency_summary,
     load_json, object_sha256, row_for_source, validate_vector_bundle,
 )
 
 
-REQUIRED_IDENTITY = ("id", "source_sha256", "binding_sha256", "runner_sha256")
+IDENTITY_COMPONENTS = ("source", "binding", "runner")
+FILE_DIGEST_KINDS = {"sha256", "git_blob_sha1"}
+POLICY_DEFINITIONS = {
+    "exact_weighted_scalar_prefix_k2": (
+        "g0=scalar(P,q); g1=scalar(P-{g0},transition(q,g0)); observed accepts are "
+        "a contiguous prefix of [g0,g1]; state advances once per accepted event"
+    ),
+    "batched_iwrr_k2": (
+        "fixed two-token phases (1,2),(0,1),(2,3),(1,2),(1,2),(1,2); "
+        "compact live winners; empty entitlements are waived without borrow or debt"
+    ),
+    "paired_row_calendar_proposal_k2": (
+        "fixed row-opportunity phases (0,1),(2,1),(2,1),(2,1),(2,1),(2,3); "
+        "aggregate row opportunity only; no paired-column claim"
+    ),
+}
+EDGE_DEFINITION = {
+    "clock_edge": "indexed_rising_edge",
+    "reset_order": "sample_reset_first_and_abort_pre_reset_pending_and_inflight",
+    "occurrence_order": "latch_occurrences_before_acceptance_on_same_indexed_edge",
+    "acceptance": "accepts_are_ordered_source_handshakes_on_the_indexed_edge",
+    "output_sample": "outputs_are_level_values_immediately_before_the_indexed_edge",
+    "retirement": "output_valid_and_vector_retire_ready_commit_on_that_indexed_edge",
+}
+LATENCY_DEFINITION = {
+    "unit": "indexed_rising_edges",
+    "occurrence_to_accept": "accept_cycle_minus_occurrence_cycle",
+    "accept_to_retire": "retire_cycle_minus_accept_cycle",
+    "percentile": "nearest_rank_ceiling",
+    "cohort": "event_ids_accepted_by_all_compared_candidates_per_run",
+}
 
 
 def failure(failures: list[dict[str, Any]], code: str, cycle: int | None,
@@ -32,18 +65,155 @@ def validate_sha(value: Any, label: str) -> str:
     return value
 
 
+def stable_regular_bytes(path: Path, label: str) -> bytes:
+    """Read an immutable single-link regular file without following its leaf."""
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise ContractError(f"{label}: O_NOFOLLOW is required")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as error:
+        raise ContractError(f"{label}: cannot open regular file {path}: {error}") from error
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ContractError(f"{label}: path is not a single-link regular file: {path}")
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        stable = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        if stable != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+            raise ContractError(f"{label}: file changed while read: {path}")
+        content = b"".join(chunks)
+        if len(content) != before.st_size:
+            raise ContractError(f"{label}: file size/read mismatch: {path}")
+        return content
+    finally:
+        os.close(descriptor)
+
+
+def digest_bytes(content: bytes, kind: str) -> str:
+    if kind == "sha256":
+        return hashlib.sha256(content).hexdigest()
+    if kind == "git_blob_sha1":
+        header = f"blob {len(content)}\0".encode("ascii")
+        return hashlib.sha1(header + content).hexdigest()
+    raise ContractError(f"unsupported digest kind {kind}")
+
+
+def resolve_record_path(record_path: Any, evidence_path: Path, label: str) -> Path:
+    if not isinstance(record_path, str) or not record_path:
+        raise ContractError(f"{label}.path must name a regular file")
+    supplied = Path(record_path)
+    if not supplied.is_absolute() and any(part in {"", ".", ".."} for part in PurePath(record_path).parts):
+        raise ContractError(f"{label}.path must be absolute or normalized evidence-relative")
+    return supplied if supplied.is_absolute() else evidence_path.parent / supplied
+
+
+def validate_file_record_bytes(record: Any, evidence_path: Path, label: str,
+                               allowed_kinds: set[str] = FILE_DIGEST_KINDS) -> tuple[dict[str, str], bytes]:
+    if not isinstance(record, dict) or set(record) != {"path", "digest_kind", "digest"}:
+        raise ContractError(f"{label} must contain path, digest_kind, and digest")
+    kind = record["digest_kind"]
+    if kind not in allowed_kinds:
+        raise ContractError(f"{label}.digest_kind must be one of {sorted(allowed_kinds)}")
+    expected_length = 64 if kind == "sha256" else 40
+    digest = record["digest"]
+    if not isinstance(digest, str) or len(digest) != expected_length or any(
+            character not in "0123456789abcdef" for character in digest):
+        raise ContractError(f"{label}.digest is not a lowercase {kind} digest")
+    path = resolve_record_path(record["path"], evidence_path, label)
+    content = stable_regular_bytes(path, label)
+    if digest_bytes(content, kind) != digest:
+        raise ContractError(f"{label}: digest mismatch for {path}")
+    return {"path": record["path"], "digest_kind": kind, "digest": digest}, content
+
+
+def validate_file_record(record: Any, evidence_path: Path, label: str,
+                         allowed_kinds: set[str] = FILE_DIGEST_KINDS) -> dict[str, str]:
+    checked, _ = validate_file_record_bytes(record, evidence_path, label, allowed_kinds)
+    return checked
+
+
+def validate_contract(contract: Any, path: Path) -> dict[str, Any]:
+    if not isinstance(contract, dict) or set(contract) != {"policy", "edge", "latency"}:
+        raise ContractError(f"{path}: contract must contain exact policy, edge, and latency definitions")
+    policy = contract["policy"]
+    if not isinstance(policy, dict) or set(policy) != {"class", "definition"}:
+        raise ContractError(f"{path}: malformed policy definition")
+    policy_class = policy["class"]
+    if policy_class not in POLICY_DEFINITIONS:
+        raise ContractError(f"{path}: unsupported policy class {policy_class}")
+    if policy["definition"] != POLICY_DEFINITIONS[policy_class]:
+        raise ContractError(f"{path}: policy definition does not exactly match class {policy_class}")
+    if contract["edge"] != EDGE_DEFINITION:
+        raise ContractError(f"{path}: edge definition mismatch")
+    if contract["latency"] != LATENCY_DEFINITION:
+        raise ContractError(f"{path}: latency definition mismatch")
+    return contract
+
+
+def contract_document(policy_class: str = "exact_weighted_scalar_prefix_k2") -> dict[str, Any]:
+    return {
+        "policy": {"class": policy_class, "definition": POLICY_DEFINITIONS[policy_class]},
+        "edge": dict(EDGE_DEFINITION),
+        "latency": dict(LATENCY_DEFINITION),
+    }
+
+
+def candidate_identity_sha256(candidate: dict[str, Any]) -> str:
+    bound = {"id": candidate["id"]}
+    bound.update({name: candidate[name] for name in IDENTITY_COMPONENTS})
+    return object_sha256(bound)
+
+
+def load_run_artifact(record: dict[str, Any], evidence_path: Path, candidate: dict[str, Any],
+                      contract_sha256: str, vectors: dict[str, Any]) -> dict[str, Any]:
+    artifact, content = validate_file_record_bytes(
+        record, evidence_path, "run.artifact", {"sha256"})
+    artifact_path = resolve_record_path(artifact["path"], evidence_path, "run.artifact")
+    try:
+        document = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ContractError(f"run.artifact: invalid JSON {artifact_path}: {error}") from error
+    required = {
+        "schema", "candidate_identity_sha256", "contract_sha256",
+        "vector_bundle_sha256", "name", "run_sha256", "cycles",
+    }
+    if not isinstance(document, dict) or set(document) != required:
+        raise ContractError(f"run.artifact: malformed envelope {artifact_path}")
+    if document["schema"] != RUN_ARTIFACT_SCHEMA:
+        raise ContractError(f"run.artifact: schema must be {RUN_ARTIFACT_SCHEMA}")
+    if document["candidate_identity_sha256"] != candidate_identity_sha256(candidate):
+        raise ContractError("run.artifact: candidate identity rebound")
+    if document["contract_sha256"] != contract_sha256:
+        raise ContractError("run.artifact: contract rebound")
+    if document["vector_bundle_sha256"] != vectors["bundle_sha256"]:
+        raise ContractError("run.artifact: vector bundle mismatch")
+    document["_artifact_record"] = artifact
+    return document
+
+
 def validate_evidence(document: Any, vectors: dict[str, Any], path: Path) -> dict[str, Any]:
     if not isinstance(document, dict) or document.get("schema") != EVIDENCE_SCHEMA:
         raise ContractError(f"{path}: schema must be {EVIDENCE_SCHEMA}")
+    if set(document) != {"schema", "candidate", "vector_bundle_sha256", "runs"}:
+        raise ContractError(f"{path}: evidence fields do not exactly match schema")
     candidate = document.get("candidate")
-    if not isinstance(candidate, dict) or any(key not in candidate for key in REQUIRED_IDENTITY):
+    required_candidate = {"id", *IDENTITY_COMPONENTS, "contract", "claims"}
+    if not isinstance(candidate, dict) or set(candidate) != required_candidate:
         raise ContractError(f"{path}: incomplete candidate identity")
     if not isinstance(candidate["id"], str) or not candidate["id"]:
         raise ContractError(f"{path}: invalid candidate id")
-    for key in REQUIRED_IDENTITY[1:]:
-        validate_sha(candidate[key], f"{path}: candidate.{key}")
+    for key in IDENTITY_COMPONENTS:
+        validate_file_record(candidate[key], path, f"{path}: candidate.{key}")
+    contract = validate_contract(candidate["contract"], path)
+    contract_sha256 = object_sha256(contract)
     claims = candidate.get("claims")
-    if not isinstance(claims, dict) or not isinstance(
+    if not isinstance(claims, dict) or set(claims) != {"full_future_trace_equivalence"} or not isinstance(
             claims.get("full_future_trace_equivalence"), bool):
         raise ContractError(f"{path}: candidate claims must explicitly classify future equivalence")
     if document.get("vector_bundle_sha256") != vectors["bundle_sha256"]:
@@ -53,11 +223,15 @@ def validate_evidence(document: Any, vectors: dict[str, Any], path: Path) -> dic
         raise ContractError(f"{path}: runs must be an array")
     by_name: dict[str, dict[str, Any]] = {}
     for run in runs:
-        if not isinstance(run, dict) or not isinstance(run.get("name"), str):
+        if not isinstance(run, dict) or set(run) != {"name", "run_sha256", "artifact"} or not isinstance(run.get("name"), str):
             raise ContractError(f"{path}: malformed run evidence")
         if run["name"] in by_name:
             raise ContractError(f"{path}: duplicate run {run['name']}")
-        by_name[run["name"]] = run
+        validate_sha(run["run_sha256"], f"{path}: run {run['name']}.run_sha256")
+        artifact = load_run_artifact(run["artifact"], path, candidate, contract_sha256, vectors)
+        if artifact["name"] != run["name"] or artifact["run_sha256"] != run["run_sha256"]:
+            raise ContractError(f"{path}: run artifact envelope mismatch for {run['name']}")
+        by_name[run["name"]] = artifact
     expected = {run["name"] for run in vectors["runs"] if "required" in run.get("tags", [])}
     known = {run["name"] for run in vectors["runs"]}
     unknown = sorted(set(by_name) - known)
@@ -66,7 +240,7 @@ def validate_evidence(document: Any, vectors: dict[str, Any], path: Path) -> dic
     missing = sorted(expected - set(by_name))
     if missing:
         raise ContractError(f"{path}: missing required runs: {', '.join(missing)}")
-    return {"candidate": candidate, "runs": by_name}
+    return {"candidate": candidate, "contract_sha256": contract_sha256, "runs": by_name}
 
 
 def validate_outputs(outputs: Any, run_name: str, cycle: int) -> list[dict[str, Any]]:
@@ -427,6 +601,39 @@ def band_delta(left: float | int | None, right: float | int | None,
 
 
 def compare(results: list[dict[str, Any]], thresholds: dict[str, Any]) -> dict[str, Any]:
+    contract_groups: dict[str, list[str]] = {}
+    for result in results:
+        contract_groups.setdefault(result["contract_sha256"], []).append(
+            result["candidate"]["id"])
+    if len(contract_groups) != 1:
+        pairwise = []
+        for left_index in range(len(results)):
+            for right_index in range(left_index + 1, len(results)):
+                left, right = results[left_index], results[right_index]
+                pairwise.append({
+                    "left": left["candidate"]["id"],
+                    "right": right["candidate"]["id"],
+                    "left_contract_sha256": left["contract_sha256"],
+                    "right_contract_sha256": right["contract_sha256"],
+                    "hard_gate": "NOT_RANKED",
+                    "verdict": "INCOMPARABLE_CONTRACT" if (
+                        left["contract_sha256"] != right["contract_sha256"]
+                    ) else "NOT_EVALUATED_GLOBAL_CONTRACT_MISMATCH",
+                    "per_run": [],
+                })
+        return {
+            "decision": "INCOMPARABLE",
+            "reason": "exact policy/edge/latency contract fingerprints differ",
+            "rule": "exact same-boundary contract required before any Pareto comparison",
+            "aggregate_score": None,
+            "pareto_frontier": None,
+            "contract_groups": [
+                {"contract_sha256": digest, "candidates": sorted(candidate_ids)}
+                for digest, candidate_ids in sorted(contract_groups.items())
+            ],
+            "frontier_scope": None,
+            "pairwise": pairwise,
+        }
     comparisons: list[dict[str, Any]] = []
     dominated: set[str] = set()
     comparison = thresholds["comparison"]
@@ -531,10 +738,15 @@ def compare(results: list[dict[str, Any]], thresholds: dict[str, Any]) -> dict[s
             })
     passing = {result["candidate"]["id"] for result in results if result["status"] == "PASS"}
     return {
+        "decision": "COMPARABLE",
         "rule": comparison["ranking"],
         "aggregate_score": None,
         "pareto_frontier": sorted(passing - dominated),
         "frontier_scope": "hard-gate-eligible candidates; all-three matched cohorts and frozen bands",
+        "contract_groups": [{
+            "contract_sha256": next(iter(contract_groups)),
+            "candidates": sorted(next(iter(contract_groups.values()))),
+        }],
         "pairwise": comparisons,
     }
 
@@ -546,23 +758,51 @@ def evaluate_documents(vectors: dict[str, Any], evidences: list[tuple[Path, dict
     vector_by_name = {run["name"]: run for run in vectors["runs"]}
     results = []
     ids: set[str] = set()
+    identities: set[str] = set()
     for path, document in evidences:
+        try:
+            evidence_bytes = stable_regular_bytes(path, "candidate evidence")
+            on_disk_document = json.loads(evidence_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ContractError(f"candidate evidence is invalid JSON {path}: {error}") from error
+        if on_disk_document != document:
+            raise ContractError(f"candidate evidence document is not the bytes at {path}")
         checked = validate_evidence(document, vectors, path)
         candidate = checked["candidate"]
         if candidate["id"] in ids:
             raise ContractError(f"duplicate candidate id {candidate['id']}")
         ids.add(candidate["id"])
-        run_results = [evaluate_run(vector_by_name[name], checked["runs"][name], thresholds)
-                       for name in vector_by_name if name in checked["runs"]]
+        component_identity_sha256 = object_sha256({
+            name: candidate[name] for name in IDENTITY_COMPONENTS})
+        if component_identity_sha256 in identities:
+            raise ContractError(f"duplicate bound candidate identity {candidate['id']}")
+        identities.add(component_identity_sha256)
+        identity_sha256 = candidate_identity_sha256(candidate)
+        run_results = []
+        for name in vector_by_name:
+            if name not in checked["runs"]:
+                continue
+            run_result = evaluate_run(
+                vector_by_name[name], checked["runs"][name], thresholds)
+            run_result["artifact"] = checked["runs"][name]["_artifact_record"]
+            run_results.append(run_result)
         result = aggregate(candidate, run_results)
+        result["candidate_identity_sha256"] = identity_sha256
+        result["contract_sha256"] = checked["contract_sha256"]
         result["evidence_path"] = str(path)
-        result["evidence_sha256"] = file_sha256(path)
+        result["evidence_sha256"] = hashlib.sha256(evidence_bytes).hexdigest()
         results.append(result)
     comparison_result = compare(results, thresholds)
     for result in results:
         for run in result["runs"]:
             for key in [key for key in run if key.startswith("_")]:
                 del run[key]
+    all_pass = all(result["status"] == "PASS" for result in results)
+    status = "HOLD"
+    if all_pass:
+        status = comparison_result["decision"]
+        if status == "COMPARABLE":
+            status = "PASS"
     return {
         "schema": RESULT_SCHEMA,
         "scope": "INDEPENDENT_COMMON_DIGITAL_N16_K2_TRANSACTION_EVALUATION",
@@ -571,10 +811,9 @@ def evaluate_documents(vectors: dict[str, Any], evidences: list[tuple[Path, dict
         "future_trace_equivalence": "EXPLICITLY_NOT_CLAIMED",
         "candidates": results,
         "comparison": comparison_result,
-        "status": "PASS" if all(result["status"] == "PASS" for result in results) else "HOLD",
+        "status": status,
         "non_qualification": [
             "physical PPA", "official competition release", "future-arrival trace equivalence",
-            "candidate RTL not named by exact source SHA", "missing frozen-v4 owner evidence",
         ],
     }
 
@@ -601,7 +840,11 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"A5_K2_EVALUATION_{result['status']} candidates={len(result['candidates'])}")
-    return 0 if result["status"] == "PASS" else 3
+    if result["status"] == "PASS":
+        return 0
+    if result["status"] == "INCOMPARABLE":
+        return 4
+    return 3
 
 
 if __name__ == "__main__":

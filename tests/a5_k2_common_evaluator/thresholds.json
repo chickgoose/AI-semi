@@ -21,7 +21,7 @@
     "overrun_ratio_equivalence_band": {"absolute": 0.005},
     "p99_accept_to_retire_equivalence_band": {"absolute_cycles": 1, "relative": 0.05},
     "p99_occurrence_to_accept_equivalence_band": {"absolute_cycles": 1, "relative": 0.05},
-    "ranking": "hard gates first; then tolerance-aware unweighted Pareto; report per-run and per-family before aggregates",
+    "ranking": "require one exact policy/edge/latency contract fingerprint; then hard gates and tolerance-aware unweighted Pareto; differing contracts are INCOMPARABLE",
     "same_candidate_cohort": "compare only event IDs accepted by every candidate for latency; report accepted-set churn separately"
   }
 }

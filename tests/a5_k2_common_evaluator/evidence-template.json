@@ -1,10 +1,31 @@
 {
-  "schema": "a5_k2_candidate_evidence_v1",
+  "schema": "a5_k2_candidate_evidence_v2",
   "candidate": {
     "id": "REPLACE_WITH_CANDIDATE_ID",
-    "source_sha256": "REPLACE_WITH_64_HEX",
-    "binding_sha256": "REPLACE_WITH_64_HEX",
-    "runner_sha256": "REPLACE_WITH_64_HEX",
+    "source": {"path": "source.sv", "digest_kind": "git_blob_sha1", "digest": "REPLACE_WITH_40_HEX"},
+    "binding": {"path": "binding.sv", "digest_kind": "sha256", "digest": "REPLACE_WITH_64_HEX"},
+    "runner": {"path": "runner.py", "digest_kind": "sha256", "digest": "REPLACE_WITH_64_HEX"},
+    "contract": {
+      "policy": {
+        "class": "exact_weighted_scalar_prefix_k2",
+        "definition": "g0=scalar(P,q); g1=scalar(P-{g0},transition(q,g0)); observed accepts are a contiguous prefix of [g0,g1]; state advances once per accepted event"
+      },
+      "edge": {
+        "clock_edge": "indexed_rising_edge",
+        "reset_order": "sample_reset_first_and_abort_pre_reset_pending_and_inflight",
+        "occurrence_order": "latch_occurrences_before_acceptance_on_same_indexed_edge",
+        "acceptance": "accepts_are_ordered_source_handshakes_on_the_indexed_edge",
+        "output_sample": "outputs_are_level_values_immediately_before_the_indexed_edge",
+        "retirement": "output_valid_and_vector_retire_ready_commit_on_that_indexed_edge"
+      },
+      "latency": {
+        "unit": "indexed_rising_edges",
+        "occurrence_to_accept": "accept_cycle_minus_occurrence_cycle",
+        "accept_to_retire": "retire_cycle_minus_accept_cycle",
+        "percentile": "nearest_rank_ceiling",
+        "cohort": "event_ids_accepted_by_all_compared_candidates_per_run"
+      }
+    },
     "claims": {"full_future_trace_equivalence": false}
   },
   "vector_bundle_sha256": "REPLACE_WITH_VECTOR_BUNDLE_SHA256",
@@ -12,17 +33,7 @@
     {
       "name": "REPLACE_WITH_VECTOR_RUN_NAME",
       "run_sha256": "REPLACE_WITH_VECTOR_RUN_SHA256",
-      "cycles": [
-        {
-          "cycle": 0,
-          "accepts": [],
-          "outputs": [
-            {"lane": 0, "valid": false},
-            {"lane": 1, "valid": false}
-          ],
-          "drain_idle": false
-        }
-      ]
+      "artifact": {"path": "run-name.run.json", "digest_kind": "sha256", "digest": "REPLACE_WITH_64_HEX"}
     }
   ]
 }

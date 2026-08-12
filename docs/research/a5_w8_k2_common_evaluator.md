@@ -1,13 +1,15 @@
 # A5 W8 independent common digital K2 evaluator
 
-Status: **package implemented and self-falsified; three owner evidence bundles
-not yet supplied, therefore candidate comparison is HOLD**.
+Status: **fail-closed v2 package implemented and self-falsified; three owner
+evidence bundles are not supplied, so no candidate comparison is published**.
 
 The isolated implementation is under
 `tests/a5_k2_common_evaluator/`. It adds no RTL and changes no candidate branch,
 frozen common TB, manifest, or team design. The evaluator requires exactly
-three independently identified N16/K2 evidence files and refuses to manufacture
-a result when they are absent.
+three independently identified N16/K2 evidence files, real regular-file paths
+for source/binding/runner, and separate hashed run artifacts. It refuses
+unattached hashes, inline observations, malformed output envelopes, and rebound
+identity.
 
 ## Frozen decision boundary
 
@@ -33,7 +35,10 @@ winners, full prefix equivalence, persistent `10:50:50:10`, sparse maximum
 occurrence-to-accept of one cycle, stable ordered lane stalls, and reset phantom
 exclusion. Latency is split into occurrence-to-accept and accept-to-retire.
 
-After all hard gates, comparison is tolerance-aware unweighted Pareto. Fixed
+Before ranking, all candidates must have the same canonical SHA-256 of their
+exact policy-class, indexed-edge, and latency-definition contract. Different
+fingerprints produce `INCOMPARABLE`, a null frontier, and no Pareto claim. After
+same-contract hard gates, comparison is tolerance-aware unweighted Pareto. Fixed
 window event/cycle uses a 0.005 absolute or 1% relative tie band. Both p99
 latencies use a one-cycle or 5% band. Overrun ratio uses 0.005 absolute. Latency
 is compared on the all-three common accepted-event cohort; left-only/right-only events
@@ -46,9 +51,12 @@ per-run dimensions. No single weighted score is produced.
 The deterministic adversarial generator has seven SHA-locked runs. The exact
 generator-v4 adapter binds the committed 50/22 manifest identities and all
 per-trace hashes; capacity22 remains an exact full50 subset view. Local tests
-exercise a clearly labelled synthetic reference only to qualify the checker and
-kill seven semantic mutations plus the future-arrival divergence witness.
+exercise a clearly labelled synthetic reference only to qualify the checker.
+Three committed fixture-owner triplets provide real regular files, while each
+run is materialized as a separately SHA-256-bound artifact. The mutation gate
+kills seven semantic attacks plus unattached-hash, fabricated-output, and
+rebound-binding attacks, and retains the future-arrival divergence witness.
 
-No owner source SHA, binding, runner, or transaction evidence is presently
-registered in this package. Consequently there is no candidate PASS, ranking,
-or claimed performance result.
+No non-fixture owner source, binding, runner, or transaction evidence is
+registered. Consequently there is no candidate PASS, ranking, or claimed
+performance result.

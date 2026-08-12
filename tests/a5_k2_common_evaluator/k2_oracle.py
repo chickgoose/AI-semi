@@ -11,8 +11,9 @@ from typing import Any, Iterable
 
 
 VECTOR_SCHEMA = "a5_k2_vector_bundle_v1"
-EVIDENCE_SCHEMA = "a5_k2_candidate_evidence_v1"
-RESULT_SCHEMA = "a5_k2_evaluation_v1"
+EVIDENCE_SCHEMA = "a5_k2_candidate_evidence_v2"
+RUN_ARTIFACT_SCHEMA = "a5_k2_run_artifact_v2"
+RESULT_SCHEMA = "a5_k2_evaluation_v2"
 SOURCE_COUNT = 16
 RETIRE_LANES = 2
 ROW_WHEEL = (0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3)

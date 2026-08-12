@@ -31,6 +31,7 @@ def verify_official_policy() -> None:
 def locate_generator(explicit: Path | None) -> Path:
     candidates = ([explicit] if explicit else []) + [
         PROJECT.parent / "a1/benchmarks/clean_slate_aer/generate_trace.py",
+        Path.home() / "projects/a1/benchmarks/clean_slate_aer/generate_trace.py",
     ]
     for candidate in candidates:
         if candidate and candidate.is_file() and 'GENERATOR_VERSION = "4.0"' in candidate.read_text(

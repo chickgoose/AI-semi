@@ -1,7 +1,7 @@
 # A5 common digital K2 transaction evaluator
 
-Status: **evaluator/self-falsification ready; owner RTL evidence absent, so no
-candidate PASS exists**.
+Status: **fail-closed evaluator/self-falsification ready; the committed owner
+files are test fixtures, not owner RTL evidence, so no candidate PASS exists**.
 
 This directory is an independent N=16, K=2 evaluation package for exactly
 three new candidate implementations. It neither imports nor edits candidate
@@ -93,21 +93,29 @@ The seven required adversaries are:
 | `ordered_lane_stall` | stalled presentation is stable and lane 1 cannot retire around stalled lane 0 |
 | `reset_abort_no_phantom` | reset aborts pre-reset pending/inflight records; only the post-reset sentinel may appear |
 
-## Candidate evidence format
+## Fail-closed candidate evidence format
 
 Each owner produces one JSON file using
-`a5_k2_candidate_evidence_v1`; see `evidence-template.json` and
-`schemas/k2-candidate-evidence.schema.json`. Identity hashes must describe the
-candidate source, owner binding, and runner actually used.
+`a5_k2_candidate_evidence_v2`; see `evidence-template.json`,
+`schemas/k2-candidate-evidence.schema.json`, and
+`schemas/k2-run-artifact.schema.json`. A bare hash is not identity. Source,
+binding, and runner are mandatory `{path,digest_kind,digest}` records. Paths
+must resolve to single-link regular files and are opened without following the
+leaf. `digest_kind` is byte `sha256` or Git-object `git_blob_sha1`.
 
 ```json
 {
-  "schema": "a5_k2_candidate_evidence_v1",
+  "schema": "a5_k2_candidate_evidence_v2",
   "candidate": {
     "id": "owner-k2-name",
-    "source_sha256": "64 lowercase hex digits",
-    "binding_sha256": "64 lowercase hex digits",
-    "runner_sha256": "64 lowercase hex digits",
+    "source": {"path": "owner.sv", "digest_kind": "git_blob_sha1", "digest": "40 lowercase hex digits"},
+    "binding": {"path": "binding.sv", "digest_kind": "sha256", "digest": "64 lowercase hex digits"},
+    "runner": {"path": "runner.py", "digest_kind": "sha256", "digest": "64 lowercase hex digits"},
+    "contract": {
+      "policy": {"class": "exact_weighted_scalar_prefix_k2", "definition": "exact evaluator-owned class definition"},
+      "edge": {"...": "exact evaluator-owned edge definition"},
+      "latency": {"...": "exact evaluator-owned latency definition"}
+    },
     "claims": {"full_future_trace_equivalence": false}
   },
   "vector_bundle_sha256": "...",
@@ -115,24 +123,31 @@ candidate source, owner binding, and runner actually used.
     {
       "name": "same_row_distinct_pair",
       "run_sha256": "...",
-      "cycles": [
-        {
-          "cycle": 2,
-          "accepts": [
-            {"slot": 0, "source": 0, "event_id": "same_row_distinct_pair:c2:s0"},
-            {"slot": 1, "source": 1, "event_id": "same_row_distinct_pair:c2:s1"}
-          ],
-          "outputs": [
-            {"lane": 0, "valid": false},
-            {"lane": 1, "valid": false}
-          ],
-          "drain_idle": false
-        }
-      ]
+      "artifact": {"path": "same_row_distinct_pair.run.json", "digest_kind": "sha256", "digest": "..."}
     }
   ]
 }
 ```
+
+Cycles are forbidden inline. Every run path names a real SHA-256-bound JSON
+artifact with schema `a5_k2_run_artifact_v2`. Its envelope repeats the vector
+and run hashes and binds `candidate_identity_sha256` over the exact ID and three
+path/digest records plus `contract_sha256`. Changing a bound file after the run
+or substituting a free-standing output therefore cannot reuse the artifact.
+
+The exact edge contract samples reset first, latches occurrences before
+acceptance at the same indexed rising edge, treats `accepts` as the ordered
+handshakes on that edge, samples `outputs` immediately before it, and retires on
+`output.valid && retire_ready`. Latencies are rising-edge differences:
+`accept_cycle - occurrence_cycle` and `retire_cycle - accept_cycle`.
+Percentiles use nearest-rank ceiling; comparison uses each run's event-ID cohort
+accepted by all three candidates.
+
+The evaluator owns exact definitions for `exact_weighted_scalar_prefix_k2`,
+`batched_iwrr_k2`, and `paired_row_calendar_proposal_k2`. It hashes the complete
+policy/edge/latency document. If the three fingerprints differ, the result is
+`INCOMPARABLE`, `pareto_frontier` is null, no global Pareto ranking is performed,
+and the command exits 4.
 
 `accepts` is the ordered, contiguous list of actual source handshakes at that
 edge; slots must be numbered `0,1`. `outputs` is the level-sensitive external
@@ -178,9 +193,11 @@ python3 tests/a5_k2_common_evaluator/evaluate_k2.py \
   --output /tmp/a5-k2-adversarial-evaluation.json
 ```
 
-Exit 0 means all three passed every hard gate. Exit 3 publishes a `HOLD`
-report. Schema, provenance, or cardinality errors exit 2 and publish nothing.
-Output files are never overwritten.
+Exit 0 means all three passed under one exact contract. Exit 3 publishes
+`HOLD`; exit 4 publishes valid but differently contracted evidence as
+`INCOMPARABLE`. Schema, provenance, regular-file, digest, artifact-envelope, or
+cardinality errors exit 2 and publish nothing. Output files are never
+overwritten.
 
 ## Frozen generator-v4 adapter
 
@@ -210,7 +227,9 @@ tests/a5_k2_common_evaluator/run_all.sh
 ```
 
 The test-only reference is explicitly marked `TEST_ONLY_NOT_RTL_EVIDENCE`.
-The mutation suite must kill false weight, stale generation, same-source
-duplicate, stalled-lane corruption, younger-lane bypass, reset phantom, and
-future-trace overclaim. Its PASS qualifies only the evaluator; it is not a
-candidate, RTL, common-suite, or release result.
+The mutation suite kills false weight, stale generation, same-source duplicate,
+stalled-lane corruption, younger-lane bypass, reset phantom, future-trace
+overclaim, unattached identity hashes, fabricated output artifacts, and rebound
+binding identity. `fixtures/owners/` supplies three actual regular-file test
+owners; their trivial RTL and runner markers are fixtures, not executed owner
+RTL evidence. Suite PASS qualifies only the evaluator.

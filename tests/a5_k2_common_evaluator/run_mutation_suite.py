@@ -5,16 +5,18 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+import tempfile
 from typing import Any, Callable
 
-from evaluate_k2 import aggregate, evaluate_run
+from evaluate_k2 import ContractError, aggregate, digest_bytes, evaluate_run, validate_evidence
 from generate_vectors import build_bundle
 from k2_oracle import PolicyState, fold_prefix
-from synthetic_reference import build_reference_evidence
+from synthetic_reference import build_reference_evidence, materialize_owner_fixture
 import json
 
 
 ROOT = Path(__file__).resolve().parent
+OWNER_FIXTURES = ROOT / "fixtures" / "owners"
 
 
 def run_by_name(document: dict[str, Any], name: str) -> dict[str, Any]:
@@ -134,6 +136,62 @@ def main() -> int:
         raise AssertionError("future-trace overclaim mutation survived")
     killed += 1
     future_witness()
+
+    # Provenance mutations operate on actual regular fixture files and separate
+    # runner artifacts; these are not dict-only semantic mutations.
+    with tempfile.TemporaryDirectory() as temporary:
+        fixture_root = Path(temporary)
+
+        unattached_path, unattached = materialize_owner_fixture(
+            bundle, fixture_root / "unattached", OWNER_FIXTURES / "owner-alpha",
+            "malicious-unattached")
+        del unattached["candidate"]["source"]
+        unattached["candidate"]["source_sha256"] = "0" * 64
+        unattached_path.write_text(json.dumps(unattached), encoding="utf-8")
+        try:
+            validate_evidence(unattached, bundle, unattached_path)
+        except ContractError as error:
+            if "incomplete candidate identity" not in str(error):
+                raise AssertionError(f"unattached_hash wrong diagnostic: {error}") from error
+        else:
+            raise AssertionError("unattached_hash mutation survived")
+        killed += 1
+
+        fabricated_path, fabricated = materialize_owner_fixture(
+            bundle, fixture_root / "fabricated", OWNER_FIXTURES / "owner-beta",
+            "malicious-fabricated")
+        fake_artifact = fixture_root / "fabricated-output.json"
+        fake_artifact.write_text(json.dumps({"cycles": []}), encoding="utf-8")
+        fabricated["runs"][0]["artifact"] = {
+            "path": str(fake_artifact), "digest_kind": "sha256",
+            "digest": digest_bytes(fake_artifact.read_bytes(), "sha256"),
+        }
+        fabricated_path.write_text(json.dumps(fabricated), encoding="utf-8")
+        try:
+            validate_evidence(fabricated, bundle, fabricated_path)
+        except ContractError as error:
+            if "malformed envelope" not in str(error):
+                raise AssertionError(f"fabricated_output wrong diagnostic: {error}") from error
+        else:
+            raise AssertionError("fabricated_output mutation survived")
+        killed += 1
+
+        rebound_path, rebound = materialize_owner_fixture(
+            bundle, fixture_root / "rebound", OWNER_FIXTURES / "owner-gamma",
+            "malicious-rebound")
+        _, donor = materialize_owner_fixture(
+            bundle, fixture_root / "donor", OWNER_FIXTURES / "owner-alpha", "donor")
+        rebound["candidate"]["binding"] = donor["candidate"]["binding"]
+        rebound_path.write_text(json.dumps(rebound), encoding="utf-8")
+        try:
+            validate_evidence(rebound, bundle, rebound_path)
+        except ContractError as error:
+            if "candidate identity rebound" not in str(error):
+                raise AssertionError(f"rebound wrong diagnostic: {error}") from error
+        else:
+            raise AssertionError("rebound mutation survived")
+        killed += 1
+
     print(f"A5_K2_MUTATION_SUITE_PASS killed={killed} future_witness=1 reference=test-only")
     return 0
 
