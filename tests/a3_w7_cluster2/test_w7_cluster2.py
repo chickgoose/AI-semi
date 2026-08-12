@@ -17,7 +17,12 @@ class W7Cluster2Test(unittest.TestCase):
         self.assertEqual(len(provenance["closure"]), 3)
 
     def test_official_run_sets_are_exact(self) -> None:
-        names = run.check_benchmark(run.check_provenance())
+        provenance = run.check_provenance()
+        names = run.check_benchmark(provenance)
+        self.assertEqual(provenance["benchmark"]["a1_commit"],
+                         "2a3a3be94be8f12585f484b5b1da2b372f7282d9")
+        self.assertEqual(provenance["benchmark"]["generator_sha256"],
+                         "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50")
         self.assertEqual(len(names["full50"]), 50)
         self.assertEqual(len(names["capacity22"]), 22)
         self.assertEqual(names["full50"][-2:], [
@@ -44,7 +49,8 @@ class W7Cluster2Test(unittest.TestCase):
             bench.mkdir(parents=True)
             for name in ("generate_trace.py", "manifest.neutrality-n16.json",
                          "manifest.multilane-n16.json"):
-                shutil.copy2(run.REPO / "benchmarks/clean_slate_aer" / name, bench / name)
+                shutil.copy2(run.A1_OVERLAY / "benchmarks/clean_slate_aer" / name,
+                             bench / name)
             manifest = bench / "manifest.multilane-n16.json"
             data = json.loads(manifest.read_text(encoding="utf-8"))
             data["runs"].pop()

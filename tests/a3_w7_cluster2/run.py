@@ -22,6 +22,7 @@ from typing import Iterable
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+A1_OVERLAY = HERE / "a1_overlay"
 PROVENANCE_PATH = HERE / "provenance.json"
 RTL_DIR = HERE / "rtl"
 TB_PATH = HERE / "cluster2_direct_tb.sv"
@@ -44,6 +45,11 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def git_blob_sha1(path: Path) -> str:
+    content = path.read_bytes()
+    return hashlib.sha1(f"blob {len(content)}\0".encode("ascii") + content).hexdigest()
 
 
 def load_json(path: Path) -> dict:
@@ -121,18 +127,22 @@ def canonical_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def check_benchmark(provenance: dict, repo: Path = REPO) -> dict[str, list[str]]:
+def check_benchmark(provenance: dict, overlay: Path = A1_OVERLAY) -> dict[str, list[str]]:
     bench = provenance["benchmark"]
-    generator = repo / "benchmarks/clean_slate_aer/generate_trace.py"
-    full_path = repo / bench["full50_manifest"]
-    cap_path = repo / bench["capacity22_manifest"]
-    for path, expected in (
-        (generator, bench["generator_sha256"]),
-        (full_path, bench["full50_manifest_sha256"]),
-        (cap_path, bench["capacity22_manifest_sha256"]),
+    if bench.get("a1_commit") != "2a3a3be94be8f12585f484b5b1da2b372f7282d9":
+        raise GateError("unexpected A1 overlay commit")
+    generator = overlay / bench["generator_path"]
+    full_path = overlay / bench["full50_manifest"]
+    cap_path = overlay / bench["capacity22_manifest"]
+    for path, expected_sha256, expected_blob in (
+        (generator, bench["generator_sha256"], bench["generator_git_blob"]),
+        (full_path, bench["full50_manifest_sha256"], bench["full50_manifest_git_blob"]),
+        (cap_path, bench["capacity22_manifest_sha256"], bench["capacity22_manifest_git_blob"]),
     ):
-        if not path.is_file() or sha256(path) != expected:
+        if not path.is_file() or sha256(path) != expected_sha256:
             raise GateError(f"benchmark provenance SHA mismatch: {path}")
+        if git_blob_sha1(path) != expected_blob:
+            raise GateError(f"benchmark Git blob mismatch: {path}")
     generator_text = generator.read_text(encoding="utf-8")
     if f'GENERATOR_VERSION = "{bench["generator_version"]}"' not in generator_text:
         raise GateError("generator version marker mismatch")
@@ -569,7 +579,7 @@ def execute(output: Path | None) -> dict:
                          (Path("/tmp/a7-toolchain/usr/bin/iverilog"),))
     vvp = find_tool("A3_W7_VVP", ("vvp",), (Path("/tmp/a7-toolchain/usr/bin/vvp"),))
     tool_id = run_command([str(iverilog), "-V"]).stdout.splitlines()[0]
-    generator = REPO / "benchmarks/clean_slate_aer/generate_trace.py"
+    generator = A1_OVERLAY / provenance["benchmark"]["generator_path"]
     policies = (Cluster2, EqualSplitBitmap, WeightedBitmap,
                 lambda: WeightedBitmap(scalar=True))
     policy_names = ("cluster2_dual_bitmap", "equal_split_bitmap",
@@ -584,7 +594,9 @@ def execute(output: Path | None) -> dict:
         for suite_name, manifest_key in (("full50", "full50_manifest"),
                                          ("capacity22", "capacity22_manifest")):
             suite_dir = work / suite_name
-            generated_runs = generate_suite(generator, REPO / provenance["benchmark"][manifest_key], suite_dir)
+            generated_runs = generate_suite(
+                generator, A1_OVERLAY / provenance["benchmark"][manifest_key], suite_dir
+            )
             names = [item["run"]["name"] for item in generated_runs]
             if names != expected_names[suite_name]:
                 raise GateError(f"generated run order mismatch: {suite_name}")
@@ -647,6 +659,9 @@ def execute(output: Path | None) -> dict:
         "decision": "DIGITAL_LOCAL_GO__PHYSICAL_AND_BACKPRESSURE_HOLD",
         "provenance": provenance,
         "execution": {
+            "evidence_scope": "LOCAL_MODEL_AND_ICARUS_RTL_ONLY",
+            "local_icarus_model_lockstep_runs": 72,
+            "xcelium": "NOT_RUN",
             "python": sys.version.split()[0], "python_executable": sys.executable,
             "iverilog": str(iverilog), "iverilog_identity": tool_id,
             "vvp": str(vvp), "runner_sha256": sha256(Path(__file__)),
@@ -661,7 +676,8 @@ def execute(output: Path | None) -> dict:
         "suites": suites,
         "per_run": per_run,
         "claim_boundary": {
-            "rtl": "exact canonical three-blob Cluster2 closure locksteps the executable model on all 50+22 runs",
+            "local_model_rtl": "exact canonical three-blob Cluster2 closure locksteps the executable model under local Icarus on all 50+22 runs",
+            "xcelium": "not executed; no Xcelium pass is claimed by this receipt",
             "weight": "Cluster2 contains no WEIGHT/round/prefer_center; 1:5:5:1 is removed, not preserved",
             "parallelism": "two independent center/peripheral bitmap lanes account separately from weight removal and within-row bitmap expansion",
             "holds": ["independent lane backpressure", "physical PPA", "server Xcelium reproduction"],

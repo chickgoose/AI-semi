@@ -1,6 +1,7 @@
 # W7-A3 canonical Ganghee Cluster2 qualification
 
-Status: **local digital GO; independent-lane backpressure and physical PPA HOLD**.
+Status: **local model/Icarus digital GO; Xcelium not run; independent-lane
+backpressure and physical PPA HOLD**.
 
 ## Frozen inputs
 
@@ -17,7 +18,11 @@ The authoritative source is the tracked `semi-ai` tree, not the dirty
 - the server `redred-faer` copy has the same three SHA-256 values but remains
   untracked at its HEAD, so it is corroboration rather than Git provenance.
 
-`provenance.json` freezes the Git blobs and SHA-256 values.  The runner rejects
+`provenance.json` freezes the Git blobs and SHA-256 values.  The official
+full50/capacity22 inputs are materialized under `a1_overlay/` from A1 commit
+`2a3a3be94be8f12585f484b5b1da2b372f7282d9`; in particular the generator is
+Git blob `6a6992c...`, SHA-256 `59b649a...`.  The runner never substitutes A3's
+workspace generator.  It rejects
 any source, file-list, port/semantic token, generator, manifest, run-count, or
 capacity-subset mismatch before execution.  The scalar Fovea file is a pinned
 counterfactual reference and is deliberately absent from the Cluster2
@@ -34,9 +39,10 @@ post-acceptance corruption.  The checks require
 `generated=accepted+overrun`, `accepted=delivered`, exact source identity,
 clean drain, legal lane rows, and no duplicate/phantom/empty result.
 
-The canonical three-file closure is compiled once.  All generator-v4 full50
+The canonical three-file closure is compiled once with local Icarus.  All generator-v4 full50
 and capacity22 traces are then replayed from the same image, with exact
-RTL/cycle-model metric lockstep on 72 executions.  A directed reset test checks
+local-Icarus-RTL/cycle-model metric lockstep on 72 executions.  This is not an
+Xcelium execution or Xcelium qualification claim.  A directed reset test checks
 both registered valids, mid-traffic reset, post-reset quiet, and the first
 dual-lane result.  Two independently compiled mutants must fail with exact
 diagnostics: stale `valid1` during reset and a removed peripheral lane.
@@ -69,11 +75,11 @@ structurally gone.
 | full50 | weighted scalar | 79,992 | 26,424 | 0.688931 | 4.817 / 44 / 357 |
 | full50 | weighted bitmap | 94,705 | 11,711 | 0.816208 | 2.849 / 10 / 14 |
 | full50 | equal-split bitmap | 95,641 | 10,775 | 0.824236 | 2.749 / 5 / 6 |
-| full50 | Cluster2 RTL/model | 100,581 | 5,835 | 0.866963 | 2.256 / 4 / 4 |
+| full50 | Cluster2 local Icarus RTL/model | 100,581 | 5,835 | 0.866963 | 2.256 / 4 / 4 |
 | capacity22 | weighted scalar | 42,439 | 23,177 | 0.762511 | 6.750 / 60 / 357 |
 | capacity22 | weighted bitmap | 56,669 | 8,947 | 1.019477 | 3.179 / 11 / 14 |
 | capacity22 | equal-split bitmap | 57,663 | 7,953 | 1.037334 | 3.007 / 5 / 6 |
-| capacity22 | Cluster2 RTL/model | 62,197 | 3,419 | 1.119186 | 2.286 / 4 / 4 |
+| capacity22 | Cluster2 local Icarus RTL/model | 62,197 | 3,419 | 1.119186 | 2.286 / 4 / 4 |
 
 Cluster2's accepted-event gain over the scalar reference decomposes as:
 

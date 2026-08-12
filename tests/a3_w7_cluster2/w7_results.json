@@ -5,20 +5,24 @@
       "physical PPA",
       "server Xcelium reproduction"
     ],
+    "local_model_rtl": "exact canonical three-blob Cluster2 closure locksteps the executable model under local Icarus on all 50+22 runs",
     "parallelism": "two independent center/peripheral bitmap lanes account separately from weight removal and within-row bitmap expansion",
-    "rtl": "exact canonical three-blob Cluster2 closure locksteps the executable model on all 50+22 runs",
-    "weight": "Cluster2 contains no WEIGHT/round/prefer_center; 1:5:5:1 is removed, not preserved"
+    "weight": "Cluster2 contains no WEIGHT/round/prefer_center; 1:5:5:1 is removed, not preserved",
+    "xcelium": "not executed; no Xcelium pass is claimed by this receipt"
   },
   "decision": "DIGITAL_LOCAL_GO__PHYSICAL_AND_BACKPRESSURE_HOLD",
   "execution": {
+    "evidence_scope": "LOCAL_MODEL_AND_ICARUS_RTL_ONLY",
     "iverilog": "/tmp/a7-toolchain/usr/bin/iverilog",
     "iverilog_identity": "Icarus Verilog version 12.0 (stable) ()",
+    "local_icarus_model_lockstep_runs": 72,
     "python": "3.14.4",
     "python_executable": "/usr/bin/python3",
-    "runner_sha256": "9164eb32b7dfdac13cd46b0f02b9f3e883d1045d8ca835d6f710c1d275e6024b",
+    "runner_sha256": "a745dd57d09b3a6d5150edf8b5e0dc5f9563d0cd2b835e82455b8bdafc7fd145",
     "semantics": "one exact pending slot/source; occurrence while occupied is source_overrun; raw bitmap retirement; sink always ready",
     "tb_sha256": "8eadf61563fd6c36db18877ae34b13b77723c09f988d253267460ce74bc7ab2c",
-    "vvp": "/tmp/a7-toolchain/usr/bin/vvp"
+    "vvp": "/tmp/a7-toolchain/usr/bin/vvp",
+    "xcelium": "NOT_RUN"
   },
   "negative_gate": {
     "baseline_reset": "PASS",
@@ -2113,14 +2117,20 @@
     "authoritative_head_observed_2026_08_13": "ba603bd409d4b086a8476c6ee600c1814acafde0",
     "authoritative_repository": "/home/aiasic26911/semi-ai",
     "benchmark": {
+      "a1_commit": "2a3a3be94be8f12585f484b5b1da2b372f7282d9",
       "capacity22_manifest": "benchmarks/clean_slate_aer/manifest.multilane-n16.json",
+      "capacity22_manifest_git_blob": "cce001b32c52864bba6793b3ba52364cf20eda2c",
       "capacity22_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
       "capacity22_run_count": 22,
       "full50_manifest": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+      "full50_manifest_git_blob": "e58df60118fb6c11c1bee1e284e4c08dba965e72",
       "full50_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
       "full50_run_count": 50,
-      "generator_sha256": "9e2857029f953315d2c353317fa4888a784579f43980a935ec6eb13e4688cd53",
-      "generator_version": "4.0"
+      "generator_git_blob": "6a6992ca5adec349747c9229192d0a7a83a0a7f5",
+      "generator_path": "benchmarks/clean_slate_aer/generate_trace.py",
+      "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+      "generator_version": "4.0",
+      "materialization": "exact Git blobs committed under a1_overlay; no dependency on the current A3 benchmark working tree"
     },
     "closure": [
       {
