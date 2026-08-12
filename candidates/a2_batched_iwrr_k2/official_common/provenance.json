@@ -1,0 +1,36 @@
+{
+  "schema": "a2-k2-official-always-ready-provenance-v1",
+  "decision_scope": "official-common-uniform-always-ready-only",
+  "normalized_contract": {
+    "num_sources": 16,
+    "address_width": 16,
+    "retire_lanes": 2,
+    "fifo_depth": 0,
+    "event_identity": "selected-normalized-address-event",
+    "accepted_counts": [0, 1, 2],
+    "atomic_count2": true,
+    "independent_lane_stall": false
+  },
+  "owner": {
+    "commit": "d74ff962aaf07c5209f1a1d1c69832735c654a0d",
+    "path": "candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv",
+    "git_blob": "8ea7be42b4fe4fbcb414ff1947ddeabbcbf9ec85",
+    "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+  },
+  "compile_filelist": "candidates/a2_batched_iwrr_k2/official_common/official_common.f",
+  "compile_files": [
+    "candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv",
+    "candidates/a2_batched_iwrr_k2/official_common/rtl/a2_k2_official_always_ready_wrapper.sv",
+    "candidates/a2_batched_iwrr_k2/official_common/binding/a2_k2_official_common_binding.sv"
+  ],
+  "file_sha256": {
+    "candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
+    "candidates/a2_batched_iwrr_k2/official_common/rtl/a2_k2_official_always_ready_wrapper.sv": "824a24bf1fec409f4f7b1f8ae3c683e8f874a0ad818ed21390734c0727e7c082",
+    "candidates/a2_batched_iwrr_k2/official_common/binding/a2_k2_official_common_binding.sv": "0295245a9525b4ee84e11cc95f9b49139c9736e7382aeae5f33cffd413d0f0af",
+    "candidates/a2_batched_iwrr_k2/official_common/official_common.f": "e7cad0219ffecfeb118e3bb6cce2f0e93123d7b0bae7d76c53cd51ab3d17f7e4",
+    "tb/clean/aer_bench_if.sv": "beb820213b9e47b89460ecb30494b62e5e37190bc4406d183c1379edd335c9d5",
+    "tb/clean/aer_clean_tb.sv": "0eee9fd6cb8c37f2a7f6d616a4aef20e4c3c154d9b64abeb9d95d7c3c0e38e3f",
+    "tb/clean/aer_clean_assertions.sv": "6759e397c90d55527036ba042e5291becc0c8a64721da7f3af09a47e2f051237",
+    "benchmarks/clean_slate_aer/manifest.neutrality-n16.json": "77da0c02a1db2755653195790a1af43f82e4f1be27be2f9570d9014f648b9726"
+  }
+}
