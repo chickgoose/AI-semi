@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "candidate": "a7_weighted_fovea_ddr_w7",
+  "digital_status": "submission_ready",
+  "physical_status": "hold",
+  "address_semantics": "address_only_n16",
+  "source_count": 16,
+  "retire_lanes": 1,
+  "capabilities": {
+    "sink_always_ready": true,
+    "output_backpressure": false,
+    "unrelated_clock_cdc": false,
+    "polarity_event_type": false
+  },
+  "storage": {
+    "wrapper_queue_depth": 0,
+    "output_queue_depth": 0,
+    "source_pending_storage_owner": "external_common_source_latches"
+  },
+  "clock_contract": {
+    "relationship": "same_source_phase_related_r1",
+    "reference_period_ns": 16.0,
+    "sample_phase_from_reference_rise_ns": 4.0,
+    "sample_high_ns": 8.0,
+    "sample_low_ns": 8.0,
+    "consumer_observation": "retire_valid_and_addr_pre_nba_on_following_ref_rise"
+  },
+  "reset_contract": {
+    "assertion": "only_after_drain_idle_and_burst_clock_low",
+    "release": "both_source_clocks_low_then_r0_arm_r2_first_accept",
+    "mid_traffic_flush_supported": false,
+    "accepted_event_abort_allowed": false
+  },
+  "unsupported_policy": "fail_closed_skip_unsupported_never_add_tb_fifo_or_cdc",
+  "physical_unproved": [
+    "characterized_icg_and_ddr_mapping",
+    "half_cycle_sta_and_recovery_removal",
+    "cdc_rdc_signoff",
+    "pvt_parasitics_clock_tree_and_energy_per_event"
+  ]
+}
