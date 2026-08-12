@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TOP = ROOT / "rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv"
 TB = ROOT / "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv"
 FAULT_TB = ROOT / "tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_fault_tb.sv"
+DIRECTED_RUNNER = ROOT / "scripts/run_a7_weighted_fovea_ddr_qualification.sh"
 
 
 def fail(message: str) -> None:
@@ -56,6 +57,7 @@ for token in (
     "dut.endpoint.launch_fire && drain_idle_o",
     "retire_valid_o) begin",
     "A7_W6_SAME_ADDRESS_RETRIGGER_PASS",
+    "A7_W6_WEIGHTED_FOVEA_DDR_DIRECTED_RTL_REGRESSION_PASS",
 ):
     if token not in tb_text:
         fail(f"missing directed timing/drain/retrigger evidence: {token}")
@@ -69,5 +71,22 @@ for token in (
 ):
     if token not in fault_text:
         fail(f"missing stale/no-live negative evidence: {token}")
+
+if "A7_W6_WEIGHTED_FOVEA_DDR_REGRESSION_PASS" in tb_text:
+    fail("broad regression sentinel must remain explicitly directed RTL")
+
+runner_text = DIRECTED_RUNNER.read_text(encoding="utf-8")
+for token in (
+    "source_base=0f2db4b460fab0e45c4c22756209cad400789944",
+    "integration_base=229df7b6c838431dbd662f927a230188de1e9d9c",
+    "W6 protected-diff baseline is not in the frozen allowlist",
+    "unexpected yosys identity",
+    "write_json $yosys_netlist",
+    "git ls-files --error-unmatch",
+    "git diff --quiet HEAD",
+    "A7_W6_SHA_PINNED_DIRECTED_RTL_PASS",
+):
+    if token not in runner_text:
+        fail(f"missing directed runner fail-closed contract: {token}")
 
 print("A7_W6_COMPOSITION_CONTRACT_PASS")

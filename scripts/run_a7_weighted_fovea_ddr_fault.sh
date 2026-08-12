@@ -21,6 +21,14 @@ else
   verilator_bin=/tmp/a7-sim-bin/verilator
 fi
 [[ -x "$verilator_bin" ]] || { printf 'verilator not found\n' >&2; exit 1; }
+verilator_version="$($verilator_bin --version 2>&1)" || {
+  printf 'verilator version query failed\n' >&2
+  exit 1
+}
+[[ "$verilator_version" =~ ^Verilator[[:space:]][0-9] ]] || {
+  printf 'unexpected verilator identity: %s\n' "$verilator_version" >&2
+  exit 1
+}
 
 "$verilator_bin" --binary --timing -Wall -Wno-fatal -Wno-BLKSEQ \
   -Wno-SYNCASYNCNET -Wno-UNUSEDSIGNAL \

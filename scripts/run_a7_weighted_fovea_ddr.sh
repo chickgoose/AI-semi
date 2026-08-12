@@ -3,12 +3,25 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$script_dir/.." && pwd)"
+source_base=0f2db4b460fab0e45c4c22756209cad400789944
+integration_base=229df7b6c838431dbd662f927a230188de1e9d9c
 if [[ -n "${A7_W6_BASE_COMMIT:-}" ]]; then
-  base="$A7_W6_BASE_COMMIT"
+  base="$(git rev-parse --verify "${A7_W6_BASE_COMMIT}^{commit}" 2>/dev/null)" || {
+    printf 'invalid W6 protected-diff baseline\n' >&2
+    exit 1
+  }
+  [[ "$base" == "$source_base" || "$base" == "$integration_base" ]] || {
+    printf 'W6 protected-diff baseline is not in the frozen allowlist: %s\n' "$base" >&2
+    exit 1
+  }
+  git merge-base --is-ancestor "$base" HEAD 2>/dev/null || {
+    printf 'W6 protected-diff baseline is not an ancestor: %s\n' "$base" >&2
+    exit 1
+  }
 elif git merge-base --is-ancestor 0f2db4b HEAD 2>/dev/null; then
-  base=0f2db4b
+  base="$source_base"
 elif git merge-base --is-ancestor 229df7b HEAD 2>/dev/null; then
-  base=229df7b
+  base="$integration_base"
 else
   printf 'cannot resolve W6 protected-diff baseline for this lineage\n' >&2
   exit 1
@@ -32,6 +45,14 @@ else
   verilator_bin=/tmp/a7-sim-bin/verilator
 fi
 [[ -x "$verilator_bin" ]] || { printf 'verilator not found\n' >&2; exit 1; }
+verilator_version="$($verilator_bin --version 2>&1)" || {
+  printf 'verilator version query failed\n' >&2
+  exit 1
+}
+[[ "$verilator_version" =~ ^Verilator[[:space:]][0-9] ]] || {
+  printf 'unexpected verilator identity: %s\n' "$verilator_version" >&2
+  exit 1
+}
 
 canonical_top=a7_weighted_fovea_weight_contract_fixture
 mode=UNIT_MODEL_ONLY
@@ -88,7 +109,7 @@ sentinels=(
   'A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=142'
   'A7_W6_DRAIN_GUARDS_PASS live_launch_pending=1'
   'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=142 available=142 retired=142'
-  'A7_W6_WEIGHTED_FOVEA_DDR_REGRESSION_PASS'
+  'A7_W6_WEIGHTED_FOVEA_DDR_DIRECTED_RTL_REGRESSION_PASS'
 )
 for sentinel in "${sentinels[@]}"; do
   rg -Fxq "$sentinel" "$out/unit.log" || {
@@ -122,7 +143,7 @@ evidence_sources+=(tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_weight_
   printf 'mode=%s\n' "$mode"
   printf 'canonical_top=%s\n' "$canonical_top"
   printf 'git_head=%s\n' "$(git rev-parse HEAD)"
-  printf 'verilator_version=%s\n' "$($verilator_bin --version)"
+  printf 'verilator_version=%s\n' "$verilator_version"
   sha256sum "$verilator_bin" "${evidence_sources[@]}"
 } > "$out/evidence.registry.sha256"
 

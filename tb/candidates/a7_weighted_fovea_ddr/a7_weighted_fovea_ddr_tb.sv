@@ -295,7 +295,7 @@ module a7_weighted_fovea_ddr_tb;
     $display("A7_W6_DRAIN_GUARDS_PASS live_launch_pending=1");
     $display("A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=%0d available=%0d retired=%0d",
              accepted, available, retired);
-    $display("A7_W6_WEIGHTED_FOVEA_DDR_REGRESSION_PASS");
+    $display("A7_W6_WEIGHTED_FOVEA_DDR_DIRECTED_RTL_REGRESSION_PASS");
     $finish;
   end
 endmodule
