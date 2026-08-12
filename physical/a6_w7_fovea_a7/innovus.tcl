@@ -14,6 +14,19 @@ set init_pwr_net VDD
 set init_gnd_net VSS
 init_design
 
+set selected_icg_cells [dbGet top.insts.cell.name TLATNCAX2 -p2]
+set alternate_icg_cells [dbGet top.insts.cell.name TLATNTSCAX2 -p2]
+set selected_icg_count 0
+foreach item $selected_icg_cells { if {$item ne "" && $item ne "0x0"} { incr selected_icg_count } }
+set alternate_icg_count 0
+foreach item $alternate_icg_cells { if {$item ne "" && $item ne "0x0"} { incr alternate_icg_count } }
+puts "W7_INNOVUS_SELECTED_ICG=TLATNCAX2"
+puts "W7_INNOVUS_SELECTED_ICG_COUNT=$selected_icg_count"
+puts "W7_INNOVUS_ALTERNATE_ICG_COUNT=$alternate_icg_count"
+if {$selected_icg_count != 1 || $alternate_icg_count != 0} {
+  error "Innovus ICG inventory mismatch: selected=$selected_icg_count alternate=$alternate_icg_count"
+}
+
 setDesignMode -process 45
 setAnalysisMode -analysisType onChipVariation -cppr both
 setPlaceMode -place_global_ignore_scan true
@@ -115,14 +128,24 @@ w7_timing_metric $metric_file reset_ref_recovery \
   {-check_type recovery -from [get_ports rst_n] -to [all_registers -clock ref_clk]}
 w7_timing_metric $metric_file reset_ref_removal \
   {-check_type removal -from [get_ports rst_n] -to [all_registers -clock ref_clk]}
-set icg_latch_pins [get_pins -hierarchical *clock_boundary*enable_latched_q_reg*/*]
-if {[sizeof_collection $icg_latch_pins] == 0} {
-  error "no mapped ICG enable-latch pins found for reset/sample timing coverage"
+set generic_icg_latch_pins \
+  [get_pins -hierarchical *clock_boundary*enable_latched_q_reg*/*]
+set characterized_icg_enable_pins \
+  [get_pins -hierarchical *clock_boundary*characterized_icg/E]
+set icg_reset_pins $generic_icg_latch_pins
+if {[sizeof_collection $characterized_icg_enable_pins] > 0} {
+  set icg_reset_pins \
+    [add_to_collection $icg_reset_pins $characterized_icg_enable_pins]
+}
+puts "W7_GENERIC_ICG_RESET_PINS=[sizeof_collection $generic_icg_latch_pins]"
+puts "W7_CHARACTERIZED_ICG_RESET_PINS=[sizeof_collection $characterized_icg_enable_pins]"
+if {[sizeof_collection $icg_reset_pins] == 0} {
+  error "no generic latch or characterized ICG enable pins found for reset/sample timing coverage"
 }
 w7_timing_metric $metric_file reset_sample_setup \
-  [list -late -from [get_ports rst_n] -to $icg_latch_pins]
+  [list -late -from [get_ports rst_n] -to $icg_reset_pins]
 w7_timing_metric $metric_file reset_sample_hold \
-  [list -early -from [get_ports rst_n] -to $icg_latch_pins]
+  [list -early -from [get_ports rst_n] -to $icg_reset_pins]
 if {$design eq "a7_weighted_fovea_ddr"} {
   set link_clock ddr_link_clk
 } else {

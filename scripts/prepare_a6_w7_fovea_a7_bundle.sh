@@ -29,10 +29,15 @@ extract tests/a5_fovea_a7_structural/fixtures/aer_tx16_trad_rowcol_fovea.v aer_t
 extract tests/a5_fovea_a7_structural/fixtures/arbiter2.v arbiter2.v
 extract tests/a5_fovea_a7_structural/fixtures/arbiter4_tree.v arbiter4_tree.v
 
-cp "$repo_root/physical/a6_w7_fovea_a7/"{ddr.sdc,parallel.sdc,genus.tcl,mmmc.tcl,innovus.tcl,run_server.sh,run_smoke.sh,qualify_result.sh,smoke_tb.sv,owner_registry.json,physical_contract.json} "$out/"
+cp "$repo_root/physical/a6_w7_fovea_a7/"{ddr.sdc,parallel.sdc,genus.tcl,mmmc.tcl,innovus.tcl,run_server.sh,run_smoke.sh,qualify_result.sh,check_mapped_icg.py,smoke_tb.sv,owner_registry.json,physical_contract.json} "$out/"
+mkdir -p "$out/icg_candidates"
+cp "$repo_root/physical/a6_w7_fovea_a7/icg_candidates/"*.sv "$out/icg_candidates/"
+cp "$repo_root/tests/a6_w7_fovea_a7/fixtures/gpdk045_icg_functional_stubs.sv" \
+  "$out/icg_candidates/"
 chmod +x "$out/run_server.sh"
 chmod +x "$out/run_smoke.sh"
 chmod +x "$out/qualify_result.sh"
+chmod +x "$out/check_mapped_icg.py"
 
 python3 - "$out" <<'PY'
 import hashlib
@@ -61,6 +66,18 @@ PY
 # source-valid check.  No owner file or common RTL is changed.
 mkdir -p "$out/synth_sources"
 cp "$out/sources"/* "$out/synth_sources/"
+# This is a non-DFT flow, so select the characterized no-test ICG.  The owner
+# copy remains hash-identical above; only the synthesis staging boundary is
+# replaced.  Genus, Innovus, and the qualifier independently require exactly
+# one TLATNCAX2 and zero test-ICG instances before a future run may pass.
+cp "$out/icg_candidates/a7_r1_icg_boundary_tlatnca.sv" \
+  "$out/synth_sources/a7_r1_icg_boundary.sv"
+printf '%s\n' \
+  'W7_SELECTED_ICG=TLATNCAX2' \
+  'W7_SELECTED_ICG_COUNT=1' \
+  'W7_ALTERNATE_ICG=TLATNTSCAX2' \
+  'W7_ALTERNATE_ICG_COUNT=0' \
+  'W7_SELECTION_REASON=non_DFT_no_test_enable' > "$out/icg_selection.txt"
 python3 - "$out/synth_sources/a7_weighted_fovea_ddr.sv" "$out/synth_sources/a5_owner_semantics_parallel_top.sv" <<'PY'
 from pathlib import Path
 import sys

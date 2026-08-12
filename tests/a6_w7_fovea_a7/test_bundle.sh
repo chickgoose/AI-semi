@@ -12,10 +12,19 @@ test -s "$bundle/parallel.sdc"
 test -x "$bundle/run_server.sh"
 test -x "$bundle/run_smoke.sh"
 test -x "$bundle/qualify_result.sh"
+test -x "$bundle/check_mapped_icg.py"
 test -s "$bundle/smoke_tb.sv"
 test -s "$bundle/physical_contract.json"
+test -s "$bundle/icg_selection.txt"
+test -s "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv"
+test -s "$bundle/icg_candidates/a7_r1_icg_boundary_tlatntsca.sv"
 test "$(find "$bundle/sources" -maxdepth 1 -type f | wc -l)" -eq 12
 test "$(find "$bundle/synth_sources" -maxdepth 1 -type f | wc -l)" -eq 12
+grep -Fxq 'W7_SELECTED_ICG=TLATNCAX2' "$bundle/icg_selection.txt"
+grep -Fxq 'W7_SELECTED_ICG_COUNT=1' "$bundle/icg_selection.txt"
+grep -Fxq 'W7_ALTERNATE_ICG_COUNT=0' "$bundle/icg_selection.txt"
+cmp "$bundle/synth_sources/a7_r1_icg_boundary.sv" \
+  "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv"
 ! rg -q '\$isunknown' "$bundle/synth_sources"
 rg -q 'if \(fovea_valid\)' "$bundle/synth_sources/a7_weighted_fovea_ddr.sv"
 rg -q 'W7_HANDSHAKE_PASS accepted=%0d retired=%0d contention=all16 fault=0 drain=1' "$bundle/smoke_tb.sv"
@@ -93,7 +102,39 @@ if check_reset_timing_tcl \
 fi
 rg -q 'W7_TIMING_METRIC' "$bundle/innovus.tcl"
 rg -q 'sizeof_collection' "$bundle/innovus.tcl"
-rg -q 'icg_latch_pins' "$bundle/innovus.tcl"
+rg -q 'generic_icg_latch_pins' "$bundle/innovus.tcl"
+rg -q 'characterized_icg_enable_pins' "$bundle/innovus.tcl"
+rg -q 'characterized_icg/E' "$bundle/innovus.tcl"
+rg -q 'add_to_collection' "$bundle/innovus.tcl"
+rg -Fq 'W7_INNOVUS_SELECTED_ICG_COUNT=$selected_icg_count' "$bundle/innovus.tcl"
+rg -Fq 'W7_INNOVUS_ALTERNATE_ICG_COUNT=$alternate_icg_count' "$bundle/innovus.tcl"
+rg -Fq 'TLATNCAX2 characterized_icg' \
+  "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv"
+rg -Fq '.CK  (clock_i)' "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv"
+rg -Fq '.E   (gate_enable)' "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv"
+rg -Fq '.ECK (clock_o)' "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv"
+rg -Fq 'TLATNTSCAX2 characterized_icg' \
+  "$bundle/icg_candidates/a7_r1_icg_boundary_tlatntsca.sv"
+rg -Fq '.SE  (1'"'"'b0)' "$bundle/icg_candidates/a7_r1_icg_boundary_tlatntsca.sv"
+check_icg_reset_contract() {
+  rg -Fq 'wire gate_enable = enable_i & rst_n;' "$1" &&
+    ! rg -q 'assign clock_o.*rst_n|set_false_path' "$1"
+}
+for candidate in \
+  "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv" \
+  "$bundle/icg_candidates/a7_r1_icg_boundary_tlatntsca.sv"; do
+  check_icg_reset_contract "$candidate"
+done
+icg_reset_mutant=$tmp_root/icg_reset_mutant.sv
+cp "$bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv" "$icg_reset_mutant"
+sed -i 's/enable_i & rst_n/enable_i/' "$icg_reset_mutant"
+if check_icg_reset_contract "$icg_reset_mutant"; then
+  echo 'ICG reset-cone mutation escaped structural contract gate' >&2
+  exit 1
+fi
+rg -q 'reset_ref_recovery' "$bundle/innovus.tcl"
+rg -q 'reset_sample_setup' "$bundle/innovus.tcl"
+rg -q 'reset_link_recovery' "$bundle/innovus.tcl"
 rg -q 'reset_release_clk' "$bundle/ddr.sdc" "$bundle/parallel.sdc"
 ! rg -q 'set_false_path.*rst_n' "$bundle"/*.sdc
 rg -q '~frame_active & ~burst_clk_o' "$bundle/sources/a7_r1_candidate_endpoint.sv"
@@ -101,6 +142,37 @@ rg -q '~frame_active & ~burst_clk_o' "$bundle/sources/a7_r1_candidate_endpoint.s
 rg -q '~frame_active_q & ~link_strobe_o' "$bundle/sources/a7_r1_parallel_reference_top.sv"
 ! rg -q '~frame_active_q & ~link_strobe_o' "$bundle/synth_sources/a7_r1_parallel_reference_top.sv"
 rg -q 'get_db lib_cells \*SDFF\*' "$bundle/genus.tcl"
+rg -Fq 'W7_MAPPED_SELECTED_ICG_COUNT=' "$bundle/check_mapped_icg.py"
+rg -Fq 'W7_MAPPED_ALTERNATE_ICG_COUNT=' "$bundle/check_mapped_icg.py"
+rg -Fq 'mapped ICG inventory mismatch' "$bundle/check_mapped_icg.py"
+icg_mapping_report=$tmp_root/icg_mapping.rpt
+"$bundle/check_mapped_icg.py" \
+  "$repo_root/tests/a6_w7_fovea_a7/fixtures/mapped_icg_actual_format.v" \
+  "$icg_mapping_report"
+grep -Fxq 'W7_MAPPED_SELECTED_ICG_COUNT=1' "$icg_mapping_report"
+grep -Fxq 'W7_MAPPED_ALTERNATE_ICG_COUNT=0' "$icg_mapping_report"
+for mutation in missing alternate duplicate; do
+  mutant_netlist=$tmp_root/icg_$mutation.v
+  cp "$repo_root/tests/a6_w7_fovea_a7/fixtures/mapped_icg_actual_format.v" \
+    "$mutant_netlist"
+  case $mutation in
+    missing) sed -i 's/TLATNCAX2/AND2X1/' "$mutant_netlist" ;;
+    alternate) sed -i 's/TLATNCAX2/TLATNTSCAX2/' "$mutant_netlist" ;;
+    duplicate) sed -i '/endmodule/i\  TLATNCAX2 duplicate_icg (.CK(sample_clk_i), .E(gate_enable), .ECK());' "$mutant_netlist" ;;
+  esac
+  if "$bundle/check_mapped_icg.py" "$mutant_netlist" \
+      "$tmp_root/icg_$mutation.rpt" >/dev/null 2>&1; then
+    echo "mapped ICG $mutation mutation escaped inventory gate" >&2
+    exit 1
+  fi
+done
+python3 - "$bundle/physical_contract.json" <<'PY'
+import json, sys
+contract = json.load(open(sys.argv[1]))
+assert contract["reset_assertion"]["smoke_phase_ns"] == 1.0
+assert contract["reset_assertion"]["required_sample_clock_level"] == 0
+assert contract["reset_assertion"]["arbitrary_phase_async_assertion_supported"] is False
+PY
 cmp "$bundle/sources/a7_weighted_fovea_ddr.sv" "$bundle/synth_sources/a7_weighted_fovea_ddr.sv" && {
   echo "2-state staging copy unexpectedly equals owner source" >&2
   exit 1

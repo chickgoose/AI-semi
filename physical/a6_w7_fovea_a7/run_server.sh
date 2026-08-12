@@ -50,7 +50,7 @@ mkdir -p "$synth_out" "$pnr_out"
 
 # Source equivalence precedes synthesis.  For DDR this is also the mandatory
 # minimal smoke; parallel is not launched until a separately qualified DDR run.
-"$bundle_root/run_smoke.sh" "" "$synth_out" "" "$variant"
+"$bundle_root/run_smoke.sh" "" "$synth_out" "$pdk_verilog" "$variant"
 
 export W7_DESIGN=$design
 export W7_SDC=$bundle_root/$variant.sdc
@@ -64,6 +64,8 @@ if grep -Eq '(^|[^[:alnum:]_])SDFF[A-Z0-9_]*' "$synth_out/${design}_mapped.v"; t
   exit 1
 fi
 echo 'W7_MAPPED_SDFF_COUNT=0' | tee "$synth_out/scan_mapping.rpt"
+"$bundle_root/check_mapped_icg.py" "$synth_out/${design}_mapped.v" \
+  "$synth_out/icg_mapping.rpt"
 
 # Exact owner/staged/mapped conservation is the hard gate before P&R.
 "$bundle_root/run_smoke.sh" "$synth_out/${design}_mapped.v" "$synth_out" \

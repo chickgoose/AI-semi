@@ -17,6 +17,13 @@
     "timed_checks": ["ref-clock recovery/removal", "generated-clock recovery/removal", "sample-clock ICG/latch setup/hold"],
     "blanket_false_path": false
   },
+  "reset_assertion": {
+    "smoke_phase_ns": 1.0,
+    "required_sample_clock_level": 0,
+    "selected_icg_limitation": "TLATNCAX2 has no asynchronous reset pin; assertion while sample_clk is high is not owner-equivalent",
+    "arbitrary_phase_async_assertion_supported": false,
+    "activation_rule": "retain the frozen low-phase assertion contract or redesign with a reset-capable characterized boundary and requalify all reset domains"
+  },
   "staged_boolean_equivalence": {
     "rule": "clock_o implies frame_active while reset is released",
     "ddr_removed_redundant_term": "~burst_clk_o from endpoint drain conjunction",

@@ -22,6 +22,7 @@ required_nonempty=(
   "$genus_root/${design}_mapped.v"
   "$genus_root/${design}_mapped.sdc"
   "$genus_root/scan_mapping.rpt"
+  "$genus_root/icg_mapping.rpt"
   "$pnr_root/innovus.log"
   "$pnr_root/check_timing.rpt"
   "$pnr_root/check_place.rpt"
@@ -48,11 +49,23 @@ grep -Eq 'W7_SCAN_LIB_MATCH_COUNT=[1-9][0-9]*' "$genus_root/genus.log" || \
   fail 'scan library avoidance matched no cells'
 grep -Fxq 'W7_MAPPED_SDFF_COUNT=0' "$genus_root/scan_mapping.rpt" || \
   fail 'mapped scan-prefixed count is not zero'
+grep -Fxq 'W7_SELECTED_ICG=TLATNCAX2' "$genus_root/icg_mapping.rpt" || \
+  fail 'selected mapped ICG identity is missing'
+grep -Fxq 'W7_MAPPED_SELECTED_ICG_COUNT=1' "$genus_root/icg_mapping.rpt" || \
+  fail 'mapped selected ICG count is not exactly one'
+grep -Fxq 'W7_MAPPED_ALTERNATE_ICG_COUNT=0' "$genus_root/icg_mapping.rpt" || \
+  fail 'mapped alternate ICG count is nonzero'
 grep -Fxq "W7_INNOVUS_CLEAN_END design=$design" "$pnr_root/W7_INNOVUS_CLEAN_END" || \
   fail 'missing Innovus clean-end marker'
 grep -Fq 'W7_UNPLACED_INSTS=0' "$pnr_root/innovus.log" || fail 'unplaced instances'
 grep -Fq 'W7_UNPLACED_PORTS=0' "$pnr_root/innovus.log" || fail 'unplaced IO ports'
 grep -Fq 'W7_UNCONSTRAINED_PATHS=0' "$pnr_root/innovus.log" || fail 'unconstrained paths'
+grep -Fxq 'W7_INNOVUS_SELECTED_ICG=TLATNCAX2' "$pnr_root/innovus.log" || \
+  fail 'Innovus selected ICG identity is missing'
+grep -Fxq 'W7_INNOVUS_SELECTED_ICG_COUNT=1' "$pnr_root/innovus.log" || \
+  fail 'Innovus did not retain exactly one selected ICG'
+grep -Fxq 'W7_INNOVUS_ALTERNATE_ICG_COUNT=0' "$pnr_root/innovus.log" || \
+  fail 'Innovus retained an alternate ICG'
 grep -Fxq 'W7_RECOVERY_ANALYSIS_VIEW=setup_view' "$pnr_root/innovus.log" || \
   fail 'recovery setup-view proof missing'
 grep -Fxq 'W7_REMOVAL_ANALYSIS_VIEW=hold_view' "$pnr_root/innovus.log" || \

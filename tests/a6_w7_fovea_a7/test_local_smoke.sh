@@ -14,6 +14,22 @@ fi
 "$repo_root/scripts/prepare_a6_w7_fovea_a7_bundle.sh" "$tmp_root/bundle"
 cp -a "$tmp_root/bundle/synth_sources" "$tmp_root/mutant_ddr_sources"
 cp -a "$tmp_root/bundle/synth_sources" "$tmp_root/mutant_parallel_sources"
+cp -a "$tmp_root/bundle/synth_sources" "$tmp_root/icg_tlatnca_sources"
+cp -a "$tmp_root/bundle/synth_sources" "$tmp_root/icg_tlatntsca_sources"
+cp "$tmp_root/bundle/icg_candidates/a7_r1_icg_boundary_tlatnca.sv" \
+  "$tmp_root/icg_tlatnca_sources/a7_r1_icg_boundary.sv"
+cp "$tmp_root/bundle/icg_candidates/a7_r1_icg_boundary_tlatntsca.sv" \
+  "$tmp_root/icg_tlatntsca_sources/a7_r1_icg_boundary.sv"
+cp "$repo_root/tests/a6_w7_fovea_a7/fixtures/gpdk045_icg_functional_stubs.sv" \
+  "$tmp_root/icg_tlatnca_sources/"
+cp "$repo_root/tests/a6_w7_fovea_a7/fixtures/gpdk045_icg_functional_stubs.sv" \
+  "$tmp_root/icg_tlatntsca_sources/"
+cp "$repo_root/tests/a6_w7_fovea_a7/fixtures/gpdk045_icg_functional_stubs.sv" \
+  "$tmp_root/bundle/synth_sources/"
+cp "$repo_root/tests/a6_w7_fovea_a7/fixtures/gpdk045_icg_functional_stubs.sv" \
+  "$tmp_root/mutant_ddr_sources/"
+cp "$repo_root/tests/a6_w7_fovea_a7/fixtures/gpdk045_icg_functional_stubs.sv" \
+  "$tmp_root/mutant_parallel_sources/"
 
 # Negative proof for the exact staged rewrite location: the legal staged copy
 # omits redundant ~burst_clk_o.  Reinsert the wrong-polarity burst_clk_o term;
@@ -40,6 +56,9 @@ run_one() {
   local args=(-g2012 -s a6_w7_smoke_tb -o "$tmp_root/$label.vvp")
   if [[ $variant == parallel ]]; then args+=(-DW7_PARALLEL); fi
   if [[ -n $iverilog_base ]]; then args=(-B "$iverilog_base" "${args[@]}"); fi
+  if [[ -f $source_dir/gpdk045_icg_functional_stubs.sv ]]; then
+    args+=("$source_dir/gpdk045_icg_functional_stubs.sv")
+  fi
   local name
   for name in "${rtl_names[@]}"; do args+=("$source_dir/$name"); done
   args+=("$tmp_root/bundle/smoke_tb.sv")
@@ -64,15 +83,23 @@ run_one() {
 
 run_one owner "$tmp_root/bundle/sources" ddr
 run_one staged "$tmp_root/bundle/synth_sources" ddr
+run_one icg_tlatnca "$tmp_root/icg_tlatnca_sources" ddr
+run_one icg_tlatntsca "$tmp_root/icg_tlatntsca_sources" ddr
 run_one mutant "$tmp_root/mutant_ddr_sources" ddr
 run_one owner_parallel "$tmp_root/bundle/sources" parallel
 run_one staged_parallel "$tmp_root/bundle/synth_sources" parallel
+run_one icg_tlatnca_parallel "$tmp_root/icg_tlatnca_sources" parallel
+run_one icg_tlatntsca_parallel "$tmp_root/icg_tlatntsca_sources" parallel
 run_one mutant_parallel "$tmp_root/mutant_parallel_sources" parallel
 grep -Fxq 'W7_HANDSHAKE_PASS accepted=36 retired=36 contention=all16 fault=0 drain=1' "$tmp_root/owner.log"
 grep -Fxq 'W7_HANDSHAKE_PASS accepted=36 retired=36 contention=all16 fault=0 drain=1' "$tmp_root/staged.log"
 test "$(grep -c '^ACCEPT ' "$tmp_root/owner.trace")" -eq 36
 test "$(grep -c '^RETIRE ' "$tmp_root/owner.trace")" -eq 36
 diff -u "$tmp_root/owner.trace" "$tmp_root/staged.trace" > "$tmp_root/owner-vs-staged.diff"
+diff -u "$tmp_root/owner.trace" "$tmp_root/icg_tlatnca.trace" \
+  > "$tmp_root/owner-vs-icg-tlatnca.diff"
+diff -u "$tmp_root/owner.trace" "$tmp_root/icg_tlatntsca.trace" \
+  > "$tmp_root/owner-vs-icg-tlatntsca.diff"
 if diff -q "$tmp_root/owner.trace" "$tmp_root/mutant.trace" >/dev/null; then
   echo 'non-equivalent staged drain mutation escaped cycle-exact trace' >&2
   exit 1
@@ -89,6 +116,10 @@ grep -Fxq 'W7_HANDSHAKE_PASS accepted=36 retired=36 contention=all16 fault=0 dra
 grep -Fxq 'W7_HANDSHAKE_PASS accepted=36 retired=36 contention=all16 fault=0 drain=1' "$tmp_root/staged_parallel.log"
 diff -u "$tmp_root/owner_parallel.trace" "$tmp_root/staged_parallel.trace" \
   > "$tmp_root/owner-vs-staged-parallel.diff"
+diff -u "$tmp_root/owner_parallel.trace" "$tmp_root/icg_tlatnca_parallel.trace" \
+  > "$tmp_root/owner-vs-icg-tlatnca-parallel.diff"
+diff -u "$tmp_root/owner_parallel.trace" "$tmp_root/icg_tlatntsca_parallel.trace" \
+  > "$tmp_root/owner-vs-icg-tlatntsca-parallel.diff"
 if diff -q "$tmp_root/owner_parallel.trace" "$tmp_root/mutant_parallel.trace" >/dev/null; then
   echo 'non-equivalent staged link_strobe drain mutation escaped edge-exact trace' >&2
   exit 1
@@ -102,5 +133,21 @@ if diff -q "$tmp_root/owner_parallel.midcycle" "$tmp_root/mutant_parallel.midcyc
   exit 1
 fi
 sha256sum "$tmp_root/owner.trace" "$tmp_root/staged.trace"
+sha256sum "$tmp_root/icg_tlatnca.trace" "$tmp_root/icg_tlatntsca.trace"
 sha256sum "$tmp_root/owner_parallel.trace" "$tmp_root/staged_parallel.trace"
-echo 'A6 W7 local edge-exact DDR/parallel owner/staged + exact drain-term mutations PASS'
+sha256sum "$tmp_root/icg_tlatnca_parallel.trace" "$tmp_root/icg_tlatntsca_parallel.trace"
+iverilog_args=(-g2012 -s icg_reset_assertion_risk_tb \
+  -o "$tmp_root/icg_reset_assertion_risk.vvp")
+if [[ -n $iverilog_base ]]; then
+  iverilog_args=(-B "$iverilog_base" "${iverilog_args[@]}")
+fi
+iverilog_args+=(
+  "$repo_root/tests/a6_w7_fovea_a7/fixtures/gpdk045_icg_functional_stubs.sv"
+  "$repo_root/tests/a6_w7_fovea_a7/fixtures/icg_reset_assertion_risk_tb.sv"
+)
+"$iverilog_bin" "${iverilog_args[@]}"
+"$vvp_bin" "$tmp_root/icg_reset_assertion_risk.vvp" \
+  > "$tmp_root/icg_reset_assertion_risk.log"
+grep -Fxq 'W7_ICG_ASYNC_ASSERTION_RISK_PROVEN owner=0 candidate=1' \
+  "$tmp_root/icg_reset_assertion_risk.log"
+echo 'A6 W7 local edge-exact owner/staged/ICG candidates + exact drain-term mutations PASS'

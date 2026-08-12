@@ -22,12 +22,17 @@ make_fixture() {
   printf 'module %s; endmodule\n' "$design" > "$root/genus/${design}_mapped.v"
   printf 'create_clock -period 16 ref_clk_i\n' > "$root/genus/${design}_mapped.sdc"
   printf 'W7_MAPPED_SDFF_COUNT=0\n' > "$root/genus/scan_mapping.rpt"
+  printf '%s\n' 'W7_SELECTED_ICG=TLATNCAX2' \
+    'W7_MAPPED_SELECTED_ICG_COUNT=1' \
+    'W7_MAPPED_ALTERNATE_ICG_COUNT=0' > "$root/genus/icg_mapping.rpt"
   printf 'W7_SCAN_LIB_MATCH_COUNT=17\n' >> "$root/genus/genus.log"
   printf '%s\n' \
     'Analysis Mode: MMMC OCV' 'CPPR enabled' 'W7_PG_FOLLOWPIN=sroute_corePin' \
     'sroute completed' 'W7_UNPLACED_INSTS=0' 'W7_UNPLACED_PORTS=0' \
     'W7_UNCONSTRAINED_PATHS=0' 'W7_RECOVERY_ANALYSIS_VIEW=setup_view' \
-    'W7_REMOVAL_ANALYSIS_VIEW=hold_view' > "$root/innovus/innovus.log"
+    'W7_REMOVAL_ANALYSIS_VIEW=hold_view' 'W7_INNOVUS_SELECTED_ICG=TLATNCAX2' \
+    'W7_INNOVUS_SELECTED_ICG_COUNT=1' 'W7_INNOVUS_ALTERNATE_ICG_COUNT=0' \
+    > "$root/innovus/innovus.log"
   printf '%s\n' 'Check Timing Report' 'Unconstrained endpoints : 0' 'No clock waveform : 0' > "$root/innovus/check_timing.rpt"
   printf '%s\n' 'CheckPlace Report' 'Total placement violations: 0' > "$root/innovus/check_place.rpt"
   printf '%s\n' 'VERIFY DRC SUMMARY' 'Total DRC violations: 0' > "$root/innovus/drc.rpt"
@@ -65,6 +70,7 @@ negative_names=(
   no_output_delay no_drive empty_removal drc_late_nonzero
   connectivity_late_nonzero checkplace_late_nonzero scan_not_avoided scan_mapped
   abort reset_coverage_zero reset_sample_coverage_zero no_load
+  icg_mapped_missing icg_mapped_alternate icg_innovus_missing
 )
 for name in "${negative_names[@]}"; do
   cp -a "$base" "$tmp_root/$name"
@@ -107,6 +113,12 @@ sed -i 's/check=reset_link_removal paths=1/check=reset_link_removal paths=0/' \
   "$tmp_root/reset_coverage_zero/innovus/timing_metrics.rpt"
 sed -i 's/check=reset_sample_hold paths=1/check=reset_sample_hold paths=0/' \
   "$tmp_root/reset_sample_coverage_zero/innovus/timing_metrics.rpt"
+sed -i 's/W7_MAPPED_SELECTED_ICG_COUNT=1/W7_MAPPED_SELECTED_ICG_COUNT=0/' \
+  "$tmp_root/icg_mapped_missing/genus/icg_mapping.rpt"
+sed -i 's/W7_MAPPED_ALTERNATE_ICG_COUNT=0/W7_MAPPED_ALTERNATE_ICG_COUNT=1/' \
+  "$tmp_root/icg_mapped_alternate/genus/icg_mapping.rpt"
+sed -i 's/W7_INNOVUS_SELECTED_ICG_COUNT=1/W7_INNOVUS_SELECTED_ICG_COUNT=0/' \
+  "$tmp_root/icg_innovus_missing/innovus/innovus.log"
 
 for name in "${negative_names[@]}"; do
   expect_reject "$name" "$tmp_root/$name"
