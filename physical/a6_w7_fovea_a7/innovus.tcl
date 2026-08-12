@@ -82,8 +82,12 @@ timeDesign -postRoute -pathReports -drvReports -slackReports -numPaths 50 \
 timeDesign -postRoute -hold -pathReports -slackReports -numPaths 50 \
   -outDir $out/timing_hold
 set_analysis_view -setup [list setup_view] -hold [list hold_view]
-report_timing -late -check_type recovery -max_paths 50 > $out/timing_recovery.rpt
-report_timing -early -check_type removal -max_paths 50 > $out/timing_removal.rpt
+# Innovus 23.14 selects the setup/hold analysis from -check_type when both
+# views are active.  Combining -check_type with -late/-early is illegal.
+puts "W7_RECOVERY_ANALYSIS_VIEW=setup_view"
+puts "W7_REMOVAL_ANALYSIS_VIEW=hold_view"
+report_timing -check_type recovery -max_paths 50 > $out/timing_recovery.rpt
+report_timing -check_type removal -max_paths 50 > $out/timing_removal.rpt
 
 proc w7_timing_metric {channel label switches} {
   set paths [eval report_timing $switches -max_paths 10000 -collection]
@@ -105,12 +109,12 @@ proc w7_timing_metric {channel label switches} {
 set metric_file [open $out/timing_metrics.rpt w]
 w7_timing_metric $metric_file setup {-late}
 w7_timing_metric $metric_file hold {-early}
-w7_timing_metric $metric_file recovery {-late -check_type recovery}
-w7_timing_metric $metric_file removal {-early -check_type removal}
+w7_timing_metric $metric_file recovery {-check_type recovery}
+w7_timing_metric $metric_file removal {-check_type removal}
 w7_timing_metric $metric_file reset_ref_recovery \
-  {-late -check_type recovery -from [get_ports rst_n] -to [all_registers -clock ref_clk]}
+  {-check_type recovery -from [get_ports rst_n] -to [all_registers -clock ref_clk]}
 w7_timing_metric $metric_file reset_ref_removal \
-  {-early -check_type removal -from [get_ports rst_n] -to [all_registers -clock ref_clk]}
+  {-check_type removal -from [get_ports rst_n] -to [all_registers -clock ref_clk]}
 set icg_latch_pins [get_pins -hierarchical *clock_boundary*enable_latched_q_reg*/*]
 if {[sizeof_collection $icg_latch_pins] == 0} {
   error "no mapped ICG enable-latch pins found for reset/sample timing coverage"
@@ -125,9 +129,9 @@ if {$design eq "a7_weighted_fovea_ddr"} {
   set link_clock parallel_link_clk
 }
 w7_timing_metric $metric_file reset_link_recovery \
-  [list -late -check_type recovery -from [get_ports rst_n] -to [all_registers -clock $link_clock]]
+  [list -check_type recovery -from [get_ports rst_n] -to [all_registers -clock $link_clock]]
 w7_timing_metric $metric_file reset_link_removal \
-  [list -early -check_type removal -from [get_ports rst_n] -to [all_registers -clock $link_clock]]
+  [list -check_type removal -from [get_ports rst_n] -to [all_registers -clock $link_clock]]
 close $metric_file
 
 set unconstrained_paths [report_timing -unconstrained -max_paths 10000 -collection]

@@ -26,7 +26,8 @@ make_fixture() {
   printf '%s\n' \
     'Analysis Mode: MMMC OCV' 'CPPR enabled' 'W7_PG_FOLLOWPIN=sroute_corePin' \
     'sroute completed' 'W7_UNPLACED_INSTS=0' 'W7_UNPLACED_PORTS=0' \
-    'W7_UNCONSTRAINED_PATHS=0' > "$root/innovus/innovus.log"
+    'W7_UNCONSTRAINED_PATHS=0' 'W7_RECOVERY_ANALYSIS_VIEW=setup_view' \
+    'W7_REMOVAL_ANALYSIS_VIEW=hold_view' > "$root/innovus/innovus.log"
   printf '%s\n' 'Check Timing Report' 'Unconstrained endpoints : 0' 'No clock waveform : 0' > "$root/innovus/check_timing.rpt"
   printf '%s\n' 'CheckPlace Report' 'Total placement violations: 0' > "$root/innovus/check_place.rpt"
   printf '%s\n' 'VERIFY DRC SUMMARY' 'Total DRC violations: 0' > "$root/innovus/drc.rpt"
@@ -59,7 +60,8 @@ make_fixture "$base"
 
 negative_names=(
   tool_error metric_setup metric_hold metric_recovery metric_removal
-  metric_wns metric_tns metric_violations unconstrained no_clock no_input_delay
+  metric_wns metric_tns metric_violations hold_actual_negative reset_analysis_view
+  unconstrained no_clock no_input_delay
   no_output_delay no_drive empty_removal drc_late_nonzero
   connectivity_late_nonzero checkplace_late_nonzero scan_not_avoided scan_mapped
   abort reset_coverage_zero reset_sample_coverage_zero no_load
@@ -78,6 +80,10 @@ sed -i 's/check=recovery paths=1 violations=0 wns=1.000000 tns=0.000000/check=re
   "$tmp_root/metric_tns/innovus/timing_metrics.rpt"
 sed -i 's/check=removal paths=1 violations=0 wns=1.000000 tns=0.000000/check=removal paths=1 violations=2 wns=1.000000 tns=0.000000/' \
   "$tmp_root/metric_violations/innovus/timing_metrics.rpt"
+sed -i 's/check=hold paths=1 violations=0 wns=1.000000 tns=0.000000/check=hold paths=80 violations=3 wns=-0.413000 tns=-0.443000/' \
+  "$tmp_root/hold_actual_negative/innovus/timing_metrics.rpt"
+sed -i '/W7_REMOVAL_ANALYSIS_VIEW=hold_view/d' \
+  "$tmp_root/reset_analysis_view/innovus/innovus.log"
 sed -i 's/W7_UNCONSTRAINED_PATHS=0/W7_UNCONSTRAINED_PATHS=1/' \
   "$tmp_root/unconstrained/innovus/innovus.log"
 sed -i 's/Sequential clock pins without clock waveform 0/Sequential clock pins without clock waveform 1/' \

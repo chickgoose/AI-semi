@@ -53,6 +53,10 @@ grep -Fxq "W7_INNOVUS_CLEAN_END design=$design" "$pnr_root/W7_INNOVUS_CLEAN_END"
 grep -Fq 'W7_UNPLACED_INSTS=0' "$pnr_root/innovus.log" || fail 'unplaced instances'
 grep -Fq 'W7_UNPLACED_PORTS=0' "$pnr_root/innovus.log" || fail 'unplaced IO ports'
 grep -Fq 'W7_UNCONSTRAINED_PATHS=0' "$pnr_root/innovus.log" || fail 'unconstrained paths'
+grep -Fxq 'W7_RECOVERY_ANALYSIS_VIEW=setup_view' "$pnr_root/innovus.log" || \
+  fail 'recovery setup-view proof missing'
+grep -Fxq 'W7_REMOVAL_ANALYSIS_VIEW=hold_view' "$pnr_root/innovus.log" || \
+  fail 'removal hold-view proof missing'
 grep -Eiq 'on.?chip.?variation|analysisType[[:space:]]+onChipVariation|MMMC[[:space:]]+OCV' "$pnr_root/innovus.log" || fail 'OCV not proven'
 grep -Eiq 'cppr' "$pnr_root/innovus.log" || fail 'CPPR not proven'
 grep -Eiq 'followpin' "$pnr_root/innovus.log" || fail 'followpin PG not proven'

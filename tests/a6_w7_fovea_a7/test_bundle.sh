@@ -48,8 +48,49 @@ rg -q 'W7_PG_FOLLOWPIN=sroute_corePin' "$bundle/innovus.tcl"
 rg -q 'sroute' "$bundle/innovus.tcl"
 rg -q 'saveNetlist' "$bundle/innovus.tcl"
 ! rg -q 'write_netlist' "$bundle/innovus.tcl"
-rg -q 'report_timing -late -check_type recovery' "$bundle/innovus.tcl"
-rg -q 'report_timing -early -check_type removal' "$bundle/innovus.tcl"
+check_reset_timing_tcl() {
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+text = open(sys.argv[1]).read()
+commands = []
+pending = ""
+for raw in text.splitlines():
+    line = raw.split("#", 1)[0].strip()
+    if not line:
+        continue
+    pending = f"{pending} {line}".strip()
+    if pending.endswith("\\"):
+        pending = pending[:-1].rstrip()
+        continue
+    commands.append(pending)
+    pending = ""
+if pending:
+    commands.append(pending)
+
+if "set_analysis_view -setup [list setup_view] -hold [list hold_view]" not in commands:
+    raise SystemExit("setup/hold analysis views are not simultaneously active")
+for command in commands:
+    if "-check_type" in command and re.search(r"(?:^|\s)-(?:late|early)(?:\s|$)", command):
+        raise SystemExit(f"Innovus 23.14-incompatible timing switches: {command}")
+for check in ("recovery", "removal"):
+    direct = [command for command in commands
+              if command.startswith(f"report_timing -check_type {check} ")]
+    if len(direct) != 1:
+        raise SystemExit(f"expected one direct {check} report, found {len(direct)}")
+    marker = f'puts "W7_{check.upper()}_ANALYSIS_VIEW='
+    if not any(command.startswith(marker) for command in commands):
+        raise SystemExit(f"missing {check} analysis-view proof marker")
+PY
+}
+check_reset_timing_tcl "$bundle/innovus.tcl"
+if check_reset_timing_tcl \
+    "$repo_root/tests/a6_w7_fovea_a7/fixtures/innovus_23_14_illegal_recovery_removal.tcl" \
+    >/dev/null 2>&1; then
+  echo 'Innovus 23.14 illegal recovery/removal fixture was not rejected' >&2
+  exit 1
+fi
 rg -q 'W7_TIMING_METRIC' "$bundle/innovus.tcl"
 rg -q 'sizeof_collection' "$bundle/innovus.tcl"
 rg -q 'icg_latch_pins' "$bundle/innovus.tcl"
