@@ -1,0 +1,114 @@
+{
+  "candidate": {
+    "commit_sha": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+    "key": "a4",
+    "name": "A4 paired cortical column",
+    "rtl_origin_commit_sha": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+    "rtl_path": "rtl/candidates/a4_paired_cortical_column_k2/a4_paired_cortical_column_k2.sv",
+    "rtl_sha256": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
+    "semantic_grade": "AGGREGATE_ONLY_NOT_A5_SCALAR_PREFIX",
+    "semantic_limits": [
+      "Its paired/debt calendar is not A5 scalar-prefix equivalent.",
+      "Commit 2884eb8 is superseded because live requests could leak offers during reset; 0e613b6 adds quiet reset gating.",
+      "The active-low reset is normalized to the common active-high reset; the resulting inverter remains charged."
+    ],
+    "supersedes_commit_sha": "2884eb831cc6437efaa52bcd21929ab288f3d265"
+  },
+  "common_method": {
+    "boundary": "clk,rst,pending[15:0],bundle_ready -> grant_count[1:0],grant_addr0[3:0],grant_addr1[3:0]",
+    "excluded_candidate_outputs": "grant_bitmap/source_ready/drain_idle and downstream link adapters",
+    "flow": "read_verilog -sv -DSYNTHESIS; hierarchy -check -top k2_common_boundary; proc; flatten; opt; memory_map; opt; setundef -zero; opt; techmap; opt; abc -g simple; clean; check; stat",
+    "metric_definitions": {
+      "depth": "mapped combinational cell levels from primary inputs or mapped flop outputs to common outputs or flop data/enable inputs",
+      "fanout": "mapped data/enable sink-pin count per net; clock/reset/set sinks and clock/reset primary nets excluded",
+      "wire": "total mapped combinational and flop data/enable input pin bits; a connectivity proxy, not routed length"
+    },
+    "self_test": {
+      "canonical_committed_bytes_required": true,
+      "two_run_byte_identity_required": true
+    },
+    "wrapper_sha256": "61eae2078173f07160413acd88a8d5e49cc5e9cc77cc9a05b75441e7ffe53ef2"
+  },
+  "limits": {
+    "cross_candidate_semantics": "HOLD_NON_EQUIVALENT_POLICIES",
+    "physical_ppa": "HOLD_GENERIC_YOSYS_PROXY_ONLY",
+    "ranking": "Structural Pareto cannot upgrade or equate semantic grades."
+  },
+  "metrics": {
+    "fanout_net_count": 1849,
+    "fanout_proxy_max": 32,
+    "fanout_proxy_p95": 6,
+    "generic_cells": 629,
+    "generic_mux_cells": 283,
+    "generic_mux_data_input_bits": 3626,
+    "generic_mux_select_bits": 367,
+    "generic_state_bits": 49,
+    "logic_depth_levels": 101,
+    "mapped_cell_types": {
+      "$_AND_": 728,
+      "$_DFFE_PP0P_": 49,
+      "$_MUX_": 233,
+      "$_NOT_": 212,
+      "$_OR_": 560,
+      "$_XOR_": 50
+    },
+    "mapped_cells": 1832,
+    "mapped_comb_cells": 1783,
+    "mapped_state_bits": 49,
+    "nets_fanout_ge16": 11,
+    "sink_pin_wire_proxy": 3685
+  },
+  "reproducibility": {
+    "canonical_committed_byte_identity": true,
+    "self_test_command": "python3 audits/a7_k2_same_flow_structural/run_audit.py --yosys /tmp/a7-toolchain/usr/bin/yosys --self-test",
+    "two_run_byte_identity": true
+  },
+  "reset_live_gating": {
+    "final_commit_sha": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+    "final_rtl_sha256": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
+    "included_in_final_metrics": true,
+    "interpretation": "Generic deltas expose the added reset-quiet muxing before technology mapping. Negative mapped deltas reflect whole-cone ABC rewriting and are not negative physical cost.",
+    "mapped_cell_type_delta_final_minus_superseded": {
+      "$_AND_": -33,
+      "$_DFFE_PP0P_": 0,
+      "$_MUX_": 13,
+      "$_NOT_": 34,
+      "$_OR_": -44,
+      "$_XOR_": 9
+    },
+    "metric_delta_final_minus_superseded": {
+      "fanout_net_count": -21,
+      "fanout_proxy_max": -1,
+      "fanout_proxy_p95": 0,
+      "generic_cells": 2,
+      "generic_mux_cells": 2,
+      "generic_mux_data_input_bits": 20,
+      "generic_mux_select_bits": 2,
+      "generic_state_bits": 0,
+      "logic_depth_levels": -8,
+      "mapped_cells": -21,
+      "mapped_comb_cells": -21,
+      "mapped_state_bits": 0,
+      "nets_fanout_ge16": -2,
+      "sink_pin_wire_proxy": -63
+    },
+    "superseded_commit_sha": "2884eb831cc6437efaa52bcd21929ab288f3d265",
+    "superseded_result_saved_as_final": false,
+    "superseded_rtl_sha256": "6e5873ca6e30798f984b2f044e3294775acc71537b2136b4ed16ec9df3c604cf"
+  },
+  "schema": "a7_k2_same_flow_structural_v1",
+  "state_interpretation": "Generic and mapped state both contain 49 bits.",
+  "tool": {
+    "abc_executable_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",
+    "resolved_executable": "/tmp/a7-toolchain/usr/bin/yosys",
+    "version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+    "yosys_datdir": "/tmp/a7-toolchain/usr/share/yosys",
+    "yosys_executable_sha256": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f"
+  },
+  "warnings": {
+    "abc_combinational_network": 1,
+    "memory_to_register": 6,
+    "total": 7,
+    "unclassified": 0
+  }
+}

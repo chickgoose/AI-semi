@@ -1,0 +1,81 @@
+{
+  "candidate": {
+    "commit_sha": "29a5003bb47c9c502a3bec9a727de2ed14afcfeb",
+    "key": "a3",
+    "name": "A3 exact scalar prefix",
+    "rtl_origin_commit_sha": "632e68d247ec36a35b62dbd5c100b0a23d47cf7b",
+    "rtl_path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+    "rtl_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+    "semantic_grade": "EXACT_SCALAR_PREFIX_K2",
+    "semantic_limits": [
+      "Independent retire-lane backpressure is outside the scheduler boundary.",
+      "Address bitmap carries one outstanding occurrence per source."
+    ],
+    "supersedes_commit_sha": null
+  },
+  "common_method": {
+    "boundary": "clk,rst,pending[15:0],bundle_ready -> grant_count[1:0],grant_addr0[3:0],grant_addr1[3:0]",
+    "excluded_candidate_outputs": "grant_bitmap/source_ready/drain_idle and downstream link adapters",
+    "flow": "read_verilog -sv -DSYNTHESIS; hierarchy -check -top k2_common_boundary; proc; flatten; opt; memory_map; opt; setundef -zero; opt; techmap; opt; abc -g simple; clean; check; stat",
+    "metric_definitions": {
+      "depth": "mapped combinational cell levels from primary inputs or mapped flop outputs to common outputs or flop data/enable inputs",
+      "fanout": "mapped data/enable sink-pin count per net; clock/reset/set sinks and clock/reset primary nets excluded",
+      "wire": "total mapped combinational and flop data/enable input pin bits; a connectivity proxy, not routed length"
+    },
+    "self_test": {
+      "canonical_committed_bytes_required": true,
+      "two_run_byte_identity_required": true
+    },
+    "wrapper_sha256": "cbec08df704bdd7c2ff11ce6cd853415f5d393a8f970a9f1b44795e96c2002e4"
+  },
+  "limits": {
+    "cross_candidate_semantics": "HOLD_NON_EQUIVALENT_POLICIES",
+    "physical_ppa": "HOLD_GENERIC_YOSYS_PROXY_ONLY",
+    "ranking": "Structural Pareto cannot upgrade or equate semantic grades."
+  },
+  "metrics": {
+    "fanout_net_count": 661,
+    "fanout_proxy_max": 20,
+    "fanout_proxy_p95": 5,
+    "generic_cells": 283,
+    "generic_mux_cells": 75,
+    "generic_mux_data_input_bits": 476,
+    "generic_mux_select_bits": 79,
+    "generic_state_bits": 34,
+    "logic_depth_levels": 42,
+    "mapped_cell_types": {
+      "$_AND_": 250,
+      "$_MUX_": 19,
+      "$_NOT_": 82,
+      "$_OR_": 256,
+      "$_SDFFE_PP0P_": 16,
+      "$_SDFFE_PP1P_": 10,
+      "$_XOR_": 11
+    },
+    "mapped_cells": 644,
+    "mapped_comb_cells": 618,
+    "mapped_state_bits": 26,
+    "nets_fanout_ge16": 3,
+    "sink_pin_wire_proxy": 1225
+  },
+  "reproducibility": {
+    "canonical_committed_byte_identity": true,
+    "self_test_command": "python3 audits/a7_k2_same_flow_structural/run_audit.py --yosys /tmp/a7-toolchain/usr/bin/yosys --self-test",
+    "two_run_byte_identity": true
+  },
+  "schema": "a7_k2_same_flow_structural_v1",
+  "state_interpretation": "The generic post-proc netlist contains the documented 34 bits: 12 committed policy, 12 saved post-bundle policy, and 10 registered bundle bits. Fixed CENTER_MASK=0110 and PERIPH_MASK=1001 make two leaf-pair bits in each center/peripheral arbiter state irrelevant. Uniform techmap/opt removes four committed and four saved bits while retaining all 10 bundle bits, leaving 26 one-bit mapped flops.",
+  "tool": {
+    "abc_executable_sha256": "21869d0f63b6a2962ad7e54044e7a694f6cc392db6443ad7bf70cdb8ad6ca16a",
+    "resolved_executable": "/tmp/a7-toolchain/usr/bin/yosys",
+    "version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)",
+    "yosys_datdir": "/tmp/a7-toolchain/usr/share/yosys",
+    "yosys_executable_sha256": "30aa795bec7533dac08bad56309edb6ac70dd33f017c28082d3c1dae1012112f"
+  },
+  "warnings": {
+    "abc_combinational_network": 1,
+    "memory_to_register": 0,
+    "total": 1,
+    "unclassified": 0
+  }
+}
