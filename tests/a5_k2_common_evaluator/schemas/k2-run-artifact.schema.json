@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "a5_k2_run_artifact_v2",
+  "title": "Bound K2 runner observation artifact",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "candidate_identity_sha256", "contract_sha256", "vector_bundle_sha256", "name", "run_sha256", "cycles"],
+  "properties": {
+    "schema": {"const": "a5_k2_run_artifact_v2"},
+    "candidate_identity_sha256": {"$ref": "#/$defs/sha256"},
+    "contract_sha256": {"$ref": "#/$defs/sha256"},
+    "vector_bundle_sha256": {"$ref": "#/$defs/sha256"},
+    "name": {"type": "string", "minLength": 1},
+    "run_sha256": {"$ref": "#/$defs/sha256"},
+    "cycles": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["cycle", "accepts", "outputs", "drain_idle"],
+        "properties": {
+          "cycle": {"type": "integer", "minimum": 0},
+          "drain_idle": {"type": "boolean"},
+          "accepts": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/transaction"}},
+          "outputs": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/output"}}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "transaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slot", "source", "event_id"],
+      "properties": {
+        "slot": {"type": "integer", "minimum": 0, "maximum": 1},
+        "source": {"type": "integer", "minimum": 0, "maximum": 15},
+        "event_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "output": {
+      "type": "object", "required": ["lane", "valid"],
+      "properties": {
+        "lane": {"type": "integer", "minimum": 0, "maximum": 1},
+        "valid": {"type": "boolean"},
+        "source": {"type": "integer", "minimum": 0, "maximum": 15},
+        "event_id": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

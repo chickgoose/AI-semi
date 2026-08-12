@@ -1,0 +1,1 @@
+module k2_fixture_binding_beta; endmodule

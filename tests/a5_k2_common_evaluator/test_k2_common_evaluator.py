@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from copy import deepcopy
 import tempfile
 import unittest
 
@@ -11,11 +12,12 @@ import adapt_frozen_v4 as adapter
 from evaluate_k2 import ContractError, evaluate_documents, evaluate_run
 from generate_vectors import build_bundle
 from k2_oracle import PolicyState, fold_prefix, validate_vector_bundle
-from synthetic_reference import build_reference_evidence
+from synthetic_reference import build_reference_evidence, materialize_owner_fixture
 
 
 ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT.parents[1]
+OWNER_FIXTURES = ROOT / "fixtures" / "owners"
 
 
 class K2CommonEvaluatorTest(unittest.TestCase):
@@ -54,22 +56,80 @@ class K2CommonEvaluatorTest(unittest.TestCase):
 
     def test_exactly_three_candidates_and_no_duplicate_identity(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            paths = []
             evidence = []
-            for index in range(3):
-                document = build_reference_evidence(self.bundle, f"candidate-{index}")
-                path = Path(temporary) / f"candidate-{index}.json"
-                path.write_text(json.dumps(document), encoding="utf-8")
-                paths.append(path)
+            for name in ("alpha", "beta", "gamma"):
+                path, document = materialize_owner_fixture(
+                    self.bundle, Path(temporary) / name,
+                    OWNER_FIXTURES / f"owner-{name}", f"candidate-{name}")
                 evidence.append((path, document))
             result = evaluate_documents(self.bundle, evidence, self.thresholds)
             self.assertEqual("PASS", result["status"])
-            self.assertEqual(["candidate-0", "candidate-1", "candidate-2"],
+            self.assertEqual(["candidate-alpha", "candidate-beta", "candidate-gamma"],
                              result["comparison"]["pareto_frontier"])
+            self.assertEqual("COMPARABLE", result["comparison"]["decision"])
             self.assertTrue(all(pair["verdict"] == "TIE_WITHIN_BANDS"
                                 for pair in result["comparison"]["pairwise"]))
             with self.assertRaisesRegex(ContractError, "exactly three"):
                 evaluate_documents(self.bundle, evidence[:2], self.thresholds)
+
+    def test_contract_difference_is_incomparable_not_pareto(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = []
+            for name, policy in (
+                ("alpha", "exact_weighted_scalar_prefix_k2"),
+                ("beta", "exact_weighted_scalar_prefix_k2"),
+                ("gamma", "batched_iwrr_k2"),
+            ):
+                evidence.append(materialize_owner_fixture(
+                    self.bundle, Path(temporary) / name,
+                    OWNER_FIXTURES / f"owner-{name}", f"candidate-{name}", policy))
+            result = evaluate_documents(self.bundle, evidence, self.thresholds)
+        self.assertEqual("INCOMPARABLE", result["status"])
+        self.assertEqual("INCOMPARABLE", result["comparison"]["decision"])
+        self.assertIsNone(result["comparison"]["pareto_frontier"])
+        self.assertIn("INCOMPARABLE_CONTRACT",
+                      {pair["verdict"] for pair in result["comparison"]["pairwise"]})
+
+    def test_unattached_hash_and_fabricated_inline_output_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path, good = materialize_owner_fixture(
+                self.bundle, Path(temporary) / "alpha", OWNER_FIXTURES / "owner-alpha",
+                "candidate-alpha")
+            unattached = deepcopy(good)
+            del unattached["candidate"]["source"]
+            unattached["candidate"]["source_sha256"] = "0" * 64
+            path.write_text(json.dumps(unattached), encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "incomplete candidate identity"):
+                evaluate_documents(self.bundle, [(path, unattached)] * 3, self.thresholds)
+
+            fabricated = deepcopy(good)
+            fabricated["runs"][0]["cycles"] = []
+            path.write_text(json.dumps(fabricated), encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "malformed run evidence"):
+                evaluate_documents(self.bundle, [(path, fabricated)] * 3, self.thresholds)
+
+    def test_rebound_binding_is_rejected_by_run_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            alpha_path, alpha = materialize_owner_fixture(
+                self.bundle, root / "alpha", OWNER_FIXTURES / "owner-alpha", "candidate-alpha")
+            _, beta = materialize_owner_fixture(
+                self.bundle, root / "beta", OWNER_FIXTURES / "owner-beta", "candidate-beta")
+            rebound = deepcopy(alpha)
+            rebound["candidate"]["binding"] = beta["candidate"]["binding"]
+            alpha_path.write_text(json.dumps(rebound), encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "candidate identity rebound"):
+                evaluate_documents(self.bundle, [(alpha_path, rebound)] * 3, self.thresholds)
+
+    def test_exact_edge_and_latency_definitions_are_required(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path, document = materialize_owner_fixture(
+                self.bundle, Path(temporary) / "alpha", OWNER_FIXTURES / "owner-alpha",
+                "candidate-alpha")
+            document["candidate"]["contract"]["edge"]["clock_edge"] = "negedge"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaisesRegex(ContractError, "edge definition mismatch"):
+                evaluate_documents(self.bundle, [(path, document)] * 3, self.thresholds)
 
     def test_frozen_v4_adapter_rejects_changed_trace(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
