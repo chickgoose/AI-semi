@@ -1,0 +1,71 @@
+{
+  "schema": "w7-weighted-fovea-a7-profile-v1",
+  "integration_base": "2a3a3be94be8f12585f484b5b1da2b372f7282d9",
+  "owner_lineage": {
+    "final_owner": "eaf3cf7260e3268fb9519d570cc4e825fe5b187c",
+    "a1_integration": "61b7fb5ab298d6b25c23655c92538350fcf7041b"
+  },
+  "design": {
+    "name": "weighted_fovea_a7_ddr",
+    "top": "a7_weighted_fovea_ddr",
+    "defines": ["A7_WEIGHTED_FOVEA_MODULE=aer_tx16_trad_rowcol_fovea"],
+    "parameters": {},
+    "clock_ports": ["ref_clk_i", "sample_clk_i"],
+    "reset": {"port": "rst_n", "active": "low", "arming": "owner-W6-reset-quiet"},
+    "contract": {"sources": 16, "address_bits": 4, "payload": "address-only", "ddr_pins": 3, "availability_ref_cycles": 1, "synchronous_consume_ref_cycles": 2}
+  },
+  "source_filelist": "submission/w7_weighted_fovea_a7/weighted_fovea_a7.f",
+  "source_closure": [
+    ["tests/a5_fovea_a7_structural/fixtures/arbiter2.v", "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"],
+    ["tests/a5_fovea_a7_structural/fixtures/arbiter4_tree.v", "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"],
+    ["tests/a5_fovea_a7_structural/fixtures/aer_tx16_trad_rowcol_fovea.v", "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e"],
+    ["rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv", "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d"],
+    ["rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv", "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9"],
+    ["rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_tx.sv", "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197"],
+    ["rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_rx.sv", "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06"],
+    ["rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv", "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f"],
+    ["rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv", "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03"],
+    ["rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv", "b125dc3cfc51f5c898d41f9b82660c346aafc9c7613433cee622514eb3456ec7"]
+  ],
+  "verification_closure": [
+    ["docs/research/a7_weighted_fovea_ddr_w6.md", "16898bb04bfe9834f292b2973802db5abf34e7c292df2a5e85ab66f926838071"],
+    ["scripts/run_a7_weighted_fovea_ddr_fault.sh", "ffa99224deb233e47ef31e53d68d41db14da73d64ab805a30dbb1ef7c7b081cc"],
+    ["scripts/run_a7_weighted_fovea_ddr_qualification.sh", "8bf2787dca44454e3aac864d6c227360512ee0266b986f5df56e7ac81aa24804"],
+    ["tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv", "e9e99ddd9aec9ced9721065459277e5adc795a13fb70f45af6677c80bf6d3c81"],
+    ["tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_fault_tb.sv", "f3266c406670dec61091c6caa01e93d62b4366ca9ab83f5bdc630dc4ff016a7e"],
+    ["tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_stale_no_live_fixture.sv", "2a7a5e405b2e2cde610cc0484083a79fd409fecddfc8eb7ee7be1279acf4cb36"],
+    ["tb/filelists/a7_weighted_fovea_ddr_fault.f", "8b18720ebf3f1bdebcb97cb24823283a8bc085a4fe766e362af50a3614e6055b"],
+    ["tests/a7_weighted_fovea_ddr/contract_check.py", "24ca4aae6201f02ebfbdb68a8a72d367c4597fa754f3f9037f3501f7b01fc3d6"],
+    ["tests/a7_weighted_fovea_ddr/mutation_gate.py", "1624a64340d94e340b52aa126637fb8206eb77b13bc8ac3579459c9e195c8979"]
+  ],
+  "common_boundary": {
+    "claim": "ABI-v4 address-only inventory only; the 338 archive is not an official exact-2a3a3be common receipt",
+    "expected_counts": {"full": 50, "capacity": 22},
+    "files": [
+      ["benchmarks/clean_slate_aer/generate_trace.py", "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50"],
+      ["benchmarks/clean_slate_aer/prepare_sv_trace.py", "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826"],
+      ["benchmarks/clean_slate_aer/manifest.multilane-n16.json", "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62"],
+      ["benchmarks/clean_slate_aer/fixtures/neutrality_n16_golden.json", "dd25ca657d76038574e98ddbba126a0e90e69a4678510252d964d620edf07e1b"],
+      ["scripts/common_suite_official.py", "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33"],
+      ["scripts/common_suite_official_wrapper.py", "866cb3598f1d1bc623df080515405ba62c4d50bdb8c1cd19f398f778bfd96021"],
+      ["tb/clean/aer_bench_if.sv", "fbca24e710e74c988592d79aa40a15fed3464a7a37147922cfbd23966535e163"],
+      ["tb/clean/aer_clean_assertions.sv", "ab3bca49bb660ece4c353b145ac21a81b8ed91c607657e196473e74f0cbefc3f"],
+      ["tb/clean/aer_clean_tb.sv", "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2"]
+    ]
+  },
+  "bootstrap": {"git": {"path": "/usr/bin/git", "version": "git version 2.53.0", "sha256": "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"}},
+  "xcelium_archive": {
+    "basename": "fovea-cluster2-0FfaT8kp.tar.gz",
+    "sha256": "0600293426d41441cb597f8b43ff635df6251dcb0c8289e0e258b7c49d633b96",
+    "size": 5221477,
+    "root": "eval-fovea-cluster2.0FfaT8kp",
+    "member_count": 736,
+    "index": "eval-fovea-cluster2.0FfaT8kp/result-artifacts.sha256",
+    "index_sha256": "35dbea2ff4f7b3993784bbc63b7efda73802e86c543627848ea8cbebf612d65b",
+    "indexed_count": 338,
+    "absolute_prefix": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.0FfaT8kp/",
+    "groups": {"fovea": 169, "cluster2": 169},
+    "provenance": {"path": "eval-fovea-cluster2.0FfaT8kp/provenance.txt", "sha256": "a335bb5fc849573d2f5fd5f85ea24da3b8a8a6910835d3df28b3757ea95352a5", "snapshot_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be", "binding": "workspace-diff", "tool_version": "xrun(64) 23.09-s013"},
+    "supplemental": [["eval-fovea-cluster2.0FfaT8kp/fovea-run.log", "1c394521d973738589497e0ed54e26970c92445977424ab9f3749b0198366b79"], ["eval-fovea-cluster2.0FfaT8kp/cluster2-run.log", "a9a5c5f03e6216d8dea36b3161a3950bd5b264820fc62e85948431c09ff95b45"]]
+  }
+}

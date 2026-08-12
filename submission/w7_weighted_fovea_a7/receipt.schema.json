@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "w7-weighted-fovea-a7-receipt-v1",
+  "type": "object",
+  "required": ["schema", "status", "binding", "profile", "xcelium", "physical", "receipt"],
+  "properties": {
+    "schema": {"const": "w7-weighted-fovea-a7-receipt-v1"},
+    "status": {"const": "HOLD"},
+    "binding": {"type": "object"},
+    "profile": {"type": "object"},
+    "xcelium": {"type": "object"},
+    "physical": {"type": "object"},
+    "receipt": {"type": "object"}
+  },
+  "additionalProperties": false
+}
