@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "candidate": "a3-exact-scalar-prefix-k2",
+  "native_interface": {
+    "protocol": "n16_pending_atomic_ordered_k2_registered_retire",
+    "source_count": {"kind": "fixed", "value": 16},
+    "source_observable": true,
+    "retire_lanes": 2,
+    "offer": "grant_count_0_1_2_plus_ordered_addresses",
+    "commit": "one_bundle_ready_advances_exactly_grant_count_policy_microsteps"
+  },
+  "capabilities": {
+    "address_event_correctness": {"supported": true},
+    "ordered_scalar_prefix": {"supported": true},
+    "output_backpressure": {"supported": true, "scope": "one ready for the complete bundle"},
+    "independent_lane_backpressure": {"supported": false, "reason": "policy state cannot safely partially commit an ordered prefix"},
+    "multi_lane_retirement": {"supported": true, "maximum": 2},
+    "payload": {"supported": false, "reason": "address-only candidate boundary"}
+  }
+}

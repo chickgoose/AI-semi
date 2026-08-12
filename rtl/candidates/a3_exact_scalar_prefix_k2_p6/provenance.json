@@ -1,0 +1,22 @@
+{
+  "schema": "a3_exact_scalar_prefix_k2_p6_integration_v1",
+  "a3_owner": {
+    "branch_commit_sha": "bd1c1ee955685fc077afe930116a03bc49a8218f",
+    "rtl_origin_commit_sha": "632e68d247ec36a35b62dbd5c100b0a23d47cf7b",
+    "audit_candidate_commit_sha": "29a5003bb47c9c502a3bec9a727de2ed14afcfeb",
+    "rtl_path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+    "rtl_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+    "candidate_profile_sha256": "6945c4e65b16b389ccb9dd2161d7eb6c8a31fb33b2e7d1e4b466ab7665da7a59",
+    "owner_filelist_sha256": "a4574344a3181676de011c144c95818ea990f5a2d0438d815a45d00a01b3ae9d"
+  },
+  "p6_endpoint": {
+    "atomic_contract_commit_sha": "747db00c0913a0681f482443c66e22a0f75c7373",
+    "queue_state_bits": 0,
+    "digital_p6_signal_count": 6
+  },
+  "qualification": {
+    "digital_rtl": "GO",
+    "physical": "HOLD",
+    "cdc_rdc": "HOLD"
+  }
+}
