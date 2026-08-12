@@ -1,0 +1,3 @@
+implementation,physical_link_signals,physical_data_or_control_signals,forwarded_clock_signals,max_events_per_link_cell,operator_cells_excluding_scope,generic_comb_gates,register_or_latch_cells,state_bits,queue_state_bits,operator_depth,generic_gate_depth,physical_status
+p6_ddr5,6,5,1,2,58,59,16,40,0,13,15,HOLD
+parallel_pair,10,9,1,2,50,48,14,34,0,13,15,HOLD
