@@ -39,7 +39,9 @@ An uncommitted offer snapshots the complete 16-bit request cohort. Changing
 live inputs while blocked cannot alter the offered count or addresses. Policy
 next state is combinational speculation only; registers update iff
 `bundle_ready && grant_count!=0`. Reset asynchronously clears the offer and
-all fairness state. No partial lane-drain state exists in the scheduler.
+all fairness state. It also overrides live request and ready pins so
+`grant_count=0`, both addresses are zero, `source_ready=0`, and `drain_idle=1`.
+No partial lane-drain state exists in the scheduler.
 
 The optional link can retire one or two FIFO-prefix events. Lane 1 is valid
 only when lane 0 is valid, and lane 1 cannot fire unless lane 0 fires on the

@@ -207,6 +207,15 @@ module a4_paired_cortical_column_k2 #(
     fallback_rr_n = fallback_rr_work;
     for (int row_i = 0; row_i < 4; row_i = row_i + 1)
       debt_n[row_i] = debt_work[row_i];
+`ifndef A4_PCCK2_MUTATE_RESET_LIVE
+    // Reset is a quiet boundary contract, not merely a register update.
+    // Live request pins must never leak into an offer while reset is asserted.
+    if (!rst_n) begin
+      grant_count = '0;
+      grant_addr = '0;
+      selected_sources = '0;
+    end
+`endif
   end
 
   always_ff @(posedge clk or negedge rst_n) begin
@@ -246,8 +255,13 @@ module a4_paired_cortical_column_k2 #(
     end
   end
 
+`ifdef A4_PCCK2_MUTATE_RESET_LIVE
   assign drain_idle = !(|source_valid) && !hold_valid_q;
   assign source_ready = bundle_ready ? selected_sources : 16'b0;
+`else
+  assign drain_idle = !rst_n || (!(|source_valid) && !hold_valid_q);
+  assign source_ready = (rst_n && bundle_ready) ? selected_sources : 16'b0;
+`endif
 
 `ifndef SYNTHESIS
   logic [1:0] blocked_count_q;

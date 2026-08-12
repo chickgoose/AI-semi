@@ -1,0 +1,58 @@
+{
+  "schema": "a4_pcck2_reset_live_regression_v1",
+  "parent_commit": "2884eb831cc6437efaa52bcd21929ab288f3d265",
+  "trigger": {
+    "rst_n": 0,
+    "source_valid": "ffff",
+    "bundle_ready": 1
+  },
+  "parent_failure": {
+    "model": {
+      "grant_count": 0,
+      "grant_addr": "00",
+      "source_ready": "0000",
+      "drain_idle": 1
+    },
+    "rtl": {
+      "grant_count": 2,
+      "grant_addr": "84",
+      "source_ready": "0110",
+      "drain_idle": 0
+    }
+  },
+  "fixed_contract": {
+    "grant_count": 0,
+    "grant_addr": "00",
+    "source_ready": "0000",
+    "drain_idle": 1
+  },
+  "directed_vector": {
+    "case": "reset_live",
+    "cycles": 7,
+    "sha256": "a4e17188194422277d8247c0674b62daf9aba28d1ac07bc00165d0496c43ca14",
+    "status": "RTL_MODEL_LOCKSTEP_PASS"
+  },
+  "mutation": {
+    "define": "A4_PCCK2_MUTATE_RESET_LIVE",
+    "status": "KILLED_BY_RESET_LIVE"
+  },
+  "qualification": {
+    "status": "LOCAL_PASS",
+    "semantic_grade": "AGGREGATE_ONLY",
+    "model_tests": 6,
+    "directed_rtl_cases": 7,
+    "mutations_killed": 4,
+    "frozen_v4_full50": 50,
+    "frozen_v4_capacity22_subset": 22,
+    "frozen_v4_rtl_executions": 72,
+    "raw_report_sha256": "9683aacb15924f32969e8649e975ebce28a0dec595e196f120df8640794d2a7f",
+    "frozen_v4_replay_sha256": "b23955eb39bf90405c6b0a4a96e6a129821db57d471673ab8c2c6ab4ee5578c0"
+  },
+  "yosys_proxy": {
+    "mapped_state_bits": 49,
+    "mapped_cells": 2142,
+    "logic_depth_levels": 112,
+    "fanout_proxy_max": 34,
+    "ppa_qualification": "HOLD_FOR_LIBERTY_SYNTHESIS_AND_PLACE_ROUTE"
+  }
+}

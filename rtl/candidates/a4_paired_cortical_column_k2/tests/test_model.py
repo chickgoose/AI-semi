@@ -61,6 +61,14 @@ class ModelTest(unittest.TestCase):
         self.assertIsNone(model.hold_requests)
         self.assertEqual(model.policy_state(), (0, 0, (0, 0, 0, 0), (0, 0, 0, 0), 0, 0))
 
+    def test_reset_is_quiet_with_live_inputs(self) -> None:
+        model = PairedCorticalColumnK2()
+        result = model.step(0xFFFF, True, rst_n=False)
+        self.assertEqual(result.source_ready, 0)
+        self.assertEqual(result.grant_count, 0)
+        self.assertEqual((result.grant_addr0, result.grant_addr1), (0, 0))
+        self.assertTrue(result.drain_idle)
+
     def test_row_local_column_rotation(self) -> None:
         model = PairedCorticalColumnK2()
         columns = []
