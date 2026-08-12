@@ -133,6 +133,7 @@ provenance_sources=(
   tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_stale_no_live_fixture.sv
   tb/filelists/a7_weighted_fovea_ddr_fault.f
   tests/a7_weighted_fovea_ddr/contract_check.py
+  tests/a7_weighted_fovea_ddr/mutation_gate.py
 )
 for source in "${provenance_sources[@]}"; do
   git ls-files --error-unmatch "$source" >/dev/null 2>&1 || {
@@ -156,18 +157,22 @@ git diff --quiet HEAD -- "${provenance_sources[@]}" || {
   tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv \
   2>&1 | tee "$out/build.log"
 scan_diagnostics "$out/build.log"
+printf 'A7_W6_BASELINE_COMPILE_PASS\n' | tee -a "$out/build.log"
 "$out/unit-obj/a7_w6_sha_pinned_directed" | tee "$out/run.log"
 
 sentinels=(
   'A7_W6_WEIGHT_1_5_5_1_PASS rows=10:50:50:10'
   'A7_W6_CONTINUOUS_FULL_CONTENTION_PASS events=120'
+  'A7_W6_FULL_CONTENTION_1_PER_CYCLE_PASS intervals=119'
   'A7_W6_ONE_EACH_ORDER_PASS events=16'
   'A7_W6_RESET_DRAIN_PASS pre_and_post_epochs_clean'
+  'A7_W6_RESET_R0_R2_TIMELINE_PASS first_accept_cycle=R2'
+  'A7_W6_RESET_DISJOINT_EPOCH_PASS P=1,4,9,14 Q=0,5,10,15'
   'A7_W6_SAME_ADDRESS_RETRIGGER_PASS addr=6 events=2'
-  'A7_W6_OUTPUT_AVAILABLE_CYCLE1_PASS events=142'
-  'A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=142'
+  'A7_W6_OUTPUT_AVAILABLE_CYCLE1_PASS events=146'
+  'A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=146'
   'A7_W6_DRAIN_GUARDS_PASS live_launch_pending=1'
-  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=142 available=142 retired=142'
+  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=146 available=146 retired=146'
   'A7_W6_WEIGHTED_FOVEA_DDR_DIRECTED_RTL_REGRESSION_PASS'
 )
 for sentinel in "${sentinels[@]}"; do
@@ -176,6 +181,14 @@ for sentinel in "${sentinels[@]}"; do
     exit 1
   }
 done
+
+python3 tests/a7_weighted_fovea_ddr/mutation_gate.py \
+  --verilator "$verilator_bin" --canonical-dir "$fixture_dir" \
+  --output "$out/mutants" | tee "$out/mutation.log"
+rg -Fxq 'A7_W6_FIVE_MUTANT_GATE_PASS count=5' "$out/mutation.log" || {
+  printf 'missing five-mutant gate PASS sentinel\n' >&2
+  exit 1
+}
 
 A7_W6_FAULT_OUT="$out/fault-negative" \
   scripts/run_a7_weighted_fovea_ddr_fault.sh | tee "$out/fault-negative.log"
@@ -213,6 +226,7 @@ printf 'A7_W6_YOSYS_HIERARCHY_CHECK_PASS\n' | tee -a "$out/yosys-check.log"
     tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_stale_no_live_fixture.sv \
     tb/filelists/a7_weighted_fovea_ddr_fault.f \
     tests/a7_weighted_fovea_ddr/contract_check.py \
+    tests/a7_weighted_fovea_ddr/mutation_gate.py \
     docs/research/a7_weighted_fovea_ddr_w6.md \
     scripts/run_a7_weighted_fovea_ddr_fault.sh \
     scripts/run_a7_weighted_fovea_ddr_qualification.sh
@@ -229,6 +243,7 @@ printf 'A7_W6_PROTECTED_DIFF_PASS base=%s\n' "$base"
   printf 'run_log_sha256=%s\n' "$(sha256sum "$out/run.log" | awk '{print $1}')"
   printf 'fault_log_sha256=%s\n' "$(sha256sum "$out/fault-negative/run.log" | awk '{print $1}')"
   printf 'yosys_netlist_sha256=%s\n' "$(sha256sum "$yosys_netlist" | awk '{print $1}')"
+  printf 'mutation_log_sha256=%s\n' "$(sha256sum "$out/mutation.log" | awk '{print $1}')"
   printf 'registry_sha256=%s\n' "$(sha256sum "$out/evidence.registry.sha256" | awk '{print $1}')"
 } | tee "$out/final.status"
 rg -Fxq 'A7_W6_SHA_PINNED_DIRECTED_RTL_PASS' "$out/final.status"

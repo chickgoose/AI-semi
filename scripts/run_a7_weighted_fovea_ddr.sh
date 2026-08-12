@@ -102,13 +102,16 @@ scan_diagnostics "$out/unit-build.log"
 sentinels=(
   'A7_W6_WEIGHT_1_5_5_1_PASS rows=10:50:50:10'
   'A7_W6_CONTINUOUS_FULL_CONTENTION_PASS events=120'
+  'A7_W6_FULL_CONTENTION_1_PER_CYCLE_PASS intervals=119'
   'A7_W6_ONE_EACH_ORDER_PASS events=16'
   'A7_W6_RESET_DRAIN_PASS pre_and_post_epochs_clean'
+  'A7_W6_RESET_R0_R2_TIMELINE_PASS first_accept_cycle=R2'
+  'A7_W6_RESET_DISJOINT_EPOCH_PASS P=1,4,9,14 Q=0,5,10,15'
   'A7_W6_SAME_ADDRESS_RETRIGGER_PASS addr=6 events=2'
-  'A7_W6_OUTPUT_AVAILABLE_CYCLE1_PASS events=142'
-  'A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=142'
+  'A7_W6_OUTPUT_AVAILABLE_CYCLE1_PASS events=146'
+  'A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=146'
   'A7_W6_DRAIN_GUARDS_PASS live_launch_pending=1'
-  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=142 available=142 retired=142'
+  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=146 available=146 retired=146'
   'A7_W6_WEIGHTED_FOVEA_DDR_DIRECTED_RTL_REGRESSION_PASS'
 )
 for sentinel in "${sentinels[@]}"; do

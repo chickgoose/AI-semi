@@ -73,15 +73,25 @@ interface and a 12-slot `1:5:5:1` aggregate row schedule.  It is explicitly
 is not canonical qualification evidence.  Its regression checks:
 
 - 120 continuous full-contention accepts with row counts `10:50:50:10`;
+- after its first acceptance, all 119 remaining full-contention acceptance
+  intervals are exactly one reference cycle;
 - 16 one-shot addresses and exact final order/address;
 - source-acceptance timestamps, output availability exactly one ref cycle
   later, and a real pre-NBA `always_ff` consumer retirement exactly two ref
   cycles later;
 - direct `drain_idle_o==0` checks for a live source, same-cycle endpoint
-  launch, and pending registered retire output;
+  launch, and pending registered retire output, plus the implication
+  `!endpoint_drain_idle -> !drain_idle_o` at reference and burst rise/fall
+  observation edges;
 - two legal address-6 occurrences separated by full drain and a quiet interval;
+- reset release R0 pre-NBA requires endpoint ready, fovea request, source ready,
+  and launch all zero; R0 post-NBA requires endpoint ready; the first live
+  source acceptance is exactly R2;
+- a fully retired pre-reset `P={1,4,9,14}` epoch and disjoint post-reset
+  `Q={0,5,10,15}` epoch, with exact membership, uniqueness, count, and stale-P
+  exclusion;
 - legal full drain, reset quiescence, re-arming, and four post-reset events;
-- one-hot acceptance and exact `accepted=available=retired=142`, with no
+- one-hot acceptance and exact `accepted=available=retired=146`, with no
   duplicate, phantom, loss, reorder, or protocol fault.
 
 A separate expected-fail fixture emits a stale address `a` result while all
@@ -89,6 +99,13 @@ A separate expected-fail fixture emits a stale address `a` result while all
 `source_ready`, a combinational protocol fault, drain low, and the raw phantom
 address reaching final retirement.  It then terminates nonzero with the exact
 `A7_W6_STALE_NO_LIVE_NEGATIVE_CAUGHT` diagnostic; a zero exit is failure.
+
+The SHA-pinned directed runner also compiles and runs five isolated mutants.
+The baseline and every mutant must compile successfully; each mutant must then
+exit nonzero with its unique diagnostic: a full-contention bubble, early R0
+arm, late R0 arm, removed endpoint-drain term, or suppressed second address-6
+grant.  Any mutant that passes, fails compilation, or emits a different
+diagnostic fails the gate.
 
 Reproduce the self-contained unit run:
 
