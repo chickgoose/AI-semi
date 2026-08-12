@@ -86,9 +86,13 @@ class CostClosureTests(unittest.TestCase):
             key: report["candidates"][key]["full_composition_metrics"]
             for key in ("a2", "a3")
         }
-        normalized_clause = "A2 has lower mapped state (22 < 26)"
-        full_state_clause = "A3 has lower mapped state (66 < 73)"
-        full_fanout_clause = "A2's only win is maximum fanout (15 < 31)"
+        clauses = (
+            "A2 has lower mapped state (22 < 26)",
+            "generic metrics favor A2 for cells (304 < 361) and state (73 < 74)",
+            "maximum fanout (15 < 31) and nets with fanout at least 16 (0 < 3)",
+            "mapped cells (728 < 778), mapped state (66 < 73), depth (43 < 55), "
+            "p95 fanout (5 < 6), and wire proxy (1372 < 1514)",
+        )
 
         self.assertEqual((normalized["a2"]["mapped_state_bits"],
                           normalized["a3"]["mapped_state_bits"]), (22, 26))
@@ -96,7 +100,21 @@ class CostClosureTests(unittest.TestCase):
                           full_p6["a2"]["mapped_state_bits"]), (66, 73))
         self.assertEqual((full_p6["a2"]["fanout_proxy_max"],
                           full_p6["a3"]["fanout_proxy_max"]), (15, 31))
-        for clause in (normalized_clause, full_state_clause, full_fanout_clause):
+        self.assertEqual((full_p6["a2"]["nets_fanout_ge16"],
+                          full_p6["a3"]["nets_fanout_ge16"]), (0, 3))
+        self.assertEqual((full_p6["a2"]["generic_cells"],
+                          full_p6["a3"]["generic_cells"]), (304, 361))
+        self.assertEqual((full_p6["a2"]["generic_state_bits"],
+                          full_p6["a3"]["generic_state_bits"]), (73, 74))
+        self.assertEqual((full_p6["a3"]["mapped_cells"],
+                          full_p6["a2"]["mapped_cells"]), (728, 778))
+        self.assertEqual((full_p6["a3"]["logic_depth_levels"],
+                          full_p6["a2"]["logic_depth_levels"]), (43, 55))
+        self.assertEqual((full_p6["a3"]["fanout_proxy_p95"],
+                          full_p6["a2"]["fanout_proxy_p95"]), (5, 6))
+        self.assertEqual((full_p6["a3"]["sink_pin_wire_proxy"],
+                          full_p6["a2"]["sink_pin_wire_proxy"]), (1372, 1514))
+        for clause in clauses:
             self.assertIn(clause, report["interpretation"])
 
         committed = json.loads((ROOT / "audits/a7_k2_cost_closure/result.json").read_text())
@@ -104,9 +122,10 @@ class CostClosureTests(unittest.TestCase):
         readme = " ".join(
             (ROOT / "audits/a7_k2_cost_closure/README.md").read_text().split()
         )
-        for clause in (normalized_clause, full_state_clause, full_fanout_clause):
+        for clause in clauses:
             self.assertIn(clause, readme)
-        self.assertNotIn("A2 wins state and maximum", readme)
+        self.assertNotIn("only win", readme)
+        self.assertNotIn("only win", report["interpretation"])
 
     def test_dirty_receipt_is_rejected(self):
         self.mutate("a2_integration", lambda row: row["metrics"].__setitem__(

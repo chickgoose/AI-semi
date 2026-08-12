@@ -54,6 +54,9 @@ byte-identical to `HEAD`.
 
 The shared isolated P6 seam is 95 mapped cells, 40 state bits, and depth 5.
 Both A2 and A3 remain on the selected structural Pareto set. At the normalized
-common seam, A2 has lower mapped state (22 < 26). At the full-P6 boundary, A3
-has lower mapped state (66 < 73); within the full-P6 headline comparison, A2's
-only win is maximum fanout (15 < 31). No physical ranking is inferred.
+common seam, A2 has lower mapped state (22 < 26). At the full-P6 boundary,
+generic metrics favor A2 for cells (304 < 361) and state (73 < 74).
+Full-P6 mapped/Pareto metrics favor A2 for maximum fanout (15 < 31) and nets
+with fanout at least 16 (0 < 3); they favor A3 for mapped cells (728 < 778),
+mapped state (66 < 73), depth (43 < 55), p95 fanout (5 < 6), and wire proxy
+(1372 < 1514). No physical ranking is inferred.
