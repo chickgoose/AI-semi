@@ -93,6 +93,53 @@
         "nets_fanout_ge16": 0,
         "sink_pin_wire_proxy": 147
       }
+    },
+    "a4": {
+      "full_composition_metrics": {
+        "fanout_proxy_max": 33,
+        "fanout_proxy_p95": 6,
+        "generic_cells": 713,
+        "generic_state_bits": 89,
+        "logic_depth_levels": 108,
+        "mapped_cells": 1863,
+        "mapped_comb_cells": 1774,
+        "mapped_state_bits": 89,
+        "nets_fanout_ge16": 11,
+        "sink_pin_wire_proxy": 3723
+      },
+      "integration_adapter_seam": {
+        "charged_state_bits": 0,
+        "combinational_cost": "NOT_ADDITIVELY_ATTRIBUTED_WHOLE_CONE_MAPPING_INTERACTION",
+        "measured_state_residual_full_minus_normalized_minus_p6": {
+          "generic": 0,
+          "mapped": 0
+        }
+      },
+      "normalized_common_seam_metrics": {
+        "fanout_proxy_max": 32,
+        "fanout_proxy_p95": 6,
+        "generic_cells": 629,
+        "generic_state_bits": 49,
+        "logic_depth_levels": 101,
+        "mapped_cells": 1832,
+        "mapped_comb_cells": 1783,
+        "mapped_state_bits": 49,
+        "nets_fanout_ge16": 11,
+        "sink_pin_wire_proxy": 3685
+      },
+      "semantic_grade": "AGGREGATE_ONLY_NOT_A5_SCALAR_PREFIX",
+      "whole_cone_delta_full_minus_normalized": {
+        "fanout_proxy_max": 1,
+        "fanout_proxy_p95": 0,
+        "generic_cells": 84,
+        "generic_state_bits": 40,
+        "logic_depth_levels": 7,
+        "mapped_cells": 31,
+        "mapped_comb_cells": -9,
+        "mapped_state_bits": 40,
+        "nets_fanout_ge16": 0,
+        "sink_pin_wire_proxy": 38
+      }
     }
   },
   "comparability": {
@@ -136,12 +183,20 @@
       "path": "audits/a7_k2_same_flow_structural/a3_exact_scalar_prefix.json",
       "sha256": "f482d0637696d7a76e684573e3d7c97e6aa7a287229430dfe7761b6c05142258"
     },
+    "a4_integration": {
+      "path": "audits/a7_k2_cost_closure/receipts/a4_p6_integration.json",
+      "sha256": "33eb13f18ab1f3fb9f6687caaa4d80c92d2d768677b693832493c66b12eebb09"
+    },
+    "a4_normalized": {
+      "path": "audits/a7_k2_same_flow_structural/a4_paired_cortical_column.json",
+      "sha256": "f50cf4b2d2ac68c076a82c6048a99b28a905e0abc1c05fb32faf59688faa3854"
+    },
     "p6_endpoint": {
       "path": "audits/a7_k2_cost_closure/receipts/p6_endpoint.json",
       "sha256": "4f571f854b1f0f2fa8f660bcea3552eb1ce6c4773fe3063e48470f4b6ba315bf"
     }
   },
-  "interpretation": "Boundary-specific metric domains: at the normalized common seam, A2 has lower mapped state (22 < 26). At the full-P6 boundary, generic metrics favor A2 for cells (304 < 361) and state (73 < 74). Full-P6 mapped/Pareto metrics favor A2 for maximum fanout (15 < 31) and nets with fanout at least 16 (0 < 3); they favor A3 for mapped cells (728 < 778), mapped state (66 < 73), depth (43 < 55), p95 fanout (5 < 6), and wire proxy (1372 < 1514). Full-minus-normalized values are whole-cone generic structural deltas. They charge all adapter/P6 state but are not additive physical area or power.",
+  "interpretation": "Boundary-specific metric domains: at the normalized common seam, A2 has lower mapped state (22 < 26). At the full-P6 boundary, generic metrics favor A2 for cells (304 < 361) and state (73 < 74). Full-P6 mapped/Pareto metrics favor A2 for maximum fanout (15 < 31) and nets with fanout at least 16 (0 < 3); they favor A3 for mapped cells (728 < 778), mapped state (66 < 73), depth (43 < 55), p95 fanout (5 < 6), and wire proxy (1372 < 1514). A3 strictly dominates A4 across every listed mapped/Pareto metric in both the normalized and full-P6 cohorts; their policy semantic grades remain non-equivalent. Full-minus-normalized values are whole-cone generic structural deltas. They charge all adapter/P6 state but are not additive physical area or power.",
   "isolated_p6_seam": {
     "charged_state_bits": 40,
     "metrics": {

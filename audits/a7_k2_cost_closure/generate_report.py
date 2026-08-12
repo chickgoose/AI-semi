@@ -17,10 +17,13 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULTS = {
     "a2_normalized": "audits/a7_k2_same_flow_structural/a2_batched_iwrr.json",
     "a3_normalized": "audits/a7_k2_same_flow_structural/a3_exact_scalar_prefix.json",
+    "a4_normalized": "audits/a7_k2_same_flow_structural/a4_paired_cortical_column.json",
     "a2_integration": "audits/a7_k2_cost_closure/receipts/a2_p6_integration.json",
     "a3_integration": "audits/a7_k2_cost_closure/receipts/a3_p6_integration.json",
+    "a4_integration": "audits/a7_k2_cost_closure/receipts/a4_p6_integration.json",
     "p6_endpoint": "audits/a7_k2_cost_closure/receipts/p6_endpoint.json",
 }
+CANDIDATES = ("a2", "a3", "a4")
 METRICS = (
     "generic_cells", "generic_state_bits", "mapped_cells", "mapped_comb_cells",
     "mapped_state_bits", "logic_depth_levels", "fanout_proxy_max",
@@ -102,7 +105,7 @@ def same(rows: list[dict[str, Any]], key: str, label: str) -> Any:
 
 
 def validate_normalized(rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    ordered = [rows["a2"], rows["a3"]]
+    ordered = [rows[key] for key in CANDIDATES]
     for key, row in rows.items():
         if row.get("schema") != "a7_k2_same_flow_structural_v1":
             raise ClosureError(f"{key} normalized receipt schema mismatch")
@@ -122,12 +125,21 @@ def validate_normalized(rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
 
 
 def validate_integration(rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    ordered = [rows["a2"], rows["a3"]]
+    ordered = [rows[key] for key in CANDIDATES]
     for key, row in rows.items():
         if row.get("schema") != "a7_k2_p6_integration_cost_v1":
             raise ClosureError(f"{key} integration receipt schema mismatch")
         if row.get("candidate", {}).get("key") != key:
             raise ClosureError(f"{key} integration candidate mismatch")
+        if key == "a4":
+            candidate = row["candidate"]
+            if (candidate.get("integration_commit_sha") !=
+                    "602d24bb1d5ebf9e66dac8f9ee64f1e967f2efb3" or
+                    candidate.get("scheduler_commit_sha") !=
+                    "0e613b6933f1bb92e9b2f75b79a50663187f17d3" or
+                    candidate.get("source_closure_sha256") !=
+                    "5cdc14f1202312924bdafefcd984d94a7d58f5f6c7a6e2ee29ef81ce7eeffb10"):
+                raise ClosureError("a4 integration identity is not pinned to 602d24b")
         limits = row.get("limits", {})
         if (limits.get("physical_ppa") != "HOLD_GENERIC_YOSYS_PROXY_ONLY" or
                 limits.get("area") != "UNAVAILABLE_NO_LIBERTY_AREA" or
@@ -206,8 +218,8 @@ def generate(repo: Path, paths: dict[str, str]) -> dict[str, Any]:
     loaded, hashes = {}, {}
     for label, relative in paths.items():
         loaded[label], hashes[label] = committed_json(repo, relative, label)
-    normalized = {key: loaded[f"{key}_normalized"] for key in ("a2", "a3")}
-    integration = {key: loaded[f"{key}_integration"] for key in ("a2", "a3")}
+    normalized = {key: loaded[f"{key}_normalized"] for key in CANDIDATES}
+    integration = {key: loaded[f"{key}_integration"] for key in CANDIDATES}
     p6 = loaded["p6_endpoint"]
     normalized_method = validate_normalized(normalized)
     integration_method = validate_integration(integration)
@@ -226,11 +238,11 @@ def generate(repo: Path, paths: dict[str, str]) -> dict[str, Any]:
         raise ClosureError("isolated P6 and integration use different Yosys tools")
 
     normalized_metrics = {key: exact_metrics(normalized[key], f"{key} normalized")
-                          for key in ("a2", "a3")}
+                          for key in CANDIDATES}
     integration_metrics = {key: exact_metrics(integration[key], f"{key} integration")
-                           for key in ("a2", "a3")}
+                           for key in CANDIDATES}
     candidates = {}
-    for key in ("a2", "a3"):
+    for key in CANDIDATES:
         components = {item["role"]: item for item in integration[key]["closure"]["components"]}
         delta = {name: integration_metrics[key][name] - normalized_metrics[key][name]
                  for name in METRICS}
@@ -300,7 +312,9 @@ def generate(repo: Path, paths: dict[str, str]) -> dict[str, Any]:
             "metrics favor A2 for maximum fanout (15 < 31) and nets with fanout at "
             "least 16 (0 < 3); they favor A3 for mapped cells (728 < 778), mapped "
             "state (66 < 73), depth (43 < 55), p95 fanout (5 < 6), and wire proxy "
-            "(1372 < 1514). "
+            "(1372 < 1514). A3 strictly dominates A4 across every listed mapped/Pareto "
+            "metric in both the normalized and full-P6 cohorts; their policy semantic "
+            "grades remain non-equivalent. "
             "Full-minus-normalized values are whole-cone generic structural deltas. "
             "They charge all adapter/P6 state but are not additive physical area or power."
         ),
@@ -324,7 +338,7 @@ def main() -> int:
     paths = {name: getattr(args, name) for name in DEFAULTS}
     report = generate(args.repo_root.resolve(), paths)
     write_new(args.output, canonical(report))
-    print("A7_K2_COST_CLOSURE_PASS candidates=2 physical=HOLD")
+    print(f"A7_K2_COST_CLOSURE_PASS candidates={len(CANDIDATES)} physical=HOLD")
     return 0
 
 
