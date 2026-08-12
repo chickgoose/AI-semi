@@ -1,163 +1,193 @@
 `timescale 1ns/1ps
 
+// Directed through the actual frozen candidate modport and storage-free
+// compatibility binding.  This test intentionally uses only uniform sink
+// ready, the capability advertised by this common binding.
 module a3_k2_common_binding_tb;
   localparam int NUM_SOURCES = 16;
   localparam int ADDR_WIDTH = 16;
   localparam int RETIRE_LANES = 2;
 
   logic clk = 1'b0;
-  logic rst_n;
-  logic [NUM_SOURCES-1:0] source_valid;
-  logic [NUM_SOURCES-1:0] source_ready;
-  logic [ADDR_WIDTH-1:0] source_event [NUM_SOURCES];
-  logic [RETIRE_LANES-1:0] retire_valid;
-  logic [RETIRE_LANES-1:0] retire_ready;
-  logic [ADDR_WIDTH-1:0] retire_event [RETIRE_LANES];
-  logic [3:0] retire_source [RETIRE_LANES];
-
-  a3_k2_common_wrapper #(
+  aer_bench_if #(
     .NUM_SOURCES(NUM_SOURCES),
     .ADDR_WIDTH(ADDR_WIDTH),
-    .SOURCE_WIDTH(4)
-  ) dut(.*);
+    .RETIRE_LANES(RETIRE_LANES)
+  ) bench(clk);
+
+  aer_legacy_candidate_adapter #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH),
+    .RETIRE_LANES(RETIRE_LANES),
+`ifdef A3_K2_TEST_FIFO_DEPTH_NONZERO
+    .FIFO_DEPTH(1)
+`else
+    .FIFO_DEPTH(0)
+`endif
+  ) dut(bench);
 
   integer source;
   always #5 clk = ~clk;
 
   task automatic clear_sources;
     begin
-      source_valid = '0;
+      bench.source_valid = '0;
       for (source = 0; source < NUM_SOURCES; source = source + 1)
-        source_event[source] = '0;
+        bench.source_event[source] = '0;
+    end
+  endtask
+
+  task automatic check_event_matches_source(input integer lane);
+    begin
+      case (bench.retire_source[lane])
+        4'd5: if (bench.retire_event[lane] != 16'hc205)
+          $fatal(1, "source5/event mismatch lane=%0d", lane);
+        4'd6: if (bench.retire_event[lane] != 16'hf406)
+          $fatal(1, "source6 retrigger/event mismatch lane=%0d", lane);
+        4'd7: if (bench.retire_event[lane] != 16'hf507)
+          $fatal(1, "source7/event mismatch lane=%0d", lane);
+        4'd10: if (bench.retire_event[lane] != 16'hd20a)
+          $fatal(1, "source10/event mismatch lane=%0d", lane);
+        default: $fatal(1, "unexpected normalized source=%0d lane=%0d",
+                        bench.retire_source[lane], lane);
+      endcase
     end
   endtask
 
   initial begin
-    rst_n = 1'b0;
-    retire_ready = 2'b00;
+    bench.rst_n = 1'b0;
+    bench.retire_ready = 2'b00;
     clear_sources();
     repeat (3) @(posedge clk);
 
-    // The first owner offer is registered, then atomically accepted on the
-    // following edge.  No address outside the complete count=2 bundle may be
-    // reported ready.
+`ifdef A3_K2_TEST_NONUNIFORM_READY
+    // Negative capability test: the common seam must fail closed rather than
+    // silently claiming independent lane-ready support.
     @(negedge clk);
-    rst_n = 1'b1;
-    source_valid[4] = 1'b1;
-    source_valid[11] = 1'b1;
-    source_event[4] = 16'ha104;
-    source_event[11] = 16'hb10b;
+    bench.rst_n = 1'b1;
+    bench.retire_ready = 2'b01;
     @(posedge clk);
     #1;
-    if (source_ready != 16'h0810)
-      $fatal(1, "count=2 source_ready was not the exact owner bundle: %h",
-             source_ready);
+    $fatal(1, "A3_K2_COMMON nonuniform-ready guard escaped");
+`else
+    // Register and atomically accept the first ordered count-two offer.
+    @(negedge clk);
+    bench.rst_n = 1'b1;
+    bench.source_valid[4] = 1'b1;
+    bench.source_valid[11] = 1'b1;
+    bench.source_event[4] = 16'ha104;
+    bench.source_event[11] = 16'hb10b;
     @(posedge clk);
     #1;
-    if (retire_valid != 2'b01 || retire_source[0] != 4'd4 ||
-        retire_event[0] != 16'ha104)
-      $fatal(1, "accepted owner bundle did not enter charged adapter");
+    if (bench.source_ready != 16'h0810)
+      $fatal(1, "count2 source_ready was not exact: %h",
+             bench.source_ready);
+    @(posedge clk);
+    #1;
+    if (bench.retire_valid != 2'b01 || bench.retire_source[0] != 4'd4 ||
+        bench.retire_event[0] != 16'ha104)
+      $fatal(1, "first atomic owner bundle was not charged");
 
-    // Present a second full owner offer while the adapter is full.  A ready
-    // younger lane alone cannot retire or create capacity, and source_ready
-    // must remain zero rather than partially accepting count=2.
+    // A second count-two offer stalls behind the full adapter.  Add source 6
+    // only after that owner offer is already held; it must remain pending and
+    // must not perturb the held offer or the stalled retire head.
     @(negedge clk);
     clear_sources();
-    source_valid[5] = 1'b1;
-    source_valid[10] = 1'b1;
-    source_event[5] = 16'hc205;
-    source_event[10] = 16'hd20a;
-    retire_ready = 2'b10;
+    bench.source_valid[5] = 1'b1;
+    bench.source_valid[10] = 1'b1;
+    bench.source_event[5] = 16'hc205;
+    bench.source_event[10] = 16'hd20a;
     @(posedge clk);
     #1;
-    if (source_ready != 16'h0000 || retire_valid != 2'b01 ||
-        retire_source[0] != 4'd4 || retire_event[0] != 16'ha104)
-      $fatal(1, "full-link stall corrupted acceptance or ordered head");
+    if (bench.source_ready != '0)
+      $fatal(1, "full adapter accepted a held count2 offer");
+    @(negedge clk);
+    bench.source_valid[6] = 1'b1;
+    bench.source_event[6] = 16'he306;
     repeat (2) begin
       @(posedge clk);
       #1;
-      if (source_ready != 16'h0000 ||
-          retire_source[0] != 4'd4 || retire_event[0] != 16'ha104)
-        $fatal(1, "common output changed under continuous head stall");
+      if (bench.source_ready != '0 || bench.retire_valid != 2'b01 ||
+          bench.retire_source[0] != 4'd4 ||
+          bench.retire_event[0] != 16'ha104)
+        $fatal(1, "new pending source perturbed a stalled owner/link");
     end
 
-    // One head retirement leaves one slot, still insufficient for count=2.
-    // On the next edge the old younger entry retires and both new sources are
-    // atomically admitted into the capacity freed by that edge.
+    // Uniform drain creates two slots and atomically accepts exactly 5/10.
+    // The stalled-new source 6 becomes the next count-one owner offer.
     @(negedge clk);
-    retire_ready = 2'b01;
+    bench.retire_ready = 2'b11;
     #1;
-    if (source_ready != 16'h0000)
-      $fatal(1, "count=2 offer partially fit into one slot");
+    if (bench.retire_valid != 2'b11 || bench.source_ready != 16'h0420)
+      $fatal(1, "uniform drain/count2 atomic refill mismatch");
     @(posedge clk);
     #1;
-    if (retire_source[0] != 4'd11 ||
-        retire_event[0] != 16'hb10b ||
-        source_ready != 16'h0420)
-      $fatal(1, "compaction/refill acceptance boundary mismatch");
-    @(posedge clk);
-    #1;
-    if (retire_source[0] != 4'd5 ||
-        retire_event[0] != 16'hc205)
-      $fatal(1, "atomic refill did not preserve scheduler order/payload");
+    if (bench.retire_valid != 2'b11 || bench.source_ready != 16'h0040)
+      $fatal(1, "stalled-new pending source did not coexist/refill");
+    check_event_matches_source(0);
+    check_event_matches_source(1);
 
-    // Mimic common source-latch clearing, then stall the newly buffered pair.
+    // The 5/10 pair retires while source 6 is accepted as a singleton.
+    @(negedge clk);
+    bench.source_valid[5] = 1'b0;
+    bench.source_valid[10] = 1'b0;
+    @(posedge clk);
+    #1;
+    if (bench.retire_valid != 2'b01 || bench.retire_source[0] != 4'd6 ||
+        bench.retire_event[0] != 16'he306)
+      $fatal(1, "stalled-new singleton did not follow older pair");
+
+    // Clear the accepted old occurrence, then present a same-address source-6
+    // retrigger together with source 7 while the old source-6 event is still
+    // charged.  The old event drains first; the new pair is accepted later.
     @(negedge clk);
     clear_sources();
-    retire_ready = 2'b00;
+    bench.source_valid[6] = 1'b1;
+    bench.source_valid[7] = 1'b1;
+    bench.source_event[6] = 16'hf406;
+    bench.source_event[7] = 16'hf507;
+    @(posedge clk);
+    #1;
+    if (bench.source_ready != 16'h00c0)
+      $fatal(1, "retrigger pair was not registered after old occurrence drain");
+    @(posedge clk);
+    #1;
+    if (bench.retire_valid != 2'b11)
+      $fatal(1, "retrigger coexistence pair was not charged");
+    check_event_matches_source(0);
+    check_event_matches_source(1);
+
+    // Preserve accepted event identities after common source-latch clear.
+    @(negedge clk);
+    clear_sources();
+    bench.retire_ready = 2'b00;
     repeat (2) begin
       @(posedge clk);
       #1;
-      if (retire_valid != 2'b01 || retire_source[0] != 4'd5 ||
-          retire_event[0] != 16'hc205)
-        $fatal(1, "accepted payload was not held independently of source pins");
+      if (bench.retire_valid != 2'b01)
+        $fatal(1, "uniform stall lost the accepted retrigger head");
+      check_event_matches_source(0);
     end
 
-    // Mid-stall reset flushes owner and adapter state.  Outputs are quiet and
-    // no accepted pre-reset event may appear after release.
+    // Mid-stall reset flushes both owner and charged adapter without phantom.
     @(negedge clk);
-    rst_n = 1'b0;
+    bench.rst_n = 1'b0;
     @(posedge clk);
     #1;
-    if (source_ready != '0 || retire_valid != 2'b00)
-      $fatal(1, "reset did not quiet common boundary");
+    if (bench.source_ready != '0 || bench.retire_valid != 2'b00)
+      $fatal(1, "reset did not quiet the candidate modport");
     @(negedge clk);
-    rst_n = 1'b1;
-    source_valid[6] = 1'b1;
-    source_event[6] = 16'he306;
-    @(posedge clk);
-    #1;
-    if (source_ready != 16'h0040)
-      $fatal(1, "single-source ready was not exact after reset");
-    @(posedge clk);
-    #1;
-    if (retire_valid != 2'b01 || retire_source[0] != 4'd6 ||
-        retire_event[0] != 16'he306)
-      $fatal(1, "post-reset accepted event was not buffered");
-
-    // Change the upstream pins after acceptance; the charged adapter must
-    // retain the accepted event until the sink finally drains it.
-    @(negedge clk);
-    clear_sources();
-    source_event[6] = 16'hffff;
-    repeat (2) @(posedge clk);
-    #1;
-    if (retire_event[0] != 16'he306)
-      $fatal(1, "accepted event changed with upstream source_event");
-    @(negedge clk);
-    retire_ready = 2'b11;
-    @(posedge clk);
-    #1;
-    if (retire_valid != 2'b00)
-      $fatal(1, "final event failed to drain");
+    bench.rst_n = 1'b1;
+    bench.retire_ready = 2'b11;
     repeat (3) begin
       @(posedge clk);
       #1;
-      if (retire_valid != 2'b00)
-        $fatal(1, "phantom completion after drain");
+      if (bench.retire_valid != 2'b00 || bench.source_ready != '0)
+        $fatal(1, "phantom handshake after reset/drain");
     end
 
     $display("A3_K2_COMMON_BINDING_PASS");
     $finish;
+`endif
   end
 endmodule

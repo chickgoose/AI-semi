@@ -3,7 +3,9 @@
 // Native common-boundary wrapper for the exact scalar-prefix K2 owner.  The
 // scheduler offer remains atomic: source_ready is asserted for exactly all
 // addresses in a fitting registered offer, and its policy commits on that same
-// edge.  Independent common retire stalls affect only the charged adapter.
+// edge.  The frozen common capability is explicitly uniform sink-ready only:
+// retire_ready must be 2'b00 or 2'b11.  Sink stalls affect only the charged
+// adapter and never partially commit owner policy.
 module a3_k2_common_wrapper #(
   parameter int NUM_SOURCES  = 16,
   parameter int ADDR_WIDTH   = 16,
@@ -13,11 +15,13 @@ module a3_k2_common_wrapper #(
   input  logic                      rst_n,
   input  logic [NUM_SOURCES-1:0]    source_valid,
   output logic [NUM_SOURCES-1:0]    source_ready,
-  input  logic [ADDR_WIDTH-1:0]     source_event [NUM_SOURCES],
+  input  logic [NUM_SOURCES*ADDR_WIDTH-1:0] source_event_flat,
   output logic [1:0]                retire_valid,
   input  logic [1:0]                retire_ready,
-  output logic [ADDR_WIDTH-1:0]     retire_event [2],
-  output logic [SOURCE_WIDTH-1:0]   retire_source [2]
+  output logic [ADDR_WIDTH-1:0]     retire_event0,
+  output logic [ADDR_WIDTH-1:0]     retire_event1,
+  output logic [SOURCE_WIDTH-1:0]   retire_source0,
+  output logic [SOURCE_WIDTH-1:0]   retire_source1
 );
   logic native_rst;
   logic [1:0] owner_count;
@@ -34,9 +38,15 @@ module a3_k2_common_wrapper #(
   logic [SOURCE_WIDTH-1:0] link_retire_source1;
   logic [ADDR_WIDTH-1:0] link_retire_event0;
   logic [ADDR_WIDTH-1:0] link_retire_event1;
+  logic [ADDR_WIDTH-1:0] selected_event0;
+  logic [ADDR_WIDTH-1:0] selected_event1;
+  logic [1:0] uniform_retire_ready;
   logic link_empty;
 
   assign native_rst = ~rst_n;
+  // Mixed ready is outside the advertised capability.  Hardware fails safe by
+  // treating it as a complete stall; simulation additionally reports it.
+  assign uniform_retire_ready = {2{&retire_ready}};
 
   a3_exact_scalar_prefix_k2 owner (
     .clk(clk),
@@ -53,6 +63,17 @@ module a3_k2_common_wrapper #(
     if (owner_count == 2'd2)
       owner_offer_live = owner_offer_live && source_valid[owner_addr1];
   end
+
+  a3_k2_charged_event_mux #(
+    .NUM_SOURCES(NUM_SOURCES),
+    .ADDR_WIDTH(ADDR_WIDTH)
+  ) charged_event_mux (
+    .source_event_flat(source_event_flat),
+    .source_addr0(owner_addr0),
+    .source_addr1(owner_addr1),
+    .selected_event0(selected_event0),
+    .selected_event1(selected_event1)
+  );
 
   // Suppress the adapter offer unless the whole registered owner bundle is
   // live.  This keeps a count=2 offer indivisible even under bad upstream
@@ -73,10 +94,10 @@ module a3_k2_common_wrapper #(
 
   always @* begin
     retire_valid = rst_n ? link_retire_valid : 2'b00;
-    retire_event[0] = link_retire_event0;
-    retire_event[1] = link_retire_event1;
-    retire_source[0] = link_retire_source0;
-    retire_source[1] = link_retire_source1;
+    retire_event0 = link_retire_event0;
+    retire_event1 = link_retire_event1;
+    retire_source0 = link_retire_source0;
+    retire_source1 = link_retire_source1;
   end
 
   a3_k2_ordered_2entry_adapter #(
@@ -86,17 +107,24 @@ module a3_k2_common_wrapper #(
     .clk(clk),
     .rst(native_rst),
     .offer_count(link_offer_count),
+`ifdef A3_K2_MUT_SOURCE_LANE_SWAP
+    // Mutation: cross only source identity; ordered event data remains on its
+    // original lane.  Directed normalization checks must reject this build.
+    .offer_source0(SOURCE_WIDTH'(owner_addr1)),
+    .offer_source1(SOURCE_WIDTH'(owner_addr0)),
+`else
     .offer_source0(SOURCE_WIDTH'(owner_addr0)),
     .offer_source1(SOURCE_WIDTH'(owner_addr1)),
-    .offer_event0(source_event[owner_addr0]),
-    .offer_event1(source_event[owner_addr1]),
+`endif
+    .offer_event0(selected_event0),
+    .offer_event1(selected_event1),
     .offer_ready(link_offer_ready),
     .retire_valid(link_retire_valid),
     .retire_source0(link_retire_source0),
     .retire_source1(link_retire_source1),
     .retire_event0(link_retire_event0),
     .retire_event1(link_retire_event1),
-    .retire_ready(retire_ready),
+    .retire_ready(uniform_retire_ready),
     .empty(link_empty)
   );
 
@@ -112,6 +140,9 @@ module a3_k2_common_wrapper #(
 
   always @(posedge clk) begin
     if (rst_n) begin
+      if ((retire_ready !== 2'b00) && (retire_ready !== 2'b11))
+        $fatal(1, "A3_K2_COMMON supports uniform retire_ready only: %b",
+               retire_ready);
       if (link_empty && (link_retire_valid != 2'b00))
         $fatal(1, "A3_K2_COMMON empty adapter exposed a retirement");
       if ((owner_count == 2'd2) && owner_accept &&

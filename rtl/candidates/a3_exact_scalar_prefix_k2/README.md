@@ -13,26 +13,33 @@ The production common path is entirely candidate-local:
 - `rtl/a3_k2_ordered_2entry_adapter.sv` is the charged two-entry ordered
   transport.  At the common default widths it stores two 4-bit source
   identities, two 16-bit accepted events, and a two-bit occupancy count.
+- `rtl/a3_k2_charged_event_mux.sv` contains the two explicit 16:1 common-event
+  identity muxes required to convert the address-only owner into the common
+  payload observation.  The muxes are inside the candidate/PPA filelist.
 - `rtl/a3_k2_common_wrapper.sv` connects the registered atomic owner offer to
   that transport.  `source_ready` names exactly the one or two addresses on an
   offer-accept edge; a count-two offer is never partially admitted.
 - `a3_clean_binding.sv` is the storage-free `aer_legacy_candidate_adapter`
-  compatibility cell used by the frozen common TB.
+  compatibility cell used by the frozen common TB.  Its compatibility-only
+  `FIFO_DEPTH` parameter is fixed at zero and fails elaboration otherwise.
 - `files.f` is the root-relative common compile filelist for
   `NUM_SOURCES=16`, `RETIRE_LANES=2` runs.
 
-The adapter always presents its oldest entry on retire lane 0.  Lane 1 is
-valid only when both buffered entries and both lane-ready inputs allow a
-two-event retirement on the same edge.  A lane-0-only handshake compacts the
-younger entry to lane 0, so independent lane ready cannot bypass or partially
-corrupt an ordered count-two bundle.  Sink movement changes only adapter
-state; owner policy advances only when the complete registered offer fits.
+The common binding advertises uniform retire ready only: `2'b00` stalls and
+`2'b11` retires; any mixed ready value fails closed in simulation.  The charged
+adapter always presents its oldest entry on retire lane 0, and lane 1 is valid
+only when both buffered entries retire on the same edge.  Its count-one state
+is independently checked to ignore lane-1 ready.  Sink movement changes only
+adapter state; owner policy advances only when the complete registered offer
+fits.
 
-Focused Icarus tests are in `tb/ordered_adapter_tb.sv` and
-`tb/common_binding_tb.sv`, with sources listed by `tb/common_directed.f`.
-The latter verifies registered owner latency, exact atomic source readiness,
-simultaneous drain/refill, event-data holding after source clear, reset flush,
-and quiet drain.
+Focused Icarus and Verilator tests are in `tb/ordered_adapter_tb.sv` and
+`tb/common_binding_tb.sv`.  The latter instantiates the actual
+`aer_bench_if.candidate` modport and verifies registered owner latency, exact
+atomic source readiness, stalled-new-pending refill, same-address retrigger
+coexistence, event-data holding, reset/drain, and quiet output.  The
+`test_common_binding.py` gate also requires nonuniform-ready and nonzero-depth
+guards plus separate event-lane and source-lane swap mutations to fail.
 
 ## Boundary and commit contract
 
@@ -117,7 +124,8 @@ python3 rtl/candidates/a3_exact_scalar_prefix_k2/run.py \
   --output rtl/candidates/a3_exact_scalar_prefix_k2/evidence/results.json
 
 cd rtl/candidates/a3_exact_scalar_prefix_k2
-python3 -B -m unittest -v test_candidate.py test_cross_validation.py
+python3 -B -m unittest -v \
+  test_candidate.py test_cross_validation.py test_common_binding.py
 ```
 
 The runner fails closed if Icarus, VVP, or Yosys is absent, if a frozen SHA or
