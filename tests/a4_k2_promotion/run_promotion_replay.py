@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run A4 frozen-v4 transaction vectors on the final A2/A3 K2 owners."""
+"""Run A4 frozen-v4 transaction vectors on the final A2/A3/A4 K2 owners."""
 
 from __future__ import annotations
 
@@ -32,7 +32,14 @@ OWNER_PINS = {
         "source_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
         "binding": HERE / "a3_owner_binding.sv",
     },
+    "a4": {
+        "commit": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+        "source": "rtl/candidates/a4_paired_cortical_column_k2/a4_paired_cortical_column_k2.sv",
+        "source_sha256": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
+        "binding": HERE / "a4_owner_binding.sv",
+    },
 }
+OWNER_ORDER = ("a2", "a3", "a4")
 PASS_RE = re.compile(r"^A4_K2_REPLAY_PASS (.*)$", re.MULTILINE)
 
 
@@ -301,6 +308,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--a1-repo", type=Path, default=Path("/home/chickgoose/projects/a1"))
     parser.add_argument("--a2-repo", type=Path, default=Path("/home/chickgoose/projects/a2"))
     parser.add_argument("--a3-repo", type=Path, default=Path("/home/chickgoose/projects/a3"))
+    parser.add_argument("--a4-repo", type=Path, default=HERE.parents[1])
     parser.add_argument("--iverilog", type=Path)
     parser.add_argument("--vvp", type=Path)
     parser.add_argument("--work-dir", type=Path, required=True)
@@ -317,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         owner_materialization = {
             "a2": materialize_owner(args.a2_repo.resolve(), "a2", args.work_dir),
             "a3": materialize_owner(args.a3_repo.resolve(), "a3", args.work_dir),
+            "a4": materialize_owner(args.a4_repo.resolve(), "a4", args.work_dir),
         }
         owner_sources = {owner: record["path"]
                          for owner, record in owner_materialization.items()}
@@ -331,13 +340,13 @@ def main(argv: list[str] | None = None) -> int:
         mutations = run_mutation_gate(a1_repo, bundle, trace_root, vector_root,
                                       vvp, executables["a2"])
         owner_results = []
-        for owner in ("a2", "a3"):
+        for owner in OWNER_ORDER:
             owner_results.append(simulate_owner(vvp, executables[owner], owner,
                                                 bundle, vector_root))
             print(f"A4_K2_OWNER_REPLAY_PASS owner={owner} runs={owner_results[-1]['run_count']}")
 
         report = {
-            "schema": "a4_a2_a3_k2_digital_promotion_replay_v1",
+            "schema": "a4_a2_a3_a4_k2_digital_promotion_replay_v1",
             "qualification": "OWNER_RTL_TRANSACTION_REPLAY_PASS",
             "vector_bundle_sha256": bundle["bundle_sha256"],
             "provenance": {
@@ -348,7 +357,7 @@ def main(argv: list[str] | None = None) -> int:
                     "source_sha256": OWNER_PINS[owner]["source_sha256"],
                     "source_origin": owner_materialization[owner]["source_origin"],
                     "binding_sha256": exporter.file_sha256(OWNER_PINS[owner]["binding"]),
-                } for owner in ("a2", "a3")
+                } for owner in OWNER_ORDER
             },
             "suite_run_counts": {"full50": 50, "capacity22": 22, "directed": 1},
             "mutation_kills": mutations,
@@ -358,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ReplayError, exporter.ExportError, OSError, ValueError, KeyError, TypeError) as error:
         print(f"A4_K2_PROMOTION_REPLAY_FAIL {error}", file=sys.stderr)
         return 2
-    print(f"A4_K2_PROMOTION_REPLAY_PASS owners=2 runs_per_owner=73 mutations={len(mutations)} output={args.output}")
+    print(f"A4_K2_PROMOTION_REPLAY_PASS owners=3 runs_per_owner=73 mutations={len(mutations)} output={args.output}")
     return 0
 
 

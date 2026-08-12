@@ -1,14 +1,15 @@
-# A4 frozen-v4 transaction replay for A2/A3 K2 promotion
+# A4 frozen-v4 transaction replay for A2/A3/A4 K2 promotion
 
 This additions-only A4 package converts the exact SHA-pinned generator-v4
 `full50` and `capacity22` traces into cycle-explicit source-occurrence vectors
-and runs them against the final A2 and A3 K2 owner RTL. It does not edit or
+and runs them against the final A2, A3, and A4 K2 owner RTL. It does not edit or
 copy the common testbench, manifests, generator, official suite policy, or
-either owner source.
+any owner source.
 
-The pinned owners are A2 `d74ff962aaf07c5209f1a1d1c69832735c654a0d`
-and A3 `bd1c1ee955685fc077afe930116a03bc49a8218f`. Their native interfaces are
-adapted by separate, storage-free A4 bindings to one atomic boundary:
+The pinned owners are A2 `d74ff962aaf07c5209f1a1d1c69832735c654a0d`,
+A3 `bd1c1ee955685fc077afe930116a03bc49a8218f`, and A4
+`0e613b6933f1bb92e9b2f75b79a50663187f17d3`. Their native interfaces are
+adapted by separate, storage-free A4-owned bindings to one atomic boundary:
 
 - one pending occurrence latch per logical source;
 - ordered `grant_count`/address acceptance only when the complete K2 bundle is
