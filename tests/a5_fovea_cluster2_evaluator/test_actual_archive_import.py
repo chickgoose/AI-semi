@@ -30,6 +30,17 @@ class LedgerImportTest(unittest.TestCase):
             path.write_text(f"artifact {number}\n", encoding="utf-8")
             lines.append(f"{sha(path)}  /stale/attempt/results/c/runs/{path.name}\n")
         (self.root / "result-artifacts.sha256").write_text("".join(lines), encoding="utf-8")
+        (self.root / "provenance.txt").write_text(
+            "snapshot_head=" + "1" * 40 + "\n"
+            "binding_reset_quiet_arming_patch=workspace-diff\n"
+            "snapshot_archive_sha256=" + "2" * 64 + "\n"
+            "canonical_rtl_date_kst=2026-08-09\n"
+            "attempt=/stale/attempt\n"
+            "hostname=test-host\n"
+            "start_utc=2026-08-12T00:00:00Z\n"
+            "finish_utc=2026-08-12T00:01:00Z\n",
+            encoding="utf-8",
+        )
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -93,6 +104,19 @@ class LedgerImportTest(unittest.TestCase):
         os.symlink(backing, self.root / "results", target_is_directory=True)
         with self.assertRaisesRegex(I.ImportError, "parent path contains a symlink"):
             I.verify_result_ledger(self.root.resolve(), "/stale/attempt")
+
+    def test_provenance_regular_leaf_stable_read(self) -> None:
+        observed = I.parse_provenance(self.root.resolve())
+        self.assertEqual("/stale/attempt", observed["attempt"])
+        self.assertEqual("workspace-diff", observed["binding_reset_quiet_arming_patch"])
+
+    def test_provenance_leaf_symlink_rejected(self) -> None:
+        provenance = self.root / "provenance.txt"
+        target = self.root / "provenance-target.txt"
+        os.rename(provenance, target)
+        os.symlink(target, provenance)
+        with self.assertRaisesRegex(I.ImportError, "leaf path contains a symlink"):
+            I.parse_provenance(self.root.resolve())
 
 
 class PerformanceParetoTest(unittest.TestCase):

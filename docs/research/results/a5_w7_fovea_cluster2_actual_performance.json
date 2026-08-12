@@ -38,7 +38,7 @@
     "capacity22_is_an_exact_full50_subset_and_reuses_the_same_run_artifacts",
     "local_always_ready_digital_results_are_not_official_receipt_backpressure_or_physical_PPA"
   ],
-  "importer_sha256": "3ac813a6c09fd7a232ce21c70a9631b68d2182eed2940872068e95715eaade0c",
+  "importer_sha256": "07cde30104756d8d541cc74915ec46e8251d940c83b5f63baf3b75040931ed5e",
   "metrics": {
     "ganghee-cluster2-row-bitmap": {
       "capacity": {

@@ -76,8 +76,13 @@ def reject_symlink_chain(root: Path, path: Path) -> None:
             raise ImportError(f"artifact parent path contains a symlink: {current}")
 
 
-def digest(path: Path) -> str:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+def stable_bytes(path: Path) -> bytes:
+    """Read one immutable, single-link regular file without following its leaf."""
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise ImportError("O_NOFOLLOW is required for archive evidence reads")
+    if path.is_symlink():
+        raise ImportError(f"artifact leaf path contains a symlink: {path}")
+    flags = os.O_RDONLY | os.O_NOFOLLOW
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:
@@ -86,19 +91,34 @@ def digest(path: Path) -> str:
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
             raise ImportError(f"artifact is not single-linked regular file: {path}")
-        hasher = hashlib.sha256()
+        chunks = []
         while True:
             block = os.read(descriptor, 1024 * 1024)
             if not block:
                 break
-            hasher.update(block)
+            chunks.append(block)
         after = os.fstat(descriptor)
         stable = (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
         if stable != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
             raise ImportError(f"artifact changed while read: {path}")
-        return hasher.hexdigest()
+        content = b"".join(chunks)
+        if len(content) != before.st_size:
+            raise ImportError(f"artifact size/read mismatch: {path}")
+        return content
     finally:
         os.close(descriptor)
+
+
+def digest(path: Path) -> str:
+    return hashlib.sha256(stable_bytes(path)).hexdigest()
+
+
+def stable_text(root: Path, path: Path) -> str:
+    reject_symlink_chain(root, path)
+    try:
+        return stable_bytes(path).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ImportError(f"artifact is not UTF-8 text: {path}") from exc
 
 
 def parse_ledger_line(line: str, number: int, attempt: str) -> tuple[str, str]:
@@ -122,7 +142,7 @@ def verify_result_ledger(archive: Path, attempt: str) -> dict[str, Any]:
         if parent.is_symlink():
             raise ImportError(f"archive parent path contains a symlink: {parent}")
     ledger = archive / "result-artifacts.sha256"
-    lines = ledger.read_text(encoding="utf-8").splitlines()
+    lines = stable_text(archive, ledger).splitlines()
     if len(lines) != EXPECTED_LEDGER_COUNT:
         raise ImportError(f"result ledger cardinality is {len(lines)}, expected 338")
     entries: dict[str, str] = {}
@@ -164,7 +184,8 @@ def verify_result_ledger(archive: Path, attempt: str) -> dict[str, Any]:
 
 def parse_provenance(archive: Path) -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in (archive / "provenance.txt").read_text(encoding="utf-8").splitlines():
+    path = archive / "provenance.txt"
+    for line in stable_text(archive, path).splitlines():
         if "=" not in line or line.startswith("sh:") or line.startswith("TOOL:"):
             continue
         key, value = line.split("=", 1)
