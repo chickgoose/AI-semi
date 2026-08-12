@@ -34,7 +34,12 @@ module a3_k2_ordered_link_adapter (
 
   always @* begin
     retire_valid[0] = (count_q != 0);
+`ifdef A3_K2_LINK_MUT_BYPASS
+    // Mutation: expose the younger lane whenever only its sink is ready.
+    retire_valid[1] = (count_q == 2) && retire_ready[1];
+`else
     retire_valid[1] = (count_q == 2) && retire_ready[0] && retire_ready[1];
+`endif
     retire_addr0 = addr0_q;
     retire_addr1 = addr1_q;
 
@@ -45,8 +50,19 @@ module a3_k2_ordered_link_adapter (
         retire_count = 2;
     end
     remaining_count = count_q - retire_count;
+`ifdef A3_K2_LINK_MUT_OVERFLOW
+    // Mutation: advertise acceptance while a full, stalled queue has no room.
+    offer_ready = (offer_count <= (2'd2 - remaining_count)) ||
+                  ((count_q == 2) && (retire_count == 0) && (offer_count != 0));
+`else
     offer_ready = (offer_count <= (2'd2 - remaining_count));
+`endif
+`ifdef A3_K2_LINK_MUT_REFILL
+    // Mutation: drop an otherwise legal offer on a simultaneous retirement.
+    offer_fire = offer_ready && (offer_count != 0) && (retire_count == 0);
+`else
     offer_fire = offer_ready && (offer_count != 0);
+`endif
 
     count_n = remaining_count;
     addr0_n = 0;
@@ -56,7 +72,14 @@ module a3_k2_ordered_link_adapter (
         addr0_n = addr0_q;
         addr1_n = addr1_q;
       end
-      1: addr0_n = addr1_q;
+      1: begin
+`ifdef A3_K2_LINK_MUT_ORDER
+        // Mutation: retain the retired head instead of compacting the tail.
+        addr0_n = addr0_q;
+`else
+        addr0_n = addr1_q;
+`endif
+      end
       default: begin end
     endcase
 
@@ -75,7 +98,12 @@ module a3_k2_ordered_link_adapter (
 
   always @(posedge clk) begin
     if (rst) begin
+`ifdef A3_K2_LINK_MUT_RESET
+      // Mutation: reset leaves a fabricated occupied entry.
+      count_q <= 1;
+`else
       count_q <= 0;
+`endif
       addr0_q <= 0;
       addr1_q <= 0;
     end else begin

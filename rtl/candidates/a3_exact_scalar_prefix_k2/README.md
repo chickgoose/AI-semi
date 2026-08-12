@@ -73,6 +73,14 @@ Directed qualification covers:
 - no replay without rearm and a same-address later retrigger; and
 - stale-count, duplicate-mask, and omitted-state-advance mutations.
 
+The separately charged ordered two-entry link has its own independent Python
+sequence model and SV lockstep.  Its property gate covers the complete
+occupancy/offer-count/ready control product, all 273 concrete four-bit queue
+contents, simultaneous retire/refill, overflow rejection, reset/drain, and
+ordered delivery.  It also requires five real adapter RTL mutations (younger
+bypass, overflow acceptance, compaction order, refill loss, and reset state)
+to fail with a lockstep mismatch.
+
 Frozen-v4 replay SHA-checks the existing generator and both existing manifests,
 generates traces only in system temporary storage, and runs the independent
 oracle and RTL in exact lockstep for all full50 and capacity22 traces.  The
@@ -89,7 +97,10 @@ python3 rtl/candidates/a3_exact_scalar_prefix_k2/run.py \
   --output rtl/candidates/a3_exact_scalar_prefix_k2/evidence/results.json
 
 cd rtl/candidates/a3_exact_scalar_prefix_k2
-python3 -B -m unittest -v test_candidate.py test_cross_validation.py
+python3 -B -m unittest -v \
+  test_candidate.py test_cross_validation.py test_adapter_properties.py
+python3 -B cross_validation/run_adapter_properties.py \
+  --output /tmp/a3-k2-ordered-link-properties.json
 ```
 
 The runner fails closed if Icarus, VVP, or Yosys is absent, if a frozen SHA or
