@@ -26,11 +26,14 @@ class FailClosedHelpersTest(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), "beta\n")
 
     def test_baseline_requires_zero_and_exact_pass_sentinel(self) -> None:
-        validate_outcome("baseline", 0, True)
-        for rc, sentinel in ((1, True), (0, False), (1, False)):
-            with self.subTest(rc=rc, sentinel=sentinel):
+        validate_outcome("baseline", 0, True, True)
+        for rc, sentinel, markers in (
+            (1, True, True), (0, False, True), (1, False, True),
+            (0, True, False),
+        ):
+            with self.subTest(rc=rc, sentinel=sentinel, markers=markers):
                 with self.assertRaises(AuditFailure):
-                    validate_outcome("baseline", rc, sentinel)
+                    validate_outcome("baseline", rc, sentinel, markers)
 
     def test_mutant_rejects_rc_zero_or_pass_sentinel(self) -> None:
         validate_outcome("premature_drain", 134, False, True)
