@@ -1,0 +1,41 @@
+{
+  "schema": "a21_k2_binding_registry_v1",
+  "bindings": [
+    {
+      "name": "a2_batched_iwrr_k2_normalized",
+      "owner_offer": "native_count/native_addr0/native_addr1/native_bitmap",
+      "drain_observation": "normalized drain_idle port",
+      "runner": [
+        "{python}",
+        "-B",
+        "{root}/fixture_wrapper.py",
+        "--binding",
+        "{binding}",
+        "--mutation",
+        "{mutation}",
+        "--stimulus",
+        "{stimulus}",
+        "--output",
+        "{output}"
+      ]
+    },
+    {
+      "name": "a3_k2_common_wrapper",
+      "owner_offer": "owner_count/owner_addr0/owner_addr1",
+      "drain_observation": "runner-derived owner-live plus charged-link empty",
+      "runner": [
+        "{python}",
+        "-B",
+        "{root}/fixture_wrapper.py",
+        "--binding",
+        "{binding}",
+        "--mutation",
+        "{mutation}",
+        "--stimulus",
+        "{stimulus}",
+        "--output",
+        "{output}"
+      ]
+    }
+  ]
+}
