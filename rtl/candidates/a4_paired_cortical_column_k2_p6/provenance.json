@@ -1,0 +1,26 @@
+{
+  "schema": "a4_paired_cortical_column_k2_p6_integration_v1",
+  "a4_owner": {
+    "commit_sha": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+    "rtl_blob_sha": "b3810b2233fdd47a138c9dda1c182fd5ca0374c8",
+    "rtl_path": "rtl/candidates/a4_paired_cortical_column_k2/a4_paired_cortical_column_k2.sv",
+    "rtl_sha256": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
+    "policy": "paired_cortical_column_calendar_with_bounded_debt"
+  },
+  "p6_endpoint": {
+    "atomic_adapter_last_change_commit": "a891cc4f99e2a2955f5294ef066f933d1ffbf5ef",
+    "atomic_adapter_blob_sha": "4a231933023d1b708b5a4cf8ddeda45696e0f4a9",
+    "queue_state_bits": 0,
+    "digital_p6_signal_count": 6
+  },
+  "integration": {
+    "seam_state_bits": 0,
+    "admission": "queue_free_atomic_gate",
+    "policy_flattening": false
+  },
+  "qualification": {
+    "digital_rtl": "GO",
+    "physical_ppa": "HOLD",
+    "cdc_rdc": "HOLD"
+  }
+}

@@ -1,0 +1,9 @@
+rtl/candidates/a4_paired_cortical_column_k2/a4_paired_cortical_column_k2.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv
+rtl/candidates/a4_paired_cortical_column_k2_p6/a4_paired_cortical_column_k2_p6_top.sv
