@@ -1,0 +1,50 @@
+{
+  "a5_commit": "41c425bec79aca6c84f5856ca7dee2a4865a6447",
+  "candidate_evidence_schema": "a5_k2_candidate_evidence_v1",
+  "decision": "SCHEMA_GO_SEMANTIC_HOLD",
+  "first_mismatch": {
+    "a2_atomic_accepts": [
+      4,
+      8
+    ],
+    "a5_expected_scalar_prefix": [
+      0,
+      4
+    ],
+    "cycle": 2,
+    "run": "persistent_weight_120"
+  },
+  "hard_failure_count": 185,
+  "runs": {
+    "future_arrival_divergence_witness": {
+      "hard_failures": 2,
+      "status": "FAIL"
+    },
+    "ordered_lane_stall": {
+      "hard_failures": 0,
+      "status": "PASS"
+    },
+    "persistent_weight_120": {
+      "hard_failures": 179,
+      "status": "FAIL"
+    },
+    "reset_abort_no_phantom": {
+      "hard_failures": 0,
+      "status": "PASS"
+    },
+    "same_row_distinct_pair": {
+      "hard_failures": 0,
+      "status": "PASS"
+    },
+    "sparse_work_conservation": {
+      "hard_failures": 0,
+      "status": "PASS"
+    },
+    "stale_second_revalidation": {
+      "hard_failures": 4,
+      "status": "FAIL"
+    }
+  },
+  "schema_validation": "PASS",
+  "vector_bundle_sha256": "efa202c4ebd91caff2573d9ccd7956b1a1e5584b999fc001fccb02e2a8388f75"
+}

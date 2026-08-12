@@ -1,6 +1,56 @@
 {
+  "a5_41c425b_validation": {
+    "a5_commit": "41c425bec79aca6c84f5856ca7dee2a4865a6447",
+    "candidate_evidence_schema": "a5_k2_candidate_evidence_v1",
+    "decision": "SCHEMA_GO_SEMANTIC_HOLD",
+    "first_mismatch": {
+      "a2_atomic_accepts": [
+        4,
+        8
+      ],
+      "a5_expected_scalar_prefix": [
+        0,
+        4
+      ],
+      "cycle": 2,
+      "run": "persistent_weight_120"
+    },
+    "hard_failure_count": 185,
+    "runs": {
+      "future_arrival_divergence_witness": {
+        "hard_failures": 2,
+        "status": "FAIL"
+      },
+      "ordered_lane_stall": {
+        "hard_failures": 0,
+        "status": "PASS"
+      },
+      "persistent_weight_120": {
+        "hard_failures": 179,
+        "status": "FAIL"
+      },
+      "reset_abort_no_phantom": {
+        "hard_failures": 0,
+        "status": "PASS"
+      },
+      "same_row_distinct_pair": {
+        "hard_failures": 0,
+        "status": "PASS"
+      },
+      "sparse_work_conservation": {
+        "hard_failures": 0,
+        "status": "PASS"
+      },
+      "stale_second_revalidation": {
+        "hard_failures": 4,
+        "status": "FAIL"
+      }
+    },
+    "schema_validation": "PASS",
+    "vector_bundle_sha256": "efa202c4ebd91caff2573d9ccd7956b1a1e5584b999fc001fccb02e2a8388f75"
+  },
   "contract": {
-    "acceptance": "atomic_batch_ready",
+    "acceptance": "atomic_bundle_ready_held_offer_no_partial_lane_commit",
     "calendar_rows": [
       1,
       2,
@@ -23,7 +73,7 @@
       1
     ],
     "sources": 16,
-    "sparse": "fixed_phase_waive_empty_no_borrow_no_credit_compact_survivors"
+    "sparse": "per_microstep_cyclic_row_fallback_no_debt_or_credit"
   },
   "decision": "LOCAL_CANDIDATE_FUNCTIONAL_GO_PHYSICAL_AND_WIDENED_A7_HOLD",
   "frozen_v4_replay": {
@@ -34,63 +84,66 @@
       "benchmarks/clean_slate_aer/manifest.neutrality-n16.json": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
     },
     "schema": "a2_batched_iwrr_k2_frozen_v4_replay_v1",
-    "semantics": "single_pending_per_source_atomic_ready_waive_empty_no_borrow",
+    "semantics": "single_pending_per_source_atomic_bundle_ready_cyclic_sparse_fallback_no_credit",
     "suites": {
       "capacity22": {
-        "accepted": 47006,
-        "delivered": 47006,
-        "fixed_window_event_per_cycle": 0.8450820852534562,
+        "accepted": 63246,
+        "delivered": 63246,
+        "fixed_window_event_per_cycle": 1.1385008640552996,
         "generated": 65616,
-        "max_drain_cycles": 18,
+        "max_drain_cycles": 0,
         "max_request_wait": 23,
         "measurement_cycles": 55552,
-        "measurement_delivered": 46946,
+        "measurement_delivered": 63246,
         "runs": 22,
-        "source_overrun": 18610
+        "source_overrun": 2370
       },
       "full50": {
-        "accepted": 79224,
-        "delivered": 79224,
-        "fixed_window_event_per_cycle": 0.6824123896247241,
+        "accepted": 104046,
+        "delivered": 104046,
+        "fixed_window_event_per_cycle": 0.8971957781456954,
         "generated": 106416,
-        "max_drain_cycles": 18,
+        "max_drain_cycles": 0,
         "max_request_wait": 23,
         "measurement_cycles": 115968,
-        "measurement_delivered": 79138,
+        "measurement_delivered": 104046,
         "runs": 50,
-        "source_overrun": 27192
+        "source_overrun": 2370
       }
     }
   },
   "holds": [
     "generic_lut4_proxy_is_not_characterized_physical_PPA",
     "widened_low_pin_A7_endpoint_is_not_implemented_or_qualified",
-    "atomic_ready_requires_req_stability_while_stalled",
+    "held_offer_is_stable_under_req_changes_but_sources_must_remain_pending_until_atomic_commit",
     "single_pending_bit_per_source_does_not_preserve_occurrence_multiplicity",
     "exhaustive_pointer_vector_cross_product_not_run; row_picker_is_exhaustive_and_uniform_pointer_vectors_are_exhaustive",
-    "frozen_v4_replay_is_independent_model_not_common_TB_or_RTL_replay"
+    "frozen_v4_replay_is_independent_model_not_common_TB_or_RTL_replay",
+    "A5_41c425b_schema_trace_is_available_but_scalar_wheel_semantics_mismatch"
   ],
   "schema": "a2_batched_iwrr_k2_qualification_v1",
   "source_sha256": {
-    "CONTRACT.md": "b36519cbb9e2ada9bd31414109d830fd50411071c1b00811afd45d82edd2a41b",
-    "model/batched_iwrr_k2.py": "2af628bbdca23ad6abca30b0b84a2bb209d460fe7718df2d2f3a5f003f0cd268",
-    "rtl/a2_batched_iwrr_k2.sv": "256f24cb47d266962125429e8df076c9b314e853deb826b28e45ba53c9af3565",
+    "A5_COMPATIBILITY.md": "08102b2e7cfc77fdd22d25f8d4b9887facad8534c050faeba762907a465e7f61",
+    "CONTRACT.md": "e373df5980329c14862c6edacf645d1d29995bde50129c26c6f7b305b777ae6f",
+    "model/batched_iwrr_k2.py": "032d2ccaa3c40b747e13b27dd2789daa3e88ad424a808672dd106657c3bf98d6",
+    "rtl/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
     "run_all.sh": "0bb9264a8a37a27df0fa3a601bc1d943539232a3b71e23517abcd11380189456",
-    "tb/a2_batched_iwrr_k2_lockstep_tb.sv": "323ec5fcc6ca4f994669f5514249ca75a9a5f574e021aa0234d617a70c7f1a3d",
-    "tests/test_model.py": "6424b462577f26a14e722be24bf2081a5d5df2b7129a5abc9faa7dfc3637d496",
-    "tools/generate_lockstep_vectors.py": "56fbfd52cd78f5aa365bb35cbb4d9effd079593c44e1d58ca6d45664c5487bad",
-    "tools/make_receipt.py": "a45e47f2d624940f303dc18db3396de67e5ae0f788ff35b2198a2dd0cac50378",
-    "tools/run_frozen_v4_replay.py": "c6bd91622c9dddae4290f2a6abc97b8d0a53a30ca25d85c60bb0f73e9eaf33fd",
-    "tools/run_model_mutations.py": "927ff602c66e808d02a91cb62f9610fe14a89624a289fa98b9406f99a2758847",
-    "tools/run_rtl_mutations.py": "b2473a5f4712f78145f9a575d01ea659b2ffec00262d18d3ae01965e03ff4a5f",
+    "tb/a2_batched_iwrr_k2_lockstep_tb.sv": "45ed6c190daebf5293ec7e5f4e4374662dd78ba8facd2fdcdb0b9e0ce55a3a7e",
+    "tests/test_model.py": "4a8c20d2aefa24dfb8af9e5328db725d171078a75ab72007f2a53f08355c4ed7",
+    "tools/generate_lockstep_vectors.py": "01f5ecd75f599058e6777b7791c45c0571a8d8a7f86d422f9b8b625a644755f8",
+    "tools/make_receipt.py": "35378173f5337fbe9a86383486e25958dcc1b1b6d46b1f0e2b5d5daf31a0b5f1",
+    "tools/run_a5_schema_trace.py": "6265bf30a427c948f2027d8f1bf4a02a7657074fb1bc0722c2ec8bd112c65acb",
+    "tools/run_frozen_v4_replay.py": "33e0a7f76f6a35d85e577d82dd5f1a9861953b94a73bd5365fc562eab527be46",
+    "tools/run_model_mutations.py": "300f91d489fd619d8d03292c3ea20321323bcc30adfcd24620f012d679e3879c",
+    "tools/run_rtl_mutations.py": "7618670e8f9488877ec6361d0e7bc41cd077b52b93b1b7bc7c73f209ae3c6012",
     "tools/yosys_proxy.py": "560c7109c68cd3a03427f910f5dc1b65702330de0039341d3a388be3dd610fd9"
   },
   "tests": {
-    "compiled_rtl_mutations_killed": 5,
-    "exhaustive_n16_bitmap_phase_uniform_pointer_cases": 1572864,
+    "compiled_rtl_mutations_killed": 6,
+    "exhaustive_n16_bitmap_cursor_uniform_pointer_cases": 3145728,
     "exhaustive_row_picker_cases": 64,
     "model_directed_mutations_killed": 7,
-    "python_unittests": 8,
+    "python_unittests": 9,
     "verilator_lockstep_cycles": 20000
   },
   "tools": {
@@ -98,16 +151,17 @@
     "yosys": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
   },
   "yosys_proxy": {
-    "cell_count": 197,
+    "cell_count": 395,
     "cell_types": {
-      "$_SDFFE_PP0P_": 11,
-      "$lut": 186
+      "$_SDFFE_PP0P_": 21,
+      "$_SDFF_PP0_": 1,
+      "$lut": 373
     },
-    "combinational_depth_cells": 11,
-    "lut_cells": 186,
+    "combinational_depth_cells": 28,
+    "lut_cells": 373,
     "mapping": "abc_fast_lut4_generic_proxy_not_physical_PPA",
     "schema": "a2_batched_iwrr_k2_yosys_proxy_v1",
-    "state_bits": 11,
+    "state_bits": 22,
     "top": "a2_batched_iwrr_k2",
     "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
   }

@@ -9,20 +9,27 @@ candidate implements the N16 atomic K2 boundary frozen in [CONTRACT.md](CONTRACT
 
 ## Result
 
-The scheduler consumes the six ordered calendar batches
+The scheduler consumes the cyclic event-token calendar
 
-`(1,2), (0,1), (2,3), (1,2), (1,2), (1,2)`.
+`[1,2, 0,1, 2,3, 1,2, 1,2, 1,2]`.
 
 With every row persistently requesting, every six accepted cycles produce 12
 distinct event grants with exact row count `[1,5,5,1]` and peak service of two
-events/cycle.  Each row has a two-bit rotating source pointer.  The phase and
-four pointers are the complete 11-bit scheduling state.
+events/cycle.  Each row has a two-bit rotating source pointer.  The four-bit
+token cursor and four pointers are 12 policy bits.  Ten more bits hold a
+backpressured offer (valid, one/two count, and two addresses), for 22 minimal
+implemented state bits; the held bitmap is derived from those addresses.
 
-Sparse semantics are deliberately non-borrowing.  An empty scheduled row's
-entitlement is waived, survivors are compacted in token order, and no debt or
-return burst is created.  A nonempty batch changes state only on atomic ready;
-an all-empty phase advances automatically.  This preserves drain without
-claiming a weighted event ratio for rows that supply no events.
+Sparse execution tries the token's preferred row and then the other rows in
+cyclic order.  Every selected event consumes exactly one token; an empty system
+consumes none.  Fallback creates no debt, credit, or return burst.  The exact
+weighted ratio is claimed only for persistent demand in every row.
+
+The sole boundary handshake is atomic `bundle_ready`.  A nonzero offer has
+count one or two plus ordered addresses.  A stalled offer is internally held
+stable, and all valid addresses commit together.  Partial-lane backpressure is
+permitted only behind a separate buffered link adapter and never advances this
+scheduler's policy.
 
 ## Qualification
 
@@ -36,18 +43,25 @@ The command fails closed when Verilator or Yosys is unavailable.  Optional
 overrides are `A2_K2_VERILATOR`, `A2_K2_YOSYS`, `A2_K2_YOSYS_LIB`, and
 `A2_K2_A1_REPO`.  It reruns and byte-compares all committed evidence:
 
-- eight Python contract tests;
-- 1,572,864 exhaustive N16 bitmap/phase/uniform-pointer cases and all 64
+- nine Python contract tests;
+- 3,145,728 exhaustive N16 bitmap/cursor/uniform-pointer cases and all 64
   row-mask/pointer picker cases;
 - 20,000 deterministic cycles of independent Python versus synthesizable RTL
   lockstep, including reset, sparse, full-demand, and stalls;
-- seven model negative controls and five separately compiled RTL mutants;
+- seven model negative controls and six separately compiled RTL mutants;
 - pinned generator-v4 full50 and capacity22 local replay;
 - candidate-only Yosys generic LUT4 state/cell/depth proxy.
 
 Canonical evidence is [qualification.json](results/qualification.json).  The
-current Yosys 0.52 proxy is 11 state bits, 186 LUT4 cells, and 11 combinational
-cell levels.  These are generic structural diagnostics, not physical PPA.
+current Yosys 0.52 proxy is 22 state bits, 395 cells including 373 LUT4 cells,
+and 28 combinational cell levels.  These are generic structural diagnostics,
+not physical PPA.
+
+The optional [A5 compatibility note](A5_COMPATIBILITY.md) and
+`tools/run_a5_schema_trace.py` produce schema-correct A5 `41c425b` evidence
+through a separate ordered link adapter.  They also document the unavoidable
+semantic HOLD against A5's different frozen scalar wheel; the adapter does not
+rewrite scheduler winners.
 
 The frozen-v4 replay is intentionally performed by the independent model after
 pinning the exact generator and manifests.  RTL equivalence is supported by the
@@ -57,12 +71,14 @@ separate random/directed lockstep, not by an RTL execution of all 72 traces.
 
 - No widened low-pin A7 endpoint, serialization, lane backpressure adapter,
   timing closure, physical mapping, power, or PVT evidence is present.
-- Atomic ready requires the request bitmap to remain stable throughout a stall.
+- Held offer payload and policy are stable through backpressure, even if `req`
+  changes; protocol correctness still requires offered sources to remain
+  pending until the atomic commit.
 - One pending bit per source cannot represent a second occurrence at an already
   pending source; frozen replay reports such occurrences as source overrun.
 - The full cross-product of all 256 row-pointer vectors is not exhaustively
-  enumerated with every N16 bitmap and phase.  The primitive picker is exhaustive,
-  four uniform pointer rotations are exhaustive over bitmap/phase, and arbitrary
+  enumerated with every N16 bitmap and cursor.  The primitive picker is exhaustive,
+  four uniform pointer rotations are exhaustive over bitmap/cursor, and arbitrary
   pointer vectors occur in RTL lockstep.
 - Exact `[1,5,5,1]` event service is asserted only under persistent demand in
-  all four rows.  Sparse execution follows the waiver semantics above.
+  all four rows.  Sparse execution follows the cyclic fallback semantics above.

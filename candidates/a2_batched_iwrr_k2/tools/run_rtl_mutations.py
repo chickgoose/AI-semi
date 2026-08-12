@@ -14,14 +14,15 @@ RTL = ROOT / "rtl/a2_batched_iwrr_k2.sv"
 TB = ROOT / "tb/a2_batched_iwrr_k2_lockstep_tb.sv"
 
 MUTANTS = {
-    "wrong_weight_token": ("3'd0: phase_rows = {2'd2, 2'd1};",
-                           "3'd0: phase_rows = {2'd2, 2'd0};"),
-    "fixed_priority": ("row_ptr_q[first_row]);", "2'd0);"),
-    "advance_on_stall": ("if ((!any_valid) || grant_ready) begin",
-                         "if ((!any_valid) || 1'b1) begin"),
-    "drop_second_lane": ("if (second_pick[2]) begin\n      if",
-                         "if (1'b0) begin\n      if"),
-    "wrong_reset_phase": ("phase_q <= 3'd0;", "phase_q <= 3'd1;"),
+    "wrong_weight_token": ("4'd0:  calendar_row = 2'd1;",
+                           "4'd0:  calendar_row = 2'd0;"),
+    "fixed_priority": ("scan_ptr[selected_row[1:0]]);", "2'd0);"),
+    "advance_on_stall": ("if (fresh_count != 0) begin\n        if (bundle_ready) begin",
+                         "if (fresh_count != 0) begin\n        if (1'b1) begin"),
+    "drop_second_lane": ("lane < 2; lane = lane + 1", "lane < 1; lane = lane + 1"),
+    "partial_count_advance": ("scan_cursor = token_inc(scan_cursor);",
+                              "if (lane == 0) scan_cursor = token_inc(scan_cursor);"),
+    "wrong_reset_cursor": ("token_cursor_q <= 4'd0;", "token_cursor_q <= 4'd1;"),
 }
 
 
