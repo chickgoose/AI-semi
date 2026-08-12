@@ -9,7 +9,9 @@
     "external_outputs_included": true
   },
   "reset_release": {
-    "contract": "single coordinated asynchronous deassertion at 13ns, one ns after sample_clk falls, while both clocks are low and three ns before ref_clk rises",
+    "contract": "release phase is 13ns modulo the 16ns period, one ns after sample_clk falls while both clocks are low and three ns before ref_clk rises; smoke asserts at 1ns and releases at 29ns so reset spans at least one ref_clk posedge",
+    "minimum_assertion_duration_ns": 28.0,
+    "minimum_reset_active_ref_posedges": 1,
     "virtual_clock_waveform_ns": [13.0, 15.0],
     "period_ns": 16.0,
     "timed_checks": ["ref-clock recovery/removal", "generated-clock recovery/removal", "sample-clock ICG/latch setup/hold"],

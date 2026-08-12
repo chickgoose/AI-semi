@@ -48,9 +48,16 @@ run_one() {
     "$@" "$bundle_root/smoke_tb.sv" -l "$out/smoke/$label.log"
   grep -Fxq 'W7_HANDSHAKE_PASS accepted=36 retired=36 contention=all16 fault=0 drain=1' \
     "$out/smoke/$label.log"
+  grep -Fxq 'RESET_CONTRACT_PASS assert=1 release=29 phase=13 reset_ref_edges=1' \
+    "$out/smoke/$label.log"
   grep -E '^(CYCLE|EDGE|ACCEPT|RETIRE) ' "$out/smoke/$label.log" > "$out/smoke/$label.trace"
   test "$(grep -c '^ACCEPT ' "$out/smoke/$label.trace")" -eq 36
   test "$(grep -c '^RETIRE ' "$out/smoke/$label.trace")" -eq 36
+  test "$(grep -c '^EDGE edge=sample_pos ' "$out/smoke/$label.trace")" -gt 0
+  test "$(grep -c '^EDGE edge=sample_neg ' "$out/smoke/$label.trace")" -gt 0
+  test "$(grep -c '^EDGE edge=link_pos ' "$out/smoke/$label.trace")" -gt 0
+  test "$(grep -c '^EDGE edge=link_neg ' "$out/smoke/$label.trace")" -gt 0
+  ! grep -E '^EDGE .*\b(ready|drain|link)=[^ ]*[xXzZ]' "$out/smoke/$label.trace"
 }
 
 run_one owner "${owner_rtl[@]}"

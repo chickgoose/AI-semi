@@ -50,6 +50,16 @@ run_one() {
     [[ $label == mutant* ]] || return 1
   fi
   grep -E '^(CYCLE|EDGE|ACCEPT|RETIRE) ' "$tmp_root/$label.log" > "$tmp_root/$label.trace"
+  grep -Fxq 'RESET_CONTRACT_PASS assert=1 release=29 phase=13 reset_ref_edges=1' \
+    "$tmp_root/$label.log"
+  test "$(grep -c '^EDGE edge=sample_pos ' "$tmp_root/$label.trace")" -gt 0
+  test "$(grep -c '^EDGE edge=sample_neg ' "$tmp_root/$label.trace")" -gt 0
+  test "$(grep -c '^EDGE edge=link_pos ' "$tmp_root/$label.trace")" -gt 0
+  test "$(grep -c '^EDGE edge=link_neg ' "$tmp_root/$label.trace")" -gt 0
+  if grep -E '^EDGE .*\b(ready|drain|link)=[^ ]*[xXzZ]' "$tmp_root/$label.trace" >/dev/null; then
+    echo "unknown observable escaped $label edge trace" >&2
+    return 1
+  fi
 }
 
 run_one owner "$tmp_root/bundle/sources" ddr

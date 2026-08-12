@@ -27,8 +27,11 @@ module a6_w7_smoke_tb;
   integer queue_tail = 0;
   integer cycle = 0;
   integer contention_start_count = 0;
-  integer reset_assert_seen = 1;
+  integer reset_assert_seen = 0;
+  integer reset_active_ref_edges = 0;
   reg [3:0] accepted_queue [0:63];
+  reg [15:0] sampled_valid;
+  reg [15:0] sampled_ready;
 
   function automatic integer popcount16(input reg [15:0] value);
     integer index;
@@ -57,17 +60,27 @@ module a6_w7_smoke_tb;
     forever #8 sample_clk_i = ~sample_clk_i;
   end
   initial begin
-    rst_n = 1'b0;
-    #13 rst_n = 1'b1;
+    #1 rst_n = 1'b0;
+    #28 rst_n = 1'b1;
+  end
+
+  always @(negedge rst_n) begin
+    reset_assert_seen = 1;
+    if ($time != 1ns) $fatal(1, "reset assertion must be 1ns: %0t", $time);
   end
 
   always @(posedge rst_n) begin
-    if (reset_assert_seen) begin
-      if ($time != 13ns) $fatal(1, "reset release must be 13ns: %0t", $time);
-      if (ref_clk_i !== 1'b0 || sample_clk_i !== 1'b0)
-        $fatal(1, "reset release clocks not both low: ref=%b sample=%b",
-               ref_clk_i, sample_clk_i);
-    end
+    if (!reset_assert_seen)
+      $fatal(1, "reset released without an observed assertion edge");
+    if ($time != 29ns || ($time % 16ns) != 13ns)
+      $fatal(1, "reset release must be 29ns and phase 13 modulo 16: %0t", $time);
+    if (reset_active_ref_edges < 1)
+      $fatal(1, "reset assertion covered no ref-clock posedge");
+    if (ref_clk_i !== 1'b0 || sample_clk_i !== 1'b0)
+      $fatal(1, "reset release clocks not both low: ref=%b sample=%b",
+             ref_clk_i, sample_clk_i);
+    $display("RESET_CONTRACT_PASS assert=1 release=29 phase=13 reset_ref_edges=%0d",
+             reset_active_ref_edges);
   end
   always @(posedge ref_clk_i)
     if (($time % 16ns) != 0) $fatal(1, "ref rise phase mismatch: %0t", $time);
@@ -94,28 +107,43 @@ module a6_w7_smoke_tb;
   );
 `endif
 
+  // Capture the request/ready handshake in the pre-edge state consumed by the
+  // DUT.  Retire and observable-state checks occur 1ps later, after NBA and
+  // combinational settling, so neither side depends on active-region order.
   always @(posedge ref_clk_i) begin
     cycle = cycle + 1;
-    if (rst_n) begin
-      if (protocol_fault_o !== 1'b0)
-        $fatal(1, "protocol_fault_o asserted or unknown at cycle %0d", cycle);
-      if ((source_ready & ~source_valid) !== 16'b0)
+    if (reset_assert_seen && !rst_n)
+      reset_active_ref_edges = reset_active_ref_edges + 1;
+    if (reset_assert_seen && rst_n) begin
+      sampled_valid = source_valid;
+      sampled_ready = source_ready;
+      if (^sampled_ready === 1'bx)
+        $fatal(1, "unknown source_ready before ref edge at cycle %0d", cycle);
+      if ((sampled_ready & ~sampled_valid) !== 16'b0)
         $fatal(1, "ready without matching valid at cycle %0d: valid=%h ready=%h",
-               cycle, source_valid, source_ready);
-      if (^source_ready === 1'bx)
-        $fatal(1, "unknown source_ready at cycle %0d", cycle);
-      $display("CYCLE cycle=%0d valid=%04h ready=%04h drain=%0b fault=%0b",
-               cycle, source_valid, source_ready, drain_idle_o, protocol_fault_o);
+               cycle, sampled_valid, sampled_ready);
 
-      if (|(source_valid & source_ready)) begin
-        if (popcount16(source_valid & source_ready) != 1)
+      if (|(sampled_valid & sampled_ready)) begin
+        if (popcount16(sampled_valid & sampled_ready) != 1)
           $fatal(1, "non-scalar acceptance at cycle %0d: %h",
-                 cycle, source_valid & source_ready);
-        accepted_queue[queue_tail] = onehot_index16(source_valid & source_ready);
+                 cycle, sampled_valid & sampled_ready);
+        accepted_queue[queue_tail] = onehot_index16(sampled_valid & sampled_ready);
         $display("ACCEPT cycle=%0d addr=%0d", cycle, accepted_queue[queue_tail]);
         queue_tail = queue_tail + 1;
         accepted_count = accepted_count + 1;
       end
+
+      #1ps;
+      if (^source_ready === 1'bx)
+        $fatal(1, "unknown source_ready after ref edge at cycle %0d", cycle);
+      if (drain_idle_o !== 1'b0 && drain_idle_o !== 1'b1)
+        $fatal(1, "unknown drain_idle_o after ref edge at cycle %0d", cycle);
+      if (observed_link !== 1'b0 && observed_link !== 1'b1)
+        $fatal(1, "unknown link after ref edge at cycle %0d", cycle);
+      if (protocol_fault_o !== 1'b0)
+        $fatal(1, "protocol_fault_o asserted or unknown at cycle %0d", cycle);
+      $display("CYCLE cycle=%0d valid=%04h ready=%04h drain=%0b fault=%0b",
+               cycle, sampled_valid, sampled_ready, drain_idle_o, protocol_fault_o);
 
       if (retire_valid_o === 1'b1) begin
         if (queue_head >= queue_tail)
@@ -132,28 +160,34 @@ module a6_w7_smoke_tb;
     end
   end
 
-  // Cycle-exact equivalence includes the mid-cycle link behavior.  $strobe
-  // observes values after all active/NBA/delta updates at each physical edge.
+  task automatic emit_edge(input string edge_name);
+    begin
+      #1ps;
+      if (reset_assert_seen && rst_n) begin
+        if (^source_ready === 1'bx)
+          $fatal(1, "unknown ready at %s edge time %0t", edge_name, $time);
+        if (drain_idle_o !== 1'b0 && drain_idle_o !== 1'b1)
+          $fatal(1, "unknown drain at %s edge time %0t", edge_name, $time);
+        if (observed_link !== 1'b0 && observed_link !== 1'b1)
+          $fatal(1, "unknown link at %s edge time %0t", edge_name, $time);
+        $display("EDGE edge=%s time=%0t ready=%04h drain=%0b link=%0b valid=%04h",
+                 edge_name, $time, source_ready, drain_idle_o, observed_link,
+                 source_valid);
+      end
+    end
+  endtask
+
+  // Cycle-exact equivalence includes post-NBA mid-cycle link behavior.
   always @(posedge ref_clk_i)
-    if (reset_assert_seen) $strobe(
-      "EDGE edge=ref_pos time=%0t ready=%04h drain=%0b link=%0b valid=%04h",
-      $time, source_ready, drain_idle_o, observed_link, source_valid);
+    emit_edge("ref_pos");
   always @(posedge sample_clk_i)
-    if (reset_assert_seen) $strobe(
-      "EDGE edge=sample_pos time=%0t ready=%04h drain=%0b link=%0b valid=%04h",
-      $time, source_ready, drain_idle_o, observed_link, source_valid);
+    emit_edge("sample_pos");
   always @(negedge sample_clk_i)
-    if (reset_assert_seen) $strobe(
-      "EDGE edge=sample_neg time=%0t ready=%04h drain=%0b link=%0b valid=%04h",
-      $time, source_ready, drain_idle_o, observed_link, source_valid);
+    emit_edge("sample_neg");
   always @(posedge observed_link)
-    if (reset_assert_seen) $strobe(
-      "EDGE edge=link_pos time=%0t ready=%04h drain=%0b link=%0b valid=%04h",
-      $time, source_ready, drain_idle_o, observed_link, source_valid);
+    emit_edge("link_pos");
   always @(negedge observed_link)
-    if (reset_assert_seen) $strobe(
-      "EDGE edge=link_neg time=%0t ready=%04h drain=%0b link=%0b valid=%04h",
-      $time, source_ready, drain_idle_o, observed_link, source_valid);
+    emit_edge("link_neg");
 
   // The producer contract is exact ready/valid: hold one occurrence asserted
   // until its matching ready bit is observed, then deassert before the next
