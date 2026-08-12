@@ -11,6 +11,16 @@ HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 DIRECTED = HERE / "tb/common_directed.f"
 BINDING = HERE / "tb/common_binding_directed.f"
+COMMON_SEMANTIC_TB = HERE / "tb/common_semantic_tb.sv"
+COMMON_SEMANTIC_SOURCES = (
+    REPO / "tb/clean/aer_bench_if.sv",
+    HERE / "rtl/a3_exact_scalar_prefix_k2.sv",
+    HERE / "rtl/a3_k2_charged_event_mux.sv",
+    HERE / "rtl/a3_k2_ordered_2entry_adapter.sv",
+    HERE / "rtl/a3_k2_common_wrapper.sv",
+    HERE / "a3_clean_binding.sv",
+    COMMON_SEMANTIC_TB,
+)
 
 
 def required_tool(name: str, fallback: pathlib.Path) -> pathlib.Path:
@@ -82,6 +92,28 @@ class CommonBindingTests(unittest.TestCase):
             result = self._build_and_run_binding(pathlib.Path(tmp) / "obj")
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertEqual(result.stdout.count("A3_K2_COMMON_BINDING_PASS"), 1,
+                         result.stdout)
+
+    def test_actual_common_occurrence_latency_and_window(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="a3-k2-common-semantic-") as tmp:
+            build = pathlib.Path(tmp) / "obj"
+            compile_result = subprocess.run(
+                [str(self.verilator), "--binary", "--timing", "-j", "2",
+                 "--top-module", "a3_k2_common_semantic_tb", "-Wno-fatal",
+                 "-Wno-DECLFILENAME", "-Wno-UNUSEDSIGNAL", "-Wno-BLKSEQ",
+                 "-Wno-BLKANDNBLK", "--Mdir", str(build),
+                 *(str(path) for path in COMMON_SEMANTIC_SOURCES)],
+                cwd=REPO, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, check=False,
+            )
+            self.assertEqual(compile_result.returncode, 0, compile_result.stdout)
+            result = subprocess.run(
+                [str(build / "Va3_k2_common_semantic_tb")], cwd=REPO,
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(result.stdout.count("A3_K2_COMMON_SEMANTIC_PASS"), 1,
                          result.stdout)
 
     def test_uniform_ready_and_fifo_depth_guards_fail_closed(self) -> None:

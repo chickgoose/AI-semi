@@ -33,13 +33,17 @@ is independently checked to ignore lane-1 ready.  Sink movement changes only
 adapter state; owner policy advances only when the complete registered offer
 fits.
 
-Focused Icarus and Verilator tests are in `tb/ordered_adapter_tb.sv` and
-`tb/common_binding_tb.sv`.  The latter instantiates the actual
-`aer_bench_if.candidate` modport and verifies registered owner latency, exact
+Focused Icarus and Verilator tests are in `tb/ordered_adapter_tb.sv`,
+`tb/common_binding_tb.sv`, and `tb/common_semantic_tb.sv`. The latter two
+instantiate the actual
+`aer_bench_if.candidate` modport and verify registered owner latency, exact
 atomic source readiness, stalled-new-pending refill, same-address retrigger
 coexistence, event-data holding, reset/drain, and quiet output.  The
 `test_common_binding.py` gate also requires nonuniform-ready and nonzero-depth
 guards plus separate event-lane and source-lane swap mutations to fail.
+The focused semantic TB additionally reproduces the clean TB's negedge offer,
+posedge nonblocking pending clear, three-cycle occurrence-to-retirement stamp,
+and fixed-window exclusion of the transport tail.
 
 ## Boundary and commit contract
 
@@ -109,11 +113,21 @@ Directed qualification covers:
 - stale-count, duplicate-mask, and omitted-state-advance mutations.
 
 Frozen-v4 replay SHA-checks the existing generator and both existing manifests,
-generates traces only in system temporary storage, and runs the independent
-oracle and RTL in exact lockstep for all full50 and capacity22 traces.  The
-candidate always uses atomic-ready during this trace replay; stall semantics
-are covered by the directed lockstep and direct RTL tests.  Manifest sink modes
-are not reinterpreted as independent lane ready.  A transport needing
+as well as the A1 common TB source commit, Git blob, and file SHA-256. It
+generates traces only in system temporary storage and runs the independent
+oracle and RTL in exact lockstep for all full50 and capacity22 traces. At each
+indexed cycle, occurrence admission precedes the following owner fire exactly
+as in the common TB: an occupied same-source retrigger is overrun even when the
+old occurrence fires at that following posedge. The fixed delivery window
+analytically charges the common binding's one-cycle fire-to-retire latency,
+which is separately established by the directed adapter RTL tests. A focused
+two-event probe fixes this ordering, latency, window boundary, and remaining
+transport tail; the
+`A3_K2_MUT_FIRE_BEFORE_OCCURRENCE` mutation must fail it.
+
+The candidate always uses atomic-ready during this trace replay; stall
+semantics are covered by the directed lockstep and direct RTL tests. Manifest
+sink modes are not reinterpreted as independent lane ready. A transport needing
 independent lane stalls belongs in a separate buffered link adapter downstream;
 its drain state must not mutate scheduler policy.
 
@@ -149,9 +163,9 @@ caller-owned executables.
   latency and binds owner commit/oracle identities.
 - The address-only boundary does not preserve payload, polarity, event type,
   or occurrence identity.
-- The frozen replay assumes one pending occurrence per source and an
-  always-accepting atomic output.  Directed stalls do not constitute exhaustive
-  temporal proof.
+- The frozen replay uses the common TB's one-outstanding occurrence per source
+  semantics and an always-accepting atomic output. Directed stalls do not
+  constitute exhaustive temporal proof.
 
 See [evidence/report.md](evidence/report.md) and machine-readable
 `evidence/results.json` for the frozen receipt.

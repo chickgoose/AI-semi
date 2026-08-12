@@ -1,6 +1,23 @@
 {
   "candidate": "a3_exact_scalar_prefix_k2",
   "execution": {
+    "common_semantic_probe": {
+      "accepted": 1,
+      "common_link_tail_cycles": 1,
+      "delivered": 1,
+      "fixed_window_delivered": 0,
+      "generated": 2,
+      "latencies": [
+        3
+      ],
+      "overrun": 1,
+      "owner_drain_cycles": 0,
+      "vector_pending_masks": [
+        "0000",
+        "0001",
+        "0001"
+      ]
+    },
     "directed_lockstep_vectors": 18,
     "directed_markers": [
       "A3_K2_PERSISTENT_PASS",
@@ -11,12 +28,17 @@
       "A3_EXACT_SCALAR_PREFIX_K2_DIRECT_PASS"
     ],
     "frozen_lockstep_runs": 72,
-    "frozen_lockstep_vectors": 171641,
+    "frozen_lockstep_vectors": 171634,
     "icarus_identity": "Icarus Verilog version 12.0 (stable) ()",
     "python": "3.14.4"
   },
   "frozen_v4": {
     "capacity_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "common_tb_filelist": "rtl/candidates/a3_exact_scalar_prefix_k2/files.f",
+    "common_tb_git_blob_sha1": "3cdd4d45ccbcf70fcb79bf17188b4021b95d73e0",
+    "common_tb_occurrence_order": "negedge occurrence classification before following posedge accept/fire",
+    "common_tb_sha256": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2",
+    "common_tb_source_commit": "32c2ec5ab1d5805e895ca83d3bc66ee02e8d6777",
     "full_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
     "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
     "generator_version": "4.0"
@@ -31,6 +53,10 @@
   "mutations": {
     "A3_K2_MUT_DUP": {
       "diagnostic": "LOCKSTEP_MISMATCH",
+      "status": "EXPECTED_FAIL_CAUGHT"
+    },
+    "A3_K2_MUT_FIRE_BEFORE_OCCURRENCE": {
+      "diagnostic": "COMMON_SEMANTIC_MISMATCH",
       "status": "EXPECTED_FAIL_CAUGHT"
     },
     "A3_K2_MUT_STALE": {
@@ -55,7 +81,8 @@
     ]
   },
   "rtl_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
-  "schema": "a3-exact-scalar-prefix-k2-evidence-v1",
+  "runner_sha256": "c8b2f81c0a49045b635197f0334193272403ba1c14bab5421f52dc0ffcfdfbe7",
+  "schema": "a3-exact-scalar-prefix-k2-evidence-v2",
   "semantics": {
     "architecture": "two replicated canonical scalar selectors in combinational lookahead; no shared population-prefix rank topology",
     "boundary": "N16 level-held pending bitmap; up to two ordered address grants per atomic bundle",
@@ -65,16 +92,16 @@
   "status": "PASS",
   "suites": {
     "capacity22": {
-      "accepted": 61029,
-      "delivered": 61029,
-      "fixed_window_delivered": 61005,
+      "accepted": 57280,
+      "delivered": 57280,
+      "fixed_window_delivered": 57241,
       "generated": 65616,
-      "latency_sum": 156218,
-      "max_latency": 271,
-      "mean_latency": 2.559733897,
+      "latency_sum": 190625,
+      "max_latency": 267,
+      "mean_latency": 3.327950419,
       "measurement_cycles": 55552,
-      "overrun": 4587,
-      "p99_latency": 8,
+      "overrun": 8336,
+      "p99_latency": 9,
       "run_count": 22,
       "run_names": [
         "core_simultaneous_identity",
@@ -100,19 +127,19 @@
         "mixed_phase_always_ready_identity",
         "mixed_phase_always_ready_bit_reverse"
       ],
-      "throughput": 1.098160282,
-      "vector_cycles": 55591
+      "throughput": 1.030403946,
+      "vector_cycles": 55588
     },
     "full50": {
-      "accepted": 99535,
-      "delivered": 99535,
-      "fixed_window_delivered": 99494,
+      "accepted": 93645,
+      "delivered": 93645,
+      "fixed_window_delivered": 93582,
       "generated": 106416,
-      "latency_sum": 240463,
-      "max_latency": 271,
-      "mean_latency": 2.415863767,
+      "latency_sum": 302024,
+      "max_latency": 267,
+      "mean_latency": 3.225201559,
       "measurement_cycles": 115968,
-      "overrun": 6881,
+      "overrun": 12771,
       "p99_latency": 8,
       "run_count": 50,
       "run_names": [
@@ -167,8 +194,8 @@
         "mixed_phase_always_ready_identity",
         "mixed_phase_always_ready_bit_reverse"
       ],
-      "throughput": 0.857943571,
-      "vector_cycles": 116050
+      "throughput": 0.80696399,
+      "vector_cycles": 116046
     }
   },
   "synthesis": {

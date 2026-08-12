@@ -34,6 +34,22 @@ class OracleTests(unittest.TestCase):
 
 
 class QualificationTests(unittest.TestCase):
+    def test_pinned_a1_common_tb_provenance(self) -> None:
+        frozen = run.verify_frozen()
+        self.assertEqual(frozen["common_tb_sha256"], run.EXPECTED[run.COMMON_TB])
+        self.assertEqual(frozen["common_tb_git_blob_sha1"],
+                         run.COMMON_TB_BLOB_SHA1)
+        self.assertEqual(frozen["common_tb_source_commit"],
+                         run.COMMON_TB_SOURCE_COMMIT)
+
+    def test_common_occurrence_precedes_same_cycle_fire(self) -> None:
+        self.assertEqual(run.qualify_common_semantic_probe(),
+                         run.COMMON_SEMANTIC_EXPECTED)
+        with self.assertRaisesRegex(run.GateError, "COMMON_SEMANTIC_MISMATCH"):
+            run.qualify_common_semantic_probe(
+                mutate_fire_before_occurrence=True
+            )
+
     def test_fail_closed_bad_tool_override(self) -> None:
         with self.assertRaises(run.GateError):
             run.find_tool("A3_K2_TEST_MISSING", (), (Path("/definitely/missing"),))
@@ -46,7 +62,9 @@ class QualificationTests(unittest.TestCase):
         self.assertEqual(result["persistent_probe"]["row_opportunities_0_1_2_3"],
                          [20, 100, 100, 20])
         self.assertEqual(set(result["mutations"]),
-                         {"A3_K2_MUT_STALE", "A3_K2_MUT_DUP", "A3_K2_MUT_STATE_ADV"})
+                         {"A3_K2_MUT_STALE", "A3_K2_MUT_DUP",
+                          "A3_K2_MUT_STATE_ADV",
+                          "A3_K2_MUT_FIRE_BEFORE_OCCURRENCE"})
 
 
 if __name__ == "__main__":
