@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "owners": {
+    "a2": {
+      "repo": "/home/chickgoose/projects/a2",
+      "commit": "d74ff962aaf07c5209f1a1d1c69832735c654a0d",
+      "sources": [
+        {
+          "path": "candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv",
+          "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+        }
+      ]
+    },
+    "a3": {
+      "repo": "/home/chickgoose/projects/a3",
+      "commit": "bd1c1ee955685fc077afe930116a03bc49a8218f",
+      "sources": [
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+          "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+          "source": "git_blob"
+        },
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2/promotion/rtl/a3_k2_zero_feature_wrapper.sv",
+          "sha256": "4b9b7ce9fc3bb1bbb76cf4786187c0882ec7de3b1f328239c9e0711b6b0b315c",
+          "source": "worktree_uncommitted"
+        }
+      ]
+    }
+  }
+}
