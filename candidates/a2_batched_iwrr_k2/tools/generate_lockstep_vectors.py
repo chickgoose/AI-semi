@@ -40,20 +40,20 @@ def main() -> int:
             req, ready = 0xFFFF, False
         elif 500 <= cycle < 516:
             req, ready = 1 << ((cycle - 500) & 15), True
-        pre_phase, pre_ptrs = model.phase, model.pointers
+        pre_cursor, pre_ptrs, pre_held = model.cursor, model.pointers, model.held
         if reset:
-            valid = (False, False)
+            count = 0
             address = (0, 0)
             bitmap = 0
             model.reset()
         else:
             result = model.cycle(req, ready)
-            valid, address, bitmap = result.valid, result.address, result.bitmap
-        valid_bits = int(valid[0]) | (int(valid[1]) << 1)
+            count, address, bitmap = result.count, result.address, result.bitmap
+        drain_idle = req == 0 and (reset or pre_held is None)
         lines.append(
-            f"{int(reset)} {int(ready)} {req:04x} {valid_bits:x} "
+            f"{int(reset)} {int(ready)} {req:04x} {count:x} "
             f"{address[0]:x} {address[1]:x} {bitmap:04x} "
-            f"{pre_phase:x} {ptr_pack(pre_ptrs):02x}\n"
+            f"{pre_cursor:x} {ptr_pack(pre_ptrs):02x} {int(drain_idle)}\n"
         )
     args.output.write_text("".join(lines), encoding="ascii")
     print(f"A2_K2_LOCKSTEP_VECTORS_PASS cycles={args.cycles} output={args.output}")

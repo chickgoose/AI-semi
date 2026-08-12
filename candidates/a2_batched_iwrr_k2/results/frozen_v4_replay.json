@@ -6,31 +6,31 @@
     "benchmarks/clean_slate_aer/manifest.neutrality-n16.json": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
   },
   "schema": "a2_batched_iwrr_k2_frozen_v4_replay_v1",
-  "semantics": "single_pending_per_source_atomic_ready_waive_empty_no_borrow",
+  "semantics": "single_pending_per_source_atomic_bundle_ready_cyclic_sparse_fallback_no_credit",
   "suites": {
     "capacity22": {
-      "accepted": 47006,
-      "delivered": 47006,
-      "fixed_window_event_per_cycle": 0.8450820852534562,
+      "accepted": 63246,
+      "delivered": 63246,
+      "fixed_window_event_per_cycle": 1.1385008640552996,
       "generated": 65616,
-      "max_drain_cycles": 18,
+      "max_drain_cycles": 0,
       "max_request_wait": 23,
       "measurement_cycles": 55552,
-      "measurement_delivered": 46946,
+      "measurement_delivered": 63246,
       "runs": 22,
-      "source_overrun": 18610
+      "source_overrun": 2370
     },
     "full50": {
-      "accepted": 79224,
-      "delivered": 79224,
-      "fixed_window_event_per_cycle": 0.6824123896247241,
+      "accepted": 104046,
+      "delivered": 104046,
+      "fixed_window_event_per_cycle": 0.8971957781456954,
       "generated": 106416,
-      "max_drain_cycles": 18,
+      "max_drain_cycles": 0,
       "max_request_wait": 23,
       "measurement_cycles": 115968,
-      "measurement_delivered": 79138,
+      "measurement_delivered": 104046,
       "runs": 50,
-      "source_overrun": 27192
+      "source_overrun": 2370
     }
   }
 }

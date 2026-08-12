@@ -66,9 +66,7 @@ def replay_run(trace_path: Path, run: dict) -> dict:
                     pending[source] = (identity, cycle)
         req = sum(1 << source for source in pending)
         result = model.cycle(req, True)
-        for lane in range(2):
-            if not result.valid[lane]:
-                continue
+        for lane in range(result.count):
             source = result.address[lane]
             if source not in pending:
                 raise RuntimeError(f"phantom grant run={run['run']['name']} source={source}")
@@ -129,7 +127,7 @@ def main() -> int:
         result = {
             "schema": "a2_batched_iwrr_k2_frozen_v4_replay_v1",
             "generator_version": "4.0", "pinned_inputs": PINNED,
-            "semantics": "single_pending_per_source_atomic_ready_waive_empty_no_borrow",
+            "semantics": "single_pending_per_source_atomic_bundle_ready_cyclic_sparse_fallback_no_credit",
             "suites": {},
         }
         with tempfile.TemporaryDirectory(prefix="a2-k2-frozen-v4-") as temporary:
