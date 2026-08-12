@@ -42,3 +42,18 @@ tool/source mutation, manifest or result provenance, trace cardinality,
 conservation, address/order, exact +2 latency, exact reset phase, drain guards,
 or missing/duplicated PASS markers. `receipt.json` records per-result hashes and
 prints both the qualified local PASS and remaining HOLD scope.
+
+As in `aer_clean_tb`, throughput is not computed from final drained delivery.
+`measurement_active` covers the stimulus window and the service edge following
+the final offered occurrence, then freezes before candidate-dependent drain.
+With the explicit zero-based epoch, the summary and receipt use
+`delivery_cycle < stim_cycles` for
+`measurement_delivered`, while total `delivered` remains the conservation/drain
+counter. Throughput is exactly `measurement_delivered / stim_cycles`.
+
+`load_pct` follows the frozen TB's nearest-integer rule `(load_milli+5)/10`
+(for example 0.125 becomes 13 and 0.769 becomes 77). Traffic accounting starts
+on an explicit falling edge with `sim_cycle==0`, and every stimulus epoch is
+asserted. After full drain, eight quiet guard cycles require `retire_valid` and
+`protocol_fault` low while generation/accept/delivery/overrun/error counts stay
+unchanged.
