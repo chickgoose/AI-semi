@@ -3,8 +3,25 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$script_dir/.." && pwd)"
-base="${A7_W6_BASE_COMMIT:-0f2db4b}"
-fixture_dir="${A7_W6_CANONICAL_DIR:-/home/chickgoose/projects/a5/tests/a5_fovea_a7_structural/fixtures}"
+if [[ -n "${A7_W6_BASE_COMMIT:-}" ]]; then
+  base="$A7_W6_BASE_COMMIT"
+elif git merge-base --is-ancestor 0f2db4b HEAD 2>/dev/null; then
+  base=0f2db4b
+elif git merge-base --is-ancestor 229df7b HEAD 2>/dev/null; then
+  base=229df7b
+else
+  printf 'cannot resolve W6 protected-diff baseline for this lineage\n' >&2
+  exit 1
+fi
+repo_fixture_dir="$root/tests/a5_fovea_a7_structural/fixtures"
+sibling_fixture_dir=/home/chickgoose/projects/a5/tests/a5_fovea_a7_structural/fixtures
+if [[ -n "${A7_W6_CANONICAL_DIR:-}" ]]; then
+  fixture_dir="$A7_W6_CANONICAL_DIR"
+elif [[ -d "$repo_fixture_dir" ]]; then
+  fixture_dir="$repo_fixture_dir"
+else
+  fixture_dir="$sibling_fixture_dir"
+fi
 
 if [[ -v A7_W6_QUAL_OUT ]]; then
   out="$A7_W6_QUAL_OUT"
@@ -83,28 +100,39 @@ common_sources=(
 "$verilator_bin" --binary --timing -Wall -Wno-fatal -Wno-BLKSEQ \
   -Wno-SYNCASYNCNET -Wno-UNUSEDSIGNAL -Wno-UNOPTFLAT \
   --top-module a7_weighted_fovea_ddr_tb \
-  --Mdir "$out/unit-obj" -o a7_w6_exact_canonical \
+  --Mdir "$out/unit-obj" -o a7_w6_sha_pinned_directed \
   -DA7_WEIGHTED_FOVEA_MODULE=aer_tx16_trad_rowcol_fovea \
   "${common_sources[@]}" -f "$out/canonical-three-file.f" \
   tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv \
   2>&1 | tee "$out/build.log"
 scan_diagnostics "$out/build.log"
-"$out/unit-obj/a7_w6_exact_canonical" | tee "$out/run.log"
+"$out/unit-obj/a7_w6_sha_pinned_directed" | tee "$out/run.log"
 
 sentinels=(
   'A7_W6_WEIGHT_1_5_5_1_PASS rows=10:50:50:10'
   'A7_W6_CONTINUOUS_FULL_CONTENTION_PASS events=120'
   'A7_W6_ONE_EACH_ORDER_PASS events=16'
   'A7_W6_RESET_DRAIN_PASS pre_and_post_epochs_clean'
-  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=140 delivered=140'
+  'A7_W6_SAME_ADDRESS_RETRIGGER_PASS addr=6 events=2'
+  'A7_W6_OUTPUT_AVAILABLE_CYCLE1_PASS events=142'
+  'A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=142'
+  'A7_W6_DRAIN_GUARDS_PASS live_launch_pending=1'
+  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=142 available=142 retired=142'
   'A7_W6_WEIGHTED_FOVEA_DDR_REGRESSION_PASS'
 )
 for sentinel in "${sentinels[@]}"; do
   rg -Fxq "$sentinel" "$out/run.log" || {
-    printf 'missing exact-canonical PASS sentinel: %s\n' "$sentinel" >&2
+    printf 'missing SHA-pinned directed PASS sentinel: %s\n' "$sentinel" >&2
     exit 1
   }
 done
+
+A7_W6_FAULT_OUT="$out/fault-negative" \
+  scripts/run_a7_weighted_fovea_ddr_fault.sh | tee "$out/fault-negative.log"
+rg -Fq 'A7_W6_STALE_NO_LIVE_EXPECTED_FAIL_PASS' "$out/fault-negative.log" || {
+  printf 'missing stale/no-live expected-fail PASS sentinel\n' >&2
+  exit 1
+}
 
 yosys_sources="${canonical_sources[*]} ${common_sources[*]}"
 LD_LIBRARY_PATH="${yosys_lib}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
@@ -115,25 +143,33 @@ scan_diagnostics "$out/yosys-check.log"
 printf 'A7_W6_YOSYS_HIERARCHY_CHECK_PASS\n' | tee -a "$out/yosys-check.log"
 
 {
-  printf 'registry_schema=a7_w6_exact_canonical_v1\n'
+  printf 'registry_schema=a7_w6_sha_pinned_directed_rtl_v2\n'
   printf 'git_head=%s\n' "$(git rev-parse HEAD)"
   printf 'verilator_version=%s\n' "$($verilator_bin --version)"
   printf 'yosys_version=%s\n' "$(LD_LIBRARY_PATH="${yosys_lib}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$yosys_bin" -V)"
   sha256sum "$verilator_bin" "$yosys_bin" "${canonical_sources[@]}" \
     "${common_sources[@]}" \
-    tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv
+    tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv \
+    tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_fault_tb.sv \
+    tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_stale_no_live_fixture.sv \
+    tb/filelists/a7_weighted_fovea_ddr_fault.f \
+    tests/a7_weighted_fovea_ddr/contract_check.py \
+    docs/research/a7_weighted_fovea_ddr_w6.md \
+    scripts/run_a7_weighted_fovea_ddr_fault.sh \
+    scripts/run_a7_weighted_fovea_ddr_qualification.sh
 } > "$out/evidence.registry.sha256"
 
 git diff --exit-code "$base" -- tb/clean benchmarks/clean_slate_aer \
   rtl/candidates/a7_r1_candidate_endpoint
 printf 'A7_W6_PROTECTED_DIFF_PASS base=%s\n' "$base"
 {
-  printf 'A7_W6_EXACT_CANONICAL_QUALIFICATION_PASS\n'
+  printf 'A7_W6_SHA_PINNED_DIRECTED_RTL_PASS\n'
   printf 'canonical_source_count=3\n'
   printf 'synthesizable_hierarchy_check=PASS\n'
   printf 'physical_status=HOLD\n'
   printf 'run_log_sha256=%s\n' "$(sha256sum "$out/run.log" | awk '{print $1}')"
+  printf 'fault_log_sha256=%s\n' "$(sha256sum "$out/fault-negative/run.log" | awk '{print $1}')"
   printf 'registry_sha256=%s\n' "$(sha256sum "$out/evidence.registry.sha256" | awk '{print $1}')"
 } | tee "$out/final.status"
-rg -Fxq 'A7_W6_EXACT_CANONICAL_QUALIFICATION_PASS' "$out/final.status"
-printf 'A7_W6_QUALIFICATION_RUN_PASS physical_status=HOLD output=%s\n' "$out"
+rg -Fxq 'A7_W6_SHA_PINNED_DIRECTED_RTL_PASS' "$out/final.status"
+printf 'A7_W6_SHA_PINNED_DIRECTED_RUN_PASS physical_status=HOLD output=%s\n' "$out"

@@ -3,7 +3,16 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$script_dir/.." && pwd)"
-base="${A7_W6_BASE_COMMIT:-0f2db4b}"
+if [[ -n "${A7_W6_BASE_COMMIT:-}" ]]; then
+  base="$A7_W6_BASE_COMMIT"
+elif git merge-base --is-ancestor 0f2db4b HEAD 2>/dev/null; then
+  base=0f2db4b
+elif git merge-base --is-ancestor 229df7b HEAD 2>/dev/null; then
+  base=229df7b
+else
+  printf 'cannot resolve W6 protected-diff baseline for this lineage\n' >&2
+  exit 1
+fi
 
 if [[ -v A7_W6_OUT ]]; then
   out="$A7_W6_OUT"
@@ -74,7 +83,11 @@ sentinels=(
   'A7_W6_CONTINUOUS_FULL_CONTENTION_PASS events=120'
   'A7_W6_ONE_EACH_ORDER_PASS events=16'
   'A7_W6_RESET_DRAIN_PASS pre_and_post_epochs_clean'
-  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=140 delivered=140'
+  'A7_W6_SAME_ADDRESS_RETRIGGER_PASS addr=6 events=2'
+  'A7_W6_OUTPUT_AVAILABLE_CYCLE1_PASS events=142'
+  'A7_W6_CONSUMER_RETIRE_CYCLE2_PASS events=142'
+  'A7_W6_DRAIN_GUARDS_PASS live_launch_pending=1'
+  'A7_W6_NO_DUP_ORDER_ADDRESS_PASS accepted=142 available=142 retired=142'
   'A7_W6_WEIGHTED_FOVEA_DDR_REGRESSION_PASS'
 )
 for sentinel in "${sentinels[@]}"; do
@@ -84,12 +97,23 @@ for sentinel in "${sentinels[@]}"; do
   }
 done
 
+A7_W6_FAULT_OUT="$out/fault-negative" \
+  scripts/run_a7_weighted_fovea_ddr_fault.sh | tee "$out/fault-negative.log"
+rg -Fq 'A7_W6_STALE_NO_LIVE_EXPECTED_FAIL_PASS' "$out/fault-negative.log" || {
+  printf 'missing stale/no-live expected-fail PASS sentinel\n' >&2
+  exit 1
+}
+
 evidence_sources=(
   docs/research/a7_weighted_fovea_ddr_w6.md
   scripts/run_a7_weighted_fovea_ddr.sh
+  scripts/run_a7_weighted_fovea_ddr_fault.sh
   tests/a7_weighted_fovea_ddr/contract_check.py
   rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv
   tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_tb.sv
+  tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr_fault_tb.sv
+  tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_stale_no_live_fixture.sv
+  tb/filelists/a7_weighted_fovea_ddr_fault.f
   "${common_sources[@]}"
 )
 evidence_sources+=(tb/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_weight_contract_fixture.sv)
@@ -112,6 +136,7 @@ printf 'A7_W6_PROTECTED_DIFF_PASS base=%s\n' "$base"
   printf 'mode=%s\n' "$mode"
   printf 'physical_status=HOLD\n'
   printf 'unit_log_sha256=%s\n' "$(sha256sum "$out/unit.log" | awk '{print $1}')"
+  printf 'fault_log_sha256=%s\n' "$(sha256sum "$out/fault-negative/run.log" | awk '{print $1}')"
   printf 'registry_sha256=%s\n' "$(sha256sum "$out/evidence.registry.sha256" | awk '{print $1}')"
 } | tee "$out/final.status"
 rg -Fxq 'A7_W6_UNIT_MODEL_ONLY_PASS' "$out/final.status" || {
