@@ -65,6 +65,14 @@ required=(
   scripts/run_clean_benchmark.sh
   scripts/run_ganghee_native_benchmark.sh
   tests/clean_native/run_binding_test.sh
+  rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv
+  scripts/run_a7_weighted_fovea_ddr_qualification.sh
+  tests/a7_weighted_fovea_ddr/contract_check.py
+  tests/a7_weighted_fovea_ddr/mutation_gate.py
+  tests/a4_fovea_a7_common_trace/run_common_trace.py
+  tests/a4_fovea_a7_common_trace/a4_fovea_a7_common_trace_tb.sv
+  tests/a5_fovea_a7_structural/structural_compare.py
+  tests/a8_fovea_a7_adversarial_actual/run_actual_owner_mutations.py
 )
 for path in "${required[@]}"; do
   [[ -f "$PROJECT_ROOT/$path" ]] || { printf 'missing %s\n' "$path" >&2; exit 1; }
@@ -120,4 +128,16 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s "$PROJECT_ROOT/tests/common_suite_receipt" -p 'test_*.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s "$PROJECT_ROOT/benchmarks/physical_ppa/tests"
+PYTHONDONTWRITEBYTECODE=1 python3 \
+  "$PROJECT_ROOT/tests/a7_weighted_fovea_ddr/contract_check.py"
+for test_dir in \
+  tests/a2_fovea_a7_reference \
+  tests/a3_fovea_a7_contract \
+  tests/a4_fovea_a7_common_trace \
+  tests/a5_fovea_a7_structural \
+  tests/a8_fovea_a7_adversarial \
+  tests/a8_fovea_a7_adversarial_actual; do
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+    -s "$PROJECT_ROOT/$test_dir" -p 'test_*.py'
+done
 printf 'structural self-check passed\n'
