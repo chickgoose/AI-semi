@@ -22,10 +22,17 @@ rg -q 'W7_HANDSHAKE_PASS accepted=%0d retired=%0d contention=all16 fault=0 drain
 rg -q 'while \(accepted_count == accepted_before\)' "$bundle/smoke_tb.sv"
 rg -q 'send_all_contention' "$bundle/smoke_tb.sv"
 rg -q 'CYCLE cycle=%0d valid=%04h ready=%04h drain=%0b fault=%0b' "$bundle/smoke_tb.sv"
-rg -q 'EDGE edge=sample_pos' "$bundle/smoke_tb.sv"
-rg -q 'EDGE edge=sample_neg' "$bundle/smoke_tb.sv"
-rg -q 'EDGE edge=link_pos' "$bundle/smoke_tb.sv"
-rg -q 'reset release must be 13ns' "$bundle/smoke_tb.sv"
+rg -Fq 'task automatic emit_edge(input string edge_name);' "$bundle/smoke_tb.sv"
+rg -Fq '"EDGE edge=%s time=%0t ready=%04h drain=%0b link=%0b valid=%04h"' \
+  "$bundle/smoke_tb.sv"
+for edge_name in sample_pos sample_neg link_pos link_neg; do
+  rg -Fq "emit_edge(\"$edge_name\");" "$bundle/smoke_tb.sv"
+  rg -Fq "grep -c '^EDGE edge=$edge_name '" "$bundle/run_smoke.sh"
+done
+rg -Fq '#1 rst_n = 1'"'"'b0;' "$bundle/smoke_tb.sv"
+rg -Fq '#28 rst_n = 1'"'"'b1;' "$bundle/smoke_tb.sv"
+rg -q '\(\$time % 16ns\) != 13ns' "$bundle/smoke_tb.sv"
+rg -q 'reset_active_ref_edges < 1' "$bundle/smoke_tb.sv"
 rg -q 'W7_INNOVUS_CLEAN_END' "$bundle/innovus.tcl"
 rg -q 'CoreSiteDouble' "$bundle/innovus.tcl"
 rg -q 'onChipVariation' "$bundle/innovus.tcl"
