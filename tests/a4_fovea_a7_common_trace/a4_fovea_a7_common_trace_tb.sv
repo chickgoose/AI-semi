@@ -69,10 +69,20 @@ module a4_fovea_a7_common_trace_tb;
 
   always @(posedge ref_clk_i) begin
     if (rst_n && traffic_active) begin
-      if (($realtime - reset_release_time) == 4ns && sim_cycle == 0)
-        $display("A4_COMMON_TRACE_PHASE_PASS fall_to_ref=4ns");
       if (!$onehot0(source_ready)) begin
         $error("source_ready is not onehot0: %h", source_ready);
+        errors = errors + 1;
+      end
+      if ((|source_valid) && drain_idle_o) begin
+        $error("drain high with live source_valid=%h", source_valid);
+        errors = errors + 1;
+      end
+      if (dut.endpoint.launch_fire && drain_idle_o) begin
+        $error("drain high during same-cycle endpoint launch");
+        errors = errors + 1;
+      end
+      if (retire_valid_o && drain_idle_o) begin
+        $error("drain high with pending registered retire output");
         errors = errors + 1;
       end
       for (source = 0; source < 16; source = source + 1) begin
@@ -248,6 +258,7 @@ module a4_fovea_a7_common_trace_tb;
     @(posedge ref_clk_i);
     if (($realtime - reset_release_time) != 4ns)
       $fatal(1, "reset release phase is not exact 4ns");
+    $display("A4_COMMON_TRACE_RESET_PHASE_PASS fall_to_ref=4ns scope=initial_only");
     while (!dut.endpoint_ready) @(posedge ref_clk_i);
     traffic_active = 1'b1;
 
