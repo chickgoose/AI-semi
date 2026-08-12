@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import structural_compare
+
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "structural_compare.py"
@@ -54,6 +56,18 @@ class StructuralContractTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("required Yosys executable unavailable", result.stderr)
 
+    def test_parallel_seam_mutation_is_rejected(self) -> None:
+        owner = subprocess.check_output(
+            ["git", "-C", str(A7_REPO), "show", "b520125:" + structural_compare.OWNER_PATH],
+            text=True,
+        )
+        parallel = (HERE / "a5_owner_semantics_parallel_top.sv").read_text()
+        mutant = parallel.replace(
+            "source_valid & ~current_result_mask", "source_valid & current_result_mask"
+        )
+        with self.assertRaises(structural_compare.ContractError):
+            structural_compare.verify_owner_semantics(owner, mutant)
+
     def test_requested_real_yosys_matches_frozen_structure(self) -> None:
         yosys = os.environ.get("A5_STRUCTURAL_YOSYS")
         if not yosys:
@@ -65,14 +79,21 @@ class StructuralContractTest(unittest.TestCase):
             self.assertIn("A5_FOVEA_A7_STRUCTURAL_PASS", result.stdout)
             with (output / "structural.csv").open(newline="") as stream:
                 rows = {row["variant"]: row for row in csv.DictReader(stream)}
-        self.assertEqual(rows["ddr2"]["physical_link_pins"], "3")
-        self.assertEqual(rows["ddr2"]["state_bits"], "37")
-        self.assertEqual(rows["ddr2"]["charged_functional_cells"], "150")
-        self.assertEqual(rows["ddr2"]["generic_gate_depth"], "33")
-        self.assertEqual(rows["parallel4"]["physical_link_pins"], "5")
-        self.assertEqual(rows["parallel4"]["state_bits"], "35")
-        self.assertEqual(rows["parallel4"]["charged_functional_cells"], "148")
-        self.assertEqual(rows["parallel4"]["generic_gate_depth"], "33")
+        self.assertEqual(rows["owner_ddr2"]["boundary"], "owner_semantics")
+        self.assertEqual(rows["owner_ddr2"]["physical_link_pins"], "3")
+        self.assertEqual(rows["owner_ddr2"]["wrapper_state_bits"], "0")
+        self.assertEqual(rows["owner_ddr2"]["state_bits"], "37")
+        self.assertEqual(rows["owner_ddr2"]["charged_functional_cells"], "198")
+        self.assertEqual(rows["owner_ddr2"]["generic_gate_depth"], "35")
+        self.assertEqual(rows["owner_parallel4"]["boundary"], "owner_semantics")
+        self.assertEqual(rows["owner_parallel4"]["physical_link_pins"], "5")
+        self.assertEqual(rows["owner_parallel4"]["wrapper_state_bits"], "0")
+        self.assertEqual(rows["owner_parallel4"]["state_bits"], "35")
+        self.assertEqual(rows["owner_parallel4"]["charged_functional_cells"], "196")
+        self.assertEqual(rows["owner_parallel4"]["generic_gate_depth"], "35")
+        self.assertEqual(rows["legacy_ddr2"]["boundary"], "legacy_mismatch")
+        self.assertEqual(rows["legacy_ddr2"]["charged_functional_cells"], "150")
+        self.assertEqual(rows["legacy_parallel4"]["charged_functional_cells"], "148")
 
 
 if __name__ == "__main__":
