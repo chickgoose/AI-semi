@@ -1,0 +1,8 @@
+tb/clean/aer_bench_if.sv
+candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2.sv
+candidates/a2_batched_iwrr_k2/rtl/a2_k2_ordered_link_adapter.sv
+candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2_normalized.sv
+candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2_binding.sv
+candidates/a2_batched_iwrr_k2/rtl/a2_batched_iwrr_k2_clean_cell.sv
+tb/clean/aer_clean_assertions.sv
+tb/clean/aer_clean_tb.sv
