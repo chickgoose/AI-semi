@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Export honest A5 transaction evidence for the candidate's canonical policy.
+"""Export A5 evidence with the owner's registered offer latency preserved.
 
-The scheduler remains atomic.  A small ordered two-entry link is modeled only
-after scheduler commit so A5's independent retire-ready observations cannot
-partially advance scheduler policy.  This exporter intentionally does not
-substitute A5's row-wheel oracle for the candidate's Ganghee Fovea policy.
+The scheduler model is the same registered atomic boundary independently
+locked to owner RTL by ``run.py``.  The post-scheduler queue mirrors the
+separate synthesizable charged adapter in this directory.  Neither layer
+substitutes A5's row-wheel policy for the candidate's Ganghee Fovea policy.
 """
 
 from __future__ import annotations
@@ -12,17 +12,73 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 
 CANDIDATE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CANDIDATE))
-from oracle import PolicyState, scalar_prefix_k2  # noqa: E402
+from oracle import AtomicK2Model  # noqa: E402
+
+
+OWNER_COMMIT = "632e68d247ec36a35b62dbd5c100b0a23d47cf7b"
+LEGACY_EXPORTER_COMMIT = "29a5003bb47c9c502a3bec9a727de2ed14afcfeb"
+A5_COMMIT = "41c425bec79aca6c84f5856ca7dee2a4865a6447"
+OWNER_RTL = "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv"
+OWNER_ORACLE = "rtl/candidates/a3_exact_scalar_prefix_k2/oracle.py"
+A5_ORACLE = "tests/a5_k2_common_evaluator/k2_oracle.py"
+EXPECTED_OWNER_RTL_SHA256 = "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+EXPECTED_OWNER_ORACLE_SHA256 = "c2c793a284cb6d58507de6e2d62c25ce54d7120bbd6f9ee642bd210528f0ff9c"
+EXPECTED_A5_ORACLE_SHA256 = "193a3ac629b4e27418b29af58331b9261922002a74364a892c004340957cc6f8"
+ADAPTER = CANDIDATE / "cross_validation/a3_k2_ordered_link_adapter.sv"
+REPO = CANDIDATE.parents[2]
 
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def git(*arguments: str) -> bytes:
+    result = subprocess.run(
+        ["git", *arguments], cwd=REPO, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, check=False,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            f"git {' '.join(arguments)} failed: "
+            f"{result.stderr.decode(errors='replace').strip()}"
+        )
+    return result.stdout
+
+
+def verify_provenance() -> dict[str, str]:
+    for commit in (OWNER_COMMIT, LEGACY_EXPORTER_COMMIT, A5_COMMIT):
+        resolved = git("rev-parse", f"{commit}^{{commit}}").decode().strip()
+        if resolved != commit:
+            raise RuntimeError(f"full commit identity mismatch: {commit}")
+    owner_rtl = git("show", f"{OWNER_COMMIT}:{OWNER_RTL}")
+    owner_oracle = git("show", f"{OWNER_COMMIT}:{OWNER_ORACLE}")
+    a5_oracle = git("show", f"{A5_COMMIT}:{A5_ORACLE}")
+    hashes = {
+        "owner_rtl_sha256": hashlib.sha256(owner_rtl).hexdigest(),
+        "owner_oracle_sha256": hashlib.sha256(owner_oracle).hexdigest(),
+        "a5_oracle_sha256": hashlib.sha256(a5_oracle).hexdigest(),
+    }
+    expected = {
+        "owner_rtl_sha256": EXPECTED_OWNER_RTL_SHA256,
+        "owner_oracle_sha256": EXPECTED_OWNER_ORACLE_SHA256,
+        "a5_oracle_sha256": EXPECTED_A5_ORACLE_SHA256,
+    }
+    if hashes != expected:
+        raise RuntimeError(f"pinned oracle/RTL blob mismatch: {hashes}")
+    if (CANDIDATE / "rtl/a3_exact_scalar_prefix_k2.sv").read_bytes() != owner_rtl:
+        raise RuntimeError("working scheduler RTL differs from owner commit")
+    if (CANDIDATE / "oracle.py").read_bytes() != owner_oracle:
+        raise RuntimeError("working oracle differs from owner commit")
+    if not ADAPTER.is_file():
+        raise RuntimeError("charged synthesizable ordered-link adapter is absent")
+    return hashes
 
 
 def output_record(lane: int, item: dict | None) -> dict:
@@ -39,9 +95,7 @@ def output_record(lane: int, item: dict | None) -> dict:
 def export_run(vector: dict) -> dict:
     pending: dict[int, dict] = {}
     link: list[dict] = []
-    policy = PolicyState()
-    held: tuple[int, ...] | None = None
-    held_post = PolicyState()
+    scheduler = AtomicK2Model()
     observations = []
 
     for stimulus in vector["cycles"]:
@@ -49,9 +103,7 @@ def export_run(vector: dict) -> dict:
         if not stimulus["reset_n"]:
             pending.clear()
             link.clear()
-            policy = PolicyState()
-            held = None
-            held_post = PolicyState()
+            scheduler.step(rst=True, ready=False, pending=0)
             observations.append({
                 "cycle": cycle,
                 "accepts": [],
@@ -87,24 +139,18 @@ def export_run(vector: dict) -> dict:
         if retired:
             del link[:retired]
 
-        # A5 observes transaction-level scheduler acceptance rather than the
-        # candidate's registered presentation latency.  Prepare and hold the
-        # exact atomic offer, then commit it only when the downstream link is
-        # empty.  This is the same policy fold as the RTL/oracle lockstep.
-        if held is None:
-            pending_mask = sum(1 << source for source in pending)
-            held, held_post = scalar_prefix_k2(pending_mask, policy)
-            if not held:
-                held = None
-        fired: tuple[int, ...] = ()
-        if not link and held is not None:
-            fired = held
-            policy = held_post
-            held = None
+        # Capacity after this edge's ordered retirement drives the owner's one
+        # atomic bundle_ready.  AtomicK2Model retains the real registered offer:
+        # newly pending work fills an offer at this edge and cannot commit until
+        # a later edge.  A blocked offer remains stable in scheduler.grants.
+        free_after_retire = 2 - len(link)
+        bundle_ready = len(scheduler.grants) <= free_after_retire
+        pending_mask = sum(1 << source for source in pending)
+        fired = scheduler.step(
+            rst=False, ready=bundle_ready, pending=pending_mask
+        )
         accepts = []
         if fired:
-            if link:
-                raise RuntimeError("atomic scheduler committed into a nonempty link")
             for slot, source in enumerate(fired):
                 item = pending.pop(source, None)
                 if item is None:
@@ -116,9 +162,12 @@ def export_run(vector: dict) -> dict:
                 })
                 link.append(item)
 
+        if len(link) > 2:
+            raise RuntimeError("charged ordered link overflow")
+
         drain_idle = not pending and not link and not any(
             output["valid"] for output in outputs
-        ) and held is None
+        ) and not scheduler.grants
         observations.append({
             "cycle": cycle,
             "accepts": accepts,
@@ -145,15 +194,20 @@ def main() -> int:
     bundle = json.loads(args.vectors.read_text(encoding="utf-8"))
     if bundle.get("schema") != "a5_k2_vector_bundle_v1":
         raise SystemExit("unexpected A5 vector schema")
+    provenance = verify_provenance()
     rtl = CANDIDATE / "rtl/a3_exact_scalar_prefix_k2.sv"
-    runner = CANDIDATE / "run.py"
     evidence = {
         "schema": "a5_k2_candidate_evidence_v1",
         "candidate": {
             "id": args.candidate_id,
             "source_sha256": sha256(rtl),
-            "binding_sha256": sha256(Path(__file__)),
-            "runner_sha256": sha256(runner),
+            "binding_sha256": sha256(ADAPTER),
+            "runner_sha256": sha256(Path(__file__)),
+            "owner_commit": OWNER_COMMIT,
+            "owner_oracle_sha256": provenance["owner_oracle_sha256"],
+            "a5_commit": A5_COMMIT,
+            "a5_oracle_sha256": provenance["a5_oracle_sha256"],
+            "adapter_kind": "charged_synthesizable_two_entry_ordered_link",
             "claims": {"full_future_trace_equivalence": False},
         },
         "vector_bundle_sha256": bundle["bundle_sha256"],

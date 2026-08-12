@@ -89,7 +89,7 @@ python3 rtl/candidates/a3_exact_scalar_prefix_k2/run.py \
   --output rtl/candidates/a3_exact_scalar_prefix_k2/evidence/results.json
 
 cd rtl/candidates/a3_exact_scalar_prefix_k2
-python3 -m unittest -v test_candidate.py
+python3 -B -m unittest -v test_candidate.py test_cross_validation.py
 ```
 
 The runner fails closed if Icarus, VVP, or Yosys is absent, if a frozen SHA or
@@ -107,6 +107,10 @@ caller-owned executables.
   placement, routing, or clock result.
 - Only atomic bundle backpressure is supported.  There is no proof or claim of
   safe independent per-lane acceptance.
+- The A5 v1 diagnostic uses a separately synthesized and charged two-entry
+  ordered-link adapter. It is not part of scheduler semantics or scheduler PPA,
+  and its evidence remains HOLD. The exporter preserves registered owner-offer
+  latency and binds owner commit/oracle identities.
 - The address-only boundary does not preserve payload, polarity, event type,
   or occurrence identity.
 - The frozen replay assumes one pending occurrence per source and an

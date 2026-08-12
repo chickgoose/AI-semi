@@ -1,0 +1,48 @@
+{
+  "schema": "a3-k2-cross-validation-followup-v1",
+  "decision": "A5_V1_DIAGNOSTIC_HOLD",
+  "owner": {
+    "commit": "632e68d247ec36a35b62dbd5c100b0a23d47cf7b",
+    "oracle_sha256": "c2c793a284cb6d58507de6e2d62c25ce54d7120bbd6f9ee642bd210528f0ff9c",
+    "rtl_sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+    "registered_offer_latency_preserved": true
+  },
+  "a5": {
+    "commit": "41c425bec79aca6c84f5856ca7dee2a4865a6447",
+    "oracle_sha256": "193a3ac629b4e27418b29af58331b9261922002a74364a892c004340957cc6f8",
+    "vector_bundle_sha256": "efa202c4ebd91caff2573d9ccd7956b1a1e5584b999fc001fccb02e2a8388f75",
+    "candidate_evidence_sha256": "869c37040a95e61a5b890a52a946f017f1f094a9a271c7ce6f711de3aef872b3",
+    "evaluation_sha256": "5e98faa616a89d939a9ddf31a792f698bf791995d9dad65e91bc684e8de4b0d3",
+    "hard_failure_count": 186,
+    "persistent_accepted": 180,
+    "persistent_retired": 180,
+    "persistent_first_120_rows": [10, 50, 50, 10]
+  },
+  "first_divergence": {
+    "run": "persistent_weight_120",
+    "cycle": 2,
+    "legacy_commit": "29a5003bb47c9c502a3bec9a727de2ed14afcfeb",
+    "legacy_accepts": [4, 11],
+    "faithful_accepts": [],
+    "faithful_first_commit_cycle": 3,
+    "faithful_first_commit": [4, 11]
+  },
+  "charged_link": {
+    "rtl_sha256": "1dc81e5ce6c3bb0f19f2f3343b1b196830b626752e39e2a1c575099c3c1d8c03",
+    "registered_state_bits": 10,
+    "generic_mapped_cells": 96,
+    "generic_topological_depth": 14,
+    "physical_ppa": "NOT_ESTABLISHED"
+  },
+  "regressions": {
+    "owner_registered_latency_rtl": "PASS",
+    "charged_link_rtl": "PASS",
+    "legacy_first_divergence_negative": "PASS",
+    "owner_and_oracle_full_sha_binding": "PASS"
+  },
+  "limits": [
+    "A5 v1 per-lane schema is not the common atomic scheduler boundary.",
+    "The charged link is separate from scheduler semantics and scheduler PPA.",
+    "Generic Yosys metrics are not standard-cell or routed physical evidence."
+  ]
+}
