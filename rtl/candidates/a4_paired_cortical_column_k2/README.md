@@ -13,8 +13,8 @@ The scheduler boundary is one atomic bundle:
   every policy register stable. `source_ready` remains zero.
 - `bundle_ready=1` commits every valid address together. Policy advances only
   for the committed offer, by exactly `grant_count` successful microsteps.
-- reset aborts an uncommitted offer and clears policy; `drain_idle` ignores
-  fairness history and means there is no live input or held offer.
+- reset forces count, addresses, and source-ready to zero even with live input
+  pins, aborts an uncommitted offer, and clears policy; `drain_idle` is one.
 
 The optional `a4_pcck2_ordered_link_adapter.sv` is separate transport. It
 accepts a scheduler bundle atomically into a two-entry FIFO, presents two
@@ -58,8 +58,8 @@ python3 rtl/candidates/a4_paired_cortical_column_k2/run_qualification.py \
   --output /tmp/a4-pcck2-qualification.json
 ```
 
-The run performs warning-free lint, five independent-model tests, six directed
-RTL/model locksteps, the ordered-link test, three RTL mutation kills, exact
+The run performs warning-free lint, six independent-model tests, seven directed
+RTL/model locksteps, the ordered-link test, four RTL mutation kills, exact
 hash-locked generator-v4 replay (`full50` plus the `capacity22` subset) through
 both model and RTL, generic Yosys structural measurement, and immutable A5/A8
 contract cross-checks.

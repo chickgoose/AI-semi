@@ -61,6 +61,16 @@ def cases() -> dict[str, list[tuple[bool, int, bool]]]:
     reset_stress += [(False, 0, False) for _ in range(3)]
     reset_stress += [(True, 0x8421, True) for _ in range(20)]
     reset_stress += [(True, 0, True) for _ in range(8)]
+
+    reset_live = [
+        (False, 0xFFFF, True),
+        (False, 0xFFFF, False),
+        (False, 0x8421, True),
+        (True, 0, True),
+        (True, 0xFFFF, True),
+        (True, 0, True),
+        (True, 0, True),
+    ]
     return {
         "all_rows": all_rows,
         "sparse": sparse,
@@ -68,6 +78,7 @@ def cases() -> dict[str, list[tuple[bool, int, bool]]]:
         "mirror": mirror_case,
         "stall": stall,
         "reset": reset_stress,
+        "reset_live": reset_live,
     }
 
 

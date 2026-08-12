@@ -51,20 +51,20 @@
     "common_head": "2a3a3be94be8f12585f484b5b1da2b372f7282d9",
     "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
     "material_source_sha256": {
-      "README.md": "1798a0ab984bb4e71483bb813f106d1c2c03700920a82374ed58c719b754fd98",
-      "a4_paired_cortical_column_k2.sv": "6e5873ca6e30798f984b2f044e3294775acc71537b2136b4ed16ec9df3c604cf",
+      "README.md": "297928ed94e7528964b0e07bd889ec0f660d89a8585e95d3189706f1a112ec38",
+      "a4_paired_cortical_column_k2.sv": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
       "a4_pcck2_ordered_link_adapter.sv": "ec91ebfaa2358323def5711c083f9d2dfd7b8da85a49c8c321d152b0f1148689",
       "contract_crosscheck.py": "b86d2eb2b6abe6b8e2213c7e5a621eb5a676294f43e964aead8fc5811ce1c434",
-      "docs/architecture.md": "51f4c9570b6696a6affe312c8e13086c863c816ab018ea8ece1d6d62dd30f880",
+      "docs/architecture.md": "6e9612403a60c7f898e25b997176cdad32cbcd09bb939d3e32c57ffce9cffcf3",
       "model.py": "88bf2637a30d251d80f066a45bc5e392726e67a94e0de465eebd162e5e701c52",
       "replay_v4.py": "edce17242dc02d5f7e6391c3d82ecba259b111d6e5f86c2aab8ee7c5ef0c4139",
-      "run_qualification.py": "45fa2fe4fe0f79905e01bdc7e971b523e912d907ebecc50218baf7083deaa6f8",
+      "run_qualification.py": "33ef7b2d6e4bc26a2e234e4aab40c6be5237c2b03bbccc173ccad9b7983a4774",
       "structural.py": "3c2cb601a0c674cc094e0d38ba8a010bf7c43d2db96c61031cda38a8cd80d511",
-      "tests/generate_vectors.py": "e2314bc56aebe0fe2f023198f953eb5203fc8eb5e1aa0a1658ca3bf48103e9a1",
+      "tests/generate_vectors.py": "bd73091e6c3bb47772792bf28cdd09e12d52eb073f77458f90800e3c255dff90",
       "tests/lockstep_tb.sv": "f67ab6bac2bc4ba805284867ba07edb3371dcdf61d168be569cd41f6221305c9",
       "tests/ordered_link_tb.sv": "eebe30eab7db614ba110cbdf89ee09021e64dc6ec1ca9cb726922abc3373a590",
-      "tests/run_mutations.py": "c39235125755a34c1571f7040bf3713baaa954fa63a210d89edece4601d83992",
-      "tests/test_model.py": "4d4a92aaab5f0917a7b65ffaa5d658140c1c27c132b4f7c0f05da0de52c2d772"
+      "tests/run_mutations.py": "f26e6f3bbc6c32409b2c2e04d1dca0c4c3fcd4531bb132aa414cc3f5a9b8edb8",
+      "tests/test_model.py": "b73b61fa6c7efa5a87fc6a6b66d02654775060f3f537ae201df253112bf42826"
     },
     "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
   },
@@ -86,7 +86,7 @@
     },
     "ppa_qualification": "HOLD_FOR_LIBERTY_SYNTHESIS_AND_PLACE_ROUTE",
     "provenance": {
-      "rtl_sha256": "6e5873ca6e30798f984b2f044e3294775acc71537b2136b4ed16ec9df3c604cf",
+      "rtl_sha256": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
       "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)",
       "yosys_passes": "proc; flatten; opt; memory; opt; techmap; opt; abc -g simple; clean; check; stat",
       "yosys_version": "Yosys 0.52 (git sha1 fee39a3284c90249e1d9684cf6944ffbbcbb8f90)"
@@ -96,33 +96,33 @@
     "yosys": {
       "fanout_proxy_max": 34,
       "fanout_proxy_p95": 6,
-      "generic_cells": 666,
-      "generic_mux_cells": 290,
-      "generic_mux_data_input_bits": 3894,
-      "generic_mux_select_bits": 374,
-      "logic_depth_levels": 111,
+      "generic_cells": 672,
+      "generic_mux_cells": 293,
+      "generic_mux_data_input_bits": 3946,
+      "generic_mux_select_bits": 377,
+      "logic_depth_levels": 112,
       "mapped_cell_types": {
-        "$_AND_": 922,
+        "$_AND_": 884,
         "$_DFFE_PN0P_": 49,
-        "$_MUX_": 259,
-        "$_NOT_": 202,
-        "$_OR_": 686,
-        "$_XOR_": 55
+        "$_MUX_": 232,
+        "$_NOT_": 219,
+        "$_OR_": 705,
+        "$_XOR_": 53
       },
-      "mapped_cells": 2173,
-      "mapped_comb_cells": 2124,
+      "mapped_cells": 2142,
+      "mapped_comb_cells": 2093,
       "mapped_state_bits": 49,
-      "nets_fanout_ge16": 13,
-      "sink_pin_wire_proxy": 4403
+      "nets_fanout_ge16": 8,
+      "sink_pin_wire_proxy": 4297
     }
   },
   "tests": {
-    "directed_rtl_cases": 6,
+    "directed_rtl_cases": 7,
     "frozen_v4_capacity22_subset": 22,
     "frozen_v4_full50": 50,
     "frozen_v4_rtl_executions": 72,
-    "model_unit_tests": 5,
-    "mutation_falsifiers_killed": 3,
+    "model_unit_tests": 6,
+    "mutation_falsifiers_killed": 4,
     "ordered_link_cases": 1
   }
 }

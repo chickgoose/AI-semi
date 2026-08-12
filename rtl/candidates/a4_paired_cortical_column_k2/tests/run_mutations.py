@@ -19,6 +19,7 @@ MUTATIONS = {
     "A4_PCCK2_MUTATE_FLAT_WEIGHT": "all_rows",
     "A4_PCCK2_MUTATE_STALL_ADVANCE": "stall",
     "A4_PCCK2_MUTATE_DROP_DEBT": "hotspot",
+    "A4_PCCK2_MUTATE_RESET_LIVE": "reset_live",
 }
 
 
