@@ -1,0 +1,3 @@
+rtl/common/aer_k2_binding_pkg.sv
+rtl/common/aer_k2_ordered_link_shim.sv
+tests/a1_k2_common_binding/k2_ordered_link_compile_tb.sv
