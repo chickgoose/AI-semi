@@ -100,6 +100,9 @@ class SubmissionGateTest(unittest.TestCase):
         self.assertIn(str(gate.POLICY_PATH), paths)
         self.assertIn(str(gate.SCHEMA_PATH), paths)
         self.assertIn(str(gate.VALIDATOR_PATH), paths)
+        payload = gate.windows_inventory_payload(document["windows_handoff"]["files"])
+        self.assertEqual(gate.sha_bytes(payload),
+                         document["windows_handoff"]["inventory_sha256"])
         for path in paths:
             self.assertFalse(path.startswith(("build/", "results/", "reports/", "vivado/")))
             self.assertNotIn("__pycache__", path)

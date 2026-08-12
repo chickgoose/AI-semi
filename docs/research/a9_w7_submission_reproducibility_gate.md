@@ -21,7 +21,10 @@ The Windows inventory records every selected repo-relative path, byte count,
 and SHA-256 for reconstruction below
 `C:\Users\박준영\AI-semi`.  It deliberately excludes `build/`, `results/`,
 `reports/`, `vivado/`, `.agents/`, `.codex/`, Git metadata, caches, logs, and
-waveforms.  It is an inventory, not permission to copy user-owned results.
+waveforms.  The receipt also binds the SHA-256 of the complete ordered
+`WINDOWS_HANDOFF.sha256` bytes.  That inventory is written first and the
+no-overwrite JSON receipt is published last as the completion marker.  It is an
+inventory, not permission to copy user-owned results.
 
 The receipt hash covers the canonical JSON document before the `receipt` field.
 It does not hash itself and therefore has no circular self-hash.  Generation

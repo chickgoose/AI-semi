@@ -202,6 +202,7 @@ def build_manifest(git: BoundGit, commit: str, key: str,
     tree = git.text("rev-parse", f"{commit}^{{tree}}")
     paths = selected_handoff_paths(git, commit, policy)
     files = [artifact(commit, path, git.blob(commit, path)) for path in paths]
+    inventory_payload = windows_inventory_payload(files)
     document: dict[str, Any] = {
         "schema": "a9-w7-submission-v1", "status": "HOLD",
         "binding": {"commit": commit, "tree": tree, "clean_generation": True},
@@ -217,6 +218,8 @@ def build_manifest(git: BoundGit, commit: str, key: str,
             "path_format": "repo-relative-posix",
             "files": files, "file_count": len(files),
             "total_bytes": sum(row["size"] for row in files),
+            "inventory_file": WINDOWS_NAME,
+            "inventory_sha256": sha_bytes(inventory_payload),
             "excluded_prefixes": policy["windows_handoff"]["excluded_prefixes"],
             "excluded_names": policy["windows_handoff"]["excluded_names"],
         },
@@ -227,6 +230,11 @@ def build_manifest(git: BoundGit, commit: str, key: str,
         "overwrite_policy": "NEW_DIRECTORY_AND_O_EXCL_FILES_ONLY",
     }
     return document
+
+
+def windows_inventory_payload(files: list[dict[str, Any]]) -> bytes:
+    lines = [f"{row['sha256']}  {row['path']}" for row in files]
+    return ("\n".join(lines) + "\n").encode()
 
 
 def validate_artifact_rows(rows: Any, evidence_root: pathlib.Path | None,
@@ -310,10 +318,13 @@ def generate(repo: pathlib.Path, profile: str, output: pathlib.Path) -> pathlib.
         raise GateError(f"refusing to reuse output path: {output}")
     output.mkdir(mode=0o700, parents=False)
     manifest_path = output / MANIFEST_NAME
+    inventory_payload = windows_inventory_payload(document["windows_handoff"]["files"])
+    if sha_bytes(inventory_payload) != document["windows_handoff"]["inventory_sha256"]:
+        raise GateError("internal Windows inventory SHA-256 mismatch")
+    # Publish the receipt manifest last: its presence is the completion marker.
+    write_new(output / WINDOWS_NAME, inventory_payload)
     write_new(manifest_path, json.dumps(document, indent=2, sort_keys=True,
                                         ensure_ascii=False).encode() + b"\n")
-    lines = [f"{row['sha256']}  {row['path']}" for row in document["windows_handoff"]["files"]]
-    write_new(output / WINDOWS_NAME, ("\n".join(lines) + "\n").encode())
     return manifest_path
 
 
