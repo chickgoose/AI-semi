@@ -1,6 +1,7 @@
 # A7 W6 weighted-fovea DDR composition contract
 
-Status: digital RTL candidate; physical qualification **HOLD**.
+Status: SHA-pinned directed RTL evidence; full qualification and physical
+qualification **HOLD**.
 
 ## Owned boundary
 
@@ -73,9 +74,21 @@ is not canonical qualification evidence.  Its regression checks:
 
 - 120 continuous full-contention accepts with row counts `10:50:50:10`;
 - 16 one-shot addresses and exact final order/address;
+- source-acceptance timestamps, output availability exactly one ref cycle
+  later, and a real pre-NBA `always_ff` consumer retirement exactly two ref
+  cycles later;
+- direct `drain_idle_o==0` checks for a live source, same-cycle endpoint
+  launch, and pending registered retire output;
+- two legal address-6 occurrences separated by full drain and a quiet interval;
 - legal full drain, reset quiescence, re-arming, and four post-reset events;
-- one-hot acceptance and exact `accepted=delivered=140`, with no duplicate,
-  phantom, loss, reorder, or protocol fault.
+- one-hot acceptance and exact `accepted=available=retired=142`, with no
+  duplicate, phantom, loss, reorder, or protocol fault.
+
+A separate expected-fail fixture emits a stale address `a` result while all
+`source_valid` bits remain zero.  The negative test requires zero
+`source_ready`, a combinational protocol fault, drain low, and the raw phantom
+address reaching final retirement.  It then terminates nonzero with the exact
+`A7_W6_STALE_NO_LIVE_NEGATIVE_CAUGHT` diagnostic; a zero exit is failure.
 
 Reproduce the self-contained unit run:
 
@@ -86,9 +99,13 @@ scripts/run_a7_weighted_fovea_ddr.sh
 Run the same scoreboard against the actual canonical three-file source set:
 
 ```
-A7_W6_CANONICAL_DIR=/home/chickgoose/projects/a5/tests/a5_fovea_a7_structural/fixtures \
 scripts/run_a7_weighted_fovea_ddr_qualification.sh
 ```
+
+The runner prefers the repository-local
+`tests/a5_fovea_a7_structural/fixtures` directory when present, then falls back
+to the read-only sibling A5 fixture directory.  `A7_W6_CANONICAL_DIR` explicitly
+overrides both.
 
 The qualification runner requires and hashes exactly `arbiter2.v`,
 `arbiter4_tree.v`, and `aer_tx16_trad_rowcol_fovea.v`.  Frozen SHA-256 values
@@ -96,19 +113,21 @@ are respectively
 `25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684`,
 `108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31`,
 and `353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e`.
-Any missing or mismatched blob fails before compile.  Only this path may print
-`A7_W6_EXACT_CANONICAL_QUALIFICATION_PASS`; the model runner can print only
-`A7_W6_UNIT_MODEL_ONLY_PASS`.
+Any missing or mismatched blob fails before compile.  This path may print only
+`A7_W6_SHA_PINNED_DIRECTED_RTL_PASS`; that marker means the named directed RTL
+tests passed against the pinned sources, not full functional or physical
+qualification.  The model runner can print only `A7_W6_UNIT_MODEL_ONLY_PASS`.
 
 The exact runner suppresses only Verilator `UNOPTFLAT` for the canonical nested
 `arbiter2` grant equations; source hashes prevent modifying those read-only
 files to add tool pragmas.  All other warnings and errors remain fail-closed.
 
 Both runners record source/tool hashes, refuse output overwrite, require every
-exact PASS sentinel, and check that common benchmarks/TB and existing R1 RTL
-have no diff from the W6 base commit.  The exact runner additionally requires
+directed PASS sentinel plus the exact expected-fail diagnostic, and check that
+common benchmarks/TB and existing R1 RTL have no diff from the W6 base commit.
+The SHA-pinned runner additionally requires
 Yosys `hierarchy -check`, process lowering, and `check -assert` on the complete
-canonical+composition+R1 hierarchy.  Neither mode is physical qualification.
+canonical+composition+R1 hierarchy.  Neither mode is full qualification.
 
 ## Qualification boundary
 
