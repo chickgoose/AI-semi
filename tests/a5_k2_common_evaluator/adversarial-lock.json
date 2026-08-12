@@ -1,0 +1,13 @@
+{
+  "bundle_sha256": "efa202c4ebd91caff2573d9ccd7956b1a1e5584b999fc001fccb02e2a8388f75",
+  "runs": [
+    {"cycles": 96, "name": "persistent_weight_120", "run_sha256": "213886f3594c4a7b6629b5743740c6f45b906d31bebd9f65bfe9c4c8109eed7c"},
+    {"cycles": 40, "name": "sparse_work_conservation", "run_sha256": "0a99c652e8ec68bb81ae86b605003fe85381ab4fd0fb9850605d03e53db82c96"},
+    {"cycles": 14, "name": "same_row_distinct_pair", "run_sha256": "39b1ac4a1cc9c984c050f2147d63f3c3be0dc08ad31d356b96f1f886d1bb5890"},
+    {"cycles": 16, "name": "stale_second_revalidation", "run_sha256": "f564f1e76def51d18fd72d6918950817c64d4593439960e0798d516881d42c7c"},
+    {"cycles": 12, "name": "future_arrival_divergence_witness", "run_sha256": "4c16964b42fd2cf19841c93786333d751e8219fdcf4fd3d95618800058dfd0c3"},
+    {"cycles": 20, "name": "ordered_lane_stall", "run_sha256": "d6dc1d1ce718c2b119634f06c48a2fdf89e8f8f4a49dce132980d399aa17707d"},
+    {"cycles": 12, "name": "reset_abort_no_phantom", "run_sha256": "dcf7b7e296fc1386e5442312edaae5b55cccd65378032a7ec197bd10e14bcba5"}
+  ],
+  "schema": "a5_k2_adversarial_lock_v1"
+}

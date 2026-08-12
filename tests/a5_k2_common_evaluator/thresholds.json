@@ -1,0 +1,27 @@
+{
+  "schema": "a5_k2_comparison_thresholds_v1",
+  "hard_gates": {
+    "accepted_retired_exact_order": true,
+    "conservation_after_drain": true,
+    "distinct_same_cycle_winners": true,
+    "drain_idle_max_lag_cycles": 2,
+    "full_future_trace_equivalence_claim_allowed": false,
+    "persistent_commit_window": 120,
+    "persistent_row_counts": [10, 50, 50, 10],
+    "prefix_equivalence_grade": "FULL",
+    "reset_phantom_count": 0,
+    "sparse_max_occurrence_to_accept_cycles": 1,
+    "stalled_lane_must_be_stable": true,
+    "younger_lane_may_bypass_stalled_lane0": false
+  },
+  "comparison": {
+    "aggregate_score": "forbidden",
+    "capacity22_is_full50_subset_view": true,
+    "fixed_window_event_per_cycle_equivalence_band": {"absolute": 0.005, "relative": 0.01},
+    "overrun_ratio_equivalence_band": {"absolute": 0.005},
+    "p99_accept_to_retire_equivalence_band": {"absolute_cycles": 1, "relative": 0.05},
+    "p99_occurrence_to_accept_equivalence_band": {"absolute_cycles": 1, "relative": 0.05},
+    "ranking": "hard gates first; then tolerance-aware unweighted Pareto; report per-run and per-family before aggregates",
+    "same_candidate_cohort": "compare only event IDs accepted by every candidate for latency; report accepted-set churn separately"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "a5_k2_vector_bundle_v1",
+  "title": "A5 candidate-neutral N16/K2 input vectors",
+  "type": "object",
+  "required": ["schema", "schema_version", "source_count", "retire_lanes", "oracle_policy", "runs", "bundle_sha256"],
+  "properties": {
+    "schema": {"const": "a5_k2_vector_bundle_v1"},
+    "schema_version": {"const": 1},
+    "source_count": {"const": 16},
+    "retire_lanes": {"const": 2},
+    "bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "oracle_policy": {
+      "type": "object",
+      "required": ["row_wheel", "row_for_source", "column_rule", "initial_state", "state_transition"],
+      "properties": {
+        "row_wheel": {"const": [0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3]},
+        "row_for_source": {"const": "source_div_4"},
+        "column_rule": {"const": "round_robin"}
+      }
+    },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "origin", "tags", "reset_policy", "stim_cycles", "measurement_window", "cycles", "run_sha256"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "run_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "measurement_window": {
+            "type": "array", "prefixItems": [{"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 1}], "items": false
+          },
+          "cycles": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["cycle", "reset_n", "retire_ready", "occurrences"],
+              "properties": {
+                "cycle": {"type": "integer", "minimum": 0},
+                "reset_n": {"type": "boolean"},
+                "retire_ready": {"type": "array", "prefixItems": [{"type": "boolean"}, {"type": "boolean"}], "items": false},
+                "occurrences": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["event_id", "source", "payload"],
+                    "properties": {
+                      "event_id": {"type": "string", "minLength": 1},
+                      "source": {"type": "integer", "minimum": 0, "maximum": 15},
+                      "payload": {"type": "object"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

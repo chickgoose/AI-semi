@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "a5_k2_candidate_evidence_v1",
+  "title": "A5 owner-produced K2 transaction evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "candidate", "vector_bundle_sha256", "runs"],
+  "properties": {
+    "schema": {"const": "a5_k2_candidate_evidence_v1"},
+    "vector_bundle_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "candidate": {
+      "type": "object",
+      "required": ["id", "source_sha256", "binding_sha256", "runner_sha256", "claims"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "binding_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "runner_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "claims": {
+          "type": "object",
+          "required": ["full_future_trace_equivalence"],
+          "properties": {"full_future_trace_equivalence": {"type": "boolean"}}
+        }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "run_sha256", "cycles"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "run_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "cycles": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["cycle", "accepts", "outputs", "drain_idle"],
+              "properties": {
+                "cycle": {"type": "integer", "minimum": 0},
+                "drain_idle": {"type": "boolean"},
+                "accepts": {
+                  "type": "array", "maxItems": 2,
+                  "items": {"$ref": "#/$defs/transaction"}
+                },
+                "outputs": {
+                  "type": "array", "minItems": 2, "maxItems": 2,
+                  "items": {
+                    "type": "object", "required": ["lane", "valid"],
+                    "properties": {
+                      "lane": {"type": "integer", "minimum": 0, "maximum": 1},
+                      "valid": {"type": "boolean"},
+                      "source": {"type": "integer", "minimum": 0, "maximum": 15},
+                      "event_id": {"type": "string", "minLength": 1}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "transaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slot", "source", "event_id"],
+      "properties": {
+        "slot": {"type": "integer", "minimum": 0, "maximum": 1},
+        "source": {"type": "integer", "minimum": 0, "maximum": 15},
+        "event_id": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
