@@ -1,7 +1,5 @@
-tb/clean/aer_bench_if.sv
 rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv
 rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_k2_ordered_2entry_adapter.sv
 rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_k2_common_wrapper.sv
-rtl/candidates/a3_exact_scalar_prefix_k2/a3_clean_binding.sv
-tb/clean/aer_clean_assertions.sv
-tb/clean/aer_clean_tb.sv
+rtl/candidates/a3_exact_scalar_prefix_k2/tb/ordered_adapter_tb.sv
+rtl/candidates/a3_exact_scalar_prefix_k2/tb/common_binding_tb.sv
