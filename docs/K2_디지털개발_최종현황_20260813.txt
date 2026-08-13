@@ -65,6 +65,19 @@ P&R 결과는 아직 없으므로 물리/PPA 판정은 모두 HOLD다.
 - 동일 경계 generic proxy: DDR 198 cells/37 state, parallel 196/35.
 - 장점: Fovea 의미 보존, scalar link signal 40% 절감.
 - 한계: core의 1-event/cycle 병목과 overrun은 개선하지 않는다.
+- 서버 Genus/Innovus flow는 실제 실행했지만 post-route hold violation과
+  recovery/removal/report flow 오류로 qualification에 실패했다. 따라서 Fmax,
+  표준셀 면적, 실제 전력 수치는 발행하지 않는다.
+
+[강희 제공 Fovea/Cluster2 P&R 값 — 외부 수신, 로컬 미검증]
+- 사용자가 전달한 값이며 8/8 계열 별도 workload로 추정된다.
+- Fovea: Fmax 714.3~769.2 MHz, 면적 385.4 um^2, 전력 73.0 uW,
+  15% 부하 손실률 57.6%, 핀 5.
+- Cluster2: Fmax 1052.6~1111.1 MHz, 면적 289.0 um^2, 전력 77.3 uW,
+  15% 부하 손실률 0.0%, 핀 14.
+- Fmax/면적은 동일 PVT/SDC/top/P&R이면 구조 비교에 사용할 수 있으나,
+  전력과 손실률은 activity/workload/window 정의가 필요하다. 우리 full50/
+  capacity22 손실률과 직접 합산·비교하지 않는다.
 
 주의:
 - 위 Fovea/Cluster2는 회수 Xcelium 캠페인이고, 아래 신규 후보는 별도의 pinned

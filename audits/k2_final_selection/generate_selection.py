@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -326,14 +327,16 @@ def generate(root: Path) -> dict[str, Any]:
             "A2 clears every digital hard gate, remains on the same-flow structural "
             "Pareto set, and provides more than five percent full50/capacity22 "
             "performance benefit while its mapped-cell, state, and wire-proxy "
-            "penalties remain inside the declared digital cost guard."
+            "penalties remain inside the declared digital cost guard. A2 still "
+            "pays a 27.906977 percent generic logic-depth penalty versus A3; this "
+            "receipt does not treat that proxy as physical Fmax."
         ),
         "retained_fallback": {
             "candidate": "a3_exact_scalar_prefix_k2_plus_p6",
             "reason": (
                 "Choose A3 instead only if exact scalar-prefix semantics becomes a "
-                "hard organizer requirement or later physical evidence reverses the "
-                "digital tradeoff."
+                "hard architectural or organizer requirement, or if later physical "
+                "evidence reverses the digital tradeoff."
             ),
         },
         "claim_boundary": {
@@ -349,14 +352,28 @@ def canonical(document: dict[str, Any]) -> bytes:
     return (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+def write_exclusive(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o644)
+    try:
+        with os.fdopen(descriptor, "wb", closefd=False) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    finally:
+        os.close(descriptor)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=ROOT)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = generate(args.repo_root.resolve())
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_bytes(canonical(result))
+    write_exclusive(args.output, canonical(result))
     print("K2_FINAL_SELECTION_PASS selected=a2 fallback=a3 physical=HOLD")
     return 0
 

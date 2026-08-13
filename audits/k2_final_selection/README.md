@@ -8,9 +8,15 @@ same-flow structural-Pareto gates.
 
 The declared competition-oriented digital policy selects A2 because its
 full50 and capacity22 throughput advantages over A3 exceed 5%, while its
-mapped-cell, state, and wire-proxy penalties remain within the frozen guard and
+mapped-cell, state, and wire-proxy penalties remain within the declared guard and
 it remains on the structural Pareto set. A3 remains the exact-scalar-prefix
 fallback if that semantic property becomes a hard requirement.
+
+This policy was declared with this final selection publication after the
+underlying measurements existed; it is a deterministic engineering decision,
+not a preregistered statistical threshold. A2 also pays a 27.906977% generic
+logic-depth penalty versus A3. That proxy is reported rather than hidden and is
+not interpreted as a physical Fmax result.
 
 This is not a physical selection receipt. Standard-cell area, Fmax, routed
 wires, power, energy/event, CDC/RDC, and mid-flight reset abort remain HOLD.

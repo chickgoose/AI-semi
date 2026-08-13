@@ -3,7 +3,9 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -51,6 +53,23 @@ class FinalSelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(self.module.SelectionError,
                                     "source replay package commit"):
             self.module.verify_rebased_replay_provenance(ROOT, document)
+
+    def test_publication_is_exclusive_and_does_not_overwrite(self):
+        with tempfile.TemporaryDirectory(prefix="k2-selection-") as directory:
+            output = Path(directory) / "result.json"
+            self.module.write_exclusive(output, b"first\n")
+            self.assertEqual(output.read_bytes(), b"first\n")
+            with self.assertRaises(FileExistsError):
+                self.module.write_exclusive(output, b"second\n")
+            self.assertEqual(output.read_bytes(), b"first\n")
+            if hasattr(os, "symlink"):
+                target = Path(directory) / "target.json"
+                link = Path(directory) / "link.json"
+                target.write_bytes(b"target\n")
+                link.symlink_to(target)
+                with self.assertRaises(FileExistsError):
+                    self.module.write_exclusive(link, b"replacement\n")
+                self.assertEqual(target.read_bytes(), b"target\n")
 
     def test_conservation_is_fail_closed(self):
         document = copy.deepcopy(self.replay)

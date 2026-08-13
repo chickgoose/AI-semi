@@ -190,7 +190,7 @@
   "objective_scope": "Fovea_weight_preserving_A2_A3_K2_plus_P6",
   "retained_fallback": {
     "candidate": "a3_exact_scalar_prefix_k2_plus_p6",
-    "reason": "Choose A3 instead only if exact scalar-prefix semantics becomes a hard organizer requirement or later physical evidence reverses the digital tradeoff."
+    "reason": "Choose A3 instead only if exact scalar-prefix semantics becomes a hard architectural or organizer requirement, or if later physical evidence reverses the digital tradeoff."
   },
   "schema": "k2_final_digital_selection_v1",
   "selected_candidate": "a2_batched_iwrr_k2_plus_p6",
@@ -207,6 +207,6 @@
     "primary": "maximize actual-P6 full50 fixed-window events_per_cycle",
     "tie_break": "capacity22 EPC then full50 accepted then lower mapped cells"
   },
-  "selection_reason": "A2 clears every digital hard gate, remains on the same-flow structural Pareto set, and provides more than five percent full50/capacity22 performance benefit while its mapped-cell, state, and wire-proxy penalties remain inside the declared digital cost guard.",
+  "selection_reason": "A2 clears every digital hard gate, remains on the same-flow structural Pareto set, and provides more than five percent full50/capacity22 performance benefit while its mapped-cell, state, and wire-proxy penalties remain inside the declared digital cost guard. A2 still pays a 27.906977 percent generic logic-depth penalty versus A3; this receipt does not treat that proxy as physical Fmax.",
   "status": "DIGITAL_SELECTION_COMPLETE_PHYSICAL_HOLD"
 }
