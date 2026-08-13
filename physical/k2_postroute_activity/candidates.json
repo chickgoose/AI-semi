@@ -1,0 +1,41 @@
+{
+  "schema": "k2_postroute_activity_candidates_v1",
+  "activity_scope": "aer_clean_tb.candidate.dut",
+  "frozen_trace": {
+    "name": "mixed_phase_always_ready_identity",
+    "trace_sha256": "9fde0ee816a80975d219b57e9799e73c198efc85d6e9aec4cb2a2e4816974705",
+    "run_manifest_sha256": "5ecd7d07e906e20a92e18103b72bd4fd0d74099547e57a357e7376657fee8372"
+  },
+  "candidates": {
+    "fovea": {
+      "top": "aer_tx16_trad_rowcol_fovea",
+      "kind_define": "K2_POSTROUTE_FOVEA_CORE",
+      "retire_lanes": 1
+    },
+    "cluster2": {
+      "top": "aer_tx16_trad_rowcol_fovea_cluster2",
+      "kind_define": "K2_POSTROUTE_CLUSTER2_CORE",
+      "retire_lanes": 8
+    },
+    "fovea_a7": {
+      "top": "w2_fovea_r1_physical_staging_top",
+      "kind_define": "K2_POSTROUTE_R1",
+      "retire_lanes": 2
+    },
+    "a2_p6": {
+      "top": "w2_a2_p6_physical_staging_top",
+      "kind_define": "K2_POSTROUTE_P6",
+      "retire_lanes": 2
+    },
+    "a3_p6": {
+      "top": "w2_a3_p6_physical_staging_top",
+      "kind_define": "K2_POSTROUTE_P6",
+      "retire_lanes": 2
+    }
+  },
+  "periods": {
+    "5.0": {"period_ps": 5000, "ref_half_period_ps": 2500, "sample_first_rise_ps": 3750},
+    "5.7": {"period_ps": 5700, "ref_half_period_ps": 2850, "sample_first_rise_ps": 4275},
+    "6.5": {"period_ps": 6500, "ref_half_period_ps": 3250, "sample_first_rise_ps": 4875}
+  }
+}
