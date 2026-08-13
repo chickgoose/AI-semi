@@ -1,5 +1,7 @@
 {
   "schema": "k2-w2-fair-physical-tops-v1",
+  "final_server_execution_eligible": false,
+  "ranking_eligible": false,
   "common_inputs": [
     {"name": "ref_clk_i", "width": 1, "role": "reference_clock"},
     {"name": "sample_clk_i", "width": 1, "role": "sample_clock"},
@@ -39,6 +41,6 @@
       ]
     }
   },
-  "boundary_scope": "complete_endpoint_compositions",
+  "boundary_scope": "owner_generic_complete_endpoint_diagnostic",
   "boundary_registry": "physical/k2_w2_boundaries.json"
 }

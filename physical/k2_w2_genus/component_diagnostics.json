@@ -1,0 +1,29 @@
+{
+  "schema": "k2_w2_genus_component_diagnostics_v1",
+  "historical_registry_commit": "80349c10c2272272ed538e116f6de93d487fc7a1",
+  "final_server_execution_eligible": false,
+  "ranking_eligible": false,
+  "usage": "component_or_native_debug_only",
+  "designs": {
+    "a2_k2": {
+      "top": "a2_batched_iwrr_k2",
+      "filelist_sha256": "5e0eb4779d630dc9e8fc6ad47e3c1c942c5f1a9ea0dbbc0d95327872279e735a"
+    },
+    "a3_k2": {
+      "top": "a3_exact_scalar_prefix_k2",
+      "filelist_sha256": "d979056f109df93c7015c98c1d4a1455ecb817856106b012cda4045633327137"
+    },
+    "p6_endpoint": {
+      "top": "a7_p6_atomic_bundle_adapter",
+      "filelist_sha256": "70ba34093da75f403365da390105f615a3fc1ef09a8a8a59e4d570d3ec074e16"
+    },
+    "a2_p6_native_debug": {
+      "top": "a2_batched_iwrr_p6_top",
+      "filelist_sha256": "645197b9fc529853df479032798e1dc6b36b13c143e4c45c34933b8afafbd043"
+    },
+    "a3_p6_native_debug": {
+      "top": "a3_exact_scalar_prefix_k2_p6_top",
+      "filelist_sha256": "ed04b6ac6dc76b6b993180763f116257c1188a6e9b71da3d299d0dd9746ef3fc"
+    }
+  }
+}

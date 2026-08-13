@@ -1,0 +1,148 @@
+{
+  "schema": "k2_w2_genus_diagnostic_registry_v1",
+  "repository_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91",
+  "fair_tops_upstream_commit": "b612611935afb3a0ebf3db2a8a29fb1c46e7a676",
+  "cohort": "W2_DIAGNOSTIC_RAW_AND_GENERIC_WRAPPERS_NOT_FINAL",
+  "ranking_eligible": false,
+  "final_server_execution_eligible": false,
+  "ranking_policy": "DIAGNOSTIC_RAW_CORE_AND_OWNER_GENERIC_ARE_INCOMPARABLE",
+  "common_constraints": {
+    "period_ns": 5.0,
+    "clock_uncertainty_ns": 0.25,
+    "input_delay_ns": 0.5,
+    "output_delay_ns": 0.5,
+    "output_load_pf": 0.01,
+    "clock_gating_insertion": true,
+    "scan_mapping": false
+  },
+  "goal_order": ["raw_fovea", "raw_cluster2", "fovea_a7", "a2_p6", "a3_p6"],
+  "designs": {
+    "raw_fovea": {
+      "top": "aer_tx16_trad_rowcol_fovea",
+      "boundary_cohort": "raw_core_only",
+      "source_origin": "raw_golden_archive",
+      "filelist": "physical/k2_w2_genus/filelists/raw_fovea.f",
+      "filelist_sha256": "b88022c3005d7606972df219f08e45fd9390f7f20feeccb953192bd965603e9e",
+      "parameters": {},
+      "defines": [],
+      "clocks": [{"name": "core_clk", "port": "clk", "waveform_ns": [0.0, 2.5]}],
+      "reset": {"port": "rst", "active": "high", "synchronous": true},
+      "data_inputs": ["req"],
+      "outputs": ["valid", "addr"],
+      "sources": [
+        {"path": "rtl/ganghee_cluster2/arbiter2.v", "sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"},
+        {"path": "rtl/ganghee_cluster2/arbiter4_tree.v", "sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"},
+        {"path": "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea.v", "sha256": "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e"}
+      ]
+    },
+    "raw_cluster2": {
+      "top": "aer_tx16_trad_rowcol_fovea_cluster2",
+      "boundary_cohort": "raw_core_only",
+      "source_origin": "raw_golden_archive",
+      "filelist": "physical/k2_w2_genus/filelists/raw_cluster2.f",
+      "filelist_sha256": "04925645cafad47e31cf2e186d0e65c8f5248d4e6a06470fb0ba3e8a20f5e70d",
+      "parameters": {},
+      "defines": [],
+      "clocks": [{"name": "core_clk", "port": "clk", "waveform_ns": [0.0, 2.5]}],
+      "reset": {"port": "rst", "active": "high", "synchronous": true},
+      "data_inputs": ["req"],
+      "outputs": ["valid0", "row0", "col_mask0", "valid1", "row1", "col_mask1"],
+      "sources": [
+        {"path": "rtl/ganghee_cluster2/arbiter2.v", "sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"},
+        {"path": "rtl/ganghee_cluster2/arbiter4_tree.v", "sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"},
+        {"path": "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea_cluster2.v", "sha256": "97151241b642d5db1c5974233439dfcea14c4ec325b1d3e91c9caa9d4917c44a"}
+      ]
+    },
+    "fovea_a7": {
+      "top": "k2_w2_fovea_a7_top",
+      "boundary_cohort": "owner_generic_endpoint_diagnostic",
+      "source_origin": "repository_exact",
+      "filelist": "physical/k2_w2_tops/filelists/fovea_a7.f",
+      "filelist_sha256": "c788ee0ecec14c6f86619eff9992b33475c7070dd3b2b2b6f9c309a6b343e1e4",
+      "filelist_upstream_commit": "b612611935afb3a0ebf3db2a8a29fb1c46e7a676",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [
+        {"name": "ref_clk", "port": "ref_clk_i", "waveform_ns": [0.0, 2.5]},
+        {"name": "sample_clk", "port": "sample_clk_i", "waveform_ns": [1.25, 3.75]}
+      ],
+      "generated_clock": {"name": "a7_link_clk", "source_port": "sample_clk_i", "target_port": "burst_clk_o", "divide_by": 1},
+      "reset": {"port": "rst_n", "active": "low", "asynchronous_assertion": true, "release_contract": "phase_related"},
+      "data_inputs": ["load_i"],
+      "outputs": ["source_ready_o", "burst_clk_o", "burst_data_o", "retire_addr_o", "retire_valid_o", "drain_idle_o", "protocol_fault_o"],
+      "sources": [
+        {"path": "tests/a5_fovea_a7_structural/fixtures/arbiter2.v", "sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "tests/a5_fovea_a7_structural/fixtures/arbiter4_tree.v", "sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "tests/a5_fovea_a7_structural/fixtures/aer_tx16_trad_rowcol_fovea.v", "sha256": "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv", "sha256": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv", "sha256": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_tx.sv", "sha256": "88e183d324e8569e4a081bb9bf501bf6ebddd9e4d46788d656b7ef07d4fa1197", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_ddr_rx.sv", "sha256": "7e6b6fb4d85ce7490b0d6d3d9d631c590b45ae93b5cd61c75eb4335a28ca6d06", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv", "sha256": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_candidate_endpoint.sv", "sha256": "c689b3307559c633eed4ad44ff1242b5761fa41516ca1427f5fd3f47a4281b03", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_weighted_fovea_ddr/a7_weighted_fovea_ddr.sv", "sha256": "b125dc3cfc51f5c898d41f9b82660c346aafc9c7613433cee622514eb3456ec7", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "physical/k2_w2_tops/rtl/k2_w2_fovea_a7_top.sv", "sha256": "8dcea8e8789ef3d216384ac1d899aed1889d20b5a48a508f3839c448330eacc3", "upstream_commit": "b612611935afb3a0ebf3db2a8a29fb1c46e7a676"}
+      ]
+    },
+    "a2_p6": {
+      "top": "k2_w2_a2_p6_top",
+      "boundary_cohort": "owner_generic_endpoint_diagnostic",
+      "source_origin": "repository_exact",
+      "filelist": "physical/k2_w2_tops/filelists/a2_p6.f",
+      "filelist_sha256": "96c88e386726052dfe6d7257b6f82c19a40b2b59498c9534b8a7e0dcd3751f0c",
+      "filelist_upstream_commit": "b612611935afb3a0ebf3db2a8a29fb1c46e7a676",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [
+        {"name": "ref_clk", "port": "ref_clk_i", "waveform_ns": [0.0, 2.5]},
+        {"name": "sample_clk", "port": "sample_clk_i", "waveform_ns": [1.25, 3.75]}
+      ],
+      "generated_clock": {"name": "p6_link_clk", "source_port": "sample_clk_i", "target_port": "p6_clk_o", "divide_by": 1},
+      "reset": {"port": "rst_n", "active": "low", "asynchronous_assertion": true, "release_contract": "drained_phase_related"},
+      "data_inputs": ["load_i"],
+      "outputs": ["grant_commit_o", "grant_count_o", "grant_addr0_o", "grant_addr1_o", "grant_bitmap_o", "p6_clk_o", "p6_data_o", "retire_valid_o", "retire_addr0_o", "retire_addr1_o", "protocol_error_o", "drain_idle_o"],
+      "sources": [
+        {"path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv", "sha256": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv", "sha256": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv", "sha256": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv", "sha256": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv", "sha256": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv", "sha256": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv", "sha256": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a2_batched_iwrr_p6/a2_batched_iwrr_p6_top.sv", "sha256": "d095c0dd79a76d0a2027757258f006e6913bed45273b1bba22af22c0ce0ac29b", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "physical/k2_w2_tops/rtl/k2_w2_a2_p6_top.sv", "sha256": "7ba209b20cf10da1e7b3215ae38e926ecb318d195e8ee94bda37d2359780f5dc", "upstream_commit": "b612611935afb3a0ebf3db2a8a29fb1c46e7a676"}
+      ]
+    },
+    "a3_p6": {
+      "top": "k2_w2_a3_p6_top",
+      "boundary_cohort": "owner_generic_endpoint_diagnostic",
+      "source_origin": "repository_exact",
+      "filelist": "physical/k2_w2_tops/filelists/a3_p6.f",
+      "filelist_sha256": "c4ca98e51a7a1d847d84a5531742b73550aef33f57eac960debecc7b514fc651",
+      "filelist_upstream_commit": "b612611935afb3a0ebf3db2a8a29fb1c46e7a676",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [
+        {"name": "ref_clk", "port": "ref_clk_i", "waveform_ns": [0.0, 2.5]},
+        {"name": "sample_clk", "port": "sample_clk_i", "waveform_ns": [1.25, 3.75]}
+      ],
+      "generated_clock": {"name": "p6_link_clk", "source_port": "sample_clk_i", "target_port": "p6_clk_o", "divide_by": 1},
+      "reset": {"port": "rst_n", "active": "low", "asynchronous_assertion": true, "release_contract": "drained_phase_related"},
+      "data_inputs": ["load_i"],
+      "outputs": ["bundle_valid_o", "bundle_ready_o", "bundle_commit_o", "grant_count_o", "grant_addr0_o", "grant_addr1_o", "policy_microsteps_o", "bundle_protocol_error_o", "p6_clk_o", "p6_data_o", "retire_valid_o", "retire_addr0_o", "retire_addr1_o", "retire_protocol_error_o", "drain_idle_o"],
+      "sources": [
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv", "sha256": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv", "sha256": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv", "sha256": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv", "sha256": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv", "sha256": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv", "sha256": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv", "sha256": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6_top.sv", "sha256": "b5c2eab34dec9a3c6dc7879a587508fcbd38ae10ac2dd927ef420e0e091ae793", "authority_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91"},
+        {"path": "physical/k2_w2_tops/rtl/k2_w2_a3_p6_top.sv", "sha256": "56df1dbb603080df92bbdc87d0af45f46c8564d3b475214b6f0df453aae1b99d", "upstream_commit": "b612611935afb3a0ebf3db2a8a29fb1c46e7a676"}
+      ]
+    }
+  }
+}

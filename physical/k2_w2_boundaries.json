@@ -7,7 +7,7 @@
   "cohorts": [
     {
       "id": "raw_core_only",
-      "manifest": "physical/k2_w2_raw_golden/raw_golden.json",
+      "manifest": "physical/k2_w2_genus/raw_golden_reference.json",
       "tops": [
         "aer_tx16_trad_rowcol_fovea",
         "aer_tx16_trad_rowcol_fovea_cluster2"
@@ -15,11 +15,20 @@
     },
     {
       "id": "buffered_server_golden",
-      "manifest": "physical/k2_w2_server_golden/server_golden.json",
+      "manifest": "physical/k2_w2_genus/golden_reference.json",
       "tops": ["aer_fovea_buffered", "aer_cluster2_buffered"]
     },
     {
-      "id": "complete_endpoint_wrappers",
+      "id": "tech_staged_complete_compositions",
+      "manifest": "physical/k2_w2_genus/designs.json",
+      "integration_state": "blocked_missing_tech_staged_manifest",
+      "final_server_execution_eligible": "only_when_manifest_ready",
+      "design_order": ["fovea_a7", "a2_p6", "a3_p6"],
+      "tops": null
+    },
+    {
+      "id": "owner_generic_endpoint_diagnostic",
+      "final_server_execution_eligible": false,
       "manifest": "physical/k2_w2_tops/designs.json",
       "tops": [
         "k2_w2_fovea_a7_top",
@@ -31,7 +40,7 @@
   "functional_evidence": [
     {
       "id": "fovea_cluster2_workspace_diff_loss",
-      "manifest": "physical/k2_w2_functional_loss/loss_evidence.json",
+      "manifest": "physical/k2_w2_genus/functional_loss_reference.json",
       "usage": "loss_only",
       "physical_cohort": null,
       "ppa_or_ranking_eligible": false

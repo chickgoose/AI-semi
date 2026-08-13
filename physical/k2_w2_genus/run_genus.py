@@ -22,6 +22,7 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 REGISTRY = HERE / "designs.json"
+DIAGNOSTIC_REGISTRY = HERE / "diagnostic_designs.json"
 DRIVER_TCL = HERE / "genus_driver.tcl"
 GOLDEN_REFERENCE = HERE / "golden_reference.json"
 RAW_GOLDEN_REFERENCE = HERE / "raw_golden_reference.json"
@@ -631,9 +632,11 @@ def load_functional_loss_reference() -> dict[str, Any]:
     return document
 
 
-def verify_flow_tree(root: Path) -> dict[str, str]:
+def verify_flow_tree(root: Path, registry: dict[str, Any]) -> dict[str, str]:
     required = [
         "physical/k2_w2_genus/designs.json",
+        "physical/k2_w2_genus/diagnostic_designs.json",
+        "physical/k2_w2_genus/component_diagnostics.json",
         "physical/k2_w2_genus/golden_reference.json",
         "physical/k2_w2_genus/raw_golden_reference.json",
         "physical/k2_w2_genus/functional_loss_reference.json",
@@ -719,6 +722,16 @@ def verify_driver_contract(golden: dict[str, Any]) -> None:
     require_ordered_tokens(commands, golden["command_order"], "candidate-neutral driver")
     if "set_db lp_insert_clock_gating true" not in commands:
         raise FlowError("candidate-neutral driver differs from golden clock-gating mode")
+    required_classes = (
+        "report_timing -check_type setup", "report_timing -check_type hold",
+        "report_timing -check_type recovery", "report_timing -check_type removal",
+        "report_timing -check_type clock_gating_setup",
+        "report_timing -check_type clock_gating_hold",
+        "report_timing -check_type pulse_width", "report_qor", "check_timing -verbose",
+    )
+    missing = [token for token in required_classes if token not in commands]
+    if missing:
+        raise FlowError(f"Genus driver omits strict timing report class: {','.join(missing)}")
 
 
 def read_golden_members(archive: Path, golden: dict[str, Any]) -> dict[str, bytes]:
@@ -1000,7 +1013,6 @@ def verify_design(root: Path, registry: dict[str, Any], key: str) -> dict[str, A
     if key not in registry["designs"]:
         raise FlowError(f"unknown design: {key}")
     design = registry["designs"][key]
-    source_commit = registry["repository_commit"]
     filelist_path = root / design["filelist"]
     filelist_payload = stable_read(filelist_path)
     if sha256_bytes(filelist_payload) != design["filelist_sha256"]:
@@ -1012,6 +1024,19 @@ def verify_design(root: Path, registry: dict[str, Any], key: str) -> dict[str, A
             design.get("defines") != ["SYNTHESIS", *filelist_defines] or
             design.get("include_dirs") != include_dirs):
         raise FlowError(f"filelist/source order mismatch: {key}")
+    committed_filelist = git(root, "show", f"HEAD:{design['filelist']}", binary=True)
+    assert isinstance(committed_filelist, bytes)
+    if committed_filelist != filelist_payload:
+        raise FlowError(f"filelist differs from HEAD: {design['filelist']}")
+    if (design.get("source_origin") != "tech_staged_repository_exact" or
+            design.get("boundary_cohort") != "tech_staged_complete_compositions"):
+        raise FlowError(f"non-staged design is forbidden in final execution: {key}")
+    source_commit = registry["repository_commit"]
+    committed_filelist_at_source = git(
+        root, "show", f"{source_commit}:{design['filelist']}", binary=True)
+    assert isinstance(committed_filelist_at_source, bytes)
+    if committed_filelist_at_source != filelist_payload:
+        raise FlowError(f"staged filelist differs from source commit: {key}")
     for row in design["sources"]:
         relative = row["path"]
         working = stable_read(root / relative)
@@ -1032,51 +1057,27 @@ def verify_design(root: Path, registry: dict[str, Any], key: str) -> dict[str, A
             raise FlowError(f"staged include byte mismatch: {relative}")
     if design.get("parameters") != {}:
         raise FlowError(f"unimplemented nonempty parameter map: {key}")
-    if design.get("defines") != ["SYNTHESIS"]:
-        raise FlowError(f"unexpected define set: {key}")
     return design
 
 
-def make_sdc(registry: dict[str, Any], design: dict[str, Any]) -> bytes:
-    common = registry["common_constraints"]
-    period = float(common["period_ns"])
-    if not math.isfinite(period) or period <= 0:
-        raise FlowError("invalid common clock period")
-    lines: list[str] = []
-    for clock in design["clocks"]:
-        rise, fall = map(float, clock["waveform_ns"])
-        lines.append(
-            f"create_clock -name {clock['name']} -period {period:.3f} "
-            f"-waveform {{{rise:.3f} {fall:.3f}}} [get_ports {clock['port']}]"
-        )
-    clock_names = " ".join(clock["name"] for clock in design["clocks"])
-    lines.append(
-        f"set_clock_uncertainty {float(common['clock_uncertainty_ns']):.3f} "
-        f"[get_clocks {{{clock_names}}}]"
+def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
+    timing = design["strict_sdc"]
+    _, path = relative_repo_path(root, timing["path"], "candidate strict SDC")
+    payload = stable_read(path)
+    if sha256_bytes(payload) != timing["sha256"]:
+        raise FlowError("candidate strict SDC SHA mismatch")
+    required = (
+        "create_generated_clock", "-clock_fall -add_delay", "set_input_delay -min",
+        "set_input_delay -max", "set_output_delay -min", "set_output_delay -max",
+        "set_clock_gating_check", "set_min_pulse_width -high",
+        "set_min_pulse_width -low", "recovery_falling", "removal_falling",
+        "set_driving_cell", "set_input_transition", "set_load", "all_registers -clock",
     )
-    reference = design["clocks"][0]["name"]
-    if design["data_inputs"]:
-        lines.append(
-            f"set_input_delay {float(common['input_delay_ns']):.3f} -clock {reference} "
-            f"[get_ports {{{' '.join(design['data_inputs'])}}}]"
-        )
-    reset_port = design["reset"]["port"]
-    lines.append(f"set_input_delay 0.000 -clock {reference} [get_ports {reset_port}]")
-    lines.append(
-        f"set_output_delay {float(common['output_delay_ns']):.3f} -clock {reference} "
-        f"[get_ports {{{' '.join(design['outputs'])}}}]"
-    )
-    lines.append(f"set_load {float(common['output_load_pf']):.3f} [all_outputs]")
-    generated = design.get("generated_clock")
-    if generated:
-        lines.append(
-            f"create_generated_clock -name {generated['name']} "
-            f"-source [get_ports {generated['source_port']}] "
-            f"-divide_by {int(generated['divide_by'])} "
-            f"[get_ports {generated['target_port']}]"
-        )
-    lines.append("# No false paths, multicycle paths, or asynchronous clock grouping.")
-    return ("\n".join(lines) + "\n").encode("utf-8")
+    text = payload.decode("utf-8", errors="strict")
+    missing = [token for token in required if token not in text]
+    if missing or "set_false_path" in text or "set_multicycle_path" in text:
+        raise FlowError(f"strict SDC timing class missing/forbidden: {','.join(missing)}")
+    return payload
 
 
 def tool_identity(path: Path) -> dict[str, Any]:
@@ -1399,7 +1400,8 @@ def mapped_inventory(mapped: Path, library: Path, expected_top: str,
 
 
 def verify_report_payloads(top: str, area_payload: bytes, timing_payload: bytes,
-                           power_payload: bytes, label: str) -> None:
+                           power_payload: bytes, label: str,
+                           require_timing_pass: bool = False) -> None:
     try:
         area = area_payload.decode("utf-8", errors="strict")
         timing = timing_payload.decode("utf-8", errors="strict")
@@ -1411,14 +1413,82 @@ def verify_report_payloads(top: str, area_payload: bytes, timing_payload: bytes,
             "Cell-Count  Cell-Area" not in area or
             not re.search(rf"(?m)^\s*{re.escape(top)}\s+NA\s+\d+\s+\d", area)):
         raise FlowError(f"{label} area report format mismatch")
-    if (common not in timing or f"Module:                 {top}" not in timing or
-            not re.search(r"(?m)^Path\s+1:\s+(?:MET|VIOLATED)\s+\(", timing) or
-            "Slack:=" not in timing):
+    if common not in timing or f"Module:                 {top}" not in timing:
         raise FlowError(f"{label} timing report format mismatch")
+    parse_timing_rows(timing, f"{label} timing", require_pass=require_timing_pass)
     if (f"Instance: /{top}" not in power or "Power Unit: W" not in power or
             "Category" not in power or
             not re.search(r"(?m)^\s*Subtotal\s+\S+\s+\S+\s+\S+\s+\S+", power)):
         raise FlowError(f"{label} power report format mismatch")
+
+
+def parse_timing_rows(text: str, label: str,
+                      expected_check: str | None = None,
+                      require_pass: bool = True) -> dict[str, Any]:
+    headers = list(re.finditer(
+        r"(?m)^Path\s+(\d+):\s+(MET|VIOLATED)\s+"
+        r"\(([-+]?(?:\d+(?:\.\d*)?|\.\d+)|NaN|Inf|-Inf)\s+ps\)\s+([^\n]+?)\s+Check",
+        text))
+    if not headers:
+        raise FlowError(f"{label} has no complete timing path row")
+    slacks: list[float] = []
+    for index, header in enumerate(headers):
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
+        segment = text[header.start():end]
+        if require_pass and header.group(2) != "MET":
+            raise FlowError(f"{label} contains VIOLATED path {header.group(1)}")
+        if expected_check is not None and expected_check.lower() not in header.group(4).lower():
+            raise FlowError(f"{label} timing class mismatch")
+        slack_row = re.search(
+            r"(?m)^\s*Slack:=\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+)|NaN|Inf|-Inf)\s*$",
+            segment)
+        if slack_row is None:
+            raise FlowError(f"{label} truncated path {header.group(1)}")
+        try:
+            header_slack = float(header.group(3))
+            detail_slack = float(slack_row.group(1))
+        except ValueError as error:
+            raise FlowError(f"{label} invalid slack") from error
+        if (not math.isfinite(header_slack) or not math.isfinite(detail_slack) or
+                (require_pass and (header_slack < 0.0 or detail_slack < 0.0)) or
+                abs(header_slack - detail_slack) > 1e-9):
+            raise FlowError(f"{label} negative/NaN/inconsistent slack")
+        slacks.append(detail_slack)
+    return {"path_count": len(slacks), "minimum_slack_ps": min(slacks)}
+
+
+def parse_qor_and_coverage(qor: str, coverage: str,
+                           minimum_slack_ps: float) -> dict[str, Any]:
+    def number(label: str) -> float:
+        match = re.fullmatch(
+            rf"(?ms).*^{re.escape(label)}:\s*"
+            r"([-+]?(?:\d+(?:\.\d*)?|\.\d+)|NaN|Inf|-Inf)\s*$.*", qor)
+        if match is None:
+            raise FlowError(f"QoR omits {label}")
+        value = float(match.group(1))
+        if not math.isfinite(value):
+            raise FlowError(f"QoR {label} is NaN/Inf")
+        return value
+    wns = number("WNS (ps)")
+    tns = number("TNS (ps)")
+    unconstrained = number("Unconstrained Paths")
+    if wns < 0.0 or abs(tns) > 1e-12 or unconstrained != 0.0 or \
+            abs(wns - minimum_slack_ps) > 1e-9:
+        raise FlowError("QoR WNS/TNS/unconstrained mismatch or violation")
+    coverage_names = (
+        "no_clock", "constant_clock", "no_input_delay", "no_output_delay",
+        "no_drive", "no_load", "unconstrained",
+    )
+    values: dict[str, int] = {}
+    for name in coverage_names:
+        matches = re.findall(rf"(?m)^{name}:\s*(\d+)\s*$", coverage)
+        if len(matches) != 1:
+            raise FlowError(f"check_timing missing/duplicate {name}")
+        values[name] = int(matches[0])
+    if any(values.values()):
+        raise FlowError("check_timing reports unconstrained/no-drive/no-load coverage hole")
+    return {"wns_ps": wns, "tns_ps": tns,
+            "unconstrained_paths": int(unconstrained), "coverage": values}
 
 
 def verify_reports(output: Path, top: str, log_payload: bytes,
@@ -1435,14 +1505,39 @@ def verify_reports(output: Path, top: str, log_payload: bytes,
         "area": f"{top}_area.rpt",
         "gtiming": f"{top}_gtiming.rpt",
         "gpower": f"{top}_gpower.rpt",
+        "setup": f"{top}_setup.rpt",
+        "hold": f"{top}_hold.rpt",
+        "recovery": f"{top}_recovery.rpt",
+        "removal": f"{top}_removal.rpt",
+        "gating_setup": f"{top}_gating_setup.rpt",
+        "gating_hold": f"{top}_gating_hold.rpt",
+        "pulse_width": f"{top}_pulse_width.rpt",
+        "qor": f"{top}_qor.rpt",
+        "check_timing": f"{top}_check_timing.rpt",
     }
     payloads = {kind: stable_read(output / name) for kind, name in names.items()}
     if any(not payload for payload in payloads.values()):
         raise FlowError("empty Genus report")
     verify_report_payloads(
         top, payloads["area"], payloads["gtiming"], payloads["gpower"],
-        label="candidate",
+        label="candidate", require_timing_pass=True,
     )
+    classes = {
+        "setup": "Setup", "hold": "Hold", "recovery": "Recovery",
+        "removal": "Removal", "gating_setup": "Clock Gating Setup",
+        "gating_hold": "Clock Gating Hold", "pulse_width": "Pulse Width",
+    }
+    minimum = math.inf
+    for kind, expected in classes.items():
+        text = payloads[kind].decode("utf-8", errors="strict")
+        if ("Generated by:           Genus(TM) Synthesis Solution" not in text or
+                f"Module:                 {top}" not in text):
+            raise FlowError(f"candidate {kind} report header mismatch")
+        parsed = parse_timing_rows(text, f"candidate {kind}", expected)
+        minimum = min(minimum, parsed["minimum_slack_ps"])
+    parse_qor_and_coverage(
+        payloads["qor"].decode("utf-8", errors="strict"),
+        payloads["check_timing"].decode("utf-8", errors="strict"), minimum)
     return {names[kind]: sha256_bytes(payload) for kind, payload in payloads.items()}
 
 
@@ -1551,6 +1646,7 @@ def run_mapped_functional_gate(
 
 
 def run_flow(root: Path, design_key: str, genus: Path, library: Path,
+             hold_library: Path, cell_lef: Path, shared_qrc: Path,
              output_root: Path, attempt_name: str,
              functional_hook: Path | None, functional_models: list[Path],
              golden_archive: Path,
@@ -1558,9 +1654,11 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
              functional_loss_archive: Path,
              server_environment_receipt: Path) -> Path:
     root = root.resolve(strict=True)
+    if root != ROOT.resolve(strict=True):
+        raise FlowError("runner entrypoint and repository root identity mismatch")
     if not SAFE_ATTEMPT.fullmatch(attempt_name):
         raise FlowError("invalid attempt name")
-    registry = load_registry()
+    registry = load_registry(root)
     golden = load_golden_reference()
     raw_golden = load_raw_golden_reference()
     functional_loss = load_functional_loss_reference()
@@ -1570,7 +1668,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             golden["clock_gating_insertion"]):
         raise FlowError("raw and buffered golden tool/library settings differ")
     verify_driver_contract(golden)
-    flow_files = verify_flow_tree(root)
+    verify_goal_registry_bindings(registry)
+    flow_files = verify_flow_tree(root, registry)
     head = verify_source_commit(root, registry)
     design = verify_design(root, registry, design_key)
     if (functional_hook is None or functional_hook.resolve(strict=True) !=
@@ -1606,10 +1705,31 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         raise FlowError("Genus version does not match authoritative golden archive")
     if library.resolve(strict=True).name != golden["library_basename"]:
         raise FlowError("Liberty basename does not match authoritative golden Tcl")
+    if (hold_library.resolve(strict=True).name != "fast_vdd1v0_basicCells.lib" or
+            cell_lef.resolve(strict=True).name != "gsclib045_macro.lef" or
+            shared_qrc.resolve(strict=True).name != "gpdk045.tch"):
+        raise FlowError("hold Liberty/LEF/shared-QRC basename mismatch")
     library_source_hash = sha256_bytes(stable_read(library.resolve(strict=True)))
+    hold_library_hash = sha256_bytes(stable_read(hold_library.resolve(strict=True)))
+    cell_lef_hash = sha256_bytes(stable_read(cell_lef.resolve(strict=True)))
+    shared_qrc_hash = sha256_bytes(stable_read(shared_qrc.resolve(strict=True)))
+    dff_setup = dffnsrx1_preflight(
+        library.resolve(strict=True), cell_lef.resolve(strict=True), "setup")
+    dff_hold = dffnsrx1_preflight(
+        hold_library.resolve(strict=True), cell_lef.resolve(strict=True), "hold")
     library_snapshot = attempt / "bundle" / "library.lib"
     if copy_stable(library.resolve(strict=True), library_snapshot) != library_source_hash:
         raise FlowError("library snapshot SHA mismatch")
+    hold_library_snapshot = attempt / "bundle" / "hold_library.lib"
+    cell_lef_snapshot = attempt / "bundle" / "cells.lef"
+    shared_qrc_snapshot = attempt / "bundle" / "shared_typical_qrc.tch"
+    if (copy_stable(hold_library.resolve(strict=True), hold_library_snapshot) !=
+            hold_library_hash or
+            copy_stable(cell_lef.resolve(strict=True), cell_lef_snapshot) !=
+            cell_lef_hash or
+            copy_stable(shared_qrc.resolve(strict=True), shared_qrc_snapshot) !=
+            shared_qrc_hash):
+        raise FlowError("hold library/LEF/QRC snapshot SHA mismatch")
     source_snapshots = []
     include_snapshots = []
     source_paths_v = []
@@ -1619,7 +1739,10 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         copied = copy_stable(root / row["path"], destination)
         if copied != row["sha256"]:
             raise FlowError(f"snapshotted source SHA mismatch: {row['path']}")
-        source_snapshots.append({"path": row["path"], "sha256": copied})
+        source_snapshots.append({
+            "path": row["path"], "sha256": copied,
+            "origin": design["source_origin"],
+        })
         if destination.suffix == ".v":
             source_paths_v.append(str(destination))
         elif destination.suffix == ".sv":
@@ -1643,10 +1766,13 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
     registry_hash = sha256_bytes(stable_read(REGISTRY))
 
     attempt_document = {
-        "schema": "k2_w2_genus_attempt_v1",
+        "schema": "k2_w2_genus_exact_three_endpoint_attempt_v3",
         "attempt": attempt_name,
         "design": design_key,
         "top": design["top"],
+        "boundary_cohort": design["boundary_cohort"],
+        "source_origin": design["source_origin"],
+        "ranking_policy": registry["ranking_policy"],
         "flow_git_head": head,
         "source_commit": registry["repository_commit"],
         "registry_sha256": registry_hash,
@@ -1657,10 +1783,13 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "evidence_cohorts": {
             "raw_reference": raw_golden_identity,
             "buffered_reference": golden_identity,
-            "endpoint_candidate": {
-                "cohort": registry["evidence_cohort"],
+            "goal_execution": {
+                "cohort": design["boundary_cohort"],
                 "design": design_key,
+                "top": design["top"],
+                "source_origin": design["source_origin"],
                 "source_commit": registry["repository_commit"],
+                "ranking_policy": registry["ranking_policy"],
             },
             "functional_loss_reference": functional_loss_identity,
         },
@@ -1674,6 +1803,13 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "constraints_sha256": sha256_bytes(sdc),
         "library_source_sha256": library_source_hash,
         "library_snapshot_sha256": library_source_hash,
+        "hold_library_sha256": hold_library_hash,
+        "cell_lef_sha256": cell_lef_hash,
+        "shared_typical_qrc_sha256": shared_qrc_hash,
+        "dffnsrx1_setup_preflight": dff_setup,
+        "dffnsrx1_hold_preflight": dff_hold,
+        "strict_sdc": design["strict_sdc"],
+        "mmmc_template": registry["mmmc_template_identity"],
         "genus": tool_before,
         "driver_tcl_sha256": tcl_hash,
         "genus_command": [tool_before["resolved_path"], "-batch", "-files",
@@ -1707,6 +1843,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
                 design["endpoint_expected_inventory"].items())),
         "W2_ENDPOINT_ROOTS": ",".join(design["endpoint_link_roots"]),
     })
+    environment.update(registry["strict_timing_environment"])
     run = subprocess.run(
         [tool_before["resolved_path"], "-batch", "-files", str(tcl_snapshot)],
         cwd=attempt, env=environment, stdout=subprocess.PIPE,
@@ -1720,6 +1857,10 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         raise FlowError("Genus executable/version changed during execution")
     if sha256_bytes(stable_read(library.resolve(strict=True))) != library_source_hash:
         raise FlowError("source library changed during execution")
+    if (sha256_bytes(stable_read(hold_library.resolve(strict=True))) != hold_library_hash or
+            sha256_bytes(stable_read(cell_lef.resolve(strict=True))) != cell_lef_hash or
+            sha256_bytes(stable_read(shared_qrc.resolve(strict=True))) != shared_qrc_hash):
+        raise FlowError("hold library/LEF/QRC changed during execution")
     report_hashes = verify_reports(
         attempt / "work", design["top"], run.stdout, golden["genus_version"])
     sdf_path = attempt / "work" / f"{design['top']}.sdf"
@@ -1784,18 +1925,26 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
     handoff_path = attempt / "innovus-handoff.json"
     write_exclusive(handoff_path, canonical(handoff))
     receipt = {
-        "schema": "k2_w2_genus_receipt_v1",
-        "status": "PASS",
+        "schema": "k2_w2_genus_exact_three_endpoint_receipt_v3",
+        "status": "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD",
         "design": design_key,
         "top": design["top"],
+        "boundary_cohort": design["boundary_cohort"],
+        "source_origin": design["source_origin"],
+        "ranking_policy": registry["ranking_policy"],
         "attempt_sha256": sha256_bytes(stable_read(attempt / "attempt.json")),
+        "staged_manifest": registry["staged_manifest_identity"],
+        "technology_authorities": registry["technology_authority_identities"],
         "evidence_cohorts": {
             "raw_reference": raw_golden_identity,
             "buffered_reference": golden_identity,
-            "endpoint_candidate": {
-                "cohort": registry["evidence_cohort"],
+            "goal_execution": {
+                "cohort": design["boundary_cohort"],
                 "design": design_key,
+                "top": design["top"],
+                "source_origin": design["source_origin"],
                 "source_commit": registry["repository_commit"],
+                "ranking_policy": registry["ranking_policy"],
             },
             "functional_loss_reference": functional_loss_identity,
         },
@@ -1818,7 +1967,11 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             "source_and_filelist_hashes": "PASS",
             "authoritative_ganghee_archive": "PASS_EXACT_SHA_AND_ANCHORS",
             "authoritative_raw_ganghee_archive": "PASS_EXACT_SHA_AND_ANCHORS",
-            "raw_buffered_endpoint_cohort_separation": "PASS",
+            "goal_registry": "PASS_EXACT_THREE_TECH_STAGED_COMPOSITIONS",
+            "generic_or_native_top_substitution": "FORBIDDEN",
+            "non_link_output_boundary": "PASS_IDENTICAL_EXACT",
+            "r1_vs_p6_link_width": "PASS_INHERENT_3_BITS_VS_6_BITS",
+            "diagnostic_registries_used_for_final_ranking": "FORBIDDEN",
             "functional_loss_reference": "PASS_NON_OFFICIAL_WORKSPACE_DIFF_LOSS_ONLY",
             "functional_loss_used_for_ppa": "FORBIDDEN",
             "exclusive_attempt_namespace": "PASS",
@@ -1833,7 +1986,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             "mapped_functional_gate": "PASS_STAGED_VS_MAPPED_SDF_VENDOR_MODELS",
             "report_only_publication": "REJECTED_REQUIRES_SOURCE_TOOL_NETLIST_SDC_CONNECTIVITY_FUNCTIONAL_GATE",
         },
-        "claim_boundary": "GENUS_MAPPED_SCREENING_ONLY_NOT_PHYSICAL_PPA",
+        "claim_boundary": "GENUS_MAPPED_TIMING_SCREENING_ONLY_POWER_AND_PHYSICAL_PPA_HOLD",
     }
     receipt_path = attempt / "receipt.json"
     write_exclusive(receipt_path, canonical(receipt))
@@ -1846,6 +1999,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--design", required=True)
     parser.add_argument("--genus", type=Path, required=True)
     parser.add_argument("--library", type=Path, required=True)
+    parser.add_argument("--hold-library", type=Path, required=True)
+    parser.add_argument("--cell-lef", type=Path, required=True)
+    parser.add_argument("--shared-qrc", type=Path, required=True)
     parser.add_argument("--golden-archive", type=Path, required=True)
     parser.add_argument("--raw-golden-archive", type=Path, required=True)
     parser.add_argument("--functional-loss-archive", type=Path, required=True)

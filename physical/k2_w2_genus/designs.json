@@ -222,5 +222,22 @@
         "ordered_pairs", "back_to_back", "reset"
       ]
     }
-  }
+  },
+  "diagnostic_registries": [
+    {
+      "path": "physical/k2_w2_genus/diagnostic_designs.json",
+      "usage": "raw_core_and_owner_generic_diagnostics_only",
+      "ranking_eligible": false
+    },
+    {
+      "path": "physical/k2_w2_tops/designs.json",
+      "usage": "owner_generic_wrapper_diagnostics_only",
+      "ranking_eligible": false
+    },
+    {
+      "path": "physical/k2_w2_genus/component_diagnostics.json",
+      "usage": "native_a2_a3_and_component_diagnostics_only",
+      "ranking_eligible": false
+    }
+  ]
 }

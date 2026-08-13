@@ -1,0 +1,20 @@
+library (w2_fast_fixture) {
+  cell (DFFNSRX1) {
+    area : 1.4;
+    ff (IQ, IQN) { clocked_on : "(!CKN)"; next_state : "D"; clear : "(!RN)"; preset : "(!SN)"; }
+    pin (CKN) { direction : input; clock : true; }
+    pin (D) {
+      direction : input;
+      timing () { related_pin : "CKN"; timing_type : setup_falling; values ("0.08"); }
+      timing () { related_pin : "CKN"; timing_type : hold_falling; values ("0.04"); }
+    }
+    pin (RN) {
+      direction : input;
+      timing () { related_pin : "CKN"; timing_type : recovery_falling; values ("0.09"); }
+      timing () { related_pin : "CKN"; timing_type : removal_falling; values ("0.06"); }
+    }
+    pin (SN) { direction : input; }
+    pin (Q) { direction : output; function : "IQ"; }
+    pin (QN) { direction : output; function : "IQN"; }
+  }
+}
