@@ -1,6 +1,6 @@
 {
   "campaign_launch_allowed": false,
-  "contract_sha256": "3ab301848eeefa15e295afe76bd02712f006a21867b2f9f47fd72655062413e2",
+  "contract_sha256": "8e877a178b3d89bf9756a826f9dd782ed8fa1f9a48f705234b67d549e7e6d491",
   "corner_policy": {
     "hold_liberty": "fast_vdd1v0_basicCells.lib",
     "hold_qrc": "gpdk045.tch",
@@ -12,7 +12,7 @@
     "evidence_class": "user_confirmed_live_shell_observation",
     "limitations": [
       "Technology bytes are not present locally; a strict server preflight must re-read and match these SHAs.",
-      "Tool executable SHAs and runtime version probes are not supplied by this observation."
+      "Tool executable paths, SHAs and versions are direct observations; strict preflight still must invoke each exact executable and parse the expected version."
     ],
     "observation_date": "2026-08-13",
     "technology_sha256": {
@@ -27,7 +27,25 @@
       "genus": "/tools/cadence/DDI231/bin/genus",
       "innovus": "/tools/cadence/DDI231/bin/innovus",
       "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun"
-    }
+    },
+    "tool_sha256": {
+      "genus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+      "innovus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+      "xrun": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7"
+    },
+    "tool_versions": {
+      "genus": "23.14-s090_1",
+      "innovus": "23.14-s088_1",
+      "xrun": "23.09-s013"
+    },
+    "tool_warnings": [
+      {
+        "code": "BUILD_EXPIRATION_BANNER",
+        "disposition": "Record as warning when invocation exits zero; fail when invocation exits nonzero.",
+        "evidence": "The direct server banner reports build expiration, while the preserved server golden records a successful Genus execution.",
+        "tool": "genus"
+      }
+    ]
   },
   "gates": {
     "direct_server_observation": {
@@ -45,7 +63,25 @@
           "genus": "/tools/cadence/DDI231/bin/genus",
           "innovus": "/tools/cadence/DDI231/bin/innovus",
           "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun"
-        }
+        },
+        "tool_sha256": {
+          "genus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+          "innovus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+          "xrun": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7"
+        },
+        "tool_versions": {
+          "genus": "23.14-s090_1",
+          "innovus": "23.14-s088_1",
+          "xrun": "23.09-s013"
+        },
+        "tool_warnings": [
+          {
+            "code": "BUILD_EXPIRATION_BANNER",
+            "disposition": "Record as warning when invocation exits zero; fail when invocation exits nonzero.",
+            "evidence": "The direct server banner reports build expiration, while the preserved server golden records a successful Genus execution.",
+            "tool": "genus"
+          }
+        ]
       },
       "reason": "external live-shell evidence; strict preflight has not locally re-read these inputs",
       "status": "PROVEN_DIRECT_OBSERVATION"
@@ -97,9 +133,8 @@
   "qualification_status": "HOLD",
   "schema": "k2_w2_server_env_result_v1",
   "unresolved_environment_evidence": [
-    "Genus executable byte SHA and runtime version probe",
-    "Innovus executable byte SHA and runtime version probe",
-    "Xrun executable byte SHA and runtime version probe",
+    "runtime invocation and exact parsed-version match for the three byte-pinned tools",
+    "runtime capture of the Genus build-expiration banner warning (nonzero invocation remains FAIL)",
     "strict server re-read matching five observed technology files (six roles with shared QRC)",
     "fast Liberty PVT and direct posedge/negedge FF inspection",
     "direct technology/macro LEF site legality",

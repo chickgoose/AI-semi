@@ -146,6 +146,17 @@ def validate_contract(contract: dict[str, Any]) -> None:
         path = observation.get("tool_paths", {}).get(name)
         if not path or contract["tools"].get(name, {}).get("observed_path") != path:
             raise PreflightError(f"direct tool path observation mismatch: {name}")
+        expected_sha = observation.get("tool_sha256", {}).get(name)
+        if (not expected_sha or not SHA_RE.fullmatch(expected_sha) or
+                contract["tools"][name].get("sha256") != expected_sha):
+            raise PreflightError(f"direct tool SHA observation mismatch: {name}")
+        expected_version = observation.get("tool_versions", {}).get(name)
+        if not expected_version or contract["tools"][name].get("version") != expected_version:
+            raise PreflightError(f"direct tool version observation mismatch: {name}")
+    warnings = observation.get("tool_warnings", [])
+    if not any(row.get("tool") == "genus" and
+               row.get("code") == "BUILD_EXPIRATION_BANNER" for row in warnings):
+        raise PreflightError("Genus build-expiration warning policy is missing")
 
 
 def verify_golden(contract: dict[str, Any], raw_path: Path,
@@ -290,11 +301,28 @@ def verify_tool(path: Path, contract_row: dict[str, Any]) -> dict[str, Any]:
         raise PreflightError(f"tool is not executable: {path}")
     probe = subprocess.run([str(path), "-version"], stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True, check=False)
-    if probe.returncode or contract_row["version"] not in probe.stdout:
-        raise PreflightError(f"tool version probe mismatch: {path}")
+    if probe.returncode:
+        raise PreflightError(
+            f"tool version invocation failed: {path}: exit {probe.returncode}")
+    versions = sorted(set(re.findall(
+        r"(?<![A-Za-z0-9_.-])\d{2}\.\d{2}-s\d+(?:_\d+)?(?![A-Za-z0-9_.-])",
+        probe.stdout)))
+    if versions != [contract_row["version"]]:
+        raise PreflightError(
+            f"tool parsed version mismatch: {path}: {versions} != "
+            f"{[contract_row['version']]}")
+    expiration_lines = [line.strip() for line in probe.stdout.splitlines()
+                        if re.search(r"expir", line, re.IGNORECASE)]
+    warnings = [{
+        "code": "TOOL_BANNER_EXPIRATION",
+        "message": line,
+        "disposition": "warning_only_after_zero_exit",
+    } for line in expiration_lines]
     return {"path": str(path), "sha256": sha_bytes(payload),
-            "size_bytes": metadata.st_size, "version": contract_row["version"],
-            "version_output": probe.stdout.strip()}
+            "size_bytes": metadata.st_size,
+            "expected_version": contract_row["version"],
+            "parsed_version": versions[0], "version_output": probe.stdout.strip(),
+            "warnings": warnings}
 
 
 def verify_server(contract: dict[str, Any], pdk_root: Path, genus: Path,
@@ -392,6 +420,9 @@ def main() -> int:
             "observation_date": contract["direct_server_observation"]["observation_date"],
             "technology_sha256": contract["direct_server_observation"]["technology_sha256"],
             "tool_paths": contract["direct_server_observation"]["tool_paths"],
+            "tool_sha256": contract["direct_server_observation"]["tool_sha256"],
+            "tool_versions": contract["direct_server_observation"]["tool_versions"],
+            "tool_warnings": contract["direct_server_observation"]["tool_warnings"],
         }, "external live-shell evidence; strict preflight has not locally re-read these inputs")
         raw = args.raw_archive or Path(contract["source_archives"]["raw_core"]["default_path"])
         buffered = args.buffered_archive or Path(
@@ -411,9 +442,8 @@ def main() -> int:
                      "direct paths/technology SHAs are bound, but local bytes and runtime probes are unavailable")
             result["qualification_status"] = "HOLD"
             result["unresolved_environment_evidence"] = [
-                "Genus executable byte SHA and runtime version probe",
-                "Innovus executable byte SHA and runtime version probe",
-                "Xrun executable byte SHA and runtime version probe",
+                "runtime invocation and exact parsed-version match for the three byte-pinned tools",
+                "runtime capture of the Genus build-expiration banner warning (nonzero invocation remains FAIL)",
                 "strict server re-read matching five observed technology files (six roles with shared QRC)",
                 "fast Liberty PVT and direct posedge/negedge FF inspection",
                 "direct technology/macro LEF site legality",

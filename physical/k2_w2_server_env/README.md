@@ -8,11 +8,13 @@ or HOLD.
 
 The contract binds direct live-shell observations dated 2026-08-13: exact SHAs
 for slow/fast Liberty, technology/macro LEF and the shared QRC file, plus exact
-Genus/Innovus/Xrun paths.  These are external direct observations, not a claim
-that the bytes were locally re-read. Tool executable SHAs and runtime probes
-remain `null`; a strict server preflight must fill those pins, re-read every
-technology file and verify all semantics. The committed local result is
-therefore intentionally HOLD.
+Genus/Innovus/Xrun paths, executable SHAs and parsed versions. These are
+external direct observations, not a claim that the bytes were locally re-read
+or invoked by this local run. A strict server preflight must re-read every file,
+invoke each exact executable and parse exactly one expected version. The Genus
+build-expiration banner is retained as a warning after a zero exit because the
+preserved golden executed successfully; any nonzero invocation remains FAIL.
+The committed local result is therefore intentionally HOLD.
 
 The corner contract is slow Liberty for setup and fast Liberty for hold.  Both
 RC corners use the one real `qrc/qx/gpdk045.tch`.  A distinct QRC file is not
