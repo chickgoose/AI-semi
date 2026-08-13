@@ -145,7 +145,13 @@ set flow_failed [catch {
   if {[llength $row_names] == 0} {
     error "floorplan created no standard-cell rows for site $site"
   }
-  foreach row_site [dbGet top.fPlan.rows.site.name -u] {
+  set actual_row_sites [dbGet top.fPlan.rows.site.name -u]
+  foreach planned_site $planned_sites {
+    if {[lsearch -exact $actual_row_sites $planned_site] < 0} {
+      error "floorplan is missing required placement rows for site $planned_site"
+    }
+  }
+  foreach row_site $actual_row_sites {
     if {[lsearch -exact $planned_sites $row_site] < 0} {
       error "floorplan row uses unrequired site $row_site"
     }

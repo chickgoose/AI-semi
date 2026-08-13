@@ -98,6 +98,8 @@ class StaticFlowContractTests(unittest.TestCase):
             "dbGet top.fPlan.rows.site.name -u",
             "concat $used_sites [list $site CoreSiteDouble]",
             "foreach used_site $planned_sites",
+            "foreach planned_site $planned_sites",
+            "floorplan is missing required placement rows",
             "setAnalysisMode -analysisType onChipVariation -cppr both",
             "globalNetConnect $vdd -type pgpin",
             "globalNetConnect $vss -type pgpin",
