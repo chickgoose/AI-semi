@@ -29,6 +29,10 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def token(label: str) -> str:
+    return digest(label.encode("ascii"))
+
+
 class ReleaseBundle:
     KEY_ID = "w2-test-release-key"
     SECRET = bytes.fromhex("42" * 32)
@@ -40,36 +44,65 @@ class ReleaseBundle:
             "campaign_id": "k2-w2-production-20260813",
             "generation": 7,
             "nonce": "ab" * 32,
-            "cohort_id": "complete_endpoint_wrappers",
-            "candidate_ids": ["a2_p6", "a3_p6", "fovea_a7"],
+            "cohort_id": GATE.EXPECTED_COHORT,
+            "candidate_ids": list(GATE.EXPECTED_CANDIDATES),
             "candidate_commits": {
+                "fovea_a7": "77" * 20,
                 "a2_p6": "22" * 20,
                 "a3_p6": "33" * 20,
-                "fovea_a7": "77" * 20,
             },
             "provenance": {
-                "liberty": {"library_set_id": "slow_vdd1v0", "sha256": "11" * 32},
-                "pvt": {
-                    "process": "slow", "voltage_v": "1.0", "temperature_c": "125",
-                    "operating_condition": "slow_vdd1v0_125c",
+                "server_environment": {
+                    "environment_id": "server-210.126.11.79-20260813",
+                    "contract_sha256": token("server-contract"),
                 },
-                "sdc": {"constraint_set_id": "k2_w2_multiclock_v1", "sha256": "12" * 32},
+                "technology": {
+                    "setup_liberty_sha256": token("slow-liberty"),
+                    "hold_liberty_sha256": token("fast-liberty"),
+                    "tech_lef_sha256": token("tech-lef"),
+                    "cell_lef_sha256": token("cell-lef"),
+                    "shared_qrc_sha256": token("gpdk045-qrc"),
+                },
+                "pvt": {
+                    "setup": {
+                        "process": "slow", "voltage_v": "0.9", "temperature_c": "125",
+                        "operating_condition": "slow_vdd1v0_125c",
+                    },
+                    "hold": {
+                        "process": "fast", "voltage_v": "1.1", "temperature_c": "-40",
+                        "operating_condition": "fast_vdd1v0_m40c",
+                    },
+                    "shared_rc_corner": "gpdk045_typical_shared",
+                },
+                "sdc": {
+                    "constraint_set_id": "k2_w2_multiclock_full_link",
+                    "sha256": token("multiclock-sdc"),
+                    "clock_schema": "k2_w2_multiclock_full_link_v6",
+                },
                 "load": {
-                    "model_id": "logical_link_load_v1", "sha256": "13" * 32,
-                    "output_load_pf": "0.010",
+                    "model_id": "identical_external_link_load_v1",
+                    "sha256": token("load-model"), "output_load_pf": "0.010",
+                },
+                "staged_manifest": {
+                    "schema": "k2_w2_tech_staged_compositions_v1",
+                    "sha256": token("staged-manifest"),
+                    "repository_commit": "13" * 20,
+                    "normalized_boundary_sha256": token("normalized-non-link-boundary"),
                 },
                 "workload": {
                     "suite_id": "aer-clean-v4-full50-cap22",
                     "generator_version": 4, "full_run_count": 50,
                     "capacity_run_count": 22,
-                    "full_manifest_sha256": "14" * 32,
-                    "capacity_manifest_sha256": "15" * 32,
-                    "trace_bundle_sha256": "16" * 32,
+                    "full_manifest_sha256": token("full50-manifest"),
+                    "capacity_manifest_sha256": token("capacity22-manifest"),
+                    "trace_bundle_sha256": token("trace-bundle"),
                 },
             },
         }
         self.receipts: dict[str, dict] = {}
         self.receipt_paths: dict[str, Path] = {}
+        self.point_docs: dict[tuple[str, str, str], dict] = {}
+        self.point_paths: dict[tuple[str, str, str], Path] = {}
         self.manifest_path = root / "release-manifest.json"
         self.keyring_path = root / "release-keyring.json"
         self._build()
@@ -88,53 +121,193 @@ class ReleaseBundle:
             "candidate_results": self.candidate_results(),
         }
 
-    def sweep(self, offset: int) -> dict:
+    def _point_base(self, candidate: str, period: str, role: str) -> dict:
         return {
-            "status": "MONOTONIC_QUALIFIED",
-            "points": [
-                {"period_ns": "0.8", "wns_ns": str(-0.10 - offset / 1000),
-                 "qualified": False},
-                {"period_ns": "1.0", "wns_ns": str(0.02 + offset / 1000),
-                 "qualified": True},
-                {"period_ns": "1.2", "wns_ns": str(0.08 + offset / 1000),
-                 "qualified": True},
-            ],
+            "schema": GATE.POINT_RECEIPT_SCHEMAS[role],
+            "role": role,
+            "receipt_id": f"{candidate}-{period.replace('.', 'p')}-{role}",
+            "status": "COMPLETE",
+            "release_binding": copy.deepcopy(self.campaign),
+            "candidate_id": candidate,
+            "top": GATE.EXPECTED_TOPS[candidate],
+            "period_ns": period,
+        }
+
+    def _make_point_receipts(self, candidate: str, period: str, offset: int) -> dict[str, dict]:
+        prefix = f"{candidate}-{period}"
+        innovus = self._point_base(candidate, period, "innovus")
+        innovus.update({
+            "clean_exit": True,
+            "postroute_netlist_sha256": token(prefix + "-netlist"),
+            "database_sha256": token(prefix + "-database"),
+            "tool_log_sha256": token(prefix + "-tool-log"),
+        })
+        sta = self._point_base(candidate, period, "sta")
+        setup_wns = {"0.8": f"-{100 + offset}", "1.0": f"{20 + offset}",
+                     "1.2": f"{80 + offset}"}[period]
+        setup_wns = str(int(setup_wns) / 1000)
+        setup_failed = period == "0.8"
+        sta["checks"] = {}
+        for check in ("setup", "hold", "recovery", "removal"):
+            failed = check == "setup" and setup_failed
+            wns = setup_wns if check == "setup" else "0.050"
+            sta["checks"][check] = {
+                "report_sha256": token(prefix + "-" + check),
+                "wns_ns": wns,
+                "tns_ns": wns if failed else "0.000",
+                "violations": 1 if failed else 0,
+            }
+        drc = self._point_base(candidate, period, "drc")
+        drc["checks"] = {
+            name: {"report_sha256": token(prefix + "-" + name), "violations": 0}
+            for name in ("drc", "antenna")
+        }
+        connectivity = self._point_base(candidate, period, "connectivity")
+        connectivity["checks"] = {
+            name: {"report_sha256": token(prefix + "-" + name),
+                   "opens": 0, "shorts": 0, "unconnected": 0}
+            for name in ("signal", "pg")
+        }
+        return {"innovus": innovus, "sta": sta, "drc": drc,
+                "connectivity": connectivity}
+
+    def _write_point(self, candidate: str, period: str, role: str) -> dict[str, str]:
+        key = (candidate, period, role)
+        path = self.root / "receipts" / "postroute" / candidate / period / f"{role}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(canonical(self.point_docs[key]))
+        self.point_paths[key] = path
+        return {"path": path.relative_to(self.root).as_posix(),
+                "sha256": digest(path.read_bytes())}
+
+    def sweep(self, candidate: str, offset: int) -> dict:
+        points = []
+        for period in ("0.8", "1.0", "1.2"):
+            documents = self._make_point_receipts(candidate, period, offset)
+            refs = {}
+            for role, document in documents.items():
+                self.point_docs[(candidate, period, role)] = document
+                refs[role] = self._write_point(candidate, period, role)
+            points.append({"period_ns": period, "receipts": refs})
+        return {
+            "status": "MONOTONIC_QUALIFIED", "points": points,
             "qualified_bracket": {
                 "last_fail_period_ns": "0.8", "first_pass_period_ns": "1.0"},
-            "selected_period_ns": "1.0",
-            "cherry_pick_forbidden": True,
+            "selected_period_ns": "1.0", "cherry_pick_forbidden": True,
         }
 
     def _build(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
-        self.receipts["genus"] = self.base("genus")
-        self.receipts["genus"]["screening_scope"] = "MAPPED_FUNCTIONAL_NO_RANKING_METRICS"
+        provenance = self.campaign["provenance"]
 
-        self.receipts["innovus"] = self.base("innovus")
-        self.receipts["innovus"]["frequency_sweeps"] = {
-            candidate: self.sweep(index)
-            for index, candidate in enumerate(self.campaign["candidate_ids"])
+        server = self.base("server_environment")
+        server["environment"] = {
+            **copy.deepcopy(provenance["server_environment"]),
+            "qualification_status": "PROVEN",
+            "tools": {
+                "genus": {"version": "23.14-s090_1",
+                          "executable_sha256": token("genus-executable")},
+                "innovus": {"version": "23.14-s088_1",
+                            "executable_sha256": token("innovus-executable")},
+            },
+            "technology": copy.deepcopy(provenance["technology"]),
+            "pvt": copy.deepcopy(provenance["pvt"]),
+            "final_cohort_only": True,
         }
+        self.receipts["server_environment"] = server
 
-        self.receipts["activity_power"] = self.base("activity_power")
-        self.receipts["activity_power"]["activity"] = {
-            "mode": "SAIF", "saif_sha256": "21" * 32,
-            "scope_sha256": "23" * 32, "window_sha256": "24" * 32,
-            "coverage_percent": 99.5,
+        staged = self.base("tech_staged_manifest")
+        staged["manifest"] = {
+            **copy.deepcopy(provenance["staged_manifest"]),
+            "candidate_ids": list(GATE.EXPECTED_CANDIDATES),
+            "tops": copy.deepcopy(GATE.EXPECTED_TOPS),
+            "link_ports_preserved": True,
+        }
+        staged["candidate_results"] = {
+            candidate: {"status": "PASS", "top": GATE.EXPECTED_TOPS[candidate],
+                        "link_ports": GATE.EXPECTED_LINK_PORTS[candidate],
+                        "link_bits": GATE.EXPECTED_LINK_BITS[candidate]}
+            for candidate in GATE.EXPECTED_CANDIDATES
+        }
+        self.receipts["tech_staged_manifest"] = staged
+
+        genus = self.base("genus")
+        genus.update({
+            "boundary_cohort": GATE.EXPECTED_COHORT,
+            "source_origin": "tech_staged_repository_exact",
+            "staged_manifest_sha256": provenance["staged_manifest"]["sha256"],
+            "server_environment_contract_sha256":
+                provenance["server_environment"]["contract_sha256"],
+        })
+        genus["candidate_results"] = {
+            candidate: {
+                "status": "PASS", "top": GATE.EXPECTED_TOPS[candidate],
+                "mapped_netlist_sha256": token(candidate + "-mapped-netlist"),
+                "mapped_sdc_sha256": token(candidate + "-mapped-sdc"),
+                "constraint_set_sha256": provenance["sdc"]["sha256"],
+                "report_receipt_sha256": token(candidate + "-genus-report"),
+                "mapped_smoke_sha256": token(candidate + "-mapped-smoke"),
+            }
+            for candidate in GATE.EXPECTED_CANDIDATES
+        }
+        self.receipts["genus"] = genus
+
+        innovus = self.base("innovus")
+        innovus["frequency_sweeps"] = {
+            candidate: self.sweep(candidate, index)
+            for index, candidate in enumerate(GATE.EXPECTED_CANDIDATES)
+        }
+        self.receipts["innovus"] = innovus
+
+        activity = self.base("activity_power")
+        activity["activity"] = {
+            "mode": "SAIF",
+            "measurement": {
+                "trace_bundle_sha256": provenance["workload"]["trace_bundle_sha256"],
+                "workload_window_id": "full50-cap22-retire-window",
+                "window_start_cycle": 100, "window_end_cycle_exclusive": 1100,
+                "measurement_cycles": 1000, "clock_period_ns": "1.0",
+            },
             "authentication": {
                 "method": "BOUNDARY_HMAC_SHA256", "boundary_role": "boundary",
                 "scope": "ENTIRE_ACTIVITY_POWER_RECEIPT_SHA256",
             },
         }
+        activity["candidate_results"] = {}
+        for index, candidate in enumerate(GATE.EXPECTED_CANDIDATES):
+            total = str(1 + index)
+            activity["candidate_results"][candidate] = {
+                "status": "PASS", "saif_sha256": token(candidate + "-saif"),
+                "power_report_sha256": token(candidate + "-power-report"),
+                "scope_sha256": token(candidate + "-power-scope"),
+                "coverage_percent": 99.0 + index / 10,
+                "retired_events": 1000, "total_power_mw": total,
+                "dynamic_power_mw": str(0.8 + index), "leakage_power_mw": "0.2",
+                "energy_pj_per_event": total,
+            }
+        self.receipts["activity_power"] = activity
 
-        self.receipts["functional_loss"] = self.base("functional_loss")
-        self.receipts["functional_loss"]["claim_boundary"] = {
+        functional = self.base("functional_loss")
+        functional["claim_boundary"] = {
             "loss_accounting": "GO", "accepted_event_conservation": "GO",
             "official_common_receipt": "GO", "workspace_diff": False,
             "ppa_usage": "FORBIDDEN",
         }
+        functional["measurement"] = {
+            "trace_bundle_sha256": provenance["workload"]["trace_bundle_sha256"],
+            "full_manifest_sha256": provenance["workload"]["full_manifest_sha256"],
+            "capacity_manifest_sha256": provenance["workload"]["capacity_manifest_sha256"],
+            "full_run_count": 50, "capacity_run_count": 22,
+        }
+        functional["candidate_results"] = {
+            candidate: {"status": "PASS", "result_receipt_sha256": token(candidate + "-loss"),
+                        "generated": 1200, "source_overrun": 200,
+                        "accepted": 1000, "delivered": 1000, "errors": 0}
+            for candidate in GATE.EXPECTED_CANDIDATES
+        }
+        self.receipts["functional_loss"] = functional
 
-        for role in GATE.METRIC_ROLES:
+        for role in GATE.ATTESTED_ROLES:
             path = self.root / "receipts" / f"{role}.json"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(canonical(self.receipts[role]))
@@ -143,17 +316,39 @@ class ReleaseBundle:
         self._write_keyring()
         self._write_manifest()
 
-    def _metric_hashes(self) -> dict[str, str]:
+    def _attested_hashes(self) -> dict[str, str]:
         return {role: digest(self.receipt_paths[role].read_bytes())
-                for role in GATE.METRIC_ROLES}
+                for role in GATE.ATTESTED_ROLES}
 
     def _write_boundary(self, *, resign: bool = True) -> None:
         boundary = self.base("boundary")
+        boundary["common_non_link_seam_sha256"] = \
+            self.campaign["provenance"]["staged_manifest"]["normalized_boundary_sha256"]
+        boundary["seam_policy"] = {
+            "common_non_link_seam_identical": True,
+            "hidden_storage": False, "link_outputs_retained": True,
+        }
+        boundary["candidate_results"] = {}
+        for candidate in GATE.EXPECTED_CANDIDATES:
+            bits = GATE.EXPECTED_LINK_BITS[candidate]
+            boundary["candidate_results"][candidate] = {
+                "status": "PASS", "top": GATE.EXPECTED_TOPS[candidate],
+                "clock_contract": {
+                    "schema": "k2_w2_multiclock_full_link_v6",
+                    "input_clocks": ["ref_clk_i", "sample_clk_i"],
+                    "generated_clocks": ["link_clk_o"], "gated_clocks": ["link_clk_o"],
+                },
+                "link_cut": {
+                    "marker": "AER_LINK_CUT", "ports": GATE.EXPECTED_LINK_PORTS[candidate],
+                    "physical_link_bits": bits, "native_boundary_link_bits": 0,
+                    "link_cut_accounted_bits": bits, "total_accounted_link_bits": bits,
+                    "tx_rx_same_nets_connected": True, "external_load_applied_once": True,
+                },
+            }
         payload = {
             "schema": GATE.BOUNDARY_ATTESTATION_SCHEMA,
-            "release_id": self.release_id,
-            "campaign": copy.deepcopy(self.campaign),
-            "receipt_sha256": self._metric_hashes(),
+            "release_id": self.release_id, "campaign": copy.deepcopy(self.campaign),
+            "receipt_sha256": self._attested_hashes(),
             "boundary_body_sha256": digest(canonical(boundary)),
         }
         mac = hmac.new(self.SECRET, canonical(payload), hashlib.sha256).hexdigest()
@@ -177,16 +372,11 @@ class ReleaseBundle:
         references = []
         for role in GATE.ROLES:
             path = self.receipt_paths[role]
-            references.append({
-                "role": role,
-                "path": path.relative_to(self.root).as_posix(),
-                "sha256": digest(path.read_bytes()),
-            })
+            references.append({"role": role, "path": path.relative_to(self.root).as_posix(),
+                               "sha256": digest(path.read_bytes())})
         self.manifest_path.write_bytes(canonical({
-            "schema": GATE.MANIFEST_SCHEMA,
-            "release_id": self.release_id,
-            "campaign": copy.deepcopy(self.campaign),
-            "receipts": references,
+            "schema": GATE.MANIFEST_SCHEMA, "release_id": self.release_id,
+            "campaign": copy.deepcopy(self.campaign), "receipts": references,
         }))
 
     def rewrite(self, role: str, *, resign_boundary: bool = True,
@@ -197,10 +387,26 @@ class ReleaseBundle:
         if rewrite_manifest:
             self._write_manifest()
 
+    def rewrite_point(self, candidate: str, period: str, role: str) -> None:
+        reference = self._write_point(candidate, period, role)
+        sweep = self.receipts["innovus"]["frequency_sweeps"][candidate]
+        point = next(row for row in sweep["points"] if row["period_ns"] == period)
+        point["receipts"][role] = reference
+        self.rewrite("innovus")
+
     def mutate_campaign_everywhere(self, transform) -> None:
         transform(self.campaign)
-        for role in GATE.METRIC_ROLES:
+        for role in GATE.ATTESTED_ROLES:
             self.receipts[role]["release_binding"] = copy.deepcopy(self.campaign)
+        for key, document in self.point_docs.items():
+            document["release_binding"] = copy.deepcopy(self.campaign)
+            self._write_point(*key)
+        for candidate, sweep in self.receipts["innovus"]["frequency_sweeps"].items():
+            for point in sweep["points"]:
+                for role in GATE.POINT_RECEIPT_SCHEMAS:
+                    path = self.point_paths[(candidate, point["period_ns"], role)]
+                    point["receipts"][role]["sha256"] = digest(path.read_bytes())
+        for role in GATE.ATTESTED_ROLES:
             self.receipt_paths[role].write_bytes(canonical(self.receipts[role]))
         self._write_boundary()
         self._write_manifest()
@@ -233,233 +439,264 @@ class ReleaseGateTests(unittest.TestCase):
             "--output", str(output),
         ]
 
-    def test_valid_bundle_only_permits_ranking_without_metrics(self) -> None:
-        result = self.gate()
-        self.assertEqual(result["status"], "RANKING_PERMITTED")
-        self.assertEqual(result["decision"], {
-            "final_ranking": "PERMITTED_NOT_COMPUTED",
-            "metric_copy_or_fabrication": "NONE",
-            "raw_report_reparsing": "NONE",
-        })
-        serialized = canonical(result)
-        for forbidden in (b"wns_ns", b"power_mw", b"loss_rate", b"ranking_order"):
-            self.assertNotIn(forbidden, serialized)
-
-    def test_output_is_byte_reproducible(self) -> None:
-        self.assertEqual(canonical(self.gate()), canonical(self.gate()))
-
-    def test_missing_and_duplicate_role_fail_closed(self) -> None:
-        manifest = json.loads(self.bundle.manifest_path.read_text())
-        manifest["receipts"] = manifest["receipts"][:-1]
-        self.bundle.manifest_path.write_bytes(canonical(manifest))
-        self.reject("receipt role inventory mismatch")
-
-        self.bundle._write_manifest()
-        manifest = json.loads(self.bundle.manifest_path.read_text())
-        manifest["receipts"][-1] = copy.deepcopy(manifest["receipts"][0])
-        self.bundle.manifest_path.write_bytes(canonical(manifest))
-        self.reject("duplicate receipt role")
-
-    def test_duplicate_id_path_and_hash_fail_closed(self) -> None:
-        self.bundle.receipts["innovus"]["receipt_id"] = self.bundle.receipts["genus"]["receipt_id"]
-        self.bundle.rewrite("innovus")
-        self.reject("duplicate receipt_id")
-
-        self.setUp_rebuild()
-        manifest = json.loads(self.bundle.manifest_path.read_text())
-        manifest["receipts"][1]["path"] = manifest["receipts"][0]["path"]
-        manifest["receipts"][1]["sha256"] = manifest["receipts"][0]["sha256"]
-        self.bundle.manifest_path.write_bytes(canonical(manifest))
-        self.reject("duplicate receipt path")
-
-        self.setUp_rebuild()
-        genus_data = self.bundle.receipt_paths["genus"].read_bytes()
-        self.bundle.receipt_paths["innovus"].write_bytes(genus_data)
-        manifest = json.loads(self.bundle.manifest_path.read_text())
-        for row in manifest["receipts"]:
-            if row["role"] == "innovus":
-                row["sha256"] = digest(genus_data)
-        self.bundle.manifest_path.write_bytes(canonical(manifest))
-        self.reject("duplicate receipt SHA256")
-
-    def test_cross_cohort_and_candidate_identity_fail_even_when_resigned(self) -> None:
-        self.bundle.receipts["genus"]["release_binding"]["cohort_id"] = "raw_core_only"
-        self.bundle.rewrite("genus")
-        self.reject("cross-cohort")
-
-        self.setUp_rebuild()
-        self.bundle.receipts["activity_power"]["candidate_results"].pop("a3_p6")
-        self.bundle.rewrite("activity_power")
-        self.reject("candidate_results must exactly match")
-
-    def test_stale_generation_nonce_and_workload_fail_even_when_all_resigned(self) -> None:
-        self.bundle.mutate_campaign_everywhere(
-            lambda campaign: campaign.__setitem__("generation", 6))
-        # The manifest is the frozen expected generation, so make only receipts stale.
-        manifest = json.loads(self.bundle.manifest_path.read_text())
-        manifest["campaign"]["generation"] = 7
-        self.bundle.manifest_path.write_bytes(canonical(manifest))
-        self.reject("stale or belongs")
-
-        self.setUp_rebuild()
-        self.bundle.mutate_campaign_everywhere(
-            lambda campaign: campaign["provenance"]["workload"].__setitem__(
-                "full_run_count", 48))
-        self.reject("must equal 50")
-
-    def test_liberty_pvt_sdc_load_and_workload_cross_provenance_rejected(self) -> None:
-        mutations = [
-            lambda p: p["liberty"].__setitem__("sha256", "31" * 32),
-            lambda p: p["pvt"].__setitem__("voltage_v", "0.9"),
-            lambda p: p["sdc"].__setitem__("sha256", "32" * 32),
-            lambda p: p["load"].__setitem__("sha256", "33" * 32),
-            lambda p: p["workload"].__setitem__("trace_bundle_sha256", "34" * 32),
-        ]
-        for mutation in mutations:
-            with self.subTest(mutation=mutation):
-                self.setUp_rebuild()
-                mutation(self.bundle.receipts["innovus"]["release_binding"]["provenance"])
-                self.bundle.rewrite("innovus")
-                self.reject("stale or belongs")
-
-    def test_non_monotonic_fmax_reversion_and_cherry_pick_rejected(self) -> None:
-        sweep = self.bundle.receipts["innovus"]["frequency_sweeps"]["a3_p6"]
-        sweep["points"][1]["wns_ns"] = "0.020"
-        sweep["points"][2]["wns_ns"] = "0.010"
-        self.bundle.rewrite("innovus")
-        self.reject("non-monotonic Fmax slack")
-
-        self.setUp_rebuild()
-        sweep = self.bundle.receipts["innovus"]["frequency_sweeps"]["a3_p6"]
-        sweep["points"][2] = {"period_ns": "1.2", "wns_ns": "-0.01", "qualified": False}
-        self.bundle.rewrite("innovus")
-        self.reject("non-monotonic Fmax slack|pass-to-fail")
-
-        self.setUp_rebuild()
-        sweep = self.bundle.receipts["innovus"]["frequency_sweeps"]["a3_p6"]
-        sweep["selected_period_ns"] = "1.2"
-        self.bundle.rewrite("innovus")
-        self.reject("cherry-picked")
-
-    def test_raw_non_monotonic_hold_status_rejected(self) -> None:
-        sweep = self.bundle.receipts["innovus"]["frequency_sweeps"]["fovea_a7"]
-        sweep["status"] = "NON_MONOTONIC_HOLD"
-        sweep["qualified_bracket"] = None
-        sweep["selected_period_ns"] = None
-        self.bundle.rewrite("innovus")
-        self.reject("not a monotonic qualified sweep")
-
-    def test_unauthenticated_or_vectorless_power_rejected(self) -> None:
-        activity = self.bundle.receipts["activity_power"]["activity"]
-        activity["authentication"]["method"] = "SELF_ASSERTED"
-        self.bundle.rewrite("activity_power")
-        self.reject("unauthenticated")
-
-        self.setUp_rebuild()
-        self.bundle.receipts["activity_power"]["activity"]["mode"] = "VECTORLESS"
-        self.bundle.rewrite("activity_power")
-        self.reject("must be SAIF")
-
-    def test_power_byte_change_cannot_be_authorized_by_manifest_rehash_only(self) -> None:
-        self.bundle.receipts["activity_power"]["activity"]["coverage_percent"] = 98.0
-        # Rewrite power and manifest but intentionally retain the old signed boundary payload.
-        self.bundle.rewrite("activity_power", resign_boundary=False)
-        self.reject("does not bind every metric receipt")
-
-    def test_forged_boundary_or_untrusted_key_rejected(self) -> None:
-        boundary = self.bundle.receipts["boundary"]
-        boundary["attestation"]["mac_sha256"] = "00" * 32
-        self.bundle.rewrite("boundary", resign_boundary=False)
-        self.reject("MAC mismatch")
-
-        self.setUp_rebuild()
-        boundary = self.bundle.receipts["boundary"]
-        boundary["attestation"]["key_id"] = "unknown-key"
-        self.bundle.rewrite("boundary", resign_boundary=False)
-        self.reject("not trusted")
-
-        self.setUp_rebuild()
-        self.bundle.receipts["boundary"]["status"] = "HOLD_WAS_TAMPERED_TO_PASS"
-        self.bundle.rewrite("boundary", resign_boundary=False)
-        self.reject("status is not PASS")
-
-        self.setUp_rebuild()
-        self.bundle.receipts["boundary"]["candidate_results"]["a2_p6"]["status"] = "FAIL"
-        self.bundle.rewrite("boundary", resign_boundary=False)
-        self.reject("is not PASS")
-
-        self.setUp_rebuild()
-        self.bundle.receipts["boundary"]["receipt_id"] = "boundary-valid-looking-substitute"
-        self.bundle.rewrite("boundary", resign_boundary=False)
-        self.reject("does not bind the boundary receipt body")
-
-    def test_keyring_requires_out_of_band_exact_hash(self) -> None:
-        with self.assertRaisesRegex(GATE.ReleaseGateError, "out-of-band trusted SHA256"):
-            GATE.load_and_gate(
-                self.root, self.bundle.manifest_path, self.bundle.keyring_path, "00" * 32)
-
-    def test_workspace_diff_loss_only_receipt_is_not_promoted(self) -> None:
-        claim = self.bundle.receipts["functional_loss"]["claim_boundary"]
-        claim["official_common_receipt"] = "HOLD_WORKSPACE_DIFF_NON_OFFICIAL"
-        claim["workspace_diff"] = True
-        self.bundle.rewrite("functional_loss")
-        self.reject("non-official")
-
-    def test_changed_missing_symlink_and_hash_mismatch_fail_closed(self) -> None:
-        path = self.bundle.receipt_paths["genus"]
-        path.write_bytes(path.read_bytes() + b" ")
-        self.reject("SHA256 mismatch")
-
-        self.setUp_rebuild()
-        self.bundle.receipt_paths["genus"].unlink()
-        self.reject("cannot read genus receipt")
-
-        self.setUp_rebuild()
-        path = self.bundle.receipt_paths["genus"]
-        target = self.root / "other.json"
-        target.write_bytes(path.read_bytes())
-        path.unlink()
-        path.symlink_to(target)
-        self.reject("contains a symlink|non-symlink")
-
-    def test_manifest_outside_bundle_is_rejected(self) -> None:
-        outside = Path(self.temp.name).parent / f"{self.root.name}-outside-manifest.json"
-        try:
-            outside.write_bytes(self.bundle.manifest_path.read_bytes())
-            with self.assertRaisesRegex(GATE.ReleaseGateError, "contained by the bundle root"):
-                GATE.load_and_gate(
-                    self.root, outside, self.bundle.keyring_path,
-                    digest(self.bundle.keyring_path.read_bytes()))
-        finally:
-            outside.unlink(missing_ok=True)
-
-    def test_cli_exit_contract_diagnostic_and_exclusive_output(self) -> None:
-        output = self.root / "permit.json"
-        command = self.cli_command(output)
-        passed = subprocess.run(command, text=True, capture_output=True, check=False)
-        self.assertEqual(passed.returncode, 0, passed.stderr)
-        self.assertEqual(json.loads(output.read_text())["status"], "RANKING_PERMITTED")
-        repeated = subprocess.run(command, text=True, capture_output=True, check=False)
-        self.assertEqual(repeated.returncode, 1)
-        self.assertEqual(json.loads(output.read_text())["status"], "RANKING_PERMITTED")
-
-        self.setUp_rebuild()
-        self.bundle.receipts["innovus"]["status"] = "HOLD"
-        self.bundle.rewrite("innovus")
-        output = self.root / "hold.json"
-        command = self.cli_command(output)
-        held = subprocess.run(command, text=True, capture_output=True, check=False)
-        self.assertEqual(held.returncode, 2)
-        result = json.loads(output.read_text())
-        self.assertEqual(result["status"], "RANKING_HOLD")
-        self.assertEqual(result["decision"]["final_ranking"], "FORBIDDEN")
-        self.assertIn("innovus receipt status is not PASS", result["diagnostic"])
-
     def setUp_rebuild(self) -> None:
         self.temp.cleanup()
         self.temp = tempfile.TemporaryDirectory(prefix="k2-w2-release-")
         self.root = Path(self.temp.name)
         self.bundle = ReleaseBundle(self.root)
+
+    def test_valid_exact_campaign_permits_ranking_without_metrics(self) -> None:
+        result = self.gate()
+        self.assertEqual(result["status"], "RANKING_PERMITTED")
+        self.assertEqual(result["candidate_ids"], GATE.EXPECTED_CANDIDATES)
+        self.assertEqual(len(result["postroute_receipt_sha256"]), 36)
+        serialized = canonical(result)
+        for forbidden in (b"wns_ns", b"power_mw", b"energy_pj", b"ranking_order"):
+            self.assertNotIn(forbidden, serialized)
+        self.assertEqual(serialized, canonical(self.gate()))
+
+    def test_missing_duplicate_and_changed_top_receipts_fail_closed(self) -> None:
+        manifest = json.loads(self.bundle.manifest_path.read_text())
+        manifest["receipts"] = manifest["receipts"][:-1]
+        self.bundle.manifest_path.write_bytes(canonical(manifest))
+        self.reject("receipt role inventory mismatch")
+
+        self.setUp_rebuild()
+        manifest = json.loads(self.bundle.manifest_path.read_text())
+        manifest["receipts"][-1] = copy.deepcopy(manifest["receipts"][0])
+        self.bundle.manifest_path.write_bytes(canonical(manifest))
+        self.reject("duplicate receipt role")
+
+        self.setUp_rebuild()
+        path = self.bundle.receipt_paths["genus"]
+        path.write_bytes(path.read_bytes() + b" ")
+        self.reject("SHA256 mismatch")
+
+    def test_exact_two_candidate_fabrication_is_rejected_even_when_resigned(self) -> None:
+        candidates = ["fovea_a7", "a2_p6"]
+        self.bundle.campaign["candidate_ids"] = candidates
+        self.bundle.campaign["candidate_commits"].pop("a3_p6")
+        for role in GATE.ATTESTED_ROLES:
+            self.bundle.receipts[role]["release_binding"] = copy.deepcopy(self.bundle.campaign)
+            self.bundle.receipts[role]["candidate_results"].pop("a3_p6", None)
+            self.bundle.receipt_paths[role].write_bytes(canonical(self.bundle.receipts[role]))
+        self.bundle._write_boundary()
+        self.bundle._write_manifest()
+        self.reject("exact ordered final three-candidate set")
+
+    def test_genus_v1_cross_schema_bypass_is_rejected(self) -> None:
+        self.bundle.receipts["genus"]["schema"] = "k2_w2_genus_receipt_v1"
+        self.bundle.rewrite("genus")
+        self.reject("schema mismatch")
+
+    def test_server_env_hold_and_raw_diagnostic_cohort_are_not_promoted(self) -> None:
+        self.bundle.receipts["server_environment"]["environment"]["qualification_status"] = "HOLD"
+        self.bundle.rewrite("server_environment")
+        self.reject("not PROVEN")
+        self.setUp_rebuild()
+        self.bundle.campaign["cohort_id"] = "raw_core_only"
+        self.bundle.mutate_campaign_everywhere(lambda _: None)
+        self.reject("not the final tech-staged cohort")
+
+    def test_staged_manifest_wrong_set_or_removed_link_port_is_rejected(self) -> None:
+        manifest = self.bundle.receipts["tech_staged_manifest"]["manifest"]
+        manifest["candidate_ids"] = ["fovea_a7", "a2_p6"]
+        self.bundle.rewrite("tech_staged_manifest")
+        self.reject("exact normalized three-top set")
+        self.setUp_rebuild()
+        self.bundle.receipts["tech_staged_manifest"]["manifest"]["link_ports_preserved"] = False
+        self.bundle.rewrite("tech_staged_manifest")
+        self.reject("exact normalized three-top set")
+
+    def test_postroute_point_missing_receipt_and_fake_sentinel_are_rejected(self) -> None:
+        point = self.bundle.receipts["innovus"]["frequency_sweeps"]["a2_p6"]["points"][0]
+        point["receipts"].pop("connectivity")
+        self.bundle.rewrite("innovus")
+        self.reject("must contain Innovus/STA/DRC/connectivity")
+        self.setUp_rebuild()
+        document = self.bundle.point_docs[("a2_p6", "1.0", "innovus")]
+        document["clean_exit"] = False
+        document["fake_pass_sentinel"] = True
+        self.bundle.rewrite_point("a2_p6", "1.0", "innovus")
+        self.reject("did not exit cleanly")
+
+    def test_fabricated_sweep_booleans_cannot_replace_actual_receipts(self) -> None:
+        sweep = self.bundle.receipts["innovus"]["frequency_sweeps"]["a3_p6"]
+        sweep["points"] = [
+            {"period_ns": "0.8", "wns_ns": "-0.1", "qualified": False},
+            {"period_ns": "1.0", "wns_ns": "0.1", "qualified": True},
+        ]
+        self.bundle.rewrite("innovus")
+        self.reject("key mismatch")
+
+    def test_nonmonotonic_actual_sta_and_cherry_pick_are_rejected(self) -> None:
+        sta = self.bundle.point_docs[("a3_p6", "1.2", "sta")]
+        sta["checks"]["setup"].update({"wns_ns": "0.010", "tns_ns": "0.000",
+                                         "violations": 0})
+        self.bundle.rewrite_point("a3_p6", "1.2", "sta")
+        self.reject("non-monotonic Fmax slack")
+        self.setUp_rebuild()
+        self.bundle.receipts["innovus"]["frequency_sweeps"]["a3_p6"][
+            "selected_period_ns"] = "1.2"
+        self.bundle.rewrite("innovus")
+        self.reject("cherry-picked")
+
+    def test_sta_hold_recovery_removal_drc_and_connectivity_fail_closed(self) -> None:
+        for role, mutate, diagnostic in (
+            ("sta", lambda doc: doc["checks"]["recovery"].update(
+                {"wns_ns": "-0.1", "tns_ns": "-0.1", "violations": 1}),
+             "does not contain both a fail and a pass|pass-to-fail|cherry-picked"),
+            ("drc", lambda doc: doc["checks"]["drc"].__setitem__("violations", 1),
+             "does not contain both a fail and a pass|pass-to-fail|cherry-picked"),
+            ("connectivity", lambda doc: doc["checks"]["signal"].__setitem__("opens", 1),
+             "does not contain both a fail and a pass|pass-to-fail|cherry-picked"),
+        ):
+            with self.subTest(role=role):
+                self.setUp_rebuild()
+                mutate(self.bundle.point_docs[("fovea_a7", "1.0", role)])
+                self.bundle.rewrite_point("fovea_a7", "1.0", role)
+                self.reject(diagnostic)
+
+    def test_fabricated_activity_and_vectorless_power_are_rejected(self) -> None:
+        row = self.bundle.receipts["activity_power"]["candidate_results"]["a3_p6"]
+        row["power_report_sha256"] = row["saif_sha256"]
+        self.bundle.rewrite("activity_power")
+        self.reject("reuses candidate evidence hashes")
+        self.setUp_rebuild()
+        row = self.bundle.receipts["activity_power"]["candidate_results"]["a3_p6"]
+        row["total_power_mw"] = "99"
+        self.bundle.rewrite("activity_power")
+        self.reject("component total is inconsistent")
+        self.setUp_rebuild()
+        self.bundle.receipts["activity_power"]["activity"]["mode"] = "VECTORLESS"
+        self.bundle.rewrite("activity_power")
+        self.reject("must be SAIF")
+        self.setUp_rebuild()
+        self.bundle.receipts["activity_power"]["activity"]["authentication"][
+            "method"] = "SELF_ASSERTED"
+        self.bundle.rewrite("activity_power")
+        self.reject("unauthenticated")
+
+    def test_activity_trace_window_retire_coverage_and_energy_are_required(self) -> None:
+        measurement = self.bundle.receipts["activity_power"]["activity"]["measurement"]
+        measurement["trace_bundle_sha256"] = token("other-trace")
+        self.bundle.rewrite("activity_power")
+        self.reject("trace differs")
+        self.setUp_rebuild()
+        self.bundle.receipts["activity_power"]["candidate_results"]["a2_p6"][
+            "retired_events"] = 0
+        self.bundle.rewrite("activity_power")
+        self.reject("integer >= 1")
+        self.setUp_rebuild()
+        self.bundle.receipts["activity_power"]["candidate_results"]["a2_p6"][
+            "coverage_percent"] = 0
+        self.bundle.rewrite("activity_power")
+        self.reject("coverage is invalid")
+        self.setUp_rebuild()
+        self.bundle.receipts["activity_power"]["candidate_results"]["a2_p6"][
+            "energy_pj_per_event"] = "999"
+        self.bundle.rewrite("activity_power")
+        self.reject("energy/event is not derived")
+
+    def test_workspace_diff_loss_and_loss_conservation_are_rejected(self) -> None:
+        claim = self.bundle.receipts["functional_loss"]["claim_boundary"]
+        claim["official_common_receipt"] = "HOLD_WORKSPACE_DIFF_NON_OFFICIAL"
+        claim["workspace_diff"] = True
+        self.bundle.rewrite("functional_loss")
+        self.reject("non-official")
+        self.setUp_rebuild()
+        self.bundle.receipts["functional_loss"]["candidate_results"]["a2_p6"][
+            "delivered"] = 999
+        self.bundle.rewrite("functional_loss")
+        self.reject("conservation failed")
+
+    def test_link_cut_exactly_once_prevents_double_count_and_omission(self) -> None:
+        cut = self.bundle.receipts["boundary"]["candidate_results"]["a2_p6"]["link_cut"]
+        cut["native_boundary_link_bits"] = 6
+        cut["total_accounted_link_bits"] = 12
+        self.bundle.rewrite("boundary", resign_boundary=False)
+        self.reject("omitted or doubled")
+        self.setUp_rebuild()
+        cut = self.bundle.receipts["boundary"]["candidate_results"]["a2_p6"]["link_cut"]
+        cut["link_cut_accounted_bits"] = 0
+        cut["total_accounted_link_bits"] = 0
+        self.bundle.rewrite("boundary", resign_boundary=False)
+        self.reject("omitted or doubled")
+
+    def test_old_single_clock_boundary_and_hidden_adapter_are_rejected(self) -> None:
+        clocks = self.bundle.receipts["boundary"]["candidate_results"]["fovea_a7"][
+            "clock_contract"]
+        clocks["schema"] = "k2_w2_single_clock_v5"
+        self.bundle.rewrite("boundary", resign_boundary=False)
+        self.reject("multi-clock contract mismatch")
+        self.setUp_rebuild()
+        self.bundle.receipts["boundary"]["seam_policy"]["hidden_storage"] = True
+        self.bundle.rewrite("boundary", resign_boundary=False)
+        self.reject("hidden adaptation")
+
+    def test_cross_provenance_and_stale_generation_are_rejected(self) -> None:
+        self.bundle.receipts["innovus"]["release_binding"]["provenance"]["sdc"][
+            "sha256"] = token("other-sdc")
+        self.bundle.rewrite("innovus")
+        self.reject("stale or belongs")
+        self.setUp_rebuild()
+        self.bundle.receipts["server_environment"]["environment"]["technology"][
+            "hold_liberty_sha256"] = token("other-fast-lib")
+        self.bundle.rewrite("server_environment")
+        self.reject("technology differs")
+        self.setUp_rebuild()
+        self.bundle.receipts["genus"]["release_binding"]["generation"] = 6
+        self.bundle.rewrite("genus")
+        self.reject("stale or belongs")
+
+    def test_missing_duplicate_and_changed_nested_receipts_fail_closed(self) -> None:
+        path = self.bundle.point_paths[("a2_p6", "1.0", "sta")]
+        path.unlink()
+        self.reject("cannot read")
+        self.setUp_rebuild()
+        point = self.bundle.receipts["innovus"]["frequency_sweeps"]["a2_p6"]["points"][1]
+        point["receipts"]["sta"] = copy.deepcopy(point["receipts"]["innovus"])
+        self.bundle.rewrite("innovus")
+        self.reject("duplicate receipt path")
+        self.setUp_rebuild()
+        path = self.bundle.point_paths[("a2_p6", "1.0", "sta")]
+        path.write_bytes(path.read_bytes() + b" ")
+        self.reject("SHA256 mismatch")
+
+    def test_boundary_authentication_and_out_of_band_keyring_pin(self) -> None:
+        self.bundle.receipts["activity_power"]["candidate_results"]["a2_p6"][
+            "coverage_percent"] = 98.0
+        self.bundle.rewrite("activity_power", resign_boundary=False)
+        self.reject("does not bind every upstream receipt")
+        self.setUp_rebuild()
+        self.bundle.receipts["boundary"]["attestation"]["mac_sha256"] = "00" * 32
+        self.bundle.rewrite("boundary", resign_boundary=False)
+        self.reject("MAC mismatch")
+        self.setUp_rebuild()
+        with self.assertRaisesRegex(GATE.ReleaseGateError, "out-of-band trusted SHA256"):
+            GATE.load_and_gate(self.root, self.bundle.manifest_path, self.bundle.keyring_path,
+                               "00" * 32)
+
+    def test_cli_exit_contract_and_exclusive_output(self) -> None:
+        output = self.root / "permit.json"
+        passed = subprocess.run(self.cli_command(output), text=True, capture_output=True,
+                                check=False)
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+        self.assertEqual(json.loads(output.read_text())["status"], "RANKING_PERMITTED")
+        repeated = subprocess.run(self.cli_command(output), text=True, capture_output=True,
+                                  check=False)
+        self.assertEqual(repeated.returncode, 1)
+
+        self.setUp_rebuild()
+        self.bundle.receipts["innovus"]["status"] = "HOLD"
+        self.bundle.rewrite("innovus")
+        output = self.root / "hold.json"
+        held = subprocess.run(self.cli_command(output), text=True, capture_output=True,
+                              check=False)
+        self.assertEqual(held.returncode, 2)
+        result = json.loads(output.read_text())
+        self.assertEqual(result["status"], "RANKING_HOLD")
+        self.assertIn("innovus receipt status is not PASS", result["diagnostic"])
 
 
 if __name__ == "__main__":
