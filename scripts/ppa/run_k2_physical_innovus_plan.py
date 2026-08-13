@@ -502,8 +502,27 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
     if "set_load" not in text or "set_input_transition" not in text or \
             "set_clock_gating_check" not in text or "-clock_fall" not in text:
         raise PlanError("mapped SDC lost load/driver/gating/DDR constraint classes")
-    if re.search(r"set_false_path[^\n]*(?:rst_n|RN)", text):
-        raise PlanError("mapped SDC false-paths reset recovery/removal")
+    false_rows = [row.strip() for row in re.split(
+        r"[;\n]", text.replace("\\\n", " ")) if "set_false_path" in row]
+    if false_rows:
+        nonlink_outputs = []
+        nonlink_contract = [
+                {"name": "source_accept_o", "width": 16},
+                {"name": "retire_valid_o", "width": 2},
+                {"name": "retire_addr0_o", "width": 4},
+                {"name": "retire_addr1_o", "width": 4},
+                {"name": "drain_idle_o", "width": 1},
+                {"name": "protocol_error_o", "width": 1}]
+        for row in nonlink_contract:
+            nonlink_outputs.extend(
+                [row["name"]] if row["width"] == 1 else
+                [f'{row["name"]}[{index}]' for index in range(row["width"])])
+        tokens = sdc_tokens(false_rows[0]) if len(false_rows) == 1 else set()
+        if not re.match(
+                r"^set_false_path\s+-from\s+\[get_ports\s+(?:\{)?rst_n(?:\})?\]\s+"
+                r"-to\s+\[list\s+", false_rows[0]) or \
+                tokens != {"rst_n", *nonlink_outputs}:
+            raise PlanError("mapped SDC contains a broad reset false path")
 
 
 def validate_staged_manifest(bound: dict[str, Any], registry: dict[str, Any],
