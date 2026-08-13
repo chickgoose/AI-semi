@@ -1,0 +1,232 @@
+Fovea / Cluster2 / Fovea+A7 / K2 후보 디지털 개발 최종 현황
+기준 시각: 2026-08-13 KST
+통합 브랜치: integration/k2-digital-final
+
+이 문서는 디지털 RTL·시뮬레이션·generic Yosys 증거만 다룬다.
+표준셀 면적, 실제 배선 길이, Fmax, 동적/누설 전력, energy/event, CDC/RDC,
+P&R 결과는 아직 없으므로 물리/PPA 판정은 모두 HOLD다.
+
+======================================================================
+1. 핵심 결론
+======================================================================
+
+1순위: A2 Batched-IWRR K2 + P6
+- 세 신규 후보 중 full50/capacity22 수락량과 fixed-window 처리량이 최고다.
+- Fovea의 [1,5,5,1]을 장기 aggregate service 비율로 보존한다.
+- 원본 Fovea의 exact scalar-prefix 의미를 완전히 보존하지는 않는다.
+- 성능 우선 대회 후보로 가장 유력하다.
+
+2순위: A3 Exact Scalar-Prefix K2 + P6
+- Fovea의 현재 pending snapshot에 scalar 선택식을 정확히 두 번 적용한다.
+- 세 후보 중 Fovea 의미 보존이 가장 강하고 A2보다 mapped 비용과 depth가 낮다.
+- 성능은 실제 Cluster2 회수 결과와 거의 같은 수준이나 A2보다 낮다.
+- 의미 보존을 핵심 혁신으로 발표할 때 가장 정직한 후보다.
+
+3순위: A4 Paired Cortical Column K2 + P6
+- [1,5,5,1] aggregate 정책을 유지하며 성능은 A3보다 높다.
+- 그러나 동일 경계 generic 구조 비용이 A2/A3보다 매우 크고, 의미도 exact-prefix가 아니다.
+- A2에 성능과 비용 모두 열세여서 현재 Pareto에서는 제외한다.
+
+최종 판단:
+- A2는 “Fovea aggregate 의미 + Cluster2 이상 처리량”의 성능형 하이브리드다.
+- A3는 “Fovea exact-prefix 의미 + Cluster2급 처리량”의 의미보존형 하이브리드다.
+- 둘 다 유의미한 새 Pareto 후보지만, 기존 구조보다 면적·전력까지 우세하다는 증거는 없다.
+
+======================================================================
+2. 기존 구조 기준선
+======================================================================
+
+[원본 Fovea — 회수된 실제 Xcelium 진단]
+- 구조: scalar 1-event/cycle, [1,5,5,1] 중심 가중 선택.
+- full50: generated 106,416 / accepted=delivered 78,229 / overrun 28,187.
+- full50 fixed-window: 78,151 / 115,968 = 0.673901 event/cycle.
+- capacity22: accepted=delivered 42,163 / overrun 23,453.
+- capacity22 fixed-window: 42,101 / 55,552 = 0.757867 event/cycle.
+- 장점: 가장 명확한 Fovea 의미, 좁은 scalar 경계.
+- 한계: 1-event/cycle 병목과 높은 source overrun.
+
+[원본 Cluster2 — 회수된 실제 Xcelium 진단]
+- 구조: 중심/주변 2개 lane과 row bitmap 병렬 출력, 최대 8 occurrence/cycle 표현.
+- Fovea의 WEIGHT/round/prefer_center가 제거되어 [1,5,5,1] 의미가 평탄화됐다.
+- full50: accepted=delivered 94,157 / overrun 12,259.
+- full50 fixed-window: 94,122 / 115,968 = 0.811620 event/cycle.
+- capacity22: accepted=delivered 57,802 / overrun 7,814.
+- capacity22 fixed-window: 57,781 / 55,552 = 1.040125 event/cycle.
+- 장점: 높은 병렬 처리량, 낮은 대기, 높은 fairness.
+- 한계: Fovea 의미 상쇄, 넓은 bitmap/lane 경계, 동일-flow 전체 비용·전력 미측정.
+
+[Fovea+A7]
+- Fovea selector는 그대로 두고 scalar 4-bit address를 2-bit DDR로 전송한다.
+- 처리량/수락량은 원본 Fovea와 같고 링크만 5 signals에서 3 signals로 줄인다.
+- 동일 경계 generic proxy: DDR 198 cells/37 state, parallel 196/35.
+- 장점: Fovea 의미 보존, scalar link signal 40% 절감.
+- 한계: core의 1-event/cycle 병목과 overrun은 개선하지 않는다.
+
+주의:
+- 위 Fovea/Cluster2는 회수 Xcelium 캠페인이고, 아래 신규 후보는 별도의 pinned
+  Verilator actual-P6 캠페인이다. 동일 frozen trace 수요를 사용하지만 하나의 공식
+  canonical head-to-head receipt는 아니므로, 퍼센트 비교는 디지털 설계 판단용이다.
+
+======================================================================
+3. 신규 후보 actual scheduler + actual P6 전체 RTL 결과
+======================================================================
+
+실행 증거:
+- package commit a05b943c12fde313357f726b638d84dc747e23ca
+- publication commit 867e55c781cfeb250b3456f3fae54e4a8b8371fe
+- result SHA-256 67c6dd0a2decda78edede6d285c81ae580faa7c5a4b949c74c5b19291a8858b2
+- 실제 full50 실행 3후보×50 = 150회.
+- capacity22는 full50의 exact 22-trace subset view이며 추가 표본으로 합산하지 않음.
+- legal drain/reset/recovery 3회.
+- drop/duplicate/swap/partial-microstep/reset 실제 RTL mutant 15회 모두 kill.
+- 독립 두 캠페인 결과 byte-identical.
+- acceptance는 실제 owner bundle commit/count/address에서 관찰.
+- retirement는 실제 P6 출력에서 pre-NBA synchronous-consumer 시점으로 관찰.
+- observer wrapper 추가 state 0, ordered-link adapter 미사용.
+
+[A2 + P6]
+full50
+- generated 106,416 / accepted=retired 104,046 / overrun 2,370.
+- acceptance ratio 97.7729%.
+- fixed-window retired 103,940 / 115,968 = 0.896281733 event/cycle.
+- occurrence→accept mean/p99/max = 0.235 / 5 / 23 cycles.
+- accept→retire = 고정 3 cycles.
+capacity22 subset
+- accepted=retired 63,246 / overrun 2,370.
+- fixed-window 63,184 / 55,552 = 1.137384793 event/cycle.
+
+[A3 + P6]
+full50
+- generated 106,416 / accepted=retired 93,645 / overrun 12,771.
+- acceptance ratio 88.0007%.
+- fixed-window retired 93,548 / 115,968 = 0.806670806 event/cycle.
+- occurrence→accept mean/p99/max = 1.225 / 6 / 265 cycles.
+- accept→retire = 고정 2 cycles.
+capacity22 subset
+- accepted=retired 57,280 / overrun 8,336.
+- fixed-window 57,222 / 55,552 = 1.030061924 event/cycle.
+
+[A4 + P6]
+full50
+- generated 106,416 / accepted=retired 102,171 / overrun 4,245.
+- acceptance ratio 96.0096%.
+- fixed-window retired 102,099 / 115,968 = 0.880406664 event/cycle.
+- occurrence→accept mean/p99/max = 0.350 / 6 / 23 cycles.
+- accept→retire = 고정 2 cycles.
+capacity22 subset
+- accepted=retired 61,380 / overrun 4,236.
+- fixed-window 61,337 / 55,552 = 1.104136665 event/cycle.
+
+기존 회수 결과 대비 참고용 full50 accepted 비교:
+- A2 vs Fovea: +25,817, 약 +33.0%.
+- A2 vs Cluster2: +9,889, 약 +10.5%.
+- A3 vs Fovea: +15,416, 약 +19.7%.
+- A3 vs Cluster2: -512, 약 -0.54%.
+- A4 vs Fovea: +23,942, 약 +30.6%.
+- A4 vs Cluster2: +8,014, 약 +8.5%.
+이 비교는 simulator/runner 경계가 다른 연구 비교이며 공식 동일-attempt 순위는 아니다.
+
+======================================================================
+4. 동일 외부 wrapper·동일 Yosys 흐름 구조 비용
+======================================================================
+
+모든 후보는 동일한 k2_p6_cost_boundary를 사용하고 debug 출력은 내부화했다.
+P6/retire/error/drain까지 포함한 whole-cone generic structural proxy다.
+
+A2 + P6
+- generic cells/state: 304 / 73 bits.
+- mapped cells/state: 778 / 73 bits.
+- logic depth 55, max fanout 15, p95 fanout 6.
+- fanout>=16 nets 0, sink-pin wire proxy 1,514.
+- P6 앞 11-bit elastic adapter를 실제 비용에 포함.
+
+A3 + P6
+- generic cells/state: 361 / 74 bits.
+- mapped cells/state: 728 / 66 bits.
+- logic depth 43, max fanout 31, p95 fanout 5.
+- fanout>=16 nets 3, sink-pin wire proxy 1,372.
+- P6 admission seam 추가 state 0.
+
+A4 + P6
+- generic cells/state: 713 / 89 bits.
+- mapped cells/state: 1,863 / 89 bits.
+- logic depth 108, max fanout 33, p95 fanout 6.
+- fanout>=16 nets 11, sink-pin wire proxy 3,723.
+- P6 admission seam 추가 state 0.
+
+해석:
+- A2와 A3만 구조 Pareto에 남는다.
+- A2는 max fanout과 high-fanout net 수에서 유리하다.
+- A3는 mapped cells/state, depth, p95 fanout, wire proxy에서 유리하다.
+- A4는 A3보다 선언된 모든 mapped/Pareto 비용 지표가 나쁘다.
+- generic Yosys cell은 표준셀 면적, 실제 배선, Fmax, 전력값이 아니다.
+
+P6 link 자체 디지털 proxy
+- P6 DDR: 6 physical link signals, 최대 2 events/link cell, state 40 bits.
+- 공정한 2-event parallel: 10 physical link signals.
+- 따라서 K2 병렬 경계에서 10→6 signals, 40% 감소.
+- scalar Fovea+A7은 3 signals/1 event이므로 절대 핀 수는 더 적다.
+
+======================================================================
+5. 의미 보존 등급
+======================================================================
+
+A2: WEIGHTED_AGGREGATE_NOT_SCALAR_PREFIX
+- [1,5,5,1] 장기 서비스 비율을 유지한다.
+- 성능은 최고지만 원본 Fovea의 매 snapshot scalar winner 순서를 그대로 재현하지 않는다.
+
+A3: EXACT_SCALAR_PREFIX_K2
+- 현재 pending snapshot에 scalar Fovea 선택을 두 microstep 적용한다.
+- 세 신규 후보 중 Fovea 의미 보존이 가장 강하다.
+- common TB의 occurrence negedge 분류→following posedge accept/NBA clear 의미로 수정 완료.
+- same-source 재트리거는 old pending이 살아 있으면 overrun으로 분류됨을 실제 TB와 일치시켰다.
+
+A4: AGGREGATE_ONLY_NOT_SCALAR_PREFIX
+- aggregate [1,5,5,1]은 유지하지만 exact-prefix는 아니다.
+- independent-ready ordered adapter의 younger-bypass 결함을 수정했다.
+- ready=10/01/11, compaction/refill/global order, bug 복원 mutation을 모두 검증했다.
+
+======================================================================
+6. 최종 디지털 검증 상태
+======================================================================
+
+PASS
+- A2 owner: model/exhaustive/20,000-cycle RTL/mutations/frozen replay.
+- A2 normalized common: directed, common 6 cases, reset/backpressure shock, Yosys.
+- A2+P6: count0/1/2, stall, continuous, reset/drain, order/conservation.
+- A3 corrected owner: 15 tests, 72 runs/171,634 vectors, 4 mutations.
+- A3+P6: 13-artifact provenance, source/hash negative tests, SCC=0.
+- A4 owner: directed 7, mutations 5, full50/capacity22, ordered-link 4 cases.
+- A4 promotion: 3 owners×73 runs, common-edge ordering 3 tests, mutations 4.
+- A4+P6: directed, mutations 5, SCC=0.
+- P6 endpoint: model, exhaustive, lockstep, actual RTL mutations, 50-trace replay.
+- 동일 비용 receipt: 14 tests 및 7 receipt 검증.
+- actual-P6 전체: 150 full50 + 3 reset + 15 mutation, 2회 byte-identical.
+
+HOLD / 미검증
+- 주최측 규정상 DDR/multi-edge/generated/gated clock 허용 여부.
+- independent arbitrary-clock CDC와 downstream backpressure.
+- mid-flight reset abort/flush. 현재 reset은 drain 후 reset quiet/recovery만 검증.
+- 표준셀 면적, Fmax, setup/hold, PVT, P&R/CTS/DRC/connectivity.
+- 실제 routing/pad/clock-tree를 포함한 배선 비용.
+- VCD/SAIF 기반 dynamic power, leakage, energy/event.
+- Fovea/Cluster2/A2/A3/A4를 하나의 canonical 공식 simulator attempt에서 직접 비교한 receipt.
+
+======================================================================
+7. 추천 다음 단계
+======================================================================
+
+1. 대회 규정 확인 전 디지털 후보는 A2와 A3 둘 다 보존한다.
+2. 발표 주안점이 성능이면 A2, Fovea 의미 보존이면 A3를 주후보로 사용한다.
+3. A4는 연구 결과로 보존하되 물리 구현 우선순위에서는 제외한다.
+4. 주최측이 P6/DDR를 허용하면 A2/A3만 동일 Liberty/PVT/SDC로 Genus smoke 합성한다.
+5. 둘 중 timing/area가 나쁜 후보를 조기 탈락시키고 남은 후보만 Innovus/P&R 및 SAIF 전력으로 진행한다.
+6. 물리 전에는 “전력 개선”, “면적 우위”, “Fmax 우위”를 주장하지 않는다.
+
+주요 증거 경로
+- tests/a23_full_p6_replay/result.json
+- tests/a23_full_p6_replay/PUBLICATION.md
+- audits/a7_k2_cost_closure/result.json
+- rtl/candidates/a3_exact_scalar_prefix_k2/evidence/results.json
+- rtl/candidates/a4_paired_cortical_column_k2/results/qualification.json
+- tests/a4_k2_promotion/results/promotion_replay_summary.json
