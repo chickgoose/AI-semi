@@ -31,6 +31,10 @@ P&R 결과는 아직 없으므로 물리/PPA 판정은 모두 HOLD다.
 - A2는 “Fovea aggregate 의미 + Cluster2 이상 처리량”의 성능형 하이브리드다.
 - A3는 “Fovea exact-prefix 의미 + Cluster2급 처리량”의 의미보존형 하이브리드다.
 - 둘 다 유의미한 새 Pareto 후보지만, 기존 구조보다 면적·전력까지 우세하다는 증거는 없다.
+- machine-verifiable 디지털 선택 receipt는 A2를 주후보, A3를 보존 fallback으로
+  고정한다. A2는 A3 대비 full50 EPC +11.1087%, capacity22 EPC +10.4191%이며,
+  mapped-cell +6.8681%, state +10.6061%, wire proxy +10.3499% 비용을 지불한다.
+- 이 선택은 디지털 기능·처리량·generic proxy만 사용하며 물리 PPA/CDC/RDC는 HOLD다.
 
 ======================================================================
 2. 기존 구조 기준선
@@ -72,8 +76,11 @@ P&R 결과는 아직 없으므로 물리/PPA 판정은 모두 HOLD다.
 ======================================================================
 
 실행 증거:
-- package commit a05b943c12fde313357f726b638d84dc747e23ca
-- publication commit 867e55c781cfeb250b3456f3fae54e4a8b8371fe
+- 원본 package commit a05b943c12fde313357f726b638d84dc747e23ca
+- 통합 rebased package commit 30377a34f290884ac687608646f335aa520e0610
+- 원본 publication commit 867e55c781cfeb250b3456f3fae54e4a8b8371fe
+- 통합 rebased publication commit 33bbb7453cf19f6bc9b8401a40007d93805257d0
+- 두 원본/통합 commit 쌍의 tests/a23_full_p6_replay subtree는 byte-identical.
 - result SHA-256 67c6dd0a2decda78edede6d285c81ae580faa7c5a4b949c74c5b19291a8858b2
 - 실제 full50 실행 3후보×50 = 150회.
 - capacity22는 full50의 exact 22-trace subset view이며 추가 표본으로 합산하지 않음.
@@ -202,6 +209,8 @@ PASS
 - P6 endpoint: model, exhaustive, lockstep, actual RTL mutations, 50-trace replay.
 - 동일 비용 receipt: 14 tests 및 7 receipt 검증.
 - actual-P6 전체: 150 full50 + 3 reset + 15 mutation, 2회 byte-identical.
+- 최종 선택 receipt: 입력 SHA 고정, 7개 fail-closed test, A2 primary/A3 fallback,
+  physical metric null/HOLD 강제.
 
 HOLD / 미검증
 - 주최측 규정상 DDR/multi-edge/generated/gated clock 허용 여부.
@@ -227,6 +236,8 @@ HOLD / 미검증
 - tests/a23_full_p6_replay/result.json
 - tests/a23_full_p6_replay/PUBLICATION.md
 - audits/a7_k2_cost_closure/result.json
+- audits/k2_final_selection/result.json
+- audits/k2_final_selection/README.md
 - rtl/candidates/a3_exact_scalar_prefix_k2/evidence/results.json
 - rtl/candidates/a4_paired_cortical_column_k2/results/qualification.json
 - tests/a4_k2_promotion/results/promotion_replay_summary.json

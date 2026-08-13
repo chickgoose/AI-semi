@@ -1,0 +1,212 @@
+{
+  "a2_relative_to_a3": {
+    "capacity22_epc_percent": 10.41907,
+    "fanout_max_percent": -51.612903,
+    "full50_accepted_percent": 11.10684,
+    "full50_epc_percent": 11.108736,
+    "logic_depth_percent": 27.906977,
+    "mapped_cells_percent": 6.868132,
+    "mapped_state_percent": 10.606061,
+    "wire_proxy_percent": 10.349854
+  },
+  "candidates": {
+    "a2": {
+      "actual_rtl_mutations_killed": 5,
+      "digital_efficiency_proxies": {
+        "full50_epc_per_mapped_cell": 0.001152033076,
+        "full50_epc_per_state_bit": 0.012277831959,
+        "full50_epc_per_wire_proxy": 0.000591995861
+      },
+      "full_p6_metrics": {
+        "fanout_proxy_max": 15,
+        "fanout_proxy_p95": 6,
+        "logic_depth_levels": 55,
+        "mapped_cells": 778,
+        "mapped_state_bits": 73,
+        "nets_fanout_ge16": 0,
+        "sink_pin_wire_proxy": 1514
+      },
+      "reset_scope": "drain_then_reset_quiet_and_recovery_not_midflight_abort",
+      "semantic_grade": "WEIGHTED_AGGREGATE_NOT_A5_SCALAR_PREFIX",
+      "suites": {
+        "capacity22": {
+          "accept_to_retire": {
+            "count": 63246,
+            "max": 3,
+            "mean": 3.0,
+            "p50": 3,
+            "p95": 3,
+            "p99": 3
+          },
+          "accepted": 63246,
+          "fixed_window_cycles": 55552,
+          "fixed_window_events_per_cycle": 1.137384793,
+          "fixed_window_retired": 63184,
+          "generated": 65616,
+          "occurrence_to_accept": {
+            "count": 63246,
+            "max": 23,
+            "mean": 0.349872,
+            "p50": 0,
+            "p95": 2,
+            "p99": 7
+          },
+          "retired": 63246,
+          "source_overrun": 2370
+        },
+        "full50": {
+          "accept_to_retire": {
+            "count": 104046,
+            "max": 3,
+            "mean": 3.0,
+            "p50": 3,
+            "p95": 3,
+            "p99": 3
+          },
+          "accepted": 104046,
+          "fixed_window_cycles": 115968,
+          "fixed_window_events_per_cycle": 0.896281733,
+          "fixed_window_retired": 103940,
+          "generated": 106416,
+          "occurrence_to_accept": {
+            "count": 104046,
+            "max": 23,
+            "mean": 0.234819,
+            "p50": 0,
+            "p95": 1,
+            "p99": 5
+          },
+          "retired": 104046,
+          "source_overrun": 2370
+        }
+      }
+    },
+    "a3": {
+      "actual_rtl_mutations_killed": 5,
+      "digital_efficiency_proxies": {
+        "full50_epc_per_mapped_cell": 0.001108064294,
+        "full50_epc_per_state_bit": 0.012222284939,
+        "full50_epc_per_wire_proxy": 0.000587952483
+      },
+      "full_p6_metrics": {
+        "fanout_proxy_max": 31,
+        "fanout_proxy_p95": 5,
+        "logic_depth_levels": 43,
+        "mapped_cells": 728,
+        "mapped_state_bits": 66,
+        "nets_fanout_ge16": 3,
+        "sink_pin_wire_proxy": 1372
+      },
+      "reset_scope": "drain_then_reset_quiet_and_recovery_not_midflight_abort",
+      "semantic_grade": "EXACT_SCALAR_PREFIX_K2",
+      "suites": {
+        "capacity22": {
+          "accept_to_retire": {
+            "count": 57280,
+            "max": 2,
+            "mean": 2.0,
+            "p50": 2,
+            "p95": 2,
+            "p99": 2
+          },
+          "accepted": 57280,
+          "fixed_window_cycles": 55552,
+          "fixed_window_events_per_cycle": 1.030061924,
+          "fixed_window_retired": 57222,
+          "generated": 65616,
+          "occurrence_to_accept": {
+            "count": 57280,
+            "max": 265,
+            "mean": 1.32795,
+            "p50": 1,
+            "p95": 3,
+            "p99": 7
+          },
+          "retired": 57280,
+          "source_overrun": 8336
+        },
+        "full50": {
+          "accept_to_retire": {
+            "count": 93645,
+            "max": 2,
+            "mean": 2.0,
+            "p50": 2,
+            "p95": 2,
+            "p99": 2
+          },
+          "accepted": 93645,
+          "fixed_window_cycles": 115968,
+          "fixed_window_events_per_cycle": 0.806670806,
+          "fixed_window_retired": 93548,
+          "generated": 106416,
+          "occurrence_to_accept": {
+            "count": 93645,
+            "max": 265,
+            "mean": 1.225202,
+            "p50": 1,
+            "p95": 2,
+            "p99": 6
+          },
+          "retired": 93645,
+          "source_overrun": 12771
+        }
+      }
+    }
+  },
+  "claim_boundary": {
+    "arbitrary_clock_CDC_RDC": "HOLD",
+    "digital_functional_and_generic_structural": "GO",
+    "midflight_reset_abort_flush": "HOLD",
+    "standard_cell_area_fmax_power_energy_routing": "HOLD"
+  },
+  "hard_gates": {
+    "both_candidates_actual_RTL_functional": true,
+    "both_candidates_actual_RTL_mutations_killed": true,
+    "both_candidates_conservation_and_order": true,
+    "both_candidates_on_structural_pareto": true,
+    "capacity22_exact_full50_subset_runs": 22,
+    "full50_actual_executions_per_candidate": 50,
+    "physical_PPA_CDC_RDC": "HOLD_NOT_USED_FOR_DIGITAL_SELECTION",
+    "same_full_p6_generic_boundary_and_tool": true
+  },
+  "inputs": {
+    "actual_p6_replay": {
+      "path": "tests/a23_full_p6_replay/result.json",
+      "rebased_provenance": {
+        "integrated_package_commit": "30377a34f290884ac687608646f335aa520e0610",
+        "integrated_publication_commit": "33bbb7453cf19f6bc9b8401a40007d93805257d0",
+        "source_and_integrated_subtrees_byte_identical": true,
+        "source_package_commit": "a05b943c12fde313357f726b638d84dc747e23ca",
+        "source_publication_commit": "867e55c781cfeb250b3456f3fae54e4a8b8371fe",
+        "subtree": "tests/a23_full_p6_replay"
+      },
+      "sha256": "67c6dd0a2decda78edede6d285c81ae580faa7c5a4b949c74c5b19291a8858b2"
+    },
+    "same_flow_generic_cost": {
+      "path": "audits/a7_k2_cost_closure/result.json",
+      "sha256": "993e34e229bf9d1b4810af4b540e4015dbebae60505c8f682641373fbb4fee0f"
+    }
+  },
+  "objective_scope": "Fovea_weight_preserving_A2_A3_K2_plus_P6",
+  "retained_fallback": {
+    "candidate": "a3_exact_scalar_prefix_k2_plus_p6",
+    "reason": "Choose A3 instead only if exact scalar-prefix semantics becomes a hard organizer requirement or later physical evidence reverses the digital tradeoff."
+  },
+  "schema": "k2_final_digital_selection_v1",
+  "selected_candidate": "a2_batched_iwrr_k2_plus_p6",
+  "selected_key": "a2",
+  "selection_policy": {
+    "cost_guard": {
+      "mapped_cells_penalty_max_percent": 10.0,
+      "mapped_state_penalty_max_percent": 15.0,
+      "must_remain_on_full_p6_pareto": true,
+      "wire_proxy_penalty_max_percent": 15.0
+    },
+    "eligibility": "weighted-policy preservation plus all digital hard gates",
+    "minimum_performance_margin_percent": 5.0,
+    "primary": "maximize actual-P6 full50 fixed-window events_per_cycle",
+    "tie_break": "capacity22 EPC then full50 accepted then lower mapped cells"
+  },
+  "selection_reason": "A2 clears every digital hard gate, remains on the same-flow structural Pareto set, and provides more than five percent full50/capacity22 performance benefit while its mapped-cell, state, and wire-proxy penalties remain inside the declared digital cost guard.",
+  "status": "DIGITAL_SELECTION_COMPLETE_PHYSICAL_HOLD"
+}
