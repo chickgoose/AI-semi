@@ -55,6 +55,51 @@ proc write_timing_machine_summary {path view check {label ""} {targets ""}} {
   close $handle
 }
 
+proc timing_metrics {view check} {
+  set paths [report_timing -collection -view $view -check_type $check \
+    -max_paths 1000000]
+  set path_count [sizeof_collection $paths]
+  if {$path_count == 0} { error "no $check timing paths in $view" }
+  set violation_count 0
+  set tns 0.0
+  set wns ""
+  foreach_in_collection timing_path $paths {
+    set slack [get_db $timing_path .slack]
+    if {$wns eq "" || $slack < $wns} { set wns $slack }
+    if {$slack < 0.0} {
+      incr violation_count
+      set tns [expr {$tns + $slack}]
+    }
+  }
+  return [list $path_count $violation_count $wns $tns]
+}
+
+proc hold_metrics_improved {before after} {
+  lassign $before before_paths before_violations before_wns before_tns
+  lassign $after after_paths after_violations after_wns after_tns
+  set epsilon 0.000001
+  return [expr {$after_violations < $before_violations ||
+    ($after_violations == $before_violations &&
+      ($after_wns > $before_wns + $epsilon ||
+       (abs($after_wns - $before_wns) <= $epsilon &&
+        $after_tns > $before_tns + $epsilon)))}]
+}
+
+proc write_hold_closure {path status rows} {
+  set handle [open $path {WRONLY CREAT EXCL}]
+  puts $handle "schema=k2_w2_hold_closure_v1"
+  puts $handle "status=$status"
+  puts $handle "max_iterations=3"
+  puts $handle "observation_count=[llength $rows]"
+  set index 0
+  foreach metrics $rows {
+    lassign $metrics path_count violation_count wns tns
+    puts $handle "observation_${index}=$path_count,$violation_count,$wns,$tns"
+    incr index
+  }
+  close $handle
+}
+
 set top       [require_env AER_TOP]
 set netlist   [file normalize [require_env AER_PNR_NETLIST]]
 set tech_lef  [file normalize [require_env AER_TECH_LEF]]
@@ -222,6 +267,37 @@ set flow_failed [catch {
   if {[sizeof_collection $endpoint_icg_enable] != 1} {
     error "expected exactly one preserved endpoint ICG enable pin"
   }
+
+  # Hold ECOs performed before final PG routing left short conventional hold
+  # paths unresolved.  Re-optimize after final PG/RC, reconnect any inserted
+  # cells, and require strict monotonic progress until every hold path closes.
+  setOptMode -fixHoldAllowSetupTnsDegrade false
+  setAnalysisMode -checkType hold
+  set hold_closure_rows [list [timing_metrics w2_hold_view hold]]
+  set hold_status CLOSED
+  for {set hold_iteration 1} {$hold_iteration <= 3} {incr hold_iteration} {
+    set before [lindex $hold_closure_rows end]
+    if {[lindex $before 1] == 0} { break }
+    optDesign -postRoute -hold
+    sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}
+    editTrim -nets [list $vdd $vss]
+    extractRC
+    set after [timing_metrics w2_hold_view hold]
+    lappend hold_closure_rows $after
+    if {![hold_metrics_improved $before $after]} {
+      set hold_status STALLED
+      break
+    }
+  }
+  if {[lindex [lindex $hold_closure_rows end] 1] != 0 && $hold_status eq "CLOSED"} {
+    set hold_status EXHAUSTED
+  }
+  write_hold_closure "$output/reports/hold_closure.machine" \
+    $hold_status $hold_closure_rows
+  if {$hold_status ne "CLOSED"} {
+    error "post-route hold closure did not converge: $hold_status"
+  }
+  setAnalysisMode -checkType setup
   # Preserve a resumable post-route checkpoint before activity/report parsing.
   # Later compatibility failures can then be diagnosed without rerunning P&R.
   saveDesign -mmmc2 "$output/database/${top}.postroute_checkpoint.enc"
