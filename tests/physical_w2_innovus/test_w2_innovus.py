@@ -102,6 +102,8 @@ class StaticFlowContractTests(unittest.TestCase):
             "addRing", "sroute", "checkPlace", "place_opt_design",
             "clock_opt_design", "routeDesign", "extractRC",
             "optDesign -postRoute", "optDesign -postRoute -hold",
+            "set_interactive_constraint_modes [list w2_strict_functional]",
+            "set_propagated_clock [all_clocks]",
             "-check_type setup", "-check_type hold",
             "-check_type recovery", "-check_type removal",
             "-check_type clock_gating_setup", "-check_type clock_gating_hold",
@@ -115,6 +117,14 @@ class StaticFlowContractTests(unittest.TestCase):
             self.assertIn(token, text)
         self.assertNotIn("floorPlan -site", text)
         self.assertNotIn("FLOW_CLEAN", text.split("# FLOW_CLEAN", 1)[0])
+
+    def test_propagated_clock_uses_the_shared_mmmc_constraint_mode(self):
+        text = PNR.read_text(encoding="utf-8")
+        interactive = "set_interactive_constraint_modes [list w2_strict_functional]"
+        propagated = "set_propagated_clock [all_clocks]"
+        self.assertEqual(text.count(interactive), 1)
+        self.assertEqual(text.count(propagated), 1)
+        self.assertLess(text.index(interactive), text.index(propagated))
 
     def test_runner_delegates_clean_marker_to_independent_verifier(self):
         text = RUNNER.read_text(encoding="utf-8")

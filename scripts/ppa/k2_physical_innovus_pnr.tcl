@@ -181,6 +181,10 @@ set flow_failed [catch {
   optDesign -postRoute
   optDesign -postRoute -hold
   extractRC
+  # Innovus 23.14 rejects interactive constraint updates in an MMMC design
+  # until their constraint mode is selected explicitly (TCLCMD-1048).  Both
+  # setup and hold views intentionally share this one strict functional mode.
+  set_interactive_constraint_modes [list w2_strict_functional]
   set_propagated_clock [all_clocks]
 
   if {$activity_format ni {SAIF VCD}} {
