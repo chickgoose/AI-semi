@@ -1,24 +1,40 @@
 {
-  "schema": "k2_w2_genus_design_registry_v1",
-  "repository_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91",
+  "schema": "k2_w2_genus_final_tech_staged_registry_v3",
+  "integration_state": "ready",
+  "cohort": "tech_staged_complete_compositions",
+  "ranking_policy": "ONLY_THREE_TECH_STAGED_COMPLETE_COMPOSITIONS_COMPARABLE",
+  "repository_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
   "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
   "staged_manifest": {
-    "required_schema": "w2-physical-staging-v2",
-    "required_status": "GO_FOR_SERVER_STAGING",
-    "path": null,
-    "sha256": null,
-    "repository_commit": null
+    "required_schema": "k2_w2_tech_staged_compositions_v1",
+    "required_status": "READY_FOR_GENUS_AND_INNOVUS",
+    "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+    "sha256": "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b",
+    "source_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
+    "publication_commit": "7f149e043a740c032e2cd22b3ed1d6876b6670ce"
   },
   "required_technology_authorities": {
-    "p6": {
-      "repository_commit": "847d764481d3cc467059cee76c3ac1463f63aa86",
-      "manifest_path": "rtl/technology/p6/p6_tech_manifest.json",
-      "manifest_sha256": "4b500604fc3637c623e9689c8778464e656d5d8ac7ac639fd49bdd5e72230f64"
+    "raw_golden": {
+      "path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+      "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3"
     },
-    "r1": {
-      "repository_commit": null,
-      "manifest_path": null,
-      "manifest_sha256": null
+    "buffered_golden": {
+      "path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+      "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
+    },
+    "live_gsclib045": {
+      "liberty": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib",
+      "technology_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_tech.lef",
+      "macro_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_macro.lef",
+      "qrc": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/qrc/qx/gpdk045.tch",
+      "dffnsrx1_cell_and_interface_verified": true,
+      "liberty_timing_arcs_claimed_by_manifest": false
+    },
+    "cells": {
+      "TLATNTSCAX2": {"ports": ["CK", "E", "SE", "ECK"]},
+      "MX2X1": {"ports": ["A", "B", "S0", "Y"]},
+      "DFFRHQX1": {"ports": ["RN", "CK", "D", "Q"]},
+      "DFFNSRX1": {"ports": ["CKN", "D", "RN", "SN", "Q", "QN"]}
     }
   },
   "common_constraints": {

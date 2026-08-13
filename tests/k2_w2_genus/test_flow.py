@@ -68,28 +68,14 @@ class GenusFlowTests(unittest.TestCase):
     def make_staged_fixture(self, root: Path):
         registry = self.module.load_registry_document()
         registry = copy.deepcopy(registry)
-        registry["integration_state"] = "ready"
         registry["staged_manifest"] = {
-            "required_schema": "w2-physical-staging-v2",
-            "required_status": "GO_FOR_SERVER_STAGING",
-            "path": "physical/staged/manifest.json",
+            "required_schema": "k2_w2_tech_staged_compositions_v1",
+            "required_status": "READY_FOR_GENUS_AND_INNOVUS",
+            "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
             "sha256": None,
-            "repository_commit": "1" * 40,
+            "source_commit": "1" * 40,
+            "publication_commit": "2" * 40,
         }
-        registry["required_technology_authorities"]["r1"] = {
-            "repository_commit": "2" * 40,
-            "manifest_path": "rtl/technology/r1/r1_tech_manifest.json",
-            "manifest_sha256": "3" * 64,
-        }
-        for index, key in enumerate(("r1", "p6"), start=1):
-            authority = registry["required_technology_authorities"][key]
-            authority["repository_commit"] = str(index + 1) * 40
-            authority["manifest_path"] = f"rtl/technology/{key}/{key}_tech_manifest.json"
-            authority_path = root / authority["manifest_path"]
-            authority_path.parent.mkdir(parents=True, exist_ok=True)
-            authority_path.write_text(f"{key}-tech-fixture\n")
-            authority["manifest_sha256"] = hashlib.sha256(
-                authority_path.read_bytes()).hexdigest()
         timing_paths = {
             row["strict_sdc"]["path"] for row in
             registry["design_expectations"].values()
@@ -101,32 +87,64 @@ class GenusFlowTests(unittest.TestCase):
             destination.write_bytes((ROOT / relative).read_bytes())
         common_inputs = registry["required_common_inputs"]
         common_outputs = registry["required_common_outputs"]
+        common_ports = (
+            common_inputs + common_outputs[:1] + [{
+                "direction": "output", "name": "link_clk_o", "width": 1,
+            }, {
+                "direction": "output", "name": "link_data_o",
+                "width_by_design": {"fovea_a7": 2, "a2_p6": 5, "a3_p6": 5},
+            }] + common_outputs[1:]
+        )
         manifest = {
-            "schema": "w2-physical-staging-v2",
-            "status": "GO_FOR_SERVER_STAGING",
+            "schema": "k2_w2_tech_staged_compositions_v1",
+            "status": "READY_FOR_GENUS_AND_INNOVUS",
             "repository_commit": "1" * 40,
             "goal_order": registry["goal_order"],
+            "common_ports": common_ports,
             "technology_authorities": copy.deepcopy(
                 registry["required_technology_authorities"]),
             "constraint_templates": {
-                "r1": copy.deepcopy(registry["design_expectations"][
-                    "fovea_a7"]["strict_sdc"]),
-                "p6": copy.deepcopy(registry["design_expectations"][
-                    "a2_p6"]["strict_sdc"]),
+                "ref_period_ns": 5.0, "sample_period_ns": 5.0,
+                "sample_waveform_ns": [1.25, 3.75],
+                "clock_uncertainty_ns": 0.25,
+                "input_delay_ns": 0.5, "output_delay_ns": 0.5,
+                "output_load_pf": 0.01,
+                "generated_link_clock_required": True,
+                "both_link_edges_required": True,
+                "ref_and_sample_are_phase_related": True,
             },
-            "tops": {},
-        }
-        tops = {
-            key: registry["design_expectations"][key]["staged_top"]
-            for key in registry["goal_order"]
+            "designs": {},
+            "source_hashes": {},
+            "test_policy": {
+                "acceptance_sample": "posedge_ref_active_region_pre_NBA",
+                "pending_hold": "through_charged_posedge",
+                "protocol_error_must_equal_zero": True,
+                "epoch_accepted_equals_retired": True,
+                "cell_models_test_only": True,
+            },
+            "consumer_contract": {
+                "consumers": ["genus", "innovus"],
+                "manifest_path": registry["staged_manifest"]["path"],
+                "required_schema": registry["staged_manifest"]["required_schema"],
+                "required_status": registry["staged_manifest"]["required_status"],
+                "require_repository_commit": True,
+                "require_literal_common_port_signature": True,
+                "require_endpoint_path_and_leaf_provenance": True,
+                "forbidden_port_aliases": [
+                    "load_i", "pending_i", "source_ready_o", "protocol_fault_o",
+                    "link_enable", "link_enable_i", "burst_clk_o", "burst_data_o",
+                    "p6_clk_o", "p6_data_o",
+                ],
+            },
         }
         for key in registry["goal_order"]:
             expectation = registry["design_expectations"][key]
-            top = tops[key]
-            source_name = f"physical/staged/{top}.sv"
+            top = expectation["staged_top"]
+            source_name = f"rtl/technology/physical_staging/{top}.sv"
             source = root / source_name
             source.parent.mkdir(parents=True, exist_ok=True)
-            ports = common_inputs + common_outputs + expectation["link_outputs"]
+            ports = common_inputs + common_outputs[:1] + expectation["link_outputs"] + \
+                common_outputs[1:]
             declarations = []
             for port in ports:
                 width = "" if port["width"] == 1 else f" [{port['width'] - 1}:0]"
@@ -136,64 +154,74 @@ class GenusFlowTests(unittest.TestCase):
                 f"module {top} (\n" + ",\n".join(declarations) +
                 "\n);\nendmodule\n")
             source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-            filelist_name = f"physical/staged/{key}.f"
+            stem = "fovea" if key == "fovea_a7" else key.removesuffix("_p6")
+            filelist_name = (
+                f"rtl/technology/physical_staging/filelists/{stem}_gsclib045.f")
             filelist = root / filelist_name
-            filelist.write_text(source_name + "\n")
-            manifest["tops"][key] = {
-                "staged_top": top,
-                "top_source": source_name,
-                "filelist": filelist_name,
-                "filelist_sha256": hashlib.sha256(filelist.read_bytes()).hexdigest(),
-                "technology_stage": expectation["technology_stage"],
-                "link_kind": expectation["link_kind"],
-                "mapped_rx_contract": copy.deepcopy(expectation["mapped_rx_contract"]),
-                "mapped_posedge_contract": copy.deepcopy(
-                    expectation["mapped_posedge_contract"]),
-                "endpoint_expected_inventory": copy.deepcopy(
-                    expectation["endpoint_expected_inventory"]),
-                "endpoint_link_roots": copy.deepcopy(
-                    expectation["endpoint_link_roots"]),
-                "endpoint_preserved_name_prefixes": copy.deepcopy(
-                    expectation["endpoint_preserved_name_prefixes"]),
-                "no_other_negedge_state_proven": expectation[
-                    "no_other_negedge_state_proven"],
-                "required_ports": copy.deepcopy(common_inputs + common_outputs),
-                "link_pins": copy.deepcopy(expectation["link_outputs"]),
-                "defines": ["SYNTHESIS", "W2_TECH_STAGED"],
-                "parameters": {},
-                "sources": [{"path": source_name, "sha256": source_hash}],
+            filelist.parent.mkdir(parents=True, exist_ok=True)
+            filelist.write_text(
+                "+incdir+rtl/technology/p6\n"
+                "+define+W2_P6_TECH_GSCLIB045\n" + source_name + "\n")
+            port_signature = [
+                port["name"] if port["width"] == 1 else
+                f"{port['name']}[{port['width'] - 1}:0]" for port in ports
+            ]
+            endpoint = "r1" if key == "fovea_a7" else "p6"
+            manifest["designs"][key] = {
+                "top": top,
+                "filelists": {
+                    "generic": (
+                        f"rtl/technology/physical_staging/filelists/{stem}_generic.f"),
+                    "gsclib045": filelist_name,
+                },
+                "port_signature": port_signature,
+                "endpoint_root": {
+                    "attribute": f"w2_endpoint_root={endpoint}",
+                    "stable_prefix": f"w2_endpoint_link__{endpoint}",
+                },
+                "endpoint_leaf_contract": {
+                    "path_segment": f"w2_endpoint_link__{endpoint}",
+                    "leaf_counts": copy.deepcopy(
+                        expectation["endpoint_expected_inventory"]),
+                    "preserved_name_prefixes": copy.deepcopy(
+                        expectation["endpoint_preserved_name_prefixes"]),
+                },
+                "whole_top_observed_totals": {
+                    "status": "PENDING_DEDICATED_GENUS_RUN", "records": [],
+                },
             }
+            manifest["source_hashes"][source_name] = source_hash
         manifest_path = root / registry["staged_manifest"]["path"]
-        manifest_payload = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+        manifest_payload = (json.dumps(manifest, indent=2) + "\n").encode()
         manifest_path.write_bytes(manifest_payload)
         registry["staged_manifest"]["sha256"] = hashlib.sha256(
             manifest_payload).hexdigest()
         return registry, manifest, manifest_path
 
     def rewrite_manifest(self, registry, manifest, path):
-        payload = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+        payload = (json.dumps(manifest, indent=2) + "\n").encode()
         path.write_bytes(payload)
         registry["staged_manifest"]["sha256"] = hashlib.sha256(payload).hexdigest()
 
-    def test_final_registry_is_deliberately_blocked_without_staged_hashes(self):
+    def test_final_registry_binds_exact_published_staged_manifest(self):
         registry = self.module.load_registry_document()
         self.assertEqual(registry["goal_order"], ["fovea_a7", "a2_p6", "a3_p6"])
-        self.assertEqual(registry["integration_state"],
-                         "blocked_missing_tech_staged_manifest")
+        self.assertEqual(registry["integration_state"], "ready")
         self.assertEqual(registry["staged_manifest"], {
-            "required_schema": "w2-physical-staging-v2",
-            "required_status": "GO_FOR_SERVER_STAGING",
-            "path": None, "sha256": None, "repository_commit": None})
-        with self.assertRaisesRegex(self.module.FlowError,
-                                    "tech-staged composition manifest is missing"):
-            self.module.load_registry(ROOT)
-        p6_commit = registry["required_technology_authorities"]["p6"][
-            "repository_commit"]
-        present = subprocess.run(
-            ["git", "cat-file", "-e", f"{p6_commit}^{{commit}}"], cwd=ROOT,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        self.assertNotEqual(present.returncode, 0,
-                            "registry must not become GO before P6 authority object is integrated")
+            "required_schema": "k2_w2_tech_staged_compositions_v1",
+            "required_status": "READY_FOR_GENUS_AND_INNOVUS",
+            "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+            "sha256":
+                "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b",
+            "source_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
+            "publication_commit": "7f149e043a740c032e2cd22b3ed1d6876b6670ce",
+        })
+        published = subprocess.run(
+            ["git", "show", f"{registry['staged_manifest']['publication_commit']}:"
+             f"{registry['staged_manifest']['path']}"], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True).stdout
+        self.assertEqual(hashlib.sha256(published).hexdigest(),
+                         registry["staged_manifest"]["sha256"])
 
     def test_runner_and_launcher_fail_before_creating_results(self):
         for cohort in (False, True):
@@ -205,8 +233,9 @@ class GenusFlowTests(unittest.TestCase):
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, check=False)
                 self.assertNotEqual(result.returncode, 0, result.stdout)
-                self.assertIn("generic/native substitution forbidden", result.stdout)
-                self.assertFalse(output.exists())
+                if output.exists():
+                    self.assertEqual(list(output.rglob("receipt.json")), [])
+                    self.assertEqual(list(output.rglob("goal-publication.json")), [])
 
     def test_diagnostic_registries_cannot_be_final_or_ranked(self):
         final = self.module.load_registry_document()
@@ -277,28 +306,30 @@ class GenusFlowTests(unittest.TestCase):
             with self.assertRaisesRegex(self.module.FlowError, "manifest SHA"):
                 self.module.resolve_staged_registry(root, registry)
             registry, manifest, path = self.make_staged_fixture(root)
-            manifest["tops"]["a2_p6"]["sources"][0]["sha256"] = "0" * 64
+            source = next(iter(manifest["source_hashes"]))
+            manifest["source_hashes"][source] = "0" * 64
             self.rewrite_manifest(registry, manifest, path)
-            with self.assertRaisesRegex(self.module.FlowError, "source SHA/path"):
+            with self.assertRaisesRegex(self.module.FlowError, "source-hash inventory"):
                 self.module.resolve_staged_registry(root, registry)
 
     def test_generic_top_and_generic_wrapper_source_are_rejected(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-staged-") as directory:
             root = Path(directory)
             registry, manifest, path = self.make_staged_fixture(root)
-            manifest["tops"]["fovea_a7"]["staged_top"] = "k2_w2_fovea_a7_top"
+            manifest["designs"]["fovea_a7"]["top"] = "k2_w2_fovea_a7_top"
             self.rewrite_manifest(registry, manifest, path)
             with self.assertRaisesRegex(self.module.FlowError, "forbidden or wrong"):
                 self.module.resolve_staged_registry(root, registry)
 
         with tempfile.TemporaryDirectory(prefix="k2-w2-staged-") as directory:
             root = Path(directory)
-            registry, manifest, _ = self.make_staged_fixture(root)
-            manifest["tops"]["fovea_a7"]["top_source"] = (
-                "physical/k2_w2_tops/rtl/k2_w2_fovea_a7_top.sv")
+            registry, manifest, path = self.make_staged_fixture(root)
+            manifest["designs"]["fovea_a7"]["filelists"]["gsclib045"] = (
+                "physical/k2_w2_tops/filelists/fovea.f")
+            self.rewrite_manifest(registry, manifest, path)
             with self.assertRaisesRegex(self.module.FlowError,
-                                        "generic wrapper substituted"):
-                self.module.validate_staged_manifest(root, registry, manifest)
+                                        "forbidden or wrong"):
+                self.module.resolve_staged_registry(root, registry)
 
     def test_actual_extra_non_link_port_and_r1_width_mutations_are_rejected(self):
         for mutation in ("extra", "r1_width"):
@@ -306,8 +337,10 @@ class GenusFlowTests(unittest.TestCase):
                     prefix="k2-w2-staged-") as directory:
                 root = Path(directory)
                 registry, manifest, path = self.make_staged_fixture(root)
-                row = manifest["tops"]["fovea_a7"]
-                source = root / row["top_source"]
+                row = manifest["designs"]["fovea_a7"]
+                source_name = (
+                    f"rtl/technology/physical_staging/{row['top']}.sv")
+                source = root / source_name
                 text = source.read_text()
                 if mutation == "extra":
                     text = text.replace(
@@ -318,7 +351,7 @@ class GenusFlowTests(unittest.TestCase):
                         "output logic [1:0] link_data_o",
                         "output logic [2:0] link_data_o")
                 source.write_text(text)
-                row["sources"][0]["sha256"] = hashlib.sha256(
+                manifest["source_hashes"][source_name] = hashlib.sha256(
                     source.read_bytes()).hexdigest()
                 self.rewrite_manifest(registry, manifest, path)
                 with self.assertRaisesRegex(self.module.FlowError, "top boundary mismatch"):
@@ -328,7 +361,7 @@ class GenusFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="k2-w2-staged-") as directory:
             root = Path(directory)
             registry, manifest, path = self.make_staged_fixture(root)
-            manifest["tops"]["fovea_a7"]["required_ports"][4]["width"] = 15
+            manifest["common_ports"][4]["width"] = 15
             self.rewrite_manifest(registry, manifest, path)
             with self.assertRaisesRegex(self.module.FlowError, "top boundary mismatch"):
                 self.module.resolve_staged_registry(root, registry)
@@ -337,62 +370,71 @@ class GenusFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="k2-w2-staged-") as directory:
             root = Path(directory)
             registry, manifest, path = self.make_staged_fixture(root)
-            manifest["technology_authorities"]["p6"]["manifest_sha256"] = "0" * 64
+            manifest["technology_authorities"]["raw_golden"]["sha256"] = "0" * 64
             self.rewrite_manifest(registry, manifest, path)
             with self.assertRaisesRegex(self.module.FlowError,
                                         "technology authority mismatch"):
                 self.module.resolve_staged_registry(root, registry)
 
-    def test_technology_authority_blob_mutation_is_rejected(self):
+    def test_staged_source_byte_mutation_is_rejected(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-staged-") as directory:
             root = Path(directory)
-            registry, _, _ = self.make_staged_fixture(root)
-            authority = registry["required_technology_authorities"]["r1"]
-            (root / authority["manifest_path"]).write_text("rebound-tech-manifest\n")
+            registry, manifest, _ = self.make_staged_fixture(root)
+            source_name = next(iter(manifest["source_hashes"]))
+            (root / source_name).write_text("rebound-staged-source\n")
             with self.assertRaisesRegex(self.module.FlowError,
-                                        "r1 technology manifest SHA mismatch"):
+                                        "source-hash inventory mismatch"):
                 self.module.resolve_staged_registry(root, registry)
 
-    def test_authority_git_commit_path_type_and_blob_are_exact(self):
+    def test_publication_git_commit_path_type_and_blob_are_exact(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-authority-git-") as directory:
             root = Path(directory)
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)
             subprocess.run(["git", "config", "user.email", "fixture@example.invalid"],
                            cwd=root, check=True)
             subprocess.run(["git", "config", "user.name", "fixture"], cwd=root, check=True)
-            identities = {}
-            for key in ("r1", "p6"):
-                relative = f"rtl/technology/{key}/{key}_tech_manifest.json"
-                path = root / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(f"{key}-authority\n")
-                identities[key] = {
-                    "manifest_path": relative,
-                    "manifest_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                }
+            relative = "rtl/technology/physical_staging/physical_staging_manifest.json"
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('{"status":"HOLD","repository_commit":null}\n')
             subprocess.run(["git", "add", "."], cwd=root, check=True)
-            subprocess.run(["git", "commit", "-qm", "authority"], cwd=root, check=True)
-            commit = subprocess.run(
+            subprocess.run(["git", "commit", "-qm", "source"], cwd=root, check=True)
+            source_commit = subprocess.run(
                 ["git", "rev-parse", "HEAD"], cwd=root, check=True,
                 text=True, stdout=subprocess.PIPE).stdout.strip()
-            for row in identities.values():
-                row["repository_commit"] = commit
-            registry = {"repository_commit": commit,
-                        "technology_authority_identities": identities}
+            path.write_text(
+                '{"status":"READY_FOR_GENUS_AND_INNOVUS",'
+                f'"repository_commit":"{source_commit}"}}\n')
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "publication"], cwd=root,
+                           check=True)
+            publication_commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+                text=True, stdout=subprocess.PIPE).stdout.strip()
+            identity = {
+                "path": relative,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "source_commit": source_commit,
+                "publication_commit": publication_commit,
+            }
+            registry = {"repository_commit": source_commit,
+                        "staged_manifest_identity": identity}
             self.module.verify_source_commit(root, registry)
 
             wrong = copy.deepcopy(registry)
-            wrong["technology_authority_identities"]["r1"]["repository_commit"] = "f" * 40
-            with self.assertRaisesRegex(self.module.FlowError, "git cat-file"):
+            wrong["staged_manifest_identity"]["publication_commit"] = "f" * 40
+            with self.assertRaisesRegex(self.module.FlowError, "publication commit"):
                 self.module.verify_source_commit(root, wrong)
             wrong = copy.deepcopy(registry)
-            wrong["technology_authority_identities"]["r1"]["manifest_path"] = (
-                "rtl/technology/r1")
-            with self.assertRaisesRegex(self.module.FlowError, "not a blob"):
+            wrong["staged_manifest_identity"]["path"] = (
+                "rtl/technology/physical_staging")
+            with self.assertRaisesRegex(self.module.FlowError,
+                                        "published staged manifest object is not a blob"):
                 self.module.verify_source_commit(root, wrong)
             wrong = copy.deepcopy(registry)
-            wrong["technology_authority_identities"]["r1"]["manifest_sha256"] = "0" * 64
-            with self.assertRaisesRegex(self.module.FlowError, "commit/blob mismatch"):
+            wrong["staged_manifest_identity"]["sha256"] = "0" * 64
+            with self.assertRaisesRegex(self.module.FlowError,
+                                        "published staged manifest commit/blob mismatch"):
                 self.module.verify_source_commit(root, wrong)
 
     def test_contract_bit_counts_are_50_for_r1_and_53_for_p6(self):

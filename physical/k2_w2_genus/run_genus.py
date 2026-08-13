@@ -171,7 +171,48 @@ def git(root: Path, *args: str, binary: bool = False) -> bytes | str:
     return result.stdout
 
 
-def load_registry() -> dict[str, Any]:
+def validate_final_registry_document(document: dict[str, Any]) -> dict[str, Any]:
+    if document.get("schema") != "k2_w2_genus_final_tech_staged_registry_v3":
+        raise FlowError("design registry schema mismatch")
+    goal_order = ["fovea_a7", "a2_p6", "a3_p6"]
+    if (document.get("goal_order") != goal_order or
+            set(document.get("design_expectations", {})) != set(goal_order)):
+        raise FlowError("final registry must contain three staged compositions")
+    if document.get("common_constraints", {}).get("clock_gating_insertion") is not True:
+        raise FlowError("design registry must use the golden clock-gating assumption")
+    if document.get("ranking_policy") != (
+            "ONLY_THREE_TECH_STAGED_COMPLETE_COMPOSITIONS_COMPARABLE"):
+        raise FlowError("final staged-composition ranking policy mismatch")
+    pointer = document.get("staged_manifest", {})
+    expected_pointer = {
+        "required_schema": "k2_w2_tech_staged_compositions_v1",
+        "required_status": "READY_FOR_GENUS_AND_INNOVUS",
+        "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+        "sha256": "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b",
+        "source_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
+        "publication_commit": "7f149e043a740c032e2cd22b3ed1d6876b6670ce",
+    }
+    if document.get("integration_state") != "ready" or pointer != expected_pointer:
+        raise FlowError("canonical staged-manifest registry pointer mismatch")
+    if document.get("repository_commit") != pointer["source_commit"]:
+        raise FlowError("registry source commit differs from staged-manifest pointer")
+    authorities = document.get("required_technology_authorities", {})
+    if (set(authorities) != {"raw_golden", "buffered_golden", "live_gsclib045", "cells"} or
+            authorities.get("raw_golden", {}).get("sha256") !=
+            "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3" or
+            authorities.get("buffered_golden", {}).get("sha256") !=
+            "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f" or
+            authorities.get("live_gsclib045", {}).get(
+                "dffnsrx1_cell_and_interface_verified") is not True or
+            authorities.get("live_gsclib045", {}).get(
+                "liberty_timing_arcs_claimed_by_manifest") is not False or
+            set(authorities.get("cells", {})) != {
+                "TLATNTSCAX2", "MX2X1", "DFFRHQX1", "DFFNSRX1"}):
+        raise FlowError("canonical staged technology authority mismatch")
+    return document
+
+
+def load_registry_document() -> dict[str, Any]:
     try:
         document = json.loads(stable_read(REGISTRY))
     except json.JSONDecodeError as error:
@@ -216,97 +257,236 @@ def parse_ansi_ports(payload: bytes, top: str) -> list[dict[str, Any]]:
     return rows
 
 
+def parse_staged_filelist(payload: bytes, label: str) -> tuple[list[str], list[str], list[str]]:
+    try:
+        lines = [line.strip() for line in payload.decode("utf-8").splitlines()
+                 if line.strip() and not line.lstrip().startswith("#")]
+    except UnicodeDecodeError as error:
+        raise FlowError(f"{label} filelist is not UTF-8") from error
+    sources: list[str] = []
+    defines: list[str] = []
+    include_dirs: list[str] = []
+    for line in lines:
+        if line.startswith("+define+"):
+            define = line.removeprefix("+define+")
+            if not define or "+" in define:
+                raise FlowError(f"{label} filelist has an ambiguous define")
+            defines.append(define)
+        elif line.startswith("+incdir+"):
+            include_dir = line.removeprefix("+incdir+")
+            if not include_dir or "+" in include_dir:
+                raise FlowError(f"{label} filelist has an ambiguous include directory")
+            include_dirs.append(include_dir)
+        elif line.startswith("+") or line.startswith("-"):
+            raise FlowError(f"{label} filelist has an unsupported directive")
+        else:
+            sources.append(line)
+    if (not sources or len(sources) != len(set(sources)) or
+            defines != ["W2_P6_TECH_GSCLIB045"] or
+            include_dirs != ["rtl/technology/p6"]):
+        raise FlowError(f"{label} gsclib045 filelist contract mismatch")
+    return sources, defines, include_dirs
+
+
+def staged_port_rows(manifest: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for value in manifest.get("common_ports", []):
+        if not isinstance(value, dict):
+            raise FlowError("shared tech-staged common port is not an object")
+        row = {name: value.get(name) for name in ("direction", "name")}
+        if "width" in value:
+            row["width"] = value["width"]
+        elif set(value.get("width_by_design", {})) == {"fovea_a7", "a2_p6", "a3_p6"}:
+            row["width"] = value["width_by_design"][key]
+        else:
+            raise FlowError("shared tech-staged common port width is incomplete")
+        if (row["direction"] not in {"input", "output"} or
+                not isinstance(row["name"], str) or not row["name"] or
+                not isinstance(row["width"], int) or isinstance(row["width"], bool) or
+                row["width"] <= 0):
+            raise FlowError("shared tech-staged common port is invalid")
+        rows.append(row)
+    return rows
+
+
 def validate_staged_manifest(root: Path, registry: dict[str, Any],
                              manifest: dict[str, Any]) -> dict[str, Any]:
     expected_order = registry["goal_order"]
     pointer = registry["staged_manifest"]
+    if set(manifest) != {
+            "schema", "status", "repository_commit", "goal_order", "common_ports",
+            "technology_authorities", "constraint_templates", "designs",
+            "source_hashes", "test_policy", "consumer_contract"}:
+        raise FlowError("shared tech-staged manifest fields are not canonical")
     if (manifest.get("schema") != pointer["required_schema"] or
             manifest.get("status") != pointer["required_status"] or
             manifest.get("goal_order") != expected_order or
-            set(manifest.get("tops", {})) != set(expected_order)):
+            list(manifest.get("designs", {})) != expected_order):
         raise FlowError("shared tech-staged manifest schema/status/top order mismatch")
     commit = manifest.get("repository_commit")
     if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
         raise FlowError("tech-staged manifest repository commit is missing")
-    if manifest.get("technology_authorities") != registry.get(
-            "required_technology_authorities"):
+    if (commit != registry["staged_manifest"]["source_commit"] or
+            manifest.get("technology_authorities") != registry.get(
+                "required_technology_authorities")):
         raise FlowError("tech-staged manifest technology authority mismatch")
     expected_templates = {
-        "r1": registry["design_expectations"]["fovea_a7"]["strict_sdc"],
-        "p6": registry["design_expectations"]["a2_p6"]["strict_sdc"],
+        "ref_period_ns": 5.0, "sample_period_ns": 5.0,
+        "sample_waveform_ns": [1.25, 3.75], "clock_uncertainty_ns": 0.25,
+        "input_delay_ns": 0.5, "output_delay_ns": 0.5, "output_load_pf": 0.01,
+        "generated_link_clock_required": True, "both_link_edges_required": True,
+        "ref_and_sample_are_phase_related": True,
     }
     if manifest.get("constraint_templates") != expected_templates:
         raise FlowError("tech-staged manifest constraint-template mismatch")
+    if manifest.get("test_policy") != {
+            "acceptance_sample": "posedge_ref_active_region_pre_NBA",
+            "pending_hold": "through_charged_posedge",
+            "protocol_error_must_equal_zero": True,
+            "epoch_accepted_equals_retired": True,
+            "cell_models_test_only": True,
+            }:
+        raise FlowError("tech-staged manifest test-policy mismatch")
     forbidden_tops = set(registry["forbidden_final_tops"])
     forbidden_paths = set(registry["forbidden_final_source_paths"])
+    source_hashes = manifest.get("source_hashes")
+    if (not isinstance(source_hashes, dict) or not source_hashes or
+            any(not isinstance(path, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+                for path, digest in source_hashes.items())):
+        raise FlowError("tech-staged manifest source-hash inventory is invalid")
+    for source_name, expected_digest in source_hashes.items():
+        name, path = relative_repo_path(root, source_name, "staged source-hash entry")
+        if name in forbidden_paths or sha256_bytes(stable_read(path)) != expected_digest:
+            raise FlowError(f"staged source-hash inventory mismatch: {name}")
+    expected_consumer = {
+        "consumers": ["genus", "innovus"],
+        "manifest_path": registry["staged_manifest"]["path"],
+        "required_schema": pointer["required_schema"],
+        "required_status": pointer["required_status"],
+        "require_repository_commit": True,
+        "require_literal_common_port_signature": True,
+        "require_endpoint_path_and_leaf_provenance": True,
+        "forbidden_port_aliases": [
+            "load_i", "pending_i", "source_ready_o", "protocol_fault_o",
+            "link_enable", "link_enable_i", "burst_clk_o", "burst_data_o",
+            "p6_clk_o", "p6_data_o",
+        ],
+    }
+    if manifest.get("consumer_contract") != expected_consumer:
+        raise FlowError("tech-staged consumer contract mismatch")
     designs: dict[str, Any] = {}
     for key in expected_order:
-        row = manifest["tops"][key]
+        row = manifest["designs"][key]
         expectation = registry["design_expectations"][key]
-        top = row.get("staged_top")
+        top = row.get("top")
+        filelist_stem = "fovea" if key == "fovea_a7" else key.removesuffix("_p6")
+        expected_filelists = {
+            "generic": (
+                f"rtl/technology/physical_staging/filelists/{filelist_stem}_generic.f"),
+            "gsclib045": (
+                f"rtl/technology/physical_staging/filelists/{filelist_stem}_gsclib045.f"),
+        }
         if (not isinstance(top, str) or not top or top in forbidden_tops or
                 top != expectation["staged_top"] or
-                row.get("technology_stage") != expectation["technology_stage"] or
-                row.get("link_kind") != expectation["link_kind"] or
-                row.get("mapped_rx_contract") != expectation["mapped_rx_contract"] or
-                row.get("mapped_posedge_contract") !=
-                expectation["mapped_posedge_contract"]):
+                set(row) != {
+                    "top", "filelists", "port_signature", "endpoint_root",
+                    "endpoint_leaf_contract", "whole_top_observed_totals"} or
+                row.get("filelists") != expected_filelists or
+                row.get("endpoint_root") != {
+                    "attribute": "w2_endpoint_root=" + ("r1" if key == "fovea_a7" else "p6"),
+                    "stable_prefix": "w2_endpoint_link__" +
+                    ("r1" if key == "fovea_a7" else "p6"),
+                }):
             raise FlowError(f"forbidden or wrong technology-staged top: {key}")
-        if (row.get("endpoint_expected_inventory") != expectation[
-                "endpoint_expected_inventory"] or
-                row.get("endpoint_link_roots") != expectation[
-                    "endpoint_link_roots"] or
-                row.get("endpoint_preserved_name_prefixes") != expectation[
-                    "endpoint_preserved_name_prefixes"] or
-                row.get("no_other_negedge_state_proven") is not expectation[
-                    "no_other_negedge_state_proven"]):
+        leaf = row.get("endpoint_leaf_contract", {})
+        if (leaf.get("leaf_counts") != expectation["endpoint_expected_inventory"] or
+                leaf.get("path_segment") != row["endpoint_root"]["stable_prefix"] or
+                leaf.get("preserved_name_prefixes") != expectation[
+                    "endpoint_preserved_name_prefixes"]):
             raise FlowError(f"staged exact endpoint inventory mismatch: {key}")
+        if row.get("whole_top_observed_totals") != {
+                "status": "PENDING_DEDICATED_GENUS_RUN", "records": []}:
+            raise FlowError(f"staged whole-top inventory status mismatch: {key}")
         filelist_name, filelist_path = relative_repo_path(
-            root, row.get("filelist"), f"{key} filelist")
+            root, row.get("filelists", {}).get("gsclib045"), f"{key} filelist")
         filelist_payload = stable_read(filelist_path)
-        if sha256_bytes(filelist_payload) != row.get("filelist_sha256"):
-            raise FlowError(f"staged filelist SHA mismatch: {key}")
-        sources = row.get("sources")
-        if not isinstance(sources, list) or not sources:
-            raise FlowError(f"staged source list is empty: {key}")
-        source_names = [source.get("path") for source in sources]
-        listed = [line.strip() for line in filelist_payload.decode("utf-8").splitlines()
-                  if line.strip() and not line.lstrip().startswith("#")]
-        if source_names != listed or len(set(source_names)) != len(source_names):
-            raise FlowError(f"staged filelist/source order mismatch: {key}")
-        top_source = row.get("top_source")
+        source_names, filelist_defines, include_dirs = parse_staged_filelist(
+            filelist_payload, key)
+        top_source = "rtl/technology/physical_staging/" + top + ".sv"
         if top_source not in source_names or top_source in forbidden_paths:
             raise FlowError(f"staged top source missing or generic wrapper substituted: {key}")
-        for source in sources:
-            name, path = relative_repo_path(root, source.get("path"), f"{key} source")
-            if name in forbidden_paths or sha256_bytes(stable_read(path)) != source.get("sha256"):
+        sources = []
+        source_payloads: dict[str, bytes] = {}
+        for source_name in source_names:
+            name, path = relative_repo_path(root, source_name, f"{key} source")
+            source_payload = stable_read(path)
+            source_payloads[name] = source_payload
+            digest = sha256_bytes(source_payload)
+            if (name in forbidden_paths or
+                    (name in source_hashes and digest != source_hashes[name])):
                 raise FlowError(f"staged source SHA/path mismatch: {name}")
+            sources.append({"path": name, "sha256": digest})
+        include_files: list[dict[str, str]] = []
+        for source_name, source_payload in source_payloads.items():
+            try:
+                includes = re.findall(
+                    r'^\s*`include\s+"([A-Za-z0-9_./-]+)"',
+                    source_payload.decode("utf-8"), re.MULTILINE)
+            except UnicodeDecodeError as error:
+                raise FlowError(f"staged source is not UTF-8: {source_name}") from error
+            for include in includes:
+                matches = []
+                for include_dir in include_dirs:
+                    candidate_name, candidate = relative_repo_path(
+                        root, f"{include_dir}/{include}", f"{key} include")
+                    if candidate.is_file():
+                        matches.append((candidate_name, candidate))
+                if len(matches) != 1:
+                    raise FlowError(f"staged include is missing or ambiguous: {include}")
+                include_name, include_path = matches[0]
+                identity = {"path": include_name,
+                            "sha256": sha256_bytes(stable_read(include_path))}
+                if identity not in include_files:
+                    include_files.append(identity)
         top_payload = stable_read(root / top_source)
         ports = parse_ansi_ports(top_payload, top)
-        expected_ports = (registry["required_common_inputs"] +
-                          registry["required_common_outputs"] +
-                          expectation["link_outputs"])
+        expected_ports = staged_port_rows(manifest, key)
+        registry_ports = (registry["required_common_inputs"] +
+                          registry["required_common_outputs"][:1] +
+                          expectation["link_outputs"] +
+                          registry["required_common_outputs"][1:])
         by_name = lambda values: sorted(values, key=lambda value: value["name"])
-        if (by_name(ports) != by_name(expected_ports) or
-                by_name(row.get("required_ports", [])) != by_name(
-                    registry["required_common_inputs"] +
-                    registry["required_common_outputs"]) or
-                by_name(row.get("link_pins", [])) != by_name(
-                    expectation["link_outputs"])):
+        port_signature = [port["name"] if port["width"] == 1 else
+                          f"{port['name']}[{port['width'] - 1}:0]"
+                          for port in expected_ports]
+        if (expected_ports != registry_ports or
+                by_name(ports) != by_name(expected_ports) or
+                row.get("port_signature") != port_signature):
             raise FlowError(f"staged top boundary mismatch: {key}")
         if sum(port["width"] for port in expectation["link_outputs"]) != \
                 expectation["link_bits"]:
             raise FlowError(f"staged link-width contract mismatch: {key}")
-        defines = row.get("defines")
-        if (not isinstance(defines, list) or "SYNTHESIS" not in defines or
-                any(not isinstance(item, str) or not item for item in defines)):
-            raise FlowError(f"staged define set is invalid: {key}")
-        if row.get("parameters") != {}:
-            raise FlowError(f"staged parameter overrides are unsupported: {key}")
         link_names = [port["name"] for port in expectation["link_outputs"]]
         designs[key] = {
             **row,
             "top": top,
+            "top_source": top_source,
+            "filelist": filelist_name,
+            "filelist_sha256": sha256_bytes(filelist_payload),
+            "sources": sources,
+            "defines": ["SYNTHESIS", *filelist_defines],
+            "include_dirs": include_dirs,
+            "include_files": include_files,
+            "parameters": {},
+            "mapped_rx_contract": expectation["mapped_rx_contract"],
+            "mapped_posedge_contract": expectation["mapped_posedge_contract"],
+            "endpoint_expected_inventory": expectation["endpoint_expected_inventory"],
+            "endpoint_link_roots": expectation["endpoint_link_roots"],
+            "endpoint_preserved_name_prefixes": expectation[
+                "endpoint_preserved_name_prefixes"],
+            "no_other_negedge_state_proven": expectation[
+                "no_other_negedge_state_proven"],
+            "strict_sdc": expectation["strict_sdc"],
             "boundary_cohort": "tech_staged_complete_compositions",
             "source_origin": "tech_staged_repository_exact",
             "clocks": [
@@ -331,27 +511,10 @@ def validate_staged_manifest(root: Path, registry: dict[str, Any],
 def resolve_staged_registry(root: Path, document: dict[str, Any]) -> dict[str, Any]:
     pointer = document.get("staged_manifest", {})
     if document.get("integration_state") != "ready" or any(
-            pointer.get(field) is None for field in ("path", "sha256", "repository_commit")):
+            pointer.get(field) is None for field in (
+                "path", "sha256", "source_commit", "publication_commit")):
         raise FlowError(
             "final tech-staged composition manifest is missing; generic/native substitution forbidden")
-    authorities = document.get("required_technology_authorities", {})
-    if (set(authorities) != {"r1", "p6"} or
-            any(value is None for authority in authorities.values()
-                for value in authority.values())):
-        raise FlowError(
-            "R1/P6 technology-stage authority is incomplete; generic substitution forbidden")
-    authority_identities: dict[str, Any] = {}
-    for key, authority in authorities.items():
-        name, path = relative_repo_path(
-            root, authority["manifest_path"], f"{key} technology manifest")
-        payload = stable_read(path)
-        if sha256_bytes(payload) != authority["manifest_sha256"]:
-            raise FlowError(f"{key} technology manifest SHA mismatch")
-        authority_identities[key] = {
-            "repository_commit": authority["repository_commit"],
-            "manifest_path": name,
-            "manifest_sha256": authority["manifest_sha256"],
-        }
     timing_identities: dict[str, Any] = {}
     for key, expectation in document["design_expectations"].items():
         timing = expectation["strict_sdc"]
@@ -376,16 +539,18 @@ def resolve_staged_registry(root: Path, document: dict[str, Any]) -> dict[str, A
         manifest = json.loads(payload)
     except json.JSONDecodeError as error:
         raise FlowError(f"invalid tech-staged manifest: {error}") from error
-    if manifest.get("repository_commit") != pointer["repository_commit"]:
+    if manifest.get("repository_commit") != pointer["source_commit"]:
         raise FlowError("tech-staged manifest commit pointer mismatch")
     runtime = dict(document)
-    runtime["repository_commit"] = pointer["repository_commit"]
+    runtime["repository_commit"] = pointer["source_commit"]
     runtime["designs"] = validate_staged_manifest(root, document, manifest)
     runtime["staged_manifest_identity"] = {
         "path": manifest_name, "sha256": pointer["sha256"],
-        "repository_commit": pointer["repository_commit"],
+        "source_commit": pointer["source_commit"],
+        "publication_commit": pointer["publication_commit"],
     }
-    runtime["technology_authority_identities"] = authority_identities
+    runtime["technology_authority_identities"] = dict(
+        document["required_technology_authorities"])
     runtime["timing_template_identities"] = timing_identities
     runtime["mmmc_template_identity"] = {**mmmc, "path": mmmc_name}
     return runtime
@@ -480,6 +645,15 @@ def verify_flow_tree(root: Path) -> dict[str, str]:
         "physical/k2_w2_boundaries.json",
         "physical/k2_w2_tops/designs.json",
     ]
+    required.append(registry["staged_manifest_identity"]["path"])
+    required.extend(row["path"] for row in
+                    registry["timing_template_identities"].values())
+    required.append(registry["mmmc_template_identity"]["path"])
+    for design in registry["designs"].values():
+        required.append(design["filelist"])
+        required.extend(source["path"] for source in design["sources"])
+        required.extend(include["path"] for include in design["include_files"])
+    required = list(dict.fromkeys(required))
     for relative in required:
         tracked = subprocess.run(
             ["git", "ls-files", "--error-unmatch", relative], cwd=root,
@@ -494,6 +668,39 @@ def verify_flow_tree(root: Path) -> dict[str, str]:
     if clean.returncode:
         raise FlowError("flow registry/driver/runner/filelist differs from HEAD")
     return {relative: sha256_bytes(stable_read(root / relative)) for relative in required}
+
+
+def verify_goal_registry_bindings(registry: dict[str, Any]) -> None:
+    try:
+        diagnostics = json.loads(stable_read(DIAGNOSTIC_REGISTRY))
+        components = json.loads(stable_read(HERE / "component_diagnostics.json"))
+        fair = json.loads(stable_read(FAIR_TOP_REGISTRY))
+        boundaries = json.loads(stable_read(BOUNDARY_REGISTRY))
+    except json.JSONDecodeError as error:
+        raise FlowError(f"invalid goal boundary registry: {error}") from error
+    if (diagnostics.get("schema") != "k2_w2_genus_diagnostic_registry_v1" or
+            diagnostics.get("ranking_eligible") is not False or
+            diagnostics.get("final_server_execution_eligible") is not False):
+        raise FlowError("native/generic diagnostic registry eligibility mismatch")
+    if (components.get("schema") != "k2_w2_genus_component_diagnostics_v1" or
+            components.get("ranking_eligible") is not False or
+            components.get("final_server_execution_eligible") is not False):
+        raise FlowError("component/native diagnostic registry eligibility mismatch")
+    if (fair.get("schema") != "k2-w2-fair-physical-tops-v1" or
+            fair.get("ranking_eligible") is not False or
+            fair.get("final_server_execution_eligible") is not False or
+            set(fair.get("designs", {})) != {"fovea_a7", "a2_p6", "a3_p6"}):
+        raise FlowError("owner generic diagnostic registry mismatch")
+    final_tops = {row["top"] for row in registry["designs"].values()}
+    generic_tops = {row["top"] for row in fair["designs"].values()}
+    if final_tops & generic_tops:
+        raise FlowError("owner generic wrapper substituted into final staged registry")
+    cohorts = {row.get("id"): row for row in boundaries.get("cohorts", [])}
+    if boundaries.get("schema") != "k2-w2-physical-boundary-cohorts-v1":
+        raise FlowError("diagnostic boundary registry schema mismatch")
+    owner_generic = cohorts.get("owner_generic_endpoint_diagnostic", {})
+    if owner_generic.get("final_server_execution_eligible") is not False:
+        raise FlowError("owner generic boundary is not diagnostic-only")
 
 
 def require_ordered_tokens(text: str, tokens: list[str], label: str) -> None:
@@ -764,13 +971,28 @@ def verify_functional_loss_archive(source: Path, snapshot: Path,
 
 def verify_source_commit(root: Path, registry: dict[str, Any]) -> str:
     source_commit = registry["repository_commit"]
+    staged = registry["staged_manifest_identity"]
+    publication_commit = staged["publication_commit"]
     head = str(git(root, "rev-parse", "HEAD")).strip()
-    ancestor = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", source_commit, head], cwd=root,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-    )
-    if ancestor.returncode:
-        raise FlowError(f"source commit {source_commit} is not an ancestor of HEAD {head}")
+    for label, commit in (("source", source_commit),
+                          ("publication", publication_commit)):
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, head], cwd=root,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if ancestor.returncode:
+            raise FlowError(f"{label} commit {commit} is not an ancestor of HEAD {head}")
+    manifest_path = staged["path"]
+    object_type = str(git(
+        root, "cat-file", "-t", f"{publication_commit}:{manifest_path}")).strip()
+    if object_type != "blob":
+        raise FlowError("published staged manifest object is not a blob")
+    committed_manifest = git(
+        root, "show", f"{publication_commit}:{manifest_path}", binary=True)
+    assert isinstance(committed_manifest, bytes)
+    if (committed_manifest != stable_read(root / manifest_path) or
+            sha256_bytes(committed_manifest) != staged["sha256"]):
+        raise FlowError("published staged manifest commit/blob mismatch")
     return head
 
 
@@ -783,18 +1005,31 @@ def verify_design(root: Path, registry: dict[str, Any], key: str) -> dict[str, A
     filelist_payload = stable_read(filelist_path)
     if sha256_bytes(filelist_payload) != design["filelist_sha256"]:
         raise FlowError(f"filelist SHA mismatch: {design['filelist']}")
-    names = [line.strip() for line in filelist_payload.decode("utf-8").splitlines()
-             if line.strip() and not line.lstrip().startswith("#")]
+    names, filelist_defines, include_dirs = parse_staged_filelist(
+        filelist_payload, key)
     expected_names = [row["path"] for row in design["sources"]]
-    if names != expected_names or len(names) != len(set(names)):
+    if (names != expected_names or
+            design.get("defines") != ["SYNTHESIS", *filelist_defines] or
+            design.get("include_dirs") != include_dirs):
         raise FlowError(f"filelist/source order mismatch: {key}")
     for row in design["sources"]:
         relative = row["path"]
         working = stable_read(root / relative)
-        committed = git(root, "show", f"{source_commit}:{relative}", binary=True)
-        assert isinstance(committed, bytes)
-        if working != committed or sha256_bytes(working) != row["sha256"]:
-            raise FlowError(f"source byte mismatch: {relative}")
+        committed_head = git(root, "show", f"HEAD:{relative}", binary=True)
+        committed_source = git(root, "show", f"{source_commit}:{relative}", binary=True)
+        assert isinstance(committed_head, bytes) and isinstance(committed_source, bytes)
+        if (working != committed_head or working != committed_source or
+                sha256_bytes(working) != row["sha256"]):
+            raise FlowError(f"staged source byte mismatch: {relative}")
+    for row in design["include_files"]:
+        relative = row["path"]
+        working = stable_read(root / relative)
+        committed_head = git(root, "show", f"HEAD:{relative}", binary=True)
+        committed_source = git(root, "show", f"{source_commit}:{relative}", binary=True)
+        assert isinstance(committed_head, bytes) and isinstance(committed_source, bytes)
+        if (working != committed_head or working != committed_source or
+                sha256_bytes(working) != row["sha256"]):
+            raise FlowError(f"staged include byte mismatch: {relative}")
     if design.get("parameters") != {}:
         raise FlowError(f"unimplemented nonempty parameter map: {key}")
     if design.get("defines") != ["SYNTHESIS"]:
@@ -1376,6 +1611,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
     if copy_stable(library.resolve(strict=True), library_snapshot) != library_source_hash:
         raise FlowError("library snapshot SHA mismatch")
     source_snapshots = []
+    include_snapshots = []
     source_paths_v = []
     source_paths_sv = []
     for row in design["sources"]:
@@ -1390,7 +1626,16 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             source_paths_sv.append(str(destination))
         else:
             raise FlowError(f"unsupported HDL source suffix: {row['path']}")
-    sdc = make_sdc(registry, design)
+    for row in design["include_files"]:
+        destination = attempt / "bundle" / "sources" / row["path"]
+        copied = copy_stable(root / row["path"], destination)
+        if copied != row["sha256"]:
+            raise FlowError(f"snapshotted include SHA mismatch: {row['path']}")
+        include_snapshots.append({
+            "path": row["path"], "sha256": copied,
+            "origin": design["source_origin"],
+        })
+    sdc = materialize_sdc(root, design)
     sdc_path = attempt / "bundle" / "constraints.sdc"
     write_exclusive(sdc_path, sdc, 0o444)
     tcl_snapshot = attempt / "bundle" / "genus_driver.tcl"
@@ -1422,6 +1667,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "filelist_path": design["filelist"],
         "filelist_sha256": design["filelist_sha256"],
         "sources": source_snapshots,
+        "include_files": include_snapshots,
+        "include_dirs": design["include_dirs"],
         "defines": design["defines"],
         "parameters": design["parameters"],
         "constraints_sha256": sha256_bytes(sdc),
@@ -1442,6 +1689,9 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "W2_SOURCES_V": " ".join("{" + path + "}" for path in source_paths_v),
         "W2_SOURCES_SV": " ".join("{" + path + "}" for path in source_paths_sv),
         "W2_DEFINES": " ".join(design["defines"]),
+        "W2_INCDIRS": " ".join(
+            "{" + str(attempt / "bundle" / "sources" / path) + "}"
+            for path in design["include_dirs"]),
         "W2_LIBRARY": str(library_snapshot),
         "W2_SDC": str(sdc_path),
         "W2_OUTPUT": str(attempt / "work"),

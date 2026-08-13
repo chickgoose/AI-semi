@@ -1,4 +1,4 @@
-foreach required {W2_TOP W2_SOURCES_V W2_SOURCES_SV W2_DEFINES W2_LIBRARY W2_SDC W2_OUTPUT} {
+foreach required {W2_TOP W2_SOURCES_V W2_SOURCES_SV W2_DEFINES W2_INCDIRS W2_LIBRARY W2_SDC W2_OUTPUT} {
   if {![info exists ::env($required)]} {
     error "missing required environment variable $required"
   }
@@ -9,6 +9,7 @@ set SDC_FILE $::env(W2_SDC)
 set LIB_FILE $::env(W2_LIBRARY)
 set OUT_DIR  $::env(W2_OUTPUT)
 set defines  $::env(W2_DEFINES)
+set incdirs  $::env(W2_INCDIRS)
 file mkdir $OUT_DIR
 
 # These commands and their order are rebased on the SHA-pinned Ganghee
@@ -19,10 +20,26 @@ set_db library $LIB_FILE
 set_db lp_insert_clock_gating true
 
 if {$::env(W2_SOURCES_V) ne ""} {
-  read_hdl -v -define $defines {*}$::env(W2_SOURCES_V)
+  if {$defines eq "" && $incdirs eq ""} {
+    read_hdl -v {*}$::env(W2_SOURCES_V)
+  } elseif {$defines eq ""} {
+    read_hdl -v -incdir $incdirs {*}$::env(W2_SOURCES_V)
+  } elseif {$incdirs eq ""} {
+    read_hdl -v -define $defines {*}$::env(W2_SOURCES_V)
+  } else {
+    read_hdl -v -define $defines -incdir $incdirs {*}$::env(W2_SOURCES_V)
+  }
 }
 if {$::env(W2_SOURCES_SV) ne ""} {
-  read_hdl -sv -define $defines {*}$::env(W2_SOURCES_SV)
+  if {$defines eq "" && $incdirs eq ""} {
+    read_hdl -sv {*}$::env(W2_SOURCES_SV)
+  } elseif {$defines eq ""} {
+    read_hdl -sv -incdir $incdirs {*}$::env(W2_SOURCES_SV)
+  } elseif {$incdirs eq ""} {
+    read_hdl -sv -define $defines {*}$::env(W2_SOURCES_SV)
+  } else {
+    read_hdl -sv -define $defines -incdir $incdirs {*}$::env(W2_SOURCES_SV)
+  }
 }
 elaborate $DESIGN
 read_sdc $SDC_FILE

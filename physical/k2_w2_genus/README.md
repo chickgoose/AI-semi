@@ -9,12 +9,15 @@ commit `13c60f936fe5a265e650b4b91436ed79fc20dc91`:
 4. `a2_p6`
 5. `a3_p6`
 
-The registry is intentionally `blocked_missing_tech_staged_manifest`. The
-techmap owner has not yet supplied a committed `w2-physical-staging-v2`
-manifest with exact top, filelist, source hashes and repository commit. Until
-all of those fields exist, both the single-design runner and cohort launcher
-exit nonzero before Genus and create no result namespace. An owner-generic or
-native-debug top is never used as a fallback.
+The registry is `ready` and byte-binds the canonical
+`k2_w2_tech_staged_compositions_v1` manifest published at commit
+`7f149e043a740c032e2cd22b3ed1d6876b6670ce`. The published manifest has status
+`READY_FOR_GENUS_AND_INNOVUS`, names source commit
+`07f2413f07357fa1ef34c48fc74c32d238873c30`, and has SHA-256
+`923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b`.
+The runner separately verifies the publication blob and every staged file
+against the source commit. An owner-generic or native-debug top is never used
+as a fallback.
 
 The native-core authority is separately pinned as
 `ganghee-pnr-raw-golden-20260813.tar.gz`, SHA-256
@@ -60,20 +63,13 @@ No scheduler/debug output, padding, normalized-away link pin, or extra port is
 accepted. The runner parses the actual staged top's ANSI port declaration and
 checks the exact name/direction/width set rather than trusting manifest claims.
 
-Physical mapped simulation depends on the selected Liberty's functional model
-and installed simulator, so it is an explicit mandatory hook rather than a
-fabricated local PASS. The executable receives:
-
-```text
---top TOP --netlist MAPPED_V --library LIBERTY_SNAPSHOT --output RESULT_JSON
-```
-
-It must exit zero, print `W2_MAPPED_SMOKE_PASS`, and emit schema
-`k2_w2_mapped_smoke_v1` with status `PASS`, exact top, mapped-netlist SHA-256,
-and Liberty SHA-256. The hook itself is snapshotted and hashed before execution.
-The server hook must compile the mapped netlist with the matching functional
-cell model and perform candidate-specific reset/output smoke checks; a hook
-that merely echoes PASS does not constitute hardware qualification.
+Execution requires a HEAD that contains both the source and publication
+commits. The runner verifies the manifest, each gsclib045 filelist, every HDL
+source and included technology header against HEAD and the exact source commit.
+It consumes the manifest's literal `common_ports`, `designs`, endpoint leaf
+contracts, technology authorities, source hashes, test policy, and consumer
+contract. Generic wrapper source paths and all named generic, component and
+native-debug tops are forbidden.
 
 The shared manifest also pins the complete endpoint technology inventory. R1
 requires exactly 1 `TLATNTSCAX2`, 2 `MX2X1`, 2 `DFFRHQX1`, and 5
@@ -107,12 +103,12 @@ forbidden as PPA evidence.
 
 ## Launch behavior
 
-Once the staged manifest is ready, `run_goal_cohort.py` creates an exclusive
-attempt root, records the exact three commands, and publishes a cohort result
+`run_goal_cohort.py` creates an exclusive attempt root, records the exact three
+commands, and publishes a cohort result
 only after all three mapped Genus receipts, endpoint connectivity maps, and
-mapped staged-vs-netlist functional gates pass. In the current
-blocked state, even `--plan-only` exits nonzero instead of rendering commands
-for substitute tops.
+mapped staged-vs-netlist functional gates pass. Any manifest, commit, source,
+tool, or evidence mismatch exits nonzero rather than rendering or running
+commands for substitute tops.
 
 Execution additionally requires a byte-bound `PROVEN_SERVER_ENV` receipt. The
 Genus mapping run consumes the slow setup Liberty only. Fast hold Liberty,
