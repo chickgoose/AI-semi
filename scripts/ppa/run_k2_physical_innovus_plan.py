@@ -602,7 +602,7 @@ def validate_staged_manifest(bound: dict[str, Any], registry: dict[str, Any],
 def verify_committed_blob(path: Path, commit: str, expected_sha: str) -> None:
     """Bind a materialized package file to bytes stored in one Git commit object."""
     root_result = subprocess.run(
-        ["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"],
+        ["git", "rev-parse", "--show-toplevel"], cwd=path.parent,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     if root_result.returncode:
         raise PlanError("techmap manifest is not materialized from a Git repository")
@@ -612,7 +612,7 @@ def verify_committed_blob(path: Path, commit: str, expected_sha: str) -> None:
     except ValueError as error:
         raise PlanError("techmap manifest escapes its Git repository") from error
     object_result = subprocess.run(
-        ["git", "-C", str(root), "show", f"{commit}:{relative.as_posix()}"],
+        ["git", "show", f"{commit}:{relative.as_posix()}"], cwd=root,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if object_result.returncode or sha256(object_result.stdout) != expected_sha:
         raise PlanError("techmap manifest is not the exact committed Git blob")
