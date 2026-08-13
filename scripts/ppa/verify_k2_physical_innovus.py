@@ -66,6 +66,7 @@ ZERO_COUNT_REPORTS = {
     "check_design_post_route.rpt": "unresolved_references",
 }
 OTHER_REPORTS = ("area.rpt", "power.rpt", "route.rpt")
+HOLD_CLOSURE_REPORT = "hold_closure.machine"
 BAD_LOG = re.compile(
     r"(?:^|\s)(?:ERROR|FATAL)(?::|\s)|\*\*(?:ERROR|FATAL):|"
     r"SEG(?:MENTATION)?\s+FAULT|INTERRUPT|W2_INNOVUS_FLOW_FATAL",
@@ -365,6 +366,49 @@ def _timing_machine_summary(path: Path, expected: str) -> dict[str, float | int 
             "wns": wns, "tns": tns}
 
 
+def _require_hold_closure(path: Path) -> None:
+    rows = {}
+    for line in _text(path).splitlines():
+        if line.count("=") != 1:
+            raise QualificationError(f"hold closure report malformed: {path}")
+        key, value = line.split("=", 1)
+        if key in rows or not value:
+            raise QualificationError(f"hold closure report duplicate/empty field: {path}")
+        rows[key] = value
+    try:
+        maximum = int(rows.pop("max_iterations"))
+        count = int(rows.pop("observation_count"))
+    except (KeyError, ValueError) as error:
+        raise QualificationError(f"hold closure report count mismatch: {path}") from error
+    if rows.pop("schema", None) != "k2_w2_hold_closure_v1" or \
+            rows.pop("status", None) != "CLOSED" or maximum != 3 or \
+            count < 1 or count > maximum + 1 or \
+            set(rows) != {f"observation_{index}" for index in range(count)}:
+        raise QualificationError(f"hold closure report contract mismatch: {path}")
+    previous = None
+    for index in range(count):
+        tokens = rows[f"observation_{index}"].split(",")
+        try:
+            paths, violations = map(int, tokens[:2])
+            wns, tns = map(float, tokens[2:])
+        except (ValueError, TypeError) as error:
+            raise QualificationError(f"hold closure observation malformed: {path}") from error
+        current = (paths, violations, wns, tns)
+        if len(tokens) != 4 or paths <= 0 or violations < 0 or \
+                not math.isfinite(wns) or not math.isfinite(tns):
+            raise QualificationError(f"hold closure observation invalid: {path}")
+        if previous is not None and not (
+                violations < previous[1] or
+                (violations == previous[1] and
+                 (wns > previous[2] + 0.000001 or
+                  (abs(wns - previous[2]) <= 0.000001 and
+                   tns > previous[3] + 0.000001)))):
+            raise QualificationError(f"hold closure did not improve monotonically: {path}")
+        previous = current
+    if previous is None or previous[1] != 0 or previous[2] < 0.0 or previous[3] != 0.0:
+        raise QualificationError(f"hold closure final observation is not clean: {path}")
+
+
 def _require_check_design_all(path: Path) -> None:
     text = _text(path)
     counts = _canonical_counts(path)
@@ -506,6 +550,7 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         run_dir / "status" / "TECHNOLOGY_CONTRACT", top
     )
     _require_activity_contract(run_dir / "status" / "ACTIVITY_POWER_CONTRACT")
+    _require_hold_closure(run_dir / "reports" / HOLD_CLOSURE_REPORT)
 
     reports = run_dir / "reports"
     _activity_annotation(reports / "activity_annotation.rpt")

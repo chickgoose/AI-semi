@@ -128,6 +128,11 @@ class StaticFlowContractTests(unittest.TestCase):
             "get_pins -hierarchical *w2_ep_icg_0/E",
             "expected exactly one preserved endpoint ICG enable pin",
             "-to $endpoint_icg_enable -max_paths 50",
+            "setOptMode -fixHoldAllowSetupTnsDegrade false",
+            "for {set hold_iteration 1} {$hold_iteration <= 3}",
+            "hold_metrics_improved $before $after",
+            "post-route hold closure did not converge",
+            "hold_closure.machine",
             "verifyConnectivity -type all", "verifyConnectivity -type special",
             "verify_drc", "verify_process_antenna", "saveNetlist",
             "write_sdf", "rcOut -spef",
@@ -147,14 +152,14 @@ class StaticFlowContractTests(unittest.TestCase):
             "w2_hold_view clock_gating_hold gating_hold $endpoint_icg_enable",
             text)
 
-    def test_pg_route_runs_once_after_all_cell_insertion(self):
+    def test_pg_route_is_refreshed_after_each_hold_eco(self):
         text = PNR.read_text(encoding="utf-8")
         sroute = "sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}"
         trim = "editTrim -nets [list $vdd $vss]"
         pre_eco_drc = 'verify_drc -report "$output/reports/drc_pre_signal_eco.rpt"'
         signal_eco = "ecoRoute -fix_drc"
-        self.assertEqual(text.count(sroute), 1)
-        self.assertEqual(text.count(trim), 1)
+        self.assertEqual(text.count(sroute), 2)
+        self.assertEqual(text.count(trim), 2)
         self.assertEqual(text.count(pre_eco_drc), 1)
         self.assertEqual(text.count(signal_eco), 1)
         self.assertLess(text.index("optDesign -postRoute -hold"), text.index(sroute))
@@ -162,7 +167,13 @@ class StaticFlowContractTests(unittest.TestCase):
         self.assertLess(text.index(trim), text.index(pre_eco_drc))
         self.assertLess(text.index(pre_eco_drc), text.index(signal_eco))
         self.assertLess(text.index(signal_eco), text.index("extractRC", text.index(trim)))
-        self.assertLess(text.index(trim), text.index("verifyConnectivity -type all"))
+        closure_opt = text.rindex("optDesign -postRoute -hold")
+        closure_sroute = text.rindex(sroute)
+        closure_trim = text.rindex(trim)
+        self.assertLess(closure_opt, closure_sroute)
+        self.assertLess(closure_sroute, closure_trim)
+        self.assertLess(closure_trim, text.index("extractRC", closure_trim))
+        self.assertLess(closure_trim, text.index("verifyConnectivity -type all"))
 
     def test_propagated_clock_uses_the_shared_mmmc_constraint_mode(self):
         text = PNR.read_text(encoding="utf-8")
@@ -176,10 +187,11 @@ class StaticFlowContractTests(unittest.TestCase):
         text = PNR.read_text(encoding="utf-8")
         setup_mode = "setAnalysisMode -checkType setup"
         hold_mode = "setAnalysisMode -checkType hold"
-        self.assertEqual(text.count(setup_mode), 2)
-        self.assertEqual(text.count(hold_mode), 1)
-        setup_start = text.index(setup_mode)
-        hold_start = text.index(hold_mode)
+        self.assertEqual(text.count(setup_mode), 3)
+        self.assertEqual(text.count(hold_mode), 2)
+        report_anchor = text.index("# Innovus 23.14 defaults interactive timing queries")
+        setup_start = text.index(setup_mode, report_anchor)
+        hold_start = text.index(hold_mode, setup_start)
         setup_restore = text.rindex(setup_mode)
         self.assertLess(setup_start, text.index("-check_type recovery", setup_start))
         self.assertLess(text.index("-check_type recovery", setup_start), hold_start)
@@ -292,6 +304,14 @@ class FixtureQualificationTests(unittest.TestCase):
             "'read_activity_file' finished successfully.\n"
         )
         (self.root / "reports/power.rpt").write_text("power report\n")
+        (self.root / "reports/hold_closure.machine").write_text(
+            "schema=k2_w2_hold_closure_v1\n"
+            "status=CLOSED\n"
+            "max_iterations=3\n"
+            "observation_count=2\n"
+            "observation_0=10,2,-0.100,-0.150\n"
+            "observation_1=10,0,0.010,0.0\n"
+        )
         (self.root / "reports/route.rpt").write_text(
             "detailed_route_completed=1\n"
         )
@@ -318,6 +338,23 @@ class FixtureQualificationTests(unittest.TestCase):
             self.module._activity_annotation(path),
             {"matched_nets": 320, "total_nets": 400, "coverage_percent": 80.0},
         )
+
+    def test_hold_closure_receipt_fails_closed(self):
+        path = self.root / "reports/hold_closure.machine"
+        original = path.read_text()
+        for mutation in (
+                original.replace("status=CLOSED", "status=EXHAUSTED"),
+                original.replace("observation_1=10,0,0.010,0.0",
+                                 "observation_1=10,2,-0.100,-0.150"),
+                original.replace("observation_1=10,0,0.010,0.0",
+                                 "observation_1=10,1,-0.050,-0.050"),
+                original.replace("observation_count=2", "observation_count=3"),
+        ):
+            with self.subTest(mutation=mutation):
+                path.write_text(mutation)
+                with self.assertRaises(self.module.QualificationError):
+                    self.module.validate(self.root, "dut")
+                path.write_text(original)
 
     def test_activity_annotation_mutations_fail_closed(self):
         path = self.root / "reports/activity_annotation.rpt"
