@@ -1,6 +1,30 @@
 K2 실서버 동일-flow 물리검증 결과 (2026-08-13)
 ====================================================
 
+최종 교정 flow 재실행 (2026-08-14 00:04 KST)
+---------------------------------------------
+- 최종 flow commit: bb3ca04a5b6819a41162c89b5734eee75b8db335
+- 새 Genus/SDC commit: 1a4837fa9292e92f8d5af9cf1537a42a5f05f21e
+- 세 후보 모두 후보별 work/TMPDIR 격리, 35% common utilization, canonical-site rows,
+  post-opt PG routing/trim, exact endpoint ICG /E check로 다시 실행했다.
+- 공통 PG connectivity는 세 후보 모두 0 problem으로 닫혔다.
+- 잘못 포함됐던 serializer MX2 gating check를 제외하자 endpoint ICG gating
+  setup/hold는 세 후보 모두 violation 0이었다.
+- DRC는 Fovea 1, A2 1, A3 0으로 감소했다. Fovea/A2의 각 1건은
+  regular signal wire와 VDD/VSS special wire 간 Metal1 short다.
+- 5ns setup/hold는 아직 아래처럼 남아 전체 FLOW_CLEAN은 HOLD다.
+
+후보        Inst.   Area(*)    Power       Setup WNS/viol.   Hold WNS/viol.   E/measured event
+Fovea+A7     434     1299.600    73.987 uW  -0.219888 / 7    -0.119841 / 5    0.3703 pJ
+A2+P6       1129     3396.402   365.037 uW  -0.279329 / 22   -0.055551 / 14   0.9311 pJ
+A3+P6        633     1785.924   169.033 uW  -0.276930 / 6    -0.027140 / 9    0.5037 pJ
+
+- direct activity coverage: Fovea 51/458=11.14%, A2 66/1160=5.69%,
+  A3 64/665=9.62%. 전력 caveat는 아래와 동일하다.
+- 최신 서버 증거: /tmp/k2-pnr-bb3ca04/out-{fovea_a7,a2_p6,a3_p6}
+- 현재 정량 결론은 동일하다: A2가 loss/throughput 최상, A3가 면적·전력 대비
+  throughput의 가장 균형적인 절충, Fovea+A7가 가장 작지만 loss가 가장 크다.
+
 판정 요약
 ---------
 - Fovea+A7, A2+P6, A3+P6 모두 실제 Genus 합성 및 Innovus place/CTS/route를 완료했다.
