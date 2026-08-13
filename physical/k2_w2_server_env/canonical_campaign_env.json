@@ -1,6 +1,6 @@
 {
   "campaign_launch_allowed": false,
-  "contract_sha256": "8e877a178b3d89bf9756a826f9dd782ed8fa1f9a48f705234b67d549e7e6d491",
+  "contract_sha256": "e02374caaa8e8985590f5609c7962a9ba2df2cac9603e93cb250c8233e22d989",
   "corner_policy": {
     "hold_liberty": "fast_vdd1v0_basicCells.lib",
     "hold_qrc": "gpdk045.tch",
@@ -9,6 +9,17 @@
     "shared_rc_limitation": "Only gpdk045.tch is present under qrc/qx. Setup and hold use the same typical QRC technology file; no distinct best/worst RC evidence exists, so RC-corner physical signoff remains HOLD."
   },
   "direct_server_observation": {
+    "cell_resolution": {
+      "icg": "TLATNTSCAX2(E,SE,CK,ECK), latch_posedge_precontrol; TLATNCAX2 is not an allowed mapped substitute",
+      "mapped_forbidden": [
+        "TLATXL",
+        "TLATNCAX2",
+        "SDFF"
+      ],
+      "mux": "MX2X1(A,B,S0,Y)",
+      "negedge_ff": "DFFNSRX1(Q,QN,CKN,D,SN,RN), clocked_on=!CKN, clear=!RN, preset=!SN",
+      "posedge_ff": "DFFRHQX1(RN,CK,D,Q)"
+    },
     "evidence_class": "user_confirmed_live_shell_observation",
     "limitations": [
       "Technology bytes are not present locally; a strict server preflight must re-read and match these SHAs.",
@@ -50,6 +61,17 @@
   "gates": {
     "direct_server_observation": {
       "evidence": {
+        "cell_resolution": {
+          "icg": "TLATNTSCAX2(E,SE,CK,ECK), latch_posedge_precontrol; TLATNCAX2 is not an allowed mapped substitute",
+          "mapped_forbidden": [
+            "TLATXL",
+            "TLATNCAX2",
+            "SDFF"
+          ],
+          "mux": "MX2X1(A,B,S0,Y)",
+          "negedge_ff": "DFFNSRX1(Q,QN,CKN,D,SN,RN), clocked_on=!CKN, clear=!RN, preset=!SN",
+          "posedge_ff": "DFFRHQX1(RN,CK,D,Q)"
+        },
         "observation_date": "2026-08-13",
         "technology_sha256": {
           "hold_liberty": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
@@ -89,14 +111,17 @@
     "golden_environment": {
       "evidence": {
         "cells": [
-          "TLATNCAX2",
-          "MX2X1"
+          "TLATNTSCAX2",
+          "MX2X1",
+          "DFFRHQX1"
         ],
         "genus_version": "23.14-s090_1",
         "innovus_internal_executable": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_",
         "innovus_version": "23.14-s088_1",
+        "mapped_icg": "TLATNTSCAX2",
+        "mapped_icg_raw_fovea_count": 1,
         "negedge_ff": null,
-        "posedge_ff": true,
+        "posedge_ff": "DFFRHQX1",
         "site": "CoreSite",
         "slow_pvt": [
           1.0,
@@ -104,7 +129,7 @@
           125.0
         ]
       },
-      "reason": "negative-edge FF and byte identities of live server inputs are not present in historical golden logs",
+      "reason": "DFFNSRX1 negative-edge evidence comes from direct live mapped/Liberty observation, not these historical golden archives",
       "status": "PROVEN_PARTIAL"
     },
     "live_server_inputs": {
@@ -131,13 +156,21 @@
     }
   },
   "qualification_status": "HOLD",
+  "receipt": {
+    "contract_sha256": "e02374caaa8e8985590f5609c7962a9ba2df2cac9603e93cb250c8233e22d989",
+    "decision": "HOLD",
+    "environment_binding_sha256": null,
+    "evidence_status": "NOT_GO",
+    "schema": "k2_w2_server_env_go_receipt_v1"
+  },
+  "receipt_sha256": "03b2cc122531f322d622dae94d2fe0be21aac6e0f4f9c0a8d736a28c0048e888",
   "schema": "k2_w2_server_env_result_v1",
   "unresolved_environment_evidence": [
     "runtime invocation and exact parsed-version match for the three byte-pinned tools",
     "runtime capture of the Genus build-expiration banner warning (nonzero invocation remains FAIL)",
     "strict server re-read matching five observed technology files (six roles with shared QRC)",
-    "fast Liberty PVT and direct posedge/negedge FF inspection",
-    "direct technology/macro LEF site legality",
+    "strict Liberty semantic re-read of fast PVT and exact ICG/FF pins/arcs",
+    "direct technology/macro LEF exact pins and CoreSite legality",
     "direct qrc/qx directory inventory"
   ]
 }

@@ -17,6 +17,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "physical" / "k2_w2_server_env" / "preflight.py"
+RECEIPT_SCRIPT = ROOT / "physical" / "k2_w2_server_env" / "require_go_receipt.py"
+MAPPED_SCRIPT = ROOT / "physical" / "k2_w2_server_env" / "verify_mapped_inventory.py"
 REPO_CONTRACT = ROOT / "physical" / "k2_w2_server_env" / "contract.json"
 REPO_RESULT = ROOT / "physical" / "k2_w2_server_env" / "canonical_campaign_env.json"
 
@@ -47,20 +49,57 @@ SLOW = """library (slow) {
   nom_process : 1.0;
   nom_voltage : 0.9;
   nom_temperature : 125.0;
-  cell (TLATNCAX2) { pin (CK) { direction : input; } }
-  cell (MX2X1) { pin (Y) { direction : output; function : \"A?B:C\"; } }
-  cell (DFFPX1) {
-    ff (IQ, IQN) { clocked_on : \"CK\"; next_state : \"D\"; }
+  cell (TLATNTSCAX2) {
+    clock_gating_integrated_cell : latch_posedge_precontrol;
+    pin (E) { direction : input; }
+    pin (SE) { direction : input; }
+    pin (CK) { direction : input; }
+    pin (ECK) { direction : output; }
   }
-  cell (DFFNX1) {
-    ff (IQ, IQN) { clocked_on : \"!CK\"; next_state : \"D\"; }
+  cell (MX2X1) {
+    pin (A) { direction : input; }
+    pin (B) { direction : input; }
+    pin (S0) { direction : input; }
+    pin (Y) { direction : output; function : \"A?B:C\"; }
+  }
+  cell (DFFRHQX1) {
+    ff (IQ, IQN) { clocked_on : \"CK\"; next_state : \"D\"; clear : \"!RN\"; }
+    pin (RN) { direction : input;
+      timing () { related_pin : \"CK\"; timing_type : recovery_rising; }
+      timing () { related_pin : \"CK\"; timing_type : removal_rising; }
+    }
+    pin (CK) { direction : input; }
+    pin (D) { direction : input;
+      timing () { related_pin : \"CK\"; timing_type : setup_rising; }
+      timing () { related_pin : \"CK\"; timing_type : hold_rising; }
+    }
+    pin (Q) { direction : output; }
+  }
+  cell (DFFNSRX1) {
+    ff (IQ, IQN) { clocked_on : \"(!CKN)\"; next_state : \"D\";
+      clear : \"(!RN)\"; preset : \"(!SN)\"; }
+    pin (Q) { direction : output; }
+    pin (QN) { direction : output; }
+    pin (CKN) { direction : input; }
+    pin (D) { direction : input;
+      timing () { related_pin : \"CKN\"; timing_type : setup_falling; }
+      timing () { related_pin : \"CKN\"; timing_type : hold_falling; }
+    }
+    pin (SN) { direction : input;
+      timing () { related_pin : \"CKN\"; timing_type : recovery_falling; }
+      timing () { related_pin : \"CKN\"; timing_type : removal_falling; }
+    }
+    pin (RN) { direction : input;
+      timing () { related_pin : \"CKN\"; timing_type : recovery_falling; }
+      timing () { related_pin : \"CKN\"; timing_type : removal_falling; }
+    }
   }
 }
 """
 
 FAST = SLOW.replace("library (slow)", "library (fast)").replace(
     "nom_voltage : 0.9", "nom_voltage : 1.1").replace(
-    "nom_temperature : 125.0", "nom_temperature : -40.0")
+    "nom_temperature : 125.0", "nom_temperature : 0.0")
 
 TECH_LEF = """VERSION 5.8 ;
 SITE CoreSite
@@ -71,12 +110,34 @@ END LIBRARY
 """
 
 
-def macro(name: str, site: str = "CoreSite") -> str:
-    return f"MACRO {name}\n  CLASS CORE ;\n  SITE {site} ;\nEND {name}\n"
+def macro(name: str, pins: dict[str, str], site: str = "CoreSite") -> str:
+    pin_text = "".join(
+        f"  PIN {pin}\n    DIRECTION {direction} ;\n  END {pin}\n"
+        for pin, direction in pins.items())
+    return (f"MACRO {name}\n  CLASS CORE ;\n  SITE {site} ;\n"
+            f"{pin_text}END {name}\n")
 
 
-MACRO_LEF = "VERSION 5.8 ;\n" + "".join(
-    macro(name) for name in ("TLATNCAX2", "MX2X1", "DFFPX1", "DFFNX1")) + "END LIBRARY\n"
+MACRO_LEF = "VERSION 5.8 ;\n" + "".join((
+    macro("TLATNTSCAX2", {"E": "INPUT", "SE": "INPUT", "CK": "INPUT",
+                           "ECK": "OUTPUT", "VDD": "INOUT", "VSS": "INOUT"}),
+    macro("MX2X1", {"A": "INPUT", "B": "INPUT", "S0": "INPUT",
+                     "Y": "OUTPUT", "VDD": "INOUT", "VSS": "INOUT"}),
+    macro("DFFRHQX1", {"RN": "INPUT", "CK": "INPUT", "D": "INPUT",
+                        "Q": "OUTPUT", "VDD": "INOUT", "VSS": "INOUT"}),
+    macro("DFFNSRX1", {"Q": "OUTPUT", "QN": "OUTPUT", "CKN": "INPUT",
+                        "D": "INPUT", "SN": "INPUT", "RN": "INPUT",
+                        "VDD": "INOUT", "VSS": "INOUT"}),
+)) + "END LIBRARY\n"
+
+MAPPED_NETLIST = """
+module mapped(input link_clock, rst_n, e, a, b, s, d, output eck, y, q0, q1);
+  TLATNTSCAX2 u_icg(.E(e), .SE(1'b0), .CK(link_clock), .ECK(eck));
+  MX2X1 u_mux(.A(a), .B(b), .S0(s), .Y(y));
+  DFFRHQX1 u_pos(.RN(rst_n), .CK(link_clock), .D(d), .Q(q0));
+  DFFNSRX1 u_neg(.RN(rst_n), .SN(1'b1), .CKN(link_clock), .D(d), .Q(q1), .QN());
+endmodule
+"""
 
 
 class Fixture:
@@ -99,13 +160,13 @@ class Fixture:
             "synth/pnr/resynth_fovea_raw/mmmc_1.2.tcl":
                 b"create_rc_corner -qrc_tech /pdk/qrc/qx/gpdk045.tch\n",
             "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2_netlist.v":
-                b"DFFPX1 u_ff();\n",
+                b"TLATNTSCAX2 u_icg(.E(e),.SE(1'b0),.CK(clk),.ECK(gclk));\n",
             "synth/pnr/resynth_cluster2_raw/innovus_0.7.log":
-                b"Clock gates   (no test): TLATNCAX20 TLATNCAX2\n",
+                b"Clock gates (with test): TLATNTSCAX20 TLATNTSCAX2\n",
         }
         self.buffered_members = {
             "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_1.0_netlist.v":
-                b"MX2X1 u_mux(); DFFPX1 u_ff();\n",
+                b"TLATNTSCAX2 u_icg(); MX2X1 u_mux(); DFFRHQX1 u_ff();\n",
             "synth/pnr/resynth_cluster2_buffered/innovus_1.0.log":
                 b"site name: CoreSite, cell type: MX2X1\n",
         }
@@ -126,92 +187,36 @@ class Fixture:
 
     def refresh_contract(self) -> None:
         file_hash = lambda path: sha(path.read_bytes())
-        document = {
-            "schema": "k2_w2_server_env_contract_v1",
-            "server_pdk_root": str(self.pdk),
-            "tools": {
-                "genus": {"version": "23.14-s090_1", "sha256": file_hash(self.genus),
-                          "observed_path": str(self.genus),
-                          "golden_executable_identity": None},
-                "innovus": {"version": "23.14-s088_1", "sha256": file_hash(self.innovus),
-                            "observed_path": str(self.innovus),
-                            "golden_executable_identity": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_"},
-                "xrun": {"version": "23.09-s013", "sha256": file_hash(self.xrun),
-                         "observed_path": str(self.xrun),
-                         "golden_executable_identity": None},
-            },
-            "technology": {
-                "setup_liberty": {"relative_path": "timing/slow_vdd1v0_basicCells.lib",
-                                    "sha256": file_hash(self.pdk / "timing/slow_vdd1v0_basicCells.lib"),
-                                    "pvt": [1.0, 0.9, 125.0]},
-                "hold_liberty": {"relative_path": "timing/fast_vdd1v0_basicCells.lib",
-                                   "sha256": file_hash(self.pdk / "timing/fast_vdd1v0_basicCells.lib"),
-                                   "pvt": [1.0, 1.1, -40.0]},
-                "tech_lef": {"relative_path": "lef/gsclib045_tech.lef",
-                             "sha256": file_hash(self.pdk / "lef/gsclib045_tech.lef")},
-                "macro_lef": {"relative_path": "lef/gsclib045_macro.lef",
-                              "sha256": file_hash(self.pdk / "lef/gsclib045_macro.lef")},
-                "setup_qrc": {"relative_path": "qrc/qx/gpdk045.tch",
-                              "sha256": file_hash(self.pdk / "qrc/qx/gpdk045.tch")},
-                "hold_qrc": {"relative_path": "qrc/qx/gpdk045.tch",
-                             "sha256": file_hash(self.pdk / "qrc/qx/gpdk045.tch")},
-                "required_timing_directory_entries": [
-                    "fast_vdd1v0_basicCells.lib", "slow_vdd1v0_basicCells.lib"],
-                "required_qrc_tch_entries": ["gpdk045.tch"],
-                "required_site": "CoreSite",
-                "required_cells": {"icg": "TLATNCAX2", "mux": "MX2X1"},
-                "required_ff_edges": ["posedge", "negedge"],
-            },
-            "corner_policy": {
-                "setup_liberty": "slow_vdd1v0_basicCells.lib",
-                "hold_liberty": "fast_vdd1v0_basicCells.lib",
-                "setup_qrc": "gpdk045.tch", "hold_qrc": "gpdk045.tch",
-                "shared_rc_limitation": "single shared typical QRC; physical signoff HOLD",
-            },
-            "direct_server_observation": {
-                "evidence_class": "user_confirmed_live_shell_observation",
-                "observation_date": "2026-08-13",
-                "technology_sha256": {
-                    role: document_sha
-                    for role, document_sha in {
-                        "setup_liberty": file_hash(self.pdk / "timing/slow_vdd1v0_basicCells.lib"),
-                        "hold_liberty": file_hash(self.pdk / "timing/fast_vdd1v0_basicCells.lib"),
-                        "tech_lef": file_hash(self.pdk / "lef/gsclib045_tech.lef"),
-                        "macro_lef": file_hash(self.pdk / "lef/gsclib045_macro.lef"),
-                        "setup_qrc": file_hash(self.pdk / "qrc/qx/gpdk045.tch"),
-                        "hold_qrc": file_hash(self.pdk / "qrc/qx/gpdk045.tch"),
-                    }.items()
-                },
-                "tool_paths": {
-                    "genus": str(self.genus), "innovus": str(self.innovus),
-                    "xrun": str(self.xrun),
-                },
-                "tool_sha256": {
-                    "genus": file_hash(self.genus),
-                    "innovus": file_hash(self.innovus),
-                    "xrun": file_hash(self.xrun),
-                },
-                "tool_versions": {
-                    "genus": "23.14-s090_1", "innovus": "23.14-s088_1",
-                    "xrun": "23.09-s013",
-                },
-                "tool_warnings": [{
-                    "tool": "genus", "code": "BUILD_EXPIRATION_BANNER",
-                    "disposition": "warning on zero", "evidence": "fixture",
-                }],
-                "limitations": ["fixture"],
-            },
-            "source_archives": {
-                "raw_core": {"default_path": str(self.raw_archive),
-                             "sha256": file_hash(self.raw_archive)},
-                "buffered_extension": {"default_path": str(self.buffered_archive),
-                                       "sha256": file_hash(self.buffered_archive)},
-            },
-            "golden_anchors": {
-                "raw_core": {name: sha(data) for name, data in self.raw_members.items()},
-                "buffered_extension": {
-                    name: sha(data) for name, data in self.buffered_members.items()},
-            },
+        document = json.loads(REPO_CONTRACT.read_text())
+        document["server_pdk_root"] = str(self.pdk)
+        tool_paths = {"genus": self.genus, "innovus": self.innovus,
+                      "xrun": self.xrun}
+        for name, path in tool_paths.items():
+            document["tools"][name]["observed_path"] = str(path)
+            document["tools"][name]["sha256"] = file_hash(path)
+            document["direct_server_observation"]["tool_paths"][name] = str(path)
+            document["direct_server_observation"]["tool_sha256"][name] = file_hash(path)
+        technology_paths = {
+            "setup_liberty": self.pdk / "timing/slow_vdd1v0_basicCells.lib",
+            "hold_liberty": self.pdk / "timing/fast_vdd1v0_basicCells.lib",
+            "tech_lef": self.pdk / "lef/gsclib045_tech.lef",
+            "macro_lef": self.pdk / "lef/gsclib045_macro.lef",
+            "setup_qrc": self.pdk / "qrc/qx/gpdk045.tch",
+            "hold_qrc": self.pdk / "qrc/qx/gpdk045.tch",
+        }
+        for role, path in technology_paths.items():
+            document["technology"][role]["sha256"] = file_hash(path)
+            document["direct_server_observation"]["technology_sha256"][role] = file_hash(path)
+        document["source_archives"] = {
+            "raw_core": {"default_path": str(self.raw_archive),
+                         "sha256": file_hash(self.raw_archive)},
+            "buffered_extension": {"default_path": str(self.buffered_archive),
+                                   "sha256": file_hash(self.buffered_archive)},
+        }
+        document["golden_anchors"] = {
+            "raw_core": {name: sha(data) for name, data in self.raw_members.items()},
+            "buffered_extension": {
+                name: sha(data) for name, data in self.buffered_members.items()},
         }
         write(self.contract, json.dumps(document, indent=2, sort_keys=True) + "\n")
 
@@ -242,6 +247,20 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(fixture.result()["qualification_status"], "FAIL")
         self.assertFalse(fixture.result()["campaign_launch_allowed"])
 
+    def run_mapped(self, fixture: Fixture, netlist_text: str,
+                   environment_receipt: Path | None = None) -> subprocess.CompletedProcess:
+        netlist = fixture.root / "mapped.v"
+        write(netlist, netlist_text)
+        output = fixture.root / f"mapped-receipt-{sha(netlist.read_bytes())}.json"
+        command = [
+            sys.executable, str(MAPPED_SCRIPT), "--contract", str(fixture.contract),
+            "--environment-receipt", str(environment_receipt or fixture.output),
+            "--mapped-netlist", str(netlist), "--expected-netlist-sha256",
+            sha(netlist.read_bytes()), "--output", str(output),
+        ]
+        return subprocess.run(command, text=True, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, check=False)
+
     def test_repository_local_hold_receipt_reproducible(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "canonical.json"
@@ -258,6 +277,20 @@ class PreflightTests(unittest.TestCase):
     def test_repository_direct_server_observation_exact(self) -> None:
         contract = json.loads(REPO_CONTRACT.read_text())
         observation = contract["direct_server_observation"]
+        technology = contract["technology"]
+        self.assertEqual(technology["setup_liberty"]["pvt"], [1.0, 0.9, 125.0])
+        self.assertEqual(technology["hold_liberty"]["pvt"], [1.0, 1.1, 0.0])
+        self.assertEqual(technology["required_cells"], {
+            "icg": "TLATNTSCAX2", "mux": "MX2X1",
+            "posedge_ff": "DFFRHQX1", "negedge_ff": "DFFNSRX1",
+        })
+        self.assertEqual(technology["cell_contracts"]["TLATNTSCAX2"]
+                         ["liberty_pins"], {
+            "E": "input", "SE": "input", "CK": "input", "ECK": "output",
+        })
+        self.assertEqual(technology["cell_contracts"]["DFFNSRX1"]["ff"], {
+            "clocked_on": "!CKN", "clear": "!RN", "preset": "!SN",
+        })
         self.assertEqual(observation["technology_sha256"], {
             "setup_liberty": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
             "hold_liberty": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
@@ -302,6 +335,15 @@ class PreflightTests(unittest.TestCase):
             self.assertEqual(genus["parsed_version"], "23.14-s090_1")
             self.assertEqual(genus["warnings"][0]["code"],
                              "TOOL_BANNER_EXPIRATION")
+            self.assertEqual(result["receipt"]["evidence_status"],
+                             "PROVEN_SERVER_ENV")
+            self.assertRegex(result["receipt_sha256"], r"^[0-9a-f]{64}$")
+            verify = subprocess.run([
+                sys.executable, str(RECEIPT_SCRIPT), "--contract",
+                str(fixture.contract), "--receipt", str(fixture.output),
+            ], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                check=False)
+            self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
             second_output = fixture.root / "second.json"
             fixture.output = second_output
             self.assertEqual(fixture.run().returncode, 0)
@@ -432,6 +474,14 @@ class PreflightTests(unittest.TestCase):
             write(fixture.contract, json.dumps(contract))
             self.assert_fail(fixture)
 
+    def test_wrong_fast_pvt_contract(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            contract = json.loads(fixture.contract.read_text())
+            contract["technology"]["hold_liberty"]["pvt"] = [1.0, 1.1, -40.0]
+            write(fixture.contract, json.dumps(contract))
+            self.assert_fail(fixture)
+
     def semantic_mutation(self, old: str, new: str = "REMOVED") -> None:
         temporary, fixture = self.with_fixture()
         with temporary:
@@ -442,7 +492,7 @@ class PreflightTests(unittest.TestCase):
             self.assert_fail(fixture)
 
     def test_missing_icg(self) -> None:
-        self.semantic_mutation("TLATNCAX2")
+        self.semantic_mutation("TLATNTSCAX2")
 
     def test_missing_mux(self) -> None:
         self.semantic_mutation("MX2X1")
@@ -451,7 +501,120 @@ class PreflightTests(unittest.TestCase):
         self.semantic_mutation('clocked_on : "CK"', 'clocked_on : "!CK"')
 
     def test_missing_negedge_ff(self) -> None:
-        self.semantic_mutation('clocked_on : "!CK"', 'clocked_on : "CK"')
+        self.semantic_mutation('clocked_on : "(!CKN)"', 'clocked_on : "CKN"')
+
+    def test_missing_icg_se_pin(self) -> None:
+        self.semantic_mutation("pin (SE)", "pin (BAD_SE)")
+
+    def test_missing_negedge_recovery_arc(self) -> None:
+        self.semantic_mutation("recovery_falling", "recovery_rising")
+
+    def test_wrong_icg_class(self) -> None:
+        self.semantic_mutation("latch_posedge_precontrol", "latch_posedge")
+
+    def test_missing_lef_negedge_reset_pin(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            path = fixture.pdk / "lef/gsclib045_macro.lef"
+            write(path, path.read_text().replace(
+                "  PIN SN\n    DIRECTION INPUT ;\n  END SN\n", ""))
+            fixture.refresh_contract()
+            self.assert_fail(fixture)
+
+    def test_missing_go_receipt_rejected(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            run = subprocess.run([
+                sys.executable, str(RECEIPT_SCRIPT), "--contract",
+                str(fixture.contract), "--receipt", str(fixture.root / "missing.json"),
+            ], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                check=False)
+            self.assertNotEqual(run.returncode, 0)
+
+    def test_hold_receipt_rejected_for_campaign_launch(self) -> None:
+        run = subprocess.run([
+            sys.executable, str(RECEIPT_SCRIPT), "--contract", str(REPO_CONTRACT),
+            "--receipt", str(REPO_RESULT),
+        ], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            check=False)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("not a PROVEN_SERVER_ENV GO", run.stderr)
+
+    def test_tampered_go_receipt_rejected(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            self.assertEqual(fixture.run().returncode, 0)
+            receipt = json.loads(fixture.output.read_text())
+            receipt["gates"]["technology_files"]["status"] = "FAKE"
+            write(fixture.output, json.dumps(receipt))
+            run = subprocess.run([
+                sys.executable, str(RECEIPT_SCRIPT), "--contract",
+                str(fixture.contract), "--receipt", str(fixture.output),
+            ], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                check=False)
+            self.assertNotEqual(run.returncode, 0)
+
+    def test_go_receipt_output_is_immutable(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            self.assertEqual(fixture.run().returncode, 0)
+            original = fixture.output.read_bytes()
+            second = fixture.run()
+            self.assertNotEqual(second.returncode, 0)
+            self.assertEqual(fixture.output.read_bytes(), original)
+
+    def test_mapped_inventory_exact_fixture_passes(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            self.assertEqual(fixture.run().returncode, 0)
+            run = self.run_mapped(fixture, MAPPED_NETLIST)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            result = json.loads(next(fixture.root.glob("mapped-receipt-*.json")).read_text())
+            self.assertEqual(result["inventory"]["cell_counts"], {
+                "TLATNTSCAX2": 1, "MX2X1": 1,
+                "DFFRHQX1": 1, "DFFNSRX1": 1,
+            })
+
+    def test_mapped_inventory_requires_environment_receipt(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            run = self.run_mapped(
+                fixture, MAPPED_NETLIST, fixture.root / "missing-environment.json")
+            self.assertNotEqual(run.returncode, 0)
+
+    def test_mapped_inventory_forbidden_cells_rejected(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            self.assertEqual(fixture.run().returncode, 0)
+            for forbidden in ("TLATXL", "TLATNCAX2", "SDFFX1"):
+                with self.subTest(cell=forbidden):
+                    run = self.run_mapped(
+                        fixture, MAPPED_NETLIST + f"\n{forbidden} u_bad();\n")
+                    self.assertNotEqual(run.returncode, 0)
+
+    def test_mapped_inventory_wrong_negedge_binding_rejected(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            self.assertEqual(fixture.run().returncode, 0)
+            run = self.run_mapped(
+                fixture, MAPPED_NETLIST.replace(".SN(1'b1)", ".SN(1'b0)"))
+            self.assertNotEqual(run.returncode, 0)
+
+    def test_mapped_inventory_wrong_hash_rejected(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            self.assertEqual(fixture.run().returncode, 0)
+            netlist = fixture.root / "mapped.v"
+            output = fixture.root / "mapped-wrong-hash.json"
+            write(netlist, MAPPED_NETLIST)
+            run = subprocess.run([
+                sys.executable, str(MAPPED_SCRIPT), "--contract", str(fixture.contract),
+                "--environment-receipt", str(fixture.output), "--mapped-netlist",
+                str(netlist), "--expected-netlist-sha256", "0" * 64,
+                "--output", str(output),
+            ], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                check=False)
+            self.assertNotEqual(run.returncode, 0)
 
     def test_site_mutation(self) -> None:
         temporary, fixture = self.with_fixture()
