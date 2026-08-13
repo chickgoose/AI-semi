@@ -488,6 +488,8 @@ def validate_staged_manifest(root: Path, registry: dict[str, Any],
                 "endpoint_preserved_name_prefixes"],
             "no_other_negedge_state_proven": expectation[
                 "no_other_negedge_state_proven"],
+            "required_mapped_functional_tests": expectation[
+                "required_mapped_functional_tests"],
             "strict_sdc": expectation["strict_sdc"],
             "boundary_cohort": "tech_staged_complete_compositions",
             "source_origin": "tech_staged_repository_exact",

@@ -291,6 +291,10 @@ class GenusFlowTests(unittest.TestCase):
                                  "tech_staged_complete_compositions")
                 self.assertEqual(design["outputs"][:len(common)], common)
                 self.assertNotIn(design["top"], registry["forbidden_final_tops"])
+                self.assertEqual(
+                    design["required_mapped_functional_tests"],
+                    registry["design_expectations"][key][
+                        "required_mapped_functional_tests"])
             self.assertEqual(runtime["designs"]["fovea_a7"]["outputs"][-2:],
                              ["link_clk_o", "link_data_o"])
             self.assertEqual(runtime["designs"]["a2_p6"]["outputs"][-2:],
