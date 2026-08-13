@@ -20,7 +20,7 @@ REGISTRY = ROOT / "scripts/ppa/k2_physical_innovus_cohorts.json"
 AUTHORITY = ROOT / "scripts/ppa/k2_physical_server_environment.json"
 GENUS_PROVIDER_REPO = Path(os.environ.get(
     "W2_GENUS_PROVIDER_REPO", "/tmp/k2-phys-w2-genus"))
-GENUS_PROVIDER_COMMIT = "63e98ccf189f992c443a05ba28f63b610bbc3f9f"
+GENUS_PROVIDER_COMMIT = "8610bd0bf70eb9f9e2bcc35efe3f398afb78b9d6"
 
 
 def load_runner():
@@ -72,25 +72,32 @@ class InnovusPlanTests(unittest.TestCase):
 
     def write_manifest(self) -> tuple[Path, dict]:
         cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
+        common_ports = cohort["common_ports"]
         document = {
-            "schema": "w2-physical-staging-v2",
-            "status": "GO_FOR_SERVER_STAGING",
+            "schema": "k2_w2_tech_staged_compositions_v1",
+            "status": "READY_FOR_GENUS_AND_INNOVUS",
             "repository_commit": "1" * 40,
             "goal_order": cohort["exact_design_set"],
+            "common_ports": common_ports,
+            "common_inputs": [row for row in common_ports
+                              if row["direction"] == "input"],
+            "common_outputs": [row for row in common_ports
+                               if row["direction"] == "output"],
             "constraint_templates": self.authority["constraint_templates"],
             "technology_authorities": self.ready_registry[
                 "technology_stage_authorities"],
-            "tops": {
+            "designs": {
                 design: {
-                    "staged_top": cohort["designs"][design]["top"],
-                    "required_ports": cohort["common_ports"],
+                    "top": cohort["designs"][design]["top"],
+                    "required_ports": common_ports,
                     "link_pins": cohort["designs"][design]["link_pins"],
-                    "endpoint_expected_inventory": cohort["designs"][design][
-                        "endpoint_leaf_contract"]["leaf_counts"],
-                    "endpoint_preserved_name_prefixes": cohort["designs"][design][
-                        "endpoint_leaf_contract"]["preserved_name_prefixes"],
-                    "no_other_negedge_state_proven": cohort["designs"][design][
-                        "endpoint_leaf_contract"]["no_other_negedge_state_proven"],
+                    "strict_sdc": copy.deepcopy(
+                        self.authority["constraint_templates"][
+                            cohort["designs"][design]["constraint_template"]]),
+                    "endpoint_root": copy.deepcopy(
+                        cohort["designs"][design]["endpoint_root"]),
+                    "endpoint_leaf_contract": copy.deepcopy(
+                        cohort["designs"][design]["endpoint_leaf_contract"]),
                 }
                 for design in cohort["exact_design_set"]
             },
@@ -149,9 +156,9 @@ class InnovusPlanTests(unittest.TestCase):
             width = "" if port["width"] == 1 else f"[{port['width'] - 1}:0] "
             declarations.append(f"  {port['direction']} {width}{port['name']};")
         netlist = self.root / f"{design}.v"
-        endpoint_contract = staged["tops"][design]
-        inventory = endpoint_contract["endpoint_expected_inventory"]
-        prefixes = endpoint_contract["endpoint_preserved_name_prefixes"]
+        endpoint_contract = staged["designs"][design]["endpoint_leaf_contract"]
+        inventory = endpoint_contract["leaf_counts"]
+        prefixes = endpoint_contract["preserved_name_prefixes"]
         cells = []
         endpoint_records = []
         for index in range(inventory["TLATNTSCAX2"]):
@@ -344,6 +351,21 @@ class InnovusPlanTests(unittest.TestCase):
         })
         self.assertFalse(common_names & {
             "load_i", "pending_i", "source_ready_o", "protocol_fault_o"})
+        self.assertEqual(self.registry["staged_manifest_contract"], {
+            "schema": "k2_w2_tech_staged_compositions_v1",
+            "status": "READY_FOR_GENUS_AND_INNOVUS",
+            "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
+            "required_constraint_template_keys": ["r1", "p6"],
+        })
+        self.assertEqual(cohort["designs"]["fovea_a7"]["endpoint_root"], {
+            "attribute": "w2_endpoint_root=r1",
+            "stable_prefix": "w2_endpoint_link__r1",
+        })
+        for design in ("a2_p6", "a3_p6"):
+            self.assertEqual(cohort["designs"][design]["endpoint_root"], {
+                "attribute": "w2_endpoint_root=p6",
+                "stable_prefix": "w2_endpoint_link__p6",
+            })
 
     def test_tracked_registry_blocks_launch_until_committed_manifest_authorities(self):
         self.module.load_contracts = self.original_load_contracts
@@ -382,7 +404,7 @@ class InnovusPlanTests(unittest.TestCase):
         self.assertGreater(whole["TLATNTSCAX2"], endpoint["TLATNTSCAX2"])
         self.assertEqual(whole["DFFNSRX1"], endpoint["DFFNSRX1"])
 
-    def test_v1_old_top_and_cross_manifest_are_rejected(self):
+    def test_old_top_cross_binding_and_canonical_manifest_mutations_are_rejected(self):
         mutations = (
             lambda doc: doc["runs"][1].update({"top": "k2_w2_a2_p6_top"}),
             lambda doc: doc["runs"][1]["producer"].update({"kind": "genus_receipt_v2"}),
@@ -396,6 +418,24 @@ class InnovusPlanTests(unittest.TestCase):
                 path.write_text(json.dumps(document))
                 with self.assertRaises(self.module.PlanError):
                     self.module.validate_plan(path)
+        for mutation in ("old_schema", "endpoint_root", "strict_sdc"):
+            with self.subTest(mutation=mutation):
+                manifest_path, manifest = self.write_manifest()
+                if mutation == "old_schema":
+                    manifest["schema"] = "w2-physical-staging-v2"
+                elif mutation == "endpoint_root":
+                    manifest["designs"]["a2_p6"]["endpoint_root"][
+                        "stable_prefix"] = "wrong_endpoint_root"
+                else:
+                    manifest["designs"]["a3_p6"]["strict_sdc"][
+                        "sha256"] = "0" * 64
+                manifest_path.write_text(json.dumps(manifest))
+                self.ready_registry["committed_techmap_manifest"]["sha256"] = \
+                    digest(manifest_path)
+                with self.assertRaises(self.module.PlanError):
+                    self.module.validate_staged_manifest(
+                        self.bound(manifest_path), self.ready_registry,
+                        self.authority)
 
     def test_receipt_inventory_scan_and_recovery_mutations_are_rejected(self):
         for mutation in ("schema", "scan", "recovery", "manifest"):
@@ -495,7 +535,17 @@ class InnovusPlanTests(unittest.TestCase):
             f"{GENUS_PROVIDER_COMMIT}:physical/k2_w2_genus/run_genus.py",
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         self.assertEqual(hashlib.sha256(provider.stdout).hexdigest(),
-                         "6db14e9444a554eef067566a6719d8dee1980433b03ccc1c3fc41a18068d6954")
+                         "28b4249da0b8128777adb3325cbc8da84499f919eff83321f0c3be7fb0ed51fe")
+        for source, local in (
+                ("constraints/r1_multiclock_strict.sdc",
+                 ROOT / "constraints/r1_multiclock.sdc"),
+                ("constraints/p6_multiclock_strict.sdc",
+                 ROOT / "constraints/p6_multiclock.sdc")):
+            canonical = subprocess.run([
+                "git", "-C", str(GENUS_PROVIDER_REPO), "show",
+                f"{GENUS_PROVIDER_COMMIT}:{source}",
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            self.assertEqual(local.read_bytes(), canonical.stdout)
         provider_script = self.root / "run_genus.py"
         provider_script.write_bytes(provider.stdout)
         help_result = subprocess.run(

@@ -338,26 +338,31 @@ def validate_staged_manifest(bound: dict[str, Any], registry: dict[str, Any],
             manifest.get("repository_commit") != pointer["repository_commit"]:
         raise PlanError("tech-staged manifest differs from committed registry pointer")
     cohort = registry["cohorts"]["tech_staged_complete_compositions"]
+    common_ports = cohort["common_ports"]
+    common_inputs = [row for row in common_ports if row["direction"] == "input"]
+    common_outputs = [row for row in common_ports if row["direction"] == "output"]
     if manifest.get("goal_order") != contract["goal_order"] or \
-            list(manifest.get("tops", {})) != contract["goal_order"] or \
+            list(manifest.get("designs", {})) != contract["goal_order"] or \
+            manifest.get("common_ports") != common_ports or \
+            manifest.get("common_inputs") != common_inputs or \
+            manifest.get("common_outputs") != common_outputs or \
             manifest.get("technology_authorities") != \
             registry["technology_stage_authorities"]:
         raise PlanError("tech-staged manifest goal order/canonical port contract mismatch")
     verify_committed_blob(path, pointer["repository_commit"], digest)
     if manifest.get("constraint_templates") != authority["constraint_templates"]:
         raise PlanError("tech-staged manifest constraint-template hashes mismatch")
-    for design, row in manifest["tops"].items():
+    for design, row in manifest["designs"].items():
         expected_top = registry["cohorts"]["tech_staged_complete_compositions"]["designs"][design]["top"]
         expected_design = cohort["designs"][design]
         endpoint = expected_design["endpoint_leaf_contract"]
-        if row.get("staged_top") != expected_top or \
-                row.get("required_ports") != cohort["common_ports"] or \
+        if row.get("top") != expected_top or \
+                row.get("required_ports") != common_ports or \
                 row.get("link_pins") != expected_design["link_pins"] or \
-                row.get("endpoint_expected_inventory") != endpoint["leaf_counts"] or \
-                row.get("endpoint_preserved_name_prefixes") != \
-                    endpoint["preserved_name_prefixes"] or \
-                row.get("no_other_negedge_state_proven") is not \
-                    endpoint["no_other_negedge_state_proven"]:
+                row.get("strict_sdc") != authority["constraint_templates"][
+                    expected_design["constraint_template"]] or \
+                row.get("endpoint_root") != expected_design["endpoint_root"] or \
+                row.get("endpoint_leaf_contract") != endpoint:
             raise PlanError("tech-staged manifest top mismatch")
     return path, digest, manifest
 
@@ -586,15 +591,9 @@ def validate_plan(plan_path: Path) -> list[Binding]:
             raise PlanError("final cohort must use one common period")
         netlist, netlist_sha, netlist_payload = bound_payload(run["mapped_netlist"], "mapped netlist")
         sdc, sdc_sha, sdc_payload = bound_payload(run["mapped_sdc"], "mapped SDC")
-        staged_row = manifest["tops"][design]
+        staged_row = manifest["designs"][design]
         registry_endpoint = contract["endpoint_leaf_contract"]
-        endpoint_contract = {
-            "leaf_counts": staged_row["endpoint_expected_inventory"],
-            "preserved_name_prefixes":
-                staged_row["endpoint_preserved_name_prefixes"],
-            "no_other_negedge_state_proven":
-                staged_row["no_other_negedge_state_proven"],
-        }
+        endpoint_contract = staged_row["endpoint_leaf_contract"]
         if endpoint_contract != registry_endpoint:
             raise PlanError("tech-staged endpoint contract diverges from registry")
         _, _, endpoint_payload = bound_payload(

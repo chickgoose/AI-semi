@@ -9,7 +9,8 @@ for exactly three final compositions, in fixed order:
 
 The tracked registry is intentionally
 `blocked_missing_committed_techmap_manifest`. No Innovus process can start
-until one committed `w2-physical-staging-v2` / `GO_FOR_SERVER_STAGING`
+until one committed `k2_w2_tech_staged_compositions_v1` /
+`READY_FOR_GENUS_AND_INNOVUS`
 manifest, its Git blob
 SHA, and committed R1/P6 authority manifests replace the null registry pins.
 Owner-generic `k2_w2_*`, native/debug A2/A3, and standalone link tops are
@@ -70,6 +71,13 @@ and reset recovery/removal. No reset false path is allowed. All three runs use
 one period and the same site, utilization, aspect ratio, margin, PG/ring, IO,
 and activity-window policy. Power requires scoped SAIF/VCD activity; vectorless
 reports cannot qualify.
+
+The canonical `constraints/r1_multiclock.sdc` and
+`constraints/p6_multiclock.sdc` bytes are materialized unchanged from Genus
+provider commit `8610bd0bf70eb9f9e2bcc35efe3f398afb78b9d6` (its strict R1/P6
+templates). Their SHA-256 values are respectively `afae60d3bb201817fbdbc8f47615247f81264bb9552f686325063a768f9edf78`
+and `16900abe0717f3ce88da7e462a5735836b8045b7e3f2f93a18a33fa1da2f6cfb`;
+the staged manifest, Genus handoff, and Innovus plan all bind those hashes.
 
 ## Launch and qualification
 

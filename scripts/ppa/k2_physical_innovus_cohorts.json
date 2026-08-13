@@ -12,8 +12,8 @@
     "p6": {"repository_commit": null, "path": null, "sha256": null}
   },
   "staged_manifest_contract": {
-    "schema": "w2-physical-staging-v2",
-    "status": "GO_FOR_SERVER_STAGING",
+    "schema": "k2_w2_tech_staged_compositions_v1",
+    "status": "READY_FOR_GENUS_AND_INNOVUS",
     "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
     "required_constraint_template_keys": ["r1", "p6"]
   },
@@ -44,6 +44,10 @@
             {"direction": "output", "name": "link_clk_o", "width": 1},
             {"direction": "output", "name": "link_data_o", "width": 2}
           ],
+          "endpoint_root": {
+            "attribute": "w2_endpoint_root=r1",
+            "stable_prefix": "w2_endpoint_link__r1"
+          },
           "endpoint_leaf_contract": {
             "preserved_name_prefixes": {
               "TLATNTSCAX2": "w2_ep_icg_",
@@ -68,6 +72,10 @@
             {"direction": "output", "name": "link_clk_o", "width": 1},
             {"direction": "output", "name": "link_data_o", "width": 5}
           ],
+          "endpoint_root": {
+            "attribute": "w2_endpoint_root=p6",
+            "stable_prefix": "w2_endpoint_link__p6"
+          },
           "endpoint_leaf_contract": {
             "preserved_name_prefixes": {
               "TLATNTSCAX2": "w2_ep_icg_",
@@ -92,6 +100,10 @@
             {"direction": "output", "name": "link_clk_o", "width": 1},
             {"direction": "output", "name": "link_data_o", "width": 5}
           ],
+          "endpoint_root": {
+            "attribute": "w2_endpoint_root=p6",
+            "stable_prefix": "w2_endpoint_link__p6"
+          },
           "endpoint_leaf_contract": {
             "preserved_name_prefixes": {
               "TLATNTSCAX2": "w2_ep_icg_",

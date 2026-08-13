@@ -60,8 +60,8 @@ class StaticFlowContractTests(unittest.TestCase):
         self.assertNotIn("-hold {w2_setup_view}", text)
 
     def test_strict_templates_use_only_canonical_link_and_source_ports(self):
-        for relative, width in (("constraints/r1_multiclock_strict.sdc", 2),
-                                ("constraints/p6_multiclock_strict.sdc", 5)):
+        for relative, width in (("constraints/r1_multiclock.sdc", 2),
+                                ("constraints/p6_multiclock.sdc", 5)):
             with self.subTest(relative=relative):
                 text = (ROOT / relative).read_text()
                 for required in ("ref_clk_i", "sample_clk_i", "rst_n",
