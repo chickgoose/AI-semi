@@ -810,6 +810,14 @@ class InnovusPlanTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("missing AER_TOP", result.stderr)
 
+    def test_shell_isolates_each_innovus_process_under_its_output(self):
+        text = SHELL.read_text()
+        self.assertIn('mkdir -p "$AER_PNR_OUTPUT_DIR/status" "$AER_PNR_OUTPUT_DIR/work"', text)
+        self.assertIn('"$AER_PNR_OUTPUT_DIR/tmp"', text)
+        self.assertIn('export TMPDIR="$AER_PNR_OUTPUT_DIR/tmp"', text)
+        self.assertIn('(cd "$AER_PNR_OUTPUT_DIR/work" && "$INNOVUS_BIN"', text)
+        self.assertNotIn('cd "$PROJECT_ROOT"', text)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

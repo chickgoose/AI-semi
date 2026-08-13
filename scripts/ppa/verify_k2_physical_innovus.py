@@ -108,14 +108,18 @@ NATIVE_COUNT_PATTERNS = {
     "placement_violations": (
         r"(?:total\s+(?:number\s+of\s+)?)?(?:place(?:ment)?)[^\n:]*"
         r"violations?\s*[:=]\s*([0-9]+)",
+        r"overlapping\s+with\s+other\s+instance\s*:\s*([0-9]+)",
+        r"techsite\s+violation\s*:\s*([0-9]+)",
     ),
     "connectivity_violations": (
         r"(?:total\s+(?:number\s+of\s+)?)?connectivity\s+violations?\s*[:=]\s*([0-9]+)",
         r"(?:total\s+(?:number\s+of\s+)?)?connectivity\s+errors?\s*[:=]\s*([0-9]+)",
+        r"([0-9]+)\s+total\s+info\(s\)\s+created\.",
     ),
     "pg_connectivity_violations": (
         r"(?:total\s+(?:number\s+of\s+)?)?(?:special|pg)\s+connectivity\s+violations?\s*[:=]\s*([0-9]+)",
         r"(?:total\s+(?:number\s+of\s+)?)?(?:special|pg)\s+connectivity\s+errors?\s*[:=]\s*([0-9]+)",
+        r"([0-9]+)\s+total\s+info\(s\)\s+created\.",
     ),
     "drc_violations": (
         r"(?:total\s+(?:number\s+of\s+)?)?(?:drc\s+)?violations?\s*[:=]\s*([0-9]+)",
@@ -418,6 +422,15 @@ def _require_zero(path: Path, key: str) -> None:
             int(token) for token in re.findall(pattern, text, re.IGNORECASE)
         )
     has_native_header = bool(NATIVE_REPORT_HEADER.search(text))
+    if key == "placement_violations" and \
+            text.startswith("Begin checking placement") and \
+            "Finished checkPlace" in text and not values:
+        values.append(0)
+    if key in {"connectivity_violations", "pg_connectivity_violations"} and \
+            has_native_header and re.search(
+                r"^\s*Found no problems or warnings\.\s*$", text,
+                re.IGNORECASE | re.MULTILINE):
+        values.append(0)
     if key == "drc_violations" and has_native_header and re.search(
         r"^No DRC violations were found\s*$", text, re.IGNORECASE | re.MULTILINE
     ):
