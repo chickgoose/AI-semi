@@ -32,11 +32,15 @@ INSTANCE = re.compile(
     r"\bDFFNSRX1\s+(?:\\\S+|[A-Za-z_][A-Za-z0-9_$]*)\s*\((.*?)\)\s*;",
     re.DOTALL,
 )
-CONNECTION = re.compile(r"\.([A-Za-z_][A-Za-z0-9_$]*)\s*\(\s*([^()]+?)\s*\)")
+CONNECTION = re.compile(r"\.([A-Za-z_][A-Za-z0-9_$]*)\s*\(\s*([^()]*?)\s*\)")
 TECH_CELLS = ("TLATNTSCAX2", "MX2X1", "DFFRHQX1", "DFFNSRX1")
 CELL_INSTANCE = re.compile(
     rf"\b({'|'.join(TECH_CELLS)})\s+(\\\S+|[A-Za-z_][A-Za-z0-9_$]*)"
     r"\s*\((.*?)\)\s*;", re.DOTALL,
+)
+ALL_CELL_INSTANCE = re.compile(
+    r"\b([A-Za-z_][A-Za-z0-9_$]*)\s+"
+    r"(\\\S+|[A-Za-z_][A-Za-z0-9_$]*)\s*\((.*?)\)\s*;", re.DOTALL,
 )
 
 
@@ -220,6 +224,146 @@ def mapped_ports(text: str) -> dict[str, tuple[str, int]]:
     return ports
 
 
+def compact_net(value: str) -> str:
+    """Use the same logical spelling for pins while accepting Verilog spacing."""
+    compact = "".join(value.split())
+    if compact in {"0", "1'b0", "1'h0", "1'd0"}:
+        return "1'b0"
+    if compact in {"1", "1'b1", "1'h1", "1'd1"}:
+        return "1'b1"
+    return compact
+
+
+def flattened_endpoint_records(top: str, body: str, root: str,
+                               prefixes: dict[str, str]) -> tuple[
+                                   list[dict[str, Any]], dict[str, int]]:
+    """Recreate the canonical flattened records emitted by the Genus producer."""
+    records = []
+    whole = {cell: 0 for cell in TECH_CELLS}
+    role_prefixes = set(prefixes.values())
+    for cell, raw_name, body_text in CELL_INSTANCE.findall(body):
+        name = raw_name.lstrip("\\")
+        pins = dict(CONNECTION.findall(body_text))
+        whole[cell] += 1
+        present_roles = [prefix for prefix in role_prefixes if prefix in name]
+        if not present_roles:
+            continue
+        if root not in name:
+            raise PlanError(f"endpoint leaf escaped preserved root: {cell} {name}")
+        if present_roles != [prefixes[cell]]:
+            raise PlanError(f"endpoint leaf role/cell prefix mismatch: {cell} {name}")
+        records.append({
+            "hierarchy": f"{top}.{name}",
+            "mapped_instance": name,
+            "cell_type": cell,
+            "pin_bindings": dict(sorted(pins.items())),
+            "provenance_root": root,
+        })
+    return records, whole
+
+
+def mapped_module_bodies(text: str) -> dict[str, str]:
+    rows = re.findall(
+        r"(?ms)(?:^|\n)\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b.*?;"
+        r"(.*?)\bendmodule\b", text)
+    modules = {name: body for name, body in rows}
+    if len(modules) != len(rows):
+        raise PlanError("mapped netlist contains duplicate module definitions")
+    return modules
+
+
+def recursive_technology_counts(top: str, modules: dict[str, str],
+                                active: tuple[str, ...] = ()) -> dict[str, int]:
+    if top not in modules:
+        raise PlanError(f"mapped hierarchy root missing: {top}")
+    if top in active:
+        raise PlanError(f"recursive mapped hierarchy at {top}")
+    counts = {cell: 0 for cell in TECH_CELLS}
+    for kind, _, _ in ALL_CELL_INSTANCE.findall(modules[top]):
+        if kind in counts:
+            counts[kind] += 1
+        elif kind in modules:
+            child = recursive_technology_counts(kind, modules, active + (top,))
+            for cell, count in child.items():
+                counts[cell] += count
+    return counts
+
+
+def verify_endpoint_pin_contract(body: str, records: list[dict[str, Any]],
+                                 link_width: int) -> None:
+    required_pins = {
+        "TLATNTSCAX2": {"CK", "E", "SE", "ECK"},
+        "MX2X1": {"A", "B", "S0", "Y"},
+        "DFFRHQX1": {"RN", "CK", "D", "Q"},
+        "DFFNSRX1": {"CKN", "D", "RN", "SN", "Q"},
+    }
+    optional_pins = {"DFFNSRX1": {"QN"}}
+    by_cell = {cell: [] for cell in TECH_CELLS}
+    for record in records:
+        pins = record["pin_bindings"]
+        cell = record["cell_type"]
+        if (not required_pins[cell].issubset(pins) or
+                set(pins) - required_pins[cell] - optional_pins.get(cell, set())):
+            raise PlanError(f"endpoint {cell} exact pin set mismatch")
+        by_cell[cell].append({pin: compact_net(net) for pin, net in pins.items()})
+
+    icg = by_cell["TLATNTSCAX2"]
+    if len(icg) != 1:
+        raise PlanError("endpoint TLATNTSCAX2 exact count mismatch")
+    gate = icg[0]
+    if (gate["CK"] != "sample_clk_i" or gate["ECK"] != "link_clk_o" or
+            gate["SE"] != "1'b0" or not gate["E"] or gate["E"] == "1'b0"):
+        raise PlanError("endpoint TLATNTSCAX2 exact pin binding mismatch")
+    drivers = []
+    for kind, _, cell_body in ALL_CELL_INSTANCE.findall(body):
+        pins = {pin: compact_net(net) for pin, net in CONNECTION.findall(cell_body)}
+        if pins.get("Y") == gate["E"]:
+            drivers.append((kind, pins))
+    if len(drivers) != 1 or not drivers[0][0].startswith("AND2"):
+        raise PlanError("endpoint ICG enable driver mismatch")
+    fanin = {drivers[0][1].get("A", ""), drivers[0][1].get("B", "")}
+    if "rst_n" not in fanin or not any("frame_active" in net for net in fanin):
+        raise PlanError("endpoint ICG enable fanin mismatch")
+
+    all_instances = [
+        (kind, {pin: compact_net(net)
+                for pin, net in CONNECTION.findall(cell_body)})
+        for kind, _, cell_body in ALL_CELL_INSTANCE.findall(body)
+    ]
+
+    def buffered_output(net: str) -> str:
+        current = compact_net(net)
+        for _ in range(8):
+            if re.fullmatch(r"link_data_o\[\d+\]", current):
+                return current
+            forward = [pins for kind, pins in all_instances
+                       if re.fullmatch(r"(?:CLK)?BUF[A-Za-z0-9_$]*", kind)
+                       and pins.get("A") == current and pins.get("Y")]
+            if len(forward) != 1:
+                raise PlanError("endpoint MX2X1 output lineage mismatch")
+            current = forward[0]["Y"]
+        raise PlanError("endpoint MX2X1 output lineage is too deep")
+
+    link_bits = {f"link_data_o[{index}]" for index in range(link_width)}
+    mux_outputs = []
+    for pins in by_cell["MX2X1"]:
+        if pins["S0"] != "ref_clk_i" or not pins["A"] or not pins["B"]:
+            raise PlanError("endpoint MX2X1 exact pin binding mismatch")
+        mux_outputs.append(buffered_output(pins["Y"]))
+    if set(mux_outputs) != link_bits or len(mux_outputs) != len(link_bits):
+        raise PlanError("endpoint MX2X1 outputs do not exactly cover link data")
+
+    for pins in by_cell["DFFRHQX1"]:
+        if (pins["CK"] != "link_clk_o" or pins["RN"] != "rst_n" or
+                not pins["D"] or not pins["Q"]):
+            raise PlanError("endpoint DFFRHQX1 exact pin binding mismatch")
+
+    for pins in by_cell["DFFNSRX1"]:
+        if (pins["CKN"] != "link_clk_o" or pins["RN"] != "rst_n" or
+                pins["SN"] != "1'b1" or not pins["D"] or not pins["Q"]):
+            raise PlanError("endpoint DFFNSRX1 exact pin binding mismatch")
+
+
 def validate_netlist(payload: bytes, top: str, contract: dict[str, Any],
                      common_ports: list[dict[str, Any]],
                      endpoint_contract: dict[str, Any],
@@ -259,28 +403,36 @@ def validate_netlist(payload: bytes, top: str, contract: dict[str, Any],
             any(not isinstance(value, int) or value <= 0
                               for value in expected_counts.values()):
         raise PlanError("endpoint leaf inventory contract mismatch")
-    records = []
-    whole = {cell: 0 for cell in TECH_CELLS}
-    for cell, raw_name, body_text in CELL_INSTANCE.findall(body.group(0)):
-        name = raw_name.lstrip("\\")
-        pins = dict(CONNECTION.findall(body_text))
-        whole[cell] += 1
-        if prefixes[cell] in name:
-            records.append({"name": name, "cell": cell, "pins": pins})
+    root = contract.get("endpoint_root", {}).get("stable_prefix")
+    endpoint_roots = endpoint_contract.get("endpoint_link_roots")
+    if (not isinstance(root, str) or not root or
+            not isinstance(endpoint_roots, list) or len(endpoint_roots) != 2 or
+            any(not isinstance(value, str) or not value for value in endpoint_roots)):
+        raise PlanError("endpoint root contract mismatch")
+    records, _ = flattened_endpoint_records(
+        top, body.group(0), root, prefixes)
+    whole = recursive_technology_counts(top, mapped_module_bodies(text))
     endpoint_counts = {cell: 0 for cell in TECH_CELLS}
     for row in records:
-        endpoint_counts[row["cell"]] += 1
-        if row["cell"] == "DFFNSRX1" and (
-                row["pins"].get("CKN") != "link_clk_o" or
-                row["pins"].get("RN") != "rst_n" or
-                row["pins"].get("SN") not in {"1'b1", "1’h1", "1'h1"}):
-            raise PlanError("endpoint DFFNSRX1 must bind CKN=link clock, RN=rst_n, SN=1")
+        endpoint_counts[row["cell_type"]] += 1
     if endpoint_counts != expected_counts:
         raise PlanError("preserved endpoint leaf counts differ from exact contract")
-    if endpoint_map.get("instances") != records or \
+    verify_endpoint_pin_contract(
+        body.group(0), records, contract["link_pins"][1]["width"])
+    expected_map_fields = {
+        "schema", "design", "top", "mapped_netlist_sha256",
+        "endpoint_link_roots", "preserved_name_prefixes", "leaf_counts",
+        "no_other_negedge_state_proven", "instances",
+    }
+    if set(endpoint_map) != expected_map_fields or \
+            endpoint_map.get("schema") != "k2_w2_endpoint_connectivity_map_v1" or \
+            endpoint_map.get("top") != top or \
+            endpoint_map.get("mapped_netlist_sha256") != sha256(payload) or \
+            endpoint_map.get("endpoint_link_roots") != endpoint_roots or \
+            endpoint_map.get("instances") != records or \
             endpoint_map.get("leaf_counts") != expected_counts or \
             endpoint_map.get("preserved_name_prefixes") != prefixes:
-        raise PlanError("endpoint pre-map provenance/connectivity map mismatch")
+        raise PlanError("Genus canonical endpoint provenance/connectivity map mismatch")
     no_other_negedge = endpoint_contract.get("no_other_negedge_state_proven") is True
     if endpoint_map.get("no_other_negedge_state_proven") is not no_other_negedge:
         raise PlanError("endpoint negedge provenance claim mismatch")

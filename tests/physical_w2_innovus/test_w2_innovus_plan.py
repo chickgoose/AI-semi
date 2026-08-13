@@ -201,44 +201,93 @@ class InnovusPlanTests(unittest.TestCase):
         endpoint_contract = contract["endpoint_leaf_contract"]
         inventory = endpoint_contract["leaf_counts"]
         prefixes = endpoint_contract["preserved_name_prefixes"]
+        endpoint_roots = endpoint_contract["endpoint_link_roots"]
+        root = contract["endpoint_root"]["stable_prefix"]
+        width = contract["link_pins"][1]["width"]
         cells = []
         endpoint_records = []
+        def record(cell: str, name: str, pins: dict[str, str]) -> None:
+            endpoint_records.append({
+                "hierarchy": f"{top}.{name}",
+                "mapped_instance": name,
+                "cell_type": cell,
+                "pin_bindings": dict(sorted(pins.items())),
+                "provenance_root": root,
+            })
+
+        cells.append(
+            f"AND2XL {root}_endpoint_enable "
+            f"(.A({root}_frame_active), .B(rst_n), .Y({root}_icg_e));")
         for index in range(inventory["TLATNTSCAX2"]):
-            name = f"{prefixes['TLATNTSCAX2']}{index}"
-            pins = {"E": "1'b1", "SE": "1'b0", "CK": "sample_clk_i"}
-            cells.append(f"TLATNTSCAX2 {name} (.E(1'b1), .SE(1'b0), .CK(sample_clk_i), .ECK());")
-            endpoint_records.append({"name": name, "cell": "TLATNTSCAX2", "pins": pins})
-        for index in range(inventory["MX2X1"]):
-            name = f"{prefixes['MX2X1']}{index}"
-            pins = {"A": "1'b0", "B": "1'b1", "S0": "1'b0"}
-            cells.append(f"MX2X1 {name} (.A(1'b0), .B(1'b1), .S0(1'b0), .Y());")
-            endpoint_records.append({"name": name, "cell": "MX2X1", "pins": pins})
-        for index in range(inventory["DFFRHQX1"]):
-            name = f"{prefixes['DFFRHQX1']}{index}"
-            pins = {"CK": "link_clk_o", "D": "1'b0", "RN": "rst_n"}
-            cells.append(f"DFFRHQX1 {name} (.CK(link_clk_o), .D(1'b0), .RN(rst_n), .Q());")
-            endpoint_records.append({"name": name, "cell": "DFFRHQX1", "pins": pins})
-        for index in range(inventory["DFFNSRX1"]):
-            bit = index % contract["link_pins"][1]["width"]
-            name = f"{prefixes['DFFNSRX1']}{index}"
-            pins = {"CKN": "link_clk_o", "D": f"link_data_o[{bit}]",
-                    "SN": "1'b1", "RN": "rst_n"}
+            name = f"{root}_tx_clock_boundary_{prefixes['TLATNTSCAX2']}{index}"
+            pins = {"E": f"{root}_icg_e", "SE": "1'b0",
+                    "CK": "sample_clk_i", "ECK": "link_clk_o"}
             cells.append(
-                f"DFFNSRX1 {name} (.CKN(link_clk_o), .D(link_data_o[{bit}]), "
-                ".SN(1'b1), .RN(rst_n), .Q());")
-            endpoint_records.append({"name": name, "cell": "DFFNSRX1", "pins": pins})
+                f"TLATNTSCAX2 {name} (.E({root}_icg_e), .SE(1'b0), "
+                ".CK(sample_clk_i), .ECK(link_clk_o));")
+            record("TLATNTSCAX2", name, pins)
+        for index in range(inventory["MX2X1"]):
+            name = f"{root}_tx_serialize_gen_lane[{index}].{prefixes['MX2X1']}bit"
+            mux_output = f"mux_y[{index}]" if index == 0 else f"link_data_o[{index}]"
+            pins = {"A": f"frame_hi[{index}]", "B": f"frame_lo[{index}]",
+                    "S0": "ref_clk_i", "Y": mux_output}
+            cells.append(
+                f"MX2X1 \\{name}  (.A(frame_hi[{index}]), "
+                f".B(frame_lo[{index}]), .S0(ref_clk_i), "
+                f".Y({mux_output}));")
+            record("MX2X1", name, pins)
+            if index == 0:
+                cells.append(
+                    "BUFX2 endpoint_mux_buffer (.A(mux_y[0]), "
+                    ".Y(link_data_o[0]));")
+        for index in range(inventory["DFFRHQX1"]):
+            name = f"{root}_rx_low_symbol_capture_gen_capture[{index}].{prefixes['DFFRHQX1']}bit"
+            pins = {"CK": "link_clk_o", "D": f"link_data_o[{index}]",
+                    "RN": "rst_n", "Q": f"low_symbol_q[{index}]"}
+            cells.append(
+                f"DFFRHQX1 \\{name}  (.CK(link_clk_o), "
+                f".D(link_data_o[{index}]), .RN(rst_n), "
+                f".Q(low_symbol_q[{index}]));")
+            record("DFFRHQX1", name, pins)
+        for index in range(inventory["DFFNSRX1"]):
+            name = f"{root}_rx_closing_capture_gen_capture[{index}].{prefixes['DFFNSRX1']}bit"
+            data = "toggle_feedback" if index == 0 else f"closing_state_d[{index}]"
+            pins = {"CKN": "link_clk_o", "D": data,
+                    "SN": "1'b1", "RN": "rst_n",
+                    "Q": f"closing_state_q[{index}]"}
+            qn = ", .QN(toggle_feedback)" if index == 0 else ""
+            if index == 0:
+                pins["QN"] = "toggle_feedback"
+            cells.append(
+                f"DFFNSRX1 \\{name}  (.CKN(link_clk_o), "
+                f".D({data}), .SN(1'b1), .RN(rst_n), "
+                f".Q(closing_state_q[{index}]){qn});")
+            record("DFFNSRX1", name, pins)
         # Legitimate flattened scheduler/observer logic is accounted globally,
         # never charged as endpoint leaf inventory.
         cells += [
-            "TLATNTSCAX2 scheduler_icg (.E(1'b1), .SE(1'b0), .CK(ref_clk_i), .ECK());",
+            "RC_CG_MOD scheduler_icg (.enable(1'b1), .ck_in(ref_clk_i), "
+            ".ck_out(), .test(1'b0));",
             "MX2X1 scheduler_mux0 (.A(1'b0), .B(1'b1), .S0(1'b0), .Y());",
             "MX2X1 scheduler_mux1 (.A(1'b0), .B(1'b1), .S0(1'b0), .Y());",
             "DFFRHQX1 scheduler_state0 (.CK(ref_clk_i), .D(1'b0), .RN(rst_n), .Q());",
             "DFFRHQX1 scheduler_state1 (.CK(ref_clk_i), .D(1'b0), .RN(rst_n), .Q());",
             "DFFRHQX1 scheduler_state2 (.CK(ref_clk_i), .D(1'b0), .RN(rst_n), .Q());",
         ]
-        netlist.write_text(f"module {top};\n" + "\n".join(declarations + cells) +
-                           "\nendmodule\n")
+        internal = [
+            f"  wire {root}_frame_active, {root}_icg_e;",
+            f"  wire [{width - 1}:0] frame_hi, frame_lo, low_symbol_q;",
+            f"  wire [{width - 1}:0] mux_y;",
+            f"  wire [{inventory['DFFNSRX1'] - 1}:0] closing_state_d, closing_state_q;",
+        ]
+        netlist.write_text(f"module {top};\n" +
+                           "\n".join(declarations + internal + cells) +
+                           "\nendmodule\n" +
+                           "module RC_CG_MOD(enable, ck_in, ck_out, test);\n"
+                           "  input enable, ck_in, test; output ck_out;\n"
+                           "  TLATNTSCAX2 RC_CGIC_INST (.E(enable), .SE(test), "
+                           ".CK(ck_in), .ECK(ck_out));\n"
+                           "endmodule\n")
         sdc = self.root / f"{design}.sdc"
         lines = [f"current_design {top}"]
         for clock in contract["clocks"]["input"]:
@@ -259,6 +308,8 @@ class InnovusPlanTests(unittest.TestCase):
         endpoint_map.write_text(json.dumps({
             "schema": "k2_w2_endpoint_connectivity_map_v1",
             "design": design, "top": top,
+            "mapped_netlist_sha256": digest(netlist),
+            "endpoint_link_roots": endpoint_roots,
             "preserved_name_prefixes": prefixes,
             "leaf_counts": inventory,
             "no_other_negedge_state_proven": True,
@@ -390,6 +441,18 @@ class InnovusPlanTests(unittest.TestCase):
     def rewrite_bound(self, document: dict, path: Path, key: str) -> None:
         document[key] = self.bound(path)
 
+    def validate_run_netlist(self, document: dict, index: int = 0) -> dict[str, int]:
+        run = document["runs"][index]
+        cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
+        contract = cohort["designs"][run["design"]]
+        netlist = Path(run["mapped_netlist"]["path"])
+        endpoint_map = Path(
+            run["producer"]["endpoint_connectivity_map"]["path"])
+        return self.module.validate_netlist(
+            netlist.read_bytes(), run["top"], contract,
+            cohort["common_ports"], contract["endpoint_leaf_contract"],
+            json.loads(endpoint_map.read_text()))
+
     def test_registry_is_only_three_tech_staged_normalized_tops(self):
         self.assertEqual(set(self.registry["cohorts"]), {"tech_staged_complete_compositions"})
         cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
@@ -417,11 +480,16 @@ class InnovusPlanTests(unittest.TestCase):
             "attribute": "w2_endpoint_root=r1",
             "stable_prefix": "w2_endpoint_link__r1",
         })
+        self.assertEqual(cohort["designs"]["fovea_a7"]["endpoint_leaf_contract"][
+            "endpoint_link_roots"], ["w2_r1_ddr_tx_tech", "w2_r1_ddr_rx_tech"])
         for design in ("a2_p6", "a3_p6"):
             self.assertEqual(cohort["designs"][design]["endpoint_root"], {
                 "attribute": "w2_endpoint_root=p6",
                 "stable_prefix": "w2_endpoint_link__p6",
             })
+            self.assertEqual(cohort["designs"][design]["endpoint_leaf_contract"][
+                "endpoint_link_roots"],
+                ["w2_p6_pair_tx_tech", "w2_p6_pair_rx_tech"])
 
     def test_tracked_registry_pins_exact_source_publication_and_manifest(self):
         self.module.load_contracts = self.original_load_contracts
@@ -467,6 +535,74 @@ class InnovusPlanTests(unittest.TestCase):
         self.assertGreater(whole["MX2X1"], endpoint["MX2X1"])
         self.assertGreater(whole["TLATNTSCAX2"], endpoint["TLATNTSCAX2"])
         self.assertEqual(whole["DFFNSRX1"], endpoint["DFFNSRX1"])
+
+    def test_actual_genus_flattened_endpoint_map_schema_is_consumed(self):
+        _, document = self.plan()
+        whole = self.validate_run_netlist(document)
+        run = document["runs"][0]
+        endpoint_map = json.loads(Path(
+            run["producer"]["endpoint_connectivity_map"]["path"]).read_text())
+        self.assertEqual(set(endpoint_map), {
+            "schema", "design", "top", "mapped_netlist_sha256",
+            "endpoint_link_roots", "preserved_name_prefixes", "leaf_counts",
+            "no_other_negedge_state_proven", "instances",
+        })
+        expected_row_fields = {
+            "hierarchy", "mapped_instance", "cell_type", "pin_bindings",
+            "provenance_root",
+        }
+        self.assertTrue(endpoint_map["instances"])
+        self.assertTrue(all(set(row) == expected_row_fields
+                            for row in endpoint_map["instances"]))
+        root = "w2_endpoint_link__r1"
+        self.assertTrue(all(root in row["mapped_instance"] and
+                            row["provenance_root"] == root
+                            for row in endpoint_map["instances"]))
+        self.assertGreater(whole["DFFRHQX1"],
+                           endpoint_map["leaf_counts"]["DFFRHQX1"])
+
+    def test_flattened_endpoint_map_sha_root_role_count_and_pins_fail_closed(self):
+        mutations = ("map_sha", "link_roots", "root", "role", "count", "pin")
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                _, document = self.plan()
+                run = document["runs"][0]
+                netlist_path = Path(run["mapped_netlist"]["path"])
+                map_path = Path(run["producer"]["endpoint_connectivity_map"]["path"])
+                endpoint_map = json.loads(map_path.read_text())
+                text = netlist_path.read_text()
+                if mutation == "map_sha":
+                    endpoint_map["mapped_netlist_sha256"] = "0" * 64
+                elif mutation == "link_roots":
+                    endpoint_map["endpoint_link_roots"][0] = "wrong_endpoint_root"
+                elif mutation == "root":
+                    text = text.replace(
+                        "w2_endpoint_link__r1_rx_low_symbol_capture_gen_capture[0].w2_ep_pos_bit",
+                        "owner_rx_low_symbol_capture_gen_capture[0].w2_ep_pos_bit", 1)
+                    netlist_path.write_text(text)
+                    endpoint_map["mapped_netlist_sha256"] = digest(netlist_path)
+                elif mutation == "role":
+                    text = text.replace(".w2_ep_pos_bit", ".w2_ep_neg_bit", 1)
+                    netlist_path.write_text(text)
+                    endpoint_map["mapped_netlist_sha256"] = digest(netlist_path)
+                elif mutation == "count":
+                    text = text.replace("MX2X1 \\w2_endpoint_link__r1",
+                                        "OAI2BB1X4 \\w2_endpoint_link__r1", 1)
+                    netlist_path.write_text(text)
+                    endpoint_map["mapped_netlist_sha256"] = digest(netlist_path)
+                else:
+                    text = text.replace(".S0(ref_clk_i)", ".S0(sample_clk_i)", 1)
+                    netlist_path.write_text(text)
+                    endpoint_map["mapped_netlist_sha256"] = digest(netlist_path)
+                    contract = self.registry["cohorts"][
+                        "tech_staged_complete_compositions"]["designs"]["fovea_a7"]
+                    records, _ = self.module.flattened_endpoint_records(
+                        run["top"], text, contract["endpoint_root"]["stable_prefix"],
+                        contract["endpoint_leaf_contract"]["preserved_name_prefixes"])
+                    endpoint_map["instances"] = records
+                map_path.write_text(json.dumps(endpoint_map))
+                with self.assertRaises(self.module.PlanError):
+                    self.validate_run_netlist(document)
 
     def test_old_top_cross_binding_and_canonical_manifest_mutations_are_rejected(self):
         mutations = (
@@ -530,8 +666,9 @@ class InnovusPlanTests(unittest.TestCase):
             ("mapped_netlist", ".SN(1'b1)", ".SN(rst_n)"),
             ("mapped_netlist", ".CKN(link_clk_o)", ".CKN(ref_clk_i)"),
             ("mapped_netlist", ".RN(rst_n)", ".RN(1'b1)"),
-            ("mapped_netlist", "DFFNSRX1 w2_ep_neg_0",
-             "SDFFX1 w2_ep_neg_0"),
+            ("mapped_netlist",
+             "DFFNSRX1 \\w2_endpoint_link__r1_rx_closing_capture_gen_capture[0].w2_ep_neg_bit",
+             "SDFFX1 \\w2_endpoint_link__r1_rx_closing_capture_gen_capture[0].w2_ep_neg_bit"),
             ("mapped_sdc", "set_input_transition", "removed_transition"),
             ("mapped_sdc", "-clock_fall", "-clock_rise"),
         ):
