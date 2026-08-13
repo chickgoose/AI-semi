@@ -133,6 +133,10 @@ The independent verifier creates `FLOW_CLEAN` exclusively after clean tool
 termination, nonnegative WNS, zero TNS and violations, nonzero timing path
 counts, zero no_drive/no_load/unconstrained/checkDesign/placement/connectivity/
 DRC/antenna counts, completed route, and retained output checks.
+Innovus classifies the deliberately forwarded generated-clock output
+`link_clk_o` as one `uncons_endpoint`; the verifier accepts exactly that pin,
+count, setup view, and warning text only after the boundary receipt has bound
+the ICG ECK-to-port generated clock. It remains forbidden for data endpoints.
 The post-place overlap count is retained as a diagnostic because CTS/route ECO
 can legalize it; only the final post-route placement count is a release gate.
 

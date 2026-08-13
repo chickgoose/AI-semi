@@ -672,12 +672,23 @@ def _require_zero(path: Path, key: str) -> None:
         # golden has ideal_clock_waveform/no_drive but no missing-clock or
         # missing-I/O-delay class, so those warnings are not conflated with
         # unconstrained endpoints.
-        blockers = re.findall(
-            r"\|\s*(no_clock|no_input_delay|no_output_delay|unconstrained)\s*\|",
+        blocker_rows = re.findall(
+            r"\|\s*(no_clock|no_input_delay|no_output_delay|unconstrained|"
+            r"uncons_endpoint)\s*\|[^\n|]*\|\s*([0-9]+)\s*\|",
             text, re.IGNORECASE,
         )
-        if not blockers:
+        forwarded_clock_only = (
+            [(name.lower(), int(value)) for name, value in blocker_rows]
+            == [("uncons_endpoint", 1)]
+            and len(re.findall(
+                r"(?m)^\s*\|\s*link_clk_o\s*\|\s*"
+                r"Unconstrained signal arriving at end point\s*\|\s*"
+                r"w2_setup_view\s*\|\s*$", text, re.IGNORECASE)) == 1
+        )
+        if not blocker_rows or forwarded_clock_only:
             values.append(0)
+        else:
+            values.extend(int(value) for _, value in blocker_rows)
     if not values:
         raise QualificationError(f"report lacks recognized {key} count: {path}")
     if any(value != 0 for value in values):
