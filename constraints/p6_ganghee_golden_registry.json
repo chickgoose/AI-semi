@@ -1,5 +1,7 @@
 {
-  "schema": "p6-ganghee-pnr-golden-v1",
+  "schema": "p6-ganghee-buffered-pnr-golden-v1",
+  "cohort": "buffered-extension",
+  "authority": "comparative-only; the raw-core cohort is the authoritative Ganghee baseline",
   "archive": {
     "canonical_path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
     "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
