@@ -677,6 +677,9 @@ class InnovusPlanTests(unittest.TestCase):
                 "set_clock_uncertainty 0.25 [all_clocks]",
                 "set_clock_uncertainty -setup 0.25 [all_clocks]\n"
                 "set_clock_uncertainty -hold 0.25 [all_clocks]")
+            text = text.replace(
+                "set_load 0.01 [all_outputs]",
+                "set_load -pin_load 0.01 [all_outputs]")
             sdc.write_text(text)
             contract = self.registry["cohorts"][
                 "tech_staged_complete_compositions"]["designs"][run["design"]]

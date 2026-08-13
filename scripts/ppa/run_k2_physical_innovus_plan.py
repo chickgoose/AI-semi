@@ -703,12 +703,17 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
             flagged_uncertainty != flagged_uncertainty_hold):
         raise PlanError("mapped SDC set_clock_uncertainty value mismatch")
     for command, environment_key in (
-            ("set_input_transition", "W2_INPUT_TRANSITION_NS"),
-            ("set_load", "W2_OUTPUT_LOAD_PF")):
+            ("set_input_transition", "W2_INPUT_TRANSITION_NS"),):
         rows = command_rows(text, command)
         expected = Decimal(timing_environment[environment_key])
         if not rows or any(decimal_argument(row, command) != expected for row in rows):
             raise PlanError(f"mapped SDC {command} value mismatch")
+    load_rows = command_rows(text, "set_load")
+    load_expected = Decimal(timing_environment["W2_OUTPUT_LOAD_PF"])
+    load_values = [decimal_option(row, "pin_load") or
+                   decimal_argument(row, "set_load") for row in load_rows]
+    if not load_rows or any(value != load_expected for value in load_values):
+        raise PlanError("mapped SDC set_load value mismatch")
     if "set_clock_gating_check" not in text or "-clock_fall" not in text:
         raise PlanError("mapped SDC lost load/driver/gating/DDR constraint classes")
     gating_rows = command_rows(text, "set_clock_gating_check")
