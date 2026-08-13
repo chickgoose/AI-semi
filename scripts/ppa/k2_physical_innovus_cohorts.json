@@ -3,10 +3,10 @@
   "integration_state": "ready",
   "server_environment_authority": "scripts/ppa/k2_physical_server_environment.json",
   "committed_techmap_manifest": {
-    "source_repository_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
-    "publication_repository_commit": "7f149e043a740c032e2cd22b3ed1d6876b6670ce",
+    "source_repository_commit": "ba0116029bb79573dca23c3957845885837f4b82",
+    "publication_repository_commit": "823b768ba3dad82b3de0febd3d5f2c556c0643be",
     "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
-    "sha256": "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b"
+    "sha256": "4ffda1982bdc3925723cd22821d06b27a273c9e9e4acc05db6150c9fe84d7d9d"
   },
   "staged_manifest_contract": {
     "schema": "k2_w2_tech_staged_compositions_v1",

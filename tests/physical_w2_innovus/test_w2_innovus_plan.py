@@ -19,8 +19,8 @@ SHELL = ROOT / "scripts/ppa/run_k2_physical_innovus.sh"
 REGISTRY = ROOT / "scripts/ppa/k2_physical_innovus_cohorts.json"
 AUTHORITY = ROOT / "scripts/ppa/k2_physical_server_environment.json"
 GENUS_PROVIDER_REPO = Path(os.environ.get(
-    "W2_GENUS_PROVIDER_REPO", "/tmp/k2-phys-w2-genus"))
-GENUS_PROVIDER_COMMIT = "8610bd0bf70eb9f9e2bcc35efe3f398afb78b9d6"
+    "W2_GENUS_PROVIDER_REPO", str(ROOT)))
+GENUS_PROVIDER_COMMIT = "bcbcdf8226ca8c1211727012e4ea7ccc7f179550"
 
 
 def load_runner():
@@ -496,12 +496,12 @@ class InnovusPlanTests(unittest.TestCase):
         registry, _ = self.module.load_contracts()
         self.assertEqual(registry["committed_techmap_manifest"], {
             "source_repository_commit":
-                "07f2413f07357fa1ef34c48fc74c32d238873c30",
+                "ba0116029bb79573dca23c3957845885837f4b82",
             "publication_repository_commit":
-                "7f149e043a740c032e2cd22b3ed1d6876b6670ce",
+                "823b768ba3dad82b3de0febd3d5f2c556c0643be",
             "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
             "sha256":
-                "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b",
+                "4ffda1982bdc3925723cd22821d06b27a273c9e9e4acc05db6150c9fe84d7d9d",
         })
 
     def test_committed_blob_gate_uses_exact_git_object(self):
@@ -744,7 +744,7 @@ class InnovusPlanTests(unittest.TestCase):
             f"{GENUS_PROVIDER_COMMIT}:physical/k2_w2_genus/run_genus.py",
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         self.assertEqual(hashlib.sha256(provider.stdout).hexdigest(),
-                         "28b4249da0b8128777adb3325cbc8da84499f919eff83321f0c3be7fb0ed51fe")
+                         "fce81e7a825d75cc08385125f5dee2d9236067512819f4b66f9a774078a193d8")
         for source, local in (
                 ("constraints/r1_multiclock_strict.sdc",
                  ROOT / "constraints/r1_multiclock.sdc"),
