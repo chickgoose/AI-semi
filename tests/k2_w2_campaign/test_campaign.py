@@ -427,6 +427,131 @@ output logic [1:0] link_data_o
             campaign_module.parse_ansi_ports(duplicate, "staged")
 
 
+class FinalPowerProviderTest(unittest.TestCase):
+    BUNDLE = Path("/tmp/k2-w2-final-power-e8cf245.bundle")
+    COMMIT = "e8cf2451cd6fc68a06bb6946497d9303407301ee"
+
+    def checkout(self, root: Path) -> Path:
+        repository = root / "power"
+        subprocess.run(["git", "clone", "--quiet", str(self.BUNDLE), str(repository)],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(["git", "-C", str(repository), "checkout", "--quiet", "-b",
+                        "audit", self.COMMIT], check=True)
+        self.assertEqual(subprocess.run(
+            ["git", "-C", str(repository), "status", "--porcelain"], text=True,
+            capture_output=True, check=True).stdout, "")
+        return repository
+
+    def test_bundle_commit_and_complete_provider_closure_are_exact(self) -> None:
+        doc = campaign()
+        campaign_module.validate_power_provider(doc)
+        authority = doc["authority"]["final_power_provider_bundle"]
+        self.assertEqual(authority["sha256"], campaign_module.POWER_BUNDLE_SHA256)
+        self.assertEqual(authority["repository_commit"], self.COMMIT)
+        closure = doc["tool_providers"]["final_power_provider_closure"]
+        observed = {row["path"]: row["sha256"] for row in closure["files"]}
+        expected = dict(campaign_module.POWER_PROVIDER_FILES)
+        expected.pop("benchmarks/physical_ppa/produce_final_activity_power.py")
+        expected.pop("benchmarks/physical_ppa/qualify_final_activity_power.py")
+        self.assertEqual(observed, expected)
+
+    def test_exact_power_cli_and_default_hold_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = self.checkout(Path(temporary))
+            producer = repository / "benchmarks/physical_ppa/produce_final_activity_power.py"
+            qualifier = repository / "benchmarks/physical_ppa/qualify_final_activity_power.py"
+            producer_help = subprocess.run(["python3", str(producer), "--help"], text=True,
+                                           capture_output=True, check=False)
+            qualifier_help = subprocess.run(["python3", str(qualifier), "--help"], text=True,
+                                            capture_output=True, check=False)
+            self.assertEqual((producer_help.returncode, qualifier_help.returncode), (0, 0))
+            for option in ("--plan", "--evidence", "--output"):
+                self.assertIn(option, producer_help.stdout)
+            for option in ("--environment-receipt", "--activity-receipts", "--bundle-root"):
+                self.assertNotIn(option, producer_help.stdout)
+            self.assertIn("receipt", qualifier_help.stdout)
+            self.assertIn("--evidence", qualifier_help.stdout)
+            receipt = repository / "power.json"
+            produced = subprocess.run(["python3", str(producer), "--output", str(receipt)],
+                                      text=True, capture_output=True, check=False)
+            self.assertEqual(produced.returncode, 0, produced.stderr)
+            document = json.loads(receipt.read_text())
+            self.assertEqual(document["producer_id"], "aer-final-activity-power-v1")
+            self.assertEqual(document["status"], "HOLD_NO_REAL_SERVER_ARTIFACTS")
+            self.assertFalse(document["comparison_ready"])
+            self.assertFalse(document["candidate_go"])
+            qualified = subprocess.run(["python3", str(qualifier), str(receipt)], text=True,
+                                       capture_output=True, check=False)
+            self.assertEqual(qualified.returncode, 0, qualified.stderr)
+            decision = json.loads(qualified.stdout)
+            self.assertEqual(decision["decision"], "HOLD_NO_REAL_SERVER_ARTIFACTS")
+            self.assertFalse(decision["external_evaluation_ready"])
+
+    def test_provider_native_mutation_suite_is_16_of_16(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = self.checkout(Path(temporary))
+            result = subprocess.run(
+                ["python3", "-m", "unittest", "-v",
+                 "benchmarks.physical_ppa.tests.test_produce_final_activity_power"],
+                cwd=repository, text=True, capture_output=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.stderr.count(" ... ok"), 16)
+
+    def test_campaign_uses_real_power_argv_once(self) -> None:
+        interfaces = {
+            "final_power_producer_v1": {"path": "/provider/produce.py"},
+            "final_power_qualifier_v1": {"path": "/provider/qualify.py"},
+        }
+        producer, qualifier = campaign_module.final_power_commands(
+            interfaces, "/attempt/evidence.json", "/attempt/power.json",
+            "/attempt/qualified.json", "/provider")
+        self.assertEqual(producer, ["python3",
+                                   "/provider/benchmarks/physical_ppa/produce_final_activity_power.py",
+                                   "--evidence",
+                                   "/attempt/evidence.json", "--output",
+                                   "/attempt/power.json"])
+        self.assertEqual(qualifier, ["__CAPTURE_EXCLUSIVE__",
+                                    "/attempt/qualified.json", "python3",
+                                    "/provider/benchmarks/physical_ppa/qualify_final_activity_power.py",
+                                    "/attempt/power.json",
+                                    "--evidence", "/attempt/evidence.json"])
+        invented = {"--environment-receipt", "--activity-receipts", "--bundle-root"}
+        self.assertTrue(invented.isdisjoint(producer + qualifier))
+
+    def test_power_provider_pin_and_closure_tamper_fail(self) -> None:
+        pin = campaign()
+        pin["tool_providers"]["final_power_producer_v1"]["sha256"] = "0" * 64
+        with self.assertRaisesRegex(campaign_module.CampaignError, "entrypoint pin"):
+            campaign_module.validate_power_provider(pin)
+        closure = campaign()
+        closure["tool_providers"]["final_power_provider_closure"]["files"][0][
+            "sha256"] = "0" * 64
+        with self.assertRaisesRegex(campaign_module.CampaignError, "closure/status"):
+            campaign_module.validate_power_provider(closure)
+
+    def test_power_logic_is_not_duplicated_in_campaign(self) -> None:
+        source = LAUNCHER.read_text(encoding="utf-8")
+        for marker in ("read_vcd", "read_saif", "report_power",
+                       "energy_pj_per_retired_event", "Activity File:"):
+            self.assertNotIn(marker, source)
+
+    def test_power_checkout_must_be_exact_clean_full_closure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = self.checkout(Path(temporary))
+            row = {"repository_root": str(repository), "repository_commit": self.COMMIT,
+                   "bundle_sha256": campaign_module.POWER_BUNDLE_SHA256}
+            self.assertEqual(campaign_module.validate_power_checkout(row, campaign()), repository)
+            (repository / "untracked.txt").write_text("tamper\n")
+            with self.assertRaisesRegex(campaign_module.CampaignError, "exact and clean"):
+                campaign_module.validate_power_checkout(row, campaign())
+
+    def test_exact_provider_remains_a_derived_campaign_blocker(self) -> None:
+        blockers = campaign_module.validate_campaign(campaign(), ROOT)
+        self.assertIn("exact final-power provider is pinned but its fixed plan is HOLD-only",
+                      blockers)
+        self.assertTrue(any("evidence-manifest builder" in item for item in blockers))
+
+
 class LauncherTest(unittest.TestCase):
     def invoke(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(["python3", str(LAUNCHER), *args], cwd=ROOT, text=True,

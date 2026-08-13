@@ -13,6 +13,7 @@ import shlex
 import stat
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 
@@ -25,8 +26,38 @@ REQUIRED_INTERFACES = (
     "common_activity_v2", "genus_v2", "mapped_smoke_v2", "mapped_functional_v1",
     "raw_plan_builder_v2",
     "fair_plan_builder_v2", "innovus_plan_v2", "qualifier_v2",
-    "postroute_power_v2", "final_receipt_v2",
+    "final_power_evidence_builder_v1", "final_receipt_v2",
 )
+POWER_COMMIT = "e8cf2451cd6fc68a06bb6946497d9303407301ee"
+POWER_BUNDLE_SHA256 = "01e85d380109d5be7c81ec9069184abd4383973dcb14f7bae25a87913709f075"
+POWER_PROVIDER_FILES = {
+    "benchmarks/physical_ppa/produce_final_activity_power.py":
+        "9f593ee91cbff30a848a0bf93e39c920ffba618cec3b62390c9ed267a4cb9c14",
+    "benchmarks/physical_ppa/qualify_final_activity_power.py":
+        "61a693306fa848c2dfc46f8ecb4a0554472be1b5508a6f6234b335190e18244d",
+    "benchmarks/physical_ppa/evaluate_activity_power_ppa.py":
+        "1591a5a8fcc6b28d7fa5f68fbaaad6ab4218f7041e825df18e46622177a61bca",
+    "benchmarks/physical_ppa/validate_full_link_qualification.py":
+        "5fe1d4938b5047ca03da1492e910fd1baf1074290f0cbf207d710699e34b9a39",
+    "benchmarks/physical_ppa/final_activity_power_plan.json":
+        "74d1dc7b1b5b1f89c938ff02e8d894607e1d6753b02c3a8b6549c3da3f93ff2b",
+    "benchmarks/physical_ppa/final_endpoint_contract.json":
+        "79d44a39f19ce29ac7437807f94965d70b239030cde2605e46384e212cbf8c43",
+    "benchmarks/physical_ppa/final_activity_power_comparison.schema.json":
+        "a6951d8b338e4de8eaba6404aa013ebde732288099e02ac39980c3adc0cfb2f9",
+    "benchmarks/physical_ppa/final_activity_power_evidence.schema.json":
+        "59dc4d50f4ebdf28ac358a563d17b829943cb87f3ccbded2eb1b6b28ce843fe3",
+    "benchmarks/physical_ppa/final_activity_power/techmap_manifest.json":
+        "e5b0b6a5885c8d0a71c48a883ee2c80bb4b0ef66d666f36a41b62fa6d0d25eaf",
+    "benchmarks/physical_ppa/final_activity_power/genus_registry.json":
+        "ec057757279078453b711f50da43cf29e75f6eb65b4642116070fd60ec0bf53e",
+    "benchmarks/physical_ppa/final_activity_power/genus_common.sdc":
+        "2d1e0e24a8ebb32dcee4a3b725b9768a707aff582cea1081a1428719f5675f2c",
+    "benchmarks/physical_ppa/final_activity_power/innovus_registry.json":
+        "e9b135041a45732f00518cf9df674bfaf5fb76f222bcb06509b9af2812dbc54a",
+    "benchmarks/physical_ppa/final_activity_power/campaign.json":
+        "670b2252e59826083e22c15ca957c76da8d340a126559e9889ed9cd9d7883b40",
+}
 
 
 class CampaignError(RuntimeError):
@@ -119,6 +150,139 @@ def git_bytes(root: Path, commit: str, relative: str, label: str) -> bytes:
     return result.stdout
 
 
+def verified_power_bundle(path_text: str, expected_sha: str) -> dict[str, bytes]:
+    path = Path(path_text)
+    payload = stable_read(path)
+    if digest(payload) != expected_sha:
+        raise CampaignError("final-power provider bundle SHA mismatch")
+    heads = subprocess.run(
+        ["git", "bundle", "list-heads", str(path)], text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    expected_head = f"{POWER_COMMIT} refs/heads/integration/k2-physical-final"
+    if heads.returncode or heads.stdout.strip() != expected_head:
+        raise CampaignError("final-power provider bundle ref/commit mismatch")
+    with tempfile.TemporaryDirectory(prefix="k2-w2-power-bundle-") as temporary:
+        bare = Path(temporary) / "objects.git"
+        initialized = subprocess.run(
+            ["git", "init", "--bare", "--quiet", str(bare)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        fetched = subprocess.run(
+            ["git", "-C", str(bare), "fetch", "--quiet", str(path), POWER_COMMIT],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if initialized.returncode or fetched.returncode:
+            raise CampaignError("cannot verify final-power provider commit objects")
+        observed = subprocess.run(
+            ["git", "-C", str(bare), "rev-parse", "FETCH_HEAD"], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if observed.returncode or observed.stdout.strip() != POWER_COMMIT:
+            raise CampaignError("final-power provider fetched commit mismatch")
+        blobs: dict[str, bytes] = {}
+        for relative, expected in POWER_PROVIDER_FILES.items():
+            result = subprocess.run(
+                ["git", "-C", str(bare), "show", f"{POWER_COMMIT}:{relative}"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            if result.returncode or digest(result.stdout) != expected:
+                raise CampaignError(f"final-power provider blob mismatch: {relative}")
+            blobs[relative] = result.stdout
+        return blobs
+
+
+def validate_power_provider(document: dict[str, Any]) -> None:
+    authority = document["authority"]["final_power_provider_bundle"]
+    exact(authority, {"path", "sha256", "repository_commit", "bundle_ref", "usage"},
+          "final-power provider bundle")
+    if authority != {
+            "path": "/tmp/k2-w2-final-power-e8cf245.bundle",
+            "sha256": POWER_BUNDLE_SHA256,
+            "repository_commit": POWER_COMMIT,
+            "bundle_ref": "refs/heads/integration/k2-physical-final",
+            "usage": "exact_external_provider_never_duplicate_implementation"}:
+        raise CampaignError("final-power provider authority mismatch")
+    blobs = verified_power_bundle(authority["path"], authority["sha256"])
+    providers = document["tool_providers"]
+    expected_entrypoints = {
+        "final_power_producer_v1": (
+            "benchmarks/physical_ppa/produce_final_activity_power.py",
+            POWER_PROVIDER_FILES["benchmarks/physical_ppa/produce_final_activity_power.py"],
+            ["--evidence", "--output"], "producer_id", "aer-final-activity-power-v1"),
+        "final_power_qualifier_v1": (
+            "benchmarks/physical_ppa/qualify_final_activity_power.py",
+            POWER_PROVIDER_FILES["benchmarks/physical_ppa/qualify_final_activity_power.py"],
+            ["RECEIPT", "--evidence"], "qualifier_id",
+            "aer-final-activity-power-qualifier-v1"),
+    }
+    for name, (path, sha, cli, identity_key, identity) in expected_entrypoints.items():
+        row = providers.get(name)
+        if (not isinstance(row, dict) or row.get("repository_commit") != POWER_COMMIT or
+                row.get("path") != path or row.get("sha256") != sha or
+                row.get("cli") != cli or row.get(identity_key) != identity):
+            raise CampaignError(f"final-power entrypoint pin mismatch: {name}")
+    closure = providers.get("final_power_provider_closure")
+    exact(closure, {"repository_commit", "files", "fixed_plan_sha256",
+                    "endpoint_contract_sha256", "launch_authorized", "current_status"},
+          "final-power provider closure")
+    expected_closure = {path: sha for path, sha in POWER_PROVIDER_FILES.items()
+                        if path not in {
+                            "benchmarks/physical_ppa/produce_final_activity_power.py",
+                            "benchmarks/physical_ppa/qualify_final_activity_power.py"}}
+    observed_closure = {row.get("path"): row.get("sha256") for row in closure["files"]
+                        if isinstance(row, dict) and set(row) == {"path", "sha256"}}
+    if (closure["repository_commit"] != POWER_COMMIT or
+            len(observed_closure) != len(closure["files"]) or
+            observed_closure != expected_closure or
+            closure["fixed_plan_sha256"] != POWER_PROVIDER_FILES[
+                "benchmarks/physical_ppa/final_activity_power_plan.json"] or
+            closure["endpoint_contract_sha256"] != POWER_PROVIDER_FILES[
+                "benchmarks/physical_ppa/final_endpoint_contract.json"] or
+            closure["launch_authorized"] is not False or
+            closure["current_status"] != "HOLD_NO_REAL_SERVER_ARTIFACTS"):
+        raise CampaignError("final-power provider closure/status mismatch")
+    plan = json.loads(blobs["benchmarks/physical_ppa/final_activity_power_plan.json"])
+    if (plan.get("producer_id") != "aer-final-activity-power-v1" or
+            plan.get("required_candidates") != ["fovea_a7", "a2_p6", "a3_p6"] or
+            plan.get("launch_authorized") is not False or
+            plan.get("current_status") != "HOLD_NO_REAL_SERVER_ARTIFACTS"):
+        raise CampaignError("final-power fixed plan policy mismatch")
+
+
+def validate_power_checkout(row: Any, campaign: dict[str, Any]) -> Path:
+    exact(row, {"repository_root", "repository_commit", "bundle_sha256"},
+          "final-power provider checkout")
+    root = Path(row["repository_root"])
+    if (not root.is_absolute() or row["repository_commit"] != POWER_COMMIT or
+            row["bundle_sha256"] != POWER_BUNDLE_SHA256):
+        raise CampaignError("final-power provider checkout identity mismatch")
+    head = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    dirty = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if (head.returncode or dirty.returncode or head.stdout.strip() != POWER_COMMIT or
+            dirty.stdout):
+        raise CampaignError("final-power provider checkout is not exact and clean")
+    providers = campaign["tool_providers"]
+    closure = {
+        providers["final_power_producer_v1"]["path"]:
+            providers["final_power_producer_v1"]["sha256"],
+        providers["final_power_qualifier_v1"]["path"]:
+            providers["final_power_qualifier_v1"]["sha256"],
+        **{item["path"]: item["sha256"]
+           for item in providers["final_power_provider_closure"]["files"]},
+    }
+    if closure != POWER_PROVIDER_FILES:
+        raise CampaignError("final-power checkout closure pin mismatch")
+    for relative, expected in closure.items():
+        path = (root / relative).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError as error:
+            raise CampaignError("final-power provider path escaped checkout") from error
+        if digest(stable_read(path)) != expected:
+            raise CampaignError(f"final-power checkout blob mismatch: {relative}")
+    return root
+
+
 def parse_ansi_ports(payload: bytes, top: str) -> list[dict[str, Any]]:
     text = payload.decode("utf-8", errors="strict")
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
@@ -197,6 +361,7 @@ def validate_clock(contract: Any, link_clock_port: str, label: str) -> None:
 def validate_campaign(document: dict[str, Any], repo_root: Path) -> list[str]:
     if document.get("schema") != "k2_w2_server_campaign_v2":
         raise CampaignError("campaign schema mismatch")
+    validate_power_provider(document)
     policy = document["execution_policy"]
     if (policy.get("package_executes_server_tools") is not False or
             policy.get("server_launch_mode") != "emit_only_never_execute" or
@@ -353,6 +518,10 @@ def validate_campaign(document: dict[str, Any], repo_root: Path) -> list[str]:
         blockers.append("canonical staged v1 manifest absent")
     if expectation["shared_consumer_contract"].get("status") != "READY_SHARED_RECEIPT_CONTRACT":
         blockers.append("Genus/Innovus shared receipt contract unresolved")
+    power_closure = document["tool_providers"]["final_power_provider_closure"]
+    if (power_closure["launch_authorized"] is not True or
+            power_closure["current_status"] != "READY_FOR_W2_EVALUATION"):
+        blockers.append("exact final-power provider is pinned but its fixed plan is HOLD-only")
     for name, authority in expectation["required_technology_authorities"].items():
         if (not COMMIT.fullmatch(authority.get("repository_commit") or "") or
                 not authority.get("manifest_path") or
@@ -704,7 +873,7 @@ def validate_integration(document: dict[str, Any], campaign: dict[str, Any]) -> 
     exact(document, {
         "schema", "repository_root", "repository_commit", "environment_receipt",
         "calibration_receipt", "staged_manifest", "frozen_common_tb_manifest",
-        "vendor_model_manifest", "flow_interfaces",
+        "vendor_model_manifest", "final_power_provider_checkout", "flow_interfaces",
     }, "integration receipt")
     if document["schema"] != "k2_w2_campaign_integration_v2":
         raise CampaignError("integration schema mismatch")
@@ -737,6 +906,7 @@ def validate_integration(document: dict[str, Any], campaign: dict[str, Any]) -> 
         document["frozen_common_tb_manifest"], campaign)
     vendor_path, vendor_sha, vendor_models = validate_vendor_models(
         document["vendor_model_manifest"], campaign)
+    power_root = validate_power_checkout(document["final_power_provider_checkout"], campaign)
     interfaces = document["flow_interfaces"]
     if set(interfaces) != set(REQUIRED_INTERFACES):
         raise CampaignError("flow interface set mismatch")
@@ -755,11 +925,28 @@ def validate_integration(document: dict[str, Any], campaign: dict[str, Any]) -> 
         "common_tb": common_tb,
         "vendor_path": vendor_path, "vendor_sha": vendor_sha,
         "vendor_models": vendor_models,
+        "power_root": power_root,
     }
 
 
 def shell(parts: list[str]) -> str:
     return " ".join(shlex.quote(value) for value in parts)
+
+
+def final_power_commands(interfaces: dict[str, Any], evidence: str, receipt: str,
+                         qualification: str, power_root: str) -> tuple[list[str], list[str]]:
+    producer = [
+        "python3", str(Path(power_root) /
+                       "benchmarks/physical_ppa/produce_final_activity_power.py"),
+        "--evidence", evidence, "--output", receipt,
+    ]
+    qualifier = [
+        "__CAPTURE_EXCLUSIVE__", qualification, "python3",
+        str(Path(power_root) /
+            "benchmarks/physical_ppa/qualify_final_activity_power.py"), receipt,
+        "--evidence", evidence,
+    ]
+    return producer, qualifier
 
 
 def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dict[str, Any],
@@ -878,17 +1065,31 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
                   "ranking_eligible": True, "requires": ["fair_build_immutable_plan"],
                   "gate": "expected plan SHA, Genus receipt_v2, mapped AER_LINK_CUT, calibration",
                   "command": ["__RUN_IMMUTABLE_PLAN__", str(fair_plan), "fair"]})
-    power_receipt = attempt / "receipts/fair-postroute-power.json"
-    steps.append({"id": "fair_postroute_activity_power", "cohort": "fair_endpoints",
+    power_evidence = attempt / "receipts/fair-postroute-power-evidence.json"
+    steps.append({"id": "fair_postroute_power_evidence", "cohort": "fair_endpoints",
                   "ranking_eligible": True, "requires": ["fair_immutable_pnr"],
-                  "gate": "same per-candidate SAIF receipt and deterministic activity window",
+                  "gate": "one complete digest-addressed evidence manifest for the exact external provider",
                   "command": [
-                      "python3", interfaces["postroute_power_v2"]["path"],
-                      "--environment-receipt", env_receipt, "--plan", str(fair_plan),
+                      "python3", interfaces["final_power_evidence_builder_v1"]["path"],
+                      "--environment-receipt", env_receipt,
+                      "--staged-manifest", staged, "--plan", str(fair_plan),
                       "--activity-receipts", ",".join(activity_receipts.values()),
-                      "--bundle-root", str(attempt / "pnr/fair"), "--output",
-                      str(power_receipt),
+                      "--bundle-root", str(attempt / "pnr/fair"),
+                      "--output", str(power_evidence),
                   ]})
+    power_receipt = attempt / "receipts/fair-postroute-power.json"
+    power_qualification = attempt / "receipts/fair-postroute-power-qualified.json"
+    power_command, power_qualifier_command = final_power_commands(
+        interfaces, str(power_evidence), str(power_receipt), str(power_qualification),
+        str(validated["power_root"]))
+    steps.append({"id": "fair_postroute_activity_power", "cohort": "fair_endpoints",
+                  "ranking_eligible": True, "requires": ["fair_postroute_power_evidence"],
+                  "gate": "exact e8cf245 producer; same activity window and routed evidence",
+                  "command": power_command})
+    steps.append({"id": "fair_postroute_power_qualifier", "cohort": "fair_endpoints",
+                  "ranking_eligible": True, "requires": ["fair_postroute_activity_power"],
+                  "gate": "canonical reproduction by exact e8cf245 qualifier",
+                  "command": power_qualifier_command})
     qualified_receipt = attempt / "receipts/fair-qualified.json"
     steps.append({"id": "fair_qualifier", "cohort": "fair_endpoints",
                   "ranking_eligible": True, "requires": ["fair_immutable_pnr"],
@@ -900,7 +1101,7 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
                       "--power-receipt", str(power_receipt), "--output",
                       str(qualified_receipt),
                   ]})
-    steps[-1]["requires"] = ["fair_postroute_activity_power"]
+    steps[-1]["requires"] = ["fair_postroute_power_qualifier"]
     steps.append({"id": "final_receipt", "cohort": "fair_endpoints",
                   "ranking_eligible": True, "requires": ["fair_qualifier"],
                   "command": [
@@ -911,7 +1112,8 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
                       "--genus-receipts", ",".join(genus_receipts), "--plan", str(fair_plan),
                       "--mapped-functional-receipts", ",".join(mapped_functional_receipts),
                       "--power-receipt", str(power_receipt), "--qualifier-receipt",
-                      str(qualified_receipt), "--output",
+                      str(qualified_receipt), "--power-qualification-receipt",
+                      str(power_qualification), "--output",
                       str(attempt / "receipts/final.json"),
                   ]})
     lines = [
@@ -931,6 +1133,13 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
         lines.append("assert_sha " + shlex.quote(row["path"]) + " " + row["sha256"])
     lines.append("assert_sha " + shlex.quote(integration["vendor_model_manifest"]["path"]) +
                  " " + integration["vendor_model_manifest"]["sha256"])
+    for relative, expected in POWER_PROVIDER_FILES.items():
+        lines.append("assert_sha " + shlex.quote(str(validated["power_root"] / relative)) +
+                     " " + expected)
+    lines.append("test -z \"$(git -C " + shlex.quote(str(validated["power_root"])) +
+                 " status --porcelain --untracked-files=all)\"")
+    lines.append("test \"$(git -C " + shlex.quote(str(validated["power_root"])) +
+                 " rev-parse HEAD)\" = " + POWER_COMMIT)
     lines.append("test \"$(git -C " + shlex.quote(integration["repository_root"]) +
                  " rev-parse HEAD)\" = " + integration["repository_commit"])
     for step in steps:
@@ -948,6 +1157,11 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
                 "--execute",
             ]))
             lines.append("assert_sealed_plan " + shlex.quote(plan))
+        elif step["command"][0] == "__CAPTURE_EXCLUSIVE__":
+            destination, *command = step["command"][1:]
+            lines.append("test ! -e " + shlex.quote(destination))
+            lines.append("( set -o noclobber; " + shell(command) + " > " +
+                         shlex.quote(destination) + " )")
         else:
             lines.append(shell(step["command"]))
     lines.append("( : > " + shlex.quote(str(attempt / "RUN_COMPLETE")) + " )")

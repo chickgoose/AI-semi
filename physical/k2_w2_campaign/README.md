@@ -43,6 +43,33 @@ READY requires the following immutable chain:
 
 Mapped syntax and inventory checks alone can never satisfy step 5.
 
+## Exact external post-route power provider
+
+The campaign pins, but does not copy, the complete provider bundle
+`/tmp/k2-w2-final-power-e8cf245.bundle` at commit
+`e8cf2451cd6fc68a06bb6946497d9303407301ee` and bundle SHA-256
+`01e85d380109d5be7c81ec9069184abd4383973dcb14f7bae25a87913709f075`.
+The producer, its canonical-reproduction qualifier, fixed plan, endpoint
+contract, schemas, imported modules, and all six consumer records are pinned
+as one closure. No activity, coverage, SDF, power-report, or energy parser is
+reimplemented here.
+
+The real producer CLI is only `--evidence/--output` (with its repository-fixed
+plan); its qualifier takes the producer receipt positionally plus `--evidence`.
+The campaign therefore builds one digest-addressed evidence manifest after
+Innovus, invokes those exact CLIs once, and preserves the qualifier output as
+a separate artifact. It never passes the fair Innovus plan as the provider's
+`--plan`, and never passes invented environment/activity/bundle arguments to
+the producer.
+
+This exact provider remains a hard HOLD: its fixed plan has
+`launch_authorized=false`, its current status is
+`HOLD_NO_REAL_SERVER_ARTIFACTS`, and measured-looking input is deliberately
+reported as `HOLD_UNAUTHENTICATED_SERVER_EVIDENCE`. It also pins a 2.0 ns
+consumer SDC and candidate top/commit identities that are not yet the
+campaign's canonical staged 5.0 ns identities. Those facts are retained as
+blockers; an exit-zero HOLD receipt is never treated as ranking-ready.
+
 The calibration must retain and hash the native reports. `checkDesign -all`
 must enumerate every calibrated error class at pre-place and post-route; every
 count must be zero and missing, new, or duplicate classes are fatal. Synthetic

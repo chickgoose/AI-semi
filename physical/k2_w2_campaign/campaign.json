@@ -39,6 +39,13 @@
       "path": "/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz",
       "sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39",
       "usage": "loss_only_never_ppa"
+    },
+    "final_power_provider_bundle": {
+      "path": "/tmp/k2-w2-final-power-e8cf245.bundle",
+      "sha256": "01e85d380109d5be7c81ec9069184abd4383973dcb14f7bae25a87913709f075",
+      "repository_commit": "e8cf2451cd6fc68a06bb6946497d9303407301ee",
+      "bundle_ref": "refs/heads/integration/k2-physical-final",
+      "usage": "exact_external_provider_never_duplicate_implementation"
     }
   },
   "server_environment": {
@@ -69,7 +76,41 @@
     "innovus_runner": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/run_k2_physical_innovus.sh", "sha256": "41f0596427f876e2b363a1428df38d56f9bafd44b53d9e0b140688e789cd6459"},
     "innovus_verifier": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/verify_k2_physical_innovus.py", "sha256": "1c7fa76e1b73747147105b2a9da335b93ca84907fbcca5fbbad9ad1814e841ed"},
     "innovus_pnr_tcl": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/k2_physical_innovus_pnr.tcl", "sha256": "5937ae0ac0337979a8aba2083cef422b9593db01af462514dd5ecbc9489b0819"},
-    "qualifier": {"repository_commit": "ad3f67d35858f822071efbed0b2a309543d096b1", "path": "physical/k2_w2_qualifier/qualify_raw.py", "sha256": "fa6f5d2597f415ce040c68af09055ca0bf80f259f8a8eb3eb0dafe0ac83016bf"}
+    "qualifier": {"repository_commit": "ad3f67d35858f822071efbed0b2a309543d096b1", "path": "physical/k2_w2_qualifier/qualify_raw.py", "sha256": "fa6f5d2597f415ce040c68af09055ca0bf80f259f8a8eb3eb0dafe0ac83016bf"},
+    "final_power_producer_v1": {
+      "repository_commit": "e8cf2451cd6fc68a06bb6946497d9303407301ee",
+      "path": "benchmarks/physical_ppa/produce_final_activity_power.py",
+      "sha256": "9f593ee91cbff30a848a0bf93e39c920ffba618cec3b62390c9ed267a4cb9c14",
+      "cli": ["--evidence", "--output"],
+      "producer_id": "aer-final-activity-power-v1"
+    },
+    "final_power_qualifier_v1": {
+      "repository_commit": "e8cf2451cd6fc68a06bb6946497d9303407301ee",
+      "path": "benchmarks/physical_ppa/qualify_final_activity_power.py",
+      "sha256": "61a693306fa848c2dfc46f8ecb4a0554472be1b5508a6f6234b335190e18244d",
+      "cli": ["RECEIPT", "--evidence"],
+      "qualifier_id": "aer-final-activity-power-qualifier-v1"
+    },
+    "final_power_provider_closure": {
+      "repository_commit": "e8cf2451cd6fc68a06bb6946497d9303407301ee",
+      "files": [
+        {"path": "benchmarks/physical_ppa/evaluate_activity_power_ppa.py", "sha256": "1591a5a8fcc6b28d7fa5f68fbaaad6ab4218f7041e825df18e46622177a61bca"},
+        {"path": "benchmarks/physical_ppa/validate_full_link_qualification.py", "sha256": "5fe1d4938b5047ca03da1492e910fd1baf1074290f0cbf207d710699e34b9a39"},
+        {"path": "benchmarks/physical_ppa/final_activity_power_plan.json", "sha256": "74d1dc7b1b5b1f89c938ff02e8d894607e1d6753b02c3a8b6549c3da3f93ff2b"},
+        {"path": "benchmarks/physical_ppa/final_endpoint_contract.json", "sha256": "79d44a39f19ce29ac7437807f94965d70b239030cde2605e46384e212cbf8c43"},
+        {"path": "benchmarks/physical_ppa/final_activity_power_comparison.schema.json", "sha256": "a6951d8b338e4de8eaba6404aa013ebde732288099e02ac39980c3adc0cfb2f9"},
+        {"path": "benchmarks/physical_ppa/final_activity_power_evidence.schema.json", "sha256": "59dc4d50f4ebdf28ac358a563d17b829943cb87f3ccbded2eb1b6b28ce843fe3"},
+        {"path": "benchmarks/physical_ppa/final_activity_power/techmap_manifest.json", "sha256": "e5b0b6a5885c8d0a71c48a883ee2c80bb4b0ef66d666f36a41b62fa6d0d25eaf"},
+        {"path": "benchmarks/physical_ppa/final_activity_power/genus_registry.json", "sha256": "ec057757279078453b711f50da43cf29e75f6eb65b4642116070fd60ec0bf53e"},
+        {"path": "benchmarks/physical_ppa/final_activity_power/genus_common.sdc", "sha256": "2d1e0e24a8ebb32dcee4a3b725b9768a707aff582cea1081a1428719f5675f2c"},
+        {"path": "benchmarks/physical_ppa/final_activity_power/innovus_registry.json", "sha256": "e9b135041a45732f00518cf9df674bfaf5fb76f222bcb06509b9af2812dbc54a"},
+        {"path": "benchmarks/physical_ppa/final_activity_power/campaign.json", "sha256": "670b2252e59826083e22c15ca957c76da8d340a126559e9889ed9cd9d7883b40"}
+      ],
+      "fixed_plan_sha256": "74d1dc7b1b5b1f89c938ff02e8d894607e1d6753b02c3a8b6549c3da3f93ff2b",
+      "endpoint_contract_sha256": "79d44a39f19ce29ac7437807f94965d70b239030cde2605e46384e212cbf8c43",
+      "launch_authorized": false,
+      "current_status": "HOLD_NO_REAL_SERVER_ARTIFACTS"
+    }
   },
   "functional_activity_contract": {
     "schema": "k2_w2_frozen_common_activity_v1",
@@ -207,6 +248,8 @@
     "candidate_metrics_vcd_saif_receipt",
     "staged_vs_mapped_functional_gate",
     "postroute_power_same_activity_window",
+    "final_power_exact_external_provider_closure",
+    "final_power_ready_status_and_canonical_qualifier_gate",
     "all_outputs_beneath_exclusive_attempt"
   ],
   "known_readiness_blockers": [
@@ -220,7 +263,10 @@
     "frozen common TB/activity producer and postroute activity-power interfaces are not integrated",
     "Genus v3 producer and Innovus consumer do not implement one shared receipt schema/status/field contract",
     "vendor functional model manifest and mapped-functional gate provider are not integrated",
-    "no committed postroute activity-power producer is production-enabled",
+    "pinned final-power provider plan has launch_authorized=false and cannot emit READY_FOR_W2_EVALUATION",
+    "final-power evidence-manifest builder is not integrated",
+    "pinned final-power 2.0ns consumer SDC is incompatible with the campaign 5.0ns endpoint target",
+    "pinned final-power candidate top and commit identities are not yet bound to the canonical staged manifest",
     "current qualifier CLI consumes only bundle-root/manifest/output and emits POWER_HOLD",
     "actual Genus and Innovus provider CLIs do not yet share the canonical staging and receipt contract"
   ]
