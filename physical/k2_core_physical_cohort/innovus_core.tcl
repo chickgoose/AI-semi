@@ -155,6 +155,19 @@ set flow_failed [catch {
   editTrim -nets [list $::env(CORE_VDD) $::env(CORE_VSS)]
   extractRC
 
+  # The first post-route hold pass precedes final PG routing.  Use the large
+  # 5 ns setup margin to perform two bounded follow-up hold passes after the
+  # final PG/RC state, refreshing PG and parasitics after each pass.  Final
+  # setup and hold reports below remain the fail-closed authority.
+  setOptMode -fixHoldAllowSetupTnsDegrade true
+  for {set hold_iteration 0} {$hold_iteration < 2} {incr hold_iteration} {
+    optDesign -postRoute -hold
+    sroute -nets [list $::env(CORE_VDD) $::env(CORE_VSS)] \
+      -connect {blockPin padPin corePin}
+    editTrim -nets [list $::env(CORE_VDD) $::env(CORE_VSS)]
+    extractRC
+  }
+
   setAnalysisMode -checkType setup
   report_timing -view core_setup_view -check_type setup -max_paths 50 \
     > "$output/reports/setup_timing.rpt"

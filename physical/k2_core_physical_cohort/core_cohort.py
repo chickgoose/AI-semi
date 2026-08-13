@@ -730,8 +730,13 @@ def execute_stage(root: Path, candidate: str, stage: str, authorization: str) ->
     if output.exists():
         raise CohortError(f"no-overwrite output already exists: {output}")
     os.mkdir(output, 0o755)
+    work = output / "work"
+    temporary = output / "tmp"
+    os.mkdir(work, 0o755)
+    os.mkdir(temporary, 0o755)
     log_path = output / "tool.log"
     env = dict(os.environ)
+    env["TMPDIR"] = str(temporary)
     env["CORE_TOP"] = descriptor["top"]
     if stage == "genus":
         env.update({
@@ -774,7 +779,7 @@ def execute_stage(root: Path, candidate: str, stage: str, authorization: str) ->
         template = root / "bundle/innovus_core.tcl"
         command = [tool["path"], "-no_gui", "-files", str(template)]
     with open(log_path, "xb") as handle:
-        result = subprocess.run(command, cwd=output, env=env, stdout=handle,
+        result = subprocess.run(command, cwd=work, env=env, stdout=handle,
                                 stderr=subprocess.STDOUT, check=False)
         handle.flush()
         os.fsync(handle.fileno())
