@@ -53,6 +53,7 @@ class GenusFlowTests(unittest.TestCase):
             "--functional-loss-archive", str(FUNCTIONAL_LOSS_ARCHIVE),
             "--server-environment-receipt",
             str(ROOT / "physical/k2_w2_server_env/canonical_campaign_env.json"),
+            "--timing-cohort", "three_endpoint_5p7ns",
             "--mapped-functional-hook", str(FUNCTIONAL_HOOK),
             "--functional-model", str(FIXTURES / "gsclib045_functional.v"),
             "--output-root", str(output),
@@ -79,6 +80,7 @@ class GenusFlowTests(unittest.TestCase):
             registry["design_expectations"].values()
         }
         timing_paths.add(registry["mmmc_template"]["path"])
+        timing_paths.add(registry["timing_cohort_manifest"]["path"])
         for relative in timing_paths:
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -203,6 +205,8 @@ class GenusFlowTests(unittest.TestCase):
 
     def test_final_registry_binds_exact_published_staged_manifest(self):
         registry = self.module.load_registry_document()
+        self.assertEqual(registry["schema"],
+                         "k2_w2_genus_final_tech_staged_registry_v4")
         self.assertEqual(registry["goal_order"], ["fovea_a7", "a2_p6", "a3_p6"])
         self.assertEqual(registry["integration_state"], "ready")
         self.assertEqual(registry["staged_manifest"], {
@@ -221,6 +225,83 @@ class GenusFlowTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(published).hexdigest(),
                          registry["staged_manifest"]["sha256"])
 
+    def test_explicit_5p0_and_5p7_timing_cohorts_are_hash_bound(self):
+        registry = self.module.load_registry_document()
+        pointer = registry["timing_cohort_manifest"]
+        manifest_payload = (ROOT / pointer["path"]).read_bytes()
+        self.assertEqual(hashlib.sha256(manifest_payload).hexdigest(),
+                         pointer["sha256"])
+        five0 = self.module.load_registry(ROOT, "three_endpoint_5p0ns")
+        five7 = self.module.load_registry(ROOT, "three_endpoint_5p7ns")
+        self.assertEqual(self.module.load_registry(ROOT)[
+            "selected_timing_cohort"]["id"], "three_endpoint_5p0ns")
+        self.assertEqual(five0["selected_timing_cohort"]["period_ns"], 5.0)
+        self.assertEqual(five7["selected_timing_cohort"]["period_ns"], 5.7)
+        self.assertEqual(
+            five7["selected_timing_cohort"]["clock_waveforms_ns"], {
+                "ref_clk": [0.0, 2.85],
+                "sample_clk": [1.425, 4.275],
+                "reset_release_clk": [2.85, 4.275],
+            })
+        self.assertEqual(five7["designs"]["fovea_a7"]["clocks"], [
+            {"name": "ref_clk", "port": "ref_clk_i",
+             "waveform_ns": [0.0, 2.85]},
+            {"name": "sample_clk", "port": "sample_clk_i",
+             "waveform_ns": [1.425, 4.275]},
+        ])
+        self.assertNotEqual(
+            five0["selected_timing_cohort"]["profile_sha256"],
+            five7["selected_timing_cohort"]["profile_sha256"])
+        design = five7["designs"]["fovea_a7"]
+        sdc0 = self.module.materialize_sdc(
+            ROOT, design, five0["selected_timing_cohort"])
+        sdc7 = self.module.materialize_sdc(
+            ROOT, design, five7["selected_timing_cohort"])
+        self.assertNotEqual(hashlib.sha256(sdc0).hexdigest(),
+                            hashlib.sha256(sdc7).hexdigest())
+        text = sdc7.decode()
+        for token in (
+                "three_endpoint_5p7ns", pointer["sha256"],
+                "W2_REF_PERIOD_NS {5.7}",
+                "ref_clk waveform_ns=[0.0, 2.85]",
+                "sample_clk waveform_ns=[1.425, 4.275]",
+                "reset_release_clk waveform_ns=[2.85, 4.275]",
+                "W2_INPUT_DELAY_MIN_NS {0.10}",
+                "W2_INPUT_DELAY_MAX_NS {0.50}",
+                "W2_OUTPUT_DELAY_MIN_NS {0.10}",
+                "W2_OUTPUT_DELAY_MAX_NS {0.50}",
+                "W2_RESET_DELAY_MIN_NS {0.10}",
+                "W2_RESET_DELAY_MAX_NS {0.50}"):
+            self.assertIn(token, text)
+        mutated = copy.deepcopy(five7["selected_timing_cohort"])
+        mutated["strict_timing_environment"]["W2_REF_PERIOD_NS"] = "5.6"
+        with self.assertRaisesRegex(self.module.FlowError,
+                                    "timing-cohort profile SHA"):
+            self.module.materialize_sdc(ROOT, design, mutated)
+        with self.assertRaisesRegex(self.module.FlowError,
+                                    "unknown timing cohort"):
+            self.module.load_registry(ROOT, "three_endpoint_5p6ns")
+
+    def test_timing_cohort_manifest_mutation_fails_closed(self):
+        with tempfile.TemporaryDirectory(prefix="k2-w2-timing-") as directory:
+            root = Path(directory)
+            registry, _, _ = self.make_staged_fixture(root)
+            path = root / registry["timing_cohort_manifest"]["path"]
+            manifest = json.loads(path.read_text())
+            manifest["cohorts"]["three_endpoint_5p7ns"]["period_ns"] = 5.6
+            payload = (json.dumps(manifest, indent=2) + "\n").encode()
+            path.write_bytes(payload)
+            with self.assertRaisesRegex(self.module.FlowError,
+                                        "timing-cohort manifest SHA"):
+                self.module.resolve_staged_registry(
+                    root, registry, "three_endpoint_5p7ns")
+            registry["timing_cohort_manifest"]["sha256"] = hashlib.sha256(
+                payload).hexdigest()
+            with self.assertRaisesRegex(self.module.FlowError,
+                                        "timing-cohort manifest contract"):
+                self.module.resolve_staged_registry(
+                    root, registry, "three_endpoint_5p7ns")
+
     def test_runner_and_launcher_fail_before_creating_results(self):
         for cohort in (False, True):
             with self.subTest(cohort=cohort), tempfile.TemporaryDirectory(
@@ -234,6 +315,30 @@ class GenusFlowTests(unittest.TestCase):
                 if output.exists():
                     self.assertEqual(list(output.rglob("receipt.json")), [])
                     self.assertEqual(list(output.rglob("goal-publication.json")), [])
+
+    def test_5p7_goal_plan_covers_exactly_three_endpoints(self):
+        with tempfile.TemporaryDirectory(prefix="k2-w2-plan-") as directory:
+            output = Path(directory) / "not-created"
+            command = self.blocked_command(True, output) + ["--plan-only"]
+            result = subprocess.run(
+                command, cwd=ROOT, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            plan = json.loads(result.stdout)
+            self.assertEqual(plan["schema"],
+                             "k2_w2_genus_exact_three_endpoint_launch_plan_v3")
+            self.assertEqual(plan["goal_order"],
+                             ["fovea_a7", "a2_p6", "a3_p6"])
+            self.assertEqual(plan["timing_cohort"]["id"],
+                             "three_endpoint_5p7ns")
+            self.assertEqual(plan["timing_cohort"]["period_ns"], 5.7)
+            self.assertEqual(len(plan["rows"]), 3)
+            for row in plan["rows"]:
+                self.assertEqual(row["timing_cohort"], plan["timing_cohort"])
+                index = row["command"].index("--timing-cohort")
+                self.assertEqual(row["command"][index + 1],
+                                 "three_endpoint_5p7ns")
+            self.assertFalse(output.exists())
 
     def test_diagnostic_registries_cannot_be_final_or_ranked(self):
         final = self.module.load_registry_document()

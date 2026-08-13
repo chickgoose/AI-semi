@@ -43,6 +43,23 @@ INSTANCE_RE = re.compile(
     r"(?:\\\S+|[A-Za-z_][A-Za-z0-9_$]*)\s*\(", re.MULTILINE)
 SCAN_RE = re.compile(r"(?:^|_)(?:SDFF|SCAN)", re.IGNORECASE)
 KEYWORDS = {"module", "if", "for", "case", "assign", "always", "function", "task"}
+TIMING_COHORT_ORDER = ["three_endpoint_5p0ns", "three_endpoint_5p7ns"]
+TIMING_ENVIRONMENT_BASE = {
+    "W2_CLOCK_UNCERTAINTY_NS": "0.25",
+    "W2_INPUT_DELAY_MIN_NS": "0.10",
+    "W2_INPUT_DELAY_MAX_NS": "0.50",
+    "W2_OUTPUT_DELAY_MIN_NS": "0.10",
+    "W2_OUTPUT_DELAY_MAX_NS": "0.50",
+    "W2_RESET_DELAY_MIN_NS": "0.10",
+    "W2_RESET_DELAY_MAX_NS": "0.50",
+    "W2_INPUT_TRANSITION_NS": "0.05",
+    "W2_OUTPUT_LOAD_PF": "0.01",
+    "W2_CLOCK_GATING_SETUP_NS": "0.10",
+    "W2_CLOCK_GATING_HOLD_NS": "0.05",
+    "W2_MIN_PULSE_HIGH_NS": "0.50",
+    "W2_MIN_PULSE_LOW_NS": "0.50",
+    "W2_DRIVE_CELL": "BUFX2",
+}
 
 
 class FlowError(RuntimeError):
@@ -174,7 +191,7 @@ def git(root: Path, *args: str, binary: bool = False) -> bytes | str:
 
 
 def validate_final_registry_document(document: dict[str, Any]) -> dict[str, Any]:
-    if document.get("schema") != "k2_w2_genus_final_tech_staged_registry_v3":
+    if document.get("schema") != "k2_w2_genus_final_tech_staged_registry_v4":
         raise FlowError("design registry schema mismatch")
     goal_order = ["fovea_a7", "a2_p6", "a3_p6"]
     if (document.get("goal_order") != goal_order or
@@ -198,6 +215,21 @@ def validate_final_registry_document(document: dict[str, Any]) -> dict[str, Any]
         raise FlowError("canonical staged-manifest registry pointer mismatch")
     if document.get("repository_commit") != pointer["source_commit"]:
         raise FlowError("registry source commit differs from staged-manifest pointer")
+    timing_pointer = document.get("timing_cohort_manifest", {})
+    if timing_pointer != {
+            "required_schema": "k2_w2_genus_timing_cohorts_v1",
+            "path": "physical/k2_w2_genus/timing_cohorts.json",
+            "sha256":
+            "9984726e8d955a891b863e41adb4519c27c3b650879de88d07f063ebc886404f",
+            }:
+        raise FlowError("canonical timing-cohort manifest pointer mismatch")
+    default_profile = expected_timing_cohort_manifest(goal_order)["cohorts"][
+        "three_endpoint_5p0ns"]
+    if (document.get("common_constraints", {}).get("period_ns") !=
+            default_profile["period_ns"] or
+            document.get("strict_timing_environment") !=
+            default_profile["strict_timing_environment"]):
+        raise FlowError("legacy 5.0ns default differs from timing-cohort manifest")
     authorities = document.get("required_technology_authorities", {})
     if (set(authorities) != {"raw_golden", "buffered_golden", "live_gsclib045", "cells"} or
             authorities.get("raw_golden", {}).get("sha256") !=
@@ -220,6 +252,65 @@ def load_registry_document() -> dict[str, Any]:
     except json.JSONDecodeError as error:
         raise FlowError(f"invalid design registry: {error}") from error
     return validate_final_registry_document(document)
+
+
+def expected_timing_cohort_manifest(goal_order: list[str]) -> dict[str, Any]:
+    profiles: dict[str, Any] = {}
+    for cohort_id, period_text, waveforms in (
+            ("three_endpoint_5p0ns", "5.0", {
+                "ref_clk": [0.0, 2.5],
+                "sample_clk": [1.25, 3.75],
+                "reset_release_clk": [2.5, 3.75],
+            }),
+            ("three_endpoint_5p7ns", "5.7", {
+                "ref_clk": [0.0, 2.85],
+                "sample_clk": [1.425, 4.275],
+                "reset_release_clk": [2.85, 4.275],
+            })):
+        profiles[cohort_id] = {
+            "period_ns": float(period_text),
+            "clock_waveforms_ns": waveforms,
+            "strict_timing_environment": {
+                "W2_REF_PERIOD_NS": period_text,
+                **TIMING_ENVIRONMENT_BASE,
+            },
+        }
+    return {
+        "schema": "k2_w2_genus_timing_cohorts_v1",
+        "status": "READY",
+        "default_cohort": "three_endpoint_5p0ns",
+        "cohort_order": TIMING_COHORT_ORDER,
+        "goal_order": goal_order,
+        "cohorts": profiles,
+    }
+
+
+def resolve_timing_cohort(root: Path, document: dict[str, Any],
+                          cohort_id: str | None) -> tuple[dict[str, Any], dict[str, str]]:
+    pointer = document["timing_cohort_manifest"]
+    name, path = relative_repo_path(root, pointer["path"], "timing-cohort manifest")
+    payload = stable_read(path)
+    if sha256_bytes(payload) != pointer["sha256"]:
+        raise FlowError("timing-cohort manifest SHA mismatch")
+    try:
+        manifest = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise FlowError(f"invalid timing-cohort manifest: {error}") from error
+    expected = expected_timing_cohort_manifest(document["goal_order"])
+    if manifest != expected or manifest.get("schema") != pointer["required_schema"]:
+        raise FlowError("timing-cohort manifest contract mismatch")
+    selected = cohort_id if cohort_id is not None else manifest["default_cohort"]
+    if selected not in manifest["cohort_order"]:
+        raise FlowError(f"unknown timing cohort: {selected}")
+    profile = manifest["cohorts"][selected]
+    profile_sha = sha256_bytes(canonical({"id": selected, "profile": profile}))
+    identity = {
+        "id": selected,
+        "manifest_path": name,
+        "manifest_sha256": pointer["sha256"],
+        "profile_sha256": profile_sha,
+    }
+    return {**profile, **identity}, identity
 
 
 def relative_repo_path(root: Path, value: Any, label: str) -> tuple[str, Path]:
@@ -512,7 +603,8 @@ def validate_staged_manifest(root: Path, registry: dict[str, Any],
     return designs
 
 
-def resolve_staged_registry(root: Path, document: dict[str, Any]) -> dict[str, Any]:
+def resolve_staged_registry(root: Path, document: dict[str, Any],
+                            timing_cohort: str | None = None) -> dict[str, Any]:
     pointer = document.get("staged_manifest", {})
     if document.get("integration_state") != "ready" or any(
             pointer.get(field) is None for field in (
@@ -557,11 +649,29 @@ def resolve_staged_registry(root: Path, document: dict[str, Any]) -> dict[str, A
         document["required_technology_authorities"])
     runtime["timing_template_identities"] = timing_identities
     runtime["mmmc_template_identity"] = {**mmmc, "path": mmmc_name}
+    selected_timing, timing_identity = resolve_timing_cohort(
+        root, document, timing_cohort)
+    runtime["selected_timing_cohort"] = selected_timing
+    runtime["timing_cohort_manifest_identity"] = {
+        "path": timing_identity["manifest_path"],
+        "sha256": timing_identity["manifest_sha256"],
+        "required_schema": document["timing_cohort_manifest"]["required_schema"],
+    }
+    runtime["strict_timing_environment"] = dict(
+        selected_timing["strict_timing_environment"])
+    clock_waveforms = selected_timing["clock_waveforms_ns"]
+    for design in runtime["designs"].values():
+        design["clocks"] = [
+            {"name": "ref_clk", "port": "ref_clk_i",
+             "waveform_ns": clock_waveforms["ref_clk"]},
+            {"name": "sample_clk", "port": "sample_clk_i",
+             "waveform_ns": clock_waveforms["sample_clk"]},
+        ]
     return runtime
 
 
-def load_registry(root: Path = ROOT) -> dict[str, Any]:
-    return resolve_staged_registry(root, load_registry_document())
+def load_registry(root: Path = ROOT, timing_cohort: str | None = None) -> dict[str, Any]:
+    return resolve_staged_registry(root, load_registry_document(), timing_cohort)
 
 
 def load_golden_reference() -> dict[str, Any]:
@@ -652,6 +762,7 @@ def verify_flow_tree(root: Path, registry: dict[str, Any]) -> dict[str, str]:
         "physical/k2_w2_tops/designs.json",
     ]
     required.append(registry["staged_manifest_identity"]["path"])
+    required.append(registry["timing_cohort_manifest_identity"]["path"])
     required.extend(row["path"] for row in
                     registry["timing_template_identities"].values())
     required.append(registry["mmmc_template_identity"]["path"])
@@ -1071,7 +1182,8 @@ def verify_design(root: Path, registry: dict[str, Any], key: str) -> dict[str, A
     return design
 
 
-def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
+def materialize_sdc(root: Path, design: dict[str, Any],
+                    timing_cohort: dict[str, Any] | None = None) -> bytes:
     timing = design["strict_sdc"]
     _, path = relative_repo_path(root, timing["path"], "candidate strict SDC")
     payload = stable_read(path)
@@ -1106,7 +1218,63 @@ def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
                    if line.strip().startswith("set_false_path")]
     if false_paths != ["set_false_path -from $reset_port -to $nonlink_outputs"]:
         raise FlowError("strict SDC reset exception is not exactly output-scoped")
-    return payload
+    if timing_cohort is None:
+        return payload
+    required_identity = {
+        "id", "manifest_path", "manifest_sha256", "profile_sha256",
+        "period_ns", "clock_waveforms_ns", "strict_timing_environment",
+    }
+    if set(timing_cohort) != required_identity:
+        raise FlowError("selected timing-cohort identity is incomplete")
+    profile = {key: timing_cohort[key] for key in (
+        "period_ns", "clock_waveforms_ns", "strict_timing_environment")}
+    if sha256_bytes(canonical({
+            "id": timing_cohort["id"], "profile": profile,
+            })) != timing_cohort["profile_sha256"]:
+        raise FlowError("selected timing-cohort profile SHA mismatch")
+    environment = timing_cohort["strict_timing_environment"]
+    waveforms = timing_cohort["clock_waveforms_ns"]
+    if (not isinstance(environment, dict) or
+            set(waveforms) != {"ref_clk", "sample_clk", "reset_release_clk"}):
+        raise FlowError("selected timing-cohort constraints are invalid")
+    binding = [
+        "# K2 W2 generated timing-cohort binding; do not edit.",
+        f"set w2_bound_timing_cohort_id {{{timing_cohort['id']}}}",
+        ("set w2_bound_timing_manifest_sha256 "
+         f"{{{timing_cohort['manifest_sha256']}}}"),
+        ("set w2_bound_timing_profile_sha256 "
+         f"{{{timing_cohort['profile_sha256']}}}"),
+        "foreach {w2_name w2_expected} {",
+    ]
+    for name, value in environment.items():
+        binding.append(f"  {name} {{{value}}}")
+    binding.extend([
+        "} {",
+        "  if {![info exists ::env($w2_name)]} { error \"missing bound timing environment: $w2_name\" }",
+        "  if {$::env($w2_name) ne $w2_expected} { error \"timing environment mismatch: $w2_name\" }",
+        "}",
+        "# Exact clock waveforms bound by the selected cohort manifest:",
+        f"# ref_clk waveform_ns={json.dumps(waveforms['ref_clk'])}",
+        f"# sample_clk waveform_ns={json.dumps(waveforms['sample_clk'])}",
+        ("# reset_release_clk waveform_ns="
+         f"{json.dumps(waveforms['reset_release_clk'])}"),
+        "",
+    ])
+    expected = [
+        timing_cohort["period_ns"],
+        waveforms["ref_clk"][1],
+        waveforms["sample_clk"][0],
+        waveforms["sample_clk"][1],
+    ]
+    footer = (
+        "\n# Fail closed if the template-derived waveform differs from the bound cohort.\n"
+        "if {abs($period - %.12g) > 1.0e-12 || "
+        "abs($half - %.12g) > 1.0e-12 || "
+        "abs($quarter - %.12g) > 1.0e-12 || "
+        "abs($three_quarter - %.12g) > 1.0e-12} { "
+        "error \"derived clock waveform differs from timing cohort\" }\n"
+        % tuple(expected))
+    return ("\n".join(binding).encode("utf-8") + payload + footer.encode("utf-8"))
 
 
 def tool_identity(path: Path) -> dict[str, Any]:
@@ -1818,13 +1986,14 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
              golden_archive: Path,
              raw_golden_archive: Path,
              functional_loss_archive: Path,
-             server_environment_receipt: Path) -> Path:
+             server_environment_receipt: Path,
+             timing_cohort: str = "three_endpoint_5p0ns") -> Path:
     root = root.resolve(strict=True)
     if root != ROOT.resolve(strict=True):
         raise FlowError("runner entrypoint and repository root identity mismatch")
     if not SAFE_ATTEMPT.fullmatch(attempt_name):
         raise FlowError("invalid attempt name")
-    registry = load_registry(root)
+    registry = load_registry(root, timing_cohort)
     golden = load_golden_reference()
     raw_golden = load_raw_golden_reference()
     functional_loss = load_functional_loss_reference()
@@ -1924,9 +2093,12 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             "path": row["path"], "sha256": copied,
             "origin": design["source_origin"],
         })
-    sdc = materialize_sdc(root, design)
+    sdc = materialize_sdc(root, design, registry["selected_timing_cohort"])
+    sdc_hash = sha256_bytes(sdc)
     sdc_path = attempt / "bundle" / "constraints.sdc"
     write_exclusive(sdc_path, sdc, 0o444)
+    if sha256_bytes(stable_read(sdc_path)) != sdc_hash:
+        raise FlowError("materialized timing-cohort SDC snapshot mismatch")
     tcl_snapshot = attempt / "bundle" / "genus_driver.tcl"
     tcl_hash = copy_stable(DRIVER_TCL, tcl_snapshot)
     registry_hash = sha256_bytes(stable_read(REGISTRY))
@@ -1944,6 +2116,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "registry_sha256": registry_hash,
         "staged_manifest": registry["staged_manifest_identity"],
         "technology_authorities": registry["technology_authority_identities"],
+        "timing_cohort_manifest": registry["timing_cohort_manifest_identity"],
+        "timing_cohort": registry["selected_timing_cohort"],
         "proven_environment": environment_identity,
         "flow_files_sha256": flow_files,
         "evidence_cohorts": {
@@ -1966,7 +2140,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "include_dirs": design["include_dirs"],
         "defines": design["defines"],
         "parameters": design["parameters"],
-        "constraints_sha256": sha256_bytes(sdc),
+        "constraints_sha256": sdc_hash,
         "library_source_sha256": library_source_hash,
         "library_snapshot_sha256": library_source_hash,
         "hold_library_sha256": hold_library_hash,
@@ -2011,7 +2185,10 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "W2_MUX_EXACT_INSTANCES": str(
             design["endpoint_expected_inventory"]["MX2X1"]),
     })
-    environment.update(registry["strict_timing_environment"])
+    environment.update(registry["selected_timing_cohort"][
+        "strict_timing_environment"])
+    if sha256_bytes(stable_read(sdc_path)) != sdc_hash:
+        raise FlowError("materialized timing-cohort SDC changed before execution")
     run = subprocess.run(
         [tool_before["requested_path"], "-batch", "-files", str(tcl_snapshot)],
         cwd=attempt, env=environment, stdout=subprocess.PIPE,
@@ -2020,6 +2197,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
     write_exclusive(attempt / "logs" / "genus.log", run.stdout)
     if run.returncode:
         raise FlowError(f"Genus exited nonzero: {run.returncode}")
+    if sha256_bytes(stable_read(sdc_path)) != sdc_hash:
+        raise FlowError("materialized timing-cohort SDC changed during execution")
     tool_after = tool_identity(genus)
     if tool_after != tool_before:
         raise FlowError("Genus executable/version changed during execution")
@@ -2083,7 +2262,11 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "mapped_sdf_sha256": sdf_hash,
         "mapped_sdc_sha256": mapped_sdc_hash,
         "strict_input_sdc_path": design["strict_sdc"]["path"],
-        "strict_input_sdc_sha256": sha256_bytes(sdc),
+        "strict_input_sdc_sha256": design["strict_sdc"]["sha256"],
+        "materialized_input_sdc_path": "bundle/constraints.sdc",
+        "materialized_input_sdc_sha256": sdc_hash,
+        "timing_cohort_manifest": registry["timing_cohort_manifest_identity"],
+        "timing_cohort": registry["selected_timing_cohort"],
         "mmmc_template": registry["mmmc_template_identity"],
         "setup_liberty_sha256": library_source_hash,
         "hold_liberty_sha256": hold_library_hash,
@@ -2105,6 +2288,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "attempt_sha256": sha256_bytes(stable_read(attempt / "attempt.json")),
         "staged_manifest": registry["staged_manifest_identity"],
         "technology_authorities": registry["technology_authority_identities"],
+        "timing_cohort_manifest": registry["timing_cohort_manifest_identity"],
+        "timing_cohort": registry["selected_timing_cohort"],
         "evidence_cohorts": {
             "raw_reference": raw_golden_identity,
             "buffered_reference": golden_identity,
@@ -2131,7 +2316,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "report_sha256": report_hashes,
         "mapped_functional_gate_sha256": functional_gate_hash,
         "innovus_handoff_sha256": sha256_bytes(stable_read(handoff_path)),
-        "strict_sdc_sha256": sha256_bytes(sdc),
+        "strict_sdc_sha256": design["strict_sdc"]["sha256"],
+        "materialized_sdc_sha256": sdc_hash,
         "dffnsrx1_preflight": {"setup": dff_setup, "hold": dff_hold},
         "checks": {
             "source_and_filelist_hashes": "PASS",
@@ -2176,6 +2362,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--raw-golden-archive", type=Path, required=True)
     parser.add_argument("--functional-loss-archive", type=Path, required=True)
     parser.add_argument("--server-environment-receipt", type=Path, required=True)
+    parser.add_argument("--timing-cohort", choices=TIMING_COHORT_ORDER,
+                        default="three_endpoint_5p0ns")
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--attempt", required=True)
     parser.add_argument("--mapped-functional-hook", type=Path, required=True)
@@ -2191,6 +2379,7 @@ def main(argv: list[str] | None = None) -> int:
             args.golden_archive, args.raw_golden_archive,
             args.functional_loss_archive,
             args.server_environment_receipt,
+            args.timing_cohort,
         )
     except (FlowError, OSError, subprocess.SubprocessError) as error:
         print(f"K2_W2_GENUS_FAIL {error}", file=sys.stderr)

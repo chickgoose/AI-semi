@@ -88,6 +88,18 @@ only smoke result cannot pass. Common workloads are never synthesized into
 this boundary; scoped workload activity may be attached later as a separately
 bound SAIF artifact.
 
+The existing omitted-selector behavior remains the 5.0 ns cohort; a 5.7 ns
+launch must explicitly pass `--timing-cohort three_endpoint_5p7ns`.
+`--timing-cohort three_endpoint_5p0ns` is also accepted explicitly.
+`timing_cohorts.json` keeps both profiles side by side and pins the 5.7 ns
+reference/sample period, reference
+waveform `[0.0, 2.85]`, phase-shifted sample waveform `[1.425, 4.275]`, reset
+release waveform `[2.85, 4.275]`, and every min/max I/O/reset delay and related
+timing environment value. The selected profile and manifest hashes are embedded
+in the materialized input SDC, launch plan, attempt manifest, Innovus handoff,
+per-endpoint receipt, and three-endpoint publication. A missing, unknown, or
+mutated selection fails before any tool launch.
+
 Run local contract, provenance, archive and mutation tests with:
 
 ```sh
