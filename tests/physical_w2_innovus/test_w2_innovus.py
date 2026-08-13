@@ -107,6 +107,8 @@ class StaticFlowContractTests(unittest.TestCase):
             "set_interactive_constraint_modes [list w2_strict_functional]",
             "set_propagated_clock [all_clocks]",
             "saveDesign -mmmc2 \"$output/database/${top}.postroute_checkpoint.enc\"",
+            "redirect -tee -file \"$output/reports/activity_annotation.rpt\" {",
+            "read_activity_file -format $activity_format -scope $activity_scope",
             "-check_type setup", "-check_type hold",
             "-check_type recovery", "-check_type removal",
             "-check_type clock_gating_setup", "-check_type clock_gating_hold",
@@ -142,6 +144,16 @@ class StaticFlowContractTests(unittest.TestCase):
         self.assertLess(text.index("-check_type recovery", setup_start), hold_start)
         self.assertLess(hold_start, text.index("-check_type removal", hold_start))
         self.assertLess(text.index("-check_type removal", hold_start), setup_restore)
+
+    def test_activity_import_is_captured_before_power_reporting(self):
+        text = PNR.read_text(encoding="utf-8")
+        capture = 'redirect -tee -file "$output/reports/activity_annotation.rpt" {'
+        activity = "read_activity_file -format $activity_format"
+        power = 'report_power > "$output/reports/power.rpt"'
+        self.assertEqual(text.count(capture), 1)
+        self.assertEqual(text.count(activity), 1)
+        self.assertLess(text.index(capture), text.index(activity))
+        self.assertLess(text.index(activity), text.index(power))
 
     def test_runner_delegates_clean_marker_to_independent_verifier(self):
         text = RUNNER.read_text(encoding="utf-8")
@@ -233,6 +245,11 @@ class FixtureQualificationTests(unittest.TestCase):
                 suffix = "check_design_errors=0\ncheck_design_violations=0\n"
             (self.root / "reports" / name).write_text(f"{key}=0\n{suffix}")
         (self.root / "reports/area.rpt").write_text("area report\n")
+        (self.root / "reports/activity_annotation.rpt").write_text(
+            "  Annotation coverage for this file\n"
+            "   (Unique nets matched/Total nets)       : 320/400 = 80%\n"
+            "'read_activity_file' finished successfully.\n"
+        )
         (self.root / "reports/power.rpt").write_text("power report\n")
         (self.root / "reports/route.rpt").write_text(
             "detailed_route_completed=1\n"
@@ -253,6 +270,68 @@ class FixtureQualificationTests(unittest.TestCase):
             "setup", "hold", "recovery", "removal", "gating_setup",
             "gating_hold", "pulse_width", "half_cycle_setup", "half_cycle_hold",
         })
+
+    def test_activity_annotation_exact_innovus_23_14_summary_parses(self):
+        path = self.root / "reports/activity_annotation.rpt"
+        self.assertEqual(
+            self.module._activity_annotation(path),
+            {"matched_nets": 320, "total_nets": 400, "coverage_percent": 80.0},
+        )
+
+    def test_activity_annotation_mutations_fail_closed(self):
+        path = self.root / "reports/activity_annotation.rpt"
+        original = path.read_text()
+        mutations = {
+            "missing": "'read_activity_file' finished successfully.\n",
+            "missing_completion": original.replace(
+                "'read_activity_file' finished successfully.\n", ""
+            ),
+            "malformed": original.replace("320/400 = 80%", "320 of 400 = 80%"),
+            "duplicate": original + original,
+            "duplicate_completion": original + (
+                "'read_activity_file' finished successfully.\n"
+            ),
+            "duplicate_header": original.replace(
+                "  Annotation coverage for this file\n",
+                "  Annotation coverage for this file\n"
+                "  Annotation coverage for this file\n",
+            ),
+            "malformed_duplicate_header": original.replace(
+                "  Annotation coverage for this file\n",
+                "  Annotation coverage for this file\n"
+                "  Annotation coverage for this file (duplicate)\n",
+            ),
+            "zero": original.replace("320/400 = 80%", "0/400 = 0%"),
+            "total_zero": original.replace("320/400 = 80%", "320/0 = 80%"),
+            "matched_exceeds_total": original.replace(
+                "320/400 = 80%", "401/400 = 100.25%"
+            ),
+            "percentage_mismatch": original.replace(
+                "320/400 = 80%", "320/400 = 79%"
+            ),
+            "completion_before_summary": original.replace(
+                "'read_activity_file' finished successfully.\n", ""
+            ).replace(
+                "  Annotation coverage for this file\n",
+                "'read_activity_file' finished successfully.\n"
+                "  Annotation coverage for this file\n",
+            ),
+            "report_local_error": original + "**ERROR: activity import failed\n",
+            "noncanonical_count": original.replace(
+                "320/400 = 80%", "0320/400 = 80%"
+            ),
+            "unbounded_integer": original.replace(
+                "320/400 = 80%", f"{'9' * 500}/400 = 80%"
+            ),
+        }
+        for name, payload in mutations.items():
+            with self.subTest(name=name):
+                path.write_text(payload)
+                with self.assertRaisesRegex(
+                    self.module.QualificationError, "activity annotation"
+                ):
+                    self.module.validate(self.root, "dut")
+        path.write_text(original)
 
     def test_shared_typical_rc_contract_is_required_and_fail_closed(self):
         path = self.root / "status/TECHNOLOGY_CONTRACT"

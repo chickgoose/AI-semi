@@ -99,6 +99,11 @@ TIMING_WARNING_ROW = re.compile(
     r"\|\s*(no_drive|no_load)\s*\|[^\n|]*\|\s*([0-9]+)\s*\|",
     re.IGNORECASE,
 )
+ACTIVITY_ANNOTATION_SUMMARY = re.compile(
+    r"^\s*\(Unique nets matched/Total nets\)\s+:\s+"
+    r"(0|[1-9][0-9]{0,19})/(0|[1-9][0-9]{0,19})\s+=\s+"
+    r"((?:0|[1-9][0-9]?|100)(?:\.[0-9]{1,6})?)%\s*$"
+)
 NATIVE_COUNT_PATTERNS = {
     "placement_violations": (
         r"(?:total\s+(?:number\s+of\s+)?)?(?:place(?:ment)?)[^\n:]*"
@@ -278,6 +283,59 @@ def _require_activity_contract(path: Path) -> dict[str, str]:
     return rows
 
 
+def _activity_annotation(path: Path) -> dict[str, float | int]:
+    text = _text(path)
+    header = "Annotation coverage for this file"
+    label = "(Unique nets matched/Total nets)"
+    completion = "'read_activity_file' finished successfully."
+    lines = text.splitlines()
+    header_indexes = [index for index, line in enumerate(lines) if header in line]
+    summary_indexes = [index for index, line in enumerate(lines) if label in line]
+    completion_indexes = [
+        index for index, line in enumerate(lines) if completion in line
+    ]
+    if len(header_indexes) != 1 or len(summary_indexes) != 1 or \
+            len(completion_indexes) != 1:
+        raise QualificationError(
+            f"activity annotation report must contain exactly one native summary: {path}"
+        )
+    if lines[header_indexes[0]].strip() != header or \
+            summary_indexes[0] != header_indexes[0] + 1 or \
+            lines[completion_indexes[0]].strip() != completion or \
+            completion_indexes[0] <= summary_indexes[0]:
+        raise QualificationError(f"activity annotation summary is malformed: {path}")
+    if BAD_LOG.search(text):
+        raise QualificationError(f"activity annotation report contains an error: {path}")
+    match = ACTIVITY_ANNOTATION_SUMMARY.fullmatch(lines[summary_indexes[0]])
+    if match is None:
+        raise QualificationError(f"activity annotation summary is malformed: {path}")
+    matched_token, total_token, percentage_token = match.groups()
+    matched, total = int(matched_token), int(total_token)
+    percentage_parts = percentage_token.split(".", 1)
+    decimal_places = len(percentage_parts[1]) if len(percentage_parts) == 2 else 0
+    percentage_scale = 10 ** decimal_places
+    percentage_scaled = int("".join(percentage_parts))
+    percentage = percentage_scaled / percentage_scale
+    if matched <= 0 or total <= 0 or matched > total or \
+            percentage_scaled <= 0 or percentage_scaled > 100 * percentage_scale:
+        raise QualificationError(f"activity annotation coverage is zero/invalid: {path}")
+    # Innovus rounds the fraction at the displayed decimal precision.  Check
+    # that relationship with integer arithmetic so hostile huge counts cannot
+    # overflow a float or turn into an unhandled non-finite value.
+    scaled_difference = abs(
+        percentage_scaled * total - 100 * matched * percentage_scale
+    )
+    if 2 * scaled_difference > total:
+        raise QualificationError(
+            f"activity annotation count/percentage mismatch: {path}"
+        )
+    return {
+        "matched_nets": matched,
+        "total_nets": total,
+        "coverage_percent": percentage,
+    }
+
+
 def _timing_machine_summary(path: Path, expected: str) -> dict[str, float | int | str]:
     rows = {}
     for line in _text(path).splitlines():
@@ -437,6 +495,7 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
     _require_activity_contract(run_dir / "status" / "ACTIVITY_POWER_CONTRACT")
 
     reports = run_dir / "reports"
+    _activity_annotation(reports / "activity_annotation.rpt")
     slacks = validate_minimum_signoff(
         run_dir / "tool.log",
         reports / "setup_timing.rpt",
