@@ -92,7 +92,8 @@ degradation is still rejected by the final setup report and machine summary;
 there is no setup waiver. Final hold reclosure targets 5 ps positive slack so
 sub-picosecond numerical residue is not mistaken for closure. Phase-specific
 machine receipts bind the timing check, view, optimizer, and setup-degradation
-policy; the final hold receipt must exactly match the final hold timing summary.
+policy; the final hold receipt's path count, violation count, WNS, and TNS must
+exactly match the final `w2_hold_view` timing machine summary.
 The descriptor, technology contract, and boundary machine report bind the
 selected profile SHA and initial hold policy.
 
@@ -132,6 +133,8 @@ The independent verifier creates `FLOW_CLEAN` exclusively after clean tool
 termination, nonnegative WNS, zero TNS and violations, nonzero timing path
 counts, zero no_drive/no_load/unconstrained/checkDesign/placement/connectivity/
 DRC/antenna counts, completed route, and retained output checks.
+The post-place overlap count is retained as a diagnostic because CTS/route ECO
+can legalize it; only the final post-route placement count is a release gate.
 
 The raw and buffered Kanghee archives remain report-format authorities only.
 The raw SHA is

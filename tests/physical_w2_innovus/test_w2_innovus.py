@@ -338,7 +338,7 @@ class FixtureQualificationTests(unittest.TestCase):
             (self.root / "reports" / name.replace(".rpt", ".machine")).write_text(
                 "schema=k2_w2_timing_machine_summary_v1\n"
                 f"check={self.module.EXPECTED_MACHINE_CHECK.get(name, self.module.EXPECTED_TIMING_CHECK[name])}\n"
-                f"view={'w2_hold_view' if check.lower() in {'hold', 'removal'} else 'w2_setup_view'}\n"
+                f"view={self.module.EXPECTED_MACHINE_VIEW[name]}\n"
                 "path_count=1\n"
                 "violation_count=0\n"
                 "wns=0.010\n"
@@ -691,13 +691,64 @@ class FixtureQualificationTests(unittest.TestCase):
 
     def test_each_nonzero_physical_gate_fails(self):
         for name, key in self.module.ZERO_COUNT_REPORTS.items():
+            if name == "check_place_post_place.rpt":
+                continue
             with self.subTest(name=name):
                 path = self.root / "reports" / name
                 original = path.read_text()
                 path.write_text(f"{key}=1\n")
-                with self.assertRaisesRegex(self.module.QualificationError, "nonzero"):
+                with self.assertRaisesRegex(
+                        self.module.QualificationError, "nonzero|checkDesign"):
                     self.module.validate(self.root, "dut")
                 path.write_text(original)
+
+    def test_post_place_overlap_is_diagnostic_but_postroute_is_authoritative(self):
+        post_place = self.root / "reports/check_place_post_place.rpt"
+        post_place.write_text("placement_violations=188\n")
+        self.module.validate(self.root, "dut")
+        post_route = self.root / "reports/check_place_post_route.rpt"
+        post_route.write_text("placement_violations=1\n")
+        with self.assertRaisesRegex(self.module.QualificationError, "nonzero"):
+            self.module.validate(self.root, "dut")
+
+    def test_native_checkdesign_completion_and_error_summary(self):
+        path = self.root / "reports/check_design_post_route.rpt"
+        path.write_text(
+            "Design check done.\n"
+            "*** Message Summary: 19 warning(s), 0 error(s)\n")
+        self.module.validate(self.root, "dut")
+        path.write_text(
+            "Design check done.\n"
+            "*** Message Summary: 19 warning(s), 1 error(s)\n")
+        with self.assertRaisesRegex(self.module.QualificationError, "checkDesign"):
+            self.module.validate(self.root, "dut")
+
+    def test_actual_23_14_route_report_is_fail_closed(self):
+        path = self.root / "reports/route.rpt"
+        native = (
+            "#Number of fails = 0\n"
+            "#Total number of fails = 0\n"
+            "#Complete  on Fri Aug 14 04:13:58 2026\n"
+            "Total net length = 6.089e+03 (3.362e+03 2.727e+03)\n"
+            "Total length: 6.273e+03um, number of vias: 2293\n"
+        )
+        path.write_text(native)
+        self.module.validate(self.root, "dut")
+        for old, new in (
+            ("#Number of fails = 0", "#Number of fails = 1"),
+            ("#Total number of fails = 0", "#Total number of fails = 1"),
+            ("#Complete  on Fri Aug 14 04:13:58 2026", "#Incomplete"),
+            ("6.089e+03", "0.000e+00"),
+            ("6.273e+03um", "0.000e+00um"),
+            ("number of vias: 2293", "number of vias: 0"),
+        ):
+            with self.subTest(new=new):
+                path.write_text(native.replace(old, new))
+                with self.assertRaisesRegex(
+                        self.module.QualificationError,
+                        "route completion|route geometry"):
+                    self.module.validate(self.root, "dut")
+        path.write_text("detailed_route_completed=1\n")
 
     def test_actual_23_14_place_and_connectivity_formats_fail_closed(self):
         place = self.root / "reports/check_place_post_place.rpt"
@@ -799,6 +850,19 @@ class FixtureQualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(self.module.QualificationError, "WNS mismatch"):
             self.module.validate(self.root, "dut")
         machine.write_text(original)
+
+    def test_each_timing_machine_wrong_view_fails(self):
+        for name in self.module.TIMING_REPORTS:
+            with self.subTest(name=name):
+                path = self.root / "reports" / name.replace(".rpt", ".machine")
+                original = path.read_text()
+                expected = self.module.EXPECTED_MACHINE_VIEW[name]
+                wrong = "w2_hold_view" if expected == "w2_setup_view" else "w2_setup_view"
+                path.write_text(original.replace(f"view={expected}", f"view={wrong}"))
+                with self.assertRaisesRegex(
+                        self.module.QualificationError, "contract mismatch"):
+                    self.module.validate(self.root, "dut")
+                path.write_text(original)
 
     def test_tns_violation_and_vectorless_power_are_rejected(self):
         summary = self.root / "reports/setup_timing.machine"
