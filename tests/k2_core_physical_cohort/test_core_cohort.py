@@ -17,6 +17,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "physical/k2_core_physical_cohort/core_cohort.py"
+FIXTURES = ROOT / "tests/k2_core_physical_cohort/fixtures"
 SPEC = importlib.util.spec_from_file_location("core_cohort", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 cohort = importlib.util.module_from_spec(SPEC)
@@ -174,7 +175,53 @@ class CoreCohortTests(unittest.TestCase):
                       "routeDesign", "reportCongestion", "verify_drc", "saveNetlist"):
             self.assertIn(token, innovus)
         self.assertNotIn("read_activity_file", innovus)
-        self.assertNotIn("set_interactive_constraint_modes", innovus)
+        self.assertIn("set_interactive_constraint_modes [list core_functional]", innovus)
+
+    def test_common_boundary_drive_is_exact_and_applied_after_mmmc_init(self) -> None:
+        innovus = (ROOT / "physical/k2_core_physical_cohort/innovus_core.tcl").read_text()
+        init = innovus.index("init_design")
+        mode = innovus.index("set_interactive_constraint_modes [list core_functional]")
+        drive_clock = innovus.index("set_drive 0 $boundary_clock_ports")
+        drive_inputs = innovus.index(
+            "set_driving_cell -lib_cell BUFX2 $boundary_nonclock_inputs")
+        placement = innovus.index("floorPlan -r")
+        self.assertLess(init, mode)
+        self.assertLess(mode, drive_clock)
+        self.assertLess(drive_clock, drive_inputs)
+        self.assertLess(drive_inputs, placement)
+        self.assertIn("set boundary_clock_ports [get_ports clk]", innovus)
+        self.assertIn("set expected_boundary_nonclock_inputs [get_ports {rst req*}]", innovus)
+        self.assertIn("expected_boundary_nonclock_inputs] != 17", innovus)
+
+    def test_final_signal_drc_repair_is_single_bounded_and_fail_closed(self) -> None:
+        innovus = (ROOT / "physical/k2_core_physical_cohort/innovus_core.tcl").read_text()
+        trim = innovus.rindex("editTrim -nets")
+        pre_drc = innovus.index(
+            'verify_drc -report "$output/reports/drc_pre_signal_eco.rpt"')
+        eco = innovus.index("ecoRoute -fix_drc")
+        extraction = innovus.index("extractRC", eco)
+        final_connectivity = innovus.index("verifyConnectivity -type all")
+        final_drc = innovus.index('verify_drc -report "$output/reports/drc.rpt"')
+        self.assertEqual(innovus.count("ecoRoute -fix_drc"), 1)
+        self.assertLess(trim, pre_drc)
+        self.assertLess(pre_drc, eco)
+        self.assertLess(eco, extraction)
+        self.assertLess(extraction, final_connectivity)
+        self.assertLess(final_connectivity, final_drc)
+        self.assertIn("reportCongestion -overflow", innovus)
+        self.assertNotIn('reportCongestion >', innovus)
+
+    def test_actual_failed_native_reports_remain_rejected(self) -> None:
+        with self.assertRaisesRegex(cohort.CohortError, "no_drive"):
+            cohort.require_clean_check_timing(
+                FIXTURES / "cluster2_check_timing_no_drive.rpt")
+        with self.assertRaisesRegex(cohort.CohortError, "native zero-count"):
+            cohort.require_zero_report(
+                FIXTURES / "cluster2_drc_m1_short.rpt", "drc")
+        failed_log = (FIXTURES / "innovus_impsp_9110.log").read_text()
+        self.assertIn("IMPSP-9110", failed_log)
+        with self.assertRaisesRegex(cohort.CohortError, "zero-error evidence"):
+            cohort.clean_innovus(failed_log, "23.14-s088_1")
 
     def test_server_python_38_does_not_require_zip_strict(self) -> None:
         producer = (ROOT / "physical/k2_core_physical_cohort/core_cohort.py").read_text()

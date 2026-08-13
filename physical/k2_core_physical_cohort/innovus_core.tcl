@@ -83,6 +83,27 @@ set init_mmmc_file $mmmc
 
 set flow_failed [catch {
   init_design
+  # Innovus 23.14 requires an explicit interactive mode before post-init
+  # constraints in an MMMC design.  Model the exact common core boundary:
+  # an ideal source on clk and the same BUFX2 source model on rst/req[15:0].
+  set_interactive_constraint_modes [list core_functional]
+  set boundary_clock_ports [get_ports clk]
+  if {[sizeof_collection $boundary_clock_ports] != 1} {
+    error "expected exactly the clk boundary clock port"
+  }
+  set boundary_nonclock_inputs [remove_from_collection \
+    [all_inputs] $boundary_clock_ports]
+  set expected_boundary_nonclock_inputs [get_ports {rst req*}]
+  if {[sizeof_collection $expected_boundary_nonclock_inputs] != 17 ||
+      [sizeof_collection [remove_from_collection $boundary_nonclock_inputs \
+        $expected_boundary_nonclock_inputs]] != 0 ||
+      [sizeof_collection [remove_from_collection $expected_boundary_nonclock_inputs \
+        $boundary_nonclock_inputs]] != 0} {
+    error "nonclock inputs are not exactly rst plus req[15:0]"
+  }
+  set_drive 0 $boundary_clock_ports
+  set_driving_cell -lib_cell BUFX2 $boundary_nonclock_inputs
+
   setDesignMode -process $::env(CORE_PROCESS)
   setAnalysisMode -analysisType onChipVariation -cppr both
 
@@ -168,6 +189,13 @@ set flow_failed [catch {
     extractRC
   }
 
+  # Materialize any signal-versus-PG marker left by the final sroute, then
+  # perform one bounded detail-route repair.  The independent final DRC and
+  # connectivity reports below remain the fail-closed authority.
+  verify_drc -report "$output/reports/drc_pre_signal_eco.rpt"
+  ecoRoute -fix_drc
+  extractRC
+
   setAnalysisMode -checkType setup
   report_timing -view core_setup_view -check_type setup -max_paths 50 \
     > "$output/reports/setup_timing.rpt"
@@ -180,7 +208,7 @@ set flow_failed [catch {
 
   report_area > "$output/reports/area.rpt"
   report_power > "$output/reports/power_vectorless.rpt"
-  reportCongestion > "$output/reports/congestion.rpt"
+  reportCongestion -overflow > "$output/reports/congestion.rpt"
   redirect -file "$output/reports/check_timing.rpt" {check_timing -verbose}
   redirect -file "$output/reports/check_design_post_route.rpt" {checkDesign -all}
   verifyConnectivity -type all -error 1000 -warning 1000 \

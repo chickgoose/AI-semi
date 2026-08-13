@@ -1,0 +1,7 @@
+Version: v23.14-s088_1, built Mon Jun 24 10:00:00 PDT 2024
+K2_CORE_INNOVUS_COMMANDS_COMPLETE top=aer_tx16_trad_rowcol_fovea_cluster2
+[08/14 01:19:51    111s] **ERROR: (IMPSP-9110): Missing mandatory options for this command. Use -hotspot or -overflow to report hotspot score or congestion map distribution table.
+*** Message Summary: 1 warning(s), 0 error(s)
+*** Message Summary: 246 warning(s), 1 error(s)
+
+--- Ending "Innovus" (totcpu=0:01:55, real=0:03:35, mem=3291.3M) ---
