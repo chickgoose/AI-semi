@@ -1073,11 +1073,22 @@ def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
         "set_clock_gating_check", "set_min_pulse_width -high",
         "set_min_pulse_width -low", "recovery_falling", "removal_falling",
         "set_driving_cell", "set_input_transition", "set_load", "all_registers -clock",
+        "get_pins -hierarchical *w2_ep_icg_0/ECK", "-divide_by 1 $link_icg_eck",
+        "-hold $gate_hold $sample_clock", "set ref_registers [w2_some ref_registers",
+        "set link_registers [w2_some link_registers",
+        "set async_reset_pins [w2_some async_reset_endpoints",
     )
     text = payload.decode("utf-8", errors="strict")
     missing = [token for token in required if token not in text]
-    if missing or "set_false_path" in text or "set_multicycle_path" in text:
-        raise FlowError(f"strict SDC timing class missing/forbidden: {','.join(missing)}")
+    if missing:
+        raise FlowError(f"strict SDC omits timing constraint class: {','.join(missing)}")
+    forbidden = (
+        "set_false_path", "set_multicycle_path", "set_clock_groups -asynchronous",
+        "get_timing_arcs", "-divide_by 1 $link_clock_port",
+        "-hold $gate_hold $gate_enable",
+    )
+    if any(token in text for token in forbidden):
+        raise FlowError("strict SDC contains a forbidden timing exception or Genus query")
     return payload
 
 
