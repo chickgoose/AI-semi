@@ -28,7 +28,7 @@ stems = []
 errors = []
 for path in paths:
     if path.name.endswith(".events.jsonl"):
-        stem = path.name.removesuffix(".events.jsonl")
+        stem = path.name[:-len(".events.jsonl")]
     else:
         errors.append(f"not an events.jsonl path: {path}")
         continue

@@ -449,7 +449,7 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         _, slack = _timing_observation(
             reports / name, EXPECTED_TIMING_CHECK[name]
         )
-        slacks[name.removesuffix("_timing.rpt")] = slack
+        slacks[name[:-len("_timing.rpt")]] = slack
     for check, value in slacks.items():
         if value < 0.0:
             raise QualificationError(f"{check} WNS is negative ({value})")
@@ -458,7 +458,7 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         summary = _timing_machine_summary(
             reports / name.replace(".rpt", ".machine"), check
         )
-        slack_key = name.removesuffix("_timing.rpt")
+        slack_key = name[:-len("_timing.rpt")]
         if abs(float(summary["wns"]) - slacks[slack_key]) > 1e-9:
             raise QualificationError(f"native timing report/machine WNS mismatch: {name}")
     minimum_zero_reports = {"drc.rpt", "antenna.rpt", "check_timing.rpt"}

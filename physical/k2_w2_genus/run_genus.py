@@ -269,12 +269,12 @@ def parse_staged_filelist(payload: bytes, label: str) -> tuple[list[str], list[s
     include_dirs: list[str] = []
     for line in lines:
         if line.startswith("+define+"):
-            define = line.removeprefix("+define+")
+            define = line[len("+define+"):]
             if not define or "+" in define:
                 raise FlowError(f"{label} filelist has an ambiguous define")
             defines.append(define)
         elif line.startswith("+incdir+"):
-            include_dir = line.removeprefix("+incdir+")
+            include_dir = line[len("+incdir+"):]
             if not include_dir or "+" in include_dir:
                 raise FlowError(f"{label} filelist has an ambiguous include directory")
             include_dirs.append(include_dir)
@@ -380,7 +380,7 @@ def validate_staged_manifest(root: Path, registry: dict[str, Any],
         row = manifest["designs"][key]
         expectation = registry["design_expectations"][key]
         top = row.get("top")
-        filelist_stem = "fovea" if key == "fovea_a7" else key.removesuffix("_p6")
+        filelist_stem = "fovea" if key == "fovea_a7" else key[:-len("_p6")]
         expected_filelists = {
             "generic": (
                 f"rtl/technology/physical_staging/filelists/{filelist_stem}_generic.f"),
