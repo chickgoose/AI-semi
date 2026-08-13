@@ -641,8 +641,32 @@ def validate_environment(bound: dict[str, Any], authority: dict[str, Any]) -> tu
     if semantics.get("setup", {}).get("pvt") != authority["technology"]["setup_liberty"]["pvt"] or \
             semantics.get("hold", {}).get("pvt") != authority["technology"]["hold_liberty"]["pvt"]:
         raise PlanError("PROVEN_ENVIRONMENT slow/fast PVT mismatch")
-    if gates.get("dffnsrx1_contract", {}).get("evidence") != authority["rx_cell"]:
-        raise PlanError("PROVEN_ENVIRONMENT DFFNSRX1 Liberty/LEF contract mismatch")
+    rx_contract = authority["rx_cell"]
+    direct_rx = gates.get("dffnsrx1_contract", {}).get("evidence")
+    if direct_rx is not None:
+        if direct_rx != rx_contract:
+            raise PlanError("PROVEN_ENVIRONMENT DFFNSRX1 contract mismatch")
+    else:
+        for corner in ("setup", "hold"):
+            cell = semantics.get(corner, {}).get("cells", {}).get(rx_contract["name"], {})
+            ff = cell.get("ff", {})
+            normalized_ff = {key: str(value).replace("(", "").replace(")", "")
+                             for key, value in ff.items()}
+            if normalized_ff != {
+                    "clocked_on": "!CKN", "clear": "!RN", "preset": "!SN"}:
+                raise PlanError("PROVEN_ENVIRONMENT DFFNSRX1 FF semantics mismatch")
+            timing = cell.get("timing", {})
+            data_checks = {row.get("type") for row in timing.get("D", [])}
+            reset_checks = {row.get("type") for pin in ("RN", "SN")
+                            for row in timing.get(pin, [])}
+            if not set(rx_contract["data_checks"]).issubset(data_checks) or \
+                    not set(rx_contract["reset_checks"]).issubset(reset_checks):
+                raise PlanError("PROVEN_ENVIRONMENT DFFNSRX1 timing arcs mismatch")
+        lef_cell = gates.get("site_and_cell_availability", {}).get(
+            "evidence", {}).get("site_legal_macros", {}).get(rx_contract["name"], {})
+        if set(lef_cell.get("pins", {})) != set(rx_contract["lef_pins"]) or \
+                lef_cell.get("site") != authority["physical_policy"]["site"]:
+            raise PlanError("PROVEN_ENVIRONMENT DFFNSRX1 LEF contract mismatch")
     return path, digest
 
 
