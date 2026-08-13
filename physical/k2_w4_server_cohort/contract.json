@@ -1,0 +1,78 @@
+{
+  "schema": "k2_w4_server_cohort_contract_v1",
+  "candidate_order": [
+    "fovea_a7",
+    "a2_p6",
+    "a3_p6"
+  ],
+  "environment": {
+    "contract_path": "physical/k2_w2_server_env/contract.json",
+    "contract_sha256": "e02374caaa8e8985590f5609c7962a9ba2df2cac9603e93cb250c8233e22d989",
+    "required_status": "PROVEN_ENVIRONMENT",
+    "required_decision": "GO"
+  },
+  "genus": {
+    "producer_commit": "62d792e9f16c3052442521417b66b5aaf4d86d78",
+    "producer_sha256": "a151614952c44b66972036b5fb1001bca642b845159f87e455c19f751a932441",
+    "registry_sha256": "1dd973dcda464d3dc50ad075c364e5959e63b4e86c5149021e7b9286901f8c04",
+    "attempt_schema": "k2_w2_genus_exact_three_endpoint_attempt_v3",
+    "receipt_schema": "k2_w2_genus_exact_three_endpoint_receipt_v3",
+    "receipt_status": "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD",
+    "source_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
+    "boundary_cohort": "tech_staged_complete_compositions",
+    "source_origin": "tech_staged_repository_exact",
+    "ranking_policy": "ONLY_THREE_TECH_STAGED_COMPLETE_COMPOSITIONS_COMPARABLE",
+    "claim_boundary": "GENUS_MAPPED_TIMING_SCREENING_ONLY_POWER_AND_PHYSICAL_PPA_HOLD",
+    "required_checks": {
+      "source_and_filelist_hashes": "PASS",
+      "goal_registry": "PASS_EXACT_THREE_TECH_STAGED_COMPOSITIONS",
+      "generic_or_native_top_substitution": "FORBIDDEN",
+      "non_link_output_boundary": "PASS_IDENTICAL_EXACT",
+      "r1_vs_p6_link_width": "PASS_INHERENT_3_BITS_VS_6_BITS",
+      "diagnostic_registries_used_for_final_ranking": "FORBIDDEN",
+      "exclusive_attempt_namespace": "PASS",
+      "tool_and_library_pre_post_stability": "PASS",
+      "unresolved_and_blackbox": "PASS_ZERO",
+      "scan_cells": "PASS_ZERO",
+      "mapped_netlist_export": "PASS",
+      "strict_multiclock_sdc": "PASS_HASH_BOUND_RISE_FALL_MIN_MAX_RESET_GATING_PULSE_IO",
+      "dffnsrx1_rx_mapping": "PASS_EXACT_COUNT_PINS_AND_NONZERO_RECOVERY_REMOVAL",
+      "mapped_functional_gate": "PASS_STAGED_VS_MAPPED_SDF_VENDOR_MODELS",
+      "innovus_exact_sdc_consumption": "PENDING_REQUIRES_DOWNSTREAM_RECEIPT",
+      "power_activity_gate": "HOLD_VECTORLESS_IS_NOT_ACTIVITY_QUALIFIED",
+      "report_only_publication": "REJECTED_REQUIRES_SOURCE_TOOL_NETLIST_SDC_CONNECTIVITY_FUNCTIONAL_GATE"
+    }
+  },
+  "designs": {
+    "fovea_a7": {
+      "top": "w2_fovea_r1_physical_staging_top",
+      "endpoint_leaf_counts": {
+        "DFFNSRX1": 5,
+        "DFFRHQX1": 2,
+        "MX2X1": 2,
+        "TLATNTSCAX2": 1
+      }
+    },
+    "a2_p6": {
+      "top": "w2_a2_p6_physical_staging_top",
+      "endpoint_leaf_counts": {
+        "DFFNSRX1": 12,
+        "DFFRHQX1": 5,
+        "MX2X1": 5,
+        "TLATNTSCAX2": 1
+      }
+    },
+    "a3_p6": {
+      "top": "w2_a3_p6_physical_staging_top",
+      "endpoint_leaf_counts": {
+        "DFFNSRX1": 12,
+        "DFFRHQX1": 5,
+        "MX2X1": 5,
+        "TLATNTSCAX2": 1
+      }
+    }
+  },
+  "completion_status": "PACKAGED_EXACT_THREE_GENUS_RECEIPTS",
+  "physical_qualification": "HOLD_REQUIRES_SEPARATE_INNOVUS_AND_QUALIFIER",
+  "eda_execution_allowed_by_this_launcher": false
+}
