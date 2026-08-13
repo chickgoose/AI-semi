@@ -113,6 +113,9 @@ reports = {
         "    Category         Leakage     Internal    Switching        Total\n"
         "    Subtotal     1.00000e-09  1.00000e-06  1.00000e-06  2.00100e-06\n"
     ),
+    "qor": "WNS (ps): 100\nTNS (ps): 0\nUnconstrained Paths: 0\n",
+    "timing_intent": "Genus timing intent lint completed with zero errors\n",
+    "clocks": "Clock p6_ref_clk\nGenerated Clock link_clk\n",
 }
 for kind, payload in reports.items():
     if mode == "missing_report" and kind == "gtiming":

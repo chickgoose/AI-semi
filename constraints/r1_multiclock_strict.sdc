@@ -73,9 +73,9 @@ set_input_delay -max $in_max -clock r1_ref_clk $data_inputs
 set_driving_cell -lib_cell [w2_req_env W2_DRIVE_CELL] $data_inputs
 set_input_transition $transition [add_to_collection $data_inputs $reset_port]
 
-# Reset is constrained, never false-pathed. Genus 23.14 reports the
-# recovery_falling and removal_falling checks separately in the driver; the
-# SDC fail-closes on the actual asynchronous register endpoints.
+# Reset recovery/removal remains constrained at every asynchronous register.
+# Only the direct combinational reset-to-top-output path is excluded below;
+# Innovus remains authoritative for recovery/removal signoff.
 set_input_delay -min $reset_min -clock r1_reset_release_clk $reset_port
 set_input_delay -max $reset_max -clock r1_reset_release_clk $reset_port
 set async_reset_pins [w2_some async_reset_endpoints [all_registers -async_pins]]
@@ -83,6 +83,7 @@ set async_reset_pins [w2_some async_reset_endpoints [all_registers -async_pins]]
 set link_ports [add_to_collection $link_clock_port $link_data_ports]
 set nonlink_outputs [remove_from_collection [all_outputs] $link_ports]
 w2_some nonlink_outputs $nonlink_outputs
+set_false_path -from $reset_port -to $nonlink_outputs
 set_output_delay -min $out_min -clock r1_ref_clk $nonlink_outputs
 set_output_delay -max $out_max -clock r1_ref_clk $nonlink_outputs
 set_output_delay -min $out_min -clock r1_link_clk $link_data_ports

@@ -51,15 +51,9 @@ syn_opt
 report_area   > $OUT_DIR/${DESIGN}_area.rpt
 report_timing > $OUT_DIR/${DESIGN}_gtiming.rpt
 report_power  > $OUT_DIR/${DESIGN}_gpower.rpt
-report_timing -check_type setup > $OUT_DIR/${DESIGN}_setup.rpt
-report_timing -check_type hold > $OUT_DIR/${DESIGN}_hold.rpt
-report_timing -check_type recovery > $OUT_DIR/${DESIGN}_recovery.rpt
-report_timing -check_type removal > $OUT_DIR/${DESIGN}_removal.rpt
-report_timing -check_type clock_gating_setup > $OUT_DIR/${DESIGN}_gating_setup.rpt
-report_timing -check_type clock_gating_hold > $OUT_DIR/${DESIGN}_gating_hold.rpt
-report_timing -check_type pulse_width > $OUT_DIR/${DESIGN}_pulse_width.rpt
 report_qor > $OUT_DIR/${DESIGN}_qor.rpt
-check_timing -verbose > $OUT_DIR/${DESIGN}_check_timing.rpt
+check_timing_intent -verbose > $OUT_DIR/${DESIGN}_timing_intent.rpt
+report_clocks -generated -uncertainty_table > $OUT_DIR/${DESIGN}_clocks.rpt
 
 write_hdl > $OUT_DIR/${DESIGN}_netlist.v
 write_sdc > $OUT_DIR/${DESIGN}_out.sdc

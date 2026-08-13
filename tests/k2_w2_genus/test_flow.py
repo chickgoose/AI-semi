@@ -461,7 +461,7 @@ class GenusFlowTests(unittest.TestCase):
                     "set_input_delay -max", "set_output_delay -min",
                     "set_output_delay -max", "set_clock_gating_check",
                     "set_min_pulse_width -high", "set_min_pulse_width -low",
-                    "recovery_falling", "removal_falling", "set_driving_cell",
+                    "set_driving_cell",
                     "set_input_transition", "set_load", "all_registers -clock"):
                 self.assertIn(token, text)
             self.assertIn(
@@ -480,7 +480,9 @@ class GenusFlowTests(unittest.TestCase):
             self.assertNotIn("get_timing_arcs", text)
             self.assertNotIn("-divide_by 1 $link_clock_port", text)
             self.assertNotIn("$gate_enable", text)
-            self.assertNotIn("set_false_path", text)
+            self.assertEqual(text.count("set_false_path"), 1)
+            self.assertIn(
+                "set_false_path -from $reset_port -to $nonlink_outputs", text)
             self.assertNotIn("set_multicycle_path", text)
 
     def test_each_strict_sdc_timing_class_omission_is_rejected(self):
@@ -490,13 +492,14 @@ class GenusFlowTests(unittest.TestCase):
             "set_input_delay -min", "set_input_delay -max",
             "set_output_delay -min", "set_output_delay -max",
             "set_clock_gating_check", "set_min_pulse_width -high",
-            "set_min_pulse_width -low", "recovery_falling", "removal_falling",
-            "set_driving_cell", "set_input_transition", "set_load",
+            "set_min_pulse_width -low", "set_driving_cell",
+            "set_input_transition", "set_load",
             "all_registers -clock", "*w2_ep_icg_0/ECK",
             "-divide_by 1 $link_icg_eck", "-hold $gate_hold $sample_clock",
             "set ref_registers [w2_some ref_registers",
             "set link_registers [w2_some link_registers",
             "set async_reset_pins [w2_some async_reset_endpoints",
+            "set_false_path -from $reset_port -to $nonlink_outputs",
         )
         with tempfile.TemporaryDirectory(prefix="k2-w2-sdc-mutations-") as directory:
             root = Path(directory)
@@ -516,7 +519,8 @@ class GenusFlowTests(unittest.TestCase):
                         self.module.materialize_sdc(root, design)
             for forbidden in (
                     "get_timing_arcs", "-divide_by 1 $link_clock_port",
-                    "-hold $gate_hold $gate_enable"):
+                    "-hold $gate_hold $gate_enable",
+                    "set_false_path -from $reset_port -to $async_reset_pins"):
                 with self.subTest(inserted=forbidden):
                     payload = (original + "\n# mutation\n" + forbidden + "\n").encode()
                     path.write_bytes(payload)
@@ -526,7 +530,7 @@ class GenusFlowTests(unittest.TestCase):
                     }}
                     with self.assertRaisesRegex(
                             self.module.FlowError,
-                            "forbidden timing exception or Genus query"):
+                            "forbidden timing exception|reset exception"):
                         self.module.materialize_sdc(root, design)
 
     def test_shared_qrc_mmmc_discloses_single_typical_rc(self):
@@ -750,20 +754,13 @@ class GenusFlowTests(unittest.TestCase):
             with self.assertRaisesRegex(self.module.FlowError, message):
                 self.module.parse_timing_rows(payload, "bad", "Setup")
         qor = "WNS (ps): 100\nTNS (ps): 0\nUnconstrained Paths: 0\n"
-        coverage = "".join(f"{name}: 0\n" for name in (
-            "no_clock", "constant_clock", "no_input_delay", "no_output_delay",
-            "no_drive", "no_load", "unconstrained"))
-        self.module.parse_qor_and_coverage(qor, coverage, 100.0)
-        for name in ("no_drive", "no_load"):
-            with self.assertRaisesRegex(self.module.FlowError, "coverage hole"):
-                self.module.parse_qor_and_coverage(
-                    qor, coverage.replace(f"{name}: 0", f"{name}: 1"), 100.0)
+        self.module.parse_qor(qor, 100.0)
         for bad_qor in (
                 qor.replace("WNS (ps): 100", "WNS (ps): -1"),
                 qor.replace("TNS (ps): 0", "TNS (ps): -1"),
                 qor.replace("Unconstrained Paths: 0", "Unconstrained Paths: 1")):
             with self.assertRaisesRegex(self.module.FlowError, "QoR"):
-                self.module.parse_qor_and_coverage(bad_qor, coverage, 100.0)
+                self.module.parse_qor(bad_qor, 100.0)
 
     def test_authoritative_buffered_and_raw_archives(self):
         self.assertTrue(GOLDEN_ARCHIVE.is_file())

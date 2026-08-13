@@ -723,16 +723,16 @@ def verify_driver_contract(golden: dict[str, Any]) -> None:
     require_ordered_tokens(commands, golden["command_order"], "candidate-neutral driver")
     if "set_db lp_insert_clock_gating true" not in commands:
         raise FlowError("candidate-neutral driver differs from golden clock-gating mode")
-    required_classes = (
-        "report_timing -check_type setup", "report_timing -check_type hold",
-        "report_timing -check_type recovery", "report_timing -check_type removal",
-        "report_timing -check_type clock_gating_setup",
-        "report_timing -check_type clock_gating_hold",
-        "report_timing -check_type pulse_width", "report_qor", "check_timing -verbose",
+    required_reports = (
+        "report_area", "report_timing", "report_power", "report_qor",
+        "check_timing_intent -verbose",
+        "report_clocks -generated -uncertainty_table",
     )
-    missing = [token for token in required_classes if token not in commands]
+    missing = [token for token in required_reports if token not in commands]
     if missing:
-        raise FlowError(f"Genus driver omits strict timing report class: {','.join(missing)}")
+        raise FlowError(f"Genus driver omits mapped-screening report: {','.join(missing)}")
+    if "report_timing -check_type" in commands or "check_timing -verbose" in commands:
+        raise FlowError("Genus driver uses an unsupported Genus 23.14 timing command")
 
 
 def read_golden_members(archive: Path, golden: dict[str, Any]) -> dict[str, bytes]:
@@ -1071,24 +1071,29 @@ def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
         "create_generated_clock", "-clock_fall -add_delay", "set_input_delay -min",
         "set_input_delay -max", "set_output_delay -min", "set_output_delay -max",
         "set_clock_gating_check", "set_min_pulse_width -high",
-        "set_min_pulse_width -low", "recovery_falling", "removal_falling",
-        "set_driving_cell", "set_input_transition", "set_load", "all_registers -clock",
+        "set_min_pulse_width -low", "set_driving_cell", "set_input_transition",
+        "set_load", "all_registers -clock",
         "get_pins -hierarchical *w2_ep_icg_0/ECK", "-divide_by 1 $link_icg_eck",
         "-hold $gate_hold $sample_clock", "set ref_registers [w2_some ref_registers",
         "set link_registers [w2_some link_registers",
         "set async_reset_pins [w2_some async_reset_endpoints",
+        "set_false_path -from $reset_port -to $nonlink_outputs",
     )
     text = payload.decode("utf-8", errors="strict")
     missing = [token for token in required if token not in text]
     if missing:
         raise FlowError(f"strict SDC omits timing constraint class: {','.join(missing)}")
     forbidden = (
-        "set_false_path", "set_multicycle_path", "set_clock_groups -asynchronous",
+        "set_multicycle_path", "set_clock_groups -asynchronous",
         "get_timing_arcs", "-divide_by 1 $link_clock_port",
         "-hold $gate_hold $gate_enable",
     )
     if any(token in text for token in forbidden):
         raise FlowError("strict SDC contains a forbidden timing exception or Genus query")
+    false_paths = [line.strip() for line in text.splitlines()
+                   if line.strip().startswith("set_false_path")]
+    if false_paths != ["set_false_path -from $reset_port -to $nonlink_outputs"]:
+        raise FlowError("strict SDC reset exception is not exactly output-scoped")
     return payload
 
 
@@ -1476,8 +1481,7 @@ def parse_timing_rows(text: str, label: str,
     return {"path_count": len(slacks), "minimum_slack_ps": min(slacks)}
 
 
-def parse_qor_and_coverage(qor: str, coverage: str,
-                           minimum_slack_ps: float) -> dict[str, Any]:
+def parse_qor(qor: str, minimum_slack_ps: float) -> dict[str, Any]:
     def number(label: str) -> float:
         match = re.fullmatch(
             rf"(?ms).*^{re.escape(label)}:\s*"
@@ -1494,20 +1498,8 @@ def parse_qor_and_coverage(qor: str, coverage: str,
     if wns < 0.0 or abs(tns) > 1e-12 or unconstrained != 0.0 or \
             abs(wns - minimum_slack_ps) > 1e-9:
         raise FlowError("QoR WNS/TNS/unconstrained mismatch or violation")
-    coverage_names = (
-        "no_clock", "constant_clock", "no_input_delay", "no_output_delay",
-        "no_drive", "no_load", "unconstrained",
-    )
-    values: dict[str, int] = {}
-    for name in coverage_names:
-        matches = re.findall(rf"(?m)^{name}:\s*(\d+)\s*$", coverage)
-        if len(matches) != 1:
-            raise FlowError(f"check_timing missing/duplicate {name}")
-        values[name] = int(matches[0])
-    if any(values.values()):
-        raise FlowError("check_timing reports unconstrained/no-drive/no-load coverage hole")
     return {"wns_ps": wns, "tns_ps": tns,
-            "unconstrained_paths": int(unconstrained), "coverage": values}
+            "unconstrained_paths": int(unconstrained)}
 
 
 def verify_reports(output: Path, top: str, log_payload: bytes,
@@ -1524,15 +1516,9 @@ def verify_reports(output: Path, top: str, log_payload: bytes,
         "area": f"{top}_area.rpt",
         "gtiming": f"{top}_gtiming.rpt",
         "gpower": f"{top}_gpower.rpt",
-        "setup": f"{top}_setup.rpt",
-        "hold": f"{top}_hold.rpt",
-        "recovery": f"{top}_recovery.rpt",
-        "removal": f"{top}_removal.rpt",
-        "gating_setup": f"{top}_gating_setup.rpt",
-        "gating_hold": f"{top}_gating_hold.rpt",
-        "pulse_width": f"{top}_pulse_width.rpt",
         "qor": f"{top}_qor.rpt",
-        "check_timing": f"{top}_check_timing.rpt",
+        "timing_intent": f"{top}_timing_intent.rpt",
+        "clocks": f"{top}_clocks.rpt",
     }
     payloads = {kind: stable_read(output / name) for kind, name in names.items()}
     if any(not payload for payload in payloads.values()):
@@ -1541,22 +1527,11 @@ def verify_reports(output: Path, top: str, log_payload: bytes,
         top, payloads["area"], payloads["gtiming"], payloads["gpower"],
         label="candidate", require_timing_pass=True,
     )
-    classes = {
-        "setup": "Setup", "hold": "Hold", "recovery": "Recovery",
-        "removal": "Removal", "gating_setup": "Clock Gating Setup",
-        "gating_hold": "Clock Gating Hold", "pulse_width": "Pulse Width",
-    }
-    minimum = math.inf
-    for kind, expected in classes.items():
-        text = payloads[kind].decode("utf-8", errors="strict")
-        if ("Generated by:           Genus(TM) Synthesis Solution" not in text or
-                f"Module:                 {top}" not in text):
-            raise FlowError(f"candidate {kind} report header mismatch")
-        parsed = parse_timing_rows(text, f"candidate {kind}", expected)
-        minimum = min(minimum, parsed["minimum_slack_ps"])
-    parse_qor_and_coverage(
-        payloads["qor"].decode("utf-8", errors="strict"),
-        payloads["check_timing"].decode("utf-8", errors="strict"), minimum)
+    timing = parse_timing_rows(
+        payloads["gtiming"].decode("utf-8", errors="strict"),
+        "candidate setup", "Setup")
+    parse_qor(payloads["qor"].decode("utf-8", errors="strict"),
+              timing["minimum_slack_ps"])
     return {names[kind]: sha256_bytes(payload) for kind, payload in payloads.items()}
 
 

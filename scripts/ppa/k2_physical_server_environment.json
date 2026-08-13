@@ -46,12 +46,12 @@
   "constraint_templates": {
     "r1": {
       "path": "constraints/r1_multiclock.sdc",
-      "sha256": "afae60d3bb201817fbdbc8f47615247f81264bb9552f686325063a768f9edf78",
+      "sha256": "3ff6f26704113ec38503a1390e18fa268ada447f865ebedfda9455859298ed3a",
       "kind": "R1_STRICT_PHASE_RELATED_DDR"
     },
     "p6": {
       "path": "constraints/p6_multiclock.sdc",
-      "sha256": "16900abe0717f3ce88da7e462a5735836b8045b7e3f2f93a18a33fa1da2f6cfb",
+      "sha256": "e317f908e8b7aea73956da2208363e0c8ebe4e997bad8c7edb4e34cd7b682763",
       "kind": "P6_STRICT_PHASE_RELATED_DDR"
     }
   },
