@@ -19,7 +19,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     if repo_root != run_genus.ROOT.resolve(strict=True):
         raise run_genus.FlowError(
             "launcher entrypoint and repository root identity mismatch")
-    registry = run_genus.load_registry(repo_root)
+    registry = run_genus.load_registry(repo_root, args.timing_cohort)
     runner = Path(run_genus.__file__).resolve(strict=True)
     rows = []
     for index, key in enumerate(registry["goal_order"], start=1):
@@ -29,6 +29,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             sys.executable, "-B", str(runner),
             "--repo-root", str(args.repo_root.resolve()),
             "--design", key,
+            "--timing-cohort", args.timing_cohort,
             "--genus", str(args.genus.absolute()),
             "--library", str(args.library.resolve()),
             "--hold-library", str(args.hold_library.resolve()),
@@ -51,13 +52,16 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "top": design["top"],
             "boundary_cohort": design["boundary_cohort"],
             "source_origin": design["source_origin"],
+            "timing_cohort": registry["selected_timing_cohort"],
             "attempt": attempt,
             "command": command,
         })
     return {
-        "schema": "k2_w2_genus_exact_three_endpoint_launch_plan_v2",
+        "schema": "k2_w2_genus_exact_three_endpoint_launch_plan_v3",
         "goal_order": registry["goal_order"],
         "ranking_policy": registry["ranking_policy"],
+        "timing_cohort_manifest": registry["timing_cohort_manifest_identity"],
+        "timing_cohort": registry["selected_timing_cohort"],
         "generic_or_native_substitution": "FORBIDDEN",
         "rows": rows,
     }
@@ -75,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--raw-golden-archive", type=Path, required=True)
     parser.add_argument("--functional-loss-archive", type=Path, required=True)
     parser.add_argument("--server-environment-receipt", type=Path, required=True)
+    parser.add_argument("--timing-cohort", choices=run_genus.TIMING_COHORT_ORDER,
+                        default="three_endpoint_5p0ns")
     parser.add_argument("--mapped-functional-hook", type=Path, required=True)
     parser.add_argument("--functional-model", type=Path, action="append",
                         required=True)
@@ -112,6 +118,9 @@ def main(argv: list[str] | None = None) -> int:
                     receipt.get("design") != row["design"] or
                     receipt.get("top") != row["top"] or
                     receipt.get("boundary_cohort") != row["boundary_cohort"] or
+                    receipt.get("timing_cohort") != plan["timing_cohort"] or
+                    receipt.get("timing_cohort_manifest") !=
+                    plan["timing_cohort_manifest"] or
                     receipt.get("ranking_policy") != plan["ranking_policy"]):
                 raise run_genus.FlowError(
                     f"goal receipt identity mismatch: {row['design']}")
@@ -119,14 +128,18 @@ def main(argv: list[str] | None = None) -> int:
                 "design": row["design"],
                 "top": row["top"],
                 "boundary_cohort": row["boundary_cohort"],
+                "timing_cohort_id": plan["timing_cohort"]["id"],
+                "timing_profile_sha256": plan["timing_cohort"]["profile_sha256"],
                 "receipt": str(receipt_path.relative_to(output)),
                 "receipt_sha256": run_genus.sha256_bytes(receipt_payload),
             })
         publication = {
-            "schema": "k2_w2_genus_exact_three_endpoint_publication_v2",
+            "schema": "k2_w2_genus_exact_three_endpoint_publication_v3",
             "status": "PASS_EXACT_THREE_TECH_STAGED_ENDPOINTS",
             "goal_order": plan["goal_order"],
             "ranking_policy": plan["ranking_policy"],
+            "timing_cohort_manifest": plan["timing_cohort_manifest"],
+            "timing_cohort": plan["timing_cohort"],
             "generic_or_native_substitution": "FORBIDDEN",
             "launch_plan_sha256": run_genus.sha256_bytes(
                 run_genus.stable_read(output / "launch-plan.json")),

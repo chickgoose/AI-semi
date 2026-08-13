@@ -1,10 +1,15 @@
 {
-  "schema": "k2_w2_genus_final_tech_staged_registry_v3",
+  "schema": "k2_w2_genus_final_tech_staged_registry_v4",
   "integration_state": "ready",
   "cohort": "tech_staged_complete_compositions",
   "ranking_policy": "ONLY_THREE_TECH_STAGED_COMPLETE_COMPOSITIONS_COMPARABLE",
   "repository_commit": "ba0116029bb79573dca23c3957845885837f4b82",
   "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
+  "timing_cohort_manifest": {
+    "required_schema": "k2_w2_genus_timing_cohorts_v1",
+    "path": "physical/k2_w2_genus/timing_cohorts.json",
+    "sha256": "9984726e8d955a891b863e41adb4519c27c3b650879de88d07f063ebc886404f"
+  },
   "staged_manifest": {
     "required_schema": "k2_w2_tech_staged_compositions_v1",
     "required_status": "READY_FOR_GENUS_AND_INNOVUS",
