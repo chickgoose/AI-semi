@@ -1,5 +1,50 @@
 # K2 physical W2 raw-report qualifier
 
+## yZr1 functional evidence: loss only
+
+The latest functional archive is `eval-fovea-cluster2.yZr1kmYL.tar.gz`,
+SHA-256 `22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39`.
+The archive retains the original attempt path in `provenance.txt` even if the
+tarball is copied elsewhere. The qualifier normalizes ledger paths only against
+that exact provenance path; it never rewrites or guesses an attempt identity.
+
+```sh
+python3 physical/k2_w2_qualifier/qualify_functional_yzr1.py \
+  --archive /tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz \
+  --output /writable/new-yzr1-loss-only-receipt.json
+```
+
+The archive has 344 files. `result-artifacts.sha256` must contain exactly 338
+unique, hash-correct rows and equal the complete `results/**` closure. The six
+remaining root files are exactly the provenance, 50/22 stem inventories, two
+candidate run logs, and ledger. Both candidates must have the exact 50 full
+runs, 22 capacity runs, 50 ordered `RUN_PASS` markers, one reset PASS, final
+pairwise status zero, and no run failure marker. Every trace CSV must satisfy
+`generated = source_overrun + accepted`, `accepted = delivered`, and
+`errors = 0`; the corresponding trace log must independently report one PASS
+and one metrics record.
+
+The actual full50 loss accounting is:
+
+| Candidate | Generated | Source overrun | Accepted | Delivered |
+|---|---:|---:|---:|---:|
+| Fovea | 106416 | 28187 | 78229 | 78229 |
+| Cluster2 | 106416 | 12259 | 94157 | 94157 |
+
+`source_overrun` is ingress capacity loss, not corruption of an accepted
+event. The receipt status is
+`WORKSPACE_DIFF_FUNCTIONAL_LOSS_EVIDENCE_GO`: `provenance.txt` explicitly says
+`binding_reset_quiet_arming_patch=workspace-diff`, so this is not an official
+common receipt. It may support only workload loss accounting and accepted-event
+conservation. It must never support area, timing, power, energy, or other PPA
+claims.
+
+The stale outer `eval-driver-final.log` naming attempt `0FfaT8kp` is neither in
+the yZr1 archive nor part of its trust closure. The qualifier explicitly
+rejects any packaged outer driver log and records it as
+`STALE_0Ffa_NOT_IN_ARCHIVE_NOT_BOUND`. Only yZr1 `provenance.txt`, both candidate
+run logs, the 338-entry ledger, and the immutable archive are bound.
+
 ## Authoritative Ganghee fixture
 
 ### Raw canonical endpoint sweep
