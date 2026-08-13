@@ -26,6 +26,7 @@ required=(
   docs/verification/aer-clean-benchmark-results.md
   docs/verification/aer-trace-loader.md
   docs/verification/aer-physical-ppa-contract.md
+  docs/verification/aer-w2-activity-power-comparison.md
   docs/verification/aer-address-only-full-link-qualification.md
   docs/verification/aer-native-capability-profile.md
   docs/verification/aer-ganghee-native-binding.md
@@ -47,6 +48,13 @@ required=(
   benchmarks/clean_slate_aer/fixtures/capability_profile_baseline.json
   benchmarks/clean_slate_aer/fixtures/capability_profile_a23_ee430.json
   benchmarks/physical_ppa/bracket_fmax.py
+  benchmarks/physical_ppa/activity_power_ppa_comparison.schema.json
+  benchmarks/physical_ppa/evaluate_activity_power_ppa.py
+  benchmarks/physical_ppa/tests/test_activity_power_ppa.py
+  benchmarks/physical_ppa/ganghee_pnr_archive_summary.schema.json
+  benchmarks/physical_ppa/ganghee_pnr_golden_20260813.lock.json
+  benchmarks/physical_ppa/parse_ganghee_pnr_archive.py
+  benchmarks/physical_ppa/tests/test_parse_ganghee_pnr_archive.py
   benchmarks/physical_ppa/a1_candidate_ppa_registry.json
   benchmarks/physical_ppa/full_link_qualification.schema.json
   benchmarks/physical_ppa/approved_execution_registry.json

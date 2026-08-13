@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/aer/ganghee-pnr-archive-summary.schema.json",
+  "title": "Authoritative Ganghee PNR archive summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "archive", "activity_inventory", "power_rows",
+    "fmax_screening", "boundary_diagnostics", "archive_assessment", "publication"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes", "member_count"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "member_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "activity_inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vcd_members", "saif_members", "activity_based_power_rows"],
+      "properties": {
+        "vcd_members": {"type": "integer", "minimum": 0},
+        "saif_members": {"type": "integer", "minimum": 0},
+        "activity_based_power_rows": {"type": "integer", "minimum": 0}
+      }
+    },
+    "power_rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "design", "period_ns", "power_class", "accepted_for_activity_comparison",
+          "report", "internal_power_mw", "switching_power_mw",
+          "leakage_power_mw", "total_power_mw", "activity_file",
+          "default_input_activity", "command_script", "tool_log",
+          "report_power_command_bound", "flow_errors_present"
+        ],
+        "properties": {
+          "design": {"type": "string", "minLength": 1},
+          "period_ns": {"type": "number", "exclusiveMinimum": 0},
+          "power_class": {
+            "enum": [
+              "vectorless_report_power", "activity_annotated",
+              "rejected_missing_activity_provenance"
+            ]
+          },
+          "accepted_for_activity_comparison": {"type": "boolean"},
+          "report": {"$ref": "#/$defs/member"},
+          "command_script": {"$ref": "#/$defs/member"},
+          "tool_log": {"$ref": "#/$defs/member"},
+          "report_power_command_bound": {"type": "boolean"},
+          "flow_errors_present": {"type": "boolean"},
+          "internal_power_mw": {"type": "number", "minimum": 0},
+          "switching_power_mw": {"type": "number", "minimum": 0},
+          "leakage_power_mw": {"type": "number", "minimum": 0},
+          "total_power_mw": {"type": "number", "minimum": 0},
+          "activity_file": {"type": ["string", "null"]},
+          "default_input_activity": {"type": ["number", "null"]}
+        }
+      }
+    },
+    "fmax_screening": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/fmaxDesign"}
+    },
+    "boundary_diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "design", "boundary_scope", "functional_input_bits",
+          "functional_output_bits", "functional_bidirectional_bits",
+          "functional_pin_bits"
+        ],
+        "properties": {
+          "design": {"type": "string", "minLength": 1},
+          "boundary_scope": {"const": "core_only"},
+          "functional_input_bits": {"type": "integer", "minimum": 0},
+          "functional_output_bits": {"type": "integer", "minimum": 0},
+          "functional_bidirectional_bits": {"type": "integer", "minimum": 0},
+          "functional_pin_bits": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "archive_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boundary_scope", "source_commit_bound", "external_library_bytes_bound",
+        "flow_errors_present", "unconstrained_paths_proven_zero", "qualification"
+      ],
+      "properties": {
+        "boundary_scope": {"const": "core_only"},
+        "source_commit_bound": {"const": false},
+        "external_library_bytes_bound": {"const": false},
+        "flow_errors_present": {"const": true},
+        "unconstrained_paths_proven_zero": {"const": false},
+        "qualification": {"const": "DIAGNOSTIC_HOLD"}
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_go", "decision", "reason"],
+      "properties": {
+        "candidate_go": {"const": false},
+        "decision": {"const": "HOLD_NO_ACTIVITY_PROVENANCE"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "fmaxPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "period_ns", "frequency_mhz", "setup_wns_ns", "hold_wns_ns",
+        "area_um2", "drc_antenna_clean", "screening_pass", "artifacts"
+      ],
+      "properties": {
+        "period_ns": {"type": "number", "exclusiveMinimum": 0},
+        "frequency_mhz": {"type": "number", "exclusiveMinimum": 0},
+        "setup_wns_ns": {"type": "number"},
+        "hold_wns_ns": {"type": "number"},
+        "area_um2": {"type": "number", "exclusiveMinimum": 0},
+        "drc_antenna_clean": {"type": "boolean"},
+        "screening_pass": {"type": "boolean"},
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sdc", "netlist", "area_report", "setup_report", "hold_report",
+            "drc_report", "antenna_report"
+          ],
+          "properties": {
+            "sdc": {"$ref": "#/$defs/member"},
+            "netlist": {"$ref": "#/$defs/member"},
+            "area_report": {"$ref": "#/$defs/member"},
+            "setup_report": {"$ref": "#/$defs/member"},
+            "hold_report": {"$ref": "#/$defs/member"},
+            "drc_report": {"$ref": "#/$defs/member"},
+            "antenna_report": {"$ref": "#/$defs/member"}
+          }
+        }
+      }
+    },
+    "fmaxDesign": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "design", "classification", "last_pass_mhz",
+        "first_higher_fail_mhz", "points"
+      ],
+      "properties": {
+        "design": {"type": "string", "minLength": 1},
+        "classification": {"const": "POST_ROUTE_SCREENING_NOT_ACTIVITY_POWER_GO"},
+        "last_pass_mhz": {"type": ["number", "null"]},
+        "first_higher_fail_mhz": {"type": ["number", "null"]},
+        "points": {"type": "array", "items": {"$ref": "#/$defs/fmaxPoint"}}
+      }
+    }
+  }
+}

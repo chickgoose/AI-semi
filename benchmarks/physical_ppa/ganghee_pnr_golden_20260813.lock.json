@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "archive_name": "ganghee-pnr-golden-20260813.tar.gz",
+  "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f",
+  "size_bytes": 4626544,
+  "member_count": 305,
+  "expected_power_rows": 14,
+  "expected_activity_based_power_rows": 0
+}

@@ -2,6 +2,11 @@
 
 Status: candidate-neutral comparison freeze candidate, 2026-08-07
 
+The W2 machine-readable activity-power comparison layer, including strict
+VCD/SAIF, resolved-scope hash, window, coverage, event-denominator, pin, loss,
+cohort, and synthetic-fixture publication gates, is frozen separately in
+[`aer-w2-activity-power-comparison.md`](aer-w2-activity-power-comparison.md).
+
 ## Purpose and evidence boundary
 
 This contract compares physical implementations of candidates that implement the

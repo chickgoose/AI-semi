@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/aer/activity-power-ppa-comparison.schema.json",
+  "title": "W2 activity-power Fmax PPA comparison input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "comparison_id", "evidence_origin", "source_archive", "rows"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "comparison_id": {"type": "string", "minLength": 1},
+    "evidence_origin": {
+      "enum": ["measured_candidate", "TEST_ONLY_NOT_RTL_EVIDENCE"]
+    },
+    "source_archive": {"$ref": "#/$defs/artifact"},
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/row"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "commit_sha", "bundle"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "bundle": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["boundary_scope", "power_mode"],
+      "properties": {
+        "boundary_scope": {"enum": ["core_only", "full_endpoint"]},
+        "power_mode": {"enum": ["vectorless_screening", "activity_annotated"]}
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "synthesis_top", "scope_root", "scope_manifest", "scope_sha256",
+        "pin_inventory", "functional_pin_bits", "includes_tx",
+        "includes_link", "includes_rx"
+      ],
+      "properties": {
+        "synthesis_top": {"type": "string", "minLength": 1},
+        "scope_root": {"type": "string", "minLength": 1},
+        "scope_manifest": {"$ref": "#/$defs/artifact"},
+        "scope_sha256": {"$ref": "#/$defs/sha256"},
+        "pin_inventory": {"$ref": "#/$defs/artifact"},
+        "functional_pin_bits": {"type": "integer", "minimum": 1},
+        "includes_tx": {"type": "boolean"},
+        "includes_link": {"type": "boolean"},
+        "includes_rx": {"type": "boolean"}
+      }
+    },
+    "timingPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "period_ns", "setup_wns_ns", "hold_wns_ns", "route_ok",
+        "unconstrained_paths", "drc_violations", "antenna_violations",
+        "netlist", "report"
+      ],
+      "properties": {
+        "period_ns": {"type": "number", "exclusiveMinimum": 0},
+        "setup_wns_ns": {"type": "number"},
+        "hold_wns_ns": {"type": "number"},
+        "route_ok": {"type": "boolean"},
+        "unconstrained_paths": {"type": "integer", "minimum": 0},
+        "drc_violations": {"type": "integer", "minimum": 0},
+        "antenna_violations": {"type": "integer", "minimum": 0},
+        "netlist": {"$ref": "#/$defs/artifact"},
+        "report": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysis_class", "flow_config", "sdc", "library", "corner",
+        "clock_port", "clock_period_ns", "area_um2", "timing_points"
+      ],
+      "properties": {
+        "analysis_class": {
+          "enum": [
+            "vectorless_screening", "fixed_netlist_diagnostic",
+            "per_target_resynthesis"
+          ]
+        },
+        "flow_config": {"$ref": "#/$defs/artifact"},
+        "sdc": {"$ref": "#/$defs/artifact"},
+        "library": {"$ref": "#/$defs/artifact"},
+        "corner": {"type": "string", "minLength": 1},
+        "clock_port": {"type": "string", "minLength": 1},
+        "clock_period_ns": {"type": "number", "exclusiveMinimum": 0},
+        "area_um2": {"type": "number", "exclusiveMinimum": 0},
+        "timing_points": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/timingPoint"}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotated_object_bits", "eligible_object_bits", "percent"],
+      "properties": {
+        "annotated_object_bits": {"type": "integer", "minimum": 0},
+        "eligible_object_bits": {"type": "integer", "minimum": 1},
+        "percent": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "activity": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "format", "waveform", "scope_root", "scope_sha256",
+        "window_start_cycle", "window_end_cycle_exclusive",
+        "measurement_cycles", "window_sha256", "coverage", "power_report",
+        "internal_power_mw", "switching_power_mw", "leakage_power_mw",
+        "total_power_mw"
+      ],
+      "properties": {
+        "format": {"enum": ["vcd", "saif"]},
+        "waveform": {"$ref": "#/$defs/artifact"},
+        "scope_root": {"type": "string", "minLength": 1},
+        "scope_sha256": {"$ref": "#/$defs/sha256"},
+        "window_start_cycle": {"type": "integer", "minimum": 0},
+        "window_end_cycle_exclusive": {"type": "integer", "minimum": 1},
+        "measurement_cycles": {"type": "integer", "minimum": 1},
+        "window_sha256": {"$ref": "#/$defs/sha256"},
+        "coverage": {"$ref": "#/$defs/coverage"},
+        "power_report": {"$ref": "#/$defs/artifact"},
+        "internal_power_mw": {"type": "number", "minimum": 0},
+        "switching_power_mw": {"type": "number", "minimum": 0},
+        "leakage_power_mw": {"type": "number", "minimum": 0},
+        "total_power_mw": {"type": "number", "minimum": 0}
+      }
+    },
+    "vectorlessPower": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "power_report", "internal_power_mw", "switching_power_mw",
+        "leakage_power_mw", "total_power_mw"
+      ],
+      "properties": {
+        "power_report": {"$ref": "#/$defs/artifact"},
+        "internal_power_mw": {"type": "number", "minimum": 0},
+        "switching_power_mw": {"type": "number", "minimum": 0},
+        "leakage_power_mw": {"type": "number", "minimum": 0},
+        "total_power_mw": {"type": "number", "minimum": 0}
+      }
+    },
+    "denominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "count", "measurement_cycles", "window_sha256"],
+      "properties": {
+        "kind": {"const": "delivered_logical_events_in_exact_window"},
+        "count": {"type": "integer", "minimum": 1},
+        "measurement_cycles": {"type": "integer", "minimum": 1},
+        "window_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "conservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generated", "source_overrun", "accepted", "delivered", "loss",
+        "duplicate", "corrupt", "phantom", "late_after_drain"
+      ],
+      "properties": {
+        "generated": {"type": "integer", "minimum": 0},
+        "source_overrun": {"type": "integer", "minimum": 0},
+        "accepted": {"type": "integer", "minimum": 0},
+        "delivered": {"type": "integer", "minimum": 0},
+        "loss": {"type": "integer", "minimum": 0},
+        "duplicate": {"type": "integer", "minimum": 0},
+        "corrupt": {"type": "integer", "minimum": 0},
+        "phantom": {"type": "integer", "minimum": 0},
+        "late_after_drain": {"type": "integer", "minimum": 0}
+      }
+    },
+    "workload": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "id", "test_id", "manifest", "trace", "seed", "operating_point",
+        "warmup_cycles", "drain_policy", "common_result", "event_denominator",
+        "conservation"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "test_id": {"type": "string", "minLength": 1},
+        "manifest": {"$ref": "#/$defs/artifact"},
+        "trace": {"$ref": "#/$defs/artifact"},
+        "seed": {"type": "integer", "minimum": 0},
+        "operating_point": {"enum": ["sparse", "near_saturation", "loss"]},
+        "warmup_cycles": {"type": "integer", "minimum": 0},
+        "drain_policy": {"type": "string", "minLength": 1},
+        "common_result": {"$ref": "#/$defs/artifact"},
+        "event_denominator": {"$ref": "#/$defs/denominator"},
+        "conservation": {"$ref": "#/$defs/conservation"}
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate", "cohort", "boundary", "flow", "activity",
+        "vectorless_power", "workload"
+      ],
+      "properties": {
+        "candidate": {"$ref": "#/$defs/candidate"},
+        "cohort": {"$ref": "#/$defs/cohort"},
+        "boundary": {"$ref": "#/$defs/boundary"},
+        "flow": {"$ref": "#/$defs/flow"},
+        "activity": {"$ref": "#/$defs/activity"},
+        "vectorless_power": {"$ref": "#/$defs/vectorlessPower"},
+        "workload": {"$ref": "#/$defs/workload"}
+      }
+    }
+  }
+}
