@@ -664,6 +664,33 @@ class InnovusPlanTests(unittest.TestCase):
                 with self.assertRaises(self.module.PlanError):
                     self.module.validate_plan(path)
 
+    def test_genus_positional_equal_pulse_width_is_accepted_fail_closed(self):
+        path, document = self.plan("three_endpoint_5p7ns")
+        for run in document["runs"]:
+            sdc = Path(run["mapped_sdc"]["path"])
+            text = sdc.read_text()
+            text = text.replace(
+                "set_min_pulse_width -high 0.50 [all_clocks]\n"
+                "set_min_pulse_width -low 0.50 [all_clocks]",
+                "set_min_pulse_width 0.5 [all_clocks]")
+            sdc.write_text(text)
+            contract = self.registry["cohorts"][
+                "tech_staged_complete_compositions"]["designs"][run["design"]]
+            policy = self.registry["timing_profiles"]["three_endpoint_5p7ns"]
+            self.module.validate_sdc(
+                sdc.read_bytes(), run["top"], contract, "5.7", policy)
+
+        sdc = Path(document["runs"][0]["mapped_sdc"]["path"])
+        sdc.write_text(sdc.read_text().replace(
+            "set_min_pulse_width 0.5", "set_min_pulse_width 0.6", 1))
+        run = document["runs"][0]
+        contract = self.registry["cohorts"][
+            "tech_staged_complete_compositions"]["designs"][run["design"]]
+        policy = self.registry["timing_profiles"]["three_endpoint_5p7ns"]
+        with self.assertRaisesRegex(self.module.PlanError, "pulse-width"):
+            self.module.validate_sdc(
+                sdc.read_bytes(), run["top"], contract, "5.7", policy)
+
     def test_actual_genus_flattened_endpoint_map_schema_is_consumed(self):
         _, document = self.plan()
         whole = self.validate_run_netlist(document)

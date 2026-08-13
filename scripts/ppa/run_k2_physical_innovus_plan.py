@@ -659,8 +659,6 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
         ("set_input_delay", "max", "W2_INPUT_DELAY_MAX_NS"),
         ("set_output_delay", "min", "W2_OUTPUT_DELAY_MIN_NS"),
         ("set_output_delay", "max", "W2_OUTPUT_DELAY_MAX_NS"),
-        ("set_min_pulse_width", "high", "W2_MIN_PULSE_HIGH_NS"),
-        ("set_min_pulse_width", "low", "W2_MIN_PULSE_LOW_NS"),
     )
     for command, option, environment_key in exact_option_commands:
         rows = [row for row in command_rows(text, command)
@@ -668,6 +666,28 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
         expected = Decimal(timing_environment[environment_key])
         if not rows or any(decimal_option(row, option) != expected for row in rows):
             raise PlanError(f"mapped SDC {command} -{option} value mismatch")
+    pulse_rows = command_rows(text, "set_min_pulse_width")
+    pulse_high = Decimal(timing_environment["W2_MIN_PULSE_HIGH_NS"])
+    pulse_low = Decimal(timing_environment["W2_MIN_PULSE_LOW_NS"])
+    explicit_high = [decimal_option(row, "high") for row in pulse_rows
+                     if decimal_option(row, "high") is not None]
+    explicit_low = [decimal_option(row, "low") for row in pulse_rows
+                    if decimal_option(row, "low") is not None]
+    positional = [decimal_argument(row, "set_min_pulse_width") for row in pulse_rows
+                  if decimal_option(row, "high") is None and
+                  decimal_option(row, "low") is None]
+    explicit_ok = (bool(explicit_high) and bool(explicit_low) and
+                   all(value == pulse_high for value in explicit_high) and
+                   all(value == pulse_low for value in explicit_low) and
+                   not positional)
+    # Genus 23.14 canonicalizes equal -high/-low checks into one positional
+    # command.  Accept that producer form only when the two authoritative
+    # limits are identical; it must never collapse unequal high/low policy.
+    positional_ok = (pulse_high == pulse_low and bool(positional) and
+                     all(value == pulse_high for value in positional) and
+                     not explicit_high and not explicit_low)
+    if not (explicit_ok or positional_ok):
+        raise PlanError("mapped SDC minimum pulse-width value mismatch")
     for command, environment_key in (
             ("set_clock_uncertainty", "W2_CLOCK_UNCERTAINTY_NS"),
             ("set_input_transition", "W2_INPUT_TRANSITION_NS"),
