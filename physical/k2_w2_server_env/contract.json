@@ -8,6 +8,7 @@
       "observed_path": "/tools/cadence/DDI231/GENUS231/bin/genus",
       "resolved_path": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
       "entrypoint_kind": "symlink_wrapper",
+      "version_line_tokens": ["Genus"],
       "golden_executable_identity": null
     },
     "innovus": {
@@ -16,6 +17,7 @@
       "observed_path": "/tools/cadence/DDI231/INNOVUS231/bin/innovus",
       "resolved_path": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep",
       "entrypoint_kind": "symlink_wrapper",
+      "version_line_tokens": ["Innovus"],
       "golden_executable_identity": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_"
     },
     "xrun": {
@@ -24,6 +26,7 @@
       "observed_path": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun",
       "resolved_path": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun",
       "entrypoint_kind": "regular",
+      "version_line_tokens": ["xrun", "Xcelium"],
       "golden_executable_identity": null
     }
   },

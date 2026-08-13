@@ -602,9 +602,17 @@ def verify_tool(path: Path, contract_row: dict[str, Any]) -> dict[str, Any]:
     if probe.returncode:
         raise PreflightError(
             f"tool version invocation failed: {path}: exit {probe.returncode}")
+    version_tokens = contract_row.get("version_line_tokens")
+    if not isinstance(version_tokens, list) or not version_tokens or not all(
+            isinstance(token, str) and token for token in version_tokens):
+        raise PreflightError(f"tool version-line tokens are not pinned: {path}")
+    product_lines = [
+        line for line in probe.stdout.splitlines()
+        if any(token.casefold() in line.casefold() for token in version_tokens)
+    ]
     versions = sorted(set(re.findall(
         r"(?<![A-Za-z0-9_.-])\d{2}\.\d{2}-s\d+(?:_\d+)?(?![A-Za-z0-9_.-])",
-        probe.stdout)))
+        "\n".join(product_lines))))
     if versions != [contract_row["version"]]:
         raise PreflightError(
             f"tool parsed version mismatch: {path}: {versions} != "

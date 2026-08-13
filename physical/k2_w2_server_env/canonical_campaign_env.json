@@ -1,6 +1,6 @@
 {
   "campaign_launch_allowed": false,
-  "contract_sha256": "dde0b6ac0bc3063550ee4e79fb32864eb4d536f2c8e94c98a216f8b2a7b13721",
+  "contract_sha256": "f24b2c6b4857f7fd6161af7ef0efec5ef6ca31dbbbfda95838dbee9d26462c37",
   "corner_policy": {
     "hold_liberty": "fast_vdd1v0_basicCells.lib",
     "hold_qrc": "gpdk045.tch",
@@ -162,13 +162,13 @@
   },
   "qualification_status": "HOLD",
   "receipt": {
-    "contract_sha256": "dde0b6ac0bc3063550ee4e79fb32864eb4d536f2c8e94c98a216f8b2a7b13721",
+    "contract_sha256": "f24b2c6b4857f7fd6161af7ef0efec5ef6ca31dbbbfda95838dbee9d26462c37",
     "decision": "HOLD",
     "environment_binding_sha256": null,
     "evidence_status": "NOT_GO",
     "schema": "k2_w2_server_env_go_receipt_v1"
   },
-  "receipt_sha256": "5c93e811ac757c29c78c937c0a8e92ef1233e1b43bbc3239d3514d33d202bd81",
+  "receipt_sha256": "1c5f414c40c4a2f698d3fbdaa4d271b66c7ab3c6b7facbe45279e61aaed926fa",
   "schema": "k2_w2_server_env_result_v1",
   "unresolved_environment_evidence": [
     "runtime invocation and exact parsed-version match for the three byte-pinned tools",
