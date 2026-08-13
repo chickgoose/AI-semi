@@ -210,12 +210,8 @@ set flow_failed [catch {
       [sizeof_collection $forwarded_link_port] != 1} {
     error "expected exactly one *w2_ep_icg_0/ECK source and link_clk_o target"
   }
-  set forwarded_link_clock [create_generated_clock \
-    -name w2_forwarded_link_port_clk \
-    -source $forwarded_link_source -divide_by 1 $forwarded_link_port]
-  if {[sizeof_collection $forwarded_link_clock] != 1} {
-    error "expected exactly one forwarded generated clock on link_clk_o"
-  }
+  create_generated_clock -name w2_forwarded_link_port_clk \
+    -source $forwarded_link_source -divide_by 1 $forwarded_link_port
   set boundary_handle [open \
     "$output/reports/boundary_timing.machine" {WRONLY CREAT EXCL}]
   puts $boundary_handle "schema=k2_w2_boundary_timing_v1"
