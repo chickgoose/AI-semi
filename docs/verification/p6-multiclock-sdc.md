@@ -115,8 +115,10 @@ sample clock at quarter-period and three-quarter-period edges, and a generated
 forwarded clock at `p6_clk_o`.  Both P6 data edges receive min/max output
 delays.  The template also retains clock-gating setup/hold, high/low minimum
 pulse width, external input/output delay and load, and a reset-release virtual
-clock in the common-low interval at 13/16 of the period.  Reset is never false
-pathed, so Liberty recovery/removal arcs remain eligible for analysis.
+clock at the reference falling edge (one-half of the period), matching the
+frozen common and mapped-functional reset-release phase. Reset is never broadly
+false-pathed: only direct reset-to-top-output paths are excluded, so Liberty
+recovery/removal arcs remain eligible for analysis.
 
 Required SDC environment variables are:
 

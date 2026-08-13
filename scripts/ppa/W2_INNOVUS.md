@@ -75,8 +75,8 @@ reports cannot qualify.
 The canonical `constraints/r1_multiclock.sdc` and
 `constraints/p6_multiclock.sdc` bytes are materialized unchanged from Genus
 provider commit `8610bd0bf70eb9f9e2bcc35efe3f398afb78b9d6` (its strict R1/P6
-templates). Their SHA-256 values are respectively `3ff6f26704113ec38503a1390e18fa268ada447f865ebedfda9455859298ed3a`
-and `e317f908e8b7aea73956da2208363e0c8ebe4e997bad8c7edb4e34cd7b682763`;
+templates). Their SHA-256 values are respectively `c562e6ebb8778cc9c3478e319e4d0d363525d3c6abc2ff59be0b5d5fdaa29cba`
+and `eea3ce351d9e7a5d574fd5bad1cc5755962f67474b60f532a1b810cc24d93396`;
 the staged manifest, Genus handoff, and Innovus plan all bind those hashes.
 
 ## Launch and qualification

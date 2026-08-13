@@ -1078,6 +1078,7 @@ def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
         "set link_registers [w2_some link_registers",
         "set async_reset_pins [w2_some async_reset_endpoints",
         "set_false_path -from $reset_port -to $nonlink_outputs",
+        "set reset_release_rise $half", "set reset_release_fall $three_quarter",
     )
     text = payload.decode("utf-8", errors="strict")
     missing = [token for token in required if token not in text]

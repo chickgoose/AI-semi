@@ -471,6 +471,8 @@ class GenusFlowTests(unittest.TestCase):
             self.assertIn(
                 "set_clock_gating_check -setup $gate_setup "
                 "-hold $gate_hold $sample_clock", text)
+            self.assertIn("set reset_release_rise $half", text)
+            self.assertIn("set reset_release_fall $three_quarter", text)
             self.assertIn(
                 "set ref_registers [w2_some ref_registers "
                 "[all_registers -clock $ref_clock]]", text)
@@ -500,6 +502,7 @@ class GenusFlowTests(unittest.TestCase):
             "set link_registers [w2_some link_registers",
             "set async_reset_pins [w2_some async_reset_endpoints",
             "set_false_path -from $reset_port -to $nonlink_outputs",
+            "set reset_release_rise $half", "set reset_release_fall $three_quarter",
         )
         with tempfile.TemporaryDirectory(prefix="k2-w2-sdc-mutations-") as directory:
             root = Path(directory)

@@ -1,4 +1,4 @@
-# Strict phase-related R1 DDR constraint template. No async/false/multicycle paths.
+# Strict phase-related R1 DDR constraint template. Only reset-to-top-output is false-pathed.
 proc w2_req_env {name} {
   if {![info exists ::env($name)] || $::env($name) eq ""} { error "missing $name" }
   return $::env($name)
@@ -37,8 +37,8 @@ if {$in_min > $in_max || $out_min > $out_max || $reset_min > $reset_max} { error
 set half [expr {$period / 2.0}]
 set quarter [expr {$period / 4.0}]
 set three_quarter [expr {3.0 * $period / 4.0}]
-set reset_release_rise [expr {13.0 * $period / 16.0}]
-set reset_release_fall [expr {15.0 * $period / 16.0}]
+set reset_release_rise $half
+set reset_release_fall $three_quarter
 if {$uncertainty >= $quarter || $gate_setup + $gate_hold >= $half} { error "timing aperture consumed" }
 if {$pulse_high > $half || $pulse_low > $half} { error "pulse width exceeds half cycle" }
 
