@@ -89,7 +89,8 @@ hold-repair phase of both relaxed profiles. After that phase the flow performs
 up to six monotonic setup-recovery iterations, and performs a final bounded
 hold reclosure under the selected profile policy. Any resulting setup
 degradation is still rejected by the final setup report and machine summary;
-there is no setup waiver. Phase-specific
+there is no setup waiver. Final hold reclosure targets 5 ps positive slack so
+sub-picosecond numerical residue is not mistaken for closure. Phase-specific
 machine receipts bind the timing check, view, optimizer, and setup-degradation
 policy; the final hold receipt must exactly match the final hold timing summary.
 The descriptor, technology contract, and boundary machine report bind the

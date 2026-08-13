@@ -138,6 +138,7 @@ class StaticFlowContractTests(unittest.TestCase):
             "expected exactly one preserved endpoint ICG enable pin",
             "-to $endpoint_icg_enable -max_paths 50",
             "setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade",
+            "setOptMode -opt_hold_target_slack 0.005",
             "for {set hold_iteration 1} {$hold_iteration <= 3}",
             "hold_metrics_improved $before $after",
             "for {set setup_iteration 1} {$setup_iteration <= 6}",
@@ -522,6 +523,16 @@ class FixtureQualificationTests(unittest.TestCase):
             "MET Pulse Width Check", "MET User PulseWidth Check"))
         self.assertEqual(
             self.module._timing_observation(path, "pulse width")[1], 0.010)
+
+    def test_actual_23_14_external_delay_assertion_spelling_parses(self):
+        setup = self.root / "reports/half_cycle_setup_timing.rpt"
+        hold = self.root / "reports/half_cycle_hold_timing.rpt"
+        setup.write_text(setup.read_text().replace(
+            "MET Setup Check", "MET Late External Delay Assertion"))
+        hold.write_text(hold.read_text().replace(
+            "MET Hold Check", "MET Early External Delay Assertion"))
+        self.assertEqual(self.module._timing_observation(setup, "setup")[1], 0.010)
+        self.assertEqual(self.module._timing_observation(hold, "hold")[1], 0.010)
 
     def test_hold_closure_receipt_fails_closed(self):
         path = self.root / "reports/hold_closure.machine"

@@ -446,6 +446,10 @@ set flow_failed [catch {
   # residue.  This does not waive setup: the final native and machine setup
   # reports below are generated after this reclosure and remain mandatory.
   setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade
+  # Innovus may regard a sub-picosecond negative output hold path as too close
+  # to zero to repair.  Ask for 5ps positive hold margin; final setup remains
+  # independently gated after these ECOs.
+  setOptMode -opt_hold_target_slack 0.005
   setAnalysisMode -checkType hold
   set final_hold_rows [list [timing_metrics w2_hold_view hold]]
   set final_hold_status CLOSED
