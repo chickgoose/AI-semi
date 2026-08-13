@@ -1,0 +1,37 @@
+{
+  "archive": {
+    "basename": "ganghee-pnr-raw-golden-20260813.tar.gz",
+    "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3"
+  },
+  "golden_kind": "raw",
+  "representative_members": {
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_0.7.sdc": "8a445017bd4f882f5aada85ba7b604078c1264718dd90e054889391748e4ddf7",
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_0.7_antenna.rpt": "5a453b8ba5d6f323d182d1f00b85f138367cc809c0abf1b38436876ed42c615b",
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_0.7_check_timing.rpt": "b2824e8c72d47147ea868f3ddfb424bcb8bc4e25b86a5cb7e45a197a0a4cd72d",
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_0.7_drc.rpt": "266fe5901c434ce5b074840e8f9ba0e33ec3ca357e5f81846a8ac2f4ef1dab64",
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_0.7_hold_timing.rpt": "8637cf0e1be16253b4eabc33c7b33a0c5cb0f9c9fbacd7182dc8bb745cef5059",
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_0.7_setup_timing.rpt": "06873b8202aa2fe0c469d3729a304f4aa34df07735bf9b52cb74eee11224933e",
+    "synth/pnr/resynth_cluster2_raw/innovus_0.7.cmd": "5a531169d0082d5ab60aca3ed592c9dfcf35637a9999c6697ec6b035d2c77444",
+    "synth/pnr/resynth_cluster2_raw/innovus_0.7.log": "39e97c268e01249c29a1fd7864f947872c55801edb5529dfaf3057b29ce21b75",
+    "synth/pnr/resynth_cluster2_raw/mmmc_0.7.tcl": "430baf7740e4e07a82d3a347e00ff9ddd185d8aaee3e6041f2c4263311f2f763",
+    "synth/pnr/resynth_cluster2_raw/run_0.7.tcl": "145a0195444b3f597561e124cb87fc54e04c9412cadb97f8b9fac856851d6839"
+  },
+  "schema": "w2_ganghee_server_raw_golden_pin_v1",
+  "sweeps": {
+    "cluster2": {
+      "directory": "synth/pnr/resynth_cluster2_raw",
+      "periods_ns": ["0.7", "0.8", "0.9", "1.0", "1.3"],
+      "setup_wns_ns": [-0.178, -0.088, -0.029, 0.042, 0.080],
+      "hold_wns_ns": [0.163, 0.160, 0.162, 0.160, 0.166],
+      "top": "aer_tx16_trad_rowcol_fovea_cluster2"
+    },
+    "fovea": {
+      "directory": "synth/pnr/resynth_fovea_raw",
+      "periods_ns": ["1.2", "1.3", "1.4", "1.6", "2.0"],
+      "setup_wns_ns": [0.000, -0.024, 0.036, -0.003, -0.007],
+      "hold_wns_ns": [0.058, 0.120, 0.120, 0.125, 0.125],
+      "top": "aer_tx16_trad_rowcol_fovea"
+    }
+  },
+  "tool_version": "v23.14-s088_1"
+}

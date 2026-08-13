@@ -3,6 +3,7 @@
     "basename": "ganghee-pnr-golden-20260813.tar.gz",
     "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
   },
+  "golden_kind": "buffered",
   "members": {
     "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_0.8_setup_timing.rpt": "37a6146f45566184f79edc0b0544a5a8f5bcbecc37c46ab00ae8bdf088ddd6d5",
     "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_0.8_hold_timing.rpt": "c0d10e77c6cbf5d682e43d88950ac129edabd901c77ad184c697f35f1ec4a5c3",
@@ -17,5 +18,5 @@
     "synth/pnr/resynth_fovea_buffered/mmmc_2.0.tcl": "2b5798d75a0d8d091f4fa5653637d0ff60271e3f2b47deac3178c49913bc8e6d",
     "synth/pnr/resynth_fovea_buffered/run_2.0.tcl": "29f3c03c34e5cd435072bd73e19d27138499b278690f7b6e59018419ad813dfc"
   },
-  "schema": "w2_ganghee_server_golden_pin_v1"
+  "schema": "w2_ganghee_server_buffered_golden_pin_v1"
 }
