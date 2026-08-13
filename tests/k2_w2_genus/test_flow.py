@@ -813,6 +813,8 @@ class GenusFlowTests(unittest.TestCase):
         self.assertEqual(
             self.module.parse_timing_rows(external, "actual Genus external delay"),
             {"path_count": 1, "minimum_slack_ps": 3.0})
+        with self.assertRaisesRegex(self.module.FlowError, "timing class mismatch"):
+            self.module.parse_timing_rows(external, "wrong class", "Setup")
         mutations = (
             (good.replace("MET", "VIOLATED"), "VIOLATED"),
             (good.replace("100 ps", "-1 ps").replace("     100", "     -1"), "negative"),

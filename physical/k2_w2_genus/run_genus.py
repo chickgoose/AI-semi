@@ -1669,7 +1669,7 @@ def verify_reports(output: Path, top: str, log_payload: bytes,
     )
     timing = parse_timing_rows(
         payloads["gtiming"].decode("utf-8", errors="strict"),
-        "candidate setup", "Setup")
+        "candidate late timing")
     parse_qor(payloads["qor"].decode("utf-8", errors="strict"),
               timing["minimum_slack_ps"])
     return {names[kind]: sha256_bytes(payload) for kind, payload in payloads.items()}
