@@ -749,6 +749,11 @@ class GenusFlowTests(unittest.TestCase):
             "requested_path", "resolved_path", "sha256", "parsed_version",
         })
         self.assertEqual(first["parsed_version"], "23.14-s090_1")
+        xrun_probe = subprocess.CompletedProcess(
+            [], 0, stdout="TOOL:\txrun(64)\t23.09-s013\n")
+        with mock.patch.object(self.module.subprocess, "run", return_value=xrun_probe):
+            xrun = self.module.tool_identity(FAKE_GENUS)
+        self.assertEqual(xrun["parsed_version"], "23.09-s013")
 
     def test_mapped_functional_gate_binds_netlist_sdf_models_and_mutations(self):
         design = copy.deepcopy(self.module.load_registry_document()[
