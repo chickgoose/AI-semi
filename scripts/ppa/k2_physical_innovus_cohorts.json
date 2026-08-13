@@ -1,21 +1,29 @@
 {
   "schema": "k2_w2_innovus_cohort_registry_v3",
-  "integration_state": "blocked_missing_committed_techmap_manifest",
+  "integration_state": "ready",
   "server_environment_authority": "scripts/ppa/k2_physical_server_environment.json",
   "committed_techmap_manifest": {
-    "repository_commit": null,
+    "source_repository_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
+    "publication_repository_commit": "7f149e043a740c032e2cd22b3ed1d6876b6670ce",
     "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
-    "sha256": null
-  },
-  "technology_stage_authorities": {
-    "r1": {"repository_commit": null, "path": null, "sha256": null},
-    "p6": {"repository_commit": null, "path": null, "sha256": null}
+    "sha256": "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b"
   },
   "staged_manifest_contract": {
     "schema": "k2_w2_tech_staged_compositions_v1",
     "status": "READY_FOR_GENUS_AND_INNOVUS",
     "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
-    "required_constraint_template_keys": ["r1", "p6"]
+    "constraint_templates": {
+      "ref_period_ns": 5.0,
+      "sample_period_ns": 5.0,
+      "sample_waveform_ns": [1.25, 3.75],
+      "clock_uncertainty_ns": 0.25,
+      "input_delay_ns": 0.5,
+      "output_delay_ns": 0.5,
+      "output_load_pf": 0.01,
+      "generated_link_clock_required": true,
+      "both_link_edges_required": true,
+      "ref_and_sample_are_phase_related": true
+    }
   },
   "cohorts": {
     "tech_staged_complete_compositions": {
@@ -38,6 +46,10 @@
       "designs": {
         "fovea_a7": {
           "top": "w2_fovea_r1_physical_staging_top",
+          "staged_filelists": {
+            "generic": "rtl/technology/physical_staging/filelists/fovea_generic.f",
+            "gsclib045": "rtl/technology/physical_staging/filelists/fovea_gsclib045.f"
+          },
           "constraint_template": "r1",
           "clocks": {"input": ["ref_clk_i", "sample_clk_i"], "generated": ["link_clk_o"]},
           "link_pins": [
@@ -66,6 +78,10 @@
         },
         "a2_p6": {
           "top": "w2_a2_p6_physical_staging_top",
+          "staged_filelists": {
+            "generic": "rtl/technology/physical_staging/filelists/a2_generic.f",
+            "gsclib045": "rtl/technology/physical_staging/filelists/a2_gsclib045.f"
+          },
           "constraint_template": "p6",
           "clocks": {"input": ["ref_clk_i", "sample_clk_i"], "generated": ["link_clk_o"]},
           "link_pins": [
@@ -94,6 +110,10 @@
         },
         "a3_p6": {
           "top": "w2_a3_p6_physical_staging_top",
+          "staged_filelists": {
+            "generic": "rtl/technology/physical_staging/filelists/a3_generic.f",
+            "gsclib045": "rtl/technology/physical_staging/filelists/a3_gsclib045.f"
+          },
           "constraint_template": "p6",
           "clocks": {"input": ["ref_clk_i", "sample_clk_i"], "generated": ["link_clk_o"]},
           "link_pins": [

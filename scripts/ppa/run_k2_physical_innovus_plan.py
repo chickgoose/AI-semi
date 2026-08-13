@@ -149,23 +149,17 @@ def load_contracts() -> tuple[dict[str, Any], dict[str, Any]]:
     if set(registry.get("cohorts", {})) != {"tech_staged_complete_compositions"}:
         raise PlanError("final registry must contain only the tech-staged cohort")
     pointer = registry.get("committed_techmap_manifest", {})
-    if registry.get("integration_state") != "ready" or \
-            not isinstance(pointer.get("repository_commit"), str) or \
-            not re.fullmatch(r"[0-9a-f]{40}", pointer["repository_commit"]) or \
+    if registry.get("integration_state") != "ready" or set(pointer) != {
+            "source_repository_commit", "publication_repository_commit", "path",
+            "sha256"} or any(not isinstance(pointer.get(key), str) or
+                             not re.fullmatch(r"[0-9a-f]{40}", pointer[key])
+                             for key in ("source_repository_commit",
+                                         "publication_repository_commit")) or \
+            pointer.get("path") != \
+            "rtl/technology/physical_staging/physical_staging_manifest.json" or \
             not isinstance(pointer.get("sha256"), str) or \
             not SHA256.fullmatch(pointer["sha256"]):
         raise PlanError("launch blocked until one committed techmap manifest is hash-bound")
-    for name, identity in registry.get("technology_stage_authorities", {}).items():
-        if name not in {"r1", "p6"} or set(identity) != {
-                "repository_commit", "path", "sha256"} or \
-                not isinstance(identity["repository_commit"], str) or \
-                not re.fullmatch(r"[0-9a-f]{40}", identity["repository_commit"]) or \
-                not isinstance(identity["path"], str) or not identity["path"] or \
-                not isinstance(identity["sha256"], str) or \
-                not SHA256.fullmatch(identity["sha256"]):
-            raise PlanError("launch blocked until R1/P6 authority commits and hashes bind")
-    if set(registry.get("technology_stage_authorities", {})) != {"r1", "p6"}:
-        raise PlanError("technology stage authority set mismatch")
     tops = {row["top"] for row in cohort["designs"].values()}
     if tops & set(registry["forbidden_final_tops"]):
         raise PlanError("tech-staged cohort contains a forbidden generic/debug top")
@@ -179,6 +173,29 @@ def load_contracts() -> tuple[dict[str, Any], dict[str, Any]]:
             sha256((HERE.parents[1] / mmmc["path"]).read_bytes()) != mmmc["sha256"]:
         raise PlanError("tracked producer-aligned MMMC template changed")
     return registry, authority
+
+
+def staged_common_ports(cohort: dict[str, Any]) -> list[dict[str, Any]]:
+    """Materialize the final manifest's literal mixed-width common port order."""
+    nonlink = cohort["common_ports"]
+    before_link = nonlink[:5]
+    after_link = nonlink[5:]
+    widths = {name: row["link_pins"][1]["width"]
+              for name, row in cohort["designs"].items()}
+    return before_link + [
+        {"direction": "output", "name": "link_clk_o", "width": 1},
+        {"direction": "output", "name": "link_data_o", "width_by_design": widths},
+    ] + after_link
+
+
+def staged_port_signature(ports: list[dict[str, Any]], design: str) -> list[str]:
+    result = []
+    for port in ports:
+        width = port.get("width", port.get("width_by_design", {}).get(design))
+        if not isinstance(width, int) or width <= 0:
+            raise PlanError("tech-staged manifest contains an invalid port width")
+        result.append(port["name"] if width == 1 else f"{port['name']}[{width - 1}:0]")
+    return result
 
 
 def port_width(token: str | None) -> int:
@@ -331,39 +348,102 @@ def validate_staged_manifest(bound: dict[str, Any], registry: dict[str, Any],
     path, digest, payload = bound_payload(bound, "tech-staged manifest")
     manifest = load_json(payload, "tech-staged manifest")
     contract = registry["staged_manifest_contract"]
-    if manifest.get("schema") != contract["schema"] or manifest.get("status") != contract["status"]:
+    if set(manifest) != {"schema", "status", "repository_commit", "goal_order",
+                        "common_ports", "technology_authorities",
+                        "constraint_templates", "designs", "source_hashes",
+                        "test_policy", "consumer_contract"} or \
+            manifest.get("schema") != contract["schema"] or \
+            manifest.get("status") != contract["status"]:
         raise PlanError("tech-staged manifest schema/status mismatch")
     pointer = registry["committed_techmap_manifest"]
     if digest != pointer["sha256"] or \
-            manifest.get("repository_commit") != pointer["repository_commit"]:
+            manifest.get("repository_commit") != pointer["source_repository_commit"]:
         raise PlanError("tech-staged manifest differs from committed registry pointer")
     cohort = registry["cohorts"]["tech_staged_complete_compositions"]
-    common_ports = cohort["common_ports"]
-    common_inputs = [row for row in common_ports if row["direction"] == "input"]
-    common_outputs = [row for row in common_ports if row["direction"] == "output"]
+    common_ports = staged_common_ports(cohort)
     if manifest.get("goal_order") != contract["goal_order"] or \
             list(manifest.get("designs", {})) != contract["goal_order"] or \
             manifest.get("common_ports") != common_ports or \
-            manifest.get("common_inputs") != common_inputs or \
-            manifest.get("common_outputs") != common_outputs or \
-            manifest.get("technology_authorities") != \
-            registry["technology_stage_authorities"]:
+            manifest.get("constraint_templates") != contract["constraint_templates"]:
         raise PlanError("tech-staged manifest goal order/canonical port contract mismatch")
-    verify_committed_blob(path, pointer["repository_commit"], digest)
-    if manifest.get("constraint_templates") != authority["constraint_templates"]:
-        raise PlanError("tech-staged manifest constraint-template hashes mismatch")
+    verify_committed_blob(path, pointer["publication_repository_commit"], digest)
+    technology = manifest.get("technology_authorities", {})
+    live = technology.get("live_gsclib045", {})
+    server_technology = authority["technology"]
+    live_roles = {
+        "liberty": "setup_liberty", "technology_lef": "tech_lef",
+        "macro_lef": "macro_lef", "qrc": "shared_qrc",
+    }
+    if set(technology) != {"raw_golden", "buffered_golden", "live_gsclib045", "cells"} or \
+            technology.get("raw_golden") != {
+                "path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+                "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3"} or \
+            technology.get("buffered_golden") != {
+                "path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+                "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"} or \
+            set(live) != {"liberty", "technology_lef", "macro_lef", "qrc",
+                         "dffnsrx1_cell_and_interface_verified",
+                         "liberty_timing_arcs_claimed_by_manifest"} or \
+            live.get("dffnsrx1_cell_and_interface_verified") is not True or \
+            live.get("liberty_timing_arcs_claimed_by_manifest") is not False or \
+            any(not str(live.get(field, "")).endswith(
+                "/" + server_technology[role]["relative_path"])
+                for field, role in live_roles.items()):
+        raise PlanError("tech-staged manifest live PDK/QRC authority mismatch")
+    expected_cells = {
+        "TLATNTSCAX2": {"ports": ["CK", "E", "SE", "ECK"]},
+        "MX2X1": {"ports": ["A", "B", "S0", "Y"]},
+        "DFFRHQX1": {"ports": ["RN", "CK", "D", "Q"]},
+        "DFFNSRX1": {"ports": ["CKN", "D", "RN", "SN", "Q", "QN"]},
+    }
+    if technology.get("cells") != expected_cells:
+        raise PlanError("tech-staged manifest cell interface authority mismatch")
+    source_hashes = manifest.get("source_hashes")
+    if not isinstance(source_hashes, dict) or not source_hashes or \
+            any(not isinstance(name, str) or not name or
+                not isinstance(value, str) or not SHA256.fullmatch(value)
+                for name, value in source_hashes.items()):
+        raise PlanError("tech-staged manifest source hash closure mismatch")
+    if manifest.get("test_policy") != {
+            "acceptance_sample": "posedge_ref_active_region_pre_NBA",
+            "pending_hold": "through_charged_posedge",
+            "protocol_error_must_equal_zero": True,
+            "epoch_accepted_equals_retired": True,
+            "cell_models_test_only": True}:
+        raise PlanError("tech-staged manifest test policy mismatch")
     for design, row in manifest["designs"].items():
-        expected_top = registry["cohorts"]["tech_staged_complete_compositions"]["designs"][design]["top"]
         expected_design = cohort["designs"][design]
         endpoint = expected_design["endpoint_leaf_contract"]
-        if row.get("top") != expected_top or \
-                row.get("required_ports") != common_ports or \
-                row.get("link_pins") != expected_design["link_pins"] or \
-                row.get("strict_sdc") != authority["constraint_templates"][
-                    expected_design["constraint_template"]] or \
+        staged_endpoint = {
+            "path_segment": expected_design["endpoint_root"]["stable_prefix"],
+            "leaf_counts": endpoint["leaf_counts"],
+            "preserved_name_prefixes": endpoint["preserved_name_prefixes"],
+        }
+        if set(row) != {"top", "filelists", "port_signature", "endpoint_root",
+                       "endpoint_leaf_contract", "whole_top_observed_totals"} or \
+                row.get("top") != expected_design["top"] or \
+                row.get("filelists") != expected_design["staged_filelists"] or \
+                row.get("port_signature") != staged_port_signature(common_ports, design) or \
                 row.get("endpoint_root") != expected_design["endpoint_root"] or \
-                row.get("endpoint_leaf_contract") != endpoint:
-            raise PlanError("tech-staged manifest top mismatch")
+                row.get("endpoint_leaf_contract") != staged_endpoint or \
+                row.get("whole_top_observed_totals") != {
+                    "status": "PENDING_DEDICATED_GENUS_RUN", "records": []}:
+            raise PlanError("tech-staged manifest design contract mismatch")
+    consumer = manifest.get("consumer_contract", {})
+    if consumer != {
+            "consumers": ["genus", "innovus"],
+            "manifest_path": pointer["path"],
+            "required_schema": contract["schema"],
+            "required_status": contract["status"],
+            "require_repository_commit": True,
+            "require_literal_common_port_signature": True,
+            "require_endpoint_path_and_leaf_provenance": True,
+            "forbidden_port_aliases": [
+                "load_i", "pending_i", "source_ready_o", "protocol_fault_o",
+                "link_enable", "link_enable_i", "burst_clk_o", "burst_data_o",
+                "p6_clk_o", "p6_data_o"],
+            }:
+        raise PlanError("tech-staged manifest consumer contract mismatch")
     return path, digest, manifest
 
 
@@ -415,8 +495,10 @@ def validate_environment(bound: dict[str, Any], authority: dict[str, Any]) -> tu
 
 
 def validate_genus(producer: dict[str, Any], design: str, top: str,
-                   netlist_sha: str, sdc_sha: str, staged_bound: dict[str, str],
-                   environment_bound: dict[str, str], template: dict[str, str],
+                   netlist_sha: str, sdc_sha: str,
+                   staged_identity: dict[str, str],
+                   technology_authorities: dict[str, Any],
+                   template: dict[str, str],
                    endpoint_contract: dict[str, Any],
                    whole_inventory: dict[str, int],
                    authority: dict[str, Any]) -> tuple[Path, str, Path, str, Path, str,
@@ -440,15 +522,19 @@ def validate_genus(producer: dict[str, Any], design: str, top: str,
             receipt.get("status") != "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD" or \
             receipt.get("design") != design or receipt.get("top") != top or \
             receipt.get("boundary_cohort") != "tech_staged_complete_compositions" or \
+            receipt.get("source_origin") != "tech_staged_repository_exact" or \
+            receipt.get("ranking_policy") != \
+            "ONLY_THREE_TECH_STAGED_COMPLETE_COMPOSITIONS_COMPARABLE" or \
             receipt.get("claim_boundary") != \
             "GENUS_MAPPED_TIMING_SCREENING_ONLY_POWER_AND_PHYSICAL_PPA_HOLD":
         raise PlanError("Genus v3 receipt design/top/status/screening boundary mismatch")
-    staged_identity = receipt.get("staged_manifest", {})
-    if staged_identity.get("sha256") != staged_bound["sha256"] or \
+    if receipt.get("staged_manifest") != staged_identity or \
+            receipt.get("technology_authorities") != technology_authorities or \
             handoff.get("schema") != "k2_w2_innovus_strict_sdc_handoff_v1" or \
             receipt.get("innovus_handoff_sha256") != handoff_sha or \
             handoff.get("design") != design or handoff.get("top") != top or \
-            handoff.get("strict_input_sdc_sha256") != template["sha256"]:
+            handoff.get("strict_input_sdc_sha256") != template["sha256"] or \
+            receipt.get("strict_sdc_sha256") != template["sha256"]:
         raise PlanError("Genus v3 receipt/manifest/handoff identity mismatch")
     inventory = receipt.get("mapped_inventory", {})
     endpoint_counts = endpoint_contract["leaf_counts"]
@@ -483,7 +569,10 @@ def validate_genus(producer: dict[str, Any], design: str, top: str,
         "a2_p6": ["ordered_pairs", "back_to_back", "reset"],
         "a3_p6": ["ordered_pairs", "back_to_back", "reset"],
     }[design]
-    if functional.get("schema") != "k2_w2_mapped_functional_gate_v1" or \
+    mapped_sdf_sha = receipt.get("mapped_sdf_sha256")
+    if not isinstance(mapped_sdf_sha, str) or not SHA256.fullmatch(mapped_sdf_sha) or \
+            handoff.get("mapped_sdf_sha256") != mapped_sdf_sha or \
+            functional.get("schema") != "k2_w2_mapped_functional_gate_v1" or \
             functional.get("status") != "PASS" or \
             functional.get("design") != design or functional.get("top") != top or \
             functional.get("mapped_netlist_sha256") != netlist_sha or \
@@ -498,13 +587,9 @@ def validate_genus(producer: dict[str, Any], design: str, top: str,
             not isinstance(functional.get("model_sha256"), dict) or \
             not functional["model_sha256"] or \
             any(not SHA256.fullmatch(value) for value in functional["model_sha256"].values()) or \
-            functional.get("sdf_status") not in {"ANNOTATED", "UNAVAILABLE_EXPLICIT"}:
+            functional.get("sdf_status") != "ANNOTATED" or \
+            functional.get("sdf_sha256") != mapped_sdf_sha:
         raise PlanError("mapped staged-vs-netlist functional gate mismatch")
-    sdf_sha = functional.get("sdf_sha256")
-    if (functional["sdf_status"] == "ANNOTATED" and
-            (not isinstance(sdf_sha, str) or not SHA256.fullmatch(sdf_sha))) or \
-            (functional["sdf_status"] == "UNAVAILABLE_EXPLICIT" and sdf_sha is not None):
-        raise PlanError("mapped functional SDF identity/status mismatch")
     if receipt.get("mapped_functional_gate_sha256") != functional_sha:
         raise PlanError("Genus v3 receipt does not bind mapped functional gate")
     checks = receipt.get("checks", {})
@@ -565,6 +650,13 @@ def validate_plan(plan_path: Path) -> list[Binding]:
         plan["staged_manifest"], registry, authority)
     environment_path, environment_sha = validate_environment(
         plan["server_environment"], authority)
+    pointer = registry["committed_techmap_manifest"]
+    producer_staged_identity = {
+        "path": pointer["path"],
+        "sha256": manifest_sha,
+        "source_commit": pointer["source_repository_commit"],
+        "publication_commit": pointer["publication_repository_commit"],
+    }
     runs = plan["runs"]
     if not isinstance(runs, list) or [row.get("design") for row in runs] != cohort["exact_design_set"]:
         raise PlanError("plan must use the exact ordered tech-staged design set")
@@ -591,11 +683,8 @@ def validate_plan(plan_path: Path) -> list[Binding]:
             raise PlanError("final cohort must use one common period")
         netlist, netlist_sha, netlist_payload = bound_payload(run["mapped_netlist"], "mapped netlist")
         sdc, sdc_sha, sdc_payload = bound_payload(run["mapped_sdc"], "mapped SDC")
-        staged_row = manifest["designs"][design]
         registry_endpoint = contract["endpoint_leaf_contract"]
-        endpoint_contract = staged_row["endpoint_leaf_contract"]
-        if endpoint_contract != registry_endpoint:
-            raise PlanError("tech-staged endpoint contract diverges from registry")
+        endpoint_contract = registry_endpoint
         _, _, endpoint_payload = bound_payload(
             run["producer"]["endpoint_connectivity_map"],
             "endpoint connectivity map")
@@ -608,7 +697,7 @@ def validate_plan(plan_path: Path) -> list[Binding]:
         (producer, producer_sha, handoff, handoff_sha, endpoint_map_path,
          endpoint_map_sha, mapped_functional, mapped_functional_sha) = validate_genus(
             run["producer"], design, top, netlist_sha, sdc_sha,
-            plan["staged_manifest"], plan["server_environment"], template,
+            producer_staged_identity, manifest["technology_authorities"], template,
             endpoint_contract, whole_inventory, authority)
         activity = validate_activity(run["activity"])
         output = Path(run["output_dir"])

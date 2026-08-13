@@ -47,15 +47,6 @@ class InnovusPlanTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="w2-plan-v2-")
         self.root = Path(self.temporary.name)
         self.ready_registry = copy.deepcopy(self.registry)
-        self.ready_registry["integration_state"] = "ready"
-        self.ready_registry["technology_stage_authorities"] = {
-            "r1": {"repository_commit": "2" * 40,
-                   "path": "rtl/technology/r1/r1_tech_manifest.json",
-                   "sha256": "3" * 64},
-            "p6": {"repository_commit": "4" * 40,
-                   "path": "rtl/technology/p6/p6_tech_manifest.json",
-                   "sha256": "5" * 64},
-        }
         self.original_load_contracts = self.module.load_contracts
         self.original_verify_committed_blob = self.module.verify_committed_blob
         self.module.load_contracts = lambda: (
@@ -72,40 +63,91 @@ class InnovusPlanTests(unittest.TestCase):
 
     def write_manifest(self) -> tuple[Path, dict]:
         cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
-        common_ports = cohort["common_ports"]
+        common_ports = self.module.staged_common_ports(cohort)
+        technology = self.authority["technology"]
         document = {
             "schema": "k2_w2_tech_staged_compositions_v1",
             "status": "READY_FOR_GENUS_AND_INNOVUS",
             "repository_commit": "1" * 40,
             "goal_order": cohort["exact_design_set"],
             "common_ports": common_ports,
-            "common_inputs": [row for row in common_ports
-                              if row["direction"] == "input"],
-            "common_outputs": [row for row in common_ports
-                               if row["direction"] == "output"],
-            "constraint_templates": self.authority["constraint_templates"],
-            "technology_authorities": self.ready_registry[
-                "technology_stage_authorities"],
+            "technology_authorities": {
+                "raw_golden": {
+                    "path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+                    "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+                },
+                "buffered_golden": {
+                    "path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+                    "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f",
+                },
+                "live_gsclib045": {
+                    "liberty": "/fixture/" + technology["setup_liberty"]["relative_path"],
+                    "technology_lef": "/fixture/" + technology["tech_lef"]["relative_path"],
+                    "macro_lef": "/fixture/" + technology["macro_lef"]["relative_path"],
+                    "qrc": "/fixture/" + technology["shared_qrc"]["relative_path"],
+                    "dffnsrx1_cell_and_interface_verified": True,
+                    "liberty_timing_arcs_claimed_by_manifest": False,
+                },
+                "cells": {
+                    "TLATNTSCAX2": {"ports": ["CK", "E", "SE", "ECK"]},
+                    "MX2X1": {"ports": ["A", "B", "S0", "Y"]},
+                    "DFFRHQX1": {"ports": ["RN", "CK", "D", "Q"]},
+                    "DFFNSRX1": {"ports": ["CKN", "D", "RN", "SN", "Q", "QN"]},
+                },
+            },
+            "constraint_templates": self.registry["staged_manifest_contract"][
+                "constraint_templates"],
             "designs": {
                 design: {
                     "top": cohort["designs"][design]["top"],
-                    "required_ports": common_ports,
-                    "link_pins": cohort["designs"][design]["link_pins"],
-                    "strict_sdc": copy.deepcopy(
-                        self.authority["constraint_templates"][
-                            cohort["designs"][design]["constraint_template"]]),
+                    "filelists": copy.deepcopy(
+                        cohort["designs"][design]["staged_filelists"]),
+                    "port_signature": self.module.staged_port_signature(
+                        common_ports, design),
                     "endpoint_root": copy.deepcopy(
                         cohort["designs"][design]["endpoint_root"]),
-                    "endpoint_leaf_contract": copy.deepcopy(
-                        cohort["designs"][design]["endpoint_leaf_contract"]),
+                    "endpoint_leaf_contract": {
+                        "path_segment": cohort["designs"][design]["endpoint_root"][
+                            "stable_prefix"],
+                        "leaf_counts": copy.deepcopy(cohort["designs"][design][
+                            "endpoint_leaf_contract"]["leaf_counts"]),
+                        "preserved_name_prefixes": copy.deepcopy(
+                            cohort["designs"][design]["endpoint_leaf_contract"][
+                                "preserved_name_prefixes"]),
+                    },
+                    "whole_top_observed_totals": {
+                        "status": "PENDING_DEDICATED_GENUS_RUN", "records": []},
                 }
                 for design in cohort["exact_design_set"]
+            },
+            "source_hashes": {"rtl/fixture.sv": "a" * 64},
+            "test_policy": {
+                "acceptance_sample": "posedge_ref_active_region_pre_NBA",
+                "pending_hold": "through_charged_posedge",
+                "protocol_error_must_equal_zero": True,
+                "epoch_accepted_equals_retired": True,
+                "cell_models_test_only": True,
+            },
+            "consumer_contract": {
+                "consumers": ["genus", "innovus"],
+                "manifest_path":
+                    "rtl/technology/physical_staging/physical_staging_manifest.json",
+                "required_schema": "k2_w2_tech_staged_compositions_v1",
+                "required_status": "READY_FOR_GENUS_AND_INNOVUS",
+                "require_repository_commit": True,
+                "require_literal_common_port_signature": True,
+                "require_endpoint_path_and_leaf_provenance": True,
+                "forbidden_port_aliases": [
+                    "load_i", "pending_i", "source_ready_o", "protocol_fault_o",
+                    "link_enable", "link_enable_i", "burst_clk_o", "burst_data_o",
+                    "p6_clk_o", "p6_data_o"],
             },
         }
         path = self.root / "staged-manifest.json"
         path.write_text(json.dumps(document))
         self.ready_registry["committed_techmap_manifest"] = {
-            "repository_commit": document["repository_commit"],
+            "source_repository_commit": document["repository_commit"],
+            "publication_repository_commit": "2" * 40,
             "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
             "sha256": digest(path),
         }
@@ -156,7 +198,7 @@ class InnovusPlanTests(unittest.TestCase):
             width = "" if port["width"] == 1 else f"[{port['width'] - 1}:0] "
             declarations.append(f"  {port['direction']} {width}{port['name']};")
         netlist = self.root / f"{design}.v"
-        endpoint_contract = staged["designs"][design]["endpoint_leaf_contract"]
+        endpoint_contract = contract["endpoint_leaf_contract"]
         inventory = endpoint_contract["leaf_counts"]
         prefixes = endpoint_contract["preserved_name_prefixes"]
         cells = []
@@ -224,10 +266,12 @@ class InnovusPlanTests(unittest.TestCase):
         }))
         handoff = self.root / f"{design}-innovus-handoff.json"
         tech = self.authority["technology"]
+        mapped_sdf_sha = "d" * 64
         handoff.write_text(json.dumps({
             "schema": "k2_w2_innovus_strict_sdc_handoff_v1",
             "design": design, "top": top,
             "mapped_netlist_sha256": digest(netlist),
+            "mapped_sdf_sha256": mapped_sdf_sha,
             "mapped_sdc_sha256": digest(sdc),
             "strict_input_sdc_sha256": template["sha256"],
             "setup_liberty_sha256": tech["setup_liberty"]["sha256"],
@@ -254,16 +298,27 @@ class InnovusPlanTests(unittest.TestCase):
                        "protocol_error": "ZERO", "reset_and_drain": "PASS"},
             "log_sha256": "b" * 64,
             "model_sha256": {"gsclib045_functional.v": "c" * 64},
-            "sdf_status": "UNAVAILABLE_EXPLICIT",
-            "sdf_sha256": None,
+            "sdf_status": "ANNOTATED",
+            "sdf_sha256": mapped_sdf_sha,
         }))
         receipt = self.root / f"{design}-receipt.json"
+        pointer = self.ready_registry["committed_techmap_manifest"]
         receipt.write_text(json.dumps({
             "schema": "k2_w2_genus_exact_three_endpoint_receipt_v3",
             "status": "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD",
             "design": design, "top": top,
             "boundary_cohort": "tech_staged_complete_compositions",
-            "staged_manifest": {**staged_bound, "repository_commit": "1" * 40},
+            "source_origin": "tech_staged_repository_exact",
+            "ranking_policy":
+                "ONLY_THREE_TECH_STAGED_COMPLETE_COMPOSITIONS_COMPARABLE",
+            "staged_manifest": {
+                "path": pointer["path"],
+                "sha256": staged_bound["sha256"],
+                "source_commit": pointer["source_repository_commit"],
+                "publication_commit": pointer["publication_repository_commit"],
+            },
+            "technology_authorities": copy.deepcopy(
+                staged["technology_authorities"]),
             "mapped_inventory": {
                 "mapped_netlist_sha256": digest(netlist),
                 "mapped_cell_types": {
@@ -276,7 +331,9 @@ class InnovusPlanTests(unittest.TestCase):
                 "required_rx_contract": {"cell": "DFFNSRX1",
                                          "exact_instances": inventory["DFFNSRX1"]},
             },
+            "mapped_sdf_sha256": mapped_sdf_sha,
             "mapped_sdc_sha256": digest(sdc),
+            "strict_sdc_sha256": template["sha256"],
             "innovus_handoff_sha256": digest(handoff),
             "endpoint_leaf_inventory": {
                 "connectivity_map_sha256": digest(endpoint_map),
@@ -351,12 +408,11 @@ class InnovusPlanTests(unittest.TestCase):
         })
         self.assertFalse(common_names & {
             "load_i", "pending_i", "source_ready_o", "protocol_fault_o"})
-        self.assertEqual(self.registry["staged_manifest_contract"], {
-            "schema": "k2_w2_tech_staged_compositions_v1",
-            "status": "READY_FOR_GENUS_AND_INNOVUS",
-            "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
-            "required_constraint_template_keys": ["r1", "p6"],
-        })
+        staged = self.registry["staged_manifest_contract"]
+        self.assertEqual(staged["schema"], "k2_w2_tech_staged_compositions_v1")
+        self.assertEqual(staged["status"], "READY_FOR_GENUS_AND_INNOVUS")
+        self.assertEqual(staged["goal_order"], ["fovea_a7", "a2_p6", "a3_p6"])
+        self.assertEqual(staged["constraint_templates"]["ref_period_ns"], 5.0)
         self.assertEqual(cohort["designs"]["fovea_a7"]["endpoint_root"], {
             "attribute": "w2_endpoint_root=r1",
             "stable_prefix": "w2_endpoint_link__r1",
@@ -367,10 +423,18 @@ class InnovusPlanTests(unittest.TestCase):
                 "stable_prefix": "w2_endpoint_link__p6",
             })
 
-    def test_tracked_registry_blocks_launch_until_committed_manifest_authorities(self):
+    def test_tracked_registry_pins_exact_source_publication_and_manifest(self):
         self.module.load_contracts = self.original_load_contracts
-        with self.assertRaisesRegex(self.module.PlanError, "committed techmap manifest"):
-            self.module.load_contracts()
+        registry, _ = self.module.load_contracts()
+        self.assertEqual(registry["committed_techmap_manifest"], {
+            "source_repository_commit":
+                "07f2413f07357fa1ef34c48fc74c32d238873c30",
+            "publication_repository_commit":
+                "7f149e043a740c032e2cd22b3ed1d6876b6670ce",
+            "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+            "sha256":
+                "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b",
+        })
 
     def test_committed_blob_gate_uses_exact_git_object(self):
         repository = self.root / "repo"
@@ -418,7 +482,7 @@ class InnovusPlanTests(unittest.TestCase):
                 path.write_text(json.dumps(document))
                 with self.assertRaises(self.module.PlanError):
                     self.module.validate_plan(path)
-        for mutation in ("old_schema", "endpoint_root", "strict_sdc"):
+        for mutation in ("old_schema", "endpoint_root", "filelist"):
             with self.subTest(mutation=mutation):
                 manifest_path, manifest = self.write_manifest()
                 if mutation == "old_schema":
@@ -427,8 +491,8 @@ class InnovusPlanTests(unittest.TestCase):
                     manifest["designs"]["a2_p6"]["endpoint_root"][
                         "stable_prefix"] = "wrong_endpoint_root"
                 else:
-                    manifest["designs"]["a3_p6"]["strict_sdc"][
-                        "sha256"] = "0" * 64
+                    manifest["designs"]["a3_p6"]["filelists"][
+                        "gsclib045"] = "rtl/technology/physical_staging/filelists/wrong.f"
                 manifest_path.write_text(json.dumps(manifest))
                 self.ready_registry["committed_techmap_manifest"]["sha256"] = \
                     digest(manifest_path)
@@ -438,7 +502,8 @@ class InnovusPlanTests(unittest.TestCase):
                         self.authority)
 
     def test_receipt_inventory_scan_and_recovery_mutations_are_rejected(self):
-        for mutation in ("schema", "scan", "recovery", "manifest"):
+        for mutation in ("schema", "scan", "recovery", "manifest",
+                         "source_commit", "publication_commit", "technology"):
             with self.subTest(mutation=mutation):
                 path, document = self.plan()
                 receipt_path = Path(document["runs"][0]["producer"]["receipt"]["path"])
@@ -447,6 +512,13 @@ class InnovusPlanTests(unittest.TestCase):
                 if mutation == "scan": receipt["mapped_inventory"]["scan_cell_types"] = ["SDFFX1"]
                 if mutation == "recovery": receipt["checks"]["dffnsrx1_rx_mapping"] = "FAIL"
                 if mutation == "manifest": receipt["staged_manifest"]["sha256"] = "f" * 64
+                if mutation == "source_commit":
+                    receipt["staged_manifest"]["source_commit"] = "e" * 40
+                if mutation == "publication_commit":
+                    receipt["staged_manifest"]["publication_commit"] = "d" * 40
+                if mutation == "technology":
+                    receipt["technology_authorities"]["cells"]["DFFNSRX1"][
+                        "ports"] = ["CKN", "D", "RN", "Q"]
                 receipt_path.write_text(json.dumps(receipt))
                 document["runs"][0]["producer"]["receipt"] = self.bound(receipt_path)
                 path.write_text(json.dumps(document))
