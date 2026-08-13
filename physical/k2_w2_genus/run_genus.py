@@ -138,7 +138,7 @@ def verify_server_environment_receipt(
     if (tool.get("path") != supplied_tool["requested_path"] or
             tool.get("resolved_path") != supplied_tool["resolved_path"] or
             tool.get("sha256") != supplied_tool["sha256"] or
-            tool.get("parsed_version") not in supplied_tool["version_output"]):
+            tool.get("parsed_version") != supplied_tool["parsed_version"]):
         raise FlowError("Genus executable is not the proven server executable")
     for role, path in expected_paths.items():
         row = identities.get(role, {})
@@ -1092,11 +1092,16 @@ def tool_identity(path: Path) -> dict[str, Any]:
     )
     if version.returncode:
         raise FlowError(f"tool version probe failed: {resolved}")
+    versions = sorted(set(re.findall(
+        r"(?<![A-Za-z0-9_.-])\d{2}\.\d{2}-s\d+(?:_\d+)?(?![A-Za-z0-9_.-])",
+        version.stdout)))
+    if len(versions) != 1:
+        raise FlowError(f"tool version probe is ambiguous: {resolved}")
     return {
         "requested_path": str(path),
         "resolved_path": str(resolved),
         "sha256": sha256_bytes(payload),
-        "version_output": version.stdout.strip(),
+        "parsed_version": versions[0],
     }
 
 
@@ -1560,7 +1565,7 @@ def run_mapped_functional_gate(
     xrun = Path(xrun_identity["resolved_path"]).resolve(strict=True)
     xrun_before = tool_identity(xrun)
     if (xrun_before["sha256"] != xrun_identity["sha256"] or
-            xrun_identity["parsed_version"] not in xrun_before["version_output"]):
+            xrun_identity["parsed_version"] != xrun_before["parsed_version"]):
         raise FlowError("mapped functional simulator is not the proven Xcelium")
     model_snapshots: list[Path] = []
     model_hashes: dict[str, str] = {}
@@ -1704,7 +1709,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "xrun": proven_environment["xrun"],
     }
     tool_before = tool_identity(genus)
-    if golden["genus_version"] not in tool_before["version_output"]:
+    if golden["genus_version"] != tool_before["parsed_version"]:
         raise FlowError("Genus version does not match authoritative golden archive")
     if library.resolve(strict=True).name != golden["library_basename"]:
         raise FlowError("Liberty basename does not match authoritative golden Tcl")

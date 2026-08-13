@@ -622,6 +622,26 @@ class GenusFlowTests(unittest.TestCase):
                         expectation["endpoint_link_roots"],
                         expectation["endpoint_preserved_name_prefixes"])
 
+    def test_tool_identity_ignores_volatile_banner_and_tmpdir(self):
+        probes = [
+            subprocess.CompletedProcess(
+                [], 0,
+                stdout=("Cadence Genus(TM) Synthesis Solution Version: "
+                        "23.14-s090_1\nTMPDIR=/dev/shm/first\n")),
+            subprocess.CompletedProcess(
+                [], 0,
+                stdout=("license checkout succeeded\nTMPDIR=/tmp/second\n"
+                        "Version: 23.14-s090_1, different build banner\n")),
+        ]
+        with mock.patch.object(self.module.subprocess, "run", side_effect=probes):
+            first = self.module.tool_identity(FAKE_GENUS)
+            second = self.module.tool_identity(FAKE_GENUS)
+        self.assertEqual(first, second)
+        self.assertEqual(set(first), {
+            "requested_path", "resolved_path", "sha256", "parsed_version",
+        })
+        self.assertEqual(first["parsed_version"], "23.14-s090_1")
+
     def test_mapped_functional_gate_binds_netlist_sdf_models_and_mutations(self):
         design = copy.deepcopy(self.module.load_registry_document()[
             "design_expectations"]["fovea_a7"])
@@ -630,7 +650,7 @@ class GenusFlowTests(unittest.TestCase):
         identity = self.module.tool_identity(FAKE_GENUS)
         xrun = {"resolved_path": identity["resolved_path"],
                 "sha256": identity["sha256"],
-                "parsed_version": identity["version_output"]}
+                "parsed_version": identity["parsed_version"]}
 
         def invoke(mutation=""):
             directory = tempfile.TemporaryDirectory(prefix="k2-w2-functional-")
