@@ -17,12 +17,16 @@ python3 -B "$here/run_promotion_replay.py" \
   --work-dir "$work/work" \
   --output "$work/promotion-replay.json"
 
-python3 -B - "$work/promotion-replay.json" <<'PY'
+python3 -B - "$work/promotion-replay.json" \
+  "$here/results/promotion_replay_summary.json" <<'PY'
+import hashlib
 import json
 import pathlib
 import sys
 
-report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+report_path = pathlib.Path(sys.argv[1])
+report = json.loads(report_path.read_text(encoding="utf-8"))
+summary = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
 assert report["qualification"] == "OWNER_RTL_TRANSACTION_REPLAY_PASS"
 assert report["suite_run_counts"] == {"full50": 50, "capacity22": 22, "directed": 1}
 assert len(report["owners"]) == 3
@@ -33,6 +37,25 @@ assert report["provenance"]["a3"]["commit"] == "bd1c1ee955685fc077afe930116a03bc
 assert report["provenance"]["a4"]["commit"] == "0e613b6933f1bb92e9b2f75b79a50663187f17d3"
 assert all(report["provenance"][owner]["source_origin"] == "exact_git_commit_object"
            for owner in ("a2", "a3", "a4"))
+assert report["common_edge_ordering"]["a1_common_tb_sha256"] == \
+       "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2"
+assert [row["owner"] for row in
+        report["common_edge_ordering"]["focused_owner_results"]] == ["a2", "a3", "a4"]
+assert all(row["status"] == "PASS" for row in
+           report["common_edge_ordering"]["focused_owner_results"])
+assert report["old_new_result_delta"]["all_metrics_unchanged"] is True
+assert hashlib.sha256(report_path.read_bytes()).hexdigest() == \
+       summary["fresh_full_report_sha256"]
+assert report["vector_bundle_sha256"] == summary["vector_bundle_sha256"]
+assert report["suite_run_counts"] == summary["suite_run_counts"]
+aggregate_fields = (
+    "owner", "run_count", "generated", "source_overrun", "reset_aborted",
+    "accepted", "retired", "measurement_retired",
+    "max_occurrence_to_accept_latency", "max_accept_to_retire_latency",
+)
+assert [{key: row[key] for key in aggregate_fields} for row in report["owners"]] == \
+       [{key: row[key] for key in aggregate_fields} for row in summary["owners"]]
+assert summary["old_new_result_delta"]["all_deltas_zero"] is True
 assert report["mutation_kills"] == [
     "malicious_trace",
     "malicious_generation_index",

@@ -88,7 +88,14 @@ module a4_pcck2_ordered_link_adapter (
   end
 
   assign retire_valid[0] = queue_count_q != 0;
+`ifdef A4_PCCK2_LINK_MUTATE_YOUNGER_BYPASS
   assign retire_valid[1] = queue_count_q == 2;
+`else
+  // A younger entry is never a legal transaction unless the ordered head is
+  // also ready to fire on this edge.  In particular ready=2'b10 must not
+  // expose a valid younger lane to the common scoreboard.
+  assign retire_valid[1] = (queue_count_q == 2) && retire_ready[0];
+`endif
   assign retire_addr[3:0] = queue_addr_q[0];
   assign retire_addr[7:4] = queue_addr_q[1];
   assign drain_idle = scheduler_drain_idle && (queue_count_q == 0);
@@ -107,6 +114,8 @@ module a4_pcck2_ordered_link_adapter (
       retired_count_q <= retired_count_q + integer'(retire_count);
       assert (queue_count_q <= 2);
       assert (!(retire_valid[1] && !retire_valid[0]));
+      assert (!(retire_valid[1] && retire_ready[1]) ||
+              (retire_valid[0] && retire_ready[0]));
       assert (retired_count_q <= committed_count_q);
       if (retire_valid[0] && !retire_ready[0])
         assert (retire_count == 0);

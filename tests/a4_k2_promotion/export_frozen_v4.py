@@ -26,6 +26,7 @@ PINNED = {
     "official_sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
     "full50_manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
     "capacity22_manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+    "common_tb_sha256": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2",
 }
 TRACE_KEYS = {
     "occurrence_cycle", "tb_only_event_id", "logical_source", "x", "y",
@@ -60,10 +61,13 @@ def load_official(a1_repo: Path) -> tuple[Any, Path, Path]:
         raise ExportError("A1 repository path must be absolute")
     generator = a1_repo / "benchmarks/clean_slate_aer/generate_trace.py"
     official_path = a1_repo / "scripts/common_suite_official.py"
+    common_tb = a1_repo / "tb/clean/aer_clean_tb.sv"
     if file_sha256(generator) != PINNED["generator_sha256"]:
         raise ExportError("generator-v4 source SHA-256 mismatch")
     if file_sha256(official_path) != PINNED["official_sha256"]:
         raise ExportError("official-suite source SHA-256 mismatch")
+    if file_sha256(common_tb) != PINNED["common_tb_sha256"]:
+        raise ExportError("frozen common-TB source SHA-256 mismatch")
     specification = importlib.util.spec_from_file_location(
         "a4_k2_pinned_common_suite_official", official_path)
     if specification is None or specification.loader is None:
@@ -365,7 +369,7 @@ def build_export(a1_repo: Path, trace_root: Path, vector_root: Path,
             "acceptance": "ordered grant_count/address bundle commits atomically",
             "retirement": "ordered normalized lanes; TB-only event identity is transport sidecar only",
             "source_capacity": "one pending occurrence per logical source",
-            "cycle_semantics": "occurrences enter source latches before the indexed active edge",
+            "cycle_semantics": "common TB classifies negedge occurrences/overruns before the following posedge handshakes; a same-source occurrence immediately before its old event fires is overrun",
             "measurement": "half-open occurrence/retirement cycle window",
             "max_accept_to_retire_latency_cycles": 0,
         },
@@ -374,6 +378,8 @@ def build_export(a1_repo: Path, trace_root: Path, vector_root: Path,
             "generator_version": GENERATOR_VERSION,
             "generator_sha256": file_sha256(generator),
             "official_spec_sha256": file_sha256(official_path),
+            "common_tb_sha256": PINNED["common_tb_sha256"],
+            "common_tb_ordering": "occurrence_classification_before_following_posedge_accept_and_retire",
             "capacity22_is_exact_full50_subset": True,
         },
         "suites": suites,

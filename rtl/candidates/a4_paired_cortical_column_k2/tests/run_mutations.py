@@ -14,7 +14,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 CANDIDATE = HERE.parent
 ROOT = CANDIDATE.parents[2]
 RTL = CANDIDATE / "a4_paired_cortical_column_k2.sv"
+ADAPTER = CANDIDATE / "a4_pcck2_ordered_link_adapter.sv"
 TB = HERE / "lockstep_tb.sv"
+LINK_TB = HERE / "ordered_link_tb.sv"
 MUTATIONS = {
     "A4_PCCK2_MUTATE_FLAT_WEIGHT": "all_rows",
     "A4_PCCK2_MUTATE_STALL_ADVANCE": "stall",
@@ -73,6 +75,27 @@ def main() -> int:
         )):
             raise SystemExit(f"mutation failed without expected detector: {mutation}")
         print(f"A4_PCCK2_MUTATION_KILLED mutation={mutation} case={case_name}")
+
+    link_mutation = "A4_PCCK2_LINK_MUTATE_YOUNGER_BYPASS"
+    link_obj = args.work_dir / link_mutation.lower()
+    link_build = run([
+        tool, "--binary", "--timing", "--assert", "-Wall",
+        "-Wno-UNUSEDSIGNAL", "-Wno-UNUSEDPARAM",
+        "--top-module", "a4_pcck2_ordered_link_tb", f"-D{link_mutation}",
+        "--Mdir", str(link_obj), "-o", "sim", str(RTL), str(ADAPTER),
+        str(LINK_TB),
+    ])
+    (args.work_dir / f"{link_mutation}.build.log").write_text(link_build.stdout)
+    if link_build.returncode or "%Warning" in link_build.stdout:
+        raise SystemExit(f"mutation build failed/warned: {link_mutation}")
+    link_run = run([str(link_obj / "sim")])
+    (args.work_dir / f"{link_mutation}.run.log").write_text(link_run.stdout)
+    if link_run.returncode == 0 or "A4_PCCK2_ORDERED_LINK_PASS" in link_run.stdout:
+        raise SystemExit(f"mutation escaped falsifier: {link_mutation}")
+    if not any(marker in link_run.stdout for marker in (
+            "younger lane bypassed stalled head", "Assertion failed")):
+        raise SystemExit(f"mutation failed without expected detector: {link_mutation}")
+    print(f"A4_PCCK2_MUTATION_KILLED mutation={link_mutation} case=ready10")
     return 0
 
 

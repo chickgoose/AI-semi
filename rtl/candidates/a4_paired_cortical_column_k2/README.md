@@ -18,8 +18,9 @@ The scheduler boundary is one atomic bundle:
 
 The optional `a4_pcck2_ordered_link_adapter.sv` is separate transport. It
 accepts a scheduler bundle atomically into a two-entry FIFO, presents two
-ordered retirement lanes, prevents lane 1 from bypassing stalled lane 0, and
-does not mutate scheduler policy in response to a partial downstream stall.
+ordered retirement lanes, gates lane-1 valid with lane-0 readiness so `10`
+cannot handshake a younger record, and does not mutate scheduler policy in
+response to a partial downstream stall.
 
 ## Policy
 
@@ -59,7 +60,7 @@ python3 rtl/candidates/a4_paired_cortical_column_k2/run_qualification.py \
 ```
 
 The run performs warning-free lint, six independent-model tests, seven directed
-RTL/model locksteps, the ordered-link test, four RTL mutation kills, exact
+RTL/model locksteps, four ordered-link subcases, five RTL mutation kills, exact
 hash-locked generator-v4 replay (`full50` plus the `capacity22` subset) through
 both model and RTL, generic Yosys structural measurement, and immutable A5/A8
 contract cross-checks.

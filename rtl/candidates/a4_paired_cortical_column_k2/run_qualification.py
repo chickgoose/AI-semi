@@ -170,7 +170,7 @@ def main() -> int:
         "ppa_qualification": "PROXY_ONLY_HOLD_FOR_LIBERTY_AND_PLACE_ROUTE",
         "tests": {
             "model_unit_tests": 6, "directed_rtl_cases": len(directed_cases),
-            "mutation_falsifiers_killed": 4, "ordered_link_cases": 1,
+            "mutation_falsifiers_killed": 5, "ordered_link_cases": 4,
             "frozen_v4_full50": 50, "frozen_v4_capacity22_subset": 22,
             "frozen_v4_rtl_executions": rtl_replay_count,
         },
@@ -198,7 +198,7 @@ def main() -> int:
         json.dump(document, stream, indent=2, sort_keys=True)
         stream.write("\n")
     print(
-        "A4_PCCK2_QUALIFICATION_PASS directed=7 mutations=4 "
+        "A4_PCCK2_QUALIFICATION_PASS directed=7 mutations=5 "
         "full50=50 capacity22=22 semantic=AGGREGATE_ONLY"
     )
     return 0

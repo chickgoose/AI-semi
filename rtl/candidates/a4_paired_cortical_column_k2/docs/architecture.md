@@ -43,10 +43,12 @@ all fairness state. It also overrides live request and ready pins so
 `grant_count=0`, both addresses are zero, `source_ready=0`, and `drain_idle=1`.
 No partial lane-drain state exists in the scheduler.
 
-The optional link can retire one or two FIFO-prefix events. Lane 1 is valid
-only when lane 0 is valid, and lane 1 cannot fire unless lane 0 fires on the
-same edge. Scheduler `bundle_ready` is asserted only when the whole offered
-bundle fits after that edge's ordered retirement.
+The optional link can retire one or two FIFO-prefix events. Lane 1 valid is
+gated by lane 0 ready; therefore a `retire_ready=2'b10` observation exposes
+only lane 0 valid and cannot handshake the younger entry. With `01`, only the
+head retires and the younger entry compacts to lane 0 before any refill. The
+scheduler `bundle_ready` is asserted only when the whole offered bundle fits
+after that edge's ordered retirement.
 
 ## Evaluator cross-check
 
