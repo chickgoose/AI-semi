@@ -54,11 +54,34 @@ EXPECTED_LINK_PORTS = {
     "a3_p6": ["link_clk_o", "link_data_o[4:0]"],
 }
 EXPECTED_LINK_BITS = {"fovea_a7": 3, "a2_p6": 6, "a3_p6": 6}
+EXPECTED_TOP_PORTS = {
+    candidate: {
+        "inputs": ["ref_clk_i", "sample_clk_i", "rst_n", "source_pending_i[15:0]"],
+        "outputs": [
+            "source_accept_o[15:0]", "link_clk_o",
+            f"link_data_o[{1 if candidate == 'fovea_a7' else 4}:0]",
+            "retire_valid_o[1:0]", "retire_addr0_o[3:0]",
+            "retire_addr1_o[3:0]", "drain_idle_o", "protocol_error_o",
+        ],
+    }
+    for candidate in EXPECTED_CANDIDATES
+}
+FORBIDDEN_TOP_ALIASES = {"load_i", "pending_i", "source_ready_o", "protocol_fault_o"}
 POINT_RECEIPT_SCHEMAS = {
     "innovus": "k2_w2_innovus_run_receipt_v1",
     "sta": "k2_w2_postroute_sta_receipt_v1",
     "drc": "k2_w2_postroute_drc_receipt_v1",
     "connectivity": "k2_w2_postroute_connectivity_receipt_v1",
+}
+COMMON_RECEIPT_SCHEMA_VERSION = 5
+COMMON_SOURCE_COMMIT = "abd6a721b515ded8a9ef76cb96129b7e0af21e2b"
+COMMON_ANALYZER_WORKLOADS = {
+    "pairwise_contention", "mixed_phase_always_ready", "phase_transition", "timing_pair",
+}
+COMMON_REQUIRED_TOOLS = {
+    "full50": {"runner", "generator", *COMMON_ANALYZER_WORKLOADS},
+    "capacity22": {"runner", "generator", *(
+        COMMON_ANALYZER_WORKLOADS - {"timing_pair"})},
 }
 
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -187,6 +210,17 @@ def _validate_corner(value: Any, label: str) -> dict[str, Any]:
     return corner
 
 
+def validate_top_ports(value: Any, candidate: str, label: str) -> dict[str, Any]:
+    ports = exact_keys(value, {"inputs", "outputs"}, label)
+    if ports != EXPECTED_TOP_PORTS[candidate]:
+        raise ReleaseGateError(f"{label} does not match the canonical final top signature")
+    flattened = ports["inputs"] + ports["outputs"]
+    for alias in FORBIDDEN_TOP_ALIASES:
+        if any(re.fullmatch(rf"{re.escape(alias)}(?:\[[^]]+\])?", item) for item in flattened):
+            raise ReleaseGateError(f"{label} contains forbidden final-top alias {alias}")
+    return ports
+
+
 def validate_provenance(value: Any, label: str) -> dict[str, Any]:
     provenance = exact_keys(
         value,
@@ -217,11 +251,17 @@ def validate_provenance(value: Any, label: str) -> dict[str, Any]:
         raise ReleaseGateError(f"{label}.pvt.shared_rc_corner mismatch")
 
     sdc = exact_keys(provenance["sdc"],
-                     {"constraint_set_id", "sha256", "clock_schema"}, f"{label}.sdc")
+                     {"constraint_set_id", "sha256", "clock_schema", "top_ports"},
+                     f"{label}.sdc")
     string(sdc["constraint_set_id"], f"{label}.sdc.constraint_set_id", ID_RE)
     digest(sdc["sha256"], f"{label}.sdc.sha256")
     if sdc["clock_schema"] != "k2_w2_multiclock_full_link_v6":
         raise ReleaseGateError(f"{label}.sdc.clock_schema must be multi-clock full-link v6")
+    if not isinstance(sdc["top_ports"], dict) or set(sdc["top_ports"]) != set(EXPECTED_CANDIDATES):
+        raise ReleaseGateError(f"{label}.sdc.top_ports must be the exact candidate set")
+    for candidate in EXPECTED_CANDIDATES:
+        validate_top_ports(sdc["top_ports"][candidate], candidate,
+                           f"{label}.sdc.top_ports.{candidate}")
 
     load = exact_keys(provenance["load"], {"model_id", "sha256", "output_load_pf"},
                       f"{label}.load")
@@ -232,7 +272,8 @@ def validate_provenance(value: Any, label: str) -> dict[str, Any]:
 
     staged = exact_keys(
         provenance["staged_manifest"],
-        {"schema", "sha256", "repository_commit", "normalized_boundary_sha256"},
+        {"schema", "sha256", "repository_commit", "normalized_boundary_sha256",
+         "top_ports", "functional_candidate_manifest_sha256"},
         f"{label}.staged_manifest")
     if staged["schema"] != "k2_w2_tech_staged_compositions_v1":
         raise ReleaseGateError(f"{label}.staged_manifest schema mismatch")
@@ -241,11 +282,26 @@ def validate_provenance(value: Any, label: str) -> dict[str, Any]:
            GIT_SHA1_RE)
     digest(staged["normalized_boundary_sha256"],
            f"{label}.staged_manifest.normalized_boundary_sha256")
+    if not isinstance(staged["top_ports"], dict) or set(staged["top_ports"]) != set(EXPECTED_CANDIDATES):
+        raise ReleaseGateError(f"{label}.staged_manifest.top_ports candidate order mismatch")
+    manifests = staged["functional_candidate_manifest_sha256"]
+    if not isinstance(manifests, dict) or set(manifests) != set(EXPECTED_CANDIDATES):
+        raise ReleaseGateError(
+            f"{label}.staged_manifest functional candidate manifests are incomplete")
+    for candidate in EXPECTED_CANDIDATES:
+        validate_top_ports(staged["top_ports"][candidate], candidate,
+                           f"{label}.staged_manifest.top_ports.{candidate}")
+        digest(manifests[candidate],
+               f"{label}.staged_manifest.functional_candidate_manifest_sha256.{candidate}")
+    if staged["top_ports"] != sdc["top_ports"]:
+        raise ReleaseGateError(f"{label} staged-manifest and SDC top signatures differ")
 
     workload = exact_keys(
         provenance["workload"],
         {"suite_id", "generator_version", "full_run_count", "capacity_run_count",
-         "full_manifest_sha256", "capacity_manifest_sha256", "trace_bundle_sha256"},
+         "full_manifest_sha256", "capacity_manifest_sha256", "trace_bundle_sha256",
+         "full_trace_index_sha256", "capacity_trace_index_sha256", "simulator",
+         "tool_bundles"},
         f"{label}.workload")
     string(workload["suite_id"], f"{label}.workload.suite_id", ID_RE)
     if integer(workload["generator_version"], f"{label}.workload.generator_version", 1) != 4:
@@ -255,8 +311,33 @@ def validate_provenance(value: Any, label: str) -> dict[str, Any]:
     if integer(workload["capacity_run_count"],
                f"{label}.workload.capacity_run_count", 1) != 22:
         raise ReleaseGateError(f"{label}.workload.capacity_run_count must equal 22")
-    for name in ("full_manifest_sha256", "capacity_manifest_sha256", "trace_bundle_sha256"):
+    for name in ("full_manifest_sha256", "capacity_manifest_sha256", "trace_bundle_sha256",
+                 "full_trace_index_sha256", "capacity_trace_index_sha256"):
         digest(workload[name], f"{label}.workload.{name}")
+    simulator = exact_keys(workload["simulator"],
+                           {"identity", "executable_sha256", "version_sha256"},
+                           f"{label}.workload.simulator")
+    string(simulator["identity"], f"{label}.workload.simulator.identity", ID_RE)
+    digest(simulator["executable_sha256"],
+           f"{label}.workload.simulator.executable_sha256")
+    digest(simulator["version_sha256"], f"{label}.workload.simulator.version_sha256")
+    tools = exact_keys(workload["tool_bundles"], {"runner", "generator", "analyzers"},
+                       f"{label}.workload.tool_bundles")
+    if not isinstance(tools["runner"], dict) or set(tools["runner"]) != set(EXPECTED_CANDIDATES):
+        raise ReleaseGateError(f"{label}.workload runner bundles are incomplete")
+    if not isinstance(tools["analyzers"], dict) or set(tools["analyzers"]) != \
+            COMMON_ANALYZER_WORKLOADS:
+        raise ReleaseGateError(f"{label}.workload analyzer bundles are incomplete")
+    for tool_label, row in [("generator", tools["generator"]), *(
+            (f"runner.{candidate}", tools["runner"][candidate])
+            for candidate in EXPECTED_CANDIDATES), *(
+            (f"analyzers.{name}", tools["analyzers"][name])
+            for name in sorted(COMMON_ANALYZER_WORKLOADS))]:
+        row = exact_keys(row, {"identity", "bundle_sha256"},
+                         f"{label}.workload.tool_bundles.{tool_label}")
+        string(row["identity"], f"{label}.workload.tool_bundles.{tool_label}.identity", ID_RE)
+        digest(row["bundle_sha256"],
+               f"{label}.workload.tool_bundles.{tool_label}.bundle_sha256")
     return provenance
 
 
@@ -327,7 +408,8 @@ def validate_staged_manifest(receipt: dict[str, Any], campaign: dict[str, Any]) 
     manifest = exact_keys(
         receipt.get("manifest"),
         {"schema", "sha256", "repository_commit", "normalized_boundary_sha256",
-         "candidate_ids", "tops", "link_ports_preserved"},
+         "candidate_ids", "tops", "top_ports", "link_ports_preserved",
+         "functional_candidate_manifest_sha256"},
         "tech_staged_manifest.manifest")
     expected = campaign["provenance"]["staged_manifest"]
     for key in ("schema", "sha256", "repository_commit", "normalized_boundary_sha256"):
@@ -336,13 +418,20 @@ def validate_staged_manifest(receipt: dict[str, Any], campaign: dict[str, Any]) 
     if (manifest["candidate_ids"] != EXPECTED_CANDIDATES or
             manifest["tops"] != EXPECTED_TOPS or manifest["link_ports_preserved"] is not True):
         raise ReleaseGateError("tech-staged manifest is not the exact normalized three-top set")
+    if (manifest["top_ports"] != expected["top_ports"] or
+            manifest["functional_candidate_manifest_sha256"] !=
+            expected["functional_candidate_manifest_sha256"]):
+        raise ReleaseGateError("tech-staged manifest source/port closure differs from campaign")
     results = receipt["candidate_results"]
     for candidate in EXPECTED_CANDIDATES:
-        row = exact_keys(results[candidate], {"status", "top", "link_ports", "link_bits"},
+        row = exact_keys(results[candidate],
+                         {"status", "top", "top_ports", "link_ports", "link_bits"},
                          f"tech_staged_manifest.candidate_results.{candidate}")
-        if row != {"status": "PASS", "top": EXPECTED_TOPS[candidate],
-                   "link_ports": EXPECTED_LINK_PORTS[candidate],
-                   "link_bits": EXPECTED_LINK_BITS[candidate]}:
+        validate_top_ports(row["top_ports"], candidate,
+                           f"tech_staged_manifest.candidate_results.{candidate}.top_ports")
+        if (row["status"] != "PASS" or row["top"] != EXPECTED_TOPS[candidate] or
+                row["link_ports"] != EXPECTED_LINK_PORTS[candidate] or
+                row["link_bits"] != EXPECTED_LINK_BITS[candidate]):
             raise ReleaseGateError(f"tech-staged manifest candidate contract mismatch: {candidate}")
 
 
@@ -359,11 +448,13 @@ def validate_genus(receipt: dict[str, Any], campaign: dict[str, Any]) -> None:
     for candidate in EXPECTED_CANDIDATES:
         row = exact_keys(
             results[candidate],
-            {"status", "top", "mapped_netlist_sha256", "mapped_sdc_sha256",
+            {"status", "top", "top_ports", "mapped_netlist_sha256", "mapped_sdc_sha256",
              "constraint_set_sha256", "report_receipt_sha256", "mapped_smoke_sha256"},
             f"genus.candidate_results.{candidate}")
         if row["status"] != "PASS" or row["top"] != EXPECTED_TOPS[candidate]:
             raise ReleaseGateError(f"Genus v2 candidate/top is not PASS: {candidate}")
+        validate_top_ports(row["top_ports"], candidate,
+                           f"genus.candidate_results.{candidate}.top_ports")
         if row["constraint_set_sha256"] != provenance["sdc"]["sha256"]:
             raise ReleaseGateError(f"Genus v2 constraint provenance mismatch: {candidate}")
         for name in ("mapped_netlist_sha256", "mapped_sdc_sha256",
@@ -391,13 +482,16 @@ def _load_auxiliary_receipt(
     inode = (info.st_dev, info.st_ino)
     if inode in claimed["inodes"]:
         raise ReleaseGateError(f"{label} reuses an already claimed inode")
-    receipt_id = string(document.get("receipt_id"), f"{label}.receipt_id", ID_RE)
-    if receipt_id in claimed["receipt_ids"]:
-        raise ReleaseGateError(f"duplicate receipt_id: {receipt_id}")
+    receipt_id = document.get("receipt_id")
+    if receipt_id is not None:
+        receipt_id = string(receipt_id, f"{label}.receipt_id", ID_RE)
+        if receipt_id in claimed["receipt_ids"]:
+            raise ReleaseGateError(f"duplicate receipt_id: {receipt_id}")
     claimed["paths"].add(path)
     claimed["hashes"].add(expected)
     claimed["inodes"].add(inode)
-    claimed["receipt_ids"].add(receipt_id)
+    if receipt_id is not None:
+        claimed["receipt_ids"].add(receipt_id)
     auxiliary[label] = (path, info, expected)
     return document
 
@@ -414,6 +508,7 @@ def _validate_point_receipt_base(
             document.get("top") != EXPECTED_TOPS[candidate] or
             decimal_string(document.get("period_ns"), f"{label}.period_ns") != period):
         raise ReleaseGateError(f"{label} candidate/top/period mismatch")
+    validate_top_ports(document.get("top_ports"), candidate, f"{label}.top_ports")
     binding = document.get("release_binding")
     validate_campaign(binding, f"{label}.release_binding")
     if binding != campaign:
@@ -450,7 +545,7 @@ def _validate_point_receipts(
     root: Path, refs: Any, campaign: dict[str, Any], candidate: str, period: Decimal,
     label: str, claimed: dict[str, set[Any]],
     auxiliary: dict[str, tuple[Path, os.stat_result, str]],
-) -> tuple[Decimal, bool]:
+) -> tuple[Decimal, bool, str]:
     if not isinstance(refs, dict) or set(refs) != set(POINT_RECEIPT_SCHEMAS):
         raise ReleaseGateError(f"{label}.receipts must contain Innovus/STA/DRC/connectivity")
     documents = {}
@@ -487,17 +582,19 @@ def _validate_point_receipts(
         for field in ("opens", "shorts", "unconnected"):
             connectivity_clean = connectivity_clean and integer(
                 row[field], f"{label}.connectivity.checks.{name}.{field}") == 0
-    return slacks["setup"], timing_clean and drc_clean and connectivity_clean
+    return (slacks["setup"], timing_clean and drc_clean and connectivity_clean,
+            innovus["postroute_netlist_sha256"])
 
 
 def validate_frequency_sweeps(
     receipt: dict[str, Any], campaign: dict[str, Any], root: Path,
     claimed: dict[str, set[Any]], auxiliary: dict[str, tuple[Path, os.stat_result, str]],
-) -> None:
+) -> dict[str, dict[str, str]]:
     candidates = campaign["candidate_ids"]
     sweeps = receipt.get("frequency_sweeps")
     if not isinstance(sweeps, dict) or set(sweeps) != set(candidates):
         raise ReleaseGateError("innovus.frequency_sweeps must exactly match campaign candidates")
+    selected_implementations: dict[str, dict[str, str]] = {}
     for candidate in candidates:
         label = f"innovus.frequency_sweeps.{candidate}"
         sweep = exact_keys(
@@ -512,18 +609,20 @@ def validate_frequency_sweeps(
         periods: list[Decimal] = []
         setup_slacks: list[Decimal] = []
         passed: list[bool] = []
+        postroute_netlists: list[str] = []
         for index, point in enumerate(points):
             point = exact_keys(point, {"period_ns", "receipts"},
                                f"{label}.points[{index}]")
             period = decimal_string(point["period_ns"], f"{label}.points[{index}].period_ns")
             if period <= 0:
                 raise ReleaseGateError(f"{label}.points[{index}].period_ns must be positive")
-            setup_slack, qualified = _validate_point_receipts(
+            setup_slack, qualified, postroute_netlist = _validate_point_receipts(
                 root, point["receipts"], campaign, candidate, period,
                 f"{label}.points[{index}]", claimed, auxiliary)
             periods.append(period)
             setup_slacks.append(setup_slack)
             passed.append(qualified)
+            postroute_netlists.append(postroute_netlist)
         if any(right <= left for left, right in zip(periods, periods[1:])):
             raise ReleaseGateError(f"{label} periods are not strictly increasing")
         if any(right < left for left, right in zip(setup_slacks, setup_slacks[1:])):
@@ -544,9 +643,15 @@ def validate_frequency_sweeps(
         if (last_fail != periods[first_pass - 1] or first != periods[first_pass] or
                 selected != periods[first_pass]):
             raise ReleaseGateError(f"{label} bracket/selection is cherry-picked or inconsistent")
+        selected_implementations[candidate] = {
+            "period_ns": str(periods[first_pass]),
+            "postroute_netlist_sha256": postroute_netlists[first_pass],
+        }
+    return selected_implementations
 
 
-def validate_activity_power(receipt: dict[str, Any], campaign: dict[str, Any]) -> None:
+def validate_activity_power(receipt: dict[str, Any], campaign: dict[str, Any],
+                            selected_implementations: dict[str, dict[str, str]]) -> None:
     activity = exact_keys(
         receipt.get("activity"),
         {"mode", "measurement", "authentication"}, "activity_power.activity")
@@ -588,17 +693,31 @@ def validate_activity_power(receipt: dict[str, Any], campaign: dict[str, Any]) -
     for candidate in EXPECTED_CANDIDATES:
         row = exact_keys(
             results[candidate],
-            {"status", "saif_sha256", "power_report_sha256", "scope_sha256",
+            {"status", "vcd_sha256", "saif_sha256", "activity_window_sha256",
+             "saif_conversion_receipt_sha256", "activity_window",
+             "power_report_sha256", "scope_sha256", "postroute_netlist_sha256",
+             "spef_sha256", "physical_stage",
              "coverage_percent", "retired_events", "total_power_mw", "dynamic_power_mw",
              "leakage_power_mw", "energy_pj_per_event"},
             f"activity_power.candidate_results.{candidate}")
         if row["status"] != "PASS":
             raise ReleaseGateError(f"activity-power candidate is not PASS: {candidate}")
-        for name in ("saif_sha256", "power_report_sha256", "scope_sha256"):
+        for name in ("vcd_sha256", "saif_sha256", "activity_window_sha256",
+                     "saif_conversion_receipt_sha256",
+                     "power_report_sha256", "scope_sha256", "spef_sha256"):
             value = digest(row[name], f"activity_power.candidate_results.{candidate}.{name}")
             if value in evidence_hashes:
                 raise ReleaseGateError("activity-power reuses candidate evidence hashes")
             evidence_hashes.add(value)
+        if row["activity_window"] != measurement:
+            raise ReleaseGateError(
+                f"activity-power candidate window differs from common trace/window: {candidate}")
+        if (row["physical_stage"] != "INNOVUS_POST_ROUTE_EXTRACTED" or
+                row["postroute_netlist_sha256"] !=
+                selected_implementations[candidate]["postroute_netlist_sha256"] or
+                period != Decimal(selected_implementations[candidate]["period_ns"])):
+            raise ReleaseGateError(
+                f"activity-power is not bound to selected post-route implementation: {candidate}")
         coverage = row["coverage_percent"]
         if (isinstance(coverage, bool) or not isinstance(coverage, (int, float)) or
                 not math.isfinite(coverage) or coverage <= 0 or coverage > 100):
@@ -619,7 +738,100 @@ def validate_activity_power(receipt: dict[str, Any], campaign: dict[str, Any]) -
             raise ReleaseGateError(f"activity-power energy/event is not derived: {candidate}")
 
 
-def validate_functional(receipt: dict[str, Any], campaign: dict[str, Any]) -> None:
+def _validate_common_receipt(document: dict[str, Any], candidate: str, suite: str,
+                             campaign: dict[str, Any], label: str) -> list[dict[str, str]]:
+    expected_count = 50 if suite == "full50" else 22
+    workload = campaign["provenance"]["workload"]
+    expected_manifest = (workload["full_manifest_sha256"] if suite == "full50"
+                         else workload["capacity_manifest_sha256"])
+    required = {
+        "receipt_schema_version", "status", "suite", "candidate", "validated_run_count",
+        "generated_at_utc", "official_source_commit", "attempt",
+        "candidate_manifest_sha256", "tools", "simulator", "execution_identity",
+        "compile_manifest", "compile_log", "inputs", "runs",
+    }
+    exact_keys(document, required, label)
+    if (document["receipt_schema_version"] != COMMON_RECEIPT_SCHEMA_VERSION or
+            document["status"] != "PASS" or document["suite"] != suite or
+            document["candidate"] != candidate or
+            document["validated_run_count"] != expected_count or
+            document["official_source_commit"] != COMMON_SOURCE_COMMIT):
+        raise ReleaseGateError(f"{label} official identity/status/count mismatch")
+    expected_candidate_manifest = campaign["provenance"]["staged_manifest"][
+        "functional_candidate_manifest_sha256"][candidate]
+    if digest(document["candidate_manifest_sha256"],
+              f"{label}.candidate_manifest_sha256") != expected_candidate_manifest:
+        raise ReleaseGateError(f"{label} candidate source/binding manifest differs from campaign")
+    for name in ("attempt", "execution_identity", "compile_manifest", "compile_log"):
+        entry = document[name]
+        if not isinstance(entry, dict) or "sha256" not in entry:
+            raise ReleaseGateError(f"{label}.{name} lacks immutable provenance")
+        digest(entry["sha256"], f"{label}.{name}.sha256")
+    expected_simulator = workload["simulator"]
+    if document["simulator"] != expected_simulator:
+        raise ReleaseGateError(f"{label}.simulator differs from campaign")
+    tools = document["tools"]
+    if not isinstance(tools, dict) or set(tools) != COMMON_REQUIRED_TOOLS[suite]:
+        raise ReleaseGateError(f"{label}.tools does not contain the exact required tool set")
+    expected_tools = {
+        "runner": workload["tool_bundles"]["runner"][candidate],
+        "generator": workload["tool_bundles"]["generator"],
+        **{name: workload["tool_bundles"]["analyzers"][name]
+           for name in COMMON_REQUIRED_TOOLS[suite] - {"runner", "generator"}},
+    }
+    if tools != expected_tools:
+        raise ReleaseGateError(f"{label}.tools differ from campaign runner/generator/analyzers")
+    inputs = document["inputs"]
+    if not isinstance(inputs, dict) or set(inputs) != {
+            "official_manifest", "generation_index", "artifact_manifest"}:
+        raise ReleaseGateError(f"{label}.inputs provenance is incomplete")
+    if inputs["official_manifest"].get("sha256") != expected_manifest:
+        raise ReleaseGateError(f"{label} official manifest differs from campaign")
+    for name in ("generation_index", "artifact_manifest"):
+        digest(inputs[name].get("sha256"), f"{label}.inputs.{name}.sha256")
+    runs = document["runs"]
+    if not isinstance(runs, list) or len(runs) != expected_count:
+        raise ReleaseGateError(f"{label}.runs cardinality mismatch")
+    names: set[str] = set()
+    observed_workloads: set[str] = set()
+    trace_index: list[dict[str, str]] = []
+    for index, run in enumerate(runs):
+        if not isinstance(run, dict):
+            raise ReleaseGateError(f"{label}.runs[{index}] must be an object")
+        name = string(run.get("name"), f"{label}.runs[{index}].name", ID_RE)
+        if name in names:
+            raise ReleaseGateError(f"{label} duplicates run {name}")
+        names.add(name)
+        workload_name = string(run.get("workload"), f"{label}.runs[{index}].workload", ID_RE)
+        observed_workloads.add(workload_name)
+        for field in ("run_manifest", "trace", "result", "execution_sidecar"):
+            entry = run.get(field)
+            if not isinstance(entry, dict):
+                raise ReleaseGateError(f"{label}.runs[{index}].{field} is absent")
+            digest(entry.get("sha256"), f"{label}.runs[{index}].{field}.sha256")
+        trace_index.append({"name": name, "workload": workload_name,
+                            "trace_sha256": run["trace"]["sha256"]})
+        needs_analyzer = workload_name in COMMON_ANALYZER_WORKLOADS
+        if needs_analyzer != ("analyzer" in run):
+            raise ReleaseGateError(f"{label}.runs[{index}] analyzer closure mismatch")
+        if needs_analyzer:
+            digest(run["analyzer"].get("sha256"), f"{label}.runs[{index}].analyzer.sha256")
+    required_workloads = {"pairwise_contention", "mixed_phase_always_ready", "phase_transition"}
+    if suite == "full50":
+        required_workloads.add("timing_pair")
+    if not required_workloads.issubset(observed_workloads):
+        raise ReleaseGateError(f"{label} lacks required analyzer workloads")
+    index_name = "full_trace_index_sha256" if suite == "full50" else \
+        "capacity_trace_index_sha256"
+    if sha256(canonical(trace_index)) != workload[index_name]:
+        raise ReleaseGateError(f"{label} ordered trace identity differs from campaign")
+    return trace_index
+
+
+def validate_functional(
+    receipt: dict[str, Any], campaign: dict[str, Any], root: Path,
+    claimed: dict[str, set[Any]], auxiliary: dict[str, tuple[Path, os.stat_result, str]],
+) -> None:
     claim = exact_keys(
         receipt.get("claim_boundary"),
         {"loss_accounting", "accepted_event_conservation", "official_common_receipt",
@@ -653,14 +865,40 @@ def validate_functional(receipt: dict[str, Any], campaign: dict[str, Any]) -> No
     for candidate in EXPECTED_CANDIDATES:
         row = exact_keys(
             results[candidate],
-            {"status", "result_receipt_sha256", "generated", "source_overrun",
+            {"status", "official_receipts", "generated", "source_overrun",
              "accepted", "delivered", "errors"},
             f"functional_loss.candidate_results.{candidate}")
-        evidence = digest(row["result_receipt_sha256"],
-                          f"functional_loss.candidate_results.{candidate}.result_receipt_sha256")
-        if evidence in result_hashes:
-            raise ReleaseGateError("functional-loss reuses candidate evidence hash")
-        result_hashes.add(evidence)
+        references = row["official_receipts"]
+        if not isinstance(references, dict) or set(references) != {
+                "full50", "capacity22", "basic_reset"}:
+            raise ReleaseGateError(f"functional-loss official receipt closure is incomplete: {candidate}")
+        suite_trace_indexes: dict[str, list[dict[str, str]]] = {}
+        for suite in ("full50", "capacity22"):
+            label = f"functional_loss.{candidate}.{suite}"
+            document = _load_auxiliary_receipt(
+                root, references[suite], label, claimed, auxiliary)
+            suite_trace_indexes[suite] = _validate_common_receipt(
+                document, candidate, suite, campaign, label)
+            result_hashes.add(references[suite]["sha256"])
+        full_identities = {
+            (row["name"], row["workload"], row["trace_sha256"])
+            for row in suite_trace_indexes["full50"]
+        }
+        capacity_identities = [
+            (row["name"], row["workload"], row["trace_sha256"])
+            for row in suite_trace_indexes["capacity22"]
+        ]
+        if len(set(capacity_identities)) != 22 or not set(capacity_identities).issubset(
+                full_identities):
+            raise ReleaseGateError(
+                f"functional-loss capacity22 is not an exact full50 subset view: {candidate}")
+        reset_label = f"functional_loss.{candidate}.basic_reset"
+        reset = _load_auxiliary_receipt(
+            root, references["basic_reset"], reset_label, claimed, auxiliary)
+        if (reset.get("schema") != "k2_basic_reset_receipt_v1" or
+                reset.get("status") != "PASS" or reset.get("candidate") != candidate or
+                reset.get("release_binding") != campaign):
+            raise ReleaseGateError(f"functional-loss basic reset receipt is invalid: {candidate}")
         values = {name: integer(row[name], f"functional_loss.{candidate}.{name}")
                   for name in ("generated", "source_overrun", "accepted", "delivered", "errors")}
         if (row["status"] != "PASS" or values["errors"] != 0 or
@@ -719,6 +957,7 @@ def validate_boundary(receipt: dict[str, Any], campaign: dict[str, Any]) -> None
 def validate_role_receipt(
     role: str, receipt: dict[str, Any], campaign: dict[str, Any], root: Path,
     claimed: dict[str, set[Any]], auxiliary: dict[str, tuple[Path, os.stat_result, str]],
+    validation_context: dict[str, Any],
 ) -> None:
     label = f"{role} receipt"
     if receipt.get("schema") != ROLE_SCHEMAS[role]:
@@ -741,11 +980,15 @@ def validate_role_receipt(
     elif role == "genus":
         validate_genus(receipt, campaign)
     elif role == "innovus":
-        validate_frequency_sweeps(receipt, campaign, root, claimed, auxiliary)
+        validation_context["selected_implementations"] = validate_frequency_sweeps(
+            receipt, campaign, root, claimed, auxiliary)
     elif role == "activity_power":
-        validate_activity_power(receipt, campaign)
+        if "selected_implementations" not in validation_context:
+            raise ReleaseGateError("activity-power precedes qualified Innovus/Fmax evidence")
+        validate_activity_power(
+            receipt, campaign, validation_context["selected_implementations"])
     elif role == "functional_loss":
-        validate_functional(receipt, campaign)
+        validate_functional(receipt, campaign, root, claimed, auxiliary)
     elif role == "boundary":
         validate_boundary(receipt, campaign)
 
@@ -868,9 +1111,11 @@ def load_and_gate(bundle_root: Path, manifest_path: Path, keyring_path: Path,
         "receipt_ids": receipt_ids, "paths": paths, "hashes": hashes, "inodes": inodes,
     }
     auxiliary: dict[str, tuple[Path, os.stat_result, str]] = {}
+    validation_context: dict[str, Any] = {}
     for role in ROLES:
         validate_role_receipt(
-            role, by_role[role][0], campaign, root, claimed, auxiliary)
+            role, by_role[role][0], campaign, root, claimed, auxiliary,
+            validation_context)
 
     expected_keyring_sha256 = digest(expected_keyring_sha256, "trusted keyring SHA256")
     keyring, keyring_data, keyring_info = read_json(keyring_path, "release keyring")
@@ -917,7 +1162,7 @@ def load_and_gate(bundle_root: Path, manifest_path: Path, keyring_path: Path,
         "manifest_sha256": sha256(manifest_data),
         "gate_source_sha256": sha256(gate_source),
         "upstream_receipt_sha256": receipt_hashes,
-        "postroute_receipt_sha256": {
+        "auxiliary_receipt_sha256": {
             label: value[2] for label, value in sorted(auxiliary.items())},
         "authentication": authentication,
         "trusted_keyring_sha256": actual_keyring_sha256,

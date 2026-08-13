@@ -13,8 +13,22 @@ candidate set `fovea_a7,a2_p6,a3_p6` and commits, the
 `tech_staged_complete_compositions` cohort, slow-setup and fast-hold Liberty/PVT,
 shared QRC, LEFs, multi-clock full-link v6 SDC, identical external load, exact
 staged-manifest/non-link boundary hashes, and frozen generator-v4
-full50/capacity22 workload hashes. A native receipt lacking that binding remains
+full50/capacity22 workload hashes. It also binds the official candidate
+source/binding manifest, runner/generator/analyzer bundles, simulator executable
+and version, and the ordered run-name/workload/trace index for both suite views.
+A native receipt lacking that binding remains
 useful at its original evidence boundary but is not a release receipt.
+
+The one shared committed top contract is literal in the campaign SDC and staged
+manifest and is repeated in the staged-manifest, Genus-v2, and every Innovus
+point receipt. Inputs are `ref_clk_i`, `sample_clk_i`, `rst_n`, and
+`source_pending_i[15:0]`. Outputs are `source_accept_o[15:0]`, `link_clk_o`,
+`link_data_o[W-1:0]`, `retire_valid_o[1:0]`, `retire_addr0_o[3:0]`,
+`retire_addr1_o[3:0]`, `drain_idle_o`, and `protocol_error_o`, with W=2 for R1
+and W=5 for both P6 candidates. `load_i`, `pending_i`, `source_ready_o`, and
+`protocol_fault_o` are forbidden final-top aliases. The gate cannot authorize a
+physical launch from a proposed or uncommitted manifest: a committed manifest
+hash and repository commit must first be present in every bound producer.
 
 The server-environment receipt must be `PROVEN`, hash both tool executables and
 all live technology inputs, and match the common provenance byte for byte. The
@@ -49,10 +63,15 @@ monotonic, and the selected period must be the first passing point adjacent to
 the last failure.
 
 Activity-power requires one common trace/window and clock period plus, for each
-candidate, unique SAIF, power-report, and scope hashes, coverage, retired-event
+candidate, unique VCD, SAIF, VCD-to-SAIF conversion, activity-window,
+post-route-netlist/SPEF, power-report, and scope hashes, coverage, retired-event
 count, total/dynamic/leakage power, and an energy/event value that exactly
-matches those inputs. Vectorless or self-asserted power is forbidden. Functional
-loss must be an official full50/capacity22 receipt with exact trace/manifests and
+matches those inputs. The power netlist must be the first passing implementation
+selected by the Innovus bracket. Vectorless or self-asserted power is forbidden.
+Functional loss must contain the existing canonical schema-5 official common
+suite receipts for full50 and the capacity22 subset view, plus basic reset. Each
+receipt is hash-loaded and checked for exact source/binding/runner/simulator,
+manifest, ordered trace identity, pair/mixed/phase/timing analyzer closure, and
 accepted/delivered/overrun conservation; workspace-diff loss remains loss-only.
 
 The boundary receipt preserves `link_clk_o` and `link_data_o`. It marks them as
