@@ -85,9 +85,45 @@ proc hold_metrics_improved {before after} {
         $after_tns > $before_tns + $epsilon)))}]
 }
 
-proc write_hold_closure {path status rows} {
+proc setup_metrics_improved {before after} {
+  lassign $before before_paths before_violations before_wns before_tns
+  lassign $after after_paths after_violations after_wns after_tns
+  set epsilon 0.000001
+  return [expr {$after_violations < $before_violations ||
+    ($after_violations == $before_violations &&
+      ($after_wns > $before_wns + $epsilon ||
+       (abs($after_wns - $before_wns) <= $epsilon &&
+        $after_tns > $before_tns + $epsilon)))}]
+}
+
+proc write_hold_closure {path phase policy status rows} {
   set handle [open $path {WRONLY CREAT EXCL}]
   puts $handle "schema=k2_w2_hold_closure_v1"
+  puts $handle "phase=$phase"
+  puts $handle "check=hold"
+  puts $handle "view=w2_hold_view"
+  puts $handle "optimizer=postRoute_hold"
+  puts $handle "allow_setup_tns_degrade=$policy"
+  puts $handle "status=$status"
+  puts $handle "max_iterations=3"
+  puts $handle "observation_count=[llength $rows]"
+  set index 0
+  foreach metrics $rows {
+    lassign $metrics path_count violation_count wns tns
+    puts $handle "observation_${index}=$path_count,$violation_count,$wns,$tns"
+    incr index
+  }
+  close $handle
+}
+
+proc write_setup_closure {path status rows} {
+  set handle [open $path {WRONLY CREAT EXCL}]
+  puts $handle "schema=k2_w2_setup_closure_v1"
+  puts $handle "phase=setup_recovery"
+  puts $handle "check=setup"
+  puts $handle "view=w2_setup_view"
+  puts $handle "optimizer=postRoute"
+  puts $handle "allow_setup_tns_degrade=NA"
   puts $handle "status=$status"
   puts $handle "max_iterations=3"
   puts $handle "observation_count=[llength $rows]"
@@ -368,10 +404,70 @@ set flow_failed [catch {
   if {[lindex [lindex $hold_closure_rows end] 1] != 0 && $hold_status eq "CLOSED"} {
     set hold_status EXHAUSTED
   }
-  write_hold_closure "$output/reports/hold_closure.machine" \
-    $hold_status $hold_closure_rows
+  write_hold_closure "$output/reports/hold_closure_pre_setup.machine" \
+    pre_setup_hold $hold_setup_degrade $hold_status $hold_closure_rows
   if {$hold_status ne "CLOSED"} {
-    error "post-route hold closure did not converge: $hold_status"
+    error "pre-setup post-route hold closure did not converge: $hold_status"
+  }
+
+  # Hold ECOs are allowed to spend setup TNS for the 5.7/6.5 profiles.  The
+  # real server runs showed that this can leave small negative setup slack even
+  # after hold is clean.  Recover setup with bounded monotonic post-route
+  # optimization, reconnect/extract every inserted cell, then perform a final
+  # hold closure with setup degradation disabled.  The final setup/hold reports
+  # below remain the authoritative signoff gate.
+  setAnalysisMode -checkType setup
+  set setup_closure_rows [list [timing_metrics w2_setup_view setup]]
+  set setup_status CLOSED
+  for {set setup_iteration 1} {$setup_iteration <= 3} {incr setup_iteration} {
+    set before [lindex $setup_closure_rows end]
+    if {[lindex $before 1] == 0} { break }
+    optDesign -postRoute
+    sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}
+    editTrim -nets [list $vdd $vss]
+    extractRC
+    set after [timing_metrics w2_setup_view setup]
+    lappend setup_closure_rows $after
+    if {![setup_metrics_improved $before $after]} {
+      set setup_status STALLED
+      break
+    }
+  }
+  if {[lindex [lindex $setup_closure_rows end] 1] != 0 && $setup_status eq "CLOSED"} {
+    set setup_status EXHAUSTED
+  }
+  write_setup_closure "$output/reports/setup_closure.machine" \
+    $setup_status $setup_closure_rows
+  if {$setup_status ne "CLOSED"} {
+    error "post-route setup recovery did not converge: $setup_status"
+  }
+
+  setOptMode -fixHoldAllowSetupTnsDegrade false
+  setAnalysisMode -checkType hold
+  set final_hold_rows [list [timing_metrics w2_hold_view hold]]
+  set final_hold_status CLOSED
+  for {set final_hold_iteration 1} {$final_hold_iteration <= 3} \
+      {incr final_hold_iteration} {
+    set before [lindex $final_hold_rows end]
+    if {[lindex $before 1] == 0} { break }
+    optDesign -postRoute -hold
+    sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}
+    editTrim -nets [list $vdd $vss]
+    extractRC
+    set after [timing_metrics w2_hold_view hold]
+    lappend final_hold_rows $after
+    if {![hold_metrics_improved $before $after]} {
+      set final_hold_status STALLED
+      break
+    }
+  }
+  if {[lindex [lindex $final_hold_rows end] 1] != 0 && $final_hold_status eq "CLOSED"} {
+    set final_hold_status EXHAUSTED
+  }
+  write_hold_closure "$output/reports/hold_closure.machine" \
+    final_hold_reclosure false $final_hold_status $final_hold_rows
+  if {$final_hold_status ne "CLOSED"} {
+    error "final post-setup hold closure did not converge: $final_hold_status"
   }
   setAnalysisMode -checkType setup
   # Preserve a resumable post-route checkpoint before activity/report parsing.

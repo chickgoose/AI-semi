@@ -67,6 +67,8 @@ ZERO_COUNT_REPORTS = {
 }
 OTHER_REPORTS = ("area.rpt", "power.rpt", "route.rpt")
 HOLD_CLOSURE_REPORT = "hold_closure.machine"
+PRE_HOLD_CLOSURE_REPORT = "hold_closure_pre_setup.machine"
+SETUP_CLOSURE_REPORT = "setup_closure.machine"
 BOUNDARY_TIMING_REPORT = "boundary_timing.machine"
 BAD_LOG = re.compile(
     r"^(?:ERROR|FATAL)\s*:|\*\*(?:ERROR|FATAL):|"
@@ -452,7 +454,9 @@ def _timing_machine_summary(path: Path, expected: str) -> dict[str, float | int 
             "wns": wns, "tns": tns}
 
 
-def _require_hold_closure(path: Path) -> None:
+def _require_timing_closure(
+    path: Path, expected_schema: str, expected_meta: dict[str, str]
+) -> tuple[int, int, float, float]:
     rows = {}
     for line in _text(path).splitlines():
         if line.count("=") != 1:
@@ -466,11 +470,15 @@ def _require_hold_closure(path: Path) -> None:
         count = int(rows.pop("observation_count"))
     except (KeyError, ValueError) as error:
         raise QualificationError(f"hold closure report count mismatch: {path}") from error
-    if rows.pop("schema", None) != "k2_w2_hold_closure_v1" or \
+    if rows.pop("schema", None) != expected_schema or \
             rows.pop("status", None) != "CLOSED" or maximum != 3 or \
-            count < 1 or count > maximum + 1 or \
-            set(rows) != {f"observation_{index}" for index in range(count)}:
+            count < 1 or count > maximum + 1:
         raise QualificationError(f"hold closure report contract mismatch: {path}")
+    for key, value in expected_meta.items():
+        if rows.pop(key, None) != value:
+            raise QualificationError(f"timing closure metadata mismatch: {path}")
+    if set(rows) != {f"observation_{index}" for index in range(count)}:
+        raise QualificationError(f"timing closure unexpected fields: {path}")
     previous = None
     for index in range(count):
         tokens = rows[f"observation_{index}"].split(",")
@@ -483,6 +491,10 @@ def _require_hold_closure(path: Path) -> None:
         if len(tokens) != 4 or paths <= 0 or violations < 0 or \
                 not math.isfinite(wns) or not math.isfinite(tns):
             raise QualificationError(f"hold closure observation invalid: {path}")
+        is_final = index == count - 1
+        if (is_final and (violations != 0 or wns < 0.0 or tns != 0.0)) or \
+                (not is_final and (violations <= 0 or wns >= 0.0 or tns >= 0.0)):
+            raise QualificationError(f"timing closure observation phase mismatch: {path}")
         if previous is not None and not (
                 violations < previous[1] or
                 (violations == previous[1] and
@@ -493,6 +505,21 @@ def _require_hold_closure(path: Path) -> None:
         previous = current
     if previous is None or previous[1] != 0 or previous[2] < 0.0 or previous[3] != 0.0:
         raise QualificationError(f"hold closure final observation is not clean: {path}")
+    return previous
+
+
+def _require_hold_closure(path: Path, phase: str, policy: str) -> tuple[int, int, float, float]:
+    return _require_timing_closure(path, "k2_w2_hold_closure_v1", {
+        "phase": phase, "check": "hold", "view": "w2_hold_view",
+        "optimizer": "postRoute_hold", "allow_setup_tns_degrade": policy,
+    })
+
+
+def _require_setup_closure(path: Path) -> tuple[int, int, float, float]:
+    return _require_timing_closure(path, "k2_w2_setup_closure_v1", {
+        "phase": "setup_recovery", "check": "setup", "view": "w2_setup_view",
+        "optimizer": "postRoute", "allow_setup_tns_degrade": "NA",
+    })
 
 
 def _require_check_design_all(path: Path) -> None:
@@ -636,7 +663,12 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         run_dir / "status" / "TECHNOLOGY_CONTRACT", top, timing
     )
     _require_activity_contract(run_dir / "status" / "ACTIVITY_POWER_CONTRACT")
-    _require_hold_closure(run_dir / "reports" / HOLD_CLOSURE_REPORT)
+    _require_hold_closure(
+        run_dir / "reports" / PRE_HOLD_CLOSURE_REPORT,
+        "pre_setup_hold", str(timing["hold_fix_allow_setup_tns_degrade"]).lower())
+    _require_setup_closure(run_dir / "reports" / SETUP_CLOSURE_REPORT)
+    final_hold_closure = _require_hold_closure(
+        run_dir / "reports" / HOLD_CLOSURE_REPORT, "final_hold_reclosure", "false")
     _require_boundary_timing(
         run_dir / "reports" / BOUNDARY_TIMING_REPORT, timing)
 
@@ -658,14 +690,23 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
     for check, value in slacks.items():
         if value < 0.0:
             raise QualificationError(f"{check} WNS is negative ({value})")
+    machine_summaries = {}
     for name in TIMING_REPORTS:
         check = EXPECTED_MACHINE_CHECK[name]
         summary = _timing_machine_summary(
             reports / name.replace(".rpt", ".machine"), check
         )
+        machine_summaries[name] = summary
         slack_key = name[:-len("_timing.rpt")]
         if abs(float(summary["wns"]) - slacks[slack_key]) > 1e-9:
             raise QualificationError(f"native timing report/machine WNS mismatch: {name}")
+    final_hold_summary = machine_summaries["hold_timing.rpt"]
+    if final_hold_closure[:2] != (
+            int(final_hold_summary["path_count"]),
+            int(final_hold_summary["violation_count"])) or \
+            abs(final_hold_closure[2] - float(final_hold_summary["wns"])) > 1e-9 or \
+            abs(final_hold_closure[3] - float(final_hold_summary["tns"])) > 1e-9:
+        raise QualificationError("final hold closure and timing summary mismatch")
     minimum_zero_reports = {"drc.rpt", "antenna.rpt", "check_timing.rpt"}
     for name, key in ZERO_COUNT_REPORTS.items():
         if name in minimum_zero_reports:

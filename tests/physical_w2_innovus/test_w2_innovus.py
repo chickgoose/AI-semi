@@ -140,6 +140,11 @@ class StaticFlowContractTests(unittest.TestCase):
             "setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade",
             "for {set hold_iteration 1} {$hold_iteration <= 3}",
             "hold_metrics_improved $before $after",
+            "for {set setup_iteration 1} {$setup_iteration <= 3}",
+            "setup_metrics_improved $before $after",
+            "setup_closure.machine",
+            "setOptMode -fixHoldAllowSetupTnsDegrade false",
+            "for {set final_hold_iteration 1} {$final_hold_iteration <= 3}",
             "post-route hold closure did not converge",
             "hold_closure.machine",
             "verifyConnectivity -type all", "verifyConnectivity -type special",
@@ -183,8 +188,10 @@ class StaticFlowContractTests(unittest.TestCase):
         trim = "editTrim -nets [list $vdd $vss]"
         pre_eco_drc = 'verify_drc -report "$output/reports/drc_pre_signal_eco.rpt"'
         signal_eco = "ecoRoute -fix_drc"
-        self.assertEqual(text.count(sroute), 2)
-        self.assertEqual(text.count(trim), 2)
+        # Initial PG, preliminary hold closure, setup recovery, and final hold
+        # reclosure each refresh PG and trim dangling stubs.
+        self.assertEqual(text.count(sroute), 4)
+        self.assertEqual(text.count(trim), 4)
         self.assertEqual(text.count(pre_eco_drc), 1)
         self.assertEqual(text.count(signal_eco), 1)
         self.assertLess(text.index("optDesign -postRoute -hold"), text.index(sroute))
@@ -212,8 +219,8 @@ class StaticFlowContractTests(unittest.TestCase):
         text = PNR.read_text(encoding="utf-8")
         setup_mode = "setAnalysisMode -checkType setup"
         hold_mode = "setAnalysisMode -checkType hold"
-        self.assertEqual(text.count(setup_mode), 3)
-        self.assertEqual(text.count(hold_mode), 2)
+        self.assertEqual(text.count(setup_mode), 4)
+        self.assertEqual(text.count(hold_mode), 3)
         report_anchor = text.index("# Innovus 23.14 defaults interactive timing queries")
         setup_start = text.index(setup_mode, report_anchor)
         hold_start = text.index(hold_mode, setup_start)
@@ -350,11 +357,31 @@ class FixtureQualificationTests(unittest.TestCase):
         (self.root / "reports/power.rpt").write_text("power report\n")
         (self.root / "reports/hold_closure.machine").write_text(
             "schema=k2_w2_hold_closure_v1\n"
+            "phase=final_hold_reclosure\ncheck=hold\nview=w2_hold_view\n"
+            "optimizer=postRoute_hold\nallow_setup_tns_degrade=false\n"
             "status=CLOSED\n"
             "max_iterations=3\n"
             "observation_count=2\n"
-            "observation_0=10,2,-0.100,-0.150\n"
-            "observation_1=10,0,0.010,0.0\n"
+            "observation_0=1,2,-0.100,-0.150\n"
+            "observation_1=1,0,0.010,0.0\n"
+        )
+        (self.root / "reports/hold_closure_pre_setup.machine").write_text(
+            "schema=k2_w2_hold_closure_v1\n"
+            "phase=pre_setup_hold\ncheck=hold\nview=w2_hold_view\n"
+            "optimizer=postRoute_hold\nallow_setup_tns_degrade=false\n"
+            "status=CLOSED\nmax_iterations=3\nobservation_count=2\n"
+            "observation_0=1,2,-0.100,-0.150\n"
+            "observation_1=1,0,0.010,0.0\n"
+        )
+        (self.root / "reports/setup_closure.machine").write_text(
+            "schema=k2_w2_setup_closure_v1\n"
+            "phase=setup_recovery\ncheck=setup\nview=w2_setup_view\n"
+            "optimizer=postRoute\nallow_setup_tns_degrade=NA\n"
+            "status=CLOSED\n"
+            "max_iterations=3\n"
+            "observation_count=2\n"
+            "observation_0=1,2,-0.100,-0.150\n"
+            "observation_1=1,0,0.010,0.0\n"
         )
         (self.root / "reports/boundary_timing.machine").write_text(
             "schema=k2_w2_boundary_timing_v1\n"
@@ -410,6 +437,11 @@ class FixtureQualificationTests(unittest.TestCase):
             rows["hold_fix_allow_setup_tns_degrade"] = timing[
                 "hold_fix_allow_setup_tns_degrade"]
             path.write_text("".join(f"{key}={value}\n" for key, value in rows.items()))
+        pre_hold = self.root / "reports/hold_closure_pre_setup.machine"
+        rows = dict(line.split("=", 1) for line in pre_hold.read_text().splitlines())
+        rows["allow_setup_tns_degrade"] = timing[
+            "hold_fix_allow_setup_tns_degrade"]
+        pre_hold.write_text("".join(f"{key}={value}\n" for key, value in rows.items()))
         return timing
 
     def test_clean_fixture_passes(self):
@@ -483,10 +515,10 @@ class FixtureQualificationTests(unittest.TestCase):
         original = path.read_text()
         for mutation in (
                 original.replace("status=CLOSED", "status=EXHAUSTED"),
-                original.replace("observation_1=10,0,0.010,0.0",
-                                 "observation_1=10,2,-0.100,-0.150"),
-                original.replace("observation_1=10,0,0.010,0.0",
-                                 "observation_1=10,1,-0.050,-0.050"),
+                original.replace("observation_1=1,0,0.010,0.0",
+                                 "observation_1=1,2,-0.100,-0.150"),
+                original.replace("observation_1=1,0,0.010,0.0",
+                                 "observation_1=1,1,-0.050,-0.050"),
                 original.replace("observation_count=2", "observation_count=3"),
         ):
             with self.subTest(mutation=mutation):
@@ -494,6 +526,51 @@ class FixtureQualificationTests(unittest.TestCase):
                 with self.assertRaises(self.module.QualificationError):
                     self.module.validate(self.root, "dut")
                 path.write_text(original)
+
+    def test_setup_closure_receipt_fails_closed(self):
+        path = self.root / "reports/setup_closure.machine"
+        original = path.read_text()
+        for mutation in (
+                original.replace("status=CLOSED", "status=EXHAUSTED"),
+                original.replace("observation_1=1,0,0.010,0.0",
+                                 "observation_1=1,2,-0.100,-0.150"),
+                original.replace("observation_1=1,0,0.010,0.0",
+                                 "observation_1=1,1,-0.050,-0.050"),
+                original.replace("observation_count=2", "observation_count=3"),
+                original.replace("k2_w2_setup_closure_v1",
+                                 "k2_w2_hold_closure_v1"),
+        ):
+            with self.subTest(mutation=mutation):
+                path.write_text(mutation)
+                with self.assertRaises(self.module.QualificationError):
+                    self.module.validate(self.root, "dut")
+                path.write_text(original)
+
+    def test_all_closure_phases_and_final_hold_crosscheck_fail_closed(self):
+        pre = self.root / "reports/hold_closure_pre_setup.machine"
+        saved = pre.read_bytes()
+        pre.unlink()
+        with self.assertRaises(self.module.QualificationError):
+            self.module.validate(self.root, "dut")
+        pre.write_bytes(saved)
+
+        hold = self.root / "reports/hold_closure.machine"
+        original = hold.read_text()
+        for mutation in (
+                original.replace("phase=final_hold_reclosure",
+                                 "phase=pre_setup_hold"),
+                original.replace("allow_setup_tns_degrade=false",
+                                 "allow_setup_tns_degrade=true"),
+                original.replace("observation_0=1,2,-0.100,-0.150",
+                                 "observation_0=1,2,0.100,0.150"),
+                original.replace("observation_1=1,0,0.010,0.0",
+                                 "observation_1=1,0,0.020,0.0"),
+        ):
+            with self.subTest(mutation=mutation):
+                hold.write_text(mutation)
+                with self.assertRaises(self.module.QualificationError):
+                    self.module.validate(self.root, "dut")
+                hold.write_text(original)
 
     def test_activity_annotation_mutations_fail_closed(self):
         path = self.root / "reports/activity_annotation.rpt"

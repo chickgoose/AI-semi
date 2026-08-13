@@ -936,7 +936,7 @@ class InnovusPlanTests(unittest.TestCase):
             f"{GENUS_PROVIDER_COMMIT}:physical/k2_w2_genus/run_genus.py",
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         self.assertEqual(hashlib.sha256(provider.stdout).hexdigest(),
-                         "e8920eecb76e8c77a0dbb3988350196fbd89b9b6a7e81c67c8ff067fcd6e0c1c")
+                         "bed40b88f17d498e8d00fdb53a40d1ffbf7a3a346c4aed0248fb8169af5e490c")
         for source, local in (
                 ("constraints/r1_multiclock_strict.sdc",
                  ROOT / "constraints/r1_multiclock.sdc"),

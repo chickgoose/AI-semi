@@ -84,9 +84,14 @@ The mapped SDC must contain one divide-by-one generated clock from
 `sample_clk_i` to the exact preserved `*w2_ep_icg_0/ECK` pin. Immediately after
 init, Innovus creates the actual divide-by-one forwarded generated clock from
 that exact ECK pin onto `link_clk_o`; that path may not be false-pathed. Hold ECO
-setup-TNS degradation is disabled for 5.0 ns and enabled for both relaxed
-profiles. The descriptor, technology contract, and boundary machine report all
-bind the selected profile SHA and policy.
+setup-TNS degradation is disabled for 5.0 ns and enabled only for the initial
+hold-repair phase of both relaxed profiles. After that phase the flow performs
+up to three monotonic setup-recovery iterations, disables setup-TNS
+degradation, and performs a final bounded hold reclosure. Phase-specific
+machine receipts bind the timing check, view, optimizer, and setup-degradation
+policy; the final hold receipt must exactly match the final hold timing summary.
+The descriptor, technology contract, and boundary machine report bind the
+selected profile SHA and initial hold policy.
 
 The canonical `constraints/r1_multiclock.sdc` and
 `constraints/p6_multiclock.sdc` bytes are materialized unchanged from Genus
