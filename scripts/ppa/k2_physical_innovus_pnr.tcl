@@ -127,15 +127,34 @@ set flow_failed [catch {
   # CoreSite result by inspecting the rows immediately afterward instead of
   # relying on an unproven floorPlan option spelling.
   floorPlan -r $aspect $util $margin $margin $margin $margin
+  set core_box [get_db current_design .core_bbox]
+  set used_sites [lsort -unique [get_db insts .base_cell.site.name]]
+  foreach used_site $used_sites {
+    if {$used_site ni [list $site CoreSiteDouble]} {
+      error "mapped instance uses unsupported placement site $used_site"
+    }
+    if {$used_site ne $site} {
+      createRow -site $used_site -area $core_box
+    }
+  }
   set row_names [dbGet top.fPlan.rows.name]
   if {[llength $row_names] == 0} {
     error "floorplan created no standard-cell rows for site $site"
   }
   foreach row_site [dbGet top.fPlan.rows.site.name -u] {
-    if {$row_site ne $site} {
-      error "floorplan row uses site $row_site instead of frozen site $site"
+    if {[lsearch -exact $used_sites $row_site] < 0} {
+      error "floorplan row uses unrequired site $row_site"
     }
   }
+
+  # The Kanghee golden omitted an IO file.  Place every canonical boundary pin
+  # deterministically with one identical rule instead of leaving terms
+  # unplaced and allowing candidate-dependent optimizer behavior.
+  set all_io [get_db ports .name]
+  if {[llength $all_io] == 0} {
+    error "canonical top has no IO ports"
+  }
+  editPin -pin $all_io -side Left -layer Metal3 -spreadType side
 
   # Connect both ordinary PG pins and tie cells before building the common ring.
   globalNetConnect $vdd -type pgpin -pin $vdd_pin -inst * -verbose
@@ -150,6 +169,11 @@ set flow_failed [catch {
     -report "$output/reports/pg_connectivity.rpt"
 
   place_opt_design
+  set unplaced_insts [get_db insts -if {.place_status == unplaced}]
+  set unplaced_ports [get_db ports -if {.place_status == unplaced}]
+  if {[llength $unplaced_insts] != 0 || [llength $unplaced_ports] != 0} {
+    error "placement left unplaced instances or ports"
+  }
   redirect -file "$output/reports/check_place_post_place.rpt" {checkPlace}
   clock_opt_design
   routeDesign
