@@ -1,6 +1,6 @@
 {
   "campaign_launch_allowed": false,
-  "contract_sha256": "afb5fb3934bf176d13603688902269a633a46001a1490d735529de360ce842ac",
+  "contract_sha256": "3ab301848eeefa15e295afe76bd02712f006a21867b2f9f47fd72655062413e2",
   "corner_policy": {
     "hold_liberty": "fast_vdd1v0_basicCells.lib",
     "hold_qrc": "gpdk045.tch",
@@ -8,7 +8,48 @@
     "setup_qrc": "gpdk045.tch",
     "shared_rc_limitation": "Only gpdk045.tch is present under qrc/qx. Setup and hold use the same typical QRC technology file; no distinct best/worst RC evidence exists, so RC-corner physical signoff remains HOLD."
   },
+  "direct_server_observation": {
+    "evidence_class": "user_confirmed_live_shell_observation",
+    "limitations": [
+      "Technology bytes are not present locally; a strict server preflight must re-read and match these SHAs.",
+      "Tool executable SHAs and runtime version probes are not supplied by this observation."
+    ],
+    "observation_date": "2026-08-13",
+    "technology_sha256": {
+      "hold_liberty": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
+      "hold_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+      "macro_lef": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2",
+      "setup_liberty": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
+      "setup_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+      "tech_lef": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70"
+    },
+    "tool_paths": {
+      "genus": "/tools/cadence/DDI231/bin/genus",
+      "innovus": "/tools/cadence/DDI231/bin/innovus",
+      "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun"
+    }
+  },
   "gates": {
+    "direct_server_observation": {
+      "evidence": {
+        "observation_date": "2026-08-13",
+        "technology_sha256": {
+          "hold_liberty": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
+          "hold_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+          "macro_lef": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2",
+          "setup_liberty": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
+          "setup_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+          "tech_lef": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70"
+        },
+        "tool_paths": {
+          "genus": "/tools/cadence/DDI231/bin/genus",
+          "innovus": "/tools/cadence/DDI231/bin/innovus",
+          "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun"
+        }
+      },
+      "reason": "external live-shell evidence; strict preflight has not locally re-read these inputs",
+      "status": "PROVEN_DIRECT_OBSERVATION"
+    },
     "golden_environment": {
       "evidence": {
         "cells": [
@@ -32,7 +73,7 @@
     },
     "live_server_inputs": {
       "evidence": null,
-      "reason": "local golden-only run: executable and technology byte evidence unavailable",
+      "reason": "direct paths/technology SHAs are bound, but local bytes and runtime probes are unavailable",
       "status": "HOLD"
     },
     "source_archives": {
@@ -56,11 +97,12 @@
   "qualification_status": "HOLD",
   "schema": "k2_w2_server_env_result_v1",
   "unresolved_environment_evidence": [
-    "Genus resolved executable path and byte SHA",
-    "Innovus launcher executable byte SHA",
-    "slow and fast Liberty byte SHAs",
+    "Genus executable byte SHA and runtime version probe",
+    "Innovus executable byte SHA and runtime version probe",
+    "Xrun executable byte SHA and runtime version probe",
+    "strict server re-read matching five observed technology files (six roles with shared QRC)",
     "fast Liberty PVT and direct posedge/negedge FF inspection",
-    "technology and macro LEF byte SHAs and direct site legality",
-    "gpdk045.tch byte SHA and direct qrc/qx directory inventory"
+    "direct technology/macro LEF site legality",
+    "direct qrc/qx directory inventory"
   ]
 }

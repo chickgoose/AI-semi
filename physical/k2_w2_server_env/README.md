@@ -2,15 +2,16 @@
 
 This preflight is an environment gate, not a PPA result.  It consumes the
 immutable raw and buffered Ganghee archives directly, then (when run on the
-server) requires byte-pinned, non-symlink Genus/Innovus executables and GPDK045
+server) requires byte-pinned, non-symlink Genus/Innovus/Xrun executables and GPDK045
 technology inputs.  It writes canonical JSON before returning nonzero on FAIL
 or HOLD.
 
-The committed contract records the evidence currently available locally.
-Tool executable, Liberty, LEF, QRC hashes and the fast Liberty PVT are `null`
-because those bytes are not in the preserved golden archives.  They must be
-filled from an independently preserved server inventory before a campaign can
-be launched; first-use hashes are not trusted.  The committed local result is
+The contract binds direct live-shell observations dated 2026-08-13: exact SHAs
+for slow/fast Liberty, technology/macro LEF and the shared QRC file, plus exact
+Genus/Innovus/Xrun paths.  These are external direct observations, not a claim
+that the bytes were locally re-read. Tool executable SHAs and runtime probes
+remain `null`; a strict server preflight must fill those pins, re-read every
+technology file and verify all semantics. The committed local result is
 therefore intentionally HOLD.
 
 The corner contract is slow Liberty for setup and fast Liberty for hold.  Both
@@ -26,14 +27,15 @@ python3 physical/k2_w2_server_env/preflight.py \
   --output physical/k2_w2_server_env/canonical_campaign_env.json
 ```
 
-Future strict server invocation supplies all three live inputs and omits
+Future strict server invocation supplies all four live inputs and omits
 `--allow-hold`:
 
 ```sh
 python3 physical/k2_w2_server_env/preflight.py \
   --pdk-root /home/aiasic26911/gsclib045_all_v4.7/gsclib045 \
-  --genus /absolute/non-symlink/genus \
-  --innovus /absolute/non-symlink/innovus \
+  --genus /tools/cadence/DDI231/bin/genus \
+  --innovus /tools/cadence/DDI231/bin/innovus \
+  --xrun /tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun \
   --output /attempt/canonical-server-environment.json
 ```
 
