@@ -7,6 +7,35 @@
     "fovea",
     "cluster2"
   ],
+  "timing_cohort": {
+    "default_profile_id": "5ns",
+    "profiles": {
+      "1p5ns": {
+        "period_ns": "1.5",
+        "waveform_ns": ["0.0", "0.75"]
+      },
+      "1p8ns": {
+        "period_ns": "1.8",
+        "waveform_ns": ["0.0", "0.9"]
+      },
+      "2p2ns": {
+        "period_ns": "2.2",
+        "waveform_ns": ["0.0", "1.1"]
+      },
+      "3p5ns": {
+        "period_ns": "3.5",
+        "waveform_ns": ["0.0", "1.75"]
+      },
+      "4ns": {
+        "period_ns": "4.0",
+        "waveform_ns": ["0.0", "2.0"]
+      },
+      "5ns": {
+        "period_ns": "5.0",
+        "waveform_ns": ["0.0", "2.5"]
+      }
+    }
+  },
   "source_archive": {
     "default_path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
     "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
