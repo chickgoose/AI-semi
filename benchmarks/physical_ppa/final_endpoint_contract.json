@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "contract_id": "aer-final-endpoint-v1",
+  "scope_root": "dut",
+  "forbidden_port_aliases": [
+    "load_i",
+    "pending_i",
+    "source_ready_o",
+    "protocol_fault_o"
+  ],
+  "inputs": [
+    {"name": "ref_clk_i", "width": 1},
+    {"name": "sample_clk_i", "width": 1},
+    {"name": "rst_n", "width": 1},
+    {"name": "source_pending_i", "width": 16}
+  ],
+  "outputs_common": [
+    {"name": "source_accept_o", "width": 16},
+    {"name": "link_clk_o", "width": 1},
+    {"name": "retire_valid_o", "width": 2},
+    {"name": "retire_addr0_o", "width": 4},
+    {"name": "retire_addr1_o", "width": 4},
+    {"name": "drain_idle_o", "width": 1},
+    {"name": "protocol_error_o", "width": 1}
+  ],
+  "candidates": [
+    {
+      "id": "fovea_a7",
+      "top": "fovea_a7_final_endpoint",
+      "link_data_width": 2,
+      "commit_sha": "e9f27e6aed302491011a5deb803a7b42a0c712b3"
+    },
+    {
+      "id": "a2_p6",
+      "top": "a2_p6_final_endpoint",
+      "link_data_width": 5,
+      "commit_sha": "e1d5598f1aa53dfadbdad47cce07afa51caac32c"
+    },
+    {
+      "id": "a3_p6",
+      "top": "a3_p6_final_endpoint",
+      "link_data_width": 5,
+      "commit_sha": "599f24c948b06d2cf8ebbf112542b7b25fba3742"
+    }
+  ]
+}

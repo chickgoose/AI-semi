@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/aer/final-activity-power-evidence-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "evidence_class", "campaign_id", "contract", "tool_manifest", "pdk_manifest", "common", "candidates"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "evidence_class": {"enum": ["measured_server", "TEST_ONLY_NOT_SERVER_EVIDENCE"]},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "contract": {"$ref": "#/$defs/artifact"},
+    "tool_manifest": {"$ref": "#/$defs/artifact"},
+    "pdk_manifest": {"$ref": "#/$defs/artifact"},
+    "common": {"$ref": "#/$defs/common"},
+    "candidates": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "prefixItems": [
+        {"allOf": [{"$ref": "#/$defs/candidate"}, {"properties": {"id": {"const": "fovea_a7"}, "top": {"const": "fovea_a7_final_endpoint"}, "commit_sha": {"const": "e9f27e6aed302491011a5deb803a7b42a0c712b3"}}}]},
+        {"allOf": [{"$ref": "#/$defs/candidate"}, {"properties": {"id": {"const": "a2_p6"}, "top": {"const": "a2_p6_final_endpoint"}, "commit_sha": {"const": "e1d5598f1aa53dfadbdad47cce07afa51caac32c"}}}]},
+        {"allOf": [{"$ref": "#/$defs/candidate"}, {"properties": {"id": {"const": "a3_p6"}, "top": {"const": "a3_p6_final_endpoint"}, "commit_sha": {"const": "599f24c948b06d2cf8ebbf112542b7b25fba3742"}}}]}
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256"],
+      "properties": {"path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"}, "sha256": {"$ref": "#/$defs/sha"}}
+    },
+    "common": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workload_manifest", "trace", "test_id", "seed", "activity_format", "scope_root", "scope_policy", "window_start_cycle", "window_end_cycle_exclusive", "measurement_cycles", "clock_period_ns"],
+      "properties": {
+        "workload_manifest": {"$ref": "#/$defs/artifact"}, "trace": {"$ref": "#/$defs/artifact"},
+        "test_id": {"type": "string", "minLength": 1}, "seed": {"type": "integer"},
+        "activity_format": {"enum": ["vcd", "saif"]}, "scope_root": {"const": "dut"},
+        "scope_policy": {"$ref": "#/$defs/artifact"}, "window_start_cycle": {"type": "integer", "minimum": 0},
+        "window_end_cycle_exclusive": {"type": "integer", "minimum": 1}, "measurement_cycles": {"type": "integer", "minimum": 1},
+        "clock_period_ns": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "commit_sha", "top", "source_closure_sha256", "bundle", "source_inventory", "mapped_netlist", "postroute_netlist", "sdf", "spef", "run_manifest", "simulator_log", "waveform", "scope_manifest", "coverage_report", "power_binding", "power_script", "power_log", "power_report", "retired_events", "event_result"],
+      "properties": {
+        "id": {"enum": ["fovea_a7", "a2_p6", "a3_p6"]}, "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "top": {"enum": ["fovea_a7_final_endpoint", "a2_p6_final_endpoint", "a3_p6_final_endpoint"]},
+        "source_closure_sha256": {"$ref": "#/$defs/sha"},
+        "bundle": {"$ref": "#/$defs/artifact"}, "source_inventory": {"$ref": "#/$defs/artifact"},
+        "mapped_netlist": {"$ref": "#/$defs/artifact"}, "postroute_netlist": {"$ref": "#/$defs/artifact"},
+        "sdf": {"$ref": "#/$defs/artifact"}, "spef": {"$ref": "#/$defs/artifact"}, "run_manifest": {"$ref": "#/$defs/artifact"},
+        "simulator_log": {"$ref": "#/$defs/artifact"}, "waveform": {"$ref": "#/$defs/artifact"}, "scope_manifest": {"$ref": "#/$defs/artifact"},
+        "coverage_report": {"$ref": "#/$defs/artifact"}, "power_binding": {"$ref": "#/$defs/artifact"}, "power_script": {"$ref": "#/$defs/artifact"}, "power_log": {"$ref": "#/$defs/artifact"},
+        "power_report": {"$ref": "#/$defs/artifact"}, "retired_events": {"$ref": "#/$defs/artifact"}, "event_result": {"$ref": "#/$defs/artifact"}
+      }
+    }
+  }
+}

@@ -55,6 +55,18 @@ required=(
   benchmarks/physical_ppa/ganghee_pnr_golden_20260813.lock.json
   benchmarks/physical_ppa/parse_ganghee_pnr_archive.py
   benchmarks/physical_ppa/tests/test_parse_ganghee_pnr_archive.py
+  benchmarks/physical_ppa/final_endpoint_contract.json
+  benchmarks/physical_ppa/final_activity_power_plan.json
+  benchmarks/physical_ppa/final_activity_power_evidence.schema.json
+  benchmarks/physical_ppa/final_activity_power_comparison.schema.json
+  benchmarks/physical_ppa/produce_final_activity_power.py
+  benchmarks/physical_ppa/tests/test_produce_final_activity_power.py
+  benchmarks/physical_ppa/final_activity_power/techmap_manifest.json
+  benchmarks/physical_ppa/final_activity_power/genus_registry.json
+  benchmarks/physical_ppa/final_activity_power/genus_common.sdc
+  benchmarks/physical_ppa/final_activity_power/innovus_registry.json
+  benchmarks/physical_ppa/final_activity_power/campaign.json
+  benchmarks/physical_ppa/qualify_final_activity_power.py
   benchmarks/physical_ppa/a1_candidate_ppa_registry.json
   benchmarks/physical_ppa/full_link_qualification.schema.json
   benchmarks/physical_ppa/approved_execution_registry.json

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "producer_id": "aer-final-activity-power-v1",
+  "comparison_id": "final-fovea-a7-a2-p6-a3-p6",
+  "contract": {
+    "path": "benchmarks/physical_ppa/final_endpoint_contract.json",
+    "sha256": "79d44a39f19ce29ac7437807f94965d70b239030cde2605e46384e212cbf8c43"
+  },
+  "required_candidates": ["fovea_a7", "a2_p6", "a3_p6"],
+  "candidate_profiles": [
+    {
+      "id": "fovea_a7",
+      "top": "fovea_a7_final_endpoint",
+      "commit_sha": "e9f27e6aed302491011a5deb803a7b42a0c712b3",
+      "source_closure_sha256": "006690e114422eef922c7feada518dd25f6f2fb6180bdae42548374225348a6d",
+      "link_data_width": 2
+    },
+    {
+      "id": "a2_p6",
+      "top": "a2_p6_final_endpoint",
+      "commit_sha": "e1d5598f1aa53dfadbdad47cce07afa51caac32c",
+      "source_closure_sha256": "27a19e2cf43b9ac7c5f62a8d050ce093c57d65da29ad8ae03005977e597d6412",
+      "link_data_width": 5
+    },
+    {
+      "id": "a3_p6",
+      "top": "a3_p6_final_endpoint",
+      "commit_sha": "599f24c948b06d2cf8ebbf112542b7b25fba3742",
+      "source_closure_sha256": "3094f56c4bcd9178edf04da8ee8622edac502ec87f8c63246b14c43d7ed5b900",
+      "link_data_width": 5
+    }
+  ],
+  "common_policy": {
+    "implementation_stage": "post_route",
+    "power_mode": "activity_annotated",
+    "scope_root": "dut",
+    "scope_policy_id": "postroute-all-eligible-state-and-comb-v1",
+    "minimum_annotation_percent": 95.0,
+    "required_annotation_percent": 100.0,
+    "event_denominator": "retired_logical_events_in_exact_window",
+    "required_metrics": [
+      "dynamic_power_mw",
+      "leakage_power_mw",
+      "total_power_mw",
+      "energy_pj_per_retired_event"
+    ]
+  },
+  "consumers": [
+    {"name": "techmap_manifest", "path": "benchmarks/physical_ppa/final_activity_power/techmap_manifest.json", "sha256": "e5b0b6a5885c8d0a71c48a883ee2c80bb4b0ef66d666f36a41b62fa6d0d25eaf"},
+    {"name": "genus_registry", "path": "benchmarks/physical_ppa/final_activity_power/genus_registry.json", "sha256": "ec057757279078453b711f50da43cf29e75f6eb65b4642116070fd60ec0bf53e"},
+    {"name": "genus_sdc", "path": "benchmarks/physical_ppa/final_activity_power/genus_common.sdc", "sha256": "2d1e0e24a8ebb32dcee4a3b725b9768a707aff582cea1081a1428719f5675f2c"},
+    {"name": "innovus_registry", "path": "benchmarks/physical_ppa/final_activity_power/innovus_registry.json", "sha256": "e9b135041a45732f00518cf9df674bfaf5fb76f222bcb06509b9af2812dbc54a"},
+    {"name": "campaign", "path": "benchmarks/physical_ppa/final_activity_power/campaign.json", "sha256": "670b2252e59826083e22c15ca957c76da8d340a126559e9889ed9cd9d7883b40"},
+    {"name": "qualifier", "path": "benchmarks/physical_ppa/qualify_final_activity_power.py", "sha256": "61a693306fa848c2dfc46f8ecb4a0554472be1b5508a6f6234b335190e18244d"}
+  ],
+  "launch_authorized": false,
+  "current_status": "HOLD_NO_REAL_SERVER_ARTIFACTS"
+}

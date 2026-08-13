@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "contract": {
+    "path": "benchmarks/physical_ppa/final_endpoint_contract.json",
+    "sha256": "79d44a39f19ce29ac7437807f94965d70b239030cde2605e46384e212cbf8c43"
+  },
+  "contract_id": "aer-final-endpoint-v1",
+  "scope_root": "dut",
+  "input_signature": "ref_clk_i,sample_clk_i,rst_n,source_pending_i[15:0]",
+  "output_signature_r1": "source_accept_o[15:0],link_clk_o,link_data_o[1:0],retire_valid_o[1:0],retire_addr0_o[3:0],retire_addr1_o[3:0],drain_idle_o,protocol_error_o",
+  "output_signature_p6": "source_accept_o[15:0],link_clk_o,link_data_o[4:0],retire_valid_o[1:0],retire_addr0_o[3:0],retire_addr1_o[3:0],drain_idle_o,protocol_error_o",
+  "forbidden_port_aliases": [
+    "load_i",
+    "pending_i",
+    "source_ready_o",
+    "protocol_fault_o"
+  ],
+  "launch_authorized": false,
+  "status": "HOLD_NO_REAL_SERVER_ARTIFACTS",
+  "consumer": "innovus_registry"
+}

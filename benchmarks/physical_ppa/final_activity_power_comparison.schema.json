@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/aer/final-activity-power-comparison-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "producer_id", "comparison_id", "plan_sha256", "contract_sha256", "status", "evidence_class", "evidence_manifest_sha256", "common_binding_sha256", "rows", "comparison_ready", "candidate_go", "reason"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "producer_id": {"const": "aer-final-activity-power-v1"},
+    "comparison_id": {"const": "final-fovea-a7-a2-p6-a3-p6"},
+    "plan_sha256": {"$ref": "#/$defs/sha"},
+    "contract_sha256": {"const": "79d44a39f19ce29ac7437807f94965d70b239030cde2605e46384e212cbf8c43"},
+    "status": {"enum": ["HOLD_NO_REAL_SERVER_ARTIFACTS", "HOLD_UNAUTHENTICATED_SERVER_EVIDENCE", "TEST_ONLY_COMPLETE", "READY_FOR_W2_EVALUATION"]},
+    "evidence_class": {"type": ["string", "null"], "enum": [null, "TEST_ONLY_NOT_SERVER_EVIDENCE", "measured_server"]},
+    "evidence_manifest_sha256": {"anyOf": [{"$ref": "#/$defs/sha"}, {"type": "null"}]},
+    "common_binding_sha256": {"anyOf": [{"$ref": "#/$defs/sha"}, {"type": "null"}]},
+    "rows": {"type": "array", "maxItems": 3, "prefixItems": [
+      {"allOf": [{"$ref": "#/$defs/row"}, {"properties": {"candidate_id": {"const": "fovea_a7"}, "top": {"const": "fovea_a7_final_endpoint"}, "commit_sha": {"const": "e9f27e6aed302491011a5deb803a7b42a0c712b3"}}}]},
+      {"allOf": [{"$ref": "#/$defs/row"}, {"properties": {"candidate_id": {"const": "a2_p6"}, "top": {"const": "a2_p6_final_endpoint"}, "commit_sha": {"const": "e1d5598f1aa53dfadbdad47cce07afa51caac32c"}}}]},
+      {"allOf": [{"$ref": "#/$defs/row"}, {"properties": {"candidate_id": {"const": "a3_p6"}, "top": {"const": "a3_p6_final_endpoint"}, "commit_sha": {"const": "599f24c948b06d2cf8ebbf112542b7b25fba3742"}}}]}
+    ], "items": false},
+    "comparison_ready": {"type": "boolean"},
+    "candidate_go": {"const": false},
+    "reason": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"enum": ["HOLD_NO_REAL_SERVER_ARTIFACTS", "HOLD_UNAUTHENTICATED_SERVER_EVIDENCE"]}}}, "then": {"properties": {"rows": {"maxItems": 0}, "comparison_ready": {"const": false}}}},
+    {"if": {"properties": {"status": {"enum": ["TEST_ONLY_COMPLETE", "READY_FOR_W2_EVALUATION"]}}}, "then": {"properties": {"rows": {"minItems": 3, "maxItems": 3}, "comparison_ready": {"const": true}}}},
+    {"if": {"properties": {"status": {"const": "TEST_ONLY_COMPLETE"}}}, "then": {"properties": {"evidence_class": {"const": "TEST_ONLY_NOT_SERVER_EVIDENCE"}}}},
+    {"if": {"properties": {"status": {"const": "READY_FOR_W2_EVALUATION"}}}, "then": {"properties": {"evidence_class": {"const": "measured_server"}}}}
+  ],
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "row": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_id", "commit_sha", "top", "activity_format", "waveform_sha256", "postroute_netlist_sha256", "sdf_sha256", "spef_sha256", "scope_manifest_sha256", "annotation_coverage_percent", "retired_event_count", "dynamic_power_mw", "leakage_power_mw", "total_power_mw", "energy_pj_per_retired_event", "provenance_sha256"],
+      "properties": {
+        "candidate_id": {"enum": ["fovea_a7", "a2_p6", "a3_p6"]},
+        "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "top": {"enum": ["fovea_a7_final_endpoint", "a2_p6_final_endpoint", "a3_p6_final_endpoint"]},
+        "activity_format": {"enum": ["vcd", "saif"]},
+        "waveform_sha256": {"$ref": "#/$defs/sha"},
+        "postroute_netlist_sha256": {"$ref": "#/$defs/sha"},
+        "sdf_sha256": {"$ref": "#/$defs/sha"},
+        "spef_sha256": {"$ref": "#/$defs/sha"},
+        "scope_manifest_sha256": {"$ref": "#/$defs/sha"},
+        "annotation_coverage_percent": {"const": 100.0},
+        "retired_event_count": {"type": "integer", "minimum": 1},
+        "dynamic_power_mw": {"type": "number", "minimum": 0},
+        "leakage_power_mw": {"type": "number", "minimum": 0},
+        "total_power_mw": {"type": "number", "exclusiveMinimum": 0},
+        "energy_pj_per_retired_event": {"type": "number", "exclusiveMinimum": 0},
+        "provenance_sha256": {"$ref": "#/$defs/sha"}
+      }
+    }
+  }
+}
