@@ -28,6 +28,30 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def load_archive(archive: Path) -> dict[str, bytes]:
+    files = {}
+    with tarfile.open(archive, "r:gz") as stream:
+        for member in stream.getmembers():
+            require(not member.name.startswith("/") and
+                    ".." not in Path(member.name).parts,
+                    f"unsafe archive member: {member.name}")
+            require(member.isfile() or member.isdir(),
+                    f"non-regular archive member: {member.name}")
+            if not member.isfile():
+                continue
+            require(member.name not in files,
+                    f"duplicate archive member: {member.name}")
+            extracted = stream.extractfile(member)
+            require(extracted is not None,
+                    f"archive member unreadable: {member.name}")
+            files[member.name] = extracted.read()
+    return files
+
+
 def parse_metrics(log: str) -> list[dict[str, str]]:
     rows = []
     for line in log.splitlines():
@@ -39,12 +63,13 @@ def parse_metrics(log: str) -> list[dict[str, str]]:
     return rows
 
 
-def verify_ledger(root: Path, registry: dict) -> None:
-    ledger_path = root / registry["ledger"]["path"]
+def verify_ledger(files: dict[str, bytes], registry: dict) -> None:
     entries = []
     seen = set()
     prefix = registry["ledger"]["canonical_path_prefix"]
-    for line in ledger_path.read_text().splitlines():
+    ledger_name = registry["ledger"]["path"]
+    require(ledger_name in files, "ledger missing from immutable archive")
+    for line in files[ledger_name].decode().splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  (/.+)", line)
         require(match is not None, f"malformed ledger line: {line!r}")
         expected, canonical = match.groups()
@@ -53,20 +78,19 @@ def verify_ledger(root: Path, registry: dict) -> None:
         relative = canonical[len(prefix):]
         require(relative and relative not in seen, f"duplicate ledger member: {relative}")
         seen.add(relative)
-        path = root / relative
-        require(path.is_file() and not path.is_symlink(),
-                f"ledger member missing or symlinked: {relative}")
-        require(path.resolve().is_relative_to(root.resolve()),
-                f"ledger member escaped relocated root: {relative}")
-        require(sha256(path) == expected, f"ledger SHA mismatch: {relative}")
+        require(relative in files, f"ledger member missing: {relative}")
+        require(sha256_bytes(files[relative]) == expected,
+                f"ledger SHA mismatch: {relative}")
         entries.append(relative)
     require(len(entries) == registry["ledger"]["entries"] == 338,
             f"ledger closure mismatch: {len(entries)}")
 
 
-def verify_candidate(root: Path, registry: dict, candidate: str) -> None:
+def verify_candidate(files: dict[str, bytes], registry: dict, candidate: str) -> None:
     expected = registry["full50"][candidate]
-    log = (root / f"{candidate}-run.log").read_text()
+    log_name = f"{candidate}-run.log"
+    require(log_name in files, f"{candidate} run log missing from archive")
+    log = files[log_name].decode()
     require(len(re.findall(rf"^RUN_PASS candidate={candidate} ", log, re.MULTILINE)) ==
             expected["run_pass"] == 50, f"{candidate} run-pass count changed")
     require("AER_RESET_DRAIN_PASS generated=16 accepted=16 delivered=16" in log,
@@ -90,8 +114,9 @@ def verify_candidate(root: Path, registry: dict, candidate: str) -> None:
             f"{candidate} loss conservation failed")
     require(observed["accepted"] == observed["delivered"],
             f"{candidate} accepted/delivered conservation failed")
-    status = root / "results" / candidate / "pairwise-cross-map.status"
-    require(status.read_text().strip() == "0", f"{candidate} pairwise status changed")
+    status_name = f"results/{candidate}/pairwise-cross-map.status"
+    require(files[status_name].decode().strip() == "0",
+            f"{candidate} pairwise status changed")
 
 
 def main() -> None:
@@ -112,26 +137,17 @@ def main() -> None:
     require("eval-driver-final.log" not in registry["pinned_files"],
             "stale outer log must never be pinned")
 
-    evidence_root = Path(os.environ.get(
-        "P6_FUNCTIONAL_LOSS_ROOT", registry["local_relocated_root"]))
     archive = Path(os.environ.get(
         "P6_FUNCTIONAL_LOSS_ARCHIVE", registry["archive"]["local_relocated_path"]))
-    require(evidence_root.is_dir(), f"functional evidence root missing: {evidence_root}")
     require(archive.is_file(), f"functional evidence archive missing: {archive}")
     require(sha256(archive) == registry["archive"]["sha256"],
             "functional evidence archive SHA mismatch")
-    with tarfile.open(archive, "r:gz") as stream:
-        for member in stream.getmembers():
-            require(not member.name.startswith("/") and ".." not in Path(member.name).parts,
-                    f"unsafe archive member: {member.name}")
-            require(member.isfile() or member.isdir(),
-                    f"non-regular archive member: {member.name}")
+    files = load_archive(archive)
 
     for relative, expected in registry["pinned_files"].items():
-        path = evidence_root / relative
-        require(path.is_file() and sha256(path) == expected,
+        require(relative in files and sha256_bytes(files[relative]) == expected,
                 f"functional receipt pin mismatch: {relative}")
-    provenance = (evidence_root / "provenance.txt").read_text()
+    provenance = files["provenance.txt"].decode()
     for token in (
         f"snapshot_head={registry['provenance']['snapshot_head']}",
         "binding_reset_quiet_arming_patch=workspace-diff",
@@ -140,9 +156,9 @@ def main() -> None:
     ):
         require(token in provenance, f"provenance token missing: {token}")
 
-    verify_ledger(evidence_root, registry)
-    verify_candidate(evidence_root, registry, "fovea")
-    verify_candidate(evidence_root, registry, "cluster2")
+    verify_ledger(files, registry)
+    verify_candidate(files, registry, "fovea")
+    verify_candidate(files, registry, "cluster2")
     print("P6_FUNCTIONAL_LOSS_EVIDENCE_PASS archive_sha=PASS ledger=338/338 "
           "fovea=50/50 cluster2=50/50 scope=LOSS_ONLY receipt=NON_OFFICIAL")
 

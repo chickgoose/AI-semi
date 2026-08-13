@@ -8,6 +8,5 @@ P6_GANGHEE_BUFFERED_GOLDEN_ROOT=${P6_GANGHEE_BUFFERED_GOLDEN_ROOT:-/tmp/ganghee-
 P6_GANGHEE_BUFFERED_GOLDEN_ARCHIVE=${P6_GANGHEE_BUFFERED_GOLDEN_ARCHIVE:-/tmp/ganghee-pnr-golden-20260813.tar.gz} \
   python3 -B "$repo_root/tests/p6_multiclock_sdc/test_constraints.py"
 
-P6_FUNCTIONAL_LOSS_ROOT=${P6_FUNCTIONAL_LOSS_ROOT:-/tmp/eval-fovea-cluster2.yZr1kmYL} \
 P6_FUNCTIONAL_LOSS_ARCHIVE=${P6_FUNCTIONAL_LOSS_ARCHIVE:-/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz} \
   python3 -B "$repo_root/tests/p6_multiclock_sdc/test_functional_loss_evidence.py"
