@@ -688,8 +688,21 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
                      not explicit_high and not explicit_low)
     if not (explicit_ok or positional_ok):
         raise PlanError("mapped SDC minimum pulse-width value mismatch")
+    uncertainty_rows = command_rows(text, "set_clock_uncertainty")
+    uncertainty_expected = Decimal(timing_environment["W2_CLOCK_UNCERTAINTY_NS"])
+    uncertainty_values = [
+        decimal_option(row, "setup") or decimal_option(row, "hold") or
+        decimal_argument(row, "set_clock_uncertainty")
+        for row in uncertainty_rows]
+    flagged_uncertainty = any(decimal_option(row, "setup") is not None
+                              for row in uncertainty_rows)
+    flagged_uncertainty_hold = any(decimal_option(row, "hold") is not None
+                                   for row in uncertainty_rows)
+    if (not uncertainty_rows or any(value != uncertainty_expected
+                                    for value in uncertainty_values) or
+            flagged_uncertainty != flagged_uncertainty_hold):
+        raise PlanError("mapped SDC set_clock_uncertainty value mismatch")
     for command, environment_key in (
-            ("set_clock_uncertainty", "W2_CLOCK_UNCERTAINTY_NS"),
             ("set_input_transition", "W2_INPUT_TRANSITION_NS"),
             ("set_load", "W2_OUTPUT_LOAD_PF")):
         rows = command_rows(text, command)

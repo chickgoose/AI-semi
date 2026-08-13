@@ -673,6 +673,10 @@ class InnovusPlanTests(unittest.TestCase):
                 "set_min_pulse_width -high 0.50 [all_clocks]\n"
                 "set_min_pulse_width -low 0.50 [all_clocks]",
                 "set_min_pulse_width 0.5 [all_clocks]")
+            text = text.replace(
+                "set_clock_uncertainty 0.25 [all_clocks]",
+                "set_clock_uncertainty -setup 0.25 [all_clocks]\n"
+                "set_clock_uncertainty -hold 0.25 [all_clocks]")
             sdc.write_text(text)
             contract = self.registry["cohorts"][
                 "tech_staged_complete_compositions"]["designs"][run["design"]]
