@@ -69,6 +69,7 @@ PATH_CHECK = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 COUNT_LINE = re.compile(r"^([a-z][a-z0-9_]*)=([0-9]+)$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 NATIVE_COUNT_PATTERNS = {
     "placement_violations": (
         r"(?:total\s+(?:number\s+of\s+)?)?(?:place(?:ment)?)[^\n:]*"
@@ -147,6 +148,48 @@ def _require_nonempty_directory(path: Path) -> None:
         raise QualificationError(f"artifact directory is invalid: {path}")
     if not any(path.iterdir()):
         raise QualificationError(f"artifact directory is empty: {path}")
+
+
+def _require_technology_contract(path: Path, top: str) -> dict[str, str]:
+    rows: dict[str, str] = {}
+    for line in _text(path).splitlines():
+        if line.count("=") != 1:
+            raise QualificationError("technology contract has a malformed row")
+        key, value = line.split("=", 1)
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", key) or not value or key in rows:
+            raise QualificationError("technology contract has an invalid/duplicate field")
+        rows[key] = value
+    expected = {
+        "schema": "k2_w2_innovus_technology_contract_v1",
+        "top": top,
+        "setup_library_role": "slow_max_setup",
+        "setup_library_basename": "slow_vdd1v0_basicCells.lib",
+        "hold_library_role": "fast_min_hold",
+        "hold_library_basename": "fast_vdd1v0_basicCells.lib",
+        "rc_model": "shared_typical_gpdk045",
+        "qrc_source_count": "1",
+        "setup_rc_corner": "w2_rc_shared_typical",
+        "hold_rc_corner": "w2_rc_shared_typical",
+        "qrc_basename": "gpdk045.tch",
+    }
+    variable = {
+        "cohort", "design", "setup_library_sha256",
+        "hold_library_sha256", "qrc_sha256",
+    }
+    if set(rows) != set(expected) | variable:
+        raise QualificationError("technology contract field set mismatch")
+    if any(rows.get(key) != value for key, value in expected.items()):
+        raise QualificationError("technology contract role/corner mismatch")
+    if rows["cohort"] not in {
+        "complete_endpoint_wrappers", "raw_fovea_cluster2_diagnostic",
+    } or not rows["design"]:
+        raise QualificationError("technology contract cohort/design mismatch")
+    for key in ("setup_library_sha256", "hold_library_sha256", "qrc_sha256"):
+        if not SHA256.fullmatch(rows[key]):
+            raise QualificationError(f"technology contract {key} is malformed")
+    if rows["setup_library_sha256"] == rows["hold_library_sha256"]:
+        raise QualificationError("setup and hold Liberty hashes must differ")
+    return rows
 
 
 def _timing_observation(path: Path, expected_check: str | None = None) -> tuple[str, float]:
@@ -261,6 +304,9 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         raise QualificationError("Innovus failure sentinel is present")
     if (run_dir / "status" / "FLOW_CLEAN").exists():
         raise QualificationError("FLOW_CLEAN already exists")
+    _require_technology_contract(
+        run_dir / "status" / "TECHNOLOGY_CONTRACT", top
+    )
 
     reports = run_dir / "reports"
     slacks = validate_minimum_signoff(

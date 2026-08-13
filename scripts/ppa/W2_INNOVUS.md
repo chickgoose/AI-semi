@@ -5,17 +5,26 @@ candidate. It does not contain candidate RTL, candidate-specific floorplanning,
 or a server result.
 
 `run_k2_physical_innovus.sh` requires immutable netlist, SDC, IO assignment,
-technology/cell LEF, distinct setup/hold Liberty files, and distinct setup/hold
-QRC files. The same site, utilization, aspect ratio, margins, PG nets/pins,
-ring layers and dimensions must be supplied for every candidate. Candidate
-specific values are not defaults: every physical policy input is mandatory.
+technology/cell LEF, the server's `slow_vdd1v0_basicCells.lib` for setup, and
+`fast_vdd1v0_basicCells.lib` for hold. GPDK045 provides only one characterized
+`gpdk045.tch`; its exact same path is therefore mandatory for both QRC inputs.
+The two Liberty-based delay corners share one `w2_rc_shared_typical` RC corner.
+An arbitrary second QRC path is rejected rather than treated as a fabricated
+hold characterization. The same site, utilization, aspect ratio, margins, PG
+nets/pins, ring layers and dimensions must be supplied for every candidate.
+Candidate-specific values are not defaults: every physical policy input is
+mandatory.
 
-The flow creates separate max/setup and min/hold MMMC views, enables OCV with
-CPPR, names the standard-cell site explicitly, rejects missing or mismatched
-rows, constructs and checks the PG network, performs placement, CTS, detailed
-routing and extraction, and saves both an Innovus database and post-route
-netlist. It reports setup, hold, reset recovery, reset removal, placement,
-unconstrained paths, signal/PG connectivity, DRC, antenna and route status.
+The flow creates separate slow/max/setup and fast/min/hold MMMC views over that
+shared typical RC model, enables OCV with CPPR, names the standard-cell site
+explicitly, rejects missing or mismatched rows, constructs and checks the PG
+network, performs placement, CTS, detailed routing and extraction, and saves
+both an Innovus database and post-route netlist. It reports setup, hold, reset
+recovery, reset removal, placement, unconstrained paths, signal/PG
+connectivity, DRC, antenna and route status. Before Innovus starts, the launcher
+records the Liberty roles and SHA-256 identities plus the one shared QRC
+SHA-256 in `status/TECHNOLOGY_CONTRACT`; clean qualification requires this
+receipt and its explicit `shared_typical_gpdk045` accounting.
 
 Innovus writes only `status/COMMANDS_COMPLETE`. That marker is not physical
 qualification. `verify_k2_physical_innovus.py` independently rejects negative

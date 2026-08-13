@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -54,8 +55,103 @@ class StaticFlowContractTests(unittest.TestCase):
         ):
             self.assertIn(token, text)
         self.assertIn("setup and hold Liberty files must be distinct", text)
-        self.assertIn("setup and hold QRC files must be distinct", text)
+        self.assertIn("slow_vdd1v0_basicCells.lib", text)
+        self.assertIn("fast_vdd1v0_basicCells.lib", text)
+        self.assertIn("setup and hold QRC must be one shared", text)
+        self.assertEqual(text.count("create_rc_corner"), 1)
+        self.assertEqual(text.count("-rc_corner w2_rc_shared_typical"), 2)
         self.assertNotIn("-hold {w2_view_setup}", text)
+
+    def runner_environment(self, root: Path) -> dict[str, str]:
+        files = {
+            "AER_PNR_NETLIST": "mapped.v",
+            "AER_TECH_LEF": "tech.lef",
+            "AER_CELL_LEF": "cells.lef",
+            "AER_IO_FILE": "pins.io",
+            "AER_SETUP_LIBRARY_FILE": "slow_vdd1v0_basicCells.lib",
+            "AER_HOLD_LIBRARY_FILE": "fast_vdd1v0_basicCells.lib",
+            "AER_SETUP_QRC_TECH": "gpdk045.tch",
+            "AER_HOLD_QRC_TECH": "gpdk045.tch",
+            "AER_PNR_SDC": "mapped.sdc",
+        }
+        environment = os.environ.copy()
+        for name, relative in files.items():
+            path = root / relative
+            path.write_text(name + "\n")
+            environment[name] = str(path)
+        environment.update({
+            "AER_TOP": "dut",
+            "AER_PNR_OUTPUT_DIR": str(root / "run"),
+            "AER_CORE_SITE": "CoreSite",
+            "AER_PROCESS_NODE_NM": "45",
+            "AER_CORE_ASPECT_RATIO": "1.0",
+            "AER_CORE_UTILIZATION": "0.70",
+            "AER_CORE_MARGIN_UM": "10",
+            "AER_VDD_NET": "VDD",
+            "AER_VSS_NET": "VSS",
+            "AER_VDD_PIN": "VDD",
+            "AER_VSS_PIN": "VSS",
+            "AER_RING_HORIZONTAL_LAYER": "METAL5",
+            "AER_RING_VERTICAL_LAYER": "METAL6",
+            "AER_RING_WIDTH_UM": "2",
+            "AER_RING_SPACING_UM": "1",
+            "AER_RING_OFFSET_UM": "2",
+            "AER_W2_COHORT": "complete_endpoint_wrappers",
+            "AER_W2_DESIGN": "fovea_a7",
+            "AER_W2_PLAN_VALIDATED": "k2_w2_innovus_plan_v1",
+            "AER_INNOVUS_BIN": "/bin/false",
+        })
+        return environment
+
+    def test_runner_allows_exact_shared_gpdk045_qrc_and_records_typical_rc(self):
+        with tempfile.TemporaryDirectory(prefix="w2-shared-qrc-") as temporary:
+            root = Path(temporary)
+            environment = self.runner_environment(root)
+            result = subprocess.run(
+                [str(RUNNER)], env=environment, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            receipt = (root / "run/status/TECHNOLOGY_CONTRACT").read_text()
+            self.assertIn("setup_library_role=slow_max_setup\n", receipt)
+            self.assertIn("hold_library_role=fast_min_hold\n", receipt)
+            self.assertIn("rc_model=shared_typical_gpdk045\n", receipt)
+            self.assertIn("qrc_source_count=1\n", receipt)
+            self.assertEqual(receipt.count("qrc_sha256="), 1)
+
+    def test_runner_rejects_arbitrary_mismatched_qrc_before_launch(self):
+        with tempfile.TemporaryDirectory(prefix="w2-mismatched-qrc-") as temporary:
+            root = Path(temporary)
+            environment = self.runner_environment(root)
+            other = root / "other"
+            other.mkdir()
+            alternate = other / "gpdk045.tch"
+            alternate.write_text("arbitrary second QRC mutation\n")
+            environment["AER_HOLD_QRC_TECH"] = str(alternate)
+            result = subprocess.run(
+                [str(RUNNER)], env=environment, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("same shared typical-RC file", result.stderr)
+            self.assertFalse((root / "run").exists())
+
+    def test_runner_rejects_reversed_liberty_roles_before_launch(self):
+        with tempfile.TemporaryDirectory(prefix="w2-liberty-roles-") as temporary:
+            root = Path(temporary)
+            environment = self.runner_environment(root)
+            setup = environment["AER_SETUP_LIBRARY_FILE"]
+            environment["AER_SETUP_LIBRARY_FILE"] = environment[
+                "AER_HOLD_LIBRARY_FILE"
+            ]
+            environment["AER_HOLD_LIBRARY_FILE"] = setup
+            result = subprocess.run(
+                [str(RUNNER)], env=environment, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("setup Liberty must be slow", result.stderr)
+            self.assertFalse((root / "run").exists())
 
     def test_pnr_closes_requested_physical_commands(self):
         text = PNR.read_text(encoding="utf-8")
@@ -97,6 +193,24 @@ class FixtureQualificationTests(unittest.TestCase):
         (self.root / "status/COMMANDS_COMPLETE").write_bytes(
             self.module.COMMAND_SENTINEL
         )
+        (self.root / "status/TECHNOLOGY_CONTRACT").write_text(
+            "schema=k2_w2_innovus_technology_contract_v1\n"
+            "top=dut\n"
+            "cohort=complete_endpoint_wrappers\n"
+            "design=fovea_a7\n"
+            "setup_library_role=slow_max_setup\n"
+            "setup_library_basename=slow_vdd1v0_basicCells.lib\n"
+            f"setup_library_sha256={'0' * 64}\n"
+            "hold_library_role=fast_min_hold\n"
+            "hold_library_basename=fast_vdd1v0_basicCells.lib\n"
+            f"hold_library_sha256={'1' * 64}\n"
+            "rc_model=shared_typical_gpdk045\n"
+            "qrc_source_count=1\n"
+            "setup_rc_corner=w2_rc_shared_typical\n"
+            "hold_rc_corner=w2_rc_shared_typical\n"
+            "qrc_basename=gpdk045.tch\n"
+            f"qrc_sha256={'2' * 64}\n"
+        )
         (self.root / "tool.log").write_text(clean_log())
         for name in self.module.TIMING_REPORTS:
             check = self.module.EXPECTED_TIMING_CHECK[name].title()
@@ -120,6 +234,23 @@ class FixtureQualificationTests(unittest.TestCase):
     def test_clean_fixture_passes(self):
         slacks = self.module.validate(self.root, "dut")
         self.assertEqual(set(slacks), {"setup", "hold", "recovery", "removal"})
+
+    def test_shared_typical_rc_contract_is_required_and_fail_closed(self):
+        path = self.root / "status/TECHNOLOGY_CONTRACT"
+        original = path.read_text()
+        mutations = (
+            original.replace("qrc_source_count=1", "qrc_source_count=2"),
+            original.replace("shared_typical_gpdk045", "invented_hold_rc"),
+            original.replace("fast_min_hold", "slow_max_hold"),
+        )
+        for payload in mutations:
+            with self.subTest(payload=payload):
+                path.write_text(payload)
+                with self.assertRaisesRegex(
+                    self.module.QualificationError, "technology contract"
+                ):
+                    self.module.validate(self.root, "dut")
+        path.write_text(original)
 
     def test_each_negative_timing_check_fails(self):
         for name in self.module.TIMING_REPORTS:
