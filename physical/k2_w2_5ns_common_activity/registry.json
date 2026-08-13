@@ -1,0 +1,129 @@
+{
+  "schema": "k2_w2_5ns_common_activity_registry_v1",
+  "status": "IMMUTABLE_EXECUTION_INPUTS",
+  "clock": {
+    "ref_period_ps": 5000,
+    "sample_period_ps": 5000,
+    "sample_phase_ps": 1250,
+    "clock_source": "tb_only_bound_force",
+    "physical_clock_claim": false
+  },
+  "activity_workload": {
+    "name": "mixed_phase_always_ready_identity",
+    "trace_sha256": "9fde0ee816a80975d219b57e9799e73c198efc85d6e9aec4cb2a2e4816974705",
+    "run_manifest_sha256": "5ecd7d07e906e20a92e18103b72bd4fd0d74099547e57a357e7376657fee8372",
+    "full50_member": true,
+    "capacity22_member": true
+  },
+  "official_suites": {
+    "full50": {
+      "manifest": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+      "manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+      "run_count": 50
+    },
+    "capacity22": {
+      "manifest": "benchmarks/clean_slate_aer/manifest.multilane-n16.json",
+      "manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+      "run_count": 22,
+      "semantics": "exact_ordered_byte_identical_full50_subset",
+      "additional_executions": 0
+    }
+  },
+  "pinned_repository_inputs": {
+    "benchmarks/clean_slate_aer/generate_trace.py": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "benchmarks/clean_slate_aer/prepare_sv_trace.py": "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826",
+    "scripts/common_suite_official.py": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
+    "physical/k2_w2_server_env/contract.json": "e02374caaa8e8985590f5609c7962a9ba2df2cac9603e93cb250c8233e22d989",
+    "tb/clean/aer_bench_if.sv": "fbca24e710e74c988592d79aa40a15fed3464a7a37147922cfbd23966535e163",
+    "tb/clean/aer_clean_assertions.sv": "ab3bca49bb660ece4c353b145ac21a81b8ed91c607657e196473e74f0cbefc3f",
+    "tb/clean/aer_clean_tb.sv": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2",
+    "physical/k2_w2_5ns_common_activity/tb/w2_5ns_clock_override.sv": "aad3faae24e500d5f5d76700e9ea3f32eb2cd637154e688ac20fc2c853a06226",
+    "physical/k2_w2_5ns_common_activity/tb/w2_activity_probe.sv": "11c91bf1da84a3a59111277cab99a364cb4c902253154e5c63a33af19ca8aab8",
+    "physical/k2_w2_5ns_common_activity/tb/fovea_binding.sv": "2bdab7c288c0b3c95894b71729234705e3efe4bb46eedd2094b041290c987e8a",
+    "physical/k2_w2_5ns_common_activity/tb/a2_binding.sv": "3370b50855d60102b18092dd0136e20e7ed0fee75cd7241bbd3074da3f7f3f72",
+    "physical/k2_w2_5ns_common_activity/tb/a3_binding.sv": "99183308338c78b80673e7e65cd799caf0fc5441f78d683e769d78a49423510f",
+    "physical/k2_w2_5ns_common_activity/filelists/fovea.f": "c6ebe26c5a7c9580b41c41755d17fcc543aa79e3427107672c3d56a1de5e726a",
+    "physical/k2_w2_5ns_common_activity/filelists/a2.f": "ae22c1eaf1b549229b99c0dbcb330dc78ad0576b5f37bd1de9d175a3d3bbe1f5",
+    "physical/k2_w2_5ns_common_activity/filelists/a3.f": "f54a66123992d0786d30fbaf71bdd76c51016c5c6063c1d7ddfe9e2395a1a938",
+    "physical/k2_w2_5ns_common_activity/activity_lib.py": "cc273dafa0626acb807b94e7831ffa05b6a60f77ddb20f5ff46951ad6589f7fb",
+    "physical/k2_w2_5ns_common_activity/produce_activity.py": "721f6840e7b4800aa0d9a93ff37cd5cbbbeabc6f3a815384734d133969aada13",
+    "physical/k2_w2_5ns_common_activity/verify_receipt.py": "d055427cbdbbc98f513588119f4b9d240931ae669f6d87b2346015a316f5d5b4"
+  },
+  "staged_manifest": {
+    "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+    "sha256": "7f240a585046814eb11fd284e84f8353badbc7e193b576684eec16eacb25dff7",
+    "declared_repository_commit": "66e030cdcb9fde85b25eda49aff1a732ed9276e5",
+    "required_schema": "k2_w2_tech_staged_compositions_v1",
+    "required_status": "READY_FOR_GENUS_AND_INNOVUS"
+  },
+  "staged_source_hashes": {
+    "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
+    "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv": "8b648695368116170d44bba10b633039a3a1e143c5959a2178800da510c66c7d",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv": "0d6aaccc9105b302838ebb82730064b91de6831a3029cd38ccb095450aef2be9",
+    "rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv": "2a1086a1502aa57c589c9166debcc531ca042943159267ec3eac1c644432474f",
+    "rtl/technology/p6/w2_p6_tech_select.svh": "275f565320e593551e455683cd9f2adf7f94c2eb9f47c641bb3a109cd5264e77",
+    "rtl/technology/p6/w2_p6_clock_boundary.sv": "56e4c1d5cf8bed80a374b4854c6480a2541734490cb0783f13d72eb34d444773",
+    "rtl/technology/p6/w2_p6_mux2.sv": "b40e505c2f525c8da999040bba5527b7bd6fc7cb0c0f51c78ccdf3e550135c9a",
+    "rtl/technology/p6/w2_p6_posedge_capture.sv": "3db0c391b96812bf3744fe0244eb0a1489a6b63aaf5679ec59088bb80d1cceaf",
+    "rtl/technology/p6/w2_p6_negedge_capture.sv": "d3ce4004822462f9744f6b6288de90f83ec2bc9349af859bd338d465d2d5aef1",
+    "rtl/technology/p6/w2_p6_pair_tx_tech.sv": "14c93981dc10533d0cdd2d88ad6d78dacba58f675c5e6316a26959411e4578ab",
+    "rtl/technology/p6/w2_p6_pair_rx_tech.sv": "37b1388c06d74ffe9d56f78e31be238f1d1b4f6535f1ceb212e534090a37eccd",
+    "rtl/technology/p6/w2_p6_exact_pair_endpoint_tech.sv": "591dafb666c525dec9cf704bd63d466a0b060ad6dfe8de20cbeb69f9446ec2d1",
+    "rtl/technology/r1/w2_r1_clock_boundary.sv": "1dd14c284308138970bf6a75fd57d989cbce9747b8cd2573301a186671e848db",
+    "rtl/technology/r1/w2_r1_mux2.sv": "106043c13b4b284517a70a97f8d396315dd6df0c6ebf7df489cffa6d9972fb75",
+    "rtl/technology/r1/w2_r1_ddr_tx_tech.sv": "b3f02d16abb4aa10cc7eae3ad5004c565676b54e7abea87db06846ebfa6c4e88",
+    "rtl/technology/r1/w2_r1_ddr_rx_tech.sv": "001e1cd6cf7d5c161a994e08a7b709889eddc9a93441a14dcb8b251c94630c7f",
+    "rtl/technology/r1/w2_r1_candidate_endpoint_tech.sv": "f0010bbe01c538fdd1306650996f02b0eed1bf91c1700040cc0928ba3137330b",
+    "rtl/technology/physical_staging/frozen_fovea/arbiter2.v": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684",
+    "rtl/technology/physical_staging/frozen_fovea/arbiter4_tree.v": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31",
+    "rtl/technology/physical_staging/frozen_fovea/aer_tx16_trad_rowcol_fovea.v": "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e",
+    "rtl/technology/physical_staging/w2_p6_atomic_bundle_adapter_tech.sv": "6961616e483ddcb75dfa3ffc2a5b5d455dbb5bc16dd1b29f34c00c97e45fca15",
+    "rtl/technology/physical_staging/w2_fovea_r1_physical_staging_top.sv": "9509d3ef078354ff403f4c4f99190d458ea2b9e849e3828ed8cce115e34fcf85",
+    "rtl/technology/physical_staging/w2_a2_p6_physical_staging_top.sv": "edb6860f81718be4275bf885f8716637890b61f0f76e0c2c88a94efe32933334",
+    "rtl/technology/physical_staging/w2_a3_p6_physical_staging_top.sv": "c7779e0c1468c46d4626428fe52f9ba6409af67212681e106d90ee8a6634e8bd"
+  },
+  "candidates": {
+    "fovea": {
+      "candidate_id": "fovea_a7",
+      "top": "w2_fovea_r1_physical_staging_top",
+      "staged_filelist": "rtl/technology/physical_staging/filelists/fovea_generic.f",
+      "staged_filelist_sha256": "988f1b617e19a0facf41a86795b9dd1e77364887d75a3bb42a81900d8fd99487",
+      "tb_filelist": "physical/k2_w2_5ns_common_activity/filelists/fovea.f",
+      "binding": "physical/k2_w2_5ns_common_activity/tb/fovea_binding.sv",
+      "link_width": 2
+    },
+    "a2": {
+      "candidate_id": "a2_p6",
+      "top": "w2_a2_p6_physical_staging_top",
+      "staged_filelist": "rtl/technology/physical_staging/filelists/a2_generic.f",
+      "staged_filelist_sha256": "a62f46608e0683a1ae68e89cb65bcca063a6f9b48082e3e8de6c30d3f186bb52",
+      "tb_filelist": "physical/k2_w2_5ns_common_activity/filelists/a2.f",
+      "binding": "physical/k2_w2_5ns_common_activity/tb/a2_binding.sv",
+      "link_width": 5
+    },
+    "a3": {
+      "candidate_id": "a3_p6",
+      "top": "w2_a3_p6_physical_staging_top",
+      "staged_filelist": "rtl/technology/physical_staging/filelists/a3_generic.f",
+      "staged_filelist_sha256": "b7e574f60aedaf22b65f59ed7184d45fc4587aef6b255e5f534791ca00efd772",
+      "tb_filelist": "physical/k2_w2_5ns_common_activity/filelists/a3.f",
+      "binding": "physical/k2_w2_5ns_common_activity/tb/a3_binding.sv",
+      "link_width": 5
+    }
+  },
+  "xcelium": {
+    "path": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun",
+    "sha256": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7",
+    "version": "23.09-s013"
+  },
+  "forbidden_modes": [
+    "vectorless",
+    "synthetic_activity",
+    "fabricated_receipt",
+    "manifest_or_trace_rewrite"
+  ]
+}
