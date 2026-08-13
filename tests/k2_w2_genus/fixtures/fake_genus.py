@@ -37,12 +37,13 @@ prefix = ""
 if mode == "defined_blackbox":
     cell = "DEFINED_BLACKBOX"
     prefix = "(* blackbox *) module DEFINED_BLACKBOX(input CK,D, output Q); endmodule\n"
-(output / f"{top}_netlist.v").write_text(
-    prefix + f"module {top}(input wire CK, input wire D, output wire Q);\n"
-    f"  {cell} u_state (.CK(CK), .D(D), .Q(Q));\n"
-    "endmodule\n"
-)
-(output / f"{top}_out.sdc").write_text("# fake mapped SDC\n")
+if mode != "report_only":
+    (output / f"{top}_netlist.v").write_text(
+        prefix + f"module {top}(input wire CK, input wire D, output wire Q);\n"
+        f"  {cell} u_state (.CK(CK), .D(D), .Q(Q));\n"
+        "endmodule\n"
+    )
+    (output / f"{top}_out.sdc").write_text("# fake mapped SDC\n")
 
 reports = {
     "area": (

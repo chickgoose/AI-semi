@@ -1,8 +1,10 @@
 {
   "schema": "k2_w2_ganghee_genus_golden_v1",
+  "cohort": "buffered_ready_valid_reference",
   "archive_filename": "ganghee-pnr-golden-20260813.tar.gz",
   "archive_sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f",
   "genus_version": "23.14-s090_1",
+  "library_path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib",
   "library_basename": "slow_vdd1v0_basicCells.lib",
   "clock_gating_insertion": true,
   "command_order": [

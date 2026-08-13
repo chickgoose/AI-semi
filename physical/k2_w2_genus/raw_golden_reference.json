@@ -1,0 +1,64 @@
+{
+  "schema": "k2_w2_ganghee_raw_genus_golden_v1",
+  "cohort": "raw_native_core_reference",
+  "archive_filename": "ganghee-pnr-raw-golden-20260813.tar.gz",
+  "archive_sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+  "genus_version": "23.14-s090_1",
+  "library_path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib",
+  "library_basename": "slow_vdd1v0_basicCells.lib",
+  "clock_gating_insertion": true,
+  "command_order": [
+    "set_db library",
+    "set_db lp_insert_clock_gating true",
+    "read_hdl",
+    "elaborate",
+    "read_sdc",
+    "syn_generic",
+    "syn_map",
+    "syn_opt",
+    "report_area",
+    "report_timing",
+    "report_power",
+    "write_hdl",
+    "write_sdc",
+    "exit"
+  ],
+  "runs": {
+    "fovea_raw": {
+      "prefix": "synth/pnr/resynth_fovea_raw",
+      "period": "1.2",
+      "top": "aer_tx16_trad_rowcol_fovea",
+      "read_hdl": "read_hdl -v {rtl/ganghee_cluster2/arbiter2.v rtl/ganghee_cluster2/arbiter4_tree.v rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea.v}"
+    },
+    "cluster2_raw": {
+      "prefix": "synth/pnr/resynth_cluster2_raw",
+      "period": "1.0",
+      "top": "aer_tx16_trad_rowcol_fovea_cluster2",
+      "read_hdl": "read_hdl -v {rtl/ganghee_cluster2/arbiter2.v rtl/ganghee_cluster2/arbiter4_tree.v rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea_cluster2.v}"
+    }
+  },
+  "anchors": {
+    "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea.v": [4010, "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e"],
+    "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea_cluster2.v": [3810, "97151241b642d5db1c5974233439dfcea14c4ec325b1d3e91c9caa9d4917c44a"],
+    "rtl/ganghee_cluster2/arbiter2.v": [808, "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"],
+    "rtl/ganghee_cluster2/arbiter4_tree.v": [1418, "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"],
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_1.0.sdc": [261, "a53dc2a2c00de09ea12c3711d8f52b830efb1bb25164834485ce5574f28b9fb7"],
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_1.0_area.rpt": [834, "6aa56de4bfaf669e75b2554fe45cc2108456ff10e3838422003475aeb53f1845"],
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_1.0_gpower.rpt": [1229, "c597d091c5675ed4d0498a80282595a9d5cd6dec49528ede882e48c6c7bd3638"],
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_1.0_gtiming.rpt": [2612, "b0fc5e5c4984568bb6c5734f8dbdfd2ee93d2ef6140a02dfbfc1b614582a0fb9"],
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_1.0_netlist.v": [4876, "b38774788008a326c509c6a95781894d90ee22dd8d60910d098c1dea41583fba"],
+    "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_1.0_out.sdc": [3750, "fa4389d310bb1092aa232330527328067337ddd0dd9d3caaa21819ec8c6edc10"],
+    "synth/pnr/resynth_cluster2_raw/genus_1.0.cmd": [351, "0341c3261fff35a99d3cd84bc855b81c752ff462808a29411dd8a25314f6ebce"],
+    "synth/pnr/resynth_cluster2_raw/genus_1.0.log": [114021, "6489d8fdf5129bdbfa9aa148ac4e19bc94d787e7d31c7682aeb5565f1687011a"],
+    "synth/pnr/resynth_cluster2_raw/genus_1.0.tcl": [919, "08c25c6993d1de7bede593d9dfb1b67900b89b47562cbed816b594f2b603da05"],
+    "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2.sdc": [261, "f58acc091d588164d1b924ec319aa7ed83cb8cd27b8184fa66f07a25fdc1e31b"],
+    "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2_area.rpt": [798, "6dfa688b2680cfc714ee81b32c166252e372d2da74a13837c04ef802a0a1be2f"],
+    "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2_gpower.rpt": [1220, "7b9206b6732d795b6bd5b3b6df64a306ec7b16f59fc50eeedd032527080264cc"],
+    "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2_gtiming.rpt": [2986, "6abeb5e897d8be6a9212a82e24a4fca4a2f22918d7d2f4960f023add37aef738"],
+    "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2_netlist.v": [10100, "1741184539a96cf80389d8380bde3bd21aeab14f05d11f4880424531190313d2"],
+    "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2_out.sdc": [2945, "bc0fdf7802141b39d50831500273dba52d3d198c54acbdd0074147cca34efbde"],
+    "synth/pnr/resynth_fovea_raw/genus_1.2.cmd": [348, "bfd8de005cc26f221faf4bbe64dc933b3c5c5faa9a18334390fd4a094be386f9"],
+    "synth/pnr/resynth_fovea_raw/genus_1.2.log": [135145, "a152f2e0f2b77ef422114f6fa20bbe7cd7015a835879584887fc382565ab1229"],
+    "synth/pnr/resynth_fovea_raw/genus_1.2.tcl": [841, "3552e542f49f8116072084311349c529cbda53bd8298abdf08a710184f935acc"]
+  }
+}

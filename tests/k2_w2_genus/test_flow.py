@@ -18,6 +18,7 @@ LIBRARY = FIXTURES / "slow_vdd1v0_basicCells.lib"
 SMOKE = FIXTURES / "mapped_smoke.py"
 FABRICATED_SMOKE = FIXTURES / "fabricated_smoke.py"
 GOLDEN_ARCHIVE = Path("/tmp/ganghee-pnr-golden-20260813.tar.gz")
+RAW_GOLDEN_ARCHIVE = Path("/tmp/ganghee-pnr-raw-golden-20260813.tar.gz")
 
 
 def load_flow():
@@ -36,7 +37,9 @@ class GenusFlowTests(unittest.TestCase):
     def invoke(self, output: Path, design: str = "a2_k2", attempt: str = "attempt-1",
                mode: str = "pass",
                smoke: Path | None = SMOKE,
-               golden_archive: Path | None = GOLDEN_ARCHIVE) -> subprocess.CompletedProcess[str]:
+               golden_archive: Path | None = GOLDEN_ARCHIVE,
+               raw_golden_archive: Path | None = RAW_GOLDEN_ARCHIVE
+               ) -> subprocess.CompletedProcess[str]:
         command = [
             "python3", "-B", str(FLOW), "--repo-root", str(ROOT),
             "--design", design, "--genus", str(FAKE_GENUS),
@@ -45,6 +48,8 @@ class GenusFlowTests(unittest.TestCase):
         ]
         if golden_archive is not None:
             command.extend(["--golden-archive", str(golden_archive)])
+        if raw_golden_archive is not None:
+            command.extend(["--raw-golden-archive", str(raw_golden_archive)])
         if smoke is not None:
             command.extend(["--mapped-smoke-hook", str(smoke)])
         environment = os.environ.copy()
@@ -56,6 +61,7 @@ class GenusFlowTests(unittest.TestCase):
 
     def test_registry_exact_five_and_all_sources_match_commit(self):
         self.assertTrue(GOLDEN_ARCHIVE.is_file(), "authoritative archive is required")
+        self.assertTrue(RAW_GOLDEN_ARCHIVE.is_file(), "authoritative raw archive is required")
         registry = self.module.load_registry()
         self.assertEqual(set(registry["designs"]), {
             "a2_k2", "a3_k2", "p6_endpoint", "a2_p6", "a3_p6"})
@@ -73,6 +79,24 @@ class GenusFlowTests(unittest.TestCase):
             self.assertEqual(identity["anchor_count"], 25)
             self.assertEqual(identity["genus_version"], "23.14-s090_1")
 
+    def test_authoritative_raw_archive_netlists_reports_and_cohort_separation(self):
+        raw = self.module.load_raw_golden_reference()
+        buffered = self.module.load_golden_reference()
+        with tempfile.TemporaryDirectory(prefix="k2-w2-raw-golden-") as directory:
+            root = Path(directory)
+            raw_identity = self.module.verify_raw_golden_archive(
+                RAW_GOLDEN_ARCHIVE, root / raw["archive_filename"], raw)
+            buffered_identity = self.module.verify_golden_archive(
+                GOLDEN_ARCHIVE, root / buffered["archive_filename"], buffered)
+            self.module.verify_reference_cohort_separation(
+                raw_identity, buffered_identity)
+            self.assertEqual(raw_identity["archive_sha256"], raw["archive_sha256"])
+            self.assertEqual(raw_identity["anchor_count"], 22)
+            self.assertEqual(
+                raw_identity["artifact_completeness"],
+                "TCL_LOG_REPORT_NETLIST_SDC_SOURCE_COMPLETE",
+            )
+
     def test_all_five_designs_publish_bound_receipts(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-genus-") as directory:
             output = Path(directory)
@@ -86,6 +110,17 @@ class GenusFlowTests(unittest.TestCase):
                 self.assertEqual(receipt["design"], design)
                 self.assertEqual(receipt["mapped_inventory"]["mapped_cell_count"], 1)
                 self.assertEqual(receipt["mapped_smoke"]["status"], "PASS")
+                cohorts = receipt["evidence_cohorts"]
+                self.assertEqual(set(cohorts), {
+                    "raw_reference", "buffered_reference", "endpoint_candidate"})
+                self.assertNotEqual(
+                    cohorts["raw_reference"]["cohort"],
+                    cohorts["buffered_reference"]["cohort"],
+                )
+                self.assertEqual(
+                    receipt["checks"]["report_only_publication"],
+                    "REJECTED_REQUIRES_SOURCE_TOOL_NETLIST_SDC_INVENTORY_SMOKE",
+                )
 
     def test_existing_attempt_is_not_overwritten(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-genus-") as directory:
@@ -140,6 +175,53 @@ class GenusFlowTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, result.stdout)
             self.assertIn("golden archive SHA mismatch", result.stdout)
             self.assertFalse((root / "out/attempt-1/receipt.json").exists())
+
+    def test_missing_mutated_or_report_only_raw_evidence_is_rejected(self):
+        with tempfile.TemporaryDirectory(prefix="k2-w2-raw-golden-") as directory:
+            result = self.invoke(Path(directory), raw_golden_archive=None)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("--raw-golden-archive", result.stdout)
+        with tempfile.TemporaryDirectory(prefix="k2-w2-raw-golden-") as directory:
+            root = Path(directory)
+            fake = root / "ganghee-pnr-raw-golden-20260813.tar.gz"
+            shutil.copyfile(RAW_GOLDEN_ARCHIVE, fake)
+            payload = bytearray(fake.read_bytes())
+            payload[-1] ^= 1
+            fake.write_bytes(payload)
+            result = self.invoke(root / "out", raw_golden_archive=fake)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("raw golden archive SHA mismatch", result.stdout)
+            self.assertFalse((root / "out/attempt-1/receipt.json").exists())
+        with tempfile.TemporaryDirectory(prefix="k2-w2-report-only-") as directory:
+            output = Path(directory)
+            result = self.invoke(output, mode="report_only")
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertFalse((output / "attempt-1/receipt.json").exists())
+
+    def test_raw_tool_library_and_source_setting_mutations_are_rejected(self):
+        mutations = (
+            ("library_path", "/tmp/local-substitute.lib", "exact library/source"),
+            ("genus_version", "99.99-fabricated", "log format/status"),
+        )
+        for field, value, message in mutations:
+            with self.subTest(field=field), tempfile.TemporaryDirectory(
+                    prefix="k2-w2-raw-setting-") as directory:
+                raw = json.loads(json.dumps(self.module.load_raw_golden_reference()))
+                raw[field] = value
+                with self.assertRaisesRegex(self.module.FlowError, message):
+                    self.module.verify_raw_golden_archive(
+                        RAW_GOLDEN_ARCHIVE,
+                        Path(directory) / raw["archive_filename"], raw,
+                    )
+        with tempfile.TemporaryDirectory(prefix="k2-w2-raw-setting-") as directory:
+            raw = json.loads(json.dumps(self.module.load_raw_golden_reference()))
+            raw["runs"]["fovea_raw"]["read_hdl"] = (
+                "read_hdl -v {rtl/local_substitute.v}")
+            with self.assertRaisesRegex(self.module.FlowError, "exact library/source"):
+                self.module.verify_raw_golden_archive(
+                    RAW_GOLDEN_ARCHIVE,
+                    Path(directory) / raw["archive_filename"], raw,
+                )
 
     def test_smoke_is_mandatory_and_fabricated_hash_is_rejected(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-genus-") as directory:

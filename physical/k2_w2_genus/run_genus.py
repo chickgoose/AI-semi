@@ -23,6 +23,7 @@ ROOT = HERE.parents[1]
 REGISTRY = HERE / "designs.json"
 DRIVER_TCL = HERE / "genus_driver.tcl"
 GOLDEN_REFERENCE = HERE / "golden_reference.json"
+RAW_GOLDEN_REFERENCE = HERE / "raw_golden_reference.json"
 SAFE_ATTEMPT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 CELL_RE = re.compile(r"\bcell\s*\(\s*([A-Za-z_][A-Za-z0-9_$]*)\s*\)")
 MODULE_RE = re.compile(r"^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", re.MULTILINE)
@@ -116,6 +117,8 @@ def load_registry() -> dict[str, Any]:
         raise FlowError("design registry must contain the exact five-design cohort")
     if document.get("common_constraints", {}).get("clock_gating_insertion") is not True:
         raise FlowError("design registry must use the golden clock-gating assumption")
+    if document.get("evidence_cohort") != "a2_a3_k2_p6_endpoint_candidate":
+        raise FlowError("endpoint candidate evidence cohort mismatch")
     return document
 
 
@@ -133,9 +136,38 @@ def load_golden_reference() -> dict[str, Any]:
         raise FlowError("golden Genus version mismatch")
     if document.get("clock_gating_insertion") is not True:
         raise FlowError("golden clock-gating assumption mismatch")
+    if document.get("cohort") != "buffered_ready_valid_reference":
+        raise FlowError("buffered golden cohort mismatch")
+    if document.get("library_path") != (
+            "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/"
+            "slow_vdd1v0_basicCells.lib"):
+        raise FlowError("buffered golden exact library setting mismatch")
     anchors = document.get("anchors")
     if not isinstance(anchors, dict) or len(anchors) != 25:
         raise FlowError("golden anchor set must contain exactly 25 members")
+    return document
+
+
+def load_raw_golden_reference() -> dict[str, Any]:
+    try:
+        document = json.loads(stable_read(RAW_GOLDEN_REFERENCE))
+    except json.JSONDecodeError as error:
+        raise FlowError(f"invalid raw golden reference manifest: {error}") from error
+    if document.get("schema") != "k2_w2_ganghee_raw_genus_golden_v1":
+        raise FlowError("raw golden reference manifest schema mismatch")
+    if document.get("archive_sha256") != (
+            "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3"):
+        raise FlowError("raw golden archive SHA is not the authoritative value")
+    if (document.get("cohort") != "raw_native_core_reference" or
+            document.get("genus_version") != "23.14-s090_1" or
+            document.get("clock_gating_insertion") is not True or
+            document.get("library_basename") != "slow_vdd1v0_basicCells.lib"):
+        raise FlowError("raw golden tool/library/cohort settings mismatch")
+    if set(document.get("runs", {})) != {"fovea_raw", "cluster2_raw"}:
+        raise FlowError("raw golden run set mismatch")
+    anchors = document.get("anchors")
+    if not isinstance(anchors, dict) or len(anchors) != 22:
+        raise FlowError("raw golden anchor set must contain exactly 22 members")
     return document
 
 
@@ -143,6 +175,7 @@ def verify_flow_tree(root: Path) -> dict[str, str]:
     required = [
         "physical/k2_w2_genus/designs.json",
         "physical/k2_w2_genus/golden_reference.json",
+        "physical/k2_w2_genus/raw_golden_reference.json",
         "physical/k2_w2_genus/genus_driver.tcl",
         "physical/k2_w2_genus/run_genus.py",
         "physical/k2_w2_genus/filelists/a2_k2.f",
@@ -243,6 +276,7 @@ def verify_golden_archive(source: Path, snapshot: Path,
     if sha256_bytes(stable_read(resolved)) != archive_hash:
         raise FlowError("golden archive changed during qualification")
     return {
+        "cohort": golden["cohort"],
         "archive_filename": golden["archive_filename"],
         "archive_sha256": archive_hash,
         "manifest_sha256": sha256_bytes(stable_read(GOLDEN_REFERENCE)),
@@ -254,6 +288,80 @@ def verify_golden_archive(source: Path, snapshot: Path,
         "clock_gating_insertion": True,
         "report_format": "GANGHEE_GENUS_23P14_AREA_GTIMING_GPOWER",
     }
+
+
+def verify_raw_golden_archive(source: Path, snapshot: Path,
+                              golden: dict[str, Any]) -> dict[str, Any]:
+    resolved = source.resolve(strict=True)
+    if resolved.name != golden["archive_filename"]:
+        raise FlowError("raw golden filename mismatch; local-source substitution rejected")
+    archive_hash = copy_stable(resolved, snapshot)
+    if archive_hash != golden["archive_sha256"]:
+        raise FlowError("raw golden archive SHA mismatch; report-only/local substitution rejected")
+    payloads = read_golden_members(snapshot, golden)
+    for run_name, run in golden["runs"].items():
+        prefix = run["prefix"]
+        period = run["period"]
+        top = run["top"]
+        stem = f"{top}_{period}"
+        tcl_name = f"{prefix}/genus_{period}.tcl"
+        cmd_name = f"{prefix}/genus_{period}.cmd"
+        log_name = f"{prefix}/genus_{period}.log"
+        tcl = payloads[tcl_name].decode("utf-8")
+        cmd = payloads[cmd_name].decode("utf-8")
+        log = payloads[log_name].decode("utf-8")
+        require_ordered_tokens(tcl, golden["command_order"], f"raw {run_name} Tcl")
+        if (f"set LIB_FILE {golden['library_path']}" not in tcl or
+                "set_db lp_insert_clock_gating true" not in tcl or
+                run["read_hdl"] not in tcl):
+            raise FlowError(f"raw {run_name} exact library/source settings mismatch")
+        if f"source {prefix}/genus_{period}.tcl" not in cmd:
+            raise FlowError(f"raw {run_name} command transcript mismatch")
+        if (f"Version: {golden['genus_version']}" not in log or
+                "Error=0, Fatal=0" not in log or "Normal exit." not in log):
+            raise FlowError(f"raw {run_name} log format/status mismatch")
+        area = payloads[f"{prefix}/{stem}_area.rpt"]
+        timing = payloads[f"{prefix}/{stem}_gtiming.rpt"]
+        power = payloads[f"{prefix}/{stem}_gpower.rpt"]
+        verify_report_payloads(top, area, timing, power, label=f"raw {run_name}")
+        netlist = payloads[f"{prefix}/{stem}_netlist.v"]
+        modules = set(MODULE_RE.findall(netlist.decode("utf-8", errors="strict")))
+        if top not in modules:
+            raise FlowError(f"raw {run_name} netlist does not define its exact top")
+        if not payloads[f"{prefix}/{stem}_out.sdc"]:
+            raise FlowError(f"raw {run_name} mapped SDC is empty")
+    if sha256_bytes(stable_read(resolved)) != archive_hash:
+        raise FlowError("raw golden archive changed during qualification")
+    return {
+        "cohort": golden["cohort"],
+        "archive_filename": golden["archive_filename"],
+        "archive_sha256": archive_hash,
+        "manifest_sha256": sha256_bytes(stable_read(RAW_GOLDEN_REFERENCE)),
+        "anchor_count": len(payloads),
+        "anchor_sha256": {
+            name: sha256_bytes(payload) for name, payload in sorted(payloads.items())
+        },
+        "genus_version": golden["genus_version"],
+        "library_path": golden["library_path"],
+        "clock_gating_insertion": True,
+        "report_format": "GANGHEE_RAW_GENUS_23P14_AREA_GTIMING_GPOWER",
+        "artifact_completeness": "TCL_LOG_REPORT_NETLIST_SDC_SOURCE_COMPLETE",
+    }
+
+
+def verify_reference_cohort_separation(raw: dict[str, Any],
+                                       buffered: dict[str, Any]) -> None:
+    if raw["cohort"] == buffered["cohort"]:
+        raise FlowError("raw and buffered reference cohorts collapsed")
+    shared = (
+        "rtl/ganghee_cluster2/arbiter2.v",
+        "rtl/ganghee_cluster2/arbiter4_tree.v",
+        "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea.v",
+        "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea_cluster2.v",
+    )
+    for path in shared:
+        if raw["anchor_sha256"].get(path) != buffered["anchor_sha256"].get(path):
+            raise FlowError(f"raw/buffered shared native source mismatch: {path}")
 
 
 def verify_source_commit(root: Path, registry: dict[str, Any]) -> str:
@@ -482,12 +590,19 @@ def run_smoke(hook: Path | None, attempt: Path, top: str,
 
 def run_flow(root: Path, design_key: str, genus: Path, library: Path,
              output_root: Path, attempt_name: str,
-             smoke_hook: Path | None, golden_archive: Path) -> Path:
+             smoke_hook: Path | None, golden_archive: Path,
+             raw_golden_archive: Path) -> Path:
     root = root.resolve(strict=True)
     if not SAFE_ATTEMPT.fullmatch(attempt_name):
         raise FlowError("invalid attempt name")
     registry = load_registry()
     golden = load_golden_reference()
+    raw_golden = load_raw_golden_reference()
+    if (raw_golden["genus_version"] != golden["genus_version"] or
+            raw_golden["library_path"] != golden["library_path"] or
+            raw_golden["clock_gating_insertion"] !=
+            golden["clock_gating_insertion"]):
+        raise FlowError("raw and buffered golden tool/library settings differ")
     verify_driver_contract(golden)
     flow_files = verify_flow_tree(root)
     head = verify_source_commit(root, registry)
@@ -500,6 +615,10 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
 
     golden_identity = verify_golden_archive(
         golden_archive, attempt / "bundle" / golden["archive_filename"], golden)
+    raw_golden_identity = verify_raw_golden_archive(
+        raw_golden_archive,
+        attempt / "bundle" / raw_golden["archive_filename"], raw_golden)
+    verify_reference_cohort_separation(raw_golden_identity, golden_identity)
     tool_before = tool_identity(genus)
     if golden["genus_version"] not in tool_before["version_output"]:
         raise FlowError("Genus version does not match authoritative golden archive")
@@ -540,7 +659,15 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "source_commit": registry["repository_commit"],
         "registry_sha256": registry_hash,
         "flow_files_sha256": flow_files,
-        "ganghee_golden": golden_identity,
+        "evidence_cohorts": {
+            "raw_reference": raw_golden_identity,
+            "buffered_reference": golden_identity,
+            "endpoint_candidate": {
+                "cohort": registry["evidence_cohort"],
+                "design": design_key,
+                "source_commit": registry["repository_commit"],
+            },
+        },
         "filelist_path": design["filelist"],
         "filelist_sha256": design["filelist_sha256"],
         "sources": source_snapshots,
@@ -598,7 +725,15 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "design": design_key,
         "top": design["top"],
         "attempt_sha256": sha256_bytes(stable_read(attempt / "attempt.json")),
-        "ganghee_golden": golden_identity,
+        "evidence_cohorts": {
+            "raw_reference": raw_golden_identity,
+            "buffered_reference": golden_identity,
+            "endpoint_candidate": {
+                "cohort": registry["evidence_cohort"],
+                "design": design_key,
+                "source_commit": registry["repository_commit"],
+            },
+        },
         "mapped_inventory": inventory,
         "mapped_sdc_sha256": mapped_sdc_hash,
         "report_sha256": report_hashes,
@@ -606,11 +741,14 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "checks": {
             "source_and_filelist_hashes": "PASS",
             "authoritative_ganghee_archive": "PASS_EXACT_SHA_AND_ANCHORS",
+            "authoritative_raw_ganghee_archive": "PASS_EXACT_SHA_AND_ANCHORS",
+            "raw_buffered_endpoint_cohort_separation": "PASS",
             "exclusive_attempt_namespace": "PASS",
             "tool_and_library_pre_post_stability": "PASS",
             "unresolved_and_blackbox": "PASS_ZERO",
             "scan_cells": "PASS_ZERO",
             "mapped_netlist_export": "PASS",
+            "report_only_publication": "REJECTED_REQUIRES_SOURCE_TOOL_NETLIST_SDC_INVENTORY_SMOKE",
         },
         "claim_boundary": "GENUS_MAPPED_SCREENING_ONLY_NOT_PHYSICAL_PPA",
     }
@@ -626,6 +764,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--genus", type=Path, required=True)
     parser.add_argument("--library", type=Path, required=True)
     parser.add_argument("--golden-archive", type=Path, required=True)
+    parser.add_argument("--raw-golden-archive", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--attempt", required=True)
     parser.add_argument("--mapped-smoke-hook", type=Path)
@@ -634,7 +773,7 @@ def main(argv: list[str] | None = None) -> int:
         receipt = run_flow(
             args.repo_root, args.design, args.genus, args.library,
             args.output_root, args.attempt, args.mapped_smoke_hook,
-            args.golden_archive,
+            args.golden_archive, args.raw_golden_archive,
         )
     except (FlowError, OSError, subprocess.SubprocessError) as error:
         print(f"K2_W2_GENUS_FAIL {error}", file=sys.stderr)

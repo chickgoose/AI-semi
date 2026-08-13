@@ -2,6 +2,7 @@
   "schema": "k2_w2_genus_design_registry_v1",
   "repository_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91",
   "cohort": "A2_A3_P6_component_and_composition",
+  "evidence_cohort": "a2_a3_k2_p6_endpoint_candidate",
   "common_constraints": {
     "period_ns": 5.0,
     "clock_uncertainty_ns": 0.25,

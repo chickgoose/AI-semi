@@ -17,6 +17,15 @@ runs, their area/timing/power/netlist/SDC outputs, and every Fovea/Cluster2
 wrapper/core RTL input. A renamed local source tree, repacked archive, modified
 member, missing archive, or different archive bytes are rejected.
 
+The native-core authority is separately pinned as
+`ganghee-pnr-raw-golden-20260813.tar.gz`, SHA-256
+`7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3`.
+Its 22 anchors bind both raw tops, exact Verilog source lists, Tcl/log/cmd,
+area/timing/power reports, mapped netlists and mapped SDCs. The raw and
+buffered archives share byte-identical native core RTL but remain distinct
+measurement cohorts. Neither cohort's reports are promoted as endpoint
+candidate results.
+
 The driver follows the byte-proven golden command order and assumptions:
 Genus `23.14-s090_1`, `slow_vdd1v0_basicCells.lib`, automatic clock-gating
 enabled, `read_hdl`, elaborate, SDC load, generic/map/opt, then the three real
@@ -37,6 +46,9 @@ reports, the log sentinel/status, mapped netlist, mapped SDC, library-cell
 inventory, zero unresolved/blackbox types, and zero scan-cell types pass. A
 failed run may leave diagnostic files in its unique attempt directory but never
 publishes `receipt.json` and never deletes or overwrites another attempt.
+Reports alone are never sufficient: exact candidate source/tool/library, both
+golden archives, mapped netlist, mapped SDC, mapped-cell inventory and bound
+functional smoke evidence are all mandatory.
 
 ## Mapped smoke hook
 
@@ -63,6 +75,7 @@ python3 physical/k2_w2_genus/run_genus.py \
   --genus /absolute/immutable/genus-entrypoint \
   --library /absolute/slow_vdd1v0_basicCells.lib \
   --golden-archive /tmp/ganghee-pnr-golden-20260813.tar.gz \
+  --raw-golden-archive /tmp/ganghee-pnr-raw-golden-20260813.tar.gz \
   --mapped-smoke-hook /absolute/pinned/mapped-smoke-hook \
   --output-root /absolute/new-results-root \
   --attempt a2-p6-period5-attempt1
