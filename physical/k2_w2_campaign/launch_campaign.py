@@ -23,10 +23,14 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 ATTEMPT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 REQUIRED_INTERFACES = (
-    "common_activity_v2", "genus_v2", "mapped_smoke_v2", "mapped_functional_v1",
-    "raw_plan_builder_v2",
-    "fair_plan_builder_v2", "innovus_plan_v2", "qualifier_v2",
-    "final_power_evidence_builder_v1", "final_receipt_v2",
+    "common_activity_v2", "genus_v3", "genus_mapped_functional_v1",
+    "raw_plan_builder_v2", "raw_mapped_smoke_v2", "raw_innovus_plan_v2",
+    "fair_plan_builder_v2",
+    "innovus_plan_v2", "qualifier_v2", "final_power_evidence_builder_v1",
+    "final_receipt_v2",
+)
+CHECKOUT_INTERFACES = (
+    "genus_v3", "genus_mapped_functional_v1", "innovus_plan_v2",
 )
 POWER_COMMIT = "e8cf2451cd6fc68a06bb6946497d9303407301ee"
 POWER_BUNDLE_SHA256 = "01e85d380109d5be7c81ec9069184abd4383973dcb14f7bae25a87913709f075"
@@ -385,6 +389,38 @@ def validate_campaign(document: dict[str, Any], repo_root: Path) -> list[str]:
         raise CampaignError("campaign must disclose one shared typical QRC")
     if tech["setup_liberty"]["path"] == tech["hold_liberty"]["path"]:
         raise CampaignError("setup and hold Liberty views must differ")
+    providers = document["tool_providers"]
+    genus = providers.get("genus_v3", {})
+    mapped = providers.get("genus_mapped_functional_v1", {})
+    innovus = providers.get("innovus_plan_v2", {})
+    if (genus.get("receipt_schema") !=
+            "k2_w2_genus_exact_three_endpoint_receipt_v3" or
+            genus.get("receipt_status") !=
+            "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD" or
+            genus.get("cli") != [
+                "--repo-root", "--design", "--genus", "--library",
+                "--hold-library", "--cell-lef", "--shared-qrc",
+                "--golden-archive", "--raw-golden-archive",
+                "--functional-loss-archive", "--server-environment-receipt",
+                "--output-root", "--attempt", "--mapped-functional-hook",
+                "--functional-model"]):
+        raise CampaignError("Genus v3 provider CLI/receipt contract mismatch")
+    if (mapped.get("repository_commit") != genus.get("repository_commit") or
+            mapped.get("receipt_schema") != "k2_w2_mapped_functional_gate_v1" or
+            mapped.get("cli") != [
+                "--design", "--top", "--rtl-filelist", "--netlist", "--sdf",
+                "--model", "--define", "--scenarios", "--xrun", "--testbench",
+                "--output", "--log"]):
+        raise CampaignError("Genus mapped-functional provider contract mismatch")
+    if (innovus.get("plan_schema") != "k2_w2_innovus_plan_v2" or
+            innovus.get("producer_kind") !=
+            "k2_w2_genus_exact_three_endpoint_receipt_v3" or
+            innovus.get("cli") != ["--plan", "PLAN", "--validate-only|--execute"]):
+        raise CampaignError("Innovus plan provider CLI/schema contract mismatch")
+    for name in ("innovus_runner", "innovus_verifier", "innovus_pnr_tcl"):
+        if providers.get(name, {}).get("repository_commit") != innovus.get(
+                "repository_commit"):
+            raise CampaignError(f"Innovus provider closure mismatch: {name}")
     expectation = document["staged_wrapper_expectation"]
     if expectation.get("schema") != "k2_w2_tech_staged_compositions_v1":
         raise CampaignError("alternate technology-staging schema is forbidden")
@@ -869,6 +905,41 @@ def validate_vendor_models(row: Any, campaign: dict[str, Any]) -> tuple[Path, st
     return path, sha, manifest
 
 
+def validate_checkout_interface(row: Any, provider: dict[str, Any],
+                                label: str) -> tuple[Path, Path]:
+    path, sha, _ = bound(row, label)
+    relative = Path(provider.get("path", ""))
+    if (relative.is_absolute() or not relative.parts or ".." in relative.parts or
+            not COMMIT.fullmatch(provider.get("repository_commit", "")) or
+            sha != provider.get("sha256")):
+        raise CampaignError(f"{label} provider identity is invalid")
+    root = path
+    for _ in relative.parts:
+        root = root.parent
+    root = root.resolve()
+    if (root / relative).resolve() != path.resolve():
+        raise CampaignError(f"{label} is not at its pinned checkout path")
+    head = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    dirty = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if (head.returncode or dirty.returncode or
+            head.stdout.strip() != provider["repository_commit"] or dirty.stdout):
+        raise CampaignError(f"{label} checkout is not exact and clean")
+    committed = git_bytes(root, provider["repository_commit"],
+                          relative.as_posix(), label)
+    if digest(committed) != sha:
+        raise CampaignError(f"{label} committed blob mismatch")
+    if "registry_path" in provider:
+        registry = git_bytes(root, provider["repository_commit"],
+                             provider["registry_path"], f"{label} registry")
+        if digest(registry) != provider.get("registry_sha256"):
+            raise CampaignError(f"{label} registry blob mismatch")
+    return path, root
+
+
 def validate_integration(document: dict[str, Any], campaign: dict[str, Any]) -> dict[str, Any]:
     exact(document, {
         "schema", "repository_root", "repository_commit", "environment_receipt",
@@ -910,6 +981,7 @@ def validate_integration(document: dict[str, Any], campaign: dict[str, Any]) -> 
     interfaces = document["flow_interfaces"]
     if set(interfaces) != set(REQUIRED_INTERFACES):
         raise CampaignError("flow interface set mismatch")
+    provider_roots: dict[str, Path] = {}
     for name in REQUIRED_INTERFACES:
         provider = campaign["tool_providers"].get(name)
         if not isinstance(provider, dict) or not SHA256.fullmatch(provider.get("sha256", "")):
@@ -917,6 +989,16 @@ def validate_integration(document: dict[str, Any], campaign: dict[str, Any]) -> 
         path, sha, _ = bound(interfaces[name], f"flow interface {name}")
         if sha != provider["sha256"] or path.name != Path(provider["path"]).name:
             raise CampaignError(f"flow interface is stale/substituted: {name}")
+        if name in CHECKOUT_INTERFACES:
+            _, provider_roots[name] = validate_checkout_interface(
+                interfaces[name], provider, f"flow interface {name}")
+    if (provider_roots["genus_v3"] !=
+            provider_roots["genus_mapped_functional_v1"]):
+        raise CampaignError("Genus runner and mapped-functional hook split checkouts")
+    if (repository_root.resolve() != provider_roots["genus_v3"] or
+            document["repository_commit"] !=
+            campaign["tool_providers"]["genus_v3"]["repository_commit"]):
+        raise CampaignError("Genus provider checkout is not the exact source repository")
     return {
         "environment_path": environment_path, "environment_sha": environment_sha,
         "calibration_path": calibration_path, "calibration_sha": calibration_sha,
@@ -926,6 +1008,7 @@ def validate_integration(document: dict[str, Any], campaign: dict[str, Any]) -> 
         "vendor_path": vendor_path, "vendor_sha": vendor_sha,
         "vendor_models": vendor_models,
         "power_root": power_root,
+        "provider_roots": provider_roots,
     }
 
 
@@ -949,6 +1032,39 @@ def final_power_commands(interfaces: dict[str, Any], evidence: str, receipt: str
     return producer, qualifier
 
 
+def genus_command(campaign: dict[str, Any], repository_root: str, runner: str,
+                  functional_hook: str, environment_receipt: str, output_root: str,
+                  attempt: str, design: str, models: list[str]) -> list[str]:
+    if not models:
+        raise CampaignError("real Genus CLI requires vendor functional models")
+    command = [
+        "python3", runner, "--repo-root", repository_root, "--design", design,
+        "--genus", campaign["server_environment"]["tools"]["genus"]["path"],
+        "--library",
+        campaign["server_environment"]["technology"]["setup_liberty"]["path"],
+        "--hold-library",
+        campaign["server_environment"]["technology"]["hold_liberty"]["path"],
+        "--cell-lef", campaign["server_environment"]["technology"]["cell_lef"]["path"],
+        "--shared-qrc",
+        campaign["server_environment"]["technology"]["setup_qrc"]["path"],
+        "--golden-archive", campaign["authority"]["buffered_server_archive"]["path"],
+        "--raw-golden-archive", campaign["authority"]["raw_server_archive"]["path"],
+        "--functional-loss-archive",
+        campaign["authority"]["functional_loss_archive"]["path"],
+        "--server-environment-receipt", environment_receipt,
+        "--output-root", output_root, "--attempt", attempt,
+        "--mapped-functional-hook", functional_hook,
+    ]
+    for model in models:
+        command.extend(("--functional-model", model))
+    return command
+
+
+def innovus_commands(runner: str, plan: str) -> tuple[list[str], list[str]]:
+    prefix = ["python3", runner, "--plan", plan]
+    return prefix + ["--validate-only"], prefix + ["--execute"]
+
+
 def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dict[str, Any],
            attempt: Path) -> tuple[list[dict[str, Any]], str]:
     interfaces = integration["flow_interfaces"]
@@ -956,7 +1072,7 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
     calibration = str(validated["calibration_path"])
     staged = str(validated["staged_path"])
     common_tb = str(validated["common_tb_path"])
-    vendor_models = str(validated["vendor_path"])
+    functional_models = [row["path"] for row in validated["vendor_models"]["models"]]
     steps: list[dict[str, Any]] = []
     raw_plan = attempt / "plans/raw-diagnostic.json"
     raw_smoke = attempt / "receipts/raw-mapped-smoke.json"
@@ -965,7 +1081,7 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
         "--environment-receipt", env_receipt, "--calibration-receipt", calibration,
         "--archive", campaign["authority"]["raw_server_archive"]["path"],
         "--designs", "fovea_raw,cluster2_raw", "--periods-ns", "1.2,1.0",
-        "--mapped-smoke-hook", interfaces["mapped_smoke_v2"]["path"],
+        "--mapped-smoke-hook", interfaces["raw_mapped_smoke_v2"]["path"],
         "--smoke-receipt", str(raw_smoke), "--output-root", str(attempt / "pnr/raw"),
         "--output", str(raw_plan),
     ]
@@ -975,7 +1091,8 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
     steps.append({"id": "raw_immutable_pnr", "cohort": "raw_diagnostic",
                   "ranking_eligible": False, "requires": ["raw_build_and_mapped_smoke"],
                   "gate": "expected plan SHA plus raw mapped-smoke PASS",
-                  "command": ["__RUN_IMMUTABLE_PLAN__", str(raw_plan), "raw"]})
+                  "command": ["__RUN_IMMUTABLE_PLAN__", str(raw_plan),
+                              "raw_innovus_plan_v2"]})
     steps.append({"id": "raw_qualifier", "cohort": "raw_diagnostic",
                   "ranking_eligible": False, "requires": ["raw_immutable_pnr"],
                   "command": [
@@ -1002,69 +1119,39 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
             ],
         })
     genus_receipts: list[str] = []
-    mapped_functional_receipts: list[str] = []
     for key in campaign["cohorts"]["fair_endpoints"]["exact_design_order"]:
         genus_attempt = f"{key}-p5p0"
         receipt = attempt / "genus" / genus_attempt / "receipt.json"
         genus_receipts.append(str(receipt))
-        command = [
-            "python3", interfaces["genus_v2"]["path"],
-            "--repo-root", integration["repository_root"], "--design", key,
-            "--genus", campaign["server_environment"]["tools"]["genus"]["path"],
-            "--library", campaign["server_environment"]["technology"]["setup_liberty"]["path"],
-            "--hold-library", campaign["server_environment"]["technology"]["hold_liberty"]["path"],
-            "--cell-lef", campaign["server_environment"]["technology"]["cell_lef"]["path"],
-            "--shared-qrc", campaign["server_environment"]["technology"]["setup_qrc"]["path"],
-            "--golden-archive", campaign["authority"]["buffered_server_archive"]["path"],
-            "--raw-golden-archive", campaign["authority"]["raw_server_archive"]["path"],
-            "--functional-loss-archive", campaign["authority"]["functional_loss_archive"]["path"],
-            "--output-root", str(attempt / "genus"), "--attempt", genus_attempt,
-            "--mapped-smoke-hook", interfaces["mapped_smoke_v2"]["path"],
-        ]
-        steps.append({"id": f"{key}_genus_v2_mapped_smoke", "cohort": "fair_endpoints",
+        command = genus_command(
+            campaign, integration["repository_root"], interfaces["genus_v3"]["path"],
+            interfaces["genus_mapped_functional_v1"]["path"], env_receipt,
+            str(attempt / "genus"), genus_attempt, key, functional_models)
+        steps.append({"id": f"{key}_genus_v3", "cohort": "fair_endpoints",
                       "ranking_eligible": True,
                       "requires": [f"{key}_common_tb_metrics_activity"],
-                      "gate": "required shared Genus receipt is emitted only after mapped-smoke PASS",
+                      "gate": "real Genus v3 receipt emitted only after its internal mapped-functional PASS",
                       "command": command})
-        mapped_receipt = attempt / "receipts" / f"{key}-mapped-functional.json"
-        mapped_functional_receipts.append(str(mapped_receipt))
-        scenarios = ("held_pending,conservation,reset,drain" if key == "fovea_a7"
-                     else "ordered_pairs,back_to_back,reset")
-        steps.append({
-            "id": f"{key}_mapped_functional", "cohort": "fair_endpoints",
-            "ranking_eligible": True, "requires": [f"{key}_genus_v2_mapped_smoke"],
-            "gate": "vendor-model simulation with SDF when available or formal LEC; syntax/inventory never sufficient",
-            "command": [
-                "python3", interfaces["mapped_functional_v1"]["path"],
-                "--staged-manifest", staged, "--genus-receipt", str(receipt),
-                "--vendor-model-manifest", vendor_models, "--candidate", key,
-                "--scenarios", scenarios,
-                "--observations", "exact_accepted,exact_retired,exact_order,protocol_error_zero",
-                "--sdf-policy", campaign["mapped_functional_contract"]["sdf_policy"],
-                "--output-root", str(attempt / "mapped-functional" / key),
-                "--output", str(mapped_receipt),
-            ],
-        })
     fair_plan = attempt / "plans/fair-endpoints.json"
     fair_build = [
         "python3", interfaces["fair_plan_builder_v2"]["path"],
         "--environment-receipt", env_receipt, "--calibration-receipt", calibration,
         "--staged-manifest", staged, "--genus-receipts", ",".join(genus_receipts),
-        "--mapped-functional-receipts", ",".join(mapped_functional_receipts),
         "--expected-genus-schema", campaign["staged_wrapper_expectation"][
             "shared_consumer_contract"]["required_genus_receipt_schema"],
         "--require-mapped-link-cut", "tx_to_rx", "--output-root",
         str(attempt / "pnr/fair"), "--output", str(fair_plan),
     ]
-    fair_requires = [f"{key}_mapped_functional" for key in
+    fair_requires = [f"{key}_genus_v3" for key in
                      campaign["cohorts"]["fair_endpoints"]["exact_design_order"]]
     steps.append({"id": "fair_build_immutable_plan", "cohort": "fair_endpoints",
                   "ranking_eligible": True, "requires": fair_requires,
                   "command": fair_build})
     steps.append({"id": "fair_immutable_pnr", "cohort": "fair_endpoints",
                   "ranking_eligible": True, "requires": ["fair_build_immutable_plan"],
-                  "gate": "expected plan SHA, Genus receipt_v2, mapped AER_LINK_CUT, calibration",
-                  "command": ["__RUN_IMMUTABLE_PLAN__", str(fair_plan), "fair"]})
+                  "gate": "expected plan SHA, real Genus v3 receipts, mapped AER_LINK_CUT, calibration",
+                  "command": ["__RUN_IMMUTABLE_PLAN__", str(fair_plan),
+                              "innovus_plan_v2"]})
     power_evidence = attempt / "receipts/fair-postroute-power-evidence.json"
     steps.append({"id": "fair_postroute_power_evidence", "cohort": "fair_endpoints",
                   "ranking_eligible": True, "requires": ["fair_immutable_pnr"],
@@ -1110,7 +1197,6 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
                       "--staged-manifest", staged, "--common-tb-manifest", common_tb,
                       "--activity-receipts", ",".join(activity_receipts.values()),
                       "--genus-receipts", ",".join(genus_receipts), "--plan", str(fair_plan),
-                      "--mapped-functional-receipts", ",".join(mapped_functional_receipts),
                       "--power-receipt", str(power_receipt), "--qualifier-receipt",
                       str(qualified_receipt), "--power-qualification-receipt",
                       str(power_qualification), "--output",
@@ -1140,22 +1226,27 @@ def render(campaign: dict[str, Any], integration: dict[str, Any], validated: dic
                  " status --porcelain --untracked-files=all)\"")
     lines.append("test \"$(git -C " + shlex.quote(str(validated["power_root"])) +
                  " rev-parse HEAD)\" = " + POWER_COMMIT)
+    for name in ("genus_v3", "innovus_plan_v2"):
+        provider_root = str(validated["provider_roots"][name])
+        provider_commit = campaign["tool_providers"][name]["repository_commit"]
+        lines.append("test -z \"$(git -C " + shlex.quote(provider_root) +
+                     " status --porcelain --untracked-files=all)\"")
+        lines.append("test \"$(git -C " + shlex.quote(provider_root) +
+                     " rev-parse HEAD)\" = " + provider_commit)
+    lines.append("test -z \"$(git -C " + shlex.quote(integration["repository_root"]) +
+                 " status --porcelain --untracked-files=all)\"")
     lines.append("test \"$(git -C " + shlex.quote(integration["repository_root"]) +
                  " rev-parse HEAD)\" = " + integration["repository_commit"])
     for step in steps:
         lines.append("# step=" + step["id"] + " requires=" + ",".join(step["requires"]))
         if step["command"][0] == "__RUN_IMMUTABLE_PLAN__":
-            plan, cohort = step["command"][1:]
+            plan, interface = step["command"][1:]
             lines.append("assert_sealed_plan " + shlex.quote(plan))
-            lines.append(shell([
-                "python3", interfaces["innovus_plan_v2"]["path"], "--plan", plan,
-                "--validate-only",
-            ]))
+            validate_command, execute_command = innovus_commands(
+                interfaces[interface]["path"], plan)
+            lines.append(shell(validate_command))
             lines.append("assert_sealed_plan " + shlex.quote(plan))
-            lines.append(shell([
-                "python3", interfaces["innovus_plan_v2"]["path"], "--plan", plan,
-                "--execute",
-            ]))
+            lines.append(shell(execute_command))
             lines.append("assert_sealed_plan " + shlex.quote(plan))
         elif step["command"][0] == "__CAPTURE_EXCLUSIVE__":
             destination, *command = step["command"][1:]

@@ -277,6 +277,20 @@ class StaticContractTest(unittest.TestCase):
         with self.assertRaisesRegex(campaign_module.CampaignError, "duplicate Genus receipt"):
             campaign_module.validate_campaign(mutated, ROOT)
 
+    def test_real_genus_and_innovus_provider_contract_mutations_fail(self) -> None:
+        genus = campaign()
+        genus["tool_providers"]["genus_v3"]["cli"].remove(
+            "--server-environment-receipt")
+        with self.assertRaisesRegex(campaign_module.CampaignError,
+                                    "Genus v3 provider CLI"):
+            campaign_module.validate_campaign(genus, ROOT)
+        innovus = campaign()
+        innovus["tool_providers"]["innovus_plan_v2"]["producer_kind"] = \
+            "campaign_private_receipt"
+        with self.assertRaisesRegex(campaign_module.CampaignError,
+                                    "Innovus plan provider CLI/schema"):
+            campaign_module.validate_campaign(innovus, ROOT)
+
     def test_shared_qrc_and_split_liberty_campaign_mutations_fail(self) -> None:
         qrc = campaign()
         qrc["server_environment"]["technology"]["hold_qrc"]["path"] = "/fake/hold.tch"
@@ -609,10 +623,14 @@ class LauncherTest(unittest.TestCase):
         cases = (
             ("/tmp/k2-phys-w2-genus", "environment_preflight",
              ("--pdk-root", "--genus", "--innovus", "--xrun", "--output"), ()),
-            ("/tmp/k2-phys-w2-genus", "genus_v2",
-             ("--hold-library", "--cell-lef", "--shared-qrc"),
-             ("--activity-receipt",)),
-            ("/tmp/k2-phys-w2-innovus", "innovus_plan",
+            ("/tmp/k2-phys-w2-genus", "genus_v3",
+             ("--server-environment-receipt", "--mapped-functional-hook",
+              "--functional-model"),
+             ("--mapped-smoke-hook", "--activity-receipt")),
+            ("/tmp/k2-phys-w2-genus", "genus_mapped_functional_v1",
+             ("--rtl-filelist", "--netlist", "--sdf", "--model", "--xrun"),
+             ("--staged-manifest", "--genus-receipt")),
+            ("/tmp/k2-phys-w2-innovus", "innovus_plan_v2",
              ("--plan", "--validate-only", "--execute"),
              ("--expected-plan-sha-file", "--environment-receipt",
               "--calibration-receipt", "--cohort")),
@@ -639,6 +657,63 @@ class LauncherTest(unittest.TestCase):
                     self.assertIn(option, help_run.stdout)
                 for option in absent:
                     self.assertNotIn(option, help_run.stdout)
+
+    def test_real_genus_argv_owns_mapped_functional_gate(self) -> None:
+        doc = campaign()
+        command = campaign_module.genus_command(
+            doc, "/provider", "/provider/physical/k2_w2_genus/run_genus.py",
+            "/provider/physical/k2_w2_genus/run_mapped_functional_xcelium.py",
+            "/receipts/environment.json", "/attempt/genus", "fovea_a7-p5p0",
+            "fovea_a7", ["/models/cells.v", "/models/primitives.v"])
+        self.assertEqual(command[:4], [
+            "python3", "/provider/physical/k2_w2_genus/run_genus.py",
+            "--repo-root", "/provider"])
+        self.assertEqual(command.count("--functional-model"), 2)
+        self.assertIn("--server-environment-receipt", command)
+        self.assertIn("--mapped-functional-hook", command)
+        self.assertNotIn("--mapped-smoke-hook", command)
+        self.assertNotIn("--staged-manifest", command)
+        with self.assertRaisesRegex(campaign_module.CampaignError,
+                                    "requires vendor functional models"):
+            campaign_module.genus_command(
+                doc, "/provider", "/provider/run_genus.py", "/provider/hook.py",
+                "/receipts/environment.json", "/attempt/genus", "attempt",
+                "fovea_a7", [])
+
+    def test_real_innovus_argv_is_validate_then_execute(self) -> None:
+        validate, execute = campaign_module.innovus_commands(
+            "/provider/scripts/ppa/run_k2_physical_innovus_plan.py",
+            "/attempt/plans/fair.json")
+        self.assertEqual(validate, [
+            "python3", "/provider/scripts/ppa/run_k2_physical_innovus_plan.py",
+            "--plan", "/attempt/plans/fair.json", "--validate-only"])
+        self.assertEqual(execute[:-1], validate[:-1])
+        self.assertEqual(execute[-1], "--execute")
+
+    def test_loose_or_dirty_genus_provider_is_rejected(self) -> None:
+        provider = campaign()["tool_providers"]["genus_v3"]
+        with tempfile.TemporaryDirectory() as temporary:
+            checkout = Path(temporary) / "genus"
+            subprocess.run(
+                ["git", "clone", "--quiet", "/tmp/k2-phys-w2-genus", str(checkout)],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(
+                ["git", "-C", str(checkout), "checkout", "--quiet",
+                 provider["repository_commit"]], check=True)
+            runner = checkout / provider["path"]
+            row = {"path": str(runner), "sha256": sha(runner.read_bytes())}
+            path, root = campaign_module.validate_checkout_interface(
+                row, provider, "Genus test provider")
+            self.assertEqual((path, root), (runner, checkout))
+            (checkout / "untracked-provider-file").write_text("tamper\n")
+            with self.assertRaisesRegex(campaign_module.CampaignError,
+                                        "not exact and clean"):
+                campaign_module.validate_checkout_interface(
+                    row, provider, "Genus test provider")
+
+    def test_campaign_does_not_route_raw_through_fair_innovus(self) -> None:
+        source = LAUNCHER.read_text(encoding="utf-8")
+        self.assertIn('"raw_innovus_plan_v2"', source)
 
     def test_environment_receipt_verifier_help_from_exact_commit(self) -> None:
         doc = campaign()

@@ -71,11 +71,57 @@
     "environment_preflight": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_server_env/preflight.py", "sha256": "e7bd5d8fdd49cd72ab786c6ba60c3cab00885fee41ce246267477f2f588ae0d4"},
     "environment_receipt_verifier": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_server_env/require_go_receipt.py", "sha256": "b17baf94f42b13711a99e5f43cb18397a71bcdcf8018babd19881ebfe6477e2a"},
     "environment_contract": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_server_env/contract.json", "sha256": "e02374caaa8e8985590f5609c7962a9ba2df2cac9603e93cb250c8233e22d989"},
-    "genus_v2": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_genus/run_genus.py", "sha256": "6db14e9444a554eef067566a6719d8dee1980433b03ccc1c3fc41a18068d6954", "receipt_schema": "k2_w2_genus_exact_three_endpoint_receipt_v3"},
-    "innovus_plan": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/run_k2_physical_innovus_plan.py", "sha256": "5c4e41937add0580f19e80b20206b7a64690dee7e210bad6937b03a64df7f342"},
-    "innovus_runner": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/run_k2_physical_innovus.sh", "sha256": "41f0596427f876e2b363a1428df38d56f9bafd44b53d9e0b140688e789cd6459"},
-    "innovus_verifier": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/verify_k2_physical_innovus.py", "sha256": "1c7fa76e1b73747147105b2a9da335b93ca84907fbcca5fbbad9ad1814e841ed"},
-    "innovus_pnr_tcl": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/k2_physical_innovus_pnr.tcl", "sha256": "5937ae0ac0337979a8aba2083cef422b9593db01af462514dd5ecbc9489b0819"},
+    "staging_manifest_v1": {
+      "repository_commit": "fe9da33717aac00561a3e2afb747236bc9382409",
+      "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+      "sha256": "7f240a585046814eb11fd284e84f8353badbc7e193b576684eec16eacb25dff7",
+      "schema": "k2_w2_tech_staged_compositions_v1",
+      "status": "READY_FOR_GENUS_AND_INNOVUS",
+      "source_commit": "66e030cdcb9fde85b25eda49aff1a732ed9276e5"
+    },
+    "common_activity_three_v1": {
+      "repository_commit": "b807a2421a38adfd7c15ebd5b8c2e6884cfac5b5",
+      "path": "physical/k2_w3_common_activity/run_three_xcelium_activity.sh",
+      "sha256": "c5c7762fd1f12570df5ea4410732e20106b5bcd81ac64627ba9e845efde6afaf",
+      "cli": ["NEW_OUTPUT_ROOT"],
+      "candidate_keys": ["fovea", "a2", "a3"],
+      "receipt_schema": null,
+      "supported_workloads": ["full50"]
+    },
+    "genus_v3": {
+      "repository_commit": "8610bd0bf70eb9f9e2bcc35efe3f398afb78b9d6",
+      "path": "physical/k2_w2_genus/run_genus.py",
+      "sha256": "28b4249da0b8128777adb3325cbc8da84499f919eff83321f0c3be7fb0ed51fe",
+      "registry_path": "physical/k2_w2_genus/designs.json",
+      "registry_sha256": "5cea9dee9316dbfb8c7e588c6507fafe24d4aec02193e1bbb6ce8ecda9b07f1c",
+      "registry_schema": "k2_w2_genus_final_tech_staged_registry_v3",
+      "cli": ["--repo-root", "--design", "--genus", "--library", "--hold-library", "--cell-lef", "--shared-qrc", "--golden-archive", "--raw-golden-archive", "--functional-loss-archive", "--server-environment-receipt", "--output-root", "--attempt", "--mapped-functional-hook", "--functional-model"],
+      "receipt_schema": "k2_w2_genus_exact_three_endpoint_receipt_v3",
+      "receipt_status": "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD",
+      "staged_manifest_pointer_status": "PLACEHOLDER_OLD_SCHEMA_NULL_PATH_SHA_COMMIT"
+    },
+    "genus_mapped_functional_v1": {
+      "repository_commit": "8610bd0bf70eb9f9e2bcc35efe3f398afb78b9d6",
+      "path": "physical/k2_w2_genus/run_mapped_functional_xcelium.py",
+      "sha256": "851883c2217d40da3d916d65a84a68fd82cc77b25dff785f3a753c4385c231f2",
+      "cli": ["--design", "--top", "--rtl-filelist", "--netlist", "--sdf", "--model", "--define", "--scenarios", "--xrun", "--testbench", "--output", "--log"],
+      "receipt_schema": "k2_w2_mapped_functional_gate_v1"
+    },
+    "innovus_plan_v2": {
+      "repository_commit": "2eb961a43d8e55ca89db2381eabc18c46440bf00",
+      "path": "scripts/ppa/run_k2_physical_innovus_plan.py",
+      "sha256": "768b0f1b5ec440d07753ab03d3dc66d5b91fd547322bdf46ec0234d6f2ac7cc7",
+      "registry_path": "scripts/ppa/k2_physical_innovus_cohorts.json",
+      "registry_sha256": "26c4d85871221a5ecc76b8b8d62197dd084e876ab56712230cac6ea6d8326d12",
+      "registry_schema": "k2_w2_innovus_cohort_registry_v3",
+      "plan_schema": "k2_w2_innovus_plan_v2",
+      "producer_kind": "k2_w2_genus_exact_three_endpoint_receipt_v3",
+      "cli": ["--plan", "PLAN", "--validate-only|--execute"],
+      "staged_manifest_pointer_status": "PLACEHOLDER_NULL_COMMIT_SHA_AND_TECH_AUTHORITIES"
+    },
+    "innovus_runner": {"repository_commit": "2eb961a43d8e55ca89db2381eabc18c46440bf00", "path": "scripts/ppa/run_k2_physical_innovus.sh", "sha256": "ac115f2cde7a2d5bb0244fab02c05c5f9e4631a42ac5f9f43c8f9c1e5d53f6ab"},
+    "innovus_verifier": {"repository_commit": "2eb961a43d8e55ca89db2381eabc18c46440bf00", "path": "scripts/ppa/verify_k2_physical_innovus.py", "sha256": "67abf2ced561689e2d0f885263fd6c0c443892b51bcab6b30ee3b7f1b5c976e4"},
+    "innovus_pnr_tcl": {"repository_commit": "2eb961a43d8e55ca89db2381eabc18c46440bf00", "path": "scripts/ppa/k2_physical_innovus_pnr.tcl", "sha256": "e052c9b30de7c5bb1e0804827617ed113351249ccf62bd581a2c235ff8035084"},
     "qualifier": {"repository_commit": "ad3f67d35858f822071efbed0b2a309543d096b1", "path": "physical/k2_w2_qualifier/qualify_raw.py", "sha256": "fa6f5d2597f415ce040c68af09055ca0bf80f259f8a8eb3eb0dafe0ac83016bf"},
     "final_power_producer_v1": {
       "repository_commit": "e8cf2451cd6fc68a06bb6946497d9303407301ee",
@@ -114,7 +160,7 @@
   },
   "functional_activity_contract": {
     "schema": "k2_w2_frozen_common_activity_v1",
-    "integration_state": "required_not_yet_available",
+    "integration_state": "provider_pinned_missing_capacity22_and_receipt",
     "frozen_common_tb": null,
     "workloads": ["full50", "capacity22"],
     "exact_candidate_order": ["fovea_a7", "a2_p6", "a3_p6"],
@@ -171,10 +217,15 @@
   },
   "staged_wrapper_expectation": {
     "schema": "k2_w2_tech_staged_compositions_v1",
-    "integration_state": "required_not_yet_available",
-    "manifest": null,
+    "integration_state": "provider_published_consumers_unpinned",
+    "manifest": {
+      "repository_commit": "fe9da33717aac00561a3e2afb747236bc9382409",
+      "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+      "sha256": "7f240a585046814eb11fd284e84f8353badbc7e193b576684eec16eacb25dff7",
+      "source_commit": "66e030cdcb9fde85b25eda49aff1a732ed9276e5"
+    },
     "exact_design_order": ["fovea_a7", "a2_p6", "a3_p6"],
-    "shared_consumer_contract": {"status": "BLOCKED_PRODUCER_CONSUMER_RECEIPT_MISMATCH", "required_genus_receipt_schema": "k2_w2_genus_exact_three_endpoint_receipt_v3", "required_genus_receipt_status": "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD", "genus_claim_boundary": "GENUS_MAPPED_TIMING_SCREENING_ONLY_POWER_AND_PHYSICAL_PPA_HOLD", "innovus_plan_schema": "k2_w2_innovus_plan_v2"},
+    "shared_consumer_contract": {"status": "BLOCKED_EXTERNAL_REGISTRY_POINTERS", "required_genus_receipt_schema": "k2_w2_genus_exact_three_endpoint_receipt_v3", "required_genus_receipt_status": "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD", "genus_claim_boundary": "GENUS_MAPPED_TIMING_SCREENING_ONLY_POWER_AND_PHYSICAL_PPA_HOLD", "innovus_plan_schema": "k2_w2_innovus_plan_v2"},
     "required_technology_authorities": {
       "r1": {"repository_commit": null, "manifest_path": null, "manifest_sha256": null},
       "p6": {"repository_commit": "847d764481d3cc467059cee76c3ac1463f63aa86", "manifest_path": "rtl/technology/p6/p6_tech_manifest.json", "manifest_sha256": "4b500604fc3637c623e9689c8778464e656d5d8ac7ac639fd49bdd5e72230f64"}
@@ -234,8 +285,8 @@
   },
   "required_integrated_capabilities": [
     "environment_receipt_bound_to_every_stage",
-    "genus_v2_receipt_only",
-    "mapped_smoke_before_every_pnr",
+    "genus_v3_receipt_only",
+    "mapped_functional_before_every_pnr",
     "immutable_expected_plan_sha",
     "exact_staged_port_closure",
     "mapped_aer_link_cut_inventory",
@@ -254,20 +305,19 @@
   ],
   "known_readiness_blockers": [
     "PROVEN_ENVIRONMENT receipt is not integrated",
-    "canonical k2_w2_tech_staged_compositions_v1 manifest with READY_FOR_GENUS_AND_INNOVUS status is not integrated",
+    "published staging manifest is pinned but its embedded source commit is not the commit containing the READY bytes required by Innovus exact-blob validation",
     "R1 and P6 multiclock v6 constraint receipts are not integrated",
-    "Innovus plan still expects Genus receipt v1 and names generic unequal-debug wrappers",
+    "Genus 8610bd0 registry still requires w2-physical-staging-v2/GO_FOR_SERVER_STAGING and has null staged-manifest pointers",
+    "Innovus 2eb961a registry has null committed staging-manifest and R1/P6 technology-authority pointers",
     "native-report calibration receipt is not integrated",
     "checkDesign -all exact all-class machine summary is not calibrated",
     "qualifier does not yet consume the native-report plus machine-summary bundle",
-    "frozen common TB/activity producer and postroute activity-power interfaces are not integrated",
-    "Genus v3 producer and Innovus consumer do not implement one shared receipt schema/status/field contract",
-    "vendor functional model manifest and mapped-functional gate provider are not integrated",
+    "pinned common-activity provider supports only full50 and emits no campaign receipt; capacity22 and receipt closure are absent",
+    "vendor functional model manifest receipt is not integrated",
     "pinned final-power provider plan has launch_authorized=false and cannot emit READY_FOR_W2_EVALUATION",
     "final-power evidence-manifest builder is not integrated",
     "pinned final-power 2.0ns consumer SDC is incompatible with the campaign 5.0ns endpoint target",
     "pinned final-power candidate top and commit identities are not yet bound to the canonical staged manifest",
-    "current qualifier CLI consumes only bundle-root/manifest/output and emits POWER_HOLD",
-    "actual Genus and Innovus provider CLIs do not yet share the canonical staging and receipt contract"
+    "current qualifier CLI consumes only bundle-root/manifest/output and emits POWER_HOLD"
   ]
 }

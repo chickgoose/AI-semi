@@ -31,7 +31,8 @@ READY requires the following immutable chain:
 3. the committed canonical `k2_w2_tech_staged_compositions_v1` manifest with
    `READY_FOR_GENUS_AND_INNOVUS`, exact source closure,
    boundary, `AER_LINK_CUT`, and multi-clock v6 contracts;
-4. the shared Genus receipt contract, published only after mapped-smoke PASS;
+4. the shared Genus v3 receipt contract, published only after the provider's
+   internal mapped-functional gate passes;
 5. a staged-vs-mapped functional PASS using exact vendor functional models
    (and SDF when available) or formal LEC, hash-binding netlist, SDF/models,
    and logs. Fovea covers held pending, conservation, reset, and drain; P6
@@ -42,6 +43,28 @@ READY requires the following immutable chain:
    verified before the qualifier.
 
 Mapped syntax and inventory checks alone can never satisfy step 5.
+
+## Exact Genus and Innovus CLIs
+
+The campaign invokes the pinned Genus v3 runner with its actual required
+arguments, including the proven-environment receipt, its own immutable
+mapped-functional hook, and one repeated `--functional-model` argument per
+hash-bound vendor model. It does not invoke that hook as a second campaign
+stage and does not pass the removed `--mapped-smoke-hook` option. The Genus
+runner and hook must come from one exact clean checkout at the pinned commit;
+loose copied scripts are rejected.
+
+The fair physical stage invokes the pinned Innovus plan gate only as
+`--plan PLAN --validate-only`, followed by the same sealed plan with
+`--execute`. Its exact clean checkout supplies the relative registry, runner,
+PNR Tcl, MMMC, verifier, and server-environment authority used by that gate.
+The raw diagnostic cohort has a separate, currently absent runner interface;
+it is never routed through the fair tech-staged Innovus registry.
+
+These CLI bindings do not clear readiness. The pinned Genus and Innovus
+registries still contain unresolved canonical-manifest/technology pointers,
+and no campaign becomes runnable until the missing real providers and receipts
+are pinned and all declared blockers are removed by committed evidence.
 
 ## Exact external post-route power provider
 
