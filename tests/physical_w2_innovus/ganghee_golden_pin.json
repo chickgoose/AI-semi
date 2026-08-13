@@ -1,0 +1,21 @@
+{
+  "archive": {
+    "basename": "ganghee-pnr-golden-20260813.tar.gz",
+    "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
+  },
+  "members": {
+    "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_0.8_setup_timing.rpt": "37a6146f45566184f79edc0b0544a5a8f5bcbecc37c46ab00ae8bdf088ddd6d5",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_0.8_hold_timing.rpt": "c0d10e77c6cbf5d682e43d88950ac129edabd901c77ad184c697f35f1ec4a5c3",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_2.0.sdc": "37bb18b5998084e3d734b031101824377c2f25c77db9fca6cc14a9728eb84708",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_2.0_antenna.rpt": "5505335b21f3b956b2cd3ab35570701369343b91fcaea5a2cf3f36e5efa7f8cb",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_2.0_check_timing.rpt": "8af5a5895855508486a3844e485c3d0cbf93462e8f9c607299d862182c8ed877",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_2.0_drc.rpt": "466fd239b5841001ecacd238c53f1ac3888604a4ff2933de036877350ac418a9",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_2.0_hold_timing.rpt": "830b16610fdd2273ba6eef6ff8c36df0d293dd11c4c32a6d0078f6fe7cb0ac02",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_2.0_setup_timing.rpt": "ae35e141b7f3777b880ccddb592d8ce3de0cada1d1a1fb5693e2fe6ae27bc3f6",
+    "synth/pnr/resynth_fovea_buffered/innovus_2.0.cmd": "5cf595f3c850efbd28e2ee6056f74b3551e1de4fd6a349c0f5859bd7f517b9c4",
+    "synth/pnr/resynth_fovea_buffered/innovus_2.0.log": "9bc6a4cbee1a4019b902cf5067179ab1286772e3f738d7916f002273c5efa423",
+    "synth/pnr/resynth_fovea_buffered/mmmc_2.0.tcl": "2b5798d75a0d8d091f4fa5653637d0ff60271e3f2b47deac3178c49913bc8e6d",
+    "synth/pnr/resynth_fovea_buffered/run_2.0.tcl": "29f3c03c34e5cd435072bd73e19d27138499b278690f7b6e59018419ad813dfc"
+  },
+  "schema": "w2_ganghee_server_golden_pin_v1"
+}

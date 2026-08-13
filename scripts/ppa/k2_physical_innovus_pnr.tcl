@@ -87,7 +87,10 @@ set flow_failed [catch {
 
   # An explicit library site is mandatory.  The old implicit floorPlan call
   # could create no legal rows or choose a different site across bundles.
-  floorPlan -site $site -r $aspect $util $margin $margin $margin $margin
+  # The server golden proves the -r form on Innovus 23.14.  Freeze the actual
+  # CoreSite result by inspecting the rows immediately afterward instead of
+  # relying on an unproven floorPlan option spelling.
+  floorPlan -r $aspect $util $margin $margin $margin $margin
   set row_names [dbGet top.fPlan.rows.name]
   if {[llength $row_names] == 0} {
     error "floorplan created no standard-cell rows for site $site"
@@ -101,13 +104,10 @@ set flow_failed [catch {
   # Connect both ordinary PG pins and tie cells before building the common ring.
   globalNetConnect $vdd -type pgpin -pin $vdd_pin -inst * -verbose
   globalNetConnect $vss -type pgpin -pin $vss_pin -inst * -verbose
-  globalNetConnect $vdd -type tiehi -inst * -verbose
-  globalNetConnect $vss -type tielo -inst * -verbose
-  applyGlobalNets
   addRing -nets [list $vdd $vss] -type core_rings \
     -layer [list top $ring_h bottom $ring_h left $ring_v right $ring_v] \
     -width $ring_w -spacing $ring_s -offset $ring_o
-  sroute -nets [list $vdd $vss] -connect {corePin blockPin padPin floatingStripe}
+  sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}
 
   redirect -file "$output/reports/check_design_pre_place.rpt" {checkDesign -all}
   verifyConnectivity -type special -error 1000 -warning 1000 \
@@ -144,7 +144,9 @@ set flow_failed [catch {
   # Both the database and a portable post-route netlist are authoritative W2
   # artifacts.  saveDesign alone is not a substitute for saveNetlist.
   saveNetlist "$output/netlist/${top}.postroute.v"
-  saveDesign "$output/database/${top}.enc"
+  # The golden's Stylus write_db failed with IMPIMEX-7043 and explicitly
+  # required saveDesign -mmmc2 for an MMMC1 design.
+  saveDesign -mmmc2 "$output/database/${top}.enc"
 
   set marker [open "$output/status/COMMANDS_COMPLETE" {WRONLY CREAT EXCL}]
   puts $marker "W2_INNOVUS_COMMANDS_COMPLETE"

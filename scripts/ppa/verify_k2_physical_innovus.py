@@ -22,6 +22,12 @@ TIMING_REPORTS = (
     "recovery_timing.rpt",
     "removal_timing.rpt",
 )
+EXPECTED_TIMING_CHECK = {
+    "setup_timing.rpt": "setup",
+    "hold_timing.rpt": "hold",
+    "recovery_timing.rpt": "recovery",
+    "removal_timing.rpt": "removal",
+}
 ZERO_COUNT_REPORTS = {
     "check_place_post_place.rpt": "placement_violations",
     "check_place_post_route.rpt": "placement_violations",
@@ -41,8 +47,13 @@ BAD_LOG = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 SLACK = re.compile(
-    r"^\s*slack(?:\s*\([^)]*\))?\s*[:=]?\s*"
+    r"^\s*(?:=\s*)?slack(?:\s*\([^)]*\)|\s+time)?\s*[:=]?\s*"
     r"([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+PATH_CHECK = re.compile(
+    r"^Path\s+[0-9]+:\s+(?:MET|VIOLATED)\s+"
+    r"(Setup|Hold|Recovery|Removal)\s+Check\b",
     re.IGNORECASE | re.MULTILINE,
 )
 COUNT_LINE = re.compile(r"^([a-z][a-z0-9_]*)=([0-9]+)$")
@@ -109,16 +120,31 @@ def _require_nonempty_directory(path: Path) -> None:
         raise QualificationError(f"artifact directory is empty: {path}")
 
 
-def _timing_slack(path: Path) -> float:
+def _timing_observation(path: Path, expected_check: str | None = None) -> tuple[str, float]:
+    text = _text(path)
+    checks = {value.lower() for value in PATH_CHECK.findall(text)}
+    if len(checks) != 1:
+        raise QualificationError(
+            f"timing report must contain exactly one check class: {path}"
+        )
+    check = next(iter(checks))
+    if expected_check is not None and check != expected_check:
+        raise QualificationError(
+            f"timing report check class is {check}, expected {expected_check}: {path}"
+        )
     values = []
-    for token in SLACK.findall(_text(path)):
+    for token in SLACK.findall(text):
         value = float(token)
         if not math.isfinite(value):
             raise QualificationError(f"non-finite timing slack: {path}")
         values.append(value)
     if not values:
         raise QualificationError(f"timing report has no recognized slack path: {path}")
-    return min(values)
+    return check, min(values)
+
+
+def _timing_slack(path: Path) -> float:
+    return _timing_observation(path)[1]
 
 
 def _canonical_counts(path: Path) -> dict[str, int]:
@@ -141,6 +167,25 @@ def _require_zero(path: Path, key: str) -> None:
         values.extend(
             int(token) for token in re.findall(pattern, text, re.IGNORECASE)
         )
+    if key == "drc_violations" and re.search(
+        r"^No DRC violations were found\s*$", text, re.IGNORECASE | re.MULTILINE
+    ):
+        values.append(0)
+    if key == "antenna_violations" and re.search(
+        r"^No Violations Found\s*$", text, re.IGNORECASE | re.MULTILINE
+    ):
+        values.append(0)
+    if key == "unconstrained_paths" and "TIMING CHECK SUMMARY" in text:
+        # Innovus 23.14 prints only warning classes with nonzero counts.  The
+        # golden has ideal_clock_waveform/no_drive but no missing-clock or
+        # missing-I/O-delay class, so those warnings are not conflated with
+        # unconstrained endpoints.
+        blockers = re.findall(
+            r"\|\s*(no_clock|no_input_delay|no_output_delay|unconstrained)\s*\|",
+            text, re.IGNORECASE,
+        )
+        if not blockers:
+            values.append(0)
     if not values:
         raise QualificationError(f"report lacks recognized {key} count: {path}")
     if any(value != 0 for value in values):
@@ -163,10 +208,12 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         raise QualificationError("Innovus log contains an error/interruption marker")
 
     reports = run_dir / "reports"
-    slacks = {
-        name.removesuffix("_timing.rpt"): _timing_slack(reports / name)
-        for name in TIMING_REPORTS
-    }
+    slacks = {}
+    for name in TIMING_REPORTS:
+        _, slack = _timing_observation(
+            reports / name, EXPECTED_TIMING_CHECK[name]
+        )
+        slacks[name.removesuffix("_timing.rpt")] = slack
     for check, value in slacks.items():
         if value < 0.0:
             raise QualificationError(f"{check} WNS is negative ({value})")
