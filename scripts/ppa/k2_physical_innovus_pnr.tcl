@@ -209,6 +209,12 @@ set flow_failed [catch {
   # complete core-pin routing.  Trim only dangling special-wire branches on
   # the two PG nets before extraction and fail-closed connectivity checks.
   editTrim -nets [list $vdd $vss]
+  # Materialize any signal-versus-PG DRC markers introduced by final sroute,
+  # then let NanoRoute repair only those marked shapes.  Innovus 23.14
+  # the targeted repair reverts its snapshot if the violation count increases;
+  # the independent final DRC/connectivity reports remain authoritative.
+  verify_drc -report "$output/reports/drc_pre_signal_eco.rpt"
+  ecoRoute -fix_drc
   extractRC
   # Innovus 23.14 rejects interactive constraint updates in an MMMC design
   # until their constraint mode is selected explicitly (TCLCMD-1048).  Both
