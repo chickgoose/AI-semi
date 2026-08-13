@@ -205,6 +205,10 @@ set flow_failed [catch {
   # complete.  The previous pre-place sroute left final cells disconnected
   # and placed cells across stale Metal1 special wires.
   sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}
+  # Innovus 23.14 sroute can leave zero-length Metal1 stubs after otherwise
+  # complete core-pin routing.  Trim only dangling special-wire branches on
+  # the two PG nets before extraction and fail-closed connectivity checks.
+  editTrim -nets [list $vdd $vss]
   extractRC
   # Innovus 23.14 rejects interactive constraint updates in an MMMC design
   # until their constraint mode is selected explicitly (TCLCMD-1048).  Both

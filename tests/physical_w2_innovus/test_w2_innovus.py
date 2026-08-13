@@ -150,9 +150,13 @@ class StaticFlowContractTests(unittest.TestCase):
     def test_pg_route_runs_once_after_all_cell_insertion(self):
         text = PNR.read_text(encoding="utf-8")
         sroute = "sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}"
+        trim = "editTrim -nets [list $vdd $vss]"
         self.assertEqual(text.count(sroute), 1)
+        self.assertEqual(text.count(trim), 1)
         self.assertLess(text.index("optDesign -postRoute -hold"), text.index(sroute))
-        self.assertLess(text.index(sroute), text.index("verifyConnectivity -type all"))
+        self.assertLess(text.index(sroute), text.index(trim))
+        self.assertLess(text.index(trim), text.index("extractRC", text.index(trim)))
+        self.assertLess(text.index(trim), text.index("verifyConnectivity -type all"))
 
     def test_propagated_clock_uses_the_shared_mmmc_constraint_mode(self):
         text = PNR.read_text(encoding="utf-8")
@@ -448,6 +452,18 @@ class FixtureQualificationTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(
             self.module.QualificationError, r"connectivity_violations is nonzero \(30\)"
+        ):
+            self.module._require_zero(connectivity, "connectivity_violations")
+        connectivity.write_text(
+            header
+            + "Net VSS: dangling Wire at (2.000, 11.780) (2.000, 11.780) "
+            "on layer: Metal1\n\n"
+            "Begin Summary\n"
+            "    1 Problem(s) (IMPVFC-94): The net has dangling wire(s).\n"
+            "    1 total info(s) created.\nEnd Summary\n"
+        )
+        with self.assertRaisesRegex(
+            self.module.QualificationError, r"connectivity_violations is nonzero \(1\)"
         ):
             self.module._require_zero(connectivity, "connectivity_violations")
         connectivity.write_text(
