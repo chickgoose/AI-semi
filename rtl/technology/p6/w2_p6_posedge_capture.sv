@@ -21,7 +21,9 @@ module w2_p6_posedge_capture #(
   end
 `elsif W2_P6_TECH_GSCLIB045
   for (genvar bit_index = 0; bit_index < WIDTH; bit_index++) begin : gen_capture
-    DFFRHQX1 capture_cell (
+    (* keep = "true", dont_touch = "true",
+       w2_endpoint_leaf_role = "rise_capture_bit" *)
+    DFFRHQX1 w2_ep_pos_bit (
       .RN(rst_ni),
       .CK(clock_i),
       .D(data_i[bit_index]),

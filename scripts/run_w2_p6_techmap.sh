@@ -13,7 +13,9 @@ mkdir -p "$out_dir"
 command -v "$verilator_bin" >/dev/null
 command -v "$yosys_bin" >/dev/null
 
-python3 -m unittest -v tests.w2_p6_techmap.test_manifest 2>&1 |
+python3 -m unittest -v \
+  tests.w2_p6_techmap.test_manifest \
+  tests.w2_p6_techmap.test_functional_loss_receipt 2>&1 |
   tee "$out_dir/manifest.log"
 
 owner_sources=(

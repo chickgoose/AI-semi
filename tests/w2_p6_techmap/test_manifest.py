@@ -77,7 +77,7 @@ class ManifestTest(unittest.TestCase):
             "production_source_closure", "test_only_sources", "mock_policy",
             "execution", "holds",
         })
-        self.assertEqual(doc["schema"], "w2-p6-clock-edge-techmap-v2")
+        self.assertEqual(doc["schema"], "w2-p6-clock-edge-techmap-v3")
         self.assertEqual(doc["top"], "w2_p6_exact_pair_endpoint_tech")
         self.assertEqual(doc["selection"], {
             "exactly_one_required": True,
@@ -94,7 +94,10 @@ class ManifestTest(unittest.TestCase):
                          "DFFRHQX1")
         self.assertIn("RAW_NOT_OBSERVED",
                       bindings["positive_edge_async_clear_bit"]["status"])
-        for name in ("negative_edge_async_clear_bit", "oddr", "iddr"):
+        self.assertEqual(bindings["negative_edge_async_clear_bit"]["cell"],
+                         "DFFNSRX1")
+        self.assertEqual(bindings["negative_edge_async_clear_bit"]["set_n_tie"], 1)
+        for name in ("oddr", "iddr"):
             self.assertIsNone(bindings[name]["cell"])
             self.assertTrue(bindings[name]["status"].startswith("HOLD_"))
         self.assertEqual(doc["mock_policy"], {
@@ -149,6 +152,7 @@ class ManifestTest(unittest.TestCase):
             "TLATNTSCAX2": ("E", "CK", "SE", "ECK"),
             "MX2X1": ("A", "B", "S0", "Y"),
             "DFFRHQX1": ("RN", "CK", "D", "Q"),
+            "DFFNSRX1": ("CKN", "D", "RN", "SN", "Q", "QN"),
         }
         candidates = (*expected_ports, "TLATNCAX2")
         for role in ("raw", "buffered"):
@@ -290,7 +294,9 @@ class ManifestTest(unittest.TestCase):
             binding["cell"] for binding in self.document["bindings"].values()
             if binding.get("cell") is not None
         }
-        self.assertEqual(selected, {"TLATNTSCAX2", "MX2X1", "DFFRHQX1"})
+        self.assertEqual(selected, {
+            "TLATNTSCAX2", "MX2X1", "DFFRHQX1", "DFFNSRX1"
+        })
         self.assertEqual(external, selected)
         self.assertNotIn("TLATNCAX2", sources)
 

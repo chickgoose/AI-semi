@@ -1,0 +1,16 @@
++incdir+rtl/technology/p6
++define+W2_P6_TECH_GENERIC
+rtl/technology/physical_staging/frozen_fovea/arbiter2.v
+rtl/technology/physical_staging/frozen_fovea/arbiter4_tree.v
+rtl/technology/physical_staging/frozen_fovea/aer_tx16_trad_rowcol_fovea.v
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_launch_qualifier.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_icg_boundary.sv
+rtl/candidates/a7_r1_candidate_endpoint/a7_r1_retire_observer.sv
+rtl/technology/p6/w2_p6_posedge_capture.sv
+rtl/technology/p6/w2_p6_negedge_capture.sv
+rtl/technology/r1/w2_r1_clock_boundary.sv
+rtl/technology/r1/w2_r1_mux2.sv
+rtl/technology/r1/w2_r1_ddr_tx_tech.sv
+rtl/technology/r1/w2_r1_ddr_rx_tech.sv
+rtl/technology/r1/w2_r1_candidate_endpoint_tech.sv
+rtl/technology/physical_staging/w2_fovea_r1_physical_staging_top.sv

@@ -1,0 +1,1 @@
+{"schema":"w2-endpoint-fixture-mutation-v1","base":"endpoint_inventory_extra_dffrh.json","mutation":{"leaf":"w2_ep_neg_0","field":"connectivity.CKN","from":"link_clk_o","to":"ref_clk_i"},"expected_error":"wrong connectivity for fall_capture_bit"}

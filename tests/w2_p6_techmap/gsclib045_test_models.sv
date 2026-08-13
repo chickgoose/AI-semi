@@ -39,4 +39,20 @@ module DFFRHQX1 (
       Q <= D;
   end
 endmodule
+
+module DFFNSRX1 (
+  input  logic CKN,
+  input  logic D,
+  input  logic RN,
+  input  logic SN,
+  output logic Q,
+  output logic QN
+);
+  always_ff @(negedge CKN or negedge RN or negedge SN) begin
+    if (!RN) Q <= 1'b0;
+    else if (!SN) Q <= 1'b1;
+    else Q <= D;
+  end
+  assign QN = ~Q;
+endmodule
 `endif

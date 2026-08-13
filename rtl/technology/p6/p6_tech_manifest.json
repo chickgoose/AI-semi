@@ -1,6 +1,6 @@
 {
-  "schema": "w2-p6-clock-edge-techmap-v2",
-  "status": "PARTIAL_GO_AUTHORITATIVE_SERVER_EVIDENCE_DDR_HOLD",
+  "schema": "w2-p6-clock-edge-techmap-v3",
+  "status": "LOGICAL_GO_MAPPED_INTERFACE_PARTIAL_DFFNS_USER_DIRECTED_PHYSICAL_HOLD",
   "selection": {
     "exactly_one_required": true,
     "generic_macro": "W2_P6_TECH_GENERIC",
@@ -29,7 +29,8 @@
         "TLATNTSCAX2": {"instances": 5, "files": 5},
         "TLATNCAX2": {"instances": 0, "files": 0},
         "MX2X1": {"instances": 2, "files": 1},
-        "DFFRHQX1": {"instances": 0, "files": 0}
+        "DFFRHQX1": {"instances": 0, "files": 0},
+        "DFFNSRX1": {"instances": 0, "files": 0}
       },
       "representative_members": {
         "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.4.sdc": "d263a7afc6799c861ebe84709112b5ce5964c4d0b3dfd2aa73cd14d71b4332f1",
@@ -51,7 +52,8 @@
         "TLATNTSCAX2": {"instances": 47, "files": 14},
         "TLATNCAX2": {"instances": 0, "files": 0},
         "MX2X1": {"instances": 74, "files": 12},
-        "DFFRHQX1": {"instances": 53, "files": 14}
+        "DFFRHQX1": {"instances": 53, "files": 14},
+        "DFFNSRX1": {"instances": 0, "files": 0}
       },
       "representative_members": {
         "rtl/lane_buffer2.sv": "fdeb1e4dce7bbf26215ae83a2b9a3528919562ac3fe265489ca60e32c01b4f27",
@@ -112,9 +114,14 @@
       "buffered_inventory": "53 instances in 14 mapped netlists"
     },
     "negative_edge_async_clear_bit": {
-      "status": "HOLD_NOT_OBSERVED_IN_AUTHORITATIVE_MAPPED_INVENTORIES",
-      "cell": null,
-      "implementation": "synthesizable inferred always_ff"
+      "status": "USER_DIRECTED_UNVERIFIED_INTERFACE_LOGICAL_BINDING_PHYSICAL_HOLD",
+      "cell": "DFFNSRX1",
+      "ports": {"clock_n": "CKN", "data": "D", "reset_n": "RN", "set_n": "SN", "output": "Q", "output_n": "QN"},
+      "set_n_tie": 1,
+      "p6_endpoint_width": 12,
+      "raw_inventory": "0 instances in 0 mapped netlists; literal cell name absent",
+      "buffered_inventory": "0 instances in 0 mapped netlists; literal cell name absent",
+      "evidence_limit": "the user directed this logical interface; authoritative archives prove no pins, function, timing arcs, or physical usability"
     },
     "oddr": {"status": "HOLD_NOT_OBSERVED_IN_AUTHORITATIVE_MAPPED_INVENTORIES", "cell": null},
     "iddr": {"status": "HOLD_NOT_OBSERVED_IN_AUTHORITATIVE_MAPPED_INVENTORIES", "cell": null}
@@ -152,7 +159,8 @@
     "p6_physical_ppa": false
   },
   "holds": [
-    "negative-edge async-clear, ODDR, and IDDR cells were not observed in either authoritative mapped inventory",
+    "DFFNSRX1 was user-directed for logical binding but was not observed in either authoritative mapped inventory; its interface and physical usability remain unverified",
+    "ODDR and IDDR cells were not observed in either authoritative mapped inventory",
     "the referenced Liberty, LEF, and QRC payloads are not archived; no Liberty function or pin timing arc is claimed",
     "the server SDCs constrain one clk and contain no P6 ref/sample generated-clock, falling-edge, or DDR constraints",
     "no dedicated P6 real-library simulation, mapped STA, clock-gating check, CTS, place-and-route, or physical PPA was run",

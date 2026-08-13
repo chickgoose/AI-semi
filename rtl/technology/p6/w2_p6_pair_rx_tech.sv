@@ -14,8 +14,8 @@ module w2_p6_pair_rx_tech (
 );
   logic [4:0] low_symbol_q;
   logic [9:0] closing_word;
-  logic [10:0] closing_state_d;
-  logic [10:0] closing_state_q;
+  logic [11:0] closing_state_d;
+  logic [11:0] closing_state_q;
 
   w2_p6_posedge_capture #(.WIDTH(5)) low_symbol_capture (
     .clock_i(p6_clk_i),
@@ -25,31 +25,24 @@ module w2_p6_pair_rx_tech (
   );
 
   assign closing_word = {p6_data_i, low_symbol_q};
-  assign closing_state_d[10:9] = closing_word[9] ? 2'd2 : 2'd1;
-  assign closing_state_d[8:5] = closing_word[7:4];
-  assign closing_state_d[4:1] = closing_word[9] ? closing_word[3:0] : 4'd0;
-  assign closing_state_d[0] = closing_word[8] ||
+  assign closing_state_d[11:10] = closing_word[9] ? 2'd2 : 2'd1;
+  assign closing_state_d[9:6] = closing_word[7:4];
+  assign closing_state_d[5:2] = closing_word[9] ? closing_word[3:0] : 4'd0;
+  assign closing_state_d[1] = closing_word[8] ||
                               (!closing_word[9] &&
                                (closing_word[3:0] != 4'd0));
+  assign closing_state_d[0] = ~closing_state_q[0];
 
-  w2_p6_negedge_capture #(.WIDTH(11)) closing_capture (
+  w2_p6_negedge_capture #(.WIDTH(12)) closing_capture (
     .clock_i(p6_clk_i),
     .rst_ni(rst_n),
     .data_i(closing_state_d),
     .data_o(closing_state_q)
   );
 
-  assign raw_count_o = closing_state_q[10:9];
-  assign raw_addr0_o = closing_state_q[8:5];
-  assign raw_addr1_o = closing_state_q[4:1];
-  assign raw_protocol_error_o = closing_state_q[0];
-
-  // The owner uses a toggle, not a data-derived level.  Keep that exact edge
-  // behavior inferred until an evidenced negative-edge/DDR cell is available.
-  always_ff @(negedge p6_clk_i or negedge rst_n) begin
-    if (!rst_n)
-      raw_toggle_o <= 1'b0;
-    else
-      raw_toggle_o <= ~raw_toggle_o;
-  end
+  assign raw_count_o = closing_state_q[11:10];
+  assign raw_addr0_o = closing_state_q[9:6];
+  assign raw_addr1_o = closing_state_q[5:2];
+  assign raw_protocol_error_o = closing_state_q[1];
+  assign raw_toggle_o = closing_state_q[0];
 endmodule

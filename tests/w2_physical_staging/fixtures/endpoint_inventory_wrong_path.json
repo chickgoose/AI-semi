@@ -1,0 +1,1 @@
+{"schema":"w2-endpoint-fixture-mutation-v1","base":"endpoint_inventory_extra_dffrh.json","mutation":{"leaf":"w2_ep_pos_0","field":"name","from":"w2_ep_pos_0","to":"capture_cell"},"expected_error":"stable prefix mismatch"}

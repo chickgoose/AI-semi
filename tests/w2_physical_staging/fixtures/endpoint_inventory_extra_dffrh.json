@@ -1,0 +1,39 @@
+{
+  "schema": "w2-endpoint-mapped-fixture-v1",
+  "fixture_class": "positive_real_shaped_with_legitimate_extra_top_cells",
+  "endpoint_root": "link.w2_endpoint_link__p6",
+  "endpoint_required_counts": {"TLATNTSCAX2": 1, "MX2X1": 5, "DFFRHQX1": 5, "DFFNSRX1": 12},
+  "required_connectivity": {
+    "clock_gate": {"CK": "sample_clk_i", "E": "frame_active&rst_n", "SE": "0", "ECK": "link_clk_o"},
+    "symbol_mux_bit": {"A": "frame_word_q[i+5]", "B": "frame_word_q[i]", "S0": "ref_clk_i", "Y": "link_data_o[i]"},
+    "rise_capture_bit": {"CK": "link_clk_o", "D": "link_data_o[i]", "RN": "rst_n", "Q": "low_symbol_q[i]"},
+    "fall_capture_bit": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}
+  },
+  "endpoint_leaves": [
+    {"name": "w2_ep_icg_0", "role": "clock_gate", "cell": "TLATNTSCAX2", "connectivity": {"CK": "sample_clk_i", "E": "frame_active&rst_n", "SE": "0", "ECK": "link_clk_o"}},
+    {"name": "w2_ep_mux_0", "role": "symbol_mux_bit", "cell": "MX2X1", "connectivity": {"A": "frame_word_q[i+5]", "B": "frame_word_q[i]", "S0": "ref_clk_i", "Y": "link_data_o[i]"}},
+    {"name": "w2_ep_mux_1", "role": "symbol_mux_bit", "cell": "MX2X1", "connectivity": {"A": "frame_word_q[i+5]", "B": "frame_word_q[i]", "S0": "ref_clk_i", "Y": "link_data_o[i]"}},
+    {"name": "w2_ep_mux_2", "role": "symbol_mux_bit", "cell": "MX2X1", "connectivity": {"A": "frame_word_q[i+5]", "B": "frame_word_q[i]", "S0": "ref_clk_i", "Y": "link_data_o[i]"}},
+    {"name": "w2_ep_mux_3", "role": "symbol_mux_bit", "cell": "MX2X1", "connectivity": {"A": "frame_word_q[i+5]", "B": "frame_word_q[i]", "S0": "ref_clk_i", "Y": "link_data_o[i]"}},
+    {"name": "w2_ep_mux_4", "role": "symbol_mux_bit", "cell": "MX2X1", "connectivity": {"A": "frame_word_q[i+5]", "B": "frame_word_q[i]", "S0": "ref_clk_i", "Y": "link_data_o[i]"}},
+    {"name": "w2_ep_pos_0", "role": "rise_capture_bit", "cell": "DFFRHQX1", "connectivity": {"CK": "link_clk_o", "D": "link_data_o[i]", "RN": "rst_n", "Q": "low_symbol_q[i]"}},
+    {"name": "w2_ep_pos_1", "role": "rise_capture_bit", "cell": "DFFRHQX1", "connectivity": {"CK": "link_clk_o", "D": "link_data_o[i]", "RN": "rst_n", "Q": "low_symbol_q[i]"}},
+    {"name": "w2_ep_pos_2", "role": "rise_capture_bit", "cell": "DFFRHQX1", "connectivity": {"CK": "link_clk_o", "D": "link_data_o[i]", "RN": "rst_n", "Q": "low_symbol_q[i]"}},
+    {"name": "w2_ep_pos_3", "role": "rise_capture_bit", "cell": "DFFRHQX1", "connectivity": {"CK": "link_clk_o", "D": "link_data_o[i]", "RN": "rst_n", "Q": "low_symbol_q[i]"}},
+    {"name": "w2_ep_pos_4", "role": "rise_capture_bit", "cell": "DFFRHQX1", "connectivity": {"CK": "link_clk_o", "D": "link_data_o[i]", "RN": "rst_n", "Q": "low_symbol_q[i]"}},
+    {"name": "w2_ep_neg_0", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_1", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_2", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_3", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_4", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_5", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_6", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_7", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_8", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_9", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_10", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}},
+    {"name": "w2_ep_neg_11", "role": "fall_capture_bit", "cell": "DFFNSRX1", "connectivity": {"CKN": "link_clk_o", "D": "closing_state_d[i]", "RN": "rst_n", "SN": "1", "Q": "closing_state_q[i]", "QN": "open"}}
+  ],
+  "whole_top_counts": {"TLATNTSCAX2": 2, "MX2X1": 8, "DFFRHQX1": 6, "DFFNSRX1": 13},
+  "outside_endpoint_extra_cells": ["scheduler_auto_icg", "scheduler_mux", "buffer_dffrh", "unrelated_negedge_dffns"]
+}

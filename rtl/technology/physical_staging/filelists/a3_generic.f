@@ -1,0 +1,15 @@
++incdir+rtl/technology/p6
++define+W2_P6_TECH_GENERIC
+rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv
+rtl/technology/p6/w2_p6_clock_boundary.sv
+rtl/technology/p6/w2_p6_mux2.sv
+rtl/technology/p6/w2_p6_posedge_capture.sv
+rtl/technology/p6/w2_p6_negedge_capture.sv
+rtl/technology/p6/w2_p6_pair_tx_tech.sv
+rtl/technology/p6/w2_p6_pair_rx_tech.sv
+rtl/technology/p6/w2_p6_exact_pair_endpoint_tech.sv
+rtl/technology/physical_staging/w2_p6_atomic_bundle_adapter_tech.sv
+rtl/technology/physical_staging/w2_a3_p6_physical_staging_top.sv

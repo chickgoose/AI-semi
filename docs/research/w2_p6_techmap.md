@@ -44,6 +44,32 @@ or DDR interface. The Genus and Innovus artifacts demonstrate that the cells
 were used by those unrelated server workloads; they do not close P6 STA, clock
 gating, CTS, routing, or PPA. Those remain HOLD.
 
+## Separate functional loss receipt
+
+The non-official workspace-diff evaluation archive
+`/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz` is pinned at SHA-256
+`22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39`.
+Its internal `provenance.txt` identifies server attempt
+`/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL`, snapshot
+`47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be`, and a
+`binding_reset_quiet_arming_patch=workspace-diff`. All 338 entries in the inner
+artifact ledger verify against all 338 archived result files. The bound
+candidate run logs show:
+
+| Workload | Functional result | generated | accepted/delivered | overrun |
+| --- | --- | ---: | ---: | ---: |
+| Fovea | 50/50 PASS, reset PASS, pairwise status 0 | 106416 | 78229 | 28187 |
+| Cluster2 | 50/50 PASS, reset PASS, pairwise status 0 | 106416 | 94157 | 12259 |
+
+This receipt is used only for functional workload and ingress-loss counts. It
+is not an official clean-tree result: the workspace diff and exact source
+closure are not archived. It does not exercise the P6 technology top and is not
+evidence for cell binding, P6 equivalence, candidate ranking, frequency,
+timing, area, power, or PPA. The outer `eval-driver-final.log` is deliberately
+excluded because it is stale and names a different attempt. Provenance is bound
+only through the yZr1 archive, its `provenance.txt`, candidate logs, and verified
+inner ledger.
+
 The generic branch preserves the owner's exact
 `sample_clk_i & frame_active_o & rst_n` expression and ternary data selection.
 The GSCLIB branch uses the mapped ICG and mux interfaces. The behavioral cell

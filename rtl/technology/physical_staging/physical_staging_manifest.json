@@ -1,0 +1,97 @@
+{
+  "schema": "k2_w2_tech_staged_compositions_v1",
+  "status": "HOLD_PENDING_FRESH_GENERIC_GS_LOCKSTEP_AND_RUNNER",
+  "repository_commit": null,
+  "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
+  "common_ports": [
+    {"direction":"input","name":"ref_clk_i","width":1},
+    {"direction":"input","name":"sample_clk_i","width":1},
+    {"direction":"input","name":"rst_n","width":1},
+    {"direction":"input","name":"source_pending_i","width":16},
+    {"direction":"output","name":"source_accept_o","width":16},
+    {"direction":"output","name":"link_clk_o","width":1},
+    {"direction":"output","name":"link_data_o","width_by_design":{"fovea_a7":2,"a2_p6":5,"a3_p6":5}},
+    {"direction":"output","name":"retire_valid_o","width":2},
+    {"direction":"output","name":"retire_addr0_o","width":4},
+    {"direction":"output","name":"retire_addr1_o","width":4},
+    {"direction":"output","name":"drain_idle_o","width":1},
+    {"direction":"output","name":"protocol_error_o","width":1}
+  ],
+  "technology_authorities": {
+    "raw_golden": {"path":"/tmp/ganghee-pnr-raw-golden-20260813.tar.gz","sha256":"7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3"},
+    "buffered_golden": {"path":"/tmp/ganghee-pnr-golden-20260813.tar.gz","sha256":"1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"},
+    "live_gsclib045": {
+      "liberty":"/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib",
+      "technology_lef":"/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_tech.lef",
+      "macro_lef":"/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_macro.lef",
+      "qrc":"/home/aiasic26911/gsclib045_all_v4.7/gsclib045/qrc/qx/gpdk045.tch",
+      "dffnsrx1_cell_and_interface_verified": true,
+      "liberty_timing_arcs_claimed_by_manifest": false
+    },
+    "cells": {
+      "TLATNTSCAX2":{"ports":["CK","E","SE","ECK"]},
+      "MX2X1":{"ports":["A","B","S0","Y"]},
+      "DFFRHQX1":{"ports":["RN","CK","D","Q"]},
+      "DFFNSRX1":{"ports":["CKN","D","RN","SN","Q","QN"]}
+    }
+  },
+  "constraint_templates": {
+    "ref_period_ns":5.0, "sample_period_ns":5.0,
+    "sample_waveform_ns":[1.25,3.75], "clock_uncertainty_ns":0.25,
+    "input_delay_ns":0.5, "output_delay_ns":0.5, "output_load_pf":0.01,
+    "generated_link_clock_required":true, "both_link_edges_required":true,
+    "ref_and_sample_are_phase_related":true
+  },
+  "designs": {
+    "fovea_a7": {
+      "top":"w2_fovea_r1_physical_staging_top", "filelists":{"generic":"rtl/technology/physical_staging/filelists/fovea_generic.f","gsclib045":"rtl/technology/physical_staging/filelists/fovea_gsclib045.f"},
+      "port_signature":["ref_clk_i","sample_clk_i","rst_n","source_pending_i[15:0]","source_accept_o[15:0]","link_clk_o","link_data_o[1:0]","retire_valid_o[1:0]","retire_addr0_o[3:0]","retire_addr1_o[3:0]","drain_idle_o","protocol_error_o"],
+      "endpoint_root":{"attribute":"w2_endpoint_root=r1","stable_prefix":"w2_endpoint_link__r1"},
+      "endpoint_leaf_contract":{"path_segment":"w2_endpoint_link__r1","leaf_counts":{"TLATNTSCAX2":1,"MX2X1":2,"DFFRHQX1":2,"DFFNSRX1":5},"preserved_name_prefixes":{"TLATNTSCAX2":"w2_ep_icg_","MX2X1":"w2_ep_mux_","DFFRHQX1":"w2_ep_pos_","DFFNSRX1":"w2_ep_neg_"}},
+      "whole_top_observed_totals":{"status":"PENDING_DEDICATED_GENUS_RUN","records":[]}
+    },
+    "a2_p6": {
+      "top":"w2_a2_p6_physical_staging_top", "filelists":{"generic":"rtl/technology/physical_staging/filelists/a2_generic.f","gsclib045":"rtl/technology/physical_staging/filelists/a2_gsclib045.f"},
+      "port_signature":["ref_clk_i","sample_clk_i","rst_n","source_pending_i[15:0]","source_accept_o[15:0]","link_clk_o","link_data_o[4:0]","retire_valid_o[1:0]","retire_addr0_o[3:0]","retire_addr1_o[3:0]","drain_idle_o","protocol_error_o"],
+      "endpoint_root":{"attribute":"w2_endpoint_root=p6","stable_prefix":"w2_endpoint_link__p6"},
+      "endpoint_leaf_contract":{"path_segment":"w2_endpoint_link__p6","leaf_counts":{"TLATNTSCAX2":1,"MX2X1":5,"DFFRHQX1":5,"DFFNSRX1":12},"preserved_name_prefixes":{"TLATNTSCAX2":"w2_ep_icg_","MX2X1":"w2_ep_mux_","DFFRHQX1":"w2_ep_pos_","DFFNSRX1":"w2_ep_neg_"}},
+      "whole_top_observed_totals":{"status":"PENDING_DEDICATED_GENUS_RUN","records":[]}
+    },
+    "a3_p6": {
+      "top":"w2_a3_p6_physical_staging_top", "filelists":{"generic":"rtl/technology/physical_staging/filelists/a3_generic.f","gsclib045":"rtl/technology/physical_staging/filelists/a3_gsclib045.f"},
+      "port_signature":["ref_clk_i","sample_clk_i","rst_n","source_pending_i[15:0]","source_accept_o[15:0]","link_clk_o","link_data_o[4:0]","retire_valid_o[1:0]","retire_addr0_o[3:0]","retire_addr1_o[3:0]","drain_idle_o","protocol_error_o"],
+      "endpoint_root":{"attribute":"w2_endpoint_root=p6","stable_prefix":"w2_endpoint_link__p6"},
+      "endpoint_leaf_contract":{"path_segment":"w2_endpoint_link__p6","leaf_counts":{"TLATNTSCAX2":1,"MX2X1":5,"DFFRHQX1":5,"DFFNSRX1":12},"preserved_name_prefixes":{"TLATNTSCAX2":"w2_ep_icg_","MX2X1":"w2_ep_mux_","DFFRHQX1":"w2_ep_pos_","DFFNSRX1":"w2_ep_neg_"}},
+      "whole_top_observed_totals":{"status":"PENDING_DEDICATED_GENUS_RUN","records":[]}
+    }
+  },
+  "source_hashes": {
+    "rtl/technology/p6/w2_p6_clock_boundary.sv":"56e4c1d5cf8bed80a374b4854c6480a2541734490cb0783f13d72eb34d444773",
+    "rtl/technology/p6/w2_p6_mux2.sv":"b40e505c2f525c8da999040bba5527b7bd6fc7cb0c0f51c78ccdf3e550135c9a",
+    "rtl/technology/p6/w2_p6_posedge_capture.sv":"3db0c391b96812bf3744fe0244eb0a1489a6b63aaf5679ec59088bb80d1cceaf",
+    "rtl/technology/p6/w2_p6_negedge_capture.sv":"d3ce4004822462f9744f6b6288de90f83ec2bc9349af859bd338d465d2d5aef1",
+    "rtl/technology/p6/w2_p6_pair_tx_tech.sv":"14c93981dc10533d0cdd2d88ad6d78dacba58f675c5e6316a26959411e4578ab",
+    "rtl/technology/p6/w2_p6_pair_rx_tech.sv":"37b1388c06d74ffe9d56f78e31be238f1d1b4f6535f1ceb212e534090a37eccd",
+    "rtl/technology/p6/w2_p6_exact_pair_endpoint_tech.sv":"591dafb666c525dec9cf704bd63d466a0b060ad6dfe8de20cbeb69f9446ec2d1",
+    "rtl/technology/r1/w2_r1_clock_boundary.sv":"1dd14c284308138970bf6a75fd57d989cbce9747b8cd2573301a186671e848db",
+    "rtl/technology/r1/w2_r1_mux2.sv":"106043c13b4b284517a70a97f8d396315dd6df0c6ebf7df489cffa6d9972fb75",
+    "rtl/technology/r1/w2_r1_ddr_tx_tech.sv":"b3f02d16abb4aa10cc7eae3ad5004c565676b54e7abea87db06846ebfa6c4e88",
+    "rtl/technology/r1/w2_r1_ddr_rx_tech.sv":"001e1cd6cf7d5c161a994e08a7b709889eddc9a93441a14dcb8b251c94630c7f",
+    "rtl/technology/r1/w2_r1_candidate_endpoint_tech.sv":"f0010bbe01c538fdd1306650996f02b0eed1bf91c1700040cc0928ba3137330b",
+    "rtl/technology/physical_staging/w2_p6_atomic_bundle_adapter_tech.sv":"6961616e483ddcb75dfa3ffc2a5b5d455dbb5bc16dd1b29f34c00c97e45fca15",
+    "rtl/technology/physical_staging/w2_fovea_r1_physical_staging_top.sv":"9509d3ef078354ff403f4c4f99190d458ea2b9e849e3828ed8cce115e34fcf85",
+    "rtl/technology/physical_staging/w2_a2_p6_physical_staging_top.sv":"edb6860f81718be4275bf885f8716637890b61f0f76e0c2c88a94efe32933334",
+    "rtl/technology/physical_staging/w2_a3_p6_physical_staging_top.sv":"c7779e0c1468c46d4626428fe52f9ba6409af67212681e106d90ee8a6634e8bd"
+  },
+  "test_policy": {"acceptance_sample":"posedge_ref_active_region_pre_NBA","pending_hold":"through_charged_posedge","protocol_error_must_equal_zero":true,"epoch_accepted_equals_retired":true,"cell_models_test_only":true},
+  "consumer_contract": {
+    "consumers":["genus","innovus"],
+    "manifest_path":"rtl/technology/physical_staging/physical_staging_manifest.json",
+    "required_schema":"k2_w2_tech_staged_compositions_v1",
+    "required_status":"READY_FOR_GENUS_AND_INNOVUS",
+    "require_repository_commit":true,
+    "require_literal_common_port_signature":true,
+    "require_endpoint_path_and_leaf_provenance":true,
+    "forbidden_port_aliases":["load_i","pending_i","source_ready_o","protocol_fault_o","link_enable","link_enable_i","burst_clk_o","burst_data_o","p6_clk_o","p6_data_o"]
+  }
+}

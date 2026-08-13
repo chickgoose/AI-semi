@@ -1,0 +1,92 @@
+{
+  "schema": "w2-p6-functional-loss-receipt-v1",
+  "receipt_class": "workspace-diff-non-official",
+  "allowed_use": "functional-loss-only",
+  "eligibility": {
+    "official_evidence": false,
+    "ppa": false,
+    "area": false,
+    "power": false,
+    "frequency": false,
+    "timing_or_sta": false,
+    "cell_or_library_evidence": false,
+    "p6_technology_equivalence": false,
+    "candidate_ranking": false
+  },
+  "archive": {
+    "default_path": "/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz",
+    "sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39",
+    "size_bytes": 2364146,
+    "regular_files": 344,
+    "directory_members": 107,
+    "tar_members": 451,
+    "results_files": 338,
+    "root_regular_files": ["capacity-stems.txt", "cluster2-run.log", "fovea-run.log", "full-stems.txt", "provenance.txt", "result-artifacts.sha256"],
+    "verification": "parse_directly_from_hash_verified_archive"
+  },
+  "provenance": {
+    "member": "provenance.txt",
+    "sha256": "b9d119828a457886b80b5ae95b13d10a1d00541f52afd4d5cb127a48be89bdd0",
+    "server_attempt": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL",
+    "snapshot_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "snapshot_archive_sha256": "3a970fd551e9ec7e2cc645e559889e30eaac4d9ec64152631e2e336e2c9664c3",
+    "binding_reset_quiet_arming_patch": "workspace-diff",
+    "exact_source_closure_archived": false,
+    "canonical_rtl_date_kst": "2026-08-09",
+    "tool": "xrun(64)\t23.09-s013",
+    "hostname": "snu.polaris.09",
+    "start_utc": "2026-08-13T01:56:31Z",
+    "finish_utc": "2026-08-13T01:58:34Z"
+  },
+  "ledger": {
+    "member": "result-artifacts.sha256",
+    "sha256": "dd3799d9feefaa5c781eae3fbc84e0d1976aedeb3a68f1b8b245e64dc342b4a4",
+    "entries": 338,
+    "verified": 338,
+    "mismatched": 0,
+    "missing": 0,
+    "covers_all_results_files": true
+  },
+  "workload_stems": {
+    "full50_member": "full-stems.txt",
+    "full50_sha256": "c0b830a99e7be01a908091a45e594df5dc187923bc887a6a3924a4b20700dc6c",
+    "full50_count": 50,
+    "capacity22_member": "capacity-stems.txt",
+    "capacity22_sha256": "f51147b6533c78928afb7d69683acd54170f757a83fb131db163d56c8bd2f15a",
+    "capacity22_count": 22
+  },
+  "candidates": {
+    "fovea": {
+      "candidate": "ganghee-native-coordinate-source-projection",
+      "run_log": "fovea-run.log",
+      "run_log_sha256": "32e0c008cf6e1b5918a1b0e8c4394b23fe4f8e91d9fb155ddb7f5170674c81f8",
+      "full50_aggregate": "results/fovea/full50-nonmixed48.aggregate.json",
+      "full50_aggregate_sha256": "f926587246fe9d23c6bb3222502fcc11c488da7f3425eeefd7e3fea7a4f3529f",
+      "workload_runs": 50,
+      "workload_passes": 50,
+      "workload_failures": 0,
+      "reset_pass": true,
+      "pairwise_status": 0,
+      "full50": {"generated": 106416, "accepted": 78229, "delivered": 78229, "overrun": 28187, "errors": 0}
+    },
+    "cluster2": {
+      "candidate": "ganghee-cluster2-row-bitmap",
+      "run_log": "cluster2-run.log",
+      "run_log_sha256": "4a37e3e7107be0777d87a64b5ed5ff4cd104a592845a98611d9f0841cc73db68",
+      "full50_aggregate": "results/cluster2/full50-nonmixed48.aggregate.json",
+      "full50_aggregate_sha256": "7ab2471eb186792d38aadbe2c46265c2a3243ec7fd6c4ef3c915205a4ae8e44e",
+      "workload_runs": 50,
+      "workload_passes": 50,
+      "workload_failures": 0,
+      "reset_pass": true,
+      "pairwise_status": 0,
+      "full50": {"generated": 106416, "accepted": 94157, "delivered": 94157, "overrun": 12259, "errors": 0}
+    }
+  },
+  "excluded_evidence": {
+    "outer_eval_driver_final_log": {
+      "bound": false,
+      "reason": "stale outer log names a different attempt and contains no yZr1 provenance"
+    }
+  }
+}
