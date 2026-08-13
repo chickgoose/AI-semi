@@ -1,0 +1,104 @@
+K2 실서버 동일-flow 물리검증 결과 (2026-08-13)
+====================================================
+
+판정 요약
+---------
+- Fovea+A7, A2+P6, A3+P6 모두 실제 Genus 합성 및 Innovus place/CTS/route를 완료했다.
+- 세 후보 모두 post-route netlist/SDF/SPEF와 area/power/timing/DRC 보고서를 생성했다.
+- 그러나 5.0 ns(200 MHz) 목표에서 세 후보 모두 setup/hold 및 물리 위반이 남아
+  FLOW_CLEAN은 HOLD다. 따라서 qualified Fmax는 아직 측정되지 않았다.
+- 아래 전력은 동일 official full50 소속 trace
+  mixed_phase_always_ready_identity 1개(9,228 events)의 대표 activity point다.
+  full50 50개 평균이나 capacity22 전력이 아니다.
+
+공통 조건
+---------
+- Genus 23.14 / Innovus 23.14 / Xcelium 23.09
+- GPDK045, 0.9 V, target period 5.0 ns
+- 동일 canonical endpoint boundary, 동일 output load 및 동일 physical policy
+- 동일 5 ns-scaled VCD window: 20.485 us = 4097 ref periods
+  (4096 measurement cycles + final service edge)
+- source trace: 9,228 generated events
+- integration source commit: ccdbc2c363524945a76944bf16f2423ca67b2518
+
+핵심 정량 결과
+-------------
+후보        Inst.   Area(*)    Power       Accepted/Delivered   Overrun(loss)   E/measured event
+Fovea+A7     373      928.530    66.299 uW   4,103 (44.46%)      5,125 (55.54%)  0.3318 pJ
+A2+P6       1096     2980.530   358.841 uW   8,037 (87.09%)      1,191 (12.91%)  0.9153 pJ
+A3+P6        640     1780.110   178.720 uW   6,881 (74.57%)      2,347 (25.43%)  0.5325 pJ
+
+(*) area report 자체에는 단위가 인쇄되지 않는다. Innovus report_area 관례상 um^2로
+    해석하되, 파일이 단위를 자가 선언한 값은 아니다.
+
+전력 구성 (mW)
+--------------
+후보        Internal      Switching     Leakage       Total
+Fovea+A7    0.03722813    0.02904943    0.00002162   0.06629918
+A2+P6       0.18605859    0.17269275    0.00009006   0.35884141
+A3+P6       0.09641279    0.08226651    0.00004048   0.17871978
+
+전력 주의사항
+-------------
+- 직접 VCD net annotation coverage는 Fovea 51/397=12.85%,
+  A2 66/1127=5.86%, A3 64/672=9.52%다.
+- propagation 후 coverage는 Fovea 52/397=13.10%, A2 67/1127=5.94%,
+  A3 65/672=9.67%다. Innovus는 activity를 propagation했고 default input activity가
+  지정되지 않아 0.2로 default했다는 경고를 냈다. 다만 primary inputs는 모두
+  19/19 annotated였고, 리포트는 각 미매칭 내부 net이 propagation/default 중
+  어느 경로로 채워졌는지 수량을 분리하지 않는다.
+- direct coverage가 낮고 후보별로 불균등하므로 위 전력 절대값, power ratio 및
+  E/event는 provisional diagnostic이다. signoff급 full-suite 전력이나 정밀한
+  apples-to-apples power ranking으로 해석하지 않는다.
+- 1/2 VCD scaling은 정수 손실 없이 5 ns 상대 위상을 보존하지만 window는 ref
+  falling-edge epoch에서 시작한다. finite window 때문에 Innovus는 ref frequency를
+  199.976 MHz로 해석했다.
+
+post-route timing @ 5.0 ns
+--------------------------
+후보        Setup WNS (viol.)   Hold WNS (viol.)   Gating setup   Gating hold
+Fovea+A7    -0.243364 (7)       -0.168759 (10)     -0.158299      -2.639750
+A2+P6       -0.319190 (22)      -0.065127 (15)     -0.043297      -2.672410
+A3+P6       -0.273665 (9)       -0.096454 (11)     -0.114701      -2.667610
+
+- recovery/removal과 pulse-width는 세 후보 모두 이 실행에서 violation 0이었다.
+- half-cycle setup은 세 후보 모두 실패했다.
+- 현재 routed implementation은 5.0 ns에서 setup/hold/physical gates를 통과하지
+  못했다. period sweep 및 재-closure를 하지 않았으므로 qualified Fmax는 미확정이며
+  상한이나 하한도 qualification 결과로 주장하지 않는다.
+
+physical integrity
+------------------
+후보        DRC violations   Connectivity/PG problems   Antenna
+Fovea+A7    28               30                          0
+A2+P6       20               22                          0
+A3+P6       22               24                          0
+
+- 주요 DRC는 Metal1 short다.
+- connectivity 문제는 unconnected PG terminals 및 VDD/VSS special/regular route opens다.
+- 따라서 이 숫자들은 routed diagnostic 결과이며 tapeout/signoff 결과가 아니다.
+
+핀/링크 경계
+------------
+- Fovea+A7 canonical top: 총 signal bits 50, 내부 physical link 3 wires.
+- A2+P6 및 A3+P6: 총 signal bits 53, 내부 physical link 6 wires.
+- P6 후보는 공통 관측/제어 경계에서 3 signal bits(+6%)만 많지만,
+  실제 링크 배선은 R1보다 3 wires(+100%) 많다.
+
+해석
+----
+- 처리/손실: A2가 가장 좋고, A3가 중간, Fovea+A7가 가장 나쁘다.
+- 면적/전력: Fovea+A7가 가장 작고 낮다. A3는 A2보다 면적 40.3% 작고,
+  reported diagnostic power는 50.2% 낮다(전력 ranking은 낮고 불균등한 annotation
+  coverage 때문에 provisional).
+- 절충점: A3는 A2보다 처리량은 낮지만 Fovea+A7보다 손실을 크게 줄이면서,
+  A2보다 훨씬 작은 면적/전력을 보여 현재 세 후보 중 가장 균형적인 구조다.
+- 다만 셋 모두 5 ns physical closure에 실패했으므로 최종 우승 구조 확정은 보류한다.
+
+서버 증거 위치
+--------------
+- Fovea+A7: /tmp/k2-pnr-ccdbc2c/out-fovea_a7
+- A2+P6: /tmp/k2-pnr-ccdbc2c-parallel/out-a2_p6
+- A3+P6: /tmp/k2-pnr-ccdbc2c-parallel/out-a3_p6
+- common scaled activity: /tmp/k2-pnr-ccdbc2c/activity5
+- validated plan: /tmp/k2-pnr-ccdbc2c/innovus-plan.json
