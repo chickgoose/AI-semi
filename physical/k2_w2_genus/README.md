@@ -9,14 +9,31 @@ commit `13c60f936fe5a265e650b4b91436ed79fc20dc91`:
 4. `a2_p6`
 5. `a3_p6`
 
-`designs.json` is the authoritative top/filelist/source-hash registry. The
-runner rejects any source that differs from the named source commit, snapshots
-every source and the supplied Liberty into a new attempt namespace, records the
-Genus executable path/hash/version before and after execution, disables scan
-and automatic clock-gating insertion, and emits a canonical `attempt.json`.
+`designs.json` is the top/filelist/source-hash registry. The sole server-flow
+authority is `ganghee-pnr-golden-20260813.tar.gz`, SHA-256
+`1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f`.
+`golden_reference.json` binds 25 exact members: both 1.0 ns Genus Tcl/log/cmd
+runs, their area/timing/power/netlist/SDC outputs, and every Fovea/Cluster2
+wrapper/core RTL input. A renamed local source tree, repacked archive, modified
+member, missing archive, or different archive bytes are rejected.
 
-After Genus exits zero, publication still fails unless all required reports,
-the completion/log sentinels, mapped netlist, mapped SDC, library-cell
+The driver follows the byte-proven golden command order and assumptions:
+Genus `23.14-s090_1`, `slow_vdd1v0_basicCells.lib`, automatic clock-gating
+enabled, `read_hdl`, elaborate, SDC load, generic/map/opt, then the three real
+report classes `*_area.rpt`, `*_gtiming.rpt`, `*_gpower.rpt` and mapped
+`*_netlist.v`/`*_out.sdc`. It does not fabricate the earlier local-only
+check/QoR/clocks report set. Candidate reports must match the actual Ganghee
+Genus report grammar and the log must show the pinned version, zero Error/Fatal,
+and normal exit.
+
+The runner rejects any candidate source that differs from the named source
+commit, snapshots the authoritative archive, every source and supplied Liberty
+into a new attempt namespace, records the Genus executable path/hash/version
+before and after execution, disables scan insertion, and emits a canonical
+`attempt.json`.
+
+After Genus exits zero, publication still fails unless all golden-format
+reports, the log sentinel/status, mapped netlist, mapped SDC, library-cell
 inventory, zero unresolved/blackbox types, and zero scan-cell types pass. A
 failed run may leave diagnostic files in its unique attempt directory but never
 publishes `receipt.json` and never deletes or overwrites another attempt.
@@ -44,7 +61,8 @@ that merely echoes PASS does not constitute hardware qualification.
 python3 physical/k2_w2_genus/run_genus.py \
   --design a2_p6 \
   --genus /absolute/immutable/genus-entrypoint \
-  --library /absolute/slow.lib \
+  --library /absolute/slow_vdd1v0_basicCells.lib \
+  --golden-archive /tmp/ganghee-pnr-golden-20260813.tar.gz \
   --mapped-smoke-hook /absolute/pinned/mapped-smoke-hook \
   --output-root /absolute/new-results-root \
   --attempt a2-p6-period5-attempt1

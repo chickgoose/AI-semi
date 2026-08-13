@@ -8,7 +8,7 @@
     "input_delay_ns": 0.5,
     "output_delay_ns": 0.5,
     "output_load_pf": 0.01,
-    "clock_gating_insertion": false,
+    "clock_gating_insertion": true,
     "scan_mapping": false
   },
   "designs": {
