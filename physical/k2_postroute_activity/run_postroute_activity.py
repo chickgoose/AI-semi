@@ -327,8 +327,8 @@ def produce(args: argparse.Namespace) -> Path:
     log = output / "tool.log"
     log.write_bytes(b"")
     inputs = output / "inputs"
-    trace_snapshot = snapshot(trace_id, inputs / "frozen.events.jsonl")
-    manifest_snapshot = snapshot(manifest_id, inputs / "frozen.manifest.json")
+    trace_snapshot = snapshot(trace_id, inputs / Path(trace_id["path"]).name)
+    manifest_snapshot = snapshot(manifest_id, inputs / Path(manifest_id["path"]).name)
     netlist_snapshot = snapshot(netlist_id, inputs / f"{row['top']}.postroute.v")
     sdf_snapshot = snapshot(sdf_id, inputs / f"{row['top']}.postroute.sdf")
     model_snapshots = [snapshot(model, inputs / "models" /
