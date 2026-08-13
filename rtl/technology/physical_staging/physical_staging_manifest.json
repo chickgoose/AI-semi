@@ -1,7 +1,7 @@
 {
   "schema": "k2_w2_tech_staged_compositions_v1",
   "status": "READY_FOR_GENUS_AND_INNOVUS",
-  "repository_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
+  "repository_commit": "fa48ed6e15debce6b0cda49a93d8f36a767bc63c",
   "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
   "common_ports": [
     {"direction":"input","name":"ref_clk_i","width":1},
@@ -67,14 +67,14 @@
   },
   "source_hashes": {
     "rtl/technology/p6/w2_p6_clock_boundary.sv":"56e4c1d5cf8bed80a374b4854c6480a2541734490cb0783f13d72eb34d444773",
-    "rtl/technology/p6/w2_p6_mux2.sv":"b40e505c2f525c8da999040bba5527b7bd6fc7cb0c0f51c78ccdf3e550135c9a",
+    "rtl/technology/p6/w2_p6_mux2.sv":"66a9263ff1866c02752590d82afb5048afcc5ad0e68db8cdffccc7b512fdadb6",
     "rtl/technology/p6/w2_p6_posedge_capture.sv":"3db0c391b96812bf3744fe0244eb0a1489a6b63aaf5679ec59088bb80d1cceaf",
     "rtl/technology/p6/w2_p6_negedge_capture.sv":"d3ce4004822462f9744f6b6288de90f83ec2bc9349af859bd338d465d2d5aef1",
     "rtl/technology/p6/w2_p6_pair_tx_tech.sv":"14c93981dc10533d0cdd2d88ad6d78dacba58f675c5e6316a26959411e4578ab",
     "rtl/technology/p6/w2_p6_pair_rx_tech.sv":"37b1388c06d74ffe9d56f78e31be238f1d1b4f6535f1ceb212e534090a37eccd",
     "rtl/technology/p6/w2_p6_exact_pair_endpoint_tech.sv":"591dafb666c525dec9cf704bd63d466a0b060ad6dfe8de20cbeb69f9446ec2d1",
     "rtl/technology/r1/w2_r1_clock_boundary.sv":"1dd14c284308138970bf6a75fd57d989cbce9747b8cd2573301a186671e848db",
-    "rtl/technology/r1/w2_r1_mux2.sv":"106043c13b4b284517a70a97f8d396315dd6df0c6ebf7df489cffa6d9972fb75",
+    "rtl/technology/r1/w2_r1_mux2.sv":"ae79563fb85df9db425b490f2422d3a21e66c7c6e1b4a191390acaec834d8ed9",
     "rtl/technology/r1/w2_r1_ddr_tx_tech.sv":"b3f02d16abb4aa10cc7eae3ad5004c565676b54e7abea87db06846ebfa6c4e88",
     "rtl/technology/r1/w2_r1_ddr_rx_tech.sv":"001e1cd6cf7d5c161a994e08a7b709889eddc9a93441a14dcb8b251c94630c7f",
     "rtl/technology/r1/w2_r1_candidate_endpoint_tech.sv":"f0010bbe01c538fdd1306650996f02b0eed1bf91c1700040cc0928ba3137330b",
