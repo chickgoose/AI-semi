@@ -506,6 +506,12 @@ class GenusFlowTests(unittest.TestCase):
         self.assertTrue(positive["recovery_removal_nonzero"])
         with tempfile.TemporaryDirectory(prefix="k2-w2-dff-") as directory:
             root = Path(directory)
+            multiline = root / "multiline.lib"
+            multiline.write_text(LIBRARY.read_text().replace(
+                'values ("0.12")',
+                'values ( \\\n+                  "0.12, 0.13", \\\n+                  "0.14, 0.15" \\\n+                )'))
+            self.assertTrue(self.module.dffnsrx1_preflight(
+                multiline, CELL_LEF, "multiline")["recovery_removal_nonzero"])
             for label, old, new, message in (
                     ("edge", 'clocked_on : "(!CKN)"', 'clocked_on : "CKN"', "contract missing"),
                     ("recovery", 'values ("0.12")', 'values ("0.0")', "zero/NaN recovery")):

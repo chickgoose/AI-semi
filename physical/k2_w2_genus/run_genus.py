@@ -1119,12 +1119,14 @@ def dffnsrx1_preflight(liberty: Path, lef: Path, label: str) -> dict[str, Any]:
         raise FlowError(f"{label} DFFNSRX1 Liberty contract missing: {','.join(missing)}")
     for timing_type in ("recovery_falling", "removal_falling"):
         arc = re.search(
-            rf"timing_type\s*:\s*{timing_type}\s*;.*?values\s*\(\s*\"([^\"]+)\"",
+            rf"timing_type\s*:\s*{timing_type}\s*;.*?values\s*\((.*?)\)\s*;",
             cell, re.DOTALL)
         if arc is None:
             raise FlowError(f"{label} DFFNSRX1 lacks numeric {timing_type} arc")
         try:
-            values = [float(value) for value in re.split(r"[ ,]+", arc.group(1).strip())]
+            values = [float(value) for value in re.findall(
+                r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?",
+                arc.group(1))]
         except ValueError as error:
             raise FlowError(f"{label} DFFNSRX1 invalid {timing_type} values") from error
         if not values or any(not math.isfinite(value) for value in values) or \
