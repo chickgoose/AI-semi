@@ -32,7 +32,14 @@ module w2_p6_pair_tx_tech (
     end
   end
 
-  assign p6_data_o = ref_clk_i ? frame_word_q[4:0] : frame_word_q[9:5];
+  for (genvar bit_index = 0; bit_index < 5; bit_index++) begin : gen_symbol_mux
+    w2_p6_mux2 symbol_mux (
+      .data0_i(frame_word_q[bit_index + 5]),
+      .data1_i(frame_word_q[bit_index]),
+      .select_i(ref_clk_i),
+      .data_o(p6_data_o[bit_index])
+    );
+  end
 
   w2_p6_clock_boundary clock_boundary (
     .clock_i(sample_clk_i),

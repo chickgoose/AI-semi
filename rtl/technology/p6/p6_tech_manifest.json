@@ -1,6 +1,6 @@
 {
-  "schema": "w2-p6-clock-edge-techmap-v1",
-  "status": "PARTIAL_GO_DDR_HOLD",
+  "schema": "w2-p6-clock-edge-techmap-v2",
+  "status": "PARTIAL_GO_AUTHORITATIVE_SERVER_EVIDENCE_DDR_HOLD",
   "selection": {
     "exactly_one_required": true,
     "generic_macro": "W2_P6_TECH_GENERIC",
@@ -19,56 +19,111 @@
       "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68"
     }
   },
-  "local_cell_evidence": {
-    "archive": "reports/a7-drec-physical/archives/drec-genus-n16-k4-5ns-0e04b8f.tar.gz",
-    "archive_sha256": "2d279d74b7968cfccbccbe72597175e417b8a00d73112a211732ea7505f68dcc",
-    "member": "results/drec-n16-k4-5ns-20260808/prefix-k4/netlist/a7_prefix_structural_top.v",
-    "member_sha256": "c71d051a3982ee6679f1bdbe98989a64d08cdfc0c6fa3fb5b3b38ede4e926b59",
-    "library_manifest": "reports/a7-drec-physical/genus-n16-k4-5ns-20260808/prefix-k4/manifest.txt",
-    "library_manifest_sha256": "7d3768d37a2e9ab8c07b4b89cbf74af7136eda7fbb3a2693d7569988f1baf704",
-    "library_sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10"
-  },
-  "icg_cell_evidence": {
-    "commit": "8d91d041ce9dd7acbbb1778c08dec4a1627c4e7c",
-    "feasibility_path": "physical/a6_w7_fovea_a7/icg_candidates/feasibility.md",
-    "feasibility_sha256": "83e10db1edb0eaae6abe073c4c8a885f3f8890cd516262ffada5fe5c9862fdbc",
-    "adapter_path": "physical/a6_w7_fovea_a7/icg_candidates/a7_r1_icg_boundary_tlatnca.sv",
-    "adapter_sha256": "437f7ac7f52770deb76ddfe9d152bcd36d9c74adfab1d69f616ba5bd11e95aaf",
-    "preserved_innovus_log": "/tmp/a6-w7-audit-f786982-full-20260812T171655Z-23034/innovus.log",
-    "note": "Git-pinned evidence is normative; the /tmp log is corroborating local evidence only"
+  "authoritative_server_evidence": {
+    "policy": "only_these_raw_and_buffered_ganghee_archives",
+    "raw": {
+      "default_archive": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+      "archive_sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+      "mapped_netlist_count": 10,
+      "candidate_inventory": {
+        "TLATNTSCAX2": {"instances": 5, "files": 5},
+        "TLATNCAX2": {"instances": 0, "files": 0},
+        "MX2X1": {"instances": 2, "files": 1},
+        "DFFRHQX1": {"instances": 0, "files": 0}
+      },
+      "representative_members": {
+        "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.4.sdc": "d263a7afc6799c861ebe84709112b5ce5964c4d0b3dfd2aa73cd14d71b4332f1",
+        "synth/pnr/resynth_fovea_raw/genus_1.4.tcl": "8c9dc99477ff86916ce7a0108d4e52e5caf679d93aa5c123157a74a39e033805",
+        "synth/pnr/resynth_fovea_raw/genus_1.4.log": "ea0ec40f7cb8ff239aff73c6bb429899fcd759970092688f25d9c09217457de2",
+        "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.4_netlist.v": "4f42a9324ce5c953c8f2125be040953a96cf42a262a2a389f2f6e741470dd957",
+        "synth/pnr/resynth_fovea_raw/mmmc_1.4.tcl": "4c2f0b1e572a8e3a9e652308fa12e84f992e84bc938ac86fc53f7eb6825c7351",
+        "synth/pnr/resynth_fovea_raw/run_1.4.tcl": "baed87b1f9b816275cde88a42df28d462dc49acd4e4d7065d6b3043a263199a8",
+        "synth/pnr/resynth_fovea_raw/innovus_1.4.log": "0a3d182267599898882b94d4544bd4cf7a112f4a8cb2b6541ffd7abf5428dae3",
+        "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.4_check_timing.rpt": "3547475781b96da09b569eb665e8f214ec57afafa08c6dadc35c8babc33b5ee2",
+        "synth/pnr/resynth_cluster2_raw/aer_tx16_trad_rowcol_fovea_cluster2_0.8_netlist.v": "76e205f05163ef044acd08359e4b831773c4dff2ba733cfa4ae2a7f31cfd1950"
+      }
+    },
+    "buffered": {
+      "default_archive": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+      "archive_sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f",
+      "mapped_netlist_count": 14,
+      "candidate_inventory": {
+        "TLATNTSCAX2": {"instances": 47, "files": 14},
+        "TLATNCAX2": {"instances": 0, "files": 0},
+        "MX2X1": {"instances": 74, "files": 12},
+        "DFFRHQX1": {"instances": 53, "files": 14}
+      },
+      "representative_members": {
+        "rtl/lane_buffer2.sv": "fdeb1e4dce7bbf26215ae83a2b9a3528919562ac3fe265489ca60e32c01b4f27",
+        "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_1.0.sdc": "a53dc2a2c00de09ea12c3711d8f52b830efb1bb25164834485ce5574f28b9fb7",
+        "synth/pnr/resynth_cluster2_buffered/genus_1.0.tcl": "7c07d889d112cf1f0c62b39604448b449dd83f18154e6e55032ffd2cacf04338",
+        "synth/pnr/resynth_cluster2_buffered/genus_1.0.log": "e6f689d5dbfbdb2102f77bc1f7414c6cfe852c7f16e9e9547630b34d1ca325e9",
+        "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_1.0_netlist.v": "b47a171ed15e5838bab03448946acc449be8fb3a6c1b2c280704bc7e390a426a",
+        "synth/pnr/resynth_cluster2_buffered/mmmc_1.0.tcl": "54751f6f228151cbcb29e034f07f50c4fc2b77f01fc3340702be597d1732679d",
+        "synth/pnr/resynth_cluster2_buffered/run_1.0.tcl": "28d358191c0d16171bbe848d4360fb3cf71983c574e07f9625fb0bd9bae2c93f",
+        "synth/pnr/resynth_cluster2_buffered/innovus_1.0.log": "07cf8d00a015e1d44610a187886292b78165a36bf04d2bae1e3b2951d33afd71",
+        "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_1.0_check_timing.rpt": "4c8c089407584c8d4200bddee861a86a1396842a3923bda647f61877a8d7e279"
+      }
+    },
+    "server_flow_references": {
+      "liberty": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib",
+      "qrc_technology": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/qrc/qx/gpdk045.tch",
+      "technology_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_tech.lef",
+      "macro_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_macro.lef",
+      "library_payload_archived": false,
+      "lef_payload_archived": false,
+      "qrc_payload_archived": false,
+      "liberty_pin_arcs_proven": false
+    },
+    "sdc_comparison": {
+      "input_sdc_count": 24,
+      "clock_port": "clk",
+      "clock_count_per_sdc": 1,
+      "clock_uncertainty_ns": 0.1,
+      "input_delay_ns": 0.25,
+      "output_delay_ns": 0.25,
+      "p6_ref_sample_or_generated_clock_constraints_present": false,
+      "p6_falling_edge_or_ddr_constraints_present": false,
+      "purpose": "server-flow provenance and comparison only; not P6 timing closure"
+    }
   },
   "bindings": {
-    "clock_boolean_and": {
-      "status": "EVIDENCED_NOT_SELECTED",
-      "cell": "CLKAND2X2",
-      "observed_instance_count": 12,
-      "ports": {"clock": "A", "enable": "B", "output": "Y"},
-      "claim": "exact owner Boolean AND only; not an ICG or glitch-free claim"
+    "integrated_clock_gate": {
+      "status": "GO_MAPPED_INTERFACE_AND_TOOL_CLASSIFICATION_P6_TIMING_HOLD",
+      "cell": "TLATNTSCAX2",
+      "ports": {"clock": "CK", "enable": "E", "test_enable": "SE", "output": "ECK"},
+      "test_enable_tie": 0,
+      "raw_inventory": "5 instances in 5 mapped netlists",
+      "buffered_inventory": "47 instances in 14 mapped netlists",
+      "reset_limit": "owner-versus-cell behavioral equivalence is tested only for drained reset transitions while the source clock is low"
+    },
+    "symbol_mux_bit": {
+      "status": "GO_MAPPED_INTERFACE_AND_FLOW_MAPPING_P6_TIMING_HOLD",
+      "cell": "MX2X1",
+      "ports": {"data0": "A", "data1": "B", "select": "S0", "output": "Y"},
+      "raw_inventory": "2 instances in 1 mapped netlist",
+      "buffered_inventory": "74 instances in 12 mapped netlists"
     },
     "positive_edge_async_clear_bit": {
-      "status": "GO_LOGIC_BINDING_PHYSICAL_TIMING_HOLD",
+      "status": "GO_BUFFERED_MAPPED_INTERFACE_RAW_NOT_OBSERVED_P6_TIMING_HOLD",
       "cell": "DFFRHQX1",
-      "observed_instance_count": 92,
-      "ports": {"reset_n": "RN", "clock": "CK", "data": "D", "output": "Q"}
+      "ports": {"reset_n": "RN", "clock": "CK", "data": "D", "output": "Q"},
+      "raw_inventory": "0 instances in 10 mapped netlists",
+      "buffered_inventory": "53 instances in 14 mapped netlists"
     },
     "negative_edge_async_clear_bit": {
-      "status": "HOLD_NO_IMMUTABLY_EVIDENCED_COMPLETE_CELL_INTERFACE",
+      "status": "HOLD_NOT_OBSERVED_IN_AUTHORITATIVE_MAPPED_INVENTORIES",
       "cell": null,
       "implementation": "synthesizable inferred always_ff"
     },
-    "oddr": {"status": "HOLD_NO_EVIDENCED_DDR_CELL", "cell": null},
-    "iddr": {"status": "HOLD_NO_EVIDENCED_DDR_CELL", "cell": null},
-    "integrated_clock_gate": {
-      "status": "GO_FOR_LEGAL_RESET_CONTRACT_PHYSICAL_TIMING_HOLD",
-      "cell": "TLATNCAX2",
-      "ports": {"clock": "CK", "enable": "E", "output": "ECK"},
-      "reset_limit": "owner-versus-cell equivalence requires reset assertion and release while the source clock is low"
-    }
+    "oddr": {"status": "HOLD_NOT_OBSERVED_IN_AUTHORITATIVE_MAPPED_INVENTORIES", "cell": null},
+    "iddr": {"status": "HOLD_NOT_OBSERVED_IN_AUTHORITATIVE_MAPPED_INVENTORIES", "cell": null}
   },
   "production_source_closure": [
     "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv",
     "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv",
     "rtl/technology/p6/w2_p6_clock_boundary.sv",
+    "rtl/technology/p6/w2_p6_mux2.sv",
     "rtl/technology/p6/w2_p6_posedge_capture.sv",
     "rtl/technology/p6/w2_p6_negedge_capture.sv",
     "rtl/technology/p6/w2_p6_pair_tx_tech.sv",
@@ -82,21 +137,26 @@
   "mock_policy": {
     "required_macro": "W2_P6_TEST_ONLY",
     "production_filelist_allowed": false,
-    "synthesis_evidence_allowed": false
+    "synthesis_evidence_allowed": false,
+    "library_behavior_or_timing_evidence_allowed": false
   },
   "execution": {
     "generic_owner_lockstep": true,
     "gsclib_test_model_owner_lockstep": true,
+    "authoritative_raw_and_buffered_archive_audit": true,
     "real_library_model_simulation": false,
     "real_library_compile": false,
-    "mapped_sta": false,
-    "place_and_route": false,
-    "physical_ppa": false
+    "dedicated_p6_server_run": false,
+    "p6_mapped_sta": false,
+    "p6_place_and_route": false,
+    "p6_physical_ppa": false
   },
   "holds": [
-    "no immutable evidence of a complete negative-edge async-clear cell interface and no evidenced ODDR or IDDR cell",
-    "no library-functional or timing-model simulation was run",
-    "no mapped STA, clock-gating check, CTS, place-and-route, or physical PPA was run",
-    "TLATNCAX2 lacks an asynchronous reset pin; arbitrary high-phase reset assertion is outside the frozen legal drained-reset contract"
+    "negative-edge async-clear, ODDR, and IDDR cells were not observed in either authoritative mapped inventory",
+    "the referenced Liberty, LEF, and QRC payloads are not archived; no Liberty function or pin timing arc is claimed",
+    "the server SDCs constrain one clk and contain no P6 ref/sample generated-clock, falling-edge, or DDR constraints",
+    "no dedicated P6 real-library simulation, mapped STA, clock-gating check, CTS, place-and-route, or physical PPA was run",
+    "DFFRHQX1 is supported by buffered mapped connectivity only and is absent from the raw mapped inventory",
+    "arbitrary high-phase asynchronous reset equivalence through the mapped clock-gate boundary is not claimed"
   ]
 }

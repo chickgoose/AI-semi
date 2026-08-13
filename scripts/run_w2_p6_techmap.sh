@@ -25,6 +25,7 @@ owner_sources=(
 )
 tech_sources=(
   "$rtl_dir/w2_p6_clock_boundary.sv"
+  "$rtl_dir/w2_p6_mux2.sv"
   "$rtl_dir/w2_p6_posedge_capture.sv"
   "$rtl_dir/w2_p6_negedge_capture.sv"
   "$rtl_dir/w2_p6_pair_tx_tech.sv"
@@ -90,15 +91,20 @@ for candidate_lib_dir in "$yosys_prefix"/lib/*-linux-gnu; do
   fi
 done
 
-read_cmd="read_verilog -sv -I$rtl_dir -DW2_P6_TECH_GSCLIB045 -DW2_P6_TEST_ONLY"
+read_cmd="read_verilog -sv -I$rtl_dir -DW2_P6_TECH_GSCLIB045"
 for source in "${owner_sources[@]:0:1}" "${owner_sources[@]:3:1}" \
-              "${tech_sources[@]}" "$test_dir/gsclib045_test_models.sv"; do
+              "${tech_sources[@]}"; do
   read_cmd+=" $source"
 done
+# Treat the guarded test models as black boxes for the structural receipt. This
+# preserves the effective leaf-cell multiplicity after flattening without
+# presenting behavioral stubs as synthesis implementations.
+read_cmd+="; read_verilog -sv -lib -DW2_P6_TEST_ONLY $test_dir/gsclib045_test_models.sv"
 env LD_LIBRARY_PATH="$yosys_ld_path" "$yosys_bin" -Q -p \
   "$read_cmd; hierarchy -check -top w2_p6_exact_pair_endpoint_tech; stat; proc; flatten; opt; check -assert; scc -expect 0; stat" \
   >"$out_dir/yosys-gsclib045.log" 2>&1
-grep -Eq '^[[:space:]]+TLATNCAX2[[:space:]]+1$' "$out_dir/yosys-gsclib045.log"
+grep -Eq '^[[:space:]]+TLATNTSCAX2[[:space:]]+1$' "$out_dir/yosys-gsclib045.log"
+grep -Eq '^[[:space:]]+MX2X1[[:space:]]+5$' "$out_dir/yosys-gsclib045.log"
 grep -Eq '^[[:space:]]+DFFRHQX1[[:space:]]+5$' "$out_dir/yosys-gsclib045.log"
 printf '%s\n' W2_P6_STRUCTURAL_PASS
 

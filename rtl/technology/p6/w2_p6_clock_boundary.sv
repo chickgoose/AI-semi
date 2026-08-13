@@ -2,8 +2,8 @@
 `include "w2_p6_tech_select.svh"
 
 // The generic branch preserves the frozen owner's exact Boolean expression.
-// The cell branch uses the locally evidenced characterized ICG and is
-// equivalent under the owner's legal drained, clock-low reset contract.
+// The cell branch uses the mapped interface observed in the authoritative
+// raw/buffered server netlists. No Liberty function or timing arc is claimed.
 module w2_p6_clock_boundary (
   input  logic clock_i,
   input  logic enable_i,
@@ -15,9 +15,10 @@ module w2_p6_clock_boundary (
 `elsif W2_P6_TECH_GENERIC
   assign clock_o = clock_i & enable_i;
 `elsif W2_P6_TECH_GSCLIB045
-  TLATNCAX2 clock_gate_cell (
+  TLATNTSCAX2 clock_gate_cell (
     .CK(clock_i),
     .E(enable_i),
+    .SE(1'b0),
     .ECK(clock_o)
   );
 `endif

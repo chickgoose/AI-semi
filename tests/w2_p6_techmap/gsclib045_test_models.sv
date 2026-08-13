@@ -3,17 +3,27 @@
 // Functional test models only.  The explicit guard prevents accidental use as
 // a production library substitute and is checked by the manifest test.
 `ifdef W2_P6_TEST_ONLY
-module TLATNCAX2 (
+module TLATNTSCAX2 (
   input  logic CK,
   input  logic E,
+  input  logic SE,
   output logic ECK
 );
   logic enable_latched_q = 1'b0;
   always_latch begin
     if (!CK)
-      enable_latched_q = E;
+      enable_latched_q = E | SE;
   end
   assign ECK = CK & enable_latched_q;
+endmodule
+
+module MX2X1 (
+  input  logic A,
+  input  logic B,
+  input  logic S0,
+  output logic Y
+);
+  assign Y = S0 ? B : A;
 endmodule
 
 module DFFRHQX1 (
