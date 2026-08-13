@@ -2,6 +2,59 @@
 
 ## Authoritative Ganghee fixture
 
+### Raw canonical endpoint sweep
+
+The canonical raw-endpoint archive is
+`ganghee-pnr-raw-golden-20260813.tar.gz`, SHA-256
+`7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3`.
+It is a distinct 215-file fixture and must not be substituted for, or combined
+with, the buffered 302-file archive below. Run it with the exact profile:
+
+```sh
+python3 physical/k2_w2_qualifier/qualify_ganghee_golden.py \
+  --profile raw \
+  --archive /tmp/ganghee-pnr-raw-golden-20260813.tar.gz \
+  --output /writable/new-ganghee-raw-golden-receipt.json
+```
+
+The ten real Innovus late-path points are:
+
+| Design | Period (ns) | WNS (ns) | Path result |
+|---|---:|---:|---|
+| Raw Fovea | 1.2 | 0.000 | MET |
+| Raw Fovea | 1.3 | -0.024 | VIOLATED |
+| Raw Fovea | 1.4 | 0.036 | MET |
+| Raw Fovea | 1.6 | -0.003 | VIOLATED |
+| Raw Fovea | 2.0 | -0.007 | VIOLATED |
+| Raw Cluster2 | 0.7 | -0.178 | VIOLATED |
+| Raw Cluster2 | 0.8 | -0.088 | VIOLATED |
+| Raw Cluster2 | 0.9 | -0.029 | VIOLATED |
+| Raw Cluster2 | 1.0 | 0.042 | MET |
+| Raw Cluster2 | 1.3 | 0.080 | MET |
+
+Raw Fovea is explicitly `NON_MONOTONIC_HOLD`: slack decreases at 1.2→1.3,
+1.4→1.6, and 1.6→2.0 ns, including MET→VIOLATED reversions at 1.2→1.3
+and 1.4→1.6 ns. Consequently its receipt has no qualified bracket and no
+selected period. Selecting the isolated 1.4 ns pass is forbidden
+cherry-picking.
+
+Raw Cluster2 has a monotonic observed fail/pass transition between 0.9 and
+1.0 ns, but this is recorded only as
+`observed_transition_not_a_qualified_bracket`. It remains
+`MONOTONIC_OBSERVED_HOLD` with no selection because none of its full period
+records passes all W2 gates. Both raw designs have `no_drive=18`; all ten
+Innovus logs contain two explicit errors, and the same missing connectivity,
+TNS/violation-count, recovery/removal, external-input hashes, and process-exit
+evidence apply. The raw campaign result is therefore PASS 0 / FAIL 10.
+
+Sweep analysis is always ordered by the pinned expected period inventory, not
+archive order. Any missing point produces `MISSING_DATA_HOLD`. Even a test
+mutation that makes all WNS values monotonic cannot produce a bracket while
+period qualification is incomplete. Appended PASS/SELECT sentinels are ignored
+and invalidate the tool-log terminal marker.
+
+### Buffered resynthesis sweep
+
 The authoritative server update is represented by the immutable archive
 `ganghee-pnr-golden-20260813.tar.gz`, SHA-256
 `1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f`.

@@ -24,9 +24,12 @@ from typing import Any
 
 
 ARCHIVE_SHA256 = "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
+RAW_ARCHIVE_SHA256 = "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3"
 ARCHIVE_SCHEMA = "k2_physical_w2_ganghee_golden_archive_v1"
+RAW_ARCHIVE_SCHEMA = "k2_physical_w2_ganghee_raw_golden_archive_v1"
 RECEIPT_SCHEMA = "k2_physical_w2_ganghee_golden_receipt_v1"
 EXPECTED_MEMBER_COUNT = 302
+RAW_EXPECTED_MEMBER_COUNT = 215
 EXPECTED_TOOL_VERSIONS = {"genus": "23.14-s090_1", "innovus": "23.14-s088_1"}
 EXPECTED_DESIGNS = {
     "fovea_buffered": {
@@ -38,6 +41,18 @@ EXPECTED_DESIGNS = {
         "directory": "synth/pnr/resynth_cluster2_buffered",
         "top": "aer_cluster2_buffered",
         "periods": ("0.8", "1.0", "1.3", "1.6", "2.0"),
+    },
+}
+RAW_EXPECTED_DESIGNS = {
+    "fovea_raw": {
+        "directory": "synth/pnr/resynth_fovea_raw",
+        "top": "aer_tx16_trad_rowcol_fovea",
+        "periods": ("1.2", "1.3", "1.4", "1.6", "2.0"),
+    },
+    "cluster2_raw": {
+        "directory": "synth/pnr/resynth_cluster2_raw",
+        "top": "aer_tx16_trad_rowcol_fovea_cluster2",
+        "periods": ("0.7", "0.8", "0.9", "1.0", "1.3"),
     },
 }
 CONSTRAINT_CLASSES = (
@@ -98,7 +113,8 @@ def stable_read(path: Path) -> tuple[bytes, tuple[int, int, int, int, int]]:
     return data, _identity(after)
 
 
-def extract_members(archive_data: bytes) -> dict[str, bytes]:
+def extract_members(archive_data: bytes,
+                    expected_member_count: int = EXPECTED_MEMBER_COUNT) -> dict[str, bytes]:
     members: dict[str, bytes] = {}
     total = 0
     try:
@@ -130,9 +146,9 @@ def extract_members(archive_data: bytes) -> dict[str, bytes]:
             if total > MAX_ARCHIVE_BYTES:
                 raise GoldenQualificationError("expanded archive exceeds the size limit")
             members[normalized] = data
-    if len(members) != EXPECTED_MEMBER_COUNT:
+    if len(members) != expected_member_count:
         raise GoldenQualificationError(
-            f"archive member inventory mismatch: expected {EXPECTED_MEMBER_COUNT}, got {len(members)}")
+            f"archive member inventory mismatch: expected {expected_member_count}, got {len(members)}")
     return members
 
 
@@ -272,7 +288,9 @@ def parse_scan_icg(genus_log: bytes, innovus_log: bytes, netlist: bytes,
     diagnostics: list[str] = []
     if not scan_rows or any(scan_rows) or not no_scan_chain:
         diagnostics.append(f"{label}:scan_inventory_incomplete_or_nonzero")
-    if not mapped_inventory or mapped_inventory != placed_inventory:
+    # A raw combinational endpoint can legitimately have a pinned zero-ICG
+    # inventory; require equality rather than an unnecessary nonzero count.
+    if mapped_inventory != placed_inventory:
         diagnostics.append(f"{label}:icg_inventory_mismatch")
     return {"genus_scan_type_counts": scan_rows, "innovus_no_scan_chain": no_scan_chain,
             "mapped_icg_cells": mapped_inventory, "placed_icg_cells": placed_inventory}, diagnostics
@@ -385,26 +403,105 @@ def analyze_period(members: dict[str, bytes], design_name: str, config: dict[str
             "status": "PASS" if not failed else "FAIL", "failed_gates": failed, "gates": gates}
 
 
-def analyze_members(members: dict[str, bytes]) -> dict[str, Any]:
+def analyze_sweeps(periods: dict[str, dict[str, Any]],
+                   designs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    sweeps: dict[str, Any] = {}
+    for design_name, config in designs.items():
+        points: list[dict[str, Any]] = []
+        missing: list[str] = []
+        for period in config["periods"]:
+            key = f"{design_name}@{period}ns"
+            timing = periods[key]["gates"]["timing"]["evidence"].get("innovus_late", {})
+            slack = timing.get("wns_ns_from_worst_path")
+            path_status = timing.get("path_status")
+            if slack is None:
+                missing.append(period)
+            points.append({"period_ns": float(period), "innovus_late_wns_ns": slack,
+                           "path_status": path_status,
+                           "timing_met": slack is not None and slack >= 0.0 and path_status == "MET",
+                           "period_qualification": periods[key]["status"]})
+        inversions: list[dict[str, Any]] = []
+        pass_to_fail: list[dict[str, float]] = []
+        for left, right in zip(points, points[1:]):
+            left_slack = left["innovus_late_wns_ns"]
+            right_slack = right["innovus_late_wns_ns"]
+            if left_slack is not None and right_slack is not None and right_slack < left_slack:
+                inversions.append({"from_period_ns": left["period_ns"], "from_wns_ns": left_slack,
+                                   "to_period_ns": right["period_ns"], "to_wns_ns": right_slack})
+            if left["timing_met"] and not right["timing_met"]:
+                pass_to_fail.append({"from_period_ns": left["period_ns"],
+                                     "to_period_ns": right["period_ns"]})
+        observed_transition = None
+        if not inversions and not missing:
+            for left, right in zip(points, points[1:]):
+                if not left["timing_met"] and right["timing_met"]:
+                    observed_transition = {"last_observed_fail_period_ns": left["period_ns"],
+                                           "first_observed_pass_period_ns": right["period_ns"]}
+        all_periods_qualified = all(point["period_qualification"] == "PASS" for point in points)
+        if missing:
+            status = "MISSING_DATA_HOLD"
+        elif inversions or pass_to_fail:
+            status = "NON_MONOTONIC_HOLD"
+        else:
+            status = "MONOTONIC_OBSERVED_HOLD"
+        sweeps[design_name] = {
+            "status": status,
+            "points": points,
+            "slack_inversions": inversions,
+            "pass_to_fail_reversions": pass_to_fail,
+            "missing_periods": missing,
+            "observed_transition_not_a_qualified_bracket": observed_transition,
+            "all_periods_qualified": all_periods_qualified,
+            "qualified_bracket": None,
+            "selected_period": None,
+            "cherry_pick_forbidden": True,
+        }
+    return sweeps
+
+
+def analyze_members(members: dict[str, bytes],
+                    designs: dict[str, dict[str, Any]] = EXPECTED_DESIGNS,
+                    include_sweeps: bool = False) -> dict[str, Any]:
     periods: dict[str, dict[str, Any]] = {}
-    for design_name, config in EXPECTED_DESIGNS.items():
+    for design_name, config in designs.items():
         for period in config["periods"]:
             key = f"{design_name}@{period}ns"
             periods[key] = analyze_period(members, design_name, config, period)
     passed = sum(result["status"] == "PASS" for result in periods.values())
-    return {"periods": periods, "summary": {"period_count": len(periods), "pass": passed,
-                                               "fail": len(periods) - passed}}
+    result: dict[str, Any] = {
+        "periods": periods,
+        "summary": {"period_count": len(periods), "pass": passed, "fail": len(periods) - passed},
+    }
+    if include_sweeps:
+        result["frequency_sweeps"] = analyze_sweeps(periods, designs)
+        missing = sorted(name for name, row in result["frequency_sweeps"].items()
+                         if row["status"] == "MISSING_DATA_HOLD")
+        non_monotonic = sorted(name for name, row in result["frequency_sweeps"].items()
+                               if row["status"] == "NON_MONOTONIC_HOLD")
+        result["frequency_bracket"] = {
+            "status": ("MISSING_DATA_HOLD" if missing else
+                       "NON_MONOTONIC_HOLD" if non_monotonic else "HOLD"),
+            "missing_data_designs": missing,
+            "non_monotonic_designs": non_monotonic,
+            "qualified_brackets": {},
+            "selected_periods": {},
+            "cherry_pick_forbidden": True,
+        }
+    return result
 
 
-def qualify_archive(archive_path: Path) -> dict[str, Any]:
+def qualify_archive_profile(archive_path: Path, *, expected_sha: str,
+                            expected_member_count: int,
+                            designs: dict[str, dict[str, Any]], fixture_schema: str,
+                            archive_label: str, include_sweeps: bool) -> dict[str, Any]:
     path = Path(os.path.abspath(archive_path))
     archive_data, identity = stable_read(path)
     actual_sha = sha256(archive_data)
-    if actual_sha != ARCHIVE_SHA256:
+    if actual_sha != expected_sha:
         raise GoldenQualificationError(
-            f"authoritative archive SHA-256 mismatch: expected {ARCHIVE_SHA256}, got {actual_sha}")
-    members = extract_members(archive_data)
-    analysis = analyze_members(members)
+            f"authoritative archive SHA-256 mismatch: expected {expected_sha}, got {actual_sha}")
+    members = extract_members(archive_data, expected_member_count)
+    analysis = analyze_members(members, designs, include_sweeps)
     current = os.lstat(path)
     if stat.S_ISLNK(current.st_mode) or _identity(current) != identity:
         raise GoldenQualificationError("archive changed before receipt publication")
@@ -412,23 +509,42 @@ def qualify_archive(archive_path: Path) -> dict[str, Any]:
                  for name, data in sorted(members.items())]
     status = "AUTHORITATIVE_RAW_FIXTURE_PASS" if analysis["summary"]["fail"] == 0 else \
         "AUTHORITATIVE_RAW_FIXTURE_FAIL"
+    claim_boundary = {
+        "actual_raw_archive_interpretation": "GO",
+        "physical_campaign_qualification": "GO" if analysis["summary"]["fail"] == 0 else "HOLD",
+        "activity_annotated_power_and_energy": "HOLD_NOT_QUALIFIED",
+        "signoff": "HOLD_NOT_QUALIFIED",
+    }
+    if include_sweeps:
+        claim_boundary["frequency_bracket_and_period_selection"] = analysis["frequency_bracket"]["status"]
     return {
         "schema": RECEIPT_SCHEMA,
-        "fixture_schema": ARCHIVE_SCHEMA,
+        "fixture_schema": fixture_schema,
         "status": status,
-        "archive": {"path": "ganghee-pnr-golden-20260813.tar.gz",
+        "archive": {"path": archive_label,
                     "sha256": actual_sha, "size": len(archive_data),
                     "member_count": len(members), "member_inventory": inventory,
                     "member_inventory_sha256": sha256(canonical(inventory))},
         "tools_observed": EXPECTED_TOOL_VERSIONS,
         **analysis,
-        "claim_boundary": {
-            "actual_raw_archive_interpretation": "GO",
-            "physical_campaign_qualification": "GO" if analysis["summary"]["fail"] == 0 else "HOLD",
-            "activity_annotated_power_and_energy": "HOLD_NOT_QUALIFIED",
-            "signoff": "HOLD_NOT_QUALIFIED",
-        },
+        "claim_boundary": claim_boundary,
     }
+
+
+def qualify_archive(archive_path: Path) -> dict[str, Any]:
+    return qualify_archive_profile(
+        archive_path, expected_sha=ARCHIVE_SHA256,
+        expected_member_count=EXPECTED_MEMBER_COUNT, designs=EXPECTED_DESIGNS,
+        fixture_schema=ARCHIVE_SCHEMA, archive_label="ganghee-pnr-golden-20260813.tar.gz",
+        include_sweeps=False)
+
+
+def qualify_raw_archive(archive_path: Path) -> dict[str, Any]:
+    return qualify_archive_profile(
+        archive_path, expected_sha=RAW_ARCHIVE_SHA256,
+        expected_member_count=RAW_EXPECTED_MEMBER_COUNT, designs=RAW_EXPECTED_DESIGNS,
+        fixture_schema=RAW_ARCHIVE_SCHEMA,
+        archive_label="ganghee-pnr-raw-golden-20260813.tar.gz", include_sweeps=True)
 
 
 def write_exclusive(path: Path, payload: bytes) -> None:
@@ -447,10 +563,11 @@ def write_exclusive(path: Path, payload: bytes) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--profile", choices=("resynth", "raw"), default="resynth")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        receipt = qualify_archive(args.archive)
+        receipt = qualify_raw_archive(args.archive) if args.profile == "raw" else qualify_archive(args.archive)
         write_exclusive(args.output, canonical(receipt))
     except (GoldenQualificationError, OSError) as exc:
         print(f"K2_PHYSICAL_W2_GOLDEN_ERROR: {exc}", file=sys.stderr)
