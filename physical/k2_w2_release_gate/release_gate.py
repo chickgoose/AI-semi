@@ -1212,12 +1212,19 @@ def validate_boundary(receipt: dict[str, Any], campaign: dict[str, Any]) -> None
              "tx_rx_same_nets_connected", "external_load_applied_once"},
             f"boundary.candidate_results.{candidate}.link_cut")
         expected_bits = EXPECTED_LINK_BITS[candidate]
+        link_counts = {
+            name: integer(
+                cut[name], f"boundary.candidate_results.{candidate}.link_cut.{name}")
+            for name in ("physical_link_bits", "native_boundary_link_bits",
+                         "link_cut_accounted_bits", "total_accounted_link_bits")
+        }
         if (cut["marker"] != "AER_LINK_CUT" or cut["ports"] != EXPECTED_LINK_PORTS[candidate] or
-                cut["physical_link_bits"] != expected_bits or
-                cut["native_boundary_link_bits"] != 0 or
-                cut["link_cut_accounted_bits"] != expected_bits or
-                cut["total_accounted_link_bits"] != expected_bits or
-                cut["native_boundary_link_bits"] + cut["link_cut_accounted_bits"] != expected_bits or
+                link_counts["physical_link_bits"] != expected_bits or
+                link_counts["native_boundary_link_bits"] != 0 or
+                link_counts["link_cut_accounted_bits"] != expected_bits or
+                link_counts["total_accounted_link_bits"] != expected_bits or
+                link_counts["native_boundary_link_bits"] +
+                link_counts["link_cut_accounted_bits"] != expected_bits or
                 cut["tx_rx_same_nets_connected"] is not True or
                 cut["external_load_applied_once"] is not True):
             raise ReleaseGateError(f"boundary AER_LINK_CUT accounting is omitted or doubled: {candidate}")

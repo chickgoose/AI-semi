@@ -594,6 +594,16 @@ class ReleaseBundle:
         if rewrite_manifest:
             self._write_manifest()
 
+    def resign_boundary(self) -> None:
+        boundary = self.receipts["boundary"]
+        body = {key: value for key, value in boundary.items() if key != "attestation"}
+        payload = boundary["attestation"]["payload"]
+        payload["receipt_sha256"] = self._attested_hashes()
+        payload["boundary_body_sha256"] = digest(canonical(body))
+        boundary["attestation"]["mac_sha256"] = hmac.new(
+            self.SECRET, canonical(payload), hashlib.sha256).hexdigest()
+        self.rewrite("boundary", resign_boundary=False)
+
     def rewrite_point(self, candidate: str, period: str, role: str) -> None:
         reference = self._write_point(candidate, period, role)
         sweep = self.receipts["innovus"]["frequency_sweeps"][candidate]
@@ -851,7 +861,7 @@ class ReleaseGateTests(unittest.TestCase):
                 self.bundle.rewrite_point("a3_p6", "1.0", role)
                 self.reject("bound to the Innovus post-route implementation")
 
-    def test_postroute_evidence_hash_reuse_and_positive_tns_are_rejected(self) -> None:
+    def test_postroute_evidence_hash_reuse_and_timing_incoherence_are_rejected(self) -> None:
         sta = self.bundle.point_docs[("fovea_a7", "1.0", "sta")]
         drc = self.bundle.point_docs[("fovea_a7", "1.0", "drc")]
         drc["checks"]["drc"]["report_sha256"] = \
@@ -865,12 +875,23 @@ class ReleaseGateTests(unittest.TestCase):
         self.bundle.rewrite_point("fovea_a7", "1.0", "sta")
         self.reject("TNS must be zero or negative")
 
-        self.setUp_rebuild()
-        sta = self.bundle.point_docs[("fovea_a7", "0.8", "sta")]
-        sta["checks"]["setup"].update({"wns_ns": "0.1", "tns_ns": "-0.1",
-                                         "violations": 1})
-        self.bundle.rewrite_point("fovea_a7", "0.8", "sta")
-        self.reject("violations contradict timing")
+        incoherent = (
+            ({"wns_ns": "0.0", "tns_ns": "-0.1", "violations": 1},
+             "violations contradict timing"),
+            ({"wns_ns": "-0.1", "tns_ns": "0.0", "violations": 1},
+             "violations contradict timing"),
+            ({"wns_ns": "-0.1", "tns_ns": "-0.1", "violations": 0},
+             "negative timing lacks violations"),
+            ({"wns_ns": "0.0", "tns_ns": "0.0", "violations": True},
+             "must be an integer"),
+        )
+        for values, diagnostic in incoherent:
+            with self.subTest(values=values):
+                self.setUp_rebuild()
+                sta = self.bundle.point_docs[("fovea_a7", "0.8", "sta")]
+                sta["checks"]["setup"].update(values)
+                self.bundle.rewrite_point("fovea_a7", "0.8", "sta")
+                self.reject(diagnostic)
 
         self.setUp_rebuild()
         point = self.bundle.point_docs[("a2_p6", "1.0", "innovus")]
@@ -878,6 +899,20 @@ class ReleaseGateTests(unittest.TestCase):
             "candidate_results"]["a2_p6"]["proofs"][0]["sha256"]
         self.bundle.rewrite_point("a2_p6", "1.0", "innovus")
         self.reject("physical evidence SHA256 is reused")
+
+        self.setUp_rebuild()
+        point = self.bundle.point_docs[("a2_p6", "1.0", "innovus")]
+        point["tool_log_sha256"] = digest(
+            self.bundle.receipt_paths["server_environment"].read_bytes())
+        self.bundle.rewrite_point("a2_p6", "1.0", "innovus")
+        self.reject("physical evidence SHA256 is reused")
+
+        self.setUp_rebuild()
+        first_proof = self.bundle.genus_docs[("a2_p6", "0.8")]
+        proofs = self.bundle.receipts["genus"]["candidate_results"]["a2_p6"]["proofs"]
+        proofs[1]["sha256"] = first_proof["mapped_netlist_sha256"]
+        self.bundle.rewrite("genus")
+        self.reject("duplicate receipt SHA256")
 
     def test_top_level_receipt_schema_rejects_unrecognized_claims(self) -> None:
         self.bundle.receipts["server_environment"]["self_asserted_proven"] = True
@@ -921,17 +956,14 @@ class ReleaseGateTests(unittest.TestCase):
                 self.bundle.rewrite_point("fovea_a7", "1.0", role)
                 self.reject(diagnostic)
 
-        self.setUp_rebuild()
-        sta = self.bundle.point_docs[("fovea_a7", "1.0", "sta")]
-        sta["analysis"]["coverage"]["unconstrained_paths"] = 1
-        self.bundle.rewrite_point("fovea_a7", "1.0", "sta")
-        self.reject("analysis provenance/coverage mismatch")
-
-        self.setUp_rebuild()
-        sta = self.bundle.point_docs[("fovea_a7", "1.0", "sta")]
-        sta["analysis"]["coverage"]["no_load"] = 1
-        self.bundle.rewrite_point("fovea_a7", "1.0", "sta")
-        self.reject("analysis provenance/coverage mismatch")
+        for coverage_name in ("unconstrained_paths", "no_clock", "no_input_delay",
+                              "no_output_delay", "no_drive", "no_load"):
+            with self.subTest(coverage_name=coverage_name):
+                self.setUp_rebuild()
+                sta = self.bundle.point_docs[("fovea_a7", "1.0", "sta")]
+                sta["analysis"]["coverage"][coverage_name] = 1
+                self.bundle.rewrite_point("fovea_a7", "1.0", "sta")
+                self.reject("analysis provenance/coverage mismatch")
 
         self.setUp_rebuild()
         sta = self.bundle.point_docs[("fovea_a7", "1.0", "sta")]
@@ -939,11 +971,13 @@ class ReleaseGateTests(unittest.TestCase):
         self.bundle.rewrite_point("fovea_a7", "1.0", "sta")
         self.reject("analysis provenance/coverage mismatch")
 
-        self.setUp_rebuild()
-        sta = self.bundle.point_docs[("fovea_a7", "1.0", "sta")]
-        sta["analysis"]["analyzed_paths"]["setup"] = 0
-        self.bundle.rewrite_point("fovea_a7", "1.0", "sta")
-        self.reject("integer >= 1")
+        for check_name in ("setup", "hold", "recovery", "removal"):
+            with self.subTest(analyzed_paths=check_name):
+                self.setUp_rebuild()
+                sta = self.bundle.point_docs[("fovea_a7", "1.0", "sta")]
+                sta["analysis"]["analyzed_paths"][check_name] = 0
+                self.bundle.rewrite_point("fovea_a7", "1.0", "sta")
+                self.reject("integer >= 1")
 
         self.setUp_rebuild()
         point = self.bundle.point_docs[("fovea_a7", "1.0", "innovus")]
@@ -1202,6 +1236,49 @@ class ReleaseGateTests(unittest.TestCase):
         cut["total_accounted_link_bits"] = 0
         self.bundle.rewrite("boundary", resign_boundary=False)
         self.reject("omitted or doubled")
+
+        for non_integer_zero in (False, 0.0):
+            with self.subTest(non_integer_zero=non_integer_zero):
+                self.setUp_rebuild()
+                cut = self.bundle.receipts["boundary"]["candidate_results"][
+                    "fovea_a7"]["link_cut"]
+                cut["native_boundary_link_bits"] = non_integer_zero
+                self.bundle.resign_boundary()
+                self.reject("must be an integer")
+
+    def test_counter_fields_reject_boolean_and_float_substitutions(self) -> None:
+        self.bundle.campaign["generation"] = False
+        self.bundle.mutate_campaign_everywhere(lambda _: None)
+        self.reject("must be an integer")
+
+        self.setUp_rebuild()
+        proof = self.bundle.genus_docs[("a2_p6", "1.0")]
+        proof["mapped_cell_count"] = 1.0
+        self.bundle.rewrite_genus_proof("a2_p6", "1.0")
+        self.reject("must be an integer")
+
+        self.setUp_rebuild()
+        point = self.bundle.point_docs[("a2_p6", "1.0", "drc")]
+        point["checks"]["drc"]["violations"] = False
+        self.bundle.rewrite_point("a2_p6", "1.0", "drc")
+        self.reject("must be an integer")
+
+        self.setUp_rebuild()
+        point = self.bundle.point_docs[("a2_p6", "1.0", "connectivity")]
+        point["checks"]["signal"]["opens"] = 0.0
+        self.bundle.rewrite_point("a2_p6", "1.0", "connectivity")
+        self.reject("must be an integer")
+
+        self.setUp_rebuild()
+        self.bundle.power_docs["a2_p6"]["retired_events"] = True
+        self.bundle.rewrite_power_proof("a2_p6")
+        self.reject("must be an integer")
+
+        self.setUp_rebuild()
+        row = self.bundle.receipts["functional_loss"]["candidate_results"]["a2_p6"]
+        row["errors"] = False
+        self.bundle.rewrite("functional_loss")
+        self.reject("must be an integer")
 
     def test_old_single_clock_boundary_and_hidden_adapter_are_rejected(self) -> None:
         clocks = self.bundle.receipts["boundary"]["candidate_results"]["fovea_a7"][
