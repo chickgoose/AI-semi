@@ -1,11 +1,13 @@
 # K2 W2 final receipt release gate
 
 This gate is the final permission check before a ranking process may consume
-metrics. It consumes exactly seven immutable JSON receipts: server environment,
-technology-staged manifest, Genus v2, Innovus, activity-power, functional-loss,
-and boundary. It does not parse a Genus or Innovus raw report, SAIF, power table,
-workload CSV, or candidate metric, and its output contains no ranking or metric
-values.
+metrics. It consumes exactly seven top-level immutable JSON receipts—server
+environment, technology-staged manifest, Genus v3, Innovus, activity-power,
+functional-loss, and boundary—plus their hash-referenced Genus, post-route,
+common-suite, and reset auxiliary receipts. It does not parse a Genus or
+Innovus raw report, SAIF, power table, or workload CSV. It validates bounded
+receipt metrics only to derive qualification, and its output contains no
+ranking or metric values.
 
 Every upstream producer must add the common `release_binding` described by the
 test fixture. The binding fixes the campaign ID/generation/nonce, exact ordered
@@ -33,8 +35,14 @@ hash and repository commit must first be present in every bound producer.
 The server-environment receipt must be `PROVEN`, hash both tool executables and
 all live technology inputs, and match the common provenance byte for byte. The
 staged-manifest receipt must name only the exact three production tops and must
-retain the R1 three-bit and P6 six-bit link outputs. Genus v1, generic/native
-substitution, or a two-candidate signed cohort is rejected.
+retain the R1 three-bit and P6 six-bit link outputs. Pre-v3 Genus,
+generic/native substitution, or a two-candidate signed cohort is rejected. Each
+Genus candidate must reference a loaded, immutable mapped-proof receipt for
+every swept target period. Each proof binds the candidate commit and source
+manifest, staged manifest, proven server
+contract, exact top/ports and SDC, nonzero mapped-cell inventory, zero
+unmapped/blackbox inventory, mapped netlist/SDC, report receipt, and mapped
+smoke identities.
 
 Freshness is deterministic: the manifest's exact campaign generation and
 256-bit nonce are authoritative, and both are inside the authenticated boundary
@@ -46,28 +54,41 @@ The boundary receipt is the trust root. Its HMAC-SHA256 attestation covers the
 release ID, exact campaign, byte hashes of all six upstream receipts, and the
 boundary receipt body. Therefore a power receipt is not authenticated merely
 because it says `authenticated`: the entire activity-power receipt hash must
-appear in the verified boundary payload. The keyring is caller-owned and must
-not be packaged with public
-receipts. Its exact byte SHA-256 is a mandatory out-of-band command argument,
+appear in the verified boundary payload. The keyring is caller-owned, must be
+outside the public bundle root, and must be owned by the invoking user with no
+group/other access. Its exact byte SHA-256 is a mandatory out-of-band command
+argument,
 so replacing the keyring and re-signing is not accepted. This is a symmetric
 campaign MAC, not a public signature.
 
 Innovus must publish a complete `MONOTONIC_QUALIFIED` fail/pass sweep for every
-candidate. Every frequency point references four immutable, unique receipts:
+candidate. Every frequency point's Innovus receipt must name the exact
+same-period Genus mapped netlist and mapped SDC for that candidate plus the
+common constraint-set hash, completed detailed routing, and the post-route
+netlist/database/SPEF.
+Every frequency point references four immutable, unique receipts:
 Innovus run/clean-exit and post-route netlist/database, STA with
 setup/hold/recovery/removal report hashes and results, DRC/antenna, and
-signal/PG connectivity. The gate loads those receipts, verifies their hashes
-and common release binding, and derives qualification from them; a point cannot
-substitute WNS booleans or a PASS sentinel. Setup WNS and pass/fail state must be
-monotonic, and the selected period must be the first passing point adjacent to
-the last failure.
+signal/PG connectivity. STA, DRC, and connectivity must each name that same
+point's post-route netlist and Innovus database. STA additionally binds the
+setup/hold Liberty files, shared QRC, SDC, post-route SPEF, propagated clocks,
+zero unconstrained/no-clock/no-delay/no-drive/no-load coverage classes, and
+nonzero analyzed paths for all four timing checks. The gate rejects reuse of a
+physical evidence hash across candidates, points, or evidence roles, loads the
+receipts, verifies their hashes and common release binding, and derives
+qualification from them; a point cannot substitute WNS booleans or a PASS
+sentinel. Setup WNS and pass/fail state must be monotonic, and the selected
+period must be the first passing point adjacent to the last failure.
 
-Activity-power requires one common trace/window and clock period plus, for each
-candidate, unique VCD, SAIF, VCD-to-SAIF conversion, activity-window,
-post-route-netlist/SPEF, power-report, and scope hashes, coverage, retired-event
-count, total/dynamic/leakage power, and an energy/event value that exactly
+Activity-power requires one common trace/window and clock period plus a loaded,
+immutable post-route power proof for each candidate. Each proof binds unique
+VCD, SAIF, VCD-to-SAIF conversion, activity-window, post-route-netlist/SPEF,
+power-report, and scope hashes, coverage, retired-event count,
+total/dynamic/leakage power, and an energy/event value that exactly
 matches those inputs. The power netlist must be the first passing implementation
-selected by the Innovus bracket. Vectorless or self-asserted power is forbidden.
+selected by the Innovus bracket; its SPEF and named power scope must match that
+same selected implementation and exact candidate top. Vectorless or
+self-asserted power is forbidden.
 Functional loss must contain the existing canonical schema-5 official common
 suite receipts for full50 and the capacity22 subset view, plus basic reset. Each
 receipt is hash-loaded and checked for exact source/binding/runner/simulator,
@@ -99,6 +120,7 @@ python3 physical/k2_w2_release_gate/release_gate.py \
   --output /writable/new-release-gate-receipt.json
 ```
 
-Exit 0 and `RANKING_PERMITTED` are required before ranking. Exit 2 publishes a
-compact `RANKING_HOLD` diagnostic; exit 1 means even publication failed. An
-existing output is never overwritten.
+Exit 0 and `RANKING_PERMITTED` are required before ranking. After successful
+argument parsing, exit 2 publishes a compact `RANKING_HOLD` diagnostic; exit 1
+means even publication failed. Command-line usage errors are argparse exit 2
+and do not claim to publish a HOLD. An existing output is never overwritten.

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 import hashlib
 import hmac
 import json
@@ -32,7 +33,7 @@ BOUNDARY_ATTESTATION_SCHEMA = "k2_w2_boundary_attestation_v1"
 ROLE_SCHEMAS = {
     "server_environment": "k2_w2_server_env_receipt_v1",
     "tech_staged_manifest": "k2_w2_tech_staged_manifest_receipt_v1",
-    "genus": "k2_w2_genus_receipt_v2",
+    "genus": "k2_w2_genus_receipt_v3",
     "innovus": "k2_w2_innovus_receipt_v1",
     "activity_power": "k2_w2_activity_power_receipt_v1",
     "functional_loss": "k2_w2_functional_loss_receipt_v1",
@@ -73,8 +74,18 @@ POINT_RECEIPT_SCHEMAS = {
     "drc": "k2_w2_postroute_drc_receipt_v1",
     "connectivity": "k2_w2_postroute_connectivity_receipt_v1",
 }
+GENUS_PROOF_SCHEMA = "k2_w2_genus_candidate_proof_v1"
+POWER_PROOF_SCHEMA = "k2_w2_postroute_power_proof_v1"
 COMMON_RECEIPT_SCHEMA_VERSION = 5
 COMMON_SOURCE_COMMIT = "abd6a721b515ded8a9ef76cb96129b7e0af21e2b"
+COMMON_FULL_MANIFEST_SHA256 = \
+    "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
+COMMON_CAPACITY_MANIFEST_SHA256 = \
+    "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62"
+COMMON_FULL_TRACE_INDEX_SHA256 = \
+    "6f2ef94b59c7059cf9be25a4b50d25c8fc308c850cb5a4a5836a595b7c03c429"
+COMMON_CAPACITY_TRACE_INDEX_SHA256 = \
+    "3ce70b48e78f06b5ab6163f495bf7fc60381e9852a747383619be24783ef15ea"
 COMMON_ANALYZER_WORKLOADS = {
     "pairwise_contention", "mixed_phase_always_ready", "phase_transition", "timing_pair",
 }
@@ -105,8 +116,9 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _identity(info: os.stat_result) -> tuple[int, int, int, int]:
-    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+def _identity(info: os.stat_result) -> tuple[int, int, int, int, int, int, int]:
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink, info.st_size,
+            info.st_mtime_ns, info.st_ctime_ns)
 
 
 def stable_read(path: Path, label: str) -> tuple[bytes, os.stat_result]:
@@ -129,15 +141,66 @@ def stable_read(path: Path, label: str) -> tuple[bytes, os.stat_result]:
     return data, after
 
 
-def read_json(path: Path, label: str) -> tuple[dict[str, Any], bytes, os.stat_result]:
-    data, info = stable_read(path, label)
+def parse_json(data: bytes, label: str) -> dict[str, Any]:
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ReleaseGateError(f"duplicate JSON key in {label}: {key}")
+            result[key] = value
+        return result
+
     try:
-        value = json.loads(data)
+        value = json.loads(data, object_pairs_hook=reject_duplicate_keys)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ReleaseGateError(f"invalid JSON in {label}: {exc}") from exc
     if not isinstance(value, dict):
         raise ReleaseGateError(f"{label} must be a JSON object")
+    return value
+
+
+def read_json(path: Path, label: str) -> tuple[dict[str, Any], bytes, os.stat_result]:
+    data, info = stable_read(path, label)
+    value = parse_json(data, label)
     return value, data, info
+
+
+def read_json_beneath(root: Path, relative_value: Any,
+                      label: str) -> tuple[dict[str, Any], bytes, os.stat_result]:
+    """Descriptor-anchored read that cannot escape or race through parent links."""
+    text = string(relative_value, f"{label}.path")
+    if "\x00" in text:
+        raise ReleaseGateError(f"{label}.path contains a NUL byte")
+    relative = Path(text)
+    if (relative.is_absolute() or ".." in relative.parts or str(relative) != text or
+            not relative.parts):
+        raise ReleaseGateError(f"{label}.path must be a normalized contained relative path")
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | \
+        getattr(os, "O_NOFOLLOW", 0)
+    file_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptors: list[int] = []
+    try:
+        descriptor = os.open(root, directory_flags)
+        descriptors.append(descriptor)
+        for part in relative.parts[:-1]:
+            descriptor = os.open(part, directory_flags, dir_fd=descriptor)
+            descriptors.append(descriptor)
+        descriptor = os.open(relative.parts[-1], file_flags, dir_fd=descriptor)
+        descriptors.append(descriptor)
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ReleaseGateError(f"{label} must not be hard-linked and must be regular")
+        with os.fdopen(os.dup(descriptor), "rb") as stream:
+            data = stream.read()
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise ReleaseGateError(f"cannot read {label} by descriptor: {exc}") from exc
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+    if _identity(before) != _identity(after):
+        raise ReleaseGateError(f"{label} changed while being read")
+    return parse_json(data, label), data, after
 
 
 def exact_keys(value: Any, expected: set[str], label: str) -> dict[str, Any]:
@@ -171,6 +234,8 @@ def digest(value: Any, label: str) -> str:
 
 def decimal_string(value: Any, label: str) -> Decimal:
     text = string(value, label)
+    if len(text) > 128 or re.fullmatch(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", text) is None:
+        raise ReleaseGateError(f"{label} must be a bounded canonical decimal string")
     try:
         number = Decimal(text)
     except InvalidOperation as exc:
@@ -181,12 +246,22 @@ def decimal_string(value: Any, label: str) -> Decimal:
 
 
 def contained(root: Path, value: Any, label: str) -> Path:
-    relative = Path(string(value, label))
+    text = string(value, label)
+    if "\x00" in text:
+        raise ReleaseGateError(f"{label} contains a NUL byte")
+    relative = Path(text)
     if relative.is_absolute() or ".." in relative.parts or str(relative) != str(value):
         raise ReleaseGateError(f"{label} must be a normalized contained relative path")
-    root = root.resolve(strict=True)
+    try:
+        root = root.resolve(strict=True)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise ReleaseGateError(f"cannot resolve bundle root for {label}: {exc}") from exc
     candidate = root / relative
-    if root not in candidate.resolve(strict=False).parents:
+    try:
+        resolved_candidate = candidate.resolve(strict=False)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise ReleaseGateError(f"cannot resolve {label}: {exc}") from exc
+    if root not in resolved_candidate.parents:
         raise ReleaseGateError(f"{label} escapes the bundle root")
     component = root
     for part in relative.parts:
@@ -314,6 +389,15 @@ def validate_provenance(value: Any, label: str) -> dict[str, Any]:
     for name in ("full_manifest_sha256", "capacity_manifest_sha256", "trace_bundle_sha256",
                  "full_trace_index_sha256", "capacity_trace_index_sha256"):
         digest(workload[name], f"{label}.workload.{name}")
+    frozen_workload = {
+        "full_manifest_sha256": COMMON_FULL_MANIFEST_SHA256,
+        "capacity_manifest_sha256": COMMON_CAPACITY_MANIFEST_SHA256,
+        "full_trace_index_sha256": COMMON_FULL_TRACE_INDEX_SHA256,
+        "capacity_trace_index_sha256": COMMON_CAPACITY_TRACE_INDEX_SHA256,
+    }
+    for name, expected in frozen_workload.items():
+        if workload[name] != expected:
+            raise ReleaseGateError(f"{label}.workload.{name} is not the frozen official value")
     simulator = exact_keys(workload["simulator"],
                            {"identity", "executable_sha256", "version_sha256"},
                            f"{label}.workload.simulator")
@@ -376,6 +460,9 @@ def validate_candidate_results(receipt: dict[str, Any], candidates: list[str], l
 
 
 def validate_server_environment(receipt: dict[str, Any], campaign: dict[str, Any]) -> None:
+    for candidate in EXPECTED_CANDIDATES:
+        exact_keys(receipt["candidate_results"][candidate], {"status"},
+                   f"server_environment.candidate_results.{candidate}")
     provenance = campaign["provenance"]
     environment = exact_keys(
         receipt.get("environment"),
@@ -435,34 +522,105 @@ def validate_staged_manifest(receipt: dict[str, Any], campaign: dict[str, Any]) 
             raise ReleaseGateError(f"tech-staged manifest candidate contract mismatch: {candidate}")
 
 
-def validate_genus(receipt: dict[str, Any], campaign: dict[str, Any]) -> None:
+def _claim_evidence_hash(value: Any, label: str,
+                         claimed: dict[str, set[Any]]) -> str:
+    value = digest(value, label)
+    if value in claimed["evidence_hashes"] or value in claimed["hashes"]:
+        if label.startswith("activity_power."):
+            raise ReleaseGateError("activity-power reuses candidate evidence hashes")
+        raise ReleaseGateError(f"physical evidence SHA256 is reused: {value}")
+    claimed["evidence_hashes"].add(value)
+    return value
+
+
+def validate_genus(
+    receipt: dict[str, Any], campaign: dict[str, Any], root: Path,
+    claimed: dict[str, set[Any]],
+    auxiliary: dict[str, tuple[Path, os.stat_result, str]],
+) -> dict[str, dict[Decimal, dict[str, str]]]:
     provenance = campaign["provenance"]
     if (receipt.get("boundary_cohort") != EXPECTED_COHORT or
             receipt.get("source_origin") != "tech_staged_repository_exact" or
             receipt.get("staged_manifest_sha256") != provenance["staged_manifest"]["sha256"] or
             receipt.get("server_environment_contract_sha256") !=
             provenance["server_environment"]["contract_sha256"]):
-        raise ReleaseGateError("Genus v2 receipt is not bound to the final staged server cohort")
+        raise ReleaseGateError("Genus v3 receipt is not bound to the final staged server cohort")
     results = receipt["candidate_results"]
-    hashes: set[str] = set()
+    mapped: dict[str, dict[Decimal, dict[str, str]]] = {}
     for candidate in EXPECTED_CANDIDATES:
         row = exact_keys(
             results[candidate],
-            {"status", "top", "top_ports", "mapped_netlist_sha256", "mapped_sdc_sha256",
-             "constraint_set_sha256", "report_receipt_sha256", "mapped_smoke_sha256"},
+            {"status", "top", "top_ports", "proofs"},
             f"genus.candidate_results.{candidate}")
         if row["status"] != "PASS" or row["top"] != EXPECTED_TOPS[candidate]:
-            raise ReleaseGateError(f"Genus v2 candidate/top is not PASS: {candidate}")
+            raise ReleaseGateError(f"Genus v3 candidate/top is not PASS: {candidate}")
         validate_top_ports(row["top_ports"], candidate,
                            f"genus.candidate_results.{candidate}.top_ports")
-        if row["constraint_set_sha256"] != provenance["sdc"]["sha256"]:
-            raise ReleaseGateError(f"Genus v2 constraint provenance mismatch: {candidate}")
-        for name in ("mapped_netlist_sha256", "mapped_sdc_sha256",
-                     "report_receipt_sha256", "mapped_smoke_sha256"):
-            value = digest(row[name], f"genus.candidate_results.{candidate}.{name}")
-            if value in hashes:
-                raise ReleaseGateError(f"Genus v2 reuses evidence SHA: {value}")
-            hashes.add(value)
+        proofs = row["proofs"]
+        if not isinstance(proofs, list) or len(proofs) < 2:
+            raise ReleaseGateError(f"Genus v3 requires a per-period proof sweep: {candidate}")
+        mapped[candidate] = {}
+        for index, reference in enumerate(proofs):
+            label = f"genus.candidate_results.{candidate}.proofs[{index}]"
+            proof = _load_auxiliary_receipt(root, reference, label, claimed, auxiliary)
+            proof = _validate_genus_proof(
+                proof, campaign, candidate, provenance, label, claimed)
+            period = decimal_string(proof["period_ns"], f"{label}.period_ns")
+            if period <= 0 or period in mapped[candidate]:
+                raise ReleaseGateError(f"Genus v3 period inventory is invalid: {candidate}")
+            mapped[candidate][period] = {
+                "mapped_netlist_sha256": proof["mapped_netlist_sha256"],
+                "mapped_sdc_sha256": proof["mapped_sdc_sha256"],
+            }
+    return mapped
+
+
+def _validate_genus_proof(
+    proof: dict[str, Any], campaign: dict[str, Any], candidate: str,
+    provenance: dict[str, Any], label: str, claimed: dict[str, set[Any]],
+) -> dict[str, Any]:
+    proof = exact_keys(
+        proof,
+        {"schema", "receipt_id", "status", "release_binding", "candidate_id",
+         "top", "top_ports", "period_ns", "source_manifest_sha256", "repository_commit",
+         "staged_manifest_sha256", "server_environment_contract_sha256",
+         "constraint_set_sha256", "mapped_netlist_sha256", "mapped_sdc_sha256",
+         "report_receipt_sha256", "mapped_smoke_sha256", "mapped_cell_count",
+         "unmapped_instances", "blackboxes"},
+        label)
+    validate_campaign(proof["release_binding"], f"{label}.release_binding")
+    validate_top_ports(proof["top_ports"], candidate, f"{label}.top_ports")
+    period = decimal_string(proof["period_ns"], f"{label}.period_ns")
+    if period <= 0:
+        raise ReleaseGateError(f"{label}.period_ns must be positive")
+    expected = {
+            "schema": GENUS_PROOF_SCHEMA,
+            "status": "PASS",
+            "release_binding": campaign,
+            "candidate_id": candidate,
+            "top": EXPECTED_TOPS[candidate],
+            "top_ports": EXPECTED_TOP_PORTS[candidate],
+            "source_manifest_sha256": provenance["staged_manifest"][
+                "functional_candidate_manifest_sha256"][candidate],
+            "repository_commit": campaign["candidate_commits"][candidate],
+            "staged_manifest_sha256": provenance["staged_manifest"]["sha256"],
+            "server_environment_contract_sha256": provenance["server_environment"][
+                "contract_sha256"],
+            "constraint_set_sha256": provenance["sdc"]["sha256"],
+            "unmapped_instances": 0,
+            "blackboxes": 0,
+    }
+    for name, expected_value in expected.items():
+        if proof[name] != expected_value:
+            raise ReleaseGateError(f"Genus mapped proof provenance mismatch: {candidate}")
+    integer(proof["mapped_cell_count"], f"{label}.mapped_cell_count", 1)
+    for name in ("unmapped_instances", "blackboxes"):
+        if integer(proof[name], f"{label}.{name}") != 0:
+            raise ReleaseGateError(f"Genus mapped proof provenance mismatch: {candidate}")
+    for name in ("mapped_netlist_sha256", "mapped_sdc_sha256",
+                 "report_receipt_sha256", "mapped_smoke_sha256"):
+        _claim_evidence_hash(proof[name], f"{label}.{name}", claimed)
+    return proof
 
 
 def _load_auxiliary_receipt(
@@ -474,9 +632,9 @@ def _load_auxiliary_receipt(
     expected = digest(reference["sha256"], f"{label}.sha256")
     if path in claimed["paths"]:
         raise ReleaseGateError(f"duplicate receipt path: {path}")
-    if expected in claimed["hashes"]:
+    if expected in claimed["hashes"] or expected in claimed["evidence_hashes"]:
         raise ReleaseGateError(f"duplicate receipt SHA256: {expected}")
-    document, data, info = read_json(path, label)
+    document, data, info = read_json_beneath(root, reference["path"], label)
     if sha256(data) != expected:
         raise ReleaseGateError(f"{label} SHA256 mismatch")
     inode = (info.st_dev, info.st_ino)
@@ -500,6 +658,22 @@ def _validate_point_receipt_base(
     document: dict[str, Any], role: str, campaign: dict[str, Any], candidate: str,
     period: Decimal, label: str,
 ) -> None:
+    common = {
+        "schema", "role", "receipt_id", "status", "release_binding",
+        "candidate_id", "top", "top_ports", "period_ns",
+    }
+    role_fields = {
+        "innovus": {
+            "clean_exit", "route_completed", "input_mapped_netlist_sha256",
+            "input_mapped_sdc_sha256",
+            "constraint_set_sha256", "postroute_netlist_sha256", "database_sha256",
+            "postroute_spef_sha256", "tool_log_sha256",
+        },
+        "sta": {"postroute_netlist_sha256", "database_sha256", "analysis", "checks"},
+        "drc": {"postroute_netlist_sha256", "database_sha256", "checks"},
+        "connectivity": {"postroute_netlist_sha256", "database_sha256", "checks"},
+    }
+    exact_keys(document, common | role_fields[role], label)
     if document.get("schema") != POINT_RECEIPT_SCHEMAS[role] or document.get("role") != role:
         raise ReleaseGateError(f"{label} schema/role mismatch")
     if document.get("status") != "COMPLETE":
@@ -515,7 +689,8 @@ def _validate_point_receipt_base(
         raise ReleaseGateError(f"{label} is stale or cross-cohort")
 
 
-def _validate_sta_checks(document: dict[str, Any], label: str) -> tuple[dict[str, Decimal], bool]:
+def _validate_sta_checks(document: dict[str, Any], label: str,
+                         claimed: dict[str, set[Any]]) -> tuple[dict[str, Decimal], bool]:
     checks = document.get("checks")
     names = ("setup", "hold", "recovery", "removal")
     if not isinstance(checks, dict) or set(checks) != set(names):
@@ -525,16 +700,17 @@ def _validate_sta_checks(document: dict[str, Any], label: str) -> tuple[dict[str
     for name in names:
         row = exact_keys(checks[name], {"report_sha256", "wns_ns", "tns_ns", "violations"},
                          f"{label}.checks.{name}")
-        digest(row["report_sha256"], f"{label}.checks.{name}.report_sha256")
+        _claim_evidence_hash(
+            row["report_sha256"], f"{label}.checks.{name}.report_sha256", claimed)
         wns = decimal_string(row["wns_ns"], f"{label}.checks.{name}.wns_ns")
         tns = decimal_string(row["tns_ns"], f"{label}.checks.{name}.tns_ns")
         violations = integer(row["violations"], f"{label}.checks.{name}.violations")
-        clean = wns >= 0 and tns >= 0 and violations == 0
-        if clean != (violations == 0 and wns >= 0 and tns >= 0):
-            raise ReleaseGateError(f"{label}.checks.{name} is incoherent")
-        if violations == 0 and (wns < 0 or tns < 0):
+        if tns > 0:
+            raise ReleaseGateError(f"{label}.checks.{name} TNS must be zero or negative")
+        clean = wns >= 0 and tns == 0 and violations == 0
+        if violations == 0 and (wns < 0 or tns != 0):
             raise ReleaseGateError(f"{label}.checks.{name} negative timing lacks violations")
-        if violations > 0 and wns >= 0 and tns >= 0:
+        if violations > 0 and not (wns < 0 and tns < 0):
             raise ReleaseGateError(f"{label}.checks.{name} violations contradict timing")
         slacks[name] = wns
         qualified = qualified and clean
@@ -545,7 +721,8 @@ def _validate_point_receipts(
     root: Path, refs: Any, campaign: dict[str, Any], candidate: str, period: Decimal,
     label: str, claimed: dict[str, set[Any]],
     auxiliary: dict[str, tuple[Path, os.stat_result, str]],
-) -> tuple[Decimal, bool, str]:
+    genus_mapped: dict[str, dict[Decimal, dict[str, str]]],
+) -> tuple[Decimal, bool, str, str]:
     if not isinstance(refs, dict) or set(refs) != set(POINT_RECEIPT_SCHEMAS):
         raise ReleaseGateError(f"{label}.receipts must contain Innovus/STA/DRC/connectivity")
     documents = {}
@@ -559,16 +736,73 @@ def _validate_point_receipts(
     innovus = documents["innovus"]
     if innovus.get("clean_exit") is not True:
         raise ReleaseGateError(f"{label}.innovus did not exit cleanly")
-    for name in ("postroute_netlist_sha256", "database_sha256", "tool_log_sha256"):
-        digest(innovus.get(name), f"{label}.innovus.{name}")
+    if innovus["route_completed"] is not True:
+        raise ReleaseGateError(f"{label}.innovus did not complete detailed routing")
+    expected_genus = genus_mapped[candidate].get(period)
+    if expected_genus is None:
+        raise ReleaseGateError(f"{label}.innovus lacks an exact-period Genus mapped proof")
+    if (innovus["input_mapped_netlist_sha256"] !=
+            expected_genus["mapped_netlist_sha256"] or
+            innovus["input_mapped_sdc_sha256"] != expected_genus["mapped_sdc_sha256"] or
+            innovus["constraint_set_sha256"] != campaign["provenance"]["sdc"]["sha256"]):
+        raise ReleaseGateError(f"{label}.innovus is not bound to the exact Genus mapped proof")
+    for name in ("input_mapped_netlist_sha256", "input_mapped_sdc_sha256",
+                 "constraint_set_sha256"):
+        digest(innovus[name], f"{label}.innovus.{name}")
+    for name in ("postroute_netlist_sha256", "database_sha256",
+                 "postroute_spef_sha256", "tool_log_sha256"):
+        _claim_evidence_hash(innovus[name], f"{label}.innovus.{name}", claimed)
 
-    slacks, timing_clean = _validate_sta_checks(documents["sta"], f"{label}.sta")
+    for role in ("sta", "drc", "connectivity"):
+        document = documents[role]
+        for name in ("postroute_netlist_sha256", "database_sha256"):
+            digest(document[name], f"{label}.{role}.{name}")
+        if (document["postroute_netlist_sha256"] != innovus["postroute_netlist_sha256"] or
+                document["database_sha256"] != innovus["database_sha256"]):
+            raise ReleaseGateError(
+                f"{label}.{role} is not bound to the Innovus post-route implementation")
+
+    sta_analysis = exact_keys(
+        documents["sta"]["analysis"],
+        {"constraint_set_sha256", "setup_liberty_sha256", "hold_liberty_sha256",
+         "shared_qrc_sha256", "postroute_spef_sha256", "propagated_clocks",
+         "coverage", "analyzed_paths"},
+        f"{label}.sta.analysis")
+    provenance = campaign["provenance"]
+    expected_analysis = {
+        "constraint_set_sha256": provenance["sdc"]["sha256"],
+        "setup_liberty_sha256": provenance["technology"]["setup_liberty_sha256"],
+        "hold_liberty_sha256": provenance["technology"]["hold_liberty_sha256"],
+        "shared_qrc_sha256": provenance["technology"]["shared_qrc_sha256"],
+        "postroute_spef_sha256": innovus["postroute_spef_sha256"],
+    }
+    for name, value in expected_analysis.items():
+        if sta_analysis[name] != value:
+            raise ReleaseGateError(f"{label}.sta analysis provenance/coverage mismatch")
+    if sta_analysis["propagated_clocks"] is not True:
+        raise ReleaseGateError(f"{label}.sta analysis provenance/coverage mismatch")
+    coverage = exact_keys(
+        sta_analysis["coverage"],
+        {"unconstrained_paths", "no_clock", "no_input_delay", "no_output_delay",
+         "no_drive", "no_load"}, f"{label}.sta.analysis.coverage")
+    for name, count in coverage.items():
+        if integer(count, f"{label}.sta.analysis.coverage.{name}") != 0:
+            raise ReleaseGateError(f"{label}.sta analysis provenance/coverage mismatch")
+    analyzed_paths = exact_keys(
+        sta_analysis["analyzed_paths"], {"setup", "hold", "recovery", "removal"},
+        f"{label}.sta.analysis.analyzed_paths")
+    for name, count in analyzed_paths.items():
+        integer(count, f"{label}.sta.analysis.analyzed_paths.{name}", 1)
+
+    slacks, timing_clean = _validate_sta_checks(
+        documents["sta"], f"{label}.sta", claimed)
     drc = exact_keys(documents["drc"].get("checks"), {"drc", "antenna"},
                      f"{label}.drc.checks")
     drc_clean = True
     for name, row in drc.items():
         row = exact_keys(row, {"report_sha256", "violations"}, f"{label}.drc.checks.{name}")
-        digest(row["report_sha256"], f"{label}.drc.checks.{name}.report_sha256")
+        _claim_evidence_hash(row["report_sha256"],
+                             f"{label}.drc.checks.{name}.report_sha256", claimed)
         drc_clean = drc_clean and integer(
             row["violations"], f"{label}.drc.checks.{name}.violations") == 0
 
@@ -578,17 +812,20 @@ def _validate_point_receipts(
     for name, row in connectivity.items():
         row = exact_keys(row, {"report_sha256", "opens", "shorts", "unconnected"},
                          f"{label}.connectivity.checks.{name}")
-        digest(row["report_sha256"], f"{label}.connectivity.checks.{name}.report_sha256")
+        _claim_evidence_hash(
+            row["report_sha256"], f"{label}.connectivity.checks.{name}.report_sha256",
+            claimed)
         for field in ("opens", "shorts", "unconnected"):
             connectivity_clean = connectivity_clean and integer(
                 row[field], f"{label}.connectivity.checks.{name}.{field}") == 0
     return (slacks["setup"], timing_clean and drc_clean and connectivity_clean,
-            innovus["postroute_netlist_sha256"])
+            innovus["postroute_netlist_sha256"], innovus["postroute_spef_sha256"])
 
 
 def validate_frequency_sweeps(
     receipt: dict[str, Any], campaign: dict[str, Any], root: Path,
     claimed: dict[str, set[Any]], auxiliary: dict[str, tuple[Path, os.stat_result, str]],
+    genus_mapped: dict[str, dict[Decimal, dict[str, str]]],
 ) -> dict[str, dict[str, str]]:
     candidates = campaign["candidate_ids"]
     sweeps = receipt.get("frequency_sweeps")
@@ -610,19 +847,24 @@ def validate_frequency_sweeps(
         setup_slacks: list[Decimal] = []
         passed: list[bool] = []
         postroute_netlists: list[str] = []
+        postroute_spefs: list[str] = []
         for index, point in enumerate(points):
             point = exact_keys(point, {"period_ns", "receipts"},
                                f"{label}.points[{index}]")
             period = decimal_string(point["period_ns"], f"{label}.points[{index}].period_ns")
             if period <= 0:
                 raise ReleaseGateError(f"{label}.points[{index}].period_ns must be positive")
-            setup_slack, qualified, postroute_netlist = _validate_point_receipts(
+            setup_slack, qualified, postroute_netlist, postroute_spef = \
+                _validate_point_receipts(
                 root, point["receipts"], campaign, candidate, period,
-                f"{label}.points[{index}]", claimed, auxiliary)
+                f"{label}.points[{index}]", claimed, auxiliary, genus_mapped)
             periods.append(period)
             setup_slacks.append(setup_slack)
             passed.append(qualified)
             postroute_netlists.append(postroute_netlist)
+            postroute_spefs.append(postroute_spef)
+        if set(periods) != set(genus_mapped[candidate]):
+            raise ReleaseGateError(f"{label} does not exactly match the Genus proof period inventory")
         if any(right <= left for left, right in zip(periods, periods[1:])):
             raise ReleaseGateError(f"{label} periods are not strictly increasing")
         if any(right < left for left, right in zip(setup_slacks, setup_slacks[1:])):
@@ -646,12 +888,15 @@ def validate_frequency_sweeps(
         selected_implementations[candidate] = {
             "period_ns": str(periods[first_pass]),
             "postroute_netlist_sha256": postroute_netlists[first_pass],
+            "postroute_spef_sha256": postroute_spefs[first_pass],
         }
     return selected_implementations
 
 
 def validate_activity_power(receipt: dict[str, Any], campaign: dict[str, Any],
-                            selected_implementations: dict[str, dict[str, str]]) -> None:
+                            selected_implementations: dict[str, dict[str, str]],
+                            root: Path, claimed: dict[str, set[Any]],
+                            auxiliary: dict[str, tuple[Path, os.stat_result, str]]) -> None:
     activity = exact_keys(
         receipt.get("activity"),
         {"mode", "measurement", "authentication"}, "activity_power.activity")
@@ -689,38 +934,54 @@ def validate_activity_power(receipt: dict[str, Any], campaign: dict[str, Any],
     results = receipt.get("candidate_results")
     if not isinstance(results, dict) or set(results) != set(EXPECTED_CANDIDATES):
         raise ReleaseGateError("activity-power candidate results are not the exact ordered cohort")
-    evidence_hashes: set[str] = set()
     for candidate in EXPECTED_CANDIDATES:
+        reference = exact_keys(
+            results[candidate], {"status", "proof"},
+            f"activity_power.candidate_results.{candidate}")
+        if reference["status"] != "PASS":
+            raise ReleaseGateError(f"activity-power candidate is not PASS: {candidate}")
+        label = f"activity_power.candidate_results.{candidate}.proof"
+        row = _load_auxiliary_receipt(
+            root, reference["proof"], label, claimed, auxiliary)
         row = exact_keys(
-            results[candidate],
-            {"status", "vcd_sha256", "saif_sha256", "activity_window_sha256",
+            row,
+            {"schema", "receipt_id", "release_binding", "candidate_id", "top",
+             "status", "vcd_sha256", "saif_sha256", "activity_window_sha256",
              "saif_conversion_receipt_sha256", "activity_window",
-             "power_report_sha256", "scope_sha256", "postroute_netlist_sha256",
+             "power_report_sha256", "scope_sha256", "scope_top",
+             "postroute_netlist_sha256",
              "spef_sha256", "physical_stage",
              "coverage_percent", "retired_events", "total_power_mw", "dynamic_power_mw",
-             "leakage_power_mw", "energy_pj_per_event"},
-            f"activity_power.candidate_results.{candidate}")
-        if row["status"] != "PASS":
-            raise ReleaseGateError(f"activity-power candidate is not PASS: {candidate}")
+             "leakage_power_mw", "energy_pj_per_event"}, label)
+        if (row["schema"] != POWER_PROOF_SCHEMA or row["status"] != "PASS" or
+                row["release_binding"] != campaign or row["candidate_id"] != candidate or
+                row["top"] != EXPECTED_TOPS[candidate]):
+            raise ReleaseGateError(f"activity-power proof identity mismatch: {candidate}")
         for name in ("vcd_sha256", "saif_sha256", "activity_window_sha256",
                      "saif_conversion_receipt_sha256",
-                     "power_report_sha256", "scope_sha256", "spef_sha256"):
-            value = digest(row[name], f"activity_power.candidate_results.{candidate}.{name}")
-            if value in evidence_hashes:
-                raise ReleaseGateError("activity-power reuses candidate evidence hashes")
-            evidence_hashes.add(value)
+                     "power_report_sha256", "scope_sha256"):
+            _claim_evidence_hash(
+                row[name], f"activity_power.candidate_results.{candidate}.{name}", claimed)
+        digest(row["spef_sha256"],
+               f"activity_power.candidate_results.{candidate}.spef_sha256")
         if row["activity_window"] != measurement:
             raise ReleaseGateError(
                 f"activity-power candidate window differs from common trace/window: {candidate}")
         if (row["physical_stage"] != "INNOVUS_POST_ROUTE_EXTRACTED" or
+                row["scope_top"] != EXPECTED_TOPS[candidate] or
                 row["postroute_netlist_sha256"] !=
                 selected_implementations[candidate]["postroute_netlist_sha256"] or
+                row["spef_sha256"] !=
+                selected_implementations[candidate]["postroute_spef_sha256"] or
                 period != Decimal(selected_implementations[candidate]["period_ns"])):
             raise ReleaseGateError(
                 f"activity-power is not bound to selected post-route implementation: {candidate}")
         coverage = row["coverage_percent"]
-        if (isinstance(coverage, bool) or not isinstance(coverage, (int, float)) or
-                not math.isfinite(coverage) or coverage <= 0 or coverage > 100):
+        if isinstance(coverage, bool) or not isinstance(coverage, (int, float)):
+            raise ReleaseGateError(f"activity-power coverage is invalid: {candidate}")
+        if isinstance(coverage, float) and not math.isfinite(coverage):
+            raise ReleaseGateError(f"activity-power coverage is invalid: {candidate}")
+        if coverage <= 0 or coverage > 100:
             raise ReleaseGateError(f"activity-power coverage is invalid: {candidate}")
         retired = integer(row["retired_events"],
                           f"activity_power.candidate_results.{candidate}.retired_events", 1)
@@ -732,9 +993,11 @@ def validate_activity_power(receipt: dict[str, Any], campaign: dict[str, Any],
                                  f"activity_power.candidate_results.{candidate}.leakage_power_mw")
         energy = decimal_string(row["energy_pj_per_event"],
                                 f"activity_power.candidate_results.{candidate}.energy_pj_per_event")
-        if min(total, dynamic, leakage, energy) < 0 or total != dynamic + leakage:
+        fractions = [Fraction(value) for value in (total, dynamic, leakage, energy)]
+        total_f, dynamic_f, leakage_f, energy_f = fractions
+        if min(fractions) < 0 or total_f != dynamic_f + leakage_f:
             raise ReleaseGateError(f"activity-power component total is inconsistent: {candidate}")
-        if energy * retired != total * cycles * period:
+        if energy_f * retired != total_f * cycles * Fraction(period):
             raise ReleaseGateError(f"activity-power energy/event is not derived: {candidate}")
 
 
@@ -763,9 +1026,7 @@ def _validate_common_receipt(document: dict[str, Any], candidate: str, suite: st
               f"{label}.candidate_manifest_sha256") != expected_candidate_manifest:
         raise ReleaseGateError(f"{label} candidate source/binding manifest differs from campaign")
     for name in ("attempt", "execution_identity", "compile_manifest", "compile_log"):
-        entry = document[name]
-        if not isinstance(entry, dict) or "sha256" not in entry:
-            raise ReleaseGateError(f"{label}.{name} lacks immutable provenance")
+        entry = exact_keys(document[name], {"sha256"}, f"{label}.{name}")
         digest(entry["sha256"], f"{label}.{name}.sha256")
     expected_simulator = workload["simulator"]
     if document["simulator"] != expected_simulator:
@@ -785,7 +1046,9 @@ def _validate_common_receipt(document: dict[str, Any], candidate: str, suite: st
     if not isinstance(inputs, dict) or set(inputs) != {
             "official_manifest", "generation_index", "artifact_manifest"}:
         raise ReleaseGateError(f"{label}.inputs provenance is incomplete")
-    if inputs["official_manifest"].get("sha256") != expected_manifest:
+    for name in ("official_manifest", "generation_index", "artifact_manifest"):
+        exact_keys(inputs[name], {"sha256"}, f"{label}.inputs.{name}")
+    if inputs["official_manifest"]["sha256"] != expected_manifest:
         raise ReleaseGateError(f"{label} official manifest differs from campaign")
     for name in ("generation_index", "artifact_manifest"):
         digest(inputs[name].get("sha256"), f"{label}.inputs.{name}.sha256")
@@ -798,24 +1061,30 @@ def _validate_common_receipt(document: dict[str, Any], candidate: str, suite: st
     for index, run in enumerate(runs):
         if not isinstance(run, dict):
             raise ReleaseGateError(f"{label}.runs[{index}] must be an object")
+        expected_run_keys = {
+            "name", "workload", "run_manifest", "trace", "result", "execution_sidecar",
+        }
+        if "analyzer" in run:
+            expected_run_keys.add("analyzer")
+        exact_keys(run, expected_run_keys, f"{label}.runs[{index}]")
         name = string(run.get("name"), f"{label}.runs[{index}].name", ID_RE)
         if name in names:
             raise ReleaseGateError(f"{label} duplicates run {name}")
         names.add(name)
         workload_name = string(run.get("workload"), f"{label}.runs[{index}].workload", ID_RE)
+        needs_analyzer = workload_name in COMMON_ANALYZER_WORKLOADS
         observed_workloads.add(workload_name)
         for field in ("run_manifest", "trace", "result", "execution_sidecar"):
-            entry = run.get(field)
-            if not isinstance(entry, dict):
-                raise ReleaseGateError(f"{label}.runs[{index}].{field} is absent")
-            digest(entry.get("sha256"), f"{label}.runs[{index}].{field}.sha256")
+            entry = exact_keys(run[field], {"sha256"}, f"{label}.runs[{index}].{field}")
+            digest(entry["sha256"], f"{label}.runs[{index}].{field}.sha256")
         trace_index.append({"name": name, "workload": workload_name,
                             "trace_sha256": run["trace"]["sha256"]})
-        needs_analyzer = workload_name in COMMON_ANALYZER_WORKLOADS
         if needs_analyzer != ("analyzer" in run):
             raise ReleaseGateError(f"{label}.runs[{index}] analyzer closure mismatch")
         if needs_analyzer:
-            digest(run["analyzer"].get("sha256"), f"{label}.runs[{index}].analyzer.sha256")
+            analyzer = exact_keys(run["analyzer"], {"sha256"},
+                                  f"{label}.runs[{index}].analyzer")
+            digest(analyzer["sha256"], f"{label}.runs[{index}].analyzer.sha256")
     required_workloads = {"pairwise_contention", "mixed_phase_always_ready", "phase_transition"}
     if suite == "full50":
         required_workloads.add("timing_pair")
@@ -861,7 +1130,6 @@ def validate_functional(
     results = receipt.get("candidate_results")
     if not isinstance(results, dict) or set(results) != set(EXPECTED_CANDIDATES):
         raise ReleaseGateError("functional-loss candidate results are not the exact ordered cohort")
-    result_hashes: set[str] = set()
     for candidate in EXPECTED_CANDIDATES:
         row = exact_keys(
             results[candidate],
@@ -879,7 +1147,6 @@ def validate_functional(
                 root, references[suite], label, claimed, auxiliary)
             suite_trace_indexes[suite] = _validate_common_receipt(
                 document, candidate, suite, campaign, label)
-            result_hashes.add(references[suite]["sha256"])
         full_identities = {
             (row["name"], row["workload"], row["trace_sha256"])
             for row in suite_trace_indexes["full50"]
@@ -895,6 +1162,8 @@ def validate_functional(
         reset_label = f"functional_loss.{candidate}.basic_reset"
         reset = _load_auxiliary_receipt(
             root, references["basic_reset"], reset_label, claimed, auxiliary)
+        exact_keys(reset, {"schema", "status", "receipt_id", "candidate",
+                           "release_binding"}, reset_label)
         if (reset.get("schema") != "k2_basic_reset_receipt_v1" or
                 reset.get("status") != "PASS" or reset.get("candidate") != candidate or
                 reset.get("release_binding") != campaign):
@@ -960,6 +1229,21 @@ def validate_role_receipt(
     validation_context: dict[str, Any],
 ) -> None:
     label = f"{role} receipt"
+    common = {"schema", "role", "receipt_id", "status", "release_binding",
+              "candidate_results"}
+    role_fields = {
+        "server_environment": {"environment"},
+        "tech_staged_manifest": {"manifest"},
+        "genus": {
+            "boundary_cohort", "source_origin", "staged_manifest_sha256",
+            "server_environment_contract_sha256",
+        },
+        "innovus": {"frequency_sweeps"},
+        "activity_power": {"activity"},
+        "functional_loss": {"claim_boundary", "measurement"},
+        "boundary": {"common_non_link_seam_sha256", "seam_policy", "attestation"},
+    }
+    exact_keys(receipt, common | role_fields[role], label)
     if receipt.get("schema") != ROLE_SCHEMAS[role]:
         raise ReleaseGateError(f"{label} schema mismatch")
     if receipt.get("role") != role:
@@ -978,15 +1262,20 @@ def validate_role_receipt(
     elif role == "tech_staged_manifest":
         validate_staged_manifest(receipt, campaign)
     elif role == "genus":
-        validate_genus(receipt, campaign)
-    elif role == "innovus":
-        validation_context["selected_implementations"] = validate_frequency_sweeps(
+        validation_context["genus_mapped"] = validate_genus(
             receipt, campaign, root, claimed, auxiliary)
+    elif role == "innovus":
+        if "genus_mapped" not in validation_context:
+            raise ReleaseGateError("Innovus precedes exact Genus mapped proof")
+        validation_context["selected_implementations"] = validate_frequency_sweeps(
+            receipt, campaign, root, claimed, auxiliary,
+            validation_context["genus_mapped"])
     elif role == "activity_power":
         if "selected_implementations" not in validation_context:
             raise ReleaseGateError("activity-power precedes qualified Innovus/Fmax evidence")
         validate_activity_power(
-            receipt, campaign, validation_context["selected_implementations"])
+            receipt, campaign, validation_context["selected_implementations"], root,
+            claimed, auxiliary)
     elif role == "functional_loss":
         validate_functional(receipt, campaign, root, claimed, auxiliary)
     elif role == "boundary":
@@ -1054,11 +1343,16 @@ def validate_boundary_authentication(
 
 def load_and_gate(bundle_root: Path, manifest_path: Path, keyring_path: Path,
                   expected_keyring_sha256: str) -> dict[str, Any]:
-    root = bundle_root.resolve(strict=True)
-    manifest_resolved = manifest_path.resolve(strict=False)
+    try:
+        root = bundle_root.resolve(strict=True)
+        manifest_resolved = manifest_path.resolve(strict=False)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise ReleaseGateError(f"cannot resolve release bundle/manifest: {exc}") from exc
     if root not in manifest_resolved.parents:
         raise ReleaseGateError("release manifest must be contained by the bundle root")
-    manifest, manifest_data, manifest_info = read_json(manifest_path, "release manifest")
+    manifest_relative = manifest_resolved.relative_to(root).as_posix()
+    manifest, manifest_data, manifest_info = read_json_beneath(
+        root, manifest_relative, "release manifest")
     manifest = exact_keys(manifest, {"schema", "release_id", "campaign", "receipts"},
                           "release manifest")
     if manifest["schema"] != MANIFEST_SCHEMA:
@@ -1090,7 +1384,8 @@ def load_and_gate(bundle_root: Path, manifest_path: Path, keyring_path: Path,
         if expected_hash in hashes:
             raise ReleaseGateError(f"duplicate receipt SHA256: {expected_hash}")
         hashes.add(expected_hash)
-        receipt, data, info = read_json(path, f"{role} receipt")
+        receipt, data, info = read_json_beneath(
+            root, reference["path"], f"{role} receipt")
         if sha256(data) != expected_hash:
             raise ReleaseGateError(f"{role} receipt SHA256 mismatch")
         inode = (info.st_dev, info.st_ino)
@@ -1109,6 +1404,7 @@ def load_and_gate(bundle_root: Path, manifest_path: Path, keyring_path: Path,
 
     claimed: dict[str, set[Any]] = {
         "receipt_ids": receipt_ids, "paths": paths, "hashes": hashes, "inodes": inodes,
+        "evidence_hashes": set(),
     }
     auxiliary: dict[str, tuple[Path, os.stat_result, str]] = {}
     validation_context: dict[str, Any] = {}
@@ -1118,7 +1414,15 @@ def load_and_gate(bundle_root: Path, manifest_path: Path, keyring_path: Path,
             validation_context)
 
     expected_keyring_sha256 = digest(expected_keyring_sha256, "trusted keyring SHA256")
+    try:
+        keyring_resolved = keyring_path.resolve(strict=False)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise ReleaseGateError(f"cannot resolve release keyring: {exc}") from exc
+    if keyring_resolved == root or root in keyring_resolved.parents:
+        raise ReleaseGateError("release keyring must remain outside the public bundle root")
     keyring, keyring_data, keyring_info = read_json(keyring_path, "release keyring")
+    if keyring_info.st_uid != os.geteuid() or stat.S_IMODE(keyring_info.st_mode) & 0o077:
+        raise ReleaseGateError("release keyring must be owner-owned and inaccessible to group/other")
     actual_keyring_sha256 = sha256(keyring_data)
     if actual_keyring_sha256 != expected_keyring_sha256:
         raise ReleaseGateError("release keyring does not match the out-of-band trusted SHA256")
