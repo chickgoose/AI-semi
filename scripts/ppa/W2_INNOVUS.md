@@ -72,6 +72,20 @@ one period and the same site, utilization, aspect ratio, margin, PG/ring, IO,
 and activity-window policy. Power requires scoped SAIF/VCD activity; vectorless
 reports cannot qualify.
 
+The plan must select one hash-bound timing profile. The existing
+`three_endpoint_5p0ns` profile remains available, while
+`three_endpoint_5p7ns` binds period 5.7 ns, ref/sample/reset waveforms
+`[0,2.85]`, `[1.425,4.275]`, and `[2.85,4.275]`, and the common-activity
+timestamp ratio `57/100`. After `init_design`, both clock inputs receive
+`set_drive 0`; every nonclock input receives the `BUFX2` driving-cell model.
+The mapped SDC must contain one divide-by-one generated clock from
+`sample_clk_i` to the exact preserved `*w2_ep_icg_0/ECK` pin. Immediately after
+init, Innovus creates the actual divide-by-one forwarded generated clock from
+that exact ECK pin onto `link_clk_o`; that path may not be false-pathed. Hold ECO
+setup-TNS degradation is disabled for 5.0 ns and enabled only for the 5.7 ns
+profile. The descriptor, technology contract, and boundary machine report all
+bind the selected profile SHA and policy.
+
 The canonical `constraints/r1_multiclock.sdc` and
 `constraints/p6_multiclock.sdc` bytes are materialized unchanged from Genus
 provider commit `bcbcdf8226ca8c1211727012e4ea7ccc7f179550` (its strict R1/P6

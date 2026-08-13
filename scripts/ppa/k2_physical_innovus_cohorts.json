@@ -1,7 +1,95 @@
 {
-  "schema": "k2_w2_innovus_cohort_registry_v3",
+  "schema": "k2_w2_innovus_cohort_registry_v4",
   "integration_state": "ready",
   "server_environment_authority": "scripts/ppa/k2_physical_server_environment.json",
+  "timing_cohort_manifest": {
+    "required_schema": "k2_w2_genus_timing_cohorts_v1",
+    "path": "physical/k2_w2_genus/timing_cohorts.json",
+    "sha256": "9984726e8d955a891b863e41adb4519c27c3b650879de88d07f063ebc886404f"
+  },
+  "timing_profile_order": ["three_endpoint_5p0ns", "three_endpoint_5p7ns"],
+  "timing_profiles": {
+    "three_endpoint_5p0ns": {
+      "period_ns": "5.0",
+      "clock_waveforms_ns": {
+        "ref_clk": [0.0, 2.5],
+        "sample_clk": [1.25, 3.75],
+        "reset_release_clk": [2.5, 3.75]
+      },
+      "strict_timing_environment": {
+        "W2_REF_PERIOD_NS": "5.0",
+        "W2_CLOCK_UNCERTAINTY_NS": "0.25",
+        "W2_INPUT_DELAY_MIN_NS": "0.10",
+        "W2_INPUT_DELAY_MAX_NS": "0.50",
+        "W2_OUTPUT_DELAY_MIN_NS": "0.10",
+        "W2_OUTPUT_DELAY_MAX_NS": "0.50",
+        "W2_RESET_DELAY_MIN_NS": "0.10",
+        "W2_RESET_DELAY_MAX_NS": "0.50",
+        "W2_INPUT_TRANSITION_NS": "0.05",
+        "W2_OUTPUT_LOAD_PF": "0.01",
+        "W2_CLOCK_GATING_SETUP_NS": "0.10",
+        "W2_CLOCK_GATING_HOLD_NS": "0.05",
+        "W2_MIN_PULSE_HIGH_NS": "0.50",
+        "W2_MIN_PULSE_LOW_NS": "0.50",
+        "W2_DRIVE_CELL": "BUFX2"
+      },
+      "activity_timestamp_ratio": {"numerator": 1, "denominator": 2},
+      "post_init_boundary_drive": {
+        "clock_ports": ["ref_clk_i", "sample_clk_i"],
+        "clock_drive": 0,
+        "nonclock_input_ports": ["rst_n", "source_pending_i"],
+        "nonclock_driving_cell": "BUFX2"
+      },
+      "forwarded_link_clock": {
+        "master_source_port": "sample_clk_i",
+        "forward_source_pin": "*w2_ep_icg_0/ECK",
+        "target_port": "link_clk_o",
+        "divide_by": 1,
+        "false_path": "FORBIDDEN"
+      },
+      "hold_fix_allow_setup_tns_degrade": false
+    },
+    "three_endpoint_5p7ns": {
+      "period_ns": "5.7",
+      "clock_waveforms_ns": {
+        "ref_clk": [0.0, 2.85],
+        "sample_clk": [1.425, 4.275],
+        "reset_release_clk": [2.85, 4.275]
+      },
+      "strict_timing_environment": {
+        "W2_REF_PERIOD_NS": "5.7",
+        "W2_CLOCK_UNCERTAINTY_NS": "0.25",
+        "W2_INPUT_DELAY_MIN_NS": "0.10",
+        "W2_INPUT_DELAY_MAX_NS": "0.50",
+        "W2_OUTPUT_DELAY_MIN_NS": "0.10",
+        "W2_OUTPUT_DELAY_MAX_NS": "0.50",
+        "W2_RESET_DELAY_MIN_NS": "0.10",
+        "W2_RESET_DELAY_MAX_NS": "0.50",
+        "W2_INPUT_TRANSITION_NS": "0.05",
+        "W2_OUTPUT_LOAD_PF": "0.01",
+        "W2_CLOCK_GATING_SETUP_NS": "0.10",
+        "W2_CLOCK_GATING_HOLD_NS": "0.05",
+        "W2_MIN_PULSE_HIGH_NS": "0.50",
+        "W2_MIN_PULSE_LOW_NS": "0.50",
+        "W2_DRIVE_CELL": "BUFX2"
+      },
+      "activity_timestamp_ratio": {"numerator": 57, "denominator": 100},
+      "post_init_boundary_drive": {
+        "clock_ports": ["ref_clk_i", "sample_clk_i"],
+        "clock_drive": 0,
+        "nonclock_input_ports": ["rst_n", "source_pending_i"],
+        "nonclock_driving_cell": "BUFX2"
+      },
+      "forwarded_link_clock": {
+        "master_source_port": "sample_clk_i",
+        "forward_source_pin": "*w2_ep_icg_0/ECK",
+        "target_port": "link_clk_o",
+        "divide_by": 1,
+        "false_path": "FORBIDDEN"
+      },
+      "hold_fix_allow_setup_tns_degrade": true
+    }
+  },
   "committed_techmap_manifest": {
     "source_repository_commit": "ba0116029bb79573dca23c3957845885837f4b82",
     "publication_repository_commit": "823b768ba3dad82b3de0febd3d5f2c556c0643be",

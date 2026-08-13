@@ -15,6 +15,8 @@ required=(AER_TOP AER_PNR_NETLIST AER_TECH_LEF AER_CELL_LEF
           AER_RING_SPACING_UM AER_RING_OFFSET_UM AER_PNR_SDC
           AER_W2_COHORT AER_W2_DESIGN AER_W2_EXECUTION_DESCRIPTOR
           AER_W2_EXECUTION_DESCRIPTOR_SHA256 AER_INNOVUS_BIN
+          AER_W2_TIMING_PROFILE AER_W2_TIMING_PROFILE_SHA256 AER_W2_PERIOD_NS
+          AER_HOLD_FIX_ALLOW_SETUP_TNS_DEGRADE
           AER_ACTIVITY_FILE AER_ACTIVITY_FORMAT AER_ACTIVITY_SCOPE
           AER_ACTIVITY_WINDOW_START_NS AER_ACTIVITY_WINDOW_END_NS)
 for name in "${required[@]}"; do
@@ -79,10 +81,15 @@ tech_lef_sha256="$(sha256sum "$AER_TECH_LEF" | awk '{print $1}')"
 cell_lef_sha256="$(sha256sum "$AER_CELL_LEF" | awk '{print $1}')"
 innovus_sha256="$(sha256sum "$AER_INNOVUS_BIN" | awk '{print $1}')"
 {
-  printf 'schema=k2_w2_innovus_technology_contract_v1\n'
+  printf 'schema=k2_w2_innovus_technology_contract_v2\n'
   printf 'top=%s\n' "$AER_TOP"
   printf 'cohort=%s\n' "$AER_W2_COHORT"
   printf 'design=%s\n' "$AER_W2_DESIGN"
+  printf 'timing_profile=%s\n' "$AER_W2_TIMING_PROFILE"
+  printf 'timing_profile_sha256=%s\n' "$AER_W2_TIMING_PROFILE_SHA256"
+  printf 'period_ns=%s\n' "$AER_W2_PERIOD_NS"
+  printf 'hold_fix_allow_setup_tns_degrade=%s\n' \
+    "$AER_HOLD_FIX_ALLOW_SETUP_TNS_DEGRADE"
   printf 'innovus_path=%s\n' "$AER_INNOVUS_BIN"
   printf 'innovus_sha256=%s\n' "$innovus_sha256"
   printf 'tech_lef_sha256=%s\n' "$tech_lef_sha256"

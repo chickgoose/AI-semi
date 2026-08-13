@@ -61,6 +61,26 @@ class InnovusPlanTests(unittest.TestCase):
     def bound(self, path: Path) -> dict:
         return {"path": str(path), "sha256": digest(path)}
 
+    def timing(self, profile_id: str) -> tuple[dict, dict, dict]:
+        binding = self.module.timing_profile_binding(
+            self.ready_registry, profile_id)
+        manifest_path = ROOT / self.ready_registry["timing_cohort_manifest"]["path"]
+        manifest = json.loads(manifest_path.read_text())
+        profile = copy.deepcopy(manifest["cohorts"][profile_id])
+        selected = {
+            **profile,
+            "id": profile_id,
+            "manifest_path": self.ready_registry["timing_cohort_manifest"]["path"],
+            "manifest_sha256": binding["genus_timing_manifest_sha256"],
+            "profile_sha256": binding["genus_timing_profile_sha256"],
+        }
+        identity = {
+            "path": self.ready_registry["timing_cohort_manifest"]["path"],
+            "sha256": binding["genus_timing_manifest_sha256"],
+            "required_schema": "k2_w2_genus_timing_cohorts_v1",
+        }
+        return binding, selected, identity
+
     def write_manifest(self) -> tuple[Path, dict]:
         cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
         common_ports = self.module.staged_common_ports(cohort)
@@ -191,7 +211,8 @@ class InnovusPlanTests(unittest.TestCase):
         return path
 
     def write_run(self, design: str, staged: dict, staged_bound: dict,
-                  environment_bound: dict, period: str = "5.0") -> dict:
+                  environment_bound: dict, period: str = "5.0",
+                  profile_id: str = "three_endpoint_5p0ns") -> dict:
         contract = self.registry["cohorts"]["tech_staged_complete_compositions"]["designs"][design]
         top = contract["top"]
         declarations = []
@@ -294,20 +315,38 @@ class InnovusPlanTests(unittest.TestCase):
                            "  TLATNTSCAX2 RC_CGIC_INST (.E(enable), .SE(test), "
                            ".CK(ck_in), .ECK(ck_out));\n"
                            "endmodule\n")
+        timing_binding, selected_timing, timing_identity = self.timing(profile_id)
+        waveforms = selected_timing["clock_waveforms_ns"]
         sdc = self.root / f"{design}.sdc"
-        lines = [f"current_design {top}"]
-        for clock in contract["clocks"]["input"]:
-            lines.append(f"create_clock -period {period} [get_ports {clock}]")
+        lines = [
+            f"current_design {top}",
+            f"create_clock -name w2_ref_clk -period {period} "
+            f"-waveform {{{waveforms['ref_clk'][0]} {waveforms['ref_clk'][1]}}} "
+            "[get_ports ref_clk_i]",
+            f"create_clock -name w2_sample_clk -period {period} "
+            f"-waveform {{{waveforms['sample_clk'][0]} {waveforms['sample_clk'][1]}}} "
+            "[get_ports sample_clk_i]",
+            f"create_clock -name w2_reset_release_clk -period {period} "
+            f"-waveform {{{waveforms['reset_release_clk'][0]} "
+            f"{waveforms['reset_release_clk'][1]}}}",
+        ]
         lines += [
-            "create_generated_clock -source [get_ports sample_clk_i] [get_ports link_clk_o]",
+            "create_generated_clock -name w2_forwarded_link_clk "
+            "-source [get_ports sample_clk_i] -divide_by 1 "
+            f"[get_pins {root}_tx_clock_boundary_w2_ep_icg_0/ECK]",
             "set_clock_gating_check -setup 0.0",
-            f"set_clock_gating_check -setup 0.1 -hold 0.1 "
+            f"set_clock_gating_check -setup 0.10 -hold 0.05 "
             f"[get_pins {root}_tx_clock_boundary_w2_ep_icg_0/E]",
-            "set_input_transition 0.1 [all_inputs]",
+            "set_clock_uncertainty 0.25 [all_clocks]",
+            "set_input_delay -min 0.10 -clock w2_ref_clk [all_inputs]",
+            "set_input_delay -max 0.50 -clock w2_ref_clk [all_inputs]",
+            "set_input_transition 0.05 [all_inputs]",
             "set_output_delay -min 0.1 -clock link [get_ports link_data_o*]",
-            "set_output_delay -max 0.2 -clock link [get_ports link_data_o*]",
+            "set_output_delay -max 0.5 -clock link [get_ports link_data_o*]",
             "set_output_delay -min 0.1 -clock link -clock_fall [get_ports link_data_o*]",
-            "set_output_delay -max 0.2 -clock link -clock_fall [get_ports link_data_o*]",
+            "set_output_delay -max 0.5 -clock link -clock_fall [get_ports link_data_o*]",
+            "set_min_pulse_width -high 0.50 [all_clocks]",
+            "set_min_pulse_width -low 0.50 [all_clocks]",
             "set_load 0.01 [all_outputs]",
         ]
         sdc.write_text("\n".join(lines) + "\n")
@@ -333,6 +372,10 @@ class InnovusPlanTests(unittest.TestCase):
             "mapped_sdf_sha256": mapped_sdf_sha,
             "mapped_sdc_sha256": digest(sdc),
             "strict_input_sdc_sha256": template["sha256"],
+            "materialized_input_sdc_path": "bundle/constraints.sdc",
+            "materialized_input_sdc_sha256": "e" * 64,
+            "timing_cohort_manifest": timing_identity,
+            "timing_cohort": selected_timing,
             "setup_liberty_sha256": tech["setup_liberty"]["sha256"],
             "hold_liberty_sha256": tech["hold_liberty"]["sha256"],
             "cell_lef_sha256": tech["macro_lef"]["sha256"],
@@ -378,6 +421,8 @@ class InnovusPlanTests(unittest.TestCase):
             },
             "technology_authorities": copy.deepcopy(
                 staged["technology_authorities"]),
+            "timing_cohort_manifest": timing_identity,
+            "timing_cohort": selected_timing,
             "mapped_inventory": {
                 "mapped_netlist_sha256": digest(netlist),
                 "mapped_cell_types": {
@@ -393,6 +438,7 @@ class InnovusPlanTests(unittest.TestCase):
             "mapped_sdf_sha256": mapped_sdf_sha,
             "mapped_sdc_sha256": digest(sdc),
             "strict_sdc_sha256": template["sha256"],
+            "materialized_sdc_sha256": "e" * 64,
             "innovus_handoff_sha256": digest(handoff),
             "endpoint_leaf_inventory": {
                 "connectivity_map_sha256": digest(endpoint_map),
@@ -427,19 +473,26 @@ class InnovusPlanTests(unittest.TestCase):
             "output_dir": str(self.root / f"out-{design}"),
         }
 
-    def plan(self) -> tuple[Path, dict]:
+    def plan(self, profile_id: str = "three_endpoint_5p0ns") -> tuple[Path, dict]:
         staged_path, staged = self.write_manifest()
         environment_path = self.write_environment()
         staged_bound = self.bound(staged_path)
         environment_bound = self.bound(environment_path)
         cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
+        timing, _, _ = self.timing(profile_id)
         document = {
-            "schema": "k2_w2_innovus_plan_v2",
+            "schema": "k2_w2_innovus_plan_v3",
             "cohort": "tech_staged_complete_compositions",
             "purpose": "final_physical_comparison", "ranking_eligible": True,
+            "timing_profile": {
+                "id": profile_id,
+                "profile_sha256": timing["innovus_timing_profile_sha256"],
+            },
             "staged_manifest": staged_bound,
             "server_environment": environment_bound,
-            "runs": [self.write_run(d, staged, staged_bound, environment_bound)
+            "runs": [self.write_run(
+                d, staged, staged_bound, environment_bound,
+                timing["period_ns"], profile_id)
                      for d in cohort["exact_design_set"]],
         }
         path = self.root / "plan.json"
@@ -462,6 +515,14 @@ class InnovusPlanTests(unittest.TestCase):
             json.loads(endpoint_map.read_text()))
 
     def test_registry_is_only_three_tech_staged_normalized_tops(self):
+        self.assertEqual(self.registry["schema"],
+                         "k2_w2_innovus_cohort_registry_v4")
+        self.assertEqual(self.registry["timing_profile_order"],
+                         ["three_endpoint_5p0ns", "three_endpoint_5p7ns"])
+        self.assertFalse(self.registry["timing_profiles"][
+            "three_endpoint_5p0ns"]["hold_fix_allow_setup_tns_degrade"])
+        self.assertTrue(self.registry["timing_profiles"][
+            "three_endpoint_5p7ns"]["hold_fix_allow_setup_tns_degrade"])
         self.assertEqual(set(self.registry["cohorts"]), {"tech_staged_complete_compositions"})
         cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
         self.assertEqual([cohort["designs"][d]["top"] for d in cohort["exact_design_set"]], [
@@ -543,6 +604,65 @@ class InnovusPlanTests(unittest.TestCase):
         self.assertGreater(whole["MX2X1"], endpoint["MX2X1"])
         self.assertGreater(whole["TLATNTSCAX2"], endpoint["TLATNTSCAX2"])
         self.assertEqual(whole["DFFNSRX1"], endpoint["DFFNSRX1"])
+
+    def test_5p7_profile_binds_three_runs_and_hold_policy(self):
+        path, document = self.plan("three_endpoint_5p7ns")
+        bindings = self.module.validate_plan(path)
+        self.assertEqual(document["schema"], "k2_w2_innovus_plan_v3")
+        self.assertEqual(document["timing_profile"]["id"],
+                         "three_endpoint_5p7ns")
+        self.assertEqual([row.period_ns for row in bindings], ["5.7"] * 3)
+        self.assertTrue(all(row.timing_profile_id ==
+                            "three_endpoint_5p7ns" for row in bindings))
+        self.assertTrue(all(row.hold_fix_allow_setup_tns_degrade
+                            for row in bindings))
+        policy = self.registry["timing_profiles"]["three_endpoint_5p7ns"]
+        self.assertEqual(policy["activity_timestamp_ratio"],
+                         {"numerator": 57, "denominator": 100})
+        self.assertEqual(policy["forwarded_link_clock"], {
+            "master_source_port": "sample_clk_i",
+            "forward_source_pin": "*w2_ep_icg_0/ECK",
+            "target_port": "link_clk_o",
+            "divide_by": 1, "false_path": "FORBIDDEN",
+        })
+
+    def test_5p7_profile_sdc_forwarded_clock_and_receipt_mutations_reject(self):
+        for mutation in ("profile_sha", "period", "waveform", "input_delay",
+                         "eck_source", "divide", "false_path", "receipt_profile"):
+            with self.subTest(mutation=mutation):
+                path, document = self.plan("three_endpoint_5p7ns")
+                run = document["runs"][0]
+                if mutation == "profile_sha":
+                    document["timing_profile"]["profile_sha256"] = "0" * 64
+                elif mutation == "period":
+                    run["period_ns"] = "5.0"
+                elif mutation in {"waveform", "input_delay", "eck_source",
+                                  "divide", "false_path"}:
+                    sdc = Path(run["mapped_sdc"]["path"])
+                    text = sdc.read_text()
+                    if mutation == "waveform":
+                        text = text.replace("{0.0 2.85}", "{0.0 2.80}", 1)
+                    elif mutation == "input_delay":
+                        text = text.replace("set_input_delay -max 0.50",
+                                            "set_input_delay -max 0.60", 1)
+                    elif mutation == "eck_source":
+                        text = text.replace("/ECK]", "/E]", 1)
+                    elif mutation == "divide":
+                        text = text.replace("-divide_by 1", "-divide_by 2")
+                    else:
+                        text += "set_false_path -from [get_ports sample_clk_i] " \
+                                "-to [get_ports link_clk_o]\n"
+                    sdc.write_text(text)
+                    run["mapped_sdc"] = self.bound(sdc)
+                else:
+                    receipt_path = Path(run["producer"]["receipt"]["path"])
+                    receipt = json.loads(receipt_path.read_text())
+                    receipt["timing_cohort"]["id"] = "three_endpoint_5p0ns"
+                    receipt_path.write_text(json.dumps(receipt))
+                    run["producer"]["receipt"] = self.bound(receipt_path)
+                path.write_text(json.dumps(document))
+                with self.assertRaises(self.module.PlanError):
+                    self.module.validate_plan(path)
 
     def test_actual_genus_flattened_endpoint_map_schema_is_consumed(self):
         _, document = self.plan()
@@ -755,7 +875,7 @@ class InnovusPlanTests(unittest.TestCase):
             f"{GENUS_PROVIDER_COMMIT}:physical/k2_w2_genus/run_genus.py",
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         self.assertEqual(hashlib.sha256(provider.stdout).hexdigest(),
-                         "c8a5fd218099746265deaa08e7c55ccdc77730228dbe7d83533540a586119934")
+                         "e8920eecb76e8c77a0dbb3988350196fbd89b9b6a7e81c67c8ff067fcd6e0c1c")
         for source, local in (
                 ("constraints/r1_multiclock_strict.sdc",
                  ROOT / "constraints/r1_multiclock.sdc"),
@@ -774,6 +894,7 @@ class InnovusPlanTests(unittest.TestCase):
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
         for option in ("--hold-library", "--cell-lef", "--shared-qrc"):
             self.assertIn(option, help_result.stdout)
+        self.assertIn("--timing-cohort", help_result.stdout)
         self.assertNotIn("--activity-receipt", help_result.stdout)
         source = provider.stdout.decode()
         self.assertIn('"schema": "k2_w2_genus_exact_three_endpoint_receipt_v3"', source)
@@ -799,7 +920,20 @@ class InnovusPlanTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(payload).hexdigest(),
                              environment["AER_W2_EXECUTION_DESCRIPTOR_SHA256"])
             self.assertEqual(descriptor.stat().st_mode & 0o222, 0)
-            observed.append(json.loads(payload)["binding"]["top"])
+            document = json.loads(payload)
+            self.assertEqual(document["schema"],
+                             "k2_w2_innovus_execution_descriptor_v2")
+            binding = document["binding"]
+            self.assertEqual(binding["timing_profile_id"],
+                             "three_endpoint_5p0ns")
+            self.assertEqual(binding["period_ns"], "5.0")
+            self.assertRegex(binding["genus_timing_manifest_sha256"],
+                             r"^[0-9a-f]{64}$")
+            self.assertRegex(binding["genus_timing_profile_sha256"],
+                             r"^[0-9a-f]{64}$")
+            self.assertRegex(binding["innovus_timing_profile_sha256"],
+                             r"^[0-9a-f]{64}$")
+            observed.append(binding["top"])
             return completed
         with mock.patch.object(self.module.subprocess, "run", side_effect=invoke):
             self.module.execute_plan(bindings)

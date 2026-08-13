@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stream a validated 10 ns common-activity VCD onto the exact 5 ns timeline."""
+"""Stream a validated 10 ns common-activity VCD onto an allowed exact timeline."""
 
 from __future__ import annotations
 
@@ -17,8 +17,7 @@ from typing import BinaryIO
 
 SCHEMA = "k2_w3_vcd_timestamp_scale_v1"
 PRODUCER_ID = "k2-w3-vcd-timestamp-scaler-v1"
-NUMERATOR = 1
-DENOMINATOR = 2
+ALLOWED_RATIOS = {(1, 2): 5000, (57, 100): 5700}
 MAX_LINE_BYTES = 1024 * 1024
 MAX_TIMESTAMP_DIGITS = 30
 TIMESTAMP = re.compile(rb"#[0-9]+")
@@ -199,7 +198,11 @@ def _validation_receipt(path: Path) -> dict[str, object]:
         raise ScalingError("validation receipt identity is empty")
     return {
         "candidate": fields["candidate"],
+        "window_start_tick_1ps": start,
+        "window_end_tick_1ps": end,
         "duration_tick_1ps": duration,
+        "benchmark_measurement_cycles": benchmark_cycles,
+        "activity_window_ref_cycles": activity_cycles,
         "format": "k2_w3_rebased_activity_sha256_text_v1",
         "scope": fields["scope"],
         "sha256": digest,
@@ -304,7 +307,8 @@ def _validate_value_change(content: bytes) -> None:
         raise ScalingError("malformed or unsupported VCD value change")
 
 
-def _scale_stream(input_path: Path, output: BinaryIO) -> dict[str, object]:
+def _scale_stream(input_path: Path, output: BinaryIO,
+                  numerator: int, denominator: int) -> dict[str, object]:
     input_hash = hashlib.sha256()
     output_hash = hashlib.sha256()
     header = HeaderState()
@@ -340,13 +344,15 @@ def _scale_stream(input_path: Path, output: BinaryIO) -> dict[str, object]:
                 timestamp = int(digits)
                 if last is not None and timestamp < last:
                     raise ScalingError("VCD timestamps are not monotonic")
-                if timestamp % DENOMINATOR:
-                    raise ScalingError("VCD timestamp is not exactly divisible by 2")
+                scaled = timestamp * numerator
+                if scaled % denominator:
+                    raise ScalingError(
+                        "VCD timestamp is not exactly divisible under requested ratio")
                 if first is None:
                     first = timestamp
                 last = timestamp
                 count += 1
-                emitted = f"#{timestamp // DENOMINATOR}".encode("ascii") + ending
+                emitted = f"#{scaled // denominator}".encode("ascii") + ending
             else:
                 value_directive_record = (
                     header.open_directive in VALUE_DIRECTIVES and content != b"$end"
@@ -378,8 +384,8 @@ def _scale_stream(input_path: Path, output: BinaryIO) -> dict[str, object]:
         "timestamp_count": count,
         "input_first": first,
         "input_last": last,
-        "output_first": first // DENOMINATOR,
-        "output_last": last // DENOMINATOR,
+        "output_first": first * numerator // denominator,
+        "output_last": last * numerator // denominator,
     }
 
 
@@ -444,8 +450,10 @@ def _publish_pair(output_temp: Path, output: Path, output_sha256: str,
 def scale(input_path: Path, validation_path: Path,
           output_path: Path, receipt_path: Path,
           numerator: int, denominator: int) -> None:
-    if (numerator, denominator) != (NUMERATOR, DENOMINATOR):
-        raise ScalingError("this converter permits only the exact reduced scale 1/2")
+    ratio = (numerator, denominator)
+    if ratio not in ALLOWED_RATIOS:
+        raise ScalingError("this converter permits only exact reduced scales 1/2 or 57/100")
+    output_period_ps = ALLOWED_RATIOS[ratio]
     input_absolute = _absolute(input_path)
     validation_absolute = _absolute(validation_path)
     output_absolute = _validate_destination(output_path)
@@ -460,7 +468,8 @@ def scale(input_path: Path, validation_path: Path,
     receipt_temp: Path | None = None
     try:
         with os.fdopen(output_fd, "wb", buffering=1024 * 1024) as output_stream:
-            metrics = _scale_stream(input_absolute, output_stream)
+            metrics = _scale_stream(
+                input_absolute, output_stream, numerator, denominator)
             output_stream.flush()
             os.fsync(output_stream.fileno())
         if metrics["input_sha256"] != validation["vcd_sha256"]:
@@ -475,7 +484,10 @@ def scale(input_path: Path, validation_path: Path,
                 "size_bytes": metrics["input_size_bytes"],
             },
             "output": {
-                "role": "exact_5ns_common_activity_vcd",
+                "role": {
+                    5000: "exact_5ns_common_activity_vcd",
+                    5700: "exact_5p7ns_common_activity_vcd",
+                }[output_period_ps],
                 "sha256": metrics["output_sha256"],
                 "size_bytes": metrics["output_size_bytes"],
             },
@@ -492,15 +504,31 @@ def scale(input_path: Path, validation_path: Path,
                 "output_first": metrics["output_first"],
                 "output_last": metrics["output_last"],
             },
+            "periods_ps": {
+                "source_requested": 10000,
+                "target_effective": output_period_ps,
+                "target_requested": output_period_ps,
+            },
+            "windows_tick_1ps": {
+                "input_effective_end": metrics["input_last"],
+                "input_effective_start": metrics["input_first"],
+                "output_effective_end": metrics["output_last"],
+                "output_effective_start": metrics["output_first"],
+                "output_requested_end":
+                    int(validation["duration_tick_1ps"]) * numerator // denominator,
+                "output_requested_start": 0,
+                "source_requested_end": validation["window_end_tick_1ps"],
+                "source_requested_start": validation["window_start_tick_1ps"],
+            },
             "transform": {
-                "denominator": DENOMINATOR,
+                "denominator": denominator,
                 "input_clock_period_ps": 10000,
                 "input_timescale": "1 ps",
                 "kind": "integer_timestamp_ratio",
-                "numerator": NUMERATOR,
-                "output_clock_period_ps": 5000,
+                "numerator": numerator,
+                "output_clock_period_ps": output_period_ps,
                 "output_timescale": "1 ps",
-                "ratio": "1/2",
+                "ratio": f"{numerator}/{denominator}",
                 "rounding": "reject_non_integral",
             },
         }
