@@ -133,11 +133,17 @@ class StaticFlowContractTests(unittest.TestCase):
         text = PNR.read_text(encoding="utf-8")
         sroute = "sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}"
         trim = "editTrim -nets [list $vdd $vss]"
+        pre_eco_drc = 'verify_drc -report "$output/reports/drc_pre_signal_eco.rpt"'
+        signal_eco = "ecoRoute -fix_drc"
         self.assertEqual(text.count(sroute), 1)
         self.assertEqual(text.count(trim), 1)
+        self.assertEqual(text.count(pre_eco_drc), 1)
+        self.assertEqual(text.count(signal_eco), 1)
         self.assertLess(text.index("optDesign -postRoute -hold"), text.index(sroute))
         self.assertLess(text.index(sroute), text.index(trim))
-        self.assertLess(text.index(trim), text.index("extractRC", text.index(trim)))
+        self.assertLess(text.index(trim), text.index(pre_eco_drc))
+        self.assertLess(text.index(pre_eco_drc), text.index(signal_eco))
+        self.assertLess(text.index(signal_eco), text.index("extractRC", text.index(trim)))
         self.assertLess(text.index(trim), text.index("verifyConnectivity -type all"))
 
     def test_propagated_clock_uses_the_shared_mmmc_constraint_mode(self):
@@ -462,6 +468,17 @@ class FixtureQualificationTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(
             self.module.QualificationError, r"drc_violations is nonzero \(28\)"
+        ):
+            self.module._require_zero(drc, "drc_violations")
+        drc.write_text(
+            header
+            + "SHORT: ( Metal Short ) Regular Wire of Net FE_RN_15_0 & "
+            "Special Wire of Net VDD  ( Metal1 )\n"
+            "Bounds : ( 14.070, 10.010 ) ( 14.130, 10.130 )\n\n"
+            "  Total Violations : 1 Viols.\n"
+        )
+        with self.assertRaisesRegex(
+            self.module.QualificationError, r"drc_violations is nonzero \(1\)"
         ):
             self.module._require_zero(drc, "drc_violations")
 
