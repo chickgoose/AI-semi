@@ -1,0 +1,227 @@
+{
+  "schema": "k2_w2_server_campaign_v2",
+  "campaign_id": "k2-w2-fair-endpoints-20260813-v2",
+  "execution_policy": {
+    "package_executes_server_tools": false,
+    "attempt_directory": "exclusive_no_overwrite",
+    "sealed_stage_order": [
+      "proven_environment",
+      "canonical_stage",
+      "common_activity",
+      "genus",
+      "mapped_proof",
+      "innovus",
+      "postroute_power",
+      "qualifier",
+      "final_receipt"
+    ],
+    "direct_runner_bypass": "forbidden",
+    "stale_hash_policy": "reject",
+    "server_launch_mode": "emit_only_never_execute"
+  },
+  "authority": {
+    "fair_top_registry": {
+      "path": "physical/k2_w2_boundaries.json",
+      "repository_commit": "ea75e6dc3d9582bda522a89b3ae3bcd402c17272",
+      "sha256": "6919fdbcd1094c06dec1c1c36962b5d87f2321ff08fad8e8a6b29766b5e3d206"
+    },
+    "buffered_server_archive": {
+      "path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+      "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f",
+      "cohort": "buffered_golden_wrappers_not_campaign_target"
+    },
+    "raw_server_archive": {
+      "path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+      "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+      "cohort": "raw_diagnostic_only"
+    },
+    "functional_loss_archive": {
+      "path": "/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz",
+      "sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39",
+      "usage": "loss_only_never_ppa"
+    }
+  },
+  "server_environment": {
+    "required_receipt_schema": "k2_w2_server_env_result_v1",
+    "required_qualification_status": "PROVEN_ENVIRONMENT",
+    "tools": {
+      "genus": {"path": "/tools/cadence/DDI231/bin/genus", "version": "23.14-s090_1", "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa"},
+      "innovus": {"path": "/tools/cadence/DDI231/bin/innovus", "version": "23.14-s088_1", "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa"},
+      "xrun": {"path": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun", "version": "23.09-s013", "sha256": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7"}
+    },
+    "technology": {
+      "setup_liberty": {"path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib", "sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10"},
+      "hold_liberty": {"path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/fast_vdd1v0_basicCells.lib", "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560"},
+      "tech_lef": {"path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_tech.lef", "sha256": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70"},
+      "cell_lef": {"path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_macro.lef", "sha256": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2"},
+      "setup_qrc": {"path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/qrc/qx/gpdk045.tch", "sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5"},
+      "hold_qrc": {"path": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/qrc/qx/gpdk045.tch", "sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5"},
+      "second_qrc_required": false,
+      "rc_disclosure": "setup and hold use the sole shared typical gpdk045.tch; Liberty views are slow setup and fast hold"
+    }
+  },
+  "tool_providers": {
+    "environment_preflight": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_server_env/preflight.py", "sha256": "e7bd5d8fdd49cd72ab786c6ba60c3cab00885fee41ce246267477f2f588ae0d4"},
+    "environment_receipt_verifier": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_server_env/require_go_receipt.py", "sha256": "b17baf94f42b13711a99e5f43cb18397a71bcdcf8018babd19881ebfe6477e2a"},
+    "environment_contract": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_server_env/contract.json", "sha256": "e02374caaa8e8985590f5609c7962a9ba2df2cac9603e93cb250c8233e22d989"},
+    "genus_v2": {"repository_commit": "63e98ccf189f992c443a05ba28f63b610bbc3f9f", "path": "physical/k2_w2_genus/run_genus.py", "sha256": "6db14e9444a554eef067566a6719d8dee1980433b03ccc1c3fc41a18068d6954", "receipt_schema": "k2_w2_genus_exact_three_endpoint_receipt_v3"},
+    "innovus_plan": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/run_k2_physical_innovus_plan.py", "sha256": "5c4e41937add0580f19e80b20206b7a64690dee7e210bad6937b03a64df7f342"},
+    "innovus_runner": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/run_k2_physical_innovus.sh", "sha256": "41f0596427f876e2b363a1428df38d56f9bafd44b53d9e0b140688e789cd6459"},
+    "innovus_verifier": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/verify_k2_physical_innovus.py", "sha256": "1c7fa76e1b73747147105b2a9da335b93ca84907fbcca5fbbad9ad1814e841ed"},
+    "innovus_pnr_tcl": {"repository_commit": "84523101066ec18ac7f57d0a69dfca579707be1c", "path": "scripts/ppa/k2_physical_innovus_pnr.tcl", "sha256": "5937ae0ac0337979a8aba2083cef422b9593db01af462514dd5ecbc9489b0819"},
+    "qualifier": {"repository_commit": "ad3f67d35858f822071efbed0b2a309543d096b1", "path": "physical/k2_w2_qualifier/qualify_raw.py", "sha256": "fa6f5d2597f415ce040c68af09055ca0bf80f259f8a8eb3eb0dafe0ac83016bf"}
+  },
+  "functional_activity_contract": {
+    "schema": "k2_w2_frozen_common_activity_v1",
+    "integration_state": "required_not_yet_available",
+    "frozen_common_tb": null,
+    "workloads": ["full50", "capacity22"],
+    "exact_candidate_order": ["fovea_a7", "a2_p6", "a3_p6"],
+    "tb_modification_allowed": false,
+    "synthetic_replay_allowed": false,
+    "hidden_candidate_queue_allowed": false,
+    "metrics_before_synthesis": true,
+    "activity_formats": ["VCD", "SAIF"],
+    "activity_window": "deterministic_identical_cycle_window_bound_to_metrics_receipt",
+    "postroute_power_requires_same_saif_receipt": true,
+    "raw_diagnostic_activity_used_for_fair_ranking": false
+  },
+  "mapped_functional_contract": {
+    "schema": "k2_w2_staged_mapped_functional_gate_v1",
+    "integration_state": "required_not_yet_available",
+    "vendor_model_manifest": null,
+    "gate_methods": ["vendor_functional_simulation", "formal_lec"],
+    "sdf_policy": "use_and_hash_when_available_otherwise_record_absent_with_reason",
+    "exact_candidate_order": ["fovea_a7", "a2_p6", "a3_p6"],
+    "required_receipt_bindings": ["staged_manifest", "genus_receipt", "mapped_netlist", "mapped_sdc", "vendor_models", "sdf_if_available", "test_or_lec_logs"],
+    "fovea_required_scenarios": ["held_pending", "conservation", "reset", "drain"],
+    "p6_required_scenarios": ["ordered_pairs", "back_to_back", "reset"],
+    "required_observations": ["exact_accepted", "exact_retired", "exact_order", "protocol_error_zero"],
+    "syntax_or_inventory_only_is_pass": false
+  },
+  "report_calibration": {
+    "integration_state": "required_not_yet_available",
+    "receipt": null,
+    "calibration_only_not_ranking": true,
+    "recommended_design": "cluster2_raw",
+    "recommended_period_ns": "1.3",
+    "must_match": ["innovus_path", "innovus_version", "innovus_sha256", "pnr_tcl_sha256", "verifier_sha256", "environment_receipt_sha256"],
+    "report_production_contract": {
+      "raw_native_reports_preserved": true,
+      "tcl_machine_summary_separate": true,
+      "raw_and_summary_hash_bound": true,
+      "check_design_all_exact_class_inventory_zero": true,
+      "unknown_missing_or_duplicate_class_fatal": true,
+      "synthetic_fixture_counts_are_server_evidence": false,
+      "full_candidate_launch_before_calibration": false
+    },
+    "native_parser_anchors": {
+      "usage": "format_and_provenance_only_never_clean_fixture",
+      "archive_sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+      "cluster2_raw_0p7": {
+        "check_timing": "b2824e8c72d47147ea868f3ddfb424bcb8bc4e25b86a5cb7e45a197a0a4cd72d",
+        "drc": "266fe5901c434ce5b074840e8f9ba0e33ec3ca357e5f81846a8ac2f4ef1dab64",
+        "antenna": "5a453b8ba5d6f323d182d1f00b85f138367cc809c0abf1b38436876ed42c615b",
+        "setup": "06873b8202aa2fe0c469d3729a304f4aa34df07735bf9b52cb74eee11224933e",
+        "hold": "8637cf0e1be16253b4eabc33c7b33a0c5cb0f9c9fbacd7182dc8bb745cef5059",
+        "innovus_log": "39e97c268e01249c29a1fd7864f947872c55801edb5529dfaf3057b29ce21b75"
+      }
+    }
+  },
+  "staged_wrapper_expectation": {
+    "schema": "k2_w2_tech_staged_compositions_v1",
+    "integration_state": "required_not_yet_available",
+    "manifest": null,
+    "exact_design_order": ["fovea_a7", "a2_p6", "a3_p6"],
+    "shared_consumer_contract": {"status": "BLOCKED_PRODUCER_CONSUMER_RECEIPT_MISMATCH", "required_genus_receipt_schema": "k2_w2_genus_exact_three_endpoint_receipt_v3", "required_genus_receipt_status": "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD", "genus_claim_boundary": "GENUS_MAPPED_TIMING_SCREENING_ONLY_POWER_AND_PHYSICAL_PPA_HOLD", "innovus_plan_schema": "k2_w2_innovus_plan_v2"},
+    "required_technology_authorities": {
+      "r1": {"repository_commit": null, "manifest_path": null, "manifest_sha256": null},
+      "p6": {"repository_commit": "847d764481d3cc467059cee76c3ac1463f63aa86", "manifest_path": "rtl/technology/p6/p6_tech_manifest.json", "manifest_sha256": "4b500604fc3637c623e9689c8778464e656d5d8ac7ac639fd49bdd5e72230f64"}
+    },
+    "forbidden_final_tops": ["k2_w2_fovea_a7_top", "k2_w2_a2_p6_top", "k2_w2_a3_p6_top", "a2_batched_iwrr_p6_top", "a3_exact_scalar_prefix_k2_p6_top"],
+    "forbidden_external_ports": ["link_enable", "link_enable_i"],
+    "common_inputs": [
+      {"direction": "input", "name": "ref_clk_i", "width": 1},
+      {"direction": "input", "name": "sample_clk_i", "width": 1},
+      {"direction": "input", "name": "rst_n", "width": 1},
+      {"direction": "input", "name": "source_pending_i", "width": 16}
+    ],
+    "common_observation": [
+      {"direction": "output", "name": "source_accept_o", "width": 16},
+      {"direction": "output", "name": "retire_valid_o", "width": 2},
+      {"direction": "output", "name": "retire_addr0_o", "width": 4},
+      {"direction": "output", "name": "retire_addr1_o", "width": 4},
+      {"direction": "output", "name": "drain_idle_o", "width": 1},
+      {"direction": "output", "name": "protocol_error_o", "width": 1}
+    ],
+    "link_cut": {
+      "tag_name": "AER_LINK_CUT",
+      "tag_value": "tx_to_rx",
+      "required_attributes": ["AER_LINK_CUT", "AER_DIRECTION", "AER_ROLE"],
+      "mapped_netlist_tag_proof_required": true,
+      "identical_external_load_on_every_output": true,
+      "native_and_link_views": "parallel_non_additive",
+      "additive_native_plus_link_total_forbidden": true
+    },
+    "designs": {
+      "fovea_a7": {
+        "link_ports": [{"direction": "output", "name": "link_clk_o", "width": 1, "role": "clock"}, {"direction": "output", "name": "link_data_o", "width": 2, "role": "functional"}],
+        "link_cut_nets": [{"cut_net": "r1_link_clk", "physical_port": "link_clk_o", "width": 1, "role": "clock", "tag": "tx_to_rx"}, {"cut_net": "r1_link_data", "physical_port": "link_data_o", "width": 2, "role": "functional", "tag": "tx_to_rx"}],
+        "accounting": {"native_nonlink_physical_bits": 47, "native_nonlink_functional_bits": 45, "link_physical_bits": 3, "link_functional_bits": 2, "total_physical_bits": 50, "combine_rule": "disjoint_native_nonlink_plus_link_once"},
+        "endpoint_hierarchy_inventory": {"ICG": 1, "MX2": 2, "posedge_DFFRH": 2, "negedge_DFFNS": 5},
+        "clock_contract": {"schema": "k2_w2_full_link_multiclock_v6", "primary_inputs": [{"name": "ref_clk", "port": "ref_clk_i", "period_ns": "5.0", "waveform_ns": ["0.0", "2.5"]}, {"name": "sample_clk", "port": "sample_clk_i", "period_ns": "5.0", "waveform_ns": ["1.25", "3.75"]}], "generated_gated": [{"name": "r1_link_clk", "port": "link_clk_o", "source_port": "sample_clk_i", "divide_by": 1, "gated": true}], "related": true, "asynchronous_clock_groups": false, "false_paths_between_clocks": false, "gating_checks": true, "min_high_low_pulse_checks": true, "virtual_clocks_count_as_physical": false}
+      },
+      "a2_p6": {
+        "link_ports": [{"direction": "output", "name": "link_clk_o", "width": 1, "role": "clock"}, {"direction": "output", "name": "link_data_o", "width": 5, "role": "functional"}],
+        "link_cut_nets": [{"cut_net": "p6_link_clk", "physical_port": "link_clk_o", "width": 1, "role": "clock", "tag": "tx_to_rx"}, {"cut_net": "p6_link_data", "physical_port": "link_data_o", "width": 5, "role": "functional", "tag": "tx_to_rx"}],
+        "accounting": {"native_nonlink_physical_bits": 47, "native_nonlink_functional_bits": 45, "link_physical_bits": 6, "link_functional_bits": 5, "total_physical_bits": 53, "combine_rule": "disjoint_native_nonlink_plus_link_once"},
+        "endpoint_hierarchy_inventory": {"ICG": 1, "MX2": 5, "posedge_DFFRH": 5, "negedge_DFFNS": 12},
+        "clock_contract": {"schema": "k2_w2_full_link_multiclock_v6", "primary_inputs": [{"name": "ref_clk", "port": "ref_clk_i", "period_ns": "5.0", "waveform_ns": ["0.0", "2.5"]}, {"name": "sample_clk", "port": "sample_clk_i", "period_ns": "5.0", "waveform_ns": ["1.25", "3.75"]}], "generated_gated": [{"name": "p6_link_clk", "port": "link_clk_o", "source_port": "sample_clk_i", "divide_by": 1, "gated": true}], "related": true, "asynchronous_clock_groups": false, "false_paths_between_clocks": false, "gating_checks": true, "min_high_low_pulse_checks": true, "virtual_clocks_count_as_physical": false}
+      },
+      "a3_p6": {
+        "link_ports": [{"direction": "output", "name": "link_clk_o", "width": 1, "role": "clock"}, {"direction": "output", "name": "link_data_o", "width": 5, "role": "functional"}],
+        "link_cut_nets": [{"cut_net": "p6_link_clk", "physical_port": "link_clk_o", "width": 1, "role": "clock", "tag": "tx_to_rx"}, {"cut_net": "p6_link_data", "physical_port": "link_data_o", "width": 5, "role": "functional", "tag": "tx_to_rx"}],
+        "accounting": {"native_nonlink_physical_bits": 47, "native_nonlink_functional_bits": 45, "link_physical_bits": 6, "link_functional_bits": 5, "total_physical_bits": 53, "combine_rule": "disjoint_native_nonlink_plus_link_once"},
+        "endpoint_hierarchy_inventory": {"ICG": 1, "MX2": 5, "posedge_DFFRH": 5, "negedge_DFFNS": 12},
+        "clock_contract": {"schema": "k2_w2_full_link_multiclock_v6", "primary_inputs": [{"name": "ref_clk", "port": "ref_clk_i", "period_ns": "5.0", "waveform_ns": ["0.0", "2.5"]}, {"name": "sample_clk", "port": "sample_clk_i", "period_ns": "5.0", "waveform_ns": ["1.25", "3.75"]}], "generated_gated": [{"name": "p6_link_clk", "port": "link_clk_o", "source_port": "sample_clk_i", "divide_by": 1, "gated": true}], "related": true, "asynchronous_clock_groups": false, "false_paths_between_clocks": false, "gating_checks": true, "min_high_low_pulse_checks": true, "virtual_clocks_count_as_physical": false}
+      }
+    }
+  },
+  "cohorts": {
+    "raw_diagnostic": {"ranking_eligible": false, "cross_cohort_ranking": false, "exact_design_order": ["fovea_raw", "cluster2_raw"], "designs": {"fovea_raw": {"top": "aer_tx16_trad_rowcol_fovea", "target_period_ns": "1.2"}, "cluster2_raw": {"top": "aer_tx16_trad_rowcol_fovea_cluster2", "target_period_ns": "1.0"}}},
+    "fair_endpoints": {"ranking_eligible": true, "exact_design_order": ["fovea_a7", "a2_p6", "a3_p6"], "target_period_ns": "5.0", "generic_unequal_debug_wrappers_eligible": false}
+  },
+  "required_integrated_capabilities": [
+    "environment_receipt_bound_to_every_stage",
+    "genus_v2_receipt_only",
+    "mapped_smoke_before_every_pnr",
+    "immutable_expected_plan_sha",
+    "exact_staged_port_closure",
+    "mapped_aer_link_cut_inventory",
+    "native_link_exactly_once",
+    "multiclock_inventory_v6",
+    "native_report_machine_summary_v1",
+    "check_design_all_exact_class_inventory",
+    "qualifier_consumes_native_summary_bundle",
+    "unchanged_common_tb_full50_capacity22",
+    "candidate_metrics_vcd_saif_receipt",
+    "staged_vs_mapped_functional_gate",
+    "postroute_power_same_activity_window",
+    "all_outputs_beneath_exclusive_attempt"
+  ],
+  "known_readiness_blockers": [
+    "PROVEN_ENVIRONMENT receipt is not integrated",
+    "canonical k2_w2_tech_staged_compositions_v1 manifest with READY_FOR_GENUS_AND_INNOVUS status is not integrated",
+    "R1 and P6 multiclock v6 constraint receipts are not integrated",
+    "Innovus plan still expects Genus receipt v1 and names generic unequal-debug wrappers",
+    "native-report calibration receipt is not integrated",
+    "checkDesign -all exact all-class machine summary is not calibrated",
+    "qualifier does not yet consume the native-report plus machine-summary bundle",
+    "frozen common TB/activity producer and postroute activity-power interfaces are not integrated",
+    "Genus v3 producer and Innovus consumer do not implement one shared receipt schema/status/field contract",
+    "vendor functional model manifest and mapped-functional gate provider are not integrated",
+    "no committed postroute activity-power producer is production-enabled",
+    "current qualifier CLI consumes only bundle-root/manifest/output and emits POWER_HOLD",
+    "actual Genus and Innovus provider CLIs do not yet share the canonical staging and receipt contract"
+  ]
+}
