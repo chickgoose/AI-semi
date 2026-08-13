@@ -956,6 +956,7 @@ def verify_descriptor(path: Path, expected_sha: str, environment: dict[str, str]
         raw[key] = Path(raw[key])
     binding = Binding(**raw)
     registry, authority = load_contracts()
+    policy = authority["physical_policy"]
     env_map = {
         "AER_TOP": binding.top, "AER_PNR_NETLIST": str(binding.netlist),
         "AER_PNR_SDC": str(binding.sdc), "AER_PNR_OUTPUT_DIR": str(binding.output_dir),
@@ -965,6 +966,20 @@ def verify_descriptor(path: Path, expected_sha: str, environment: dict[str, str]
         "AER_ACTIVITY_SCOPE": binding.activity_scope,
         "AER_ACTIVITY_WINDOW_START_NS": binding.activity_window_start_ns,
         "AER_ACTIVITY_WINDOW_END_NS": binding.activity_window_end_ns,
+        "AER_CORE_SITE": authority["technology"]["site"],
+        "AER_PROCESS_NODE_NM": policy["process_node_nm"],
+        "AER_CORE_ASPECT_RATIO": policy["aspect_ratio"],
+        "AER_CORE_UTILIZATION": policy["core_utilization"],
+        "AER_CORE_MARGIN_UM": policy["core_margin_um"],
+        "AER_VDD_NET": policy["vdd_net"],
+        "AER_VSS_NET": policy["vss_net"],
+        "AER_VDD_PIN": policy["vdd_pin"],
+        "AER_VSS_PIN": policy["vss_pin"],
+        "AER_RING_HORIZONTAL_LAYER": policy["ring_horizontal_layer"],
+        "AER_RING_VERTICAL_LAYER": policy["ring_vertical_layer"],
+        "AER_RING_WIDTH_UM": policy["ring_width_um"],
+        "AER_RING_SPACING_UM": policy["ring_spacing_um"],
+        "AER_RING_OFFSET_UM": policy["ring_offset_um"],
     }
     if any(environment.get(key) != expected for key, expected in env_map.items()):
         raise PlanError("execution environment differs from descriptor")
@@ -1004,6 +1019,7 @@ def verify_descriptor(path: Path, expected_sha: str, environment: dict[str, str]
 
 
 def execute_plan(bindings: list[Binding]) -> None:
+    _, authority = load_contracts()
     for binding in bindings:
         with tempfile.TemporaryDirectory(prefix="w2-innovus-descriptor-") as temporary:
             path = Path(temporary) / "execution.json"
@@ -1011,6 +1027,12 @@ def execute_plan(bindings: list[Binding]) -> None:
             path.chmod(0o444)
             digest = sha256(path.read_bytes())
             environment = os.environ.copy()
+            receipt = load_json(stable_read(binding.environment_path),
+                                "PROVEN_ENVIRONMENT receipt")
+            evidence = receipt["gates"]
+            technology_files = evidence["technology_files"]["evidence"]
+            tool = evidence["tool_executables"]["evidence"]["innovus"]
+            policy = authority["physical_policy"]
             environment.update({
                 "AER_TOP": binding.top, "AER_PNR_NETLIST": str(binding.netlist),
                 "AER_PNR_SDC": str(binding.sdc), "AER_PNR_OUTPUT_DIR": str(binding.output_dir),
@@ -1022,6 +1044,27 @@ def execute_plan(bindings: list[Binding]) -> None:
                 "AER_ACTIVITY_WINDOW_END_NS": binding.activity_window_end_ns,
                 "AER_W2_EXECUTION_DESCRIPTOR": str(path),
                 "AER_W2_EXECUTION_DESCRIPTOR_SHA256": digest,
+                "AER_TECH_LEF": technology_files["tech_lef"]["path"],
+                "AER_CELL_LEF": technology_files["macro_lef"]["path"],
+                "AER_SETUP_LIBRARY_FILE": technology_files["setup_liberty"]["path"],
+                "AER_HOLD_LIBRARY_FILE": technology_files["hold_liberty"]["path"],
+                "AER_SETUP_QRC_TECH": technology_files["setup_qrc"]["path"],
+                "AER_HOLD_QRC_TECH": technology_files["hold_qrc"]["path"],
+                "AER_INNOVUS_BIN": tool["path"],
+                "AER_CORE_SITE": authority["technology"]["site"],
+                "AER_PROCESS_NODE_NM": policy["process_node_nm"],
+                "AER_CORE_ASPECT_RATIO": policy["aspect_ratio"],
+                "AER_CORE_UTILIZATION": policy["core_utilization"],
+                "AER_CORE_MARGIN_UM": policy["core_margin_um"],
+                "AER_VDD_NET": policy["vdd_net"],
+                "AER_VSS_NET": policy["vss_net"],
+                "AER_VDD_PIN": policy["vdd_pin"],
+                "AER_VSS_PIN": policy["vss_pin"],
+                "AER_RING_HORIZONTAL_LAYER": policy["ring_horizontal_layer"],
+                "AER_RING_VERTICAL_LAYER": policy["ring_vertical_layer"],
+                "AER_RING_WIDTH_UM": policy["ring_width_um"],
+                "AER_RING_SPACING_UM": policy["ring_spacing_um"],
+                "AER_RING_OFFSET_UM": policy["ring_offset_um"],
             })
             result = subprocess.run([str(GENERIC_RUNNER)], env=environment, check=False)
             if result.returncode:

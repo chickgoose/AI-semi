@@ -60,7 +60,6 @@ set netlist   [file normalize [require_env AER_PNR_NETLIST]]
 set tech_lef  [file normalize [require_env AER_TECH_LEF]]
 set cell_lef  [file normalize [require_env AER_CELL_LEF]]
 set mmmc      [file normalize [require_env AER_PNR_MMMC]]
-set io_file   [file normalize [require_env AER_IO_FILE]]
 set output    [file normalize [require_env AER_PNR_OUTPUT_DIR]]
 set site      [require_env AER_CORE_SITE]
 set process   [require_env AER_PROCESS_NODE_NM]
@@ -86,7 +85,7 @@ if {$util <= 0.0 || $util >= 1.0} {
   error "AER_CORE_UTILIZATION must be strictly between zero and one"
 }
 
-foreach path [list $netlist $tech_lef $cell_lef $mmmc $io_file $activity_file] {
+foreach path [list $netlist $tech_lef $cell_lef $mmmc $activity_file] {
   if {![file isfile $path]} {
     error "required physical input is not a regular file: $path"
   }
@@ -114,7 +113,6 @@ set init_top_cell $top
 set init_gnd_net $vss
 set init_pwr_net $vdd
 set init_mmmc_file $mmmc
-set init_io_file $io_file
 
 set flow_failed [catch {
   init_design

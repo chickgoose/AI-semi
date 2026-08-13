@@ -32,6 +32,22 @@
     },
     "site": "CoreSite"
   },
+  "physical_policy": {
+    "process_node_nm": "45",
+    "aspect_ratio": "1.0",
+    "core_utilization": "0.50",
+    "core_margin_um": "10",
+    "vdd_net": "VDD",
+    "vss_net": "VSS",
+    "vdd_pin": "VDD",
+    "vss_pin": "VSS",
+    "ring_horizontal_layer": "Metal6",
+    "ring_vertical_layer": "Metal7",
+    "ring_width_um": "2",
+    "ring_spacing_um": "2",
+    "ring_offset_um": "2",
+    "io_policy": "GANGHEE_GOLDEN_NO_INIT_IO_FILE"
+  },
   "rx_cell": {
     "name": "DFFNSRX1",
     "clocked_on": "(!CKN)",
