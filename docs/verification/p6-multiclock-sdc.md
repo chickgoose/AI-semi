@@ -26,7 +26,8 @@ The separate yZr1 functional receipt is frozen in
 [`p6-functional-loss-evidence.json`](p6-functional-loss-evidence.json).  Its
 archive SHA-256 is
 `22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39`;
-the relocated local copy verifies 338/338 ledger members.  It reports 50/50
+the local immutable archive is parsed directly and verifies 338/338 ledger
+members without consulting a live or extracted server result tree.  It reports 50/50
 functional runs plus reset and pairwise status 0 for each candidate.  Across
 full50, Fovea generated/accepted/delivered/overrun is
 106416/78229/78229/28187, while Cluster2 is

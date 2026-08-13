@@ -9,10 +9,10 @@
     "official common receipt"
   ],
   "attempt": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL",
-  "local_relocated_root": "/tmp/eval-fovea-cluster2.yZr1kmYL",
   "archive": {
     "canonical_path": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL.tar.gz",
     "local_relocated_path": "/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz",
+    "parser_input_policy": "read members directly from the SHA-pinned immutable archive; do not read a live or extracted result tree",
     "sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39"
   },
   "provenance": {
