@@ -378,10 +378,10 @@ def produce(args: argparse.Namespace) -> Path:
          "--output", str(prepared),
          "--addr-width", "16"], output, log)
 
-    snapshot = f"k2_postroute_{args.candidate}"
+    xrun_snapshot = f"k2_postroute_{args.candidate}"
     library = output / "xcelium.d"
     common = [xrun_id["path"], "-64bit", "-sv", "-timescale", "1ps/1ps",
-              "-top", "aer_clean_tb", "-snapshot", snapshot,
+              "-top", "aer_clean_tb", "-snapshot", xrun_snapshot,
               "-define", f"K2_POSTROUTE_DUT={row['top']}",
               "-define", row["kind_define"], "-define",
               f'K2_POSTROUTE_SDF="{sdf_snapshot["execution_copy"]["path"]}"',
@@ -403,7 +403,7 @@ def produce(args: argparse.Namespace) -> Path:
     summary = output / "summary.csv"
     events = output / "events.csv"
     ledger = output / "retire-ledger.tsv"
-    run([xrun_id["path"], "-64bit", "-R", "-snapshot", snapshot,
+    run([xrun_id["path"], "-64bit", "-R", "-snapshot", xrun_snapshot,
          "-xmlibdirname", str(library), "+CLEAN_TEST=trace",
          "+TRACE_NAME=" + registry["frozen_trace"]["name"],
          "+TRACE_FILE=" + str(prepared), "+CANDIDATE=" + args.candidate,
