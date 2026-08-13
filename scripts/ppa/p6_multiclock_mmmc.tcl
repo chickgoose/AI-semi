@@ -46,9 +46,9 @@ if {[file normalize $p6_setup_qrc] eq [file normalize $p6_hold_qrc] &&
 
 create_library_set -name p6_setup_libset -timing [list $p6_setup_lib]
 create_library_set -name p6_hold_libset -timing [list $p6_hold_lib]
-create_rc_corner -name p6_setup_rc -qx_tech_file $p6_setup_qrc \
+create_rc_corner -name p6_setup_rc -qrc_tech $p6_setup_qrc \
   -temperature $p6_setup_temperature
-create_rc_corner -name p6_hold_rc -qx_tech_file $p6_hold_qrc \
+create_rc_corner -name p6_hold_rc -qrc_tech $p6_hold_qrc \
   -temperature $p6_hold_temperature
 create_delay_corner -name p6_setup_corner \
   -library_set p6_setup_libset -rc_corner p6_setup_rc

@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 from pathlib import Path
 import re
 
@@ -10,6 +13,7 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 SDC = ROOT / "constraints" / "p6_multiclock.sdc"
 MMMC = ROOT / "scripts" / "ppa" / "p6_multiclock_mmmc.tcl"
+REGISTRY = ROOT / "constraints" / "p6_ganghee_golden_registry.json"
 
 
 class ContractError(RuntimeError):
@@ -24,6 +28,19 @@ def require(condition: bool, message: str) -> None:
 def require_once(text: str, token: str) -> None:
     count = text.count(token)
     require(count == 1, f"expected one occurrence of {token!r}, found {count}")
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_digest(data: bytes, expected: str, label: str) -> None:
+    actual = hashlib.sha256(data).hexdigest()
+    require(actual == expected, f"{label} SHA mismatch: {actual} != {expected}")
 
 
 def lint_sdc(text: str) -> None:
@@ -143,6 +160,8 @@ def lint_mmmc(text: str) -> None:
         "-library_set p6_hold_libset -rc_corner p6_hold_rc",
         "-constraint_mode p6_functional -delay_corner p6_setup_corner",
         "-constraint_mode p6_functional -delay_corner p6_hold_corner",
+        "-qrc_tech $p6_setup_qrc",
+        "-qrc_tech $p6_hold_qrc",
     )
     for token in required:
         require(token in text, f"MMMC missing {token!r}")
@@ -159,6 +178,103 @@ def lint_mmmc(text: str) -> None:
     observed = set(re.findall(r"p6_mmmc_require_env\s+(P6_[A-Z0-9_]+)", text))
     require(observed == required_env,
             f"MMMC environment contract mismatch: {sorted(observed ^ required_env)}")
+
+
+def test_ganghee_golden() -> None:
+    registry = json.loads(REGISTRY.read_text())
+    require(registry["schema"] == "p6-ganghee-pnr-golden-v1",
+            "unexpected Ganghee golden registry schema")
+    golden_root = Path(os.environ.get(
+        "P6_GANGHEE_GOLDEN_ROOT", registry["extracted_root"]))
+    golden_archive = Path(os.environ.get(
+        "P6_GANGHEE_GOLDEN_ARCHIVE", registry["archive"]["canonical_path"]))
+    require(golden_root.is_dir(), f"Ganghee golden root missing: {golden_root}")
+    require(golden_archive.is_file(),
+            f"Ganghee golden archive missing: {golden_archive}")
+    require(sha256(golden_archive) == registry["archive"]["sha256"],
+            "Ganghee golden archive SHA mismatch")
+
+    for relative, expected in registry["pinned_files"].items():
+        path = golden_root / relative
+        require(path.is_file(), f"Ganghee golden member missing: {relative}")
+        verify_digest(path.read_bytes(), expected, relative)
+
+    # Prove the digest gate itself rejects a one-byte mutation without touching
+    # the preserved golden tree.
+    first_relative, first_digest = next(iter(registry["pinned_files"].items()))
+    mutated = (golden_root / first_relative).read_bytes() + b"\n"
+    try:
+        verify_digest(mutated, first_digest, "in-memory golden mutation")
+    except ContractError:
+        pass
+    else:
+        raise AssertionError("Ganghee golden in-memory mutation escaped SHA gate")
+
+    expected_sdc_tail = (
+        "set_clock_uncertainty 0.100 [get_clocks clk]\n"
+        "set_input_delay  -clock clk 0.250 [remove_from_collection [all_inputs] [get_ports clk]]\n"
+        "set_output_delay -clock clk 0.250 [all_outputs]\n"
+        "set_load 0.010 [all_outputs]\n"
+    )
+    for candidate, periods in registry["sweeps_ns"].items():
+        run_root = golden_root / f"synth/pnr/resynth_{candidate}_buffered"
+        prefix = f"aer_{candidate}_buffered_"
+        observed_periods: list[float] = []
+        for path in run_root.glob(f"{prefix}*.sdc"):
+            if path.name.endswith("_out.sdc"):
+                continue
+            match = re.fullmatch(rf"{re.escape(prefix)}(.+)\.sdc", path.name)
+            require(match is not None, f"unexpected golden SDC name: {path.name}")
+            period_text = match.group(1)
+            text = path.read_text()
+            expected = (f"create_clock -name clk -period {period_text} [get_ports clk]\n" +
+                        expected_sdc_tail)
+            require(text == expected,
+                    f"Ganghee {candidate} {period_text} SDC assumptions changed")
+            observed_periods.append(float(period_text))
+        require(sorted(observed_periods) == sorted(periods),
+                f"Ganghee {candidate} sweep set mismatch")
+
+    common = registry["common_sdc"]
+    require(common == {
+        "clock_port": "clk", "clock_name": "clk",
+        "clock_waveform": [0.0, 0.5], "clock_uncertainty_ns": 0.1,
+        "input_delay_ns": 0.25, "output_delay_ns": 0.25,
+        "output_load_pf": 0.01, "input_driver": None,
+        "reset_treatment": "rst is included with every non-clock input and receives the ordinary synchronous input delay; there is no explicit reset-release clock or reset exception in the source SDC",
+    }, "Ganghee common SDC registry changed")
+
+    for candidate in ("fovea", "cluster2"):
+        run_root = golden_root / f"synth/pnr/resynth_{candidate}_buffered"
+        mmmc = (run_root / "mmmc_1.0.tcl").read_text()
+        require("slow_vdd1v0_basicCells.lib" in mmmc,
+                f"{candidate} golden Liberty changed")
+        require("create_rc_corner -name rc_typical -qrc_tech" in mmmc,
+                f"{candidate} golden QRC command changed")
+        require("set_analysis_view -setup {view_slow} -hold {view_slow}" in mmmc,
+                f"{candidate} golden single-view MMMC changed")
+        run = (run_root / "run_1.0.tcl").read_text()
+        for token in (
+            "floorPlan -r 1.0 0.5 10 10 10 10",
+            "addRing -nets {VDD VSS}", "place_opt_design",
+            "clock_opt_design", "routeDesign", "extractRC",
+        ):
+            require(token in run, f"{candidate} golden flow lost {token}")
+
+    fovea_genus = (golden_root /
+        "synth/pnr/resynth_fovea_buffered/genus_1.0.log").read_text()
+    fovea_innovus = (golden_root /
+        "synth/pnr/resynth_fovea_buffered/innovus_1.0.log").read_text()
+    require("Version: 23.14-s090_1" in fovea_genus,
+            "Ganghee golden Genus version changed")
+    require("(1.000000, 0.900000, 125.000000)" in fovea_genus,
+            "Ganghee golden Liberty PVT changed")
+    require("Version:\tv23.14-s088_1" in fovea_innovus,
+            "Ganghee golden Innovus version changed")
+    require("RC-Corner Temperature : 25 Celsius" in fovea_innovus,
+            "Ganghee golden RC temperature changed")
+    require("Analysis Mode: MMMC Non-OCV" in fovea_innovus,
+            "Ganghee golden analysis mode changed")
 
 
 def expect_sdc_reject(mutated: str, label: str) -> None:
@@ -244,10 +360,11 @@ def test_mmmc_mutation_gate() -> None:
 
 
 def main() -> None:
+    test_ganghee_golden()
     test_source_boundary()
     test_sdc_mutation_gate()
     test_mmmc_mutation_gate()
-    print("P6_MULTICLOCK_SDC_TESTS_PASS static_mutations=22 tops=3")
+    print("P6_MULTICLOCK_SDC_TESTS_PASS golden_sha=PASS static_mutations=22 tops=3")
 
 
 if __name__ == "__main__":

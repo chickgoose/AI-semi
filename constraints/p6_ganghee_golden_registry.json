@@ -1,0 +1,65 @@
+{
+  "schema": "p6-ganghee-pnr-golden-v1",
+  "archive": {
+    "canonical_path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+    "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
+  },
+  "extracted_root": "/tmp/ganghee-pnr-golden-20260813",
+  "reference_period_ns": 1.0,
+  "common_sdc": {
+    "clock_port": "clk",
+    "clock_name": "clk",
+    "clock_waveform": [0.0, 0.5],
+    "clock_uncertainty_ns": 0.1,
+    "input_delay_ns": 0.25,
+    "output_delay_ns": 0.25,
+    "output_load_pf": 0.01,
+    "input_driver": null,
+    "reset_treatment": "rst is included with every non-clock input and receives the ordinary synchronous input delay; there is no explicit reset-release clock or reset exception in the source SDC"
+  },
+  "technology": {
+    "liberty": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib",
+    "liberty_library": "slow_vdd1v0",
+    "liberty_pvt": {
+      "process": 1.0,
+      "voltage_v": 0.9,
+      "temperature_c": 125.0
+    },
+    "qrc_tech": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/qrc/qx/gpdk045.tch",
+    "qrc_temperature_c": 25.0,
+    "tech_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_tech.lef",
+    "macro_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_macro.lef"
+  },
+  "mmmc": {
+    "analysis_mode": "MMMC Non-OCV",
+    "setup_view": "view_slow",
+    "hold_view": "view_slow",
+    "same_liberty_for_setup_and_hold": true,
+    "same_rc_corner_for_setup_and_hold": true
+  },
+  "tools": {
+    "genus": "23.14-s090_1",
+    "innovus": "23.14-s088_1"
+  },
+  "sweeps_ns": {
+    "fovea": [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.5],
+    "cluster2": [0.8, 1.0, 1.3, 1.6, 2.0]
+  },
+  "pinned_files": {
+    "rtl/aer_fovea_buffered.sv": "682762c4658a5c40d4280cff5144f3a09ccf3d7989deb16f8da39f18b5e72b7f",
+    "rtl/aer_cluster2_buffered.sv": "08e1a83547cbaba15d5fa4b5e4719ef7564c5300c0dc10777e3645b0c897cd49",
+    "rtl/lane_buffer2.sv": "fdeb1e4dce7bbf26215ae83a2b9a3528919562ac3fe265489ca60e32c01b4f27",
+    "synth/pnr/resynth_fovea_buffered/aer_fovea_buffered_1.0.sdc": "a53dc2a2c00de09ea12c3711d8f52b830efb1bb25164834485ce5574f28b9fb7",
+    "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_1.0.sdc": "a53dc2a2c00de09ea12c3711d8f52b830efb1bb25164834485ce5574f28b9fb7",
+    "synth/pnr/resynth_fovea_buffered/mmmc_1.0.tcl": "cefa6512832dc7c014589227d81d9534c49a6ecd52f9b0c34330378cdc50eb94",
+    "synth/pnr/resynth_cluster2_buffered/mmmc_1.0.tcl": "54751f6f228151cbcb29e034f07f50c4fc2b77f01fc3340702be597d1732679d",
+    "synth/pnr/resynth_fovea_buffered/genus_1.0.tcl": "8bf3546384264c5dd9f92d9cad4ee8df0bb3dcf59807cc392ff210ddc526d529",
+    "synth/pnr/resynth_cluster2_buffered/genus_1.0.tcl": "7c07d889d112cf1f0c62b39604448b449dd83f18154e6e55032ffd2cacf04338",
+    "synth/pnr/resynth_fovea_buffered/run_1.0.tcl": "c6fc7aaf600977f14e6ef3250ef7d9262e97d19b97097ddf0b6f1801e04e61f5",
+    "synth/pnr/resynth_cluster2_buffered/run_1.0.tcl": "28d358191c0d16171bbe848d4360fb3cf71983c574e07f9625fb0bd9bae2c93f",
+    "synth/pnr/resynth_fovea_buffered/genus_1.0.log": "bb1fe9b00915237be69e23baa4f5145f3e92ccdb254a8eab1d0434e55ab9c0ba",
+    "synth/pnr/resynth_fovea_buffered/innovus_1.0.log": "1a85eaf0b7af45f3376f3c47799dec9c58592f4f5cceefa5e71012c5f52d85cd",
+    "synth/pnr/resynth_cluster2_buffered/genus_1.0.log": "e6f689d5dbfbdb2102f77bc1f7414c6cfe852c7f16e9e9547630b34d1ca325e9",
+    "synth/pnr/resynth_cluster2_buffered/innovus_1.0.log": "07cf8d00a015e1d44610a187886292b78165a36bf04d2bae1e3b2951d33afd71"
+  }
+}
