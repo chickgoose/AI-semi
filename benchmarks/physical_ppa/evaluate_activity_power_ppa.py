@@ -214,9 +214,15 @@ def window_binding(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_waveform(
-    data: bytes, fmt: str, scope_root: str, end_cycle: int,
+    data: bytes, fmt: str, scope_root: str,
+    scope_manifest: dict[str, Any], end_cycle: int,
     clock_period_ns: float, annotated_bits: int,
-) -> None:
+) -> str:
+    scope_hash = _scope_hash(scope_manifest, scope_root)
+    if _scope_bits(scope_manifest) != annotated_bits:
+        raise ComparisonError(
+            "scope manifest bits do not match annotated coverage numerator"
+        )
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -245,6 +251,7 @@ def _validate_waveform(
         raise ComparisonError("activity format must be exactly vcd or saif")
     if end_cycle * clock_period_ns > duration_ns:
         raise ComparisonError("activity window extends beyond waveform duration")
+    return scope_hash
 
 
 def _timing_summary(flow: dict[str, Any], reader: ArtifactReader, label: str) -> dict[str, Any]:
@@ -500,8 +507,8 @@ def _evaluate_row(
         if calculated_percent < minimum_coverage:
             raise ComparisonError(f"{label} coverage is below the trusted {minimum_coverage:g}% threshold")
         _validate_waveform(
-            waveform, activity["format"], boundary["scope_root"], end,
-            float(flow["clock_period_ns"]), annotated,
+            waveform, activity["format"], boundary["scope_root"],
+            scope_manifest, end, float(flow["clock_period_ns"]), annotated,
         )
         denominator, conservation = workload["event_denominator"], workload["conservation"]
         if denominator["measurement_cycles"] != cycles or denominator["window_sha256"] != calculated_window:
