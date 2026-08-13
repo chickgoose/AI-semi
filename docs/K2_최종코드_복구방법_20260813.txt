@@ -4,13 +4,22 @@ Windows 보관 파일:
 C:\Users\박준영\AI-semi\AI-semi-k2-digital-final-20260813.bundle
 
 Bundle SHA-256:
-3bca3800e5e6233cf94f274aad6125bb7705bef7489c7a9973f1f42df0184c63
+5a7e71f0c09af9debfc20315bbbe52b7cc94934da49ffc9ff44f3c146e1ff4ae
 
 포함 브랜치:
 integration/k2-digital-final
 
 최종 commit:
-69400c7d5beac2e9a75d59c8287caf17c4b0acc4
+13c60f936fe5a265e650b4b91436ed79fc20dc91
+
+포함 evidence tags:
+- k2-digital-final-20260813
+- evidence/a23-source-package
+- evidence/a23-source-publication
+
+위 evidence tag 두 개는 final selection receipt가 요구하는 원본 A23 package/
+publication commit을 bundle 안에 포함한다. 빈 clone에서도 선택 receipt 9/9와
+exact result regeneration이 통과함을 검증했다.
 
 새 폴더에 복구:
 git clone AI-semi-k2-digital-final-20260813.bundle AI-semi-k2-final
@@ -26,4 +35,5 @@ C:\Users\박준영\AI-semi\docs\K2_디지털개발_최종현황_20260813.txt
 주의:
 - 이 bundle은 디지털 RTL/검증 통합본이다.
 - 물리 PPA, STA, P&R, activity-based power와 CDC/RDC는 HOLD 상태다.
+- Fovea+A7은 서버 P&R을 시도했지만 hold/report-flow failure로 qualification되지 않았다.
 - capacity22는 full50의 부분집합이며 독립 표본으로 합산하면 안 된다.
