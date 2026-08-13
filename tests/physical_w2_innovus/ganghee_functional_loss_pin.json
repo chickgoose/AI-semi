@@ -1,0 +1,71 @@
+{
+  "allowed_use": ["functional_loss"],
+  "archive": {
+    "basename": "eval-fovea-cluster2.yZr1kmYL.tar.gz",
+    "sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39"
+  },
+  "capacity22_accounting": "subset_of_full50_not_additive",
+  "candidates": {
+    "cluster2": {
+      "capacity22": {
+        "accepted": 57802,
+        "delivered": 57802,
+        "generated": 65616,
+        "overrun": 7814,
+        "runs": 22
+      },
+      "full50": {
+        "accepted": 94157,
+        "delivered": 94157,
+        "generated": 106416,
+        "overrun": 12259,
+        "runs": 50
+      },
+      "pairwise_status": 0,
+      "reset_pass": true
+    },
+    "fovea": {
+      "capacity22": {
+        "accepted": 42163,
+        "delivered": 42163,
+        "generated": 65616,
+        "overrun": 23453,
+        "runs": 22
+      },
+      "full50": {
+        "accepted": 78229,
+        "delivered": 78229,
+        "generated": 106416,
+        "overrun": 28187,
+        "runs": 50
+      },
+      "pairwise_status": 0,
+      "reset_pass": true
+    }
+  },
+  "excluded_evidence": ["eval-driver-final.log"],
+  "forbidden_use": ["area", "power", "timing", "fmax", "ppa", "physical_ranking"],
+  "ledger": {
+    "entries": 338,
+    "sha256": "dd3799d9feefaa5c781eae3fbc84e0d1976aedeb3a68f1b8b245e64dc342b4a4"
+  },
+  "members": {
+    "capacity-stems.txt": "f51147b6533c78928afb7d69683acd54170f757a83fb131db163d56c8bd2f15a",
+    "cluster2-run.log": "4a37e3e7107be0777d87a64b5ed5ff4cd104a592845a98611d9f0841cc73db68",
+    "fovea-run.log": "32e0c008cf6e1b5918a1b0e8c4394b23fe4f8e91d9fb155ddb7f5170674c81f8",
+    "full-stems.txt": "c0b830a99e7be01a908091a45e594df5dc187923bc887a6a3924a4b20700dc6c",
+    "provenance.txt": "b9d119828a457886b80b5ae95b13d10a1d00541f52afd4d5cb127a48be89bdd0",
+    "result-artifacts.sha256": "dd3799d9feefaa5c781eae3fbc84e0d1976aedeb3a68f1b8b245e64dc342b4a4",
+    "results/cluster2/full50-nonmixed48.aggregate.json": "7ab2471eb186792d38aadbe2c46265c2a3243ec7fd6c4ef3c915205a4ae8e44e",
+    "results/cluster2/pairwise-cross-map.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "results/fovea/full50-nonmixed48.aggregate.json": "f926587246fe9d23c6bb3222502fcc11c488da7f3425eeefd7e3fea7a4f3529f",
+    "results/fovea/pairwise-cross-map.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "provenance": {
+    "binding_reset_quiet_arming_patch": "workspace-diff",
+    "receipt_class": "non-official",
+    "snapshot_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "tool": "xrun(64) 23.09-s013"
+  },
+  "schema": "w2_ganghee_functional_loss_evidence_v1"
+}
