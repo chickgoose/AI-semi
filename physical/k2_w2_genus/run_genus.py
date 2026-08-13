@@ -1109,7 +1109,8 @@ def tool_identity(path: Path) -> dict[str, Any]:
     if version.returncode:
         raise FlowError(f"tool version probe failed: {resolved}")
     versions = sorted(set(re.findall(
-        r"(?<![A-Za-z0-9_.-])\d{2}\.\d{2}-s\d+(?:_\d+)?(?![A-Za-z0-9_.-])",
+        r"(?mi)^.*?\bVersion:\s*"
+        r"(\d{2}\.\d{2}-s\d+(?:_\d+)?)(?![A-Za-z0-9_.-])",
         version.stdout)))
     if len(versions) != 1:
         raise FlowError(f"tool version probe is ambiguous: {resolved}")

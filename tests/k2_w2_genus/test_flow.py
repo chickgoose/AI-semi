@@ -669,7 +669,8 @@ class GenusFlowTests(unittest.TestCase):
         probes = [
             subprocess.CompletedProcess(
                 [], 0,
-                stdout=("Cadence Genus(TM) Synthesis Solution Version: "
+                stdout=("Configured Lic search path (23.02-s006)\n"
+                        "Cadence Genus(TM) Synthesis Solution Version: "
                         "23.14-s090_1\nTMPDIR=/dev/shm/first\n")),
             subprocess.CompletedProcess(
                 [], 0,
