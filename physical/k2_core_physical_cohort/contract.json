@@ -1,0 +1,189 @@
+{
+  "schema": "k2_core_physical_cohort_contract_v1",
+  "status": "READY_FOR_EXPLICIT_SERVER_EXECUTION_ONLY",
+  "purpose": "Two-row core-only same-condition Genus and Innovus cohort",
+  "source_base_commit": "54541e0ddb32b0bbb101ea816bd4282191c9bf0a",
+  "candidate_order": [
+    "fovea",
+    "cluster2"
+  ],
+  "source_archive": {
+    "default_path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+    "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+    "policy": "EXTRACT_ONLY_LISTED_REGULAR_MEMBERS_WITH_EXACT_SHA256"
+  },
+  "candidates": {
+    "fovea": {
+      "top": "aer_tx16_trad_rowcol_fovea",
+      "clock_port": "clk",
+      "reset": {
+        "port": "rst",
+        "active": "high",
+        "synchronous": true
+      },
+      "ports": {
+        "inputs": ["clk", "rst", "req[15:0]"],
+        "outputs": ["valid", "addr[3:0]"]
+      },
+      "sources": [
+        {
+          "member": "rtl/ganghee_cluster2/arbiter2.v",
+          "sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"
+        },
+        {
+          "member": "rtl/ganghee_cluster2/arbiter4_tree.v",
+          "sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"
+        },
+        {
+          "member": "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea.v",
+          "sha256": "353ffa6e2530400688561e3cb54f1f40ac0aa2de423b765254fbe06f6a5f806e"
+        }
+      ]
+    },
+    "cluster2": {
+      "top": "aer_tx16_trad_rowcol_fovea_cluster2",
+      "clock_port": "clk",
+      "reset": {
+        "port": "rst",
+        "active": "high",
+        "synchronous": true
+      },
+      "ports": {
+        "inputs": ["clk", "rst", "req[15:0]"],
+        "outputs": [
+          "valid0",
+          "row0[1:0]",
+          "col_mask0[3:0]",
+          "valid1",
+          "row1[1:0]",
+          "col_mask1[3:0]"
+        ]
+      },
+      "sources": [
+        {
+          "member": "rtl/ganghee_cluster2/arbiter2.v",
+          "sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"
+        },
+        {
+          "member": "rtl/ganghee_cluster2/arbiter4_tree.v",
+          "sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"
+        },
+        {
+          "member": "rtl/ganghee_cluster2/aer_tx16_trad_rowcol_fovea_cluster2.v",
+          "sha256": "97151241b642d5db1c5974233439dfcea14c4ec325b1d3e91c9caa9d4917c44a"
+        }
+      ]
+    }
+  },
+  "common_conditions": {
+    "boundary": "raw_core_only_no_wrapper_no_endpoint",
+    "clock": {
+      "name": "core_clk",
+      "period_ns": "5.0",
+      "waveform_ns": ["0.0", "2.5"],
+      "uncertainty_ns": "0.25"
+    },
+    "io": {
+      "input_delay_ns": "0.5",
+      "output_delay_ns": "0.5",
+      "output_load_pf": "0.01"
+    },
+    "synthesis": {
+      "clock_gating_insertion": true,
+      "scan_mapping": false
+    },
+    "power": {
+      "mode": "VECTORLESS_DISCLOSED_SCREENING_ONLY",
+      "ranking_or_signoff_eligible": false
+    },
+    "physical": {
+      "process_node_nm": "45",
+      "aspect_ratio": "1.0",
+      "core_utilization": "0.35",
+      "core_margin_um": "10",
+      "site": "CoreSite",
+      "site_normalization": "REPLACE_BUFX2_WITH_BUFX4_AND_DONT_USE_BUFX2",
+      "io_policy": "NO_INIT_IO_FILE_ALL_PINS_LEFT_METAL3",
+      "vdd_net": "VDD",
+      "vss_net": "VSS",
+      "ring": {
+        "horizontal_layer": "Metal6",
+        "vertical_layer": "Metal7",
+        "width_um": "2",
+        "spacing_um": "2",
+        "offset_um": "2"
+      }
+    }
+  },
+  "authorities": {
+    "server_environment_contract": {
+      "path": "physical/k2_w2_server_env/contract.json",
+      "sha256": "f24b2c6b4857f7fd6161af7ef0efec5ef6ca31dbbbfda95838dbee9d26462c37"
+    },
+    "innovus_environment": {
+      "path": "scripts/ppa/k2_physical_server_environment.json",
+      "sha256": "77a5913f4e48b19b5b2fd26e51d78f40c29ae3d34bacaa5590dbf130931fb11f"
+    }
+  },
+  "flow_templates": {
+    "genus": {
+      "path": "physical/k2_core_physical_cohort/genus_core.tcl",
+      "sha256": "88803b54e420bcb95f97f2496b05ff47cb3a9a39b4cfc95a35543b890b7a9df4"
+    },
+    "innovus_mmmc": {
+      "path": "physical/k2_core_physical_cohort/innovus_mmmc_core.tcl",
+      "sha256": "c019af9718d6515b0a7e4c8c11719e16d5a2a9a885e0b98c8c55e582877ecb9d"
+    },
+    "innovus": {
+      "path": "physical/k2_core_physical_cohort/innovus_core.tcl",
+      "sha256": "ec5350151d96c5cebf7ba170ad7743d6896b9b39845d63cf6f835f526f02508f"
+    }
+  },
+  "technology": {
+    "pdk_root": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045",
+    "setup_liberty": {
+      "relative_path": "timing/slow_vdd1v0_basicCells.lib",
+      "sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
+      "pvt": [1.0, 0.9, 125.0]
+    },
+    "hold_liberty": {
+      "relative_path": "timing/fast_vdd1v0_basicCells.lib",
+      "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
+      "pvt": [1.0, 1.1, 0.0]
+    },
+    "tech_lef": {
+      "relative_path": "lef/gsclib045_tech.lef",
+      "sha256": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70"
+    },
+    "macro_lef": {
+      "relative_path": "lef/gsclib045_macro.lef",
+      "sha256": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2"
+    },
+    "shared_qrc": {
+      "relative_path": "qrc/qx/gpdk045.tch",
+      "sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+      "policy": "SAME_TYPICAL_QRC_FOR_SETUP_AND_HOLD"
+    }
+  },
+  "tools": {
+    "genus": {
+      "path": "/tools/cadence/DDI231/GENUS231/bin/genus",
+      "resolved_path": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
+      "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+      "version": "23.14-s090_1"
+    },
+    "innovus": {
+      "path": "/tools/cadence/DDI231/INNOVUS231/bin/innovus",
+      "resolved_path": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep",
+      "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+      "version": "23.14-s088_1"
+    }
+  },
+  "execution_policy": {
+    "server_go_receipt_required": true,
+    "exclusive_no_overwrite_outputs": true,
+    "direct_tool_launch_without_descriptor": "FORBIDDEN",
+    "successful_native_logs_and_reports_required_before_receipt": true,
+    "eda_execution_in_local_tests": "FORBIDDEN"
+  }
+}
