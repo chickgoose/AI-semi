@@ -680,8 +680,10 @@ class GenusFlowTests(unittest.TestCase):
                 "  AND2X1 endpoint_enable (.A(frame_active),.B(rst_n),.Y(icg_e));\n"
                 "  TLATNTSCAX2 w2_endpoint_link__r1_tx_w2_ep_icg_0 "
                 "(.E(icg_e),.SE(1'b0),.CK(sample_clk_i),.ECK(link_clk_o));\n"
+                "  wire mux0;\n"
                 "  MX2X1 w2_endpoint_link__r1_tx_w2_ep_mux_0 "
-                "(.A(word[2]),.B(word[0]),.S0(ref_clk_i),.Y(link_data_o[0]));\n"
+                "(.A(word[2]),.B(word[0]),.S0(ref_clk_i),.Y(mux0));\n"
+                "  BUFX2 endpoint_mux0_buffer (.A(mux0),.Y(link_data_o[0]));\n"
                 "  MX2X1 w2_endpoint_link__r1_tx_w2_ep_mux_1 "
                 "(.A(word[3]),.B(word[1]),.S0(ref_clk_i),.Y(link_data_o[1]));\n" +
                 "".join(

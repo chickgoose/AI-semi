@@ -1370,6 +1370,23 @@ def verify_flattened_endpoint_connections(top: str, modules: dict[str, str],
     def compact(value: str) -> str:
         return "".join(value.split())
 
+    all_instances = mapped_instances(reachable_module_text(
+        top, modules, library_cells))
+
+    def buffered_output(net: str) -> str:
+        current = compact(net)
+        for _ in range(8):
+            if re.fullmatch(r"link_data_o\[\d+\]", current):
+                return current
+            forward = [pins for kind, _, pins in all_instances
+                       if re.fullmatch(r"(?:CLK)?BUF[A-Za-z0-9_$]*", kind)
+                       and compact(pins.get("A", "")) == current
+                       and pins.get("Y")]
+            if len(forward) != 1:
+                raise FlowError("flattened mapped MX2X1 output lineage mismatch")
+            current = compact(forward[0]["Y"])
+        raise FlowError("flattened mapped MX2X1 output lineage is too deep")
+
     for row in by_cell["DFFNSRX1"]:
         if (compact(row.get("CKN", "")) != "link_clk_o" or
                 compact(row.get("RN", "")) != "rst_n" or
@@ -1389,8 +1406,7 @@ def verify_flattened_endpoint_connections(top: str, modules: dict[str, str],
             raise FlowError("flattened mapped TLATNTSCAX2 pin binding mismatch")
         e_net = compact(row["E"])
         drivers = []
-        for kind, _, pins in mapped_instances(
-                reachable_module_text(top, modules, library_cells)):
+        for kind, _, pins in all_instances:
             if compact(pins.get("Y", "")) == e_net:
                 drivers.append((kind, pins))
         if len(drivers) != 1 or not drivers[0][0].startswith("AND2"):
@@ -1399,11 +1415,16 @@ def verify_flattened_endpoint_connections(top: str, modules: dict[str, str],
         if "rst_n" not in driver_inputs or not any(
                 "frame_active" in net for net in driver_inputs):
             raise FlowError("flattened mapped ICG enable fanin mismatch")
+    mux_outputs = set()
     for row in by_cell["MX2X1"]:
         if (compact(row.get("S0", "")) != "ref_clk_i" or
-                not compact(row.get("Y", "")).startswith("link_data_o") or
                 not all(row.get(pin) for pin in ("A", "B"))):
             raise FlowError("flattened mapped MX2X1 pin binding mismatch")
+        mux_outputs.add(buffered_output(row.get("Y", "")))
+    expected_outputs = {
+        f"link_data_o[{index}]" for index in range(expected["MX2X1"])}
+    if mux_outputs != expected_outputs:
+        raise FlowError("flattened mapped MX2X1 output coverage mismatch")
 
 
 def verify_endpoint_inventory(top: str, modules: dict[str, str],
