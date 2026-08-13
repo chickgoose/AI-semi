@@ -136,7 +136,7 @@
     },
     "innovus": {
       "path": "physical/k2_core_physical_cohort/innovus_core.tcl",
-      "sha256": "73a8d6adbe7a2ed04033c4491904b9b601fc7d97cbafd2781e1191ce27044d69"
+      "sha256": "6f84dd178fd413342ddd3f2d263aaaa4399d439f107699065069ae9d33202127"
     }
   },
   "technology": {
