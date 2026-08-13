@@ -665,7 +665,7 @@ def validate_environment(bound: dict[str, Any], authority: dict[str, Any]) -> tu
         lef_cell = gates.get("site_and_cell_availability", {}).get(
             "evidence", {}).get("site_legal_macros", {}).get(rx_contract["name"], {})
         if set(lef_cell.get("pins", {})) != set(rx_contract["lef_pins"]) or \
-                lef_cell.get("site") != authority["physical_policy"]["site"]:
+                lef_cell.get("site") != authority["technology"]["site"]:
             raise PlanError("PROVEN_ENVIRONMENT DFFNSRX1 LEF contract mismatch")
     return path, digest
 
