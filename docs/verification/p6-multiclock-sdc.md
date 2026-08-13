@@ -22,6 +22,21 @@ A2, A3, and A4 P6 integration tops, which all expose `ref_clk_i`,
 `sample_clk_i`, `rst_n`, `p6_clk_o`, and `p6_data_o[4:0]` and contain one
 `a7_p6_atomic_bundle_adapter`.
 
+The separate yZr1 functional receipt is frozen in
+[`p6-functional-loss-evidence.json`](p6-functional-loss-evidence.json).  Its
+archive SHA-256 is
+`22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39`;
+the relocated local copy verifies 338/338 ledger members.  It reports 50/50
+functional runs plus reset and pairwise status 0 for each candidate.  Across
+full50, Fovea generated/accepted/delivered/overrun is
+106416/78229/78229/28187, while Cluster2 is
+106416/94157/94157/12259.  This is a workspace-diff, non-official receipt and
+is admissible only as workload-loss evidence.  It is not PPA, timing, physical,
+or official-common qualification.  The stale outer `eval-driver-final.log`,
+which identifies attempt `0FfaT8kp`, is explicitly excluded; yZr1 binds only
+its archive, `provenance.txt`, candidate logs, ledger, and ledger-covered
+artifacts.
+
 ## Exact cohort evidence and proven intersection
 
 Within each cohort, Fovea and Cluster2 use the same source-SDC body.  Raw and
