@@ -1,0 +1,54 @@
+{
+  "schema": "p6-ganghee-proven-common-v1",
+  "derivation": "exact intersection of the authoritative raw-core and separate buffered-extension preserved cohorts",
+  "cohort_archives": {
+    "raw_core_sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+    "buffered_extension_sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
+  },
+  "sdc": {
+    "single_source_clock_port": "clk",
+    "clock_waveform_fraction": [0.0, 0.5],
+    "clock_uncertainty_ns": 0.1,
+    "all_nonclock_input_delay_ns": 0.25,
+    "all_output_delay_ns": 0.25,
+    "all_output_load_pf": 0.01,
+    "input_driver_or_transition": null,
+    "generated_clock": null,
+    "min_pulse_width": null,
+    "reset_exception_or_release_clock": null
+  },
+  "technology": {
+    "liberty": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/timing/slow_vdd1v0_basicCells.lib",
+    "liberty_pvt": [1.0, 0.9, 125.0],
+    "qrc_tech": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/qrc/qx/gpdk045.tch",
+    "qrc_temperature_c": 25.0,
+    "tech_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_tech.lef",
+    "macro_lef": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045/lef/gsclib045_macro.lef"
+  },
+  "mmmc": {
+    "analysis_mode": "MMMC Non-OCV",
+    "setup_view": "view_slow",
+    "hold_view": "view_slow",
+    "same_single_liberty_and_rc_for_setup_and_hold": true
+  },
+  "tools": {
+    "genus": "23.14-s090_1",
+    "innovus": "23.14-s088_1",
+    "genus_clock_gating_insertion": true
+  },
+  "physical_flow_skeleton": [
+    "floorPlan -r 1.0 0.5 10 10 10 10",
+    "M6/M7 VDD/VSS core ring and sroute",
+    "place_opt_design",
+    "clock_opt_design",
+    "routeDesign",
+    "extractRC"
+  ],
+  "not_common": [
+    "top module and interface boundary",
+    "ready/backpressure and queue storage",
+    "reset implementation semantics",
+    "period sweep set",
+    "reported area, timing, power, DRC, connectivity, or qualification status"
+  ]
+}
