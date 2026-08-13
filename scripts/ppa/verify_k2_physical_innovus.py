@@ -93,8 +93,8 @@ SLACK = re.compile(
 )
 PATH_CHECK = re.compile(
     r"^Path\s+[0-9]+:\s+(?:MET|VIOLATED)\s+"
-    r"(Setup|Hold|Recovery|Removal|Clock\s+Gating\s+Setup|"
-    r"Clock\s+Gating\s+Hold|Pulse\s+Width)\s+Check\b",
+    r"(?:User\s+)?(Setup|Hold|Recovery|Removal|Clock\s+Gating\s+Setup|"
+    r"Clock\s+Gating\s+Hold|Pulse\s*Width)\s+Check\b",
     re.IGNORECASE | re.MULTILINE,
 )
 COUNT_LINE = re.compile(r"^([a-z][a-z0-9_]*)=([0-9]+)$")
@@ -533,7 +533,8 @@ def _require_check_design_all(path: Path) -> None:
 
 def _timing_observation(path: Path, expected_check: str | None = None) -> tuple[str, float]:
     text = _text(path)
-    checks = {value.lower() for value in PATH_CHECK.findall(text)}
+    checks = {re.sub(r"\s+", " ", value.lower()) for value in PATH_CHECK.findall(text)}
+    checks = {"pulse width" if value == "pulsewidth" else value for value in checks}
     if len(checks) != 1:
         raise QualificationError(
             f"timing report must contain exactly one check class: {path}"

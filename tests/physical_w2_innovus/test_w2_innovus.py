@@ -510,6 +510,14 @@ class FixtureQualificationTests(unittest.TestCase):
             {"matched_nets": 320, "total_nets": 400, "coverage_percent": 80.0},
         )
 
+    def test_actual_23_14_user_pulsewidth_spelling_parses(self):
+        path = self.root / "reports/pulse_width_timing.rpt"
+        original = path.read_text()
+        path.write_text(original.replace(
+            "MET Pulse Width Check", "MET User PulseWidth Check"))
+        self.assertEqual(
+            self.module._timing_observation(path, "pulse width")[1], 0.010)
+
     def test_hold_closure_receipt_fails_closed(self):
         path = self.root / "reports/hold_closure.machine"
         original = path.read_text()
