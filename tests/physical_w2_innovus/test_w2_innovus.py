@@ -572,12 +572,21 @@ class FixtureQualificationTests(unittest.TestCase):
             self.module.validate(self.root, "dut")
 
     def test_interrupted_or_error_log_fails(self):
-        for marker in ("**ERROR: bad", "FATAL: bad", "INTERRUPT", "SEGMENTATION FAULT"):
+        for marker in ("**ERROR: bad", "ERROR: bad", "Error : bad",
+                       "FATAL: bad", "INTERRUPT", "SEGMENTATION FAULT"):
             with self.subTest(marker=marker):
                 (self.root / "tool.log").write_text(marker + "\n")
                 with self.assertRaisesRegex(self.module.QualificationError, "log"):
                     self.module.validate(self.root, "dut")
         (self.root / "tool.log").write_text(clean_log())
+
+    def test_innovus_error_limit_banner_is_not_an_error(self):
+        log = clean_log().replace(
+            "*** Message Summary:",
+            "Error Limit = 1000; Warning Limit = 1000\n*** Message Summary:",
+        )
+        (self.root / "tool.log").write_text(log)
+        self.module.validate(self.root, "dut")
 
     def test_log_requires_pinned_version_summary_and_normal_end(self):
         log = self.root / "tool.log"

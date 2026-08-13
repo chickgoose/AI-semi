@@ -68,7 +68,7 @@ ZERO_COUNT_REPORTS = {
 OTHER_REPORTS = ("area.rpt", "power.rpt", "route.rpt")
 HOLD_CLOSURE_REPORT = "hold_closure.machine"
 BAD_LOG = re.compile(
-    r"(?:^|\s)(?:ERROR|FATAL)(?::|\s)|\*\*(?:ERROR|FATAL):|"
+    r"^(?:ERROR|FATAL)\s*:|\*\*(?:ERROR|FATAL):|"
     r"SEG(?:MENTATION)?\s+FAULT|INTERRUPT|W2_INNOVUS_FLOW_FATAL",
     re.IGNORECASE | re.MULTILINE,
 )
