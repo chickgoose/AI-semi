@@ -116,6 +116,18 @@ class StaticFlowContractTests(unittest.TestCase):
             "clock_opt_design", "routeDesign", "extractRC",
             "optDesign -postRoute", "optDesign -postRoute -hold",
             "set_interactive_constraint_modes [list w2_strict_functional]",
+            "set boundary_clock_ports [get_ports {ref_clk_i sample_clk_i}]",
+            "set expected_boundary_nonclock_inputs [get_ports {rst_n source_pending_i*}]",
+            "expected_boundary_nonclock_inputs] != 17",
+            "set_drive 0 $boundary_clock_ports",
+            "set_driving_cell -lib_cell BUFX2 $boundary_nonclock_inputs",
+            "set forwarded_link_source [get_pins -hierarchical *w2_ep_icg_0/ECK]",
+            "create_generated_clock -name w2_forwarded_link_port_clk",
+            "-source $forwarded_link_source -divide_by 1 $forwarded_link_port",
+            "set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]",
+            "set forwarded_link_clocks [get_clocks -of_objects $forwarded_link_port]",
+            "expected exactly one forwarded generated clock on link_clk_o",
+            "boundary_timing.machine",
             "set_propagated_clock [all_clocks]",
             "saveDesign -mmmc2 \"$output/database/${top}.postroute_checkpoint.enc\"",
             "redirect -tee -file \"$output/reports/activity_annotation.rpt\" {",
@@ -128,7 +140,7 @@ class StaticFlowContractTests(unittest.TestCase):
             "get_pins -hierarchical *w2_ep_icg_0/E",
             "expected exactly one preserved endpoint ICG enable pin",
             "-to $endpoint_icg_enable -max_paths 50",
-            "setOptMode -fixHoldAllowSetupTnsDegrade false",
+            "setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade",
             "for {set hold_iteration 1} {$hold_iteration <= 3}",
             "hold_metrics_improved $before $after",
             "post-route hold closure did not converge",
@@ -150,6 +162,22 @@ class StaticFlowContractTests(unittest.TestCase):
             text)
         self.assertIn(
             "w2_hold_view clock_gating_hold gating_hold $endpoint_icg_enable",
+            text)
+        self.assertLess(
+            text.index("setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade"),
+            text.index("optDesign -postRoute -hold"))
+
+    def test_forwarded_link_clock_is_created_before_it_is_checked(self):
+        text = PNR.read_text(encoding="utf-8")
+        create = "create_generated_clock -name w2_forwarded_link_port_clk"
+        source = "set forwarded_link_source [get_pins -hierarchical *w2_ep_icg_0/ECK]"
+        check = "set forwarded_link_clocks [get_clocks -of_objects $forwarded_link_port]"
+        self.assertEqual(text.count(create), 1)
+        self.assertEqual(text.count(source), 1)
+        self.assertLess(text.index(source), text.index(create))
+        self.assertLess(text.index(create), text.index(check))
+        self.assertIn(
+            "expected exactly one *w2_ep_icg_0/ECK source and link_clk_o target",
             text)
 
     def test_pg_route_is_refreshed_after_each_hold_eco(self):
@@ -213,6 +241,10 @@ class StaticFlowContractTests(unittest.TestCase):
         self.assertIn("--write-clean-marker", text)
         self.assertIn("--verify-descriptor", text)
         self.assertIn("AER_W2_EXECUTION_DESCRIPTOR_SHA256", text)
+        for variable in (
+                "AER_W2_TIMING_PROFILE", "AER_W2_TIMING_PROFILE_SHA256",
+                "AER_W2_PERIOD_NS", "AER_HOLD_FIX_ALLOW_SETUP_TNS_DEGRADE"):
+            self.assertIn(variable, text)
         self.assertIn("[[ ! -e \"$AER_PNR_OUTPUT_DIR\" ]]", text)
         self.assertNotIn("AER_W2_PLAN_VALIDATED", text)
         self.assertNotIn("FLOW_CLEAN", text)
@@ -231,9 +263,20 @@ class FixtureQualificationTests(unittest.TestCase):
         (self.root / "status/COMMANDS_COMPLETE").write_bytes(
             self.module.COMMAND_SENTINEL
         )
+        timing = self.module._timing_profile_contract("three_endpoint_5p0ns")
         descriptor = {
-            "schema": "k2_w2_innovus_execution_descriptor_v1",
-            "binding": {"top": "dut", "cohort": "tech_staged_complete_compositions"},
+            "schema": "k2_w2_innovus_execution_descriptor_v2",
+            "binding": {
+                "top": "dut", "cohort": "tech_staged_complete_compositions",
+                "timing_profile_id": timing["id"],
+                "innovus_timing_profile_sha256": timing["profile_sha256"],
+                "genus_timing_manifest_sha256":
+                    timing["genus_timing_manifest_sha256"],
+                "genus_timing_profile_sha256":
+                    timing["genus_timing_profile_sha256"],
+                "period_ns": timing["period_ns"],
+                "hold_fix_allow_setup_tns_degrade": False,
+            },
             "registry_sha256": hashlib.sha256(
                 (ROOT / "scripts/ppa/k2_physical_innovus_cohorts.json").read_bytes()
             ).hexdigest(),
@@ -246,10 +289,14 @@ class FixtureQualificationTests(unittest.TestCase):
         (self.root / "status/EXECUTION_DESCRIPTOR.sha256").write_text(
             hashlib.sha256(descriptor_payload).hexdigest() + "\n")
         (self.root / "status/TECHNOLOGY_CONTRACT").write_text(
-            "schema=k2_w2_innovus_technology_contract_v1\n"
+            "schema=k2_w2_innovus_technology_contract_v2\n"
             "top=dut\n"
             "cohort=tech_staged_complete_compositions\n"
             "design=fovea_a7\n"
+            f"timing_profile={timing['id']}\n"
+            f"timing_profile_sha256={timing['profile_sha256']}\n"
+            f"period_ns={timing['period_ns']}\n"
+            "hold_fix_allow_setup_tns_degrade=false\n"
             "innovus_path=/tools/cadence/DDI231/INNOVUS231/bin/innovus\n"
             "innovus_sha256=41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa\n"
             "tech_lef_sha256=0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70\n"
@@ -312,6 +359,19 @@ class FixtureQualificationTests(unittest.TestCase):
             "observation_0=10,2,-0.100,-0.150\n"
             "observation_1=10,0,0.010,0.0\n"
         )
+        (self.root / "reports/boundary_timing.machine").write_text(
+            "schema=k2_w2_boundary_timing_v1\n"
+            f"timing_profile={timing['id']}\n"
+            f"timing_profile_sha256={timing['profile_sha256']}\n"
+            f"period_ns={timing['period_ns']}\n"
+            "clock_ports=ref_clk_i,sample_clk_i\n"
+            "clock_drive=0\n"
+            "nonclock_input_ports=rst_n,source_pending_i\n"
+            "nonclock_driving_cell=BUFX2\n"
+            "forwarded_link_clock=*w2_ep_icg_0/ECK,link_clk_o,divide_by_1\n"
+            "link_clock_false_path=FORBIDDEN\n"
+            "hold_fix_allow_setup_tns_degrade=false\n"
+        )
         (self.root / "reports/route.rpt").write_text(
             "detailed_route_completed=1\n"
         )
@@ -325,12 +385,87 @@ class FixtureQualificationTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def set_timing_profile(self, profile_id: str) -> dict[str, str]:
+        timing = self.module._timing_profile_contract(profile_id)
+        descriptor_path = self.root / "status/EXECUTION_DESCRIPTOR.json"
+        descriptor = json.loads(descriptor_path.read_text())
+        binding = descriptor["binding"]
+        binding["timing_profile_id"] = timing["id"]
+        binding["innovus_timing_profile_sha256"] = timing["profile_sha256"]
+        binding["genus_timing_manifest_sha256"] = \
+            timing["genus_timing_manifest_sha256"]
+        binding["genus_timing_profile_sha256"] = \
+            timing["genus_timing_profile_sha256"]
+        binding["period_ns"] = timing["period_ns"]
+        binding["hold_fix_allow_setup_tns_degrade"] = (
+            timing["hold_fix_allow_setup_tns_degrade"] == "true")
+        payload = (json.dumps(descriptor, sort_keys=True) + "\n").encode()
+        descriptor_path.write_bytes(payload)
+        (self.root / "status/EXECUTION_DESCRIPTOR.sha256").write_text(
+            hashlib.sha256(payload).hexdigest() + "\n")
+        for relative in ("status/TECHNOLOGY_CONTRACT",
+                         "reports/boundary_timing.machine"):
+            path = self.root / relative
+            rows = dict(line.split("=", 1) for line in path.read_text().splitlines())
+            rows["timing_profile"] = timing["id"]
+            rows["timing_profile_sha256"] = timing["profile_sha256"]
+            rows["period_ns"] = timing["period_ns"]
+            rows["hold_fix_allow_setup_tns_degrade"] = timing[
+                "hold_fix_allow_setup_tns_degrade"]
+            path.write_text("".join(f"{key}={value}\n" for key, value in rows.items()))
+        return timing
+
     def test_clean_fixture_passes(self):
         slacks = self.module.validate(self.root, "dut")
         self.assertEqual(set(slacks), {
             "setup", "hold", "recovery", "removal", "gating_setup",
             "gating_hold", "pulse_width", "half_cycle_setup", "half_cycle_hold",
         })
+
+    def test_5p7_boundary_drive_forwarded_clock_and_hold_policy_pass(self):
+        timing = self.set_timing_profile("three_endpoint_5p7ns")
+        self.assertEqual(timing["period_ns"], "5.7")
+        self.assertEqual(timing["hold_fix_allow_setup_tns_degrade"], "true")
+        self.module.validate(self.root, "dut")
+
+    def test_5p7_boundary_profile_mutations_fail_closed(self):
+        for field, old, new in (
+                ("clock_drive", "0", "1"),
+                ("nonclock_driving_cell", "BUFX2", "BUFX4"),
+                ("forwarded_link_clock",
+                 "*w2_ep_icg_0/ECK,link_clk_o,divide_by_1",
+                 "*w2_ep_icg_0/ECK,link_clk_o,divide_by_2"),
+                ("link_clock_false_path", "FORBIDDEN", "ENABLED"),
+                ("hold_fix_allow_setup_tns_degrade", "true", "false")):
+            with self.subTest(field=field):
+                self.set_timing_profile("three_endpoint_5p7ns")
+                path = self.root / "reports/boundary_timing.machine"
+                original = path.read_text()
+                path.write_text(original.replace(f"{field}={old}",
+                                                 f"{field}={new}"))
+                with self.assertRaisesRegex(
+                        self.module.QualificationError, "boundary timing"):
+                    self.module.validate(self.root, "dut")
+                path.write_text(original)
+
+    def test_descriptor_genus_timing_provenance_mutations_fail_closed(self):
+        descriptor_path = self.root / "status/EXECUTION_DESCRIPTOR.json"
+        sha_path = self.root / "status/EXECUTION_DESCRIPTOR.sha256"
+        original = descriptor_path.read_bytes()
+        for field in ("genus_timing_manifest_sha256",
+                      "genus_timing_profile_sha256"):
+            with self.subTest(field=field):
+                document = json.loads(original)
+                document["binding"][field] = "0" * 64
+                payload = (json.dumps(document, sort_keys=True) + "\n").encode()
+                descriptor_path.write_bytes(payload)
+                sha_path.write_text(hashlib.sha256(payload).hexdigest() + "\n")
+                with self.assertRaisesRegex(
+                        self.module.QualificationError,
+                        "execution descriptor timing"):
+                    self.module.validate(self.root, "dut")
+        descriptor_path.write_bytes(original)
+        sha_path.write_text(hashlib.sha256(original).hexdigest() + "\n")
 
     def test_activity_annotation_exact_innovus_23_14_summary_parses(self):
         path = self.root / "reports/activity_annotation.rpt"

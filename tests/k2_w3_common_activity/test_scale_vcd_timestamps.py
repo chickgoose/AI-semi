@@ -91,6 +91,8 @@ class TimestampScalerTest(unittest.TestCase):
                 self.assertEqual(document["transform"]["ratio"], "1/2")
                 self.assertEqual(document["transform"]["input_clock_period_ps"], 10000)
                 self.assertEqual(document["transform"]["output_clock_period_ps"], 5000)
+                self.assertEqual(document["output"]["role"],
+                                 "exact_5ns_common_activity_vcd")
                 self.assertEqual(
                     document["input"]["sha256"], hashlib.sha256(source_bytes).hexdigest()
                 )
@@ -105,6 +107,41 @@ class TimestampScalerTest(unittest.TestCase):
                                  "a3_p6_staged")
                 self.assertTrue(receipt.read_bytes().endswith(b"\n"))
             self.assertEqual(receipts[0], receipts[1])
+
+    def test_exact_57_over_100_period_and_window_receipt(self):
+        source_bytes = vcd((0, 10000, 20000))
+        expected = source_bytes.replace(b"#10000\n", b"#5700\n").replace(
+            b"#20000\n", b"#11400\n")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "validated-10ns.vcd"
+            output = root / "scaled-5p7ns.vcd"
+            receipt = root / "scaled-5p7ns.json"
+            source.write_bytes(source_bytes)
+            self.run_tool(source, output, receipt, "57", "100", check=True)
+            self.assertEqual(output.read_bytes(), expected)
+            document = json.loads(receipt.read_bytes())
+            self.assertEqual(document["transform"]["ratio"], "57/100")
+            self.assertEqual(document["transform"]["numerator"], 57)
+            self.assertEqual(document["transform"]["denominator"], 100)
+            self.assertEqual(document["periods_ps"], {
+                "source_requested": 10000,
+                "target_effective": 5700,
+                "target_requested": 5700,
+            })
+            self.assertEqual(document["windows_tick_1ps"], {
+                "source_requested_start": 40000,
+                "source_requested_end": 60000,
+                "input_effective_start": 0,
+                "input_effective_end": 20000,
+                "output_requested_start": 0,
+                "output_requested_end": 11400,
+                "output_effective_start": 0,
+                "output_effective_end": 11400,
+            })
+            self.assertEqual(document["timestamps"]["output_last"], 11400)
+            self.assertEqual(document["output"]["role"],
+                             "exact_5p7ns_common_activity_vcd")
 
     def assert_rejected(self, source_bytes: bytes, message: str | None = None):
         with tempfile.TemporaryDirectory() as directory:
@@ -220,7 +257,8 @@ class TimestampScalerTest(unittest.TestCase):
             root = Path(directory)
             source, output, receipt = root / "in.vcd", root / "out.vcd", root / "out.json"
             source.write_bytes(vcd())
-            for ratio in (("2", "4"), ("1", "3"), ("-1", "-2")):
+            for ratio in (("2", "4"), ("114", "200"),
+                          ("1", "3"), ("-1", "-2")):
                 with self.subTest(ratio=ratio):
                     result = self.run_tool(source, output, receipt, *ratio)
                     self.assertNotEqual(result.returncode, 0)

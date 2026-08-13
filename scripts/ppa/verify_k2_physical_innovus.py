@@ -67,6 +67,7 @@ ZERO_COUNT_REPORTS = {
 }
 OTHER_REPORTS = ("area.rpt", "power.rpt", "route.rpt")
 HOLD_CLOSURE_REPORT = "hold_closure.machine"
+BOUNDARY_TIMING_REPORT = "boundary_timing.machine"
 BAD_LOG = re.compile(
     r"^(?:ERROR|FATAL)\s*:|\*\*(?:ERROR|FATAL):|"
     r"SEG(?:MENTATION)?\s+FAULT|INTERRUPT|W2_INNOVUS_FLOW_FATAL",
@@ -189,7 +190,47 @@ def _require_nonempty_directory(path: Path) -> None:
         raise QualificationError(f"artifact directory is empty: {path}")
 
 
-def _require_technology_contract(path: Path, top: str) -> dict[str, str]:
+def _timing_profile_contract(profile_id: str) -> dict[str, str]:
+    registry = json.loads(
+        (HERE / "k2_physical_innovus_cohorts.json").read_text(encoding="utf-8"))
+    profile = registry.get("timing_profiles", {}).get(profile_id)
+    if not isinstance(profile, dict):
+        raise QualificationError("execution descriptor timing profile is unknown")
+    digest = hashlib.sha256((json.dumps(
+        {"id": profile_id, "profile": profile}, indent=2, sort_keys=True
+    ) + "\n").encode()).hexdigest()
+    hold = profile.get("hold_fix_allow_setup_tns_degrade")
+    if hold is not (profile_id == "three_endpoint_5p7ns"):
+        raise QualificationError("hold setup-degrade policy is not 5.7-only")
+    pointer = registry.get("timing_cohort_manifest", {})
+    timing_path = HERE.parents[1] / str(pointer.get("path", ""))
+    try:
+        timing_payload = timing_path.read_bytes()
+        timing_manifest = json.loads(timing_payload)
+    except (OSError, json.JSONDecodeError) as error:
+        raise QualificationError("Genus timing manifest is unreadable") from error
+    manifest_sha = hashlib.sha256(timing_payload).hexdigest()
+    genus_profile = timing_manifest.get("cohorts", {}).get(profile_id)
+    if (pointer.get("required_schema") != "k2_w2_genus_timing_cohorts_v1" or
+            pointer.get("sha256") != manifest_sha or
+            timing_manifest.get("schema") != pointer["required_schema"] or
+            not isinstance(genus_profile, dict)):
+        raise QualificationError("Genus timing manifest/profile mismatch")
+    genus_profile_sha = hashlib.sha256((json.dumps(
+        {"id": profile_id, "profile": genus_profile}, indent=2, sort_keys=True
+    ) + "\n").encode()).hexdigest()
+    return {
+        "id": profile_id,
+        "profile_sha256": digest,
+        "genus_timing_manifest_sha256": manifest_sha,
+        "genus_timing_profile_sha256": genus_profile_sha,
+        "period_ns": profile["period_ns"],
+        "hold_fix_allow_setup_tns_degrade": str(hold).lower(),
+    }
+
+
+def _require_technology_contract(
+        path: Path, top: str, timing: dict[str, str]) -> dict[str, str]:
     rows: dict[str, str] = {}
     for line in _text(path).splitlines():
         if line.count("=") != 1:
@@ -199,7 +240,7 @@ def _require_technology_contract(path: Path, top: str) -> dict[str, str]:
             raise QualificationError("technology contract has an invalid/duplicate field")
         rows[key] = value
     expected = {
-        "schema": "k2_w2_innovus_technology_contract_v1",
+        "schema": "k2_w2_innovus_technology_contract_v2",
         "top": top,
         "setup_library_role": "slow_max_setup",
         "setup_library_basename": "slow_vdd1v0_basicCells.lib",
@@ -210,6 +251,11 @@ def _require_technology_contract(path: Path, top: str) -> dict[str, str]:
         "setup_rc_corner": "w2_shared_setup_rc",
         "hold_rc_corner": "w2_shared_hold_rc",
         "qrc_basename": "gpdk045.tch",
+        "timing_profile": timing["id"],
+        "timing_profile_sha256": timing["profile_sha256"],
+        "period_ns": timing["period_ns"],
+        "hold_fix_allow_setup_tns_degrade":
+            timing["hold_fix_allow_setup_tns_degrade"],
     }
     variable = {
         "cohort", "design", "setup_library_sha256",
@@ -241,7 +287,7 @@ def _require_technology_contract(path: Path, top: str) -> dict[str, str]:
     return rows
 
 
-def _require_execution_descriptor(run_dir: Path, top: str) -> None:
+def _require_execution_descriptor(run_dir: Path, top: str) -> dict[str, str]:
     descriptor_path = run_dir / "status/EXECUTION_DESCRIPTOR.json"
     payload = _regular(descriptor_path)
     recorded = _text(run_dir / "status/EXECUTION_DESCRIPTOR.sha256").strip()
@@ -256,12 +302,24 @@ def _require_execution_descriptor(run_dir: Path, top: str) -> None:
     authority_hash = hashlib.sha256(
         (HERE / "k2_physical_server_environment.json").read_bytes()).hexdigest()
     binding = document.get("binding", {})
-    if document.get("schema") != "k2_w2_innovus_execution_descriptor_v1" or \
+    if document.get("schema") != "k2_w2_innovus_execution_descriptor_v2" or \
             document.get("registry_sha256") != registry_hash or \
             document.get("authority_sha256") != authority_hash or \
             binding.get("top") != top or \
             binding.get("cohort") != "tech_staged_complete_compositions":
         raise QualificationError("retained execution descriptor identity mismatch")
+    timing = _timing_profile_contract(binding.get("timing_profile_id", ""))
+    if (binding.get("innovus_timing_profile_sha256") !=
+            timing["profile_sha256"] or
+            binding.get("genus_timing_manifest_sha256") !=
+            timing["genus_timing_manifest_sha256"] or
+            binding.get("genus_timing_profile_sha256") !=
+            timing["genus_timing_profile_sha256"] or
+            binding.get("period_ns") != timing["period_ns"] or
+            str(binding.get("hold_fix_allow_setup_tns_degrade")).lower() !=
+            timing["hold_fix_allow_setup_tns_degrade"]):
+        raise QualificationError("retained execution descriptor timing mismatch")
+    return timing
 
 
 def _require_activity_contract(path: Path) -> dict[str, str]:
@@ -286,6 +344,33 @@ def _require_activity_contract(path: Path) -> dict[str, str]:
     if start < 0 or end <= start:
         raise QualificationError("activity window is empty/reversed")
     return rows
+
+
+def _require_boundary_timing(path: Path, timing: dict[str, str]) -> None:
+    rows: dict[str, str] = {}
+    for line in _text(path).splitlines():
+        if line.count("=") != 1:
+            raise QualificationError("boundary timing report malformed")
+        key, value = line.split("=", 1)
+        if key in rows or not value:
+            raise QualificationError("boundary timing report duplicate/empty field")
+        rows[key] = value
+    expected = {
+        "schema": "k2_w2_boundary_timing_v1",
+        "timing_profile": timing["id"],
+        "timing_profile_sha256": timing["profile_sha256"],
+        "period_ns": timing["period_ns"],
+        "clock_ports": "ref_clk_i,sample_clk_i",
+        "clock_drive": "0",
+        "nonclock_input_ports": "rst_n,source_pending_i",
+        "nonclock_driving_cell": "BUFX2",
+        "forwarded_link_clock": "*w2_ep_icg_0/ECK,link_clk_o,divide_by_1",
+        "link_clock_false_path": "FORBIDDEN",
+        "hold_fix_allow_setup_tns_degrade":
+            timing["hold_fix_allow_setup_tns_degrade"],
+    }
+    if rows != expected:
+        raise QualificationError("boundary timing/profile contract mismatch")
 
 
 def _activity_annotation(path: Path) -> dict[str, float | int]:
@@ -545,12 +630,14 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         raise QualificationError("Innovus failure sentinel is present")
     if (run_dir / "status" / "FLOW_CLEAN").exists():
         raise QualificationError("FLOW_CLEAN already exists")
-    _require_execution_descriptor(run_dir, top)
+    timing = _require_execution_descriptor(run_dir, top)
     _require_technology_contract(
-        run_dir / "status" / "TECHNOLOGY_CONTRACT", top
+        run_dir / "status" / "TECHNOLOGY_CONTRACT", top, timing
     )
     _require_activity_contract(run_dir / "status" / "ACTIVITY_POWER_CONTRACT")
     _require_hold_closure(run_dir / "reports" / HOLD_CLOSURE_REPORT)
+    _require_boundary_timing(
+        run_dir / "reports" / BOUNDARY_TIMING_REPORT, timing)
 
     reports = run_dir / "reports"
     _activity_annotation(reports / "activity_annotation.rpt")

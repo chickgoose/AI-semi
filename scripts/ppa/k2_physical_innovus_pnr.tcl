@@ -125,6 +125,25 @@ set activity_format [require_env AER_ACTIVITY_FORMAT]
 set activity_scope [require_env AER_ACTIVITY_SCOPE]
 set activity_start [require_env AER_ACTIVITY_WINDOW_START_NS]
 set activity_end [require_env AER_ACTIVITY_WINDOW_END_NS]
+set timing_profile [require_env AER_W2_TIMING_PROFILE]
+set timing_profile_sha256 [require_env AER_W2_TIMING_PROFILE_SHA256]
+set timing_period [require_env AER_W2_PERIOD_NS]
+set hold_setup_degrade [require_env AER_HOLD_FIX_ALLOW_SETUP_TNS_DEGRADE]
+
+if {$timing_profile eq "three_endpoint_5p0ns"} {
+  if {$timing_period ne "5.0" || $hold_setup_degrade ne "false"} {
+    error "5.0ns timing profile/hold policy mismatch"
+  }
+} elseif {$timing_profile eq "three_endpoint_5p7ns"} {
+  if {$timing_period ne "5.7" || $hold_setup_degrade ne "true"} {
+    error "5.7ns timing profile/hold policy mismatch"
+  }
+} else {
+  error "unsupported W2 timing profile $timing_profile"
+}
+if {![regexp {^[0-9a-f]{64}$} $timing_profile_sha256]} {
+  error "timing profile SHA-256 is malformed"
+}
 
 if {$util <= 0.0 || $util >= 1.0} {
   error "AER_CORE_UTILIZATION must be strictly between zero and one"
@@ -161,10 +180,65 @@ set init_mmmc_file $mmmc
 
 set flow_failed [catch {
   init_design
+  # Select the one producer-aligned constraint mode before any post-init
+  # boundary updates; Innovus 23.14 otherwise rejects them with TCLCMD-1048.
+  set_interactive_constraint_modes [list w2_strict_functional]
+
+  set boundary_clock_ports [get_ports {ref_clk_i sample_clk_i}]
+  if {[sizeof_collection $boundary_clock_ports] != 2} {
+    error "expected exactly ref_clk_i and sample_clk_i clock ports"
+  }
+  set boundary_nonclock_inputs [remove_from_collection \
+    [all_inputs] $boundary_clock_ports]
+  set expected_boundary_nonclock_inputs [get_ports {rst_n source_pending_i*}]
+  if {[sizeof_collection $expected_boundary_nonclock_inputs] != 17 ||
+      [sizeof_collection [remove_from_collection $boundary_nonclock_inputs \
+        $expected_boundary_nonclock_inputs]] != 0 ||
+      [sizeof_collection [remove_from_collection $expected_boundary_nonclock_inputs \
+        $boundary_nonclock_inputs]] != 0} {
+    error "canonical nonclock inputs are not exactly rst_n plus source_pending_i[15:0]"
+  }
+  set_drive 0 $boundary_clock_ports
+  set_driving_cell -lib_cell BUFX2 $boundary_nonclock_inputs
+
+  # The mapped SDC ends its generated clock at the preserved endpoint ICG ECK.
+  # Materialize the actual forwarded boundary clock from that exact pin onto
+  # link_clk_o; checking for a pre-existing port clock is insufficient.
+  set forwarded_link_source [get_pins -hierarchical *w2_ep_icg_0/ECK]
+  set forwarded_link_port [get_ports link_clk_o]
+  if {[sizeof_collection $forwarded_link_source] != 1 ||
+      [sizeof_collection $forwarded_link_port] != 1} {
+    error "expected exactly one *w2_ep_icg_0/ECK source and link_clk_o target"
+  }
+  create_generated_clock -name w2_forwarded_link_port_clk \
+    -source $forwarded_link_source -divide_by 1 $forwarded_link_port
+  set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]
+  set forwarded_link_clocks [get_clocks -of_objects $forwarded_link_port]
+  if {[sizeof_collection $forwarded_link_clock] != 1 ||
+      [sizeof_collection $forwarded_link_clocks] != 1} {
+    error "expected exactly one forwarded generated clock on link_clk_o"
+  }
+  set boundary_handle [open \
+    "$output/reports/boundary_timing.machine" {WRONLY CREAT EXCL}]
+  puts $boundary_handle "schema=k2_w2_boundary_timing_v1"
+  puts $boundary_handle "timing_profile=$timing_profile"
+  puts $boundary_handle "timing_profile_sha256=$timing_profile_sha256"
+  puts $boundary_handle "period_ns=$timing_period"
+  puts $boundary_handle "clock_ports=ref_clk_i,sample_clk_i"
+  puts $boundary_handle "clock_drive=0"
+  puts $boundary_handle "nonclock_input_ports=rst_n,source_pending_i"
+  puts $boundary_handle "nonclock_driving_cell=BUFX2"
+  puts $boundary_handle "forwarded_link_clock=*w2_ep_icg_0/ECK,link_clk_o,divide_by_1"
+  puts $boundary_handle "link_clock_false_path=FORBIDDEN"
+  puts $boundary_handle "hold_fix_allow_setup_tns_degrade=$hold_setup_degrade"
+  close $boundary_handle
   setDesignMode -process $process
 
   # OCV is common to both candidates and CPPR is enabled symmetrically.
   setAnalysisMode -analysisType onChipVariation -cppr both
+  # Bind the selected profile's hold policy before every hold optimization,
+  # including the first post-route hold pass below.
+  setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade
 
   # BUFX2 is anomalously declared on CoreSiteDouble while its physical height
   # is one CoreSite row.  Creating overlapping rows for that site caused the
@@ -264,7 +338,6 @@ set flow_failed [catch {
   # Innovus 23.14 rejects interactive constraint updates in an MMMC design
   # until their constraint mode is selected explicitly (TCLCMD-1048).  Both
   # setup and hold views intentionally share this one strict functional mode.
-  set_interactive_constraint_modes [list w2_strict_functional]
   set_propagated_clock [all_clocks]
   # The link uses a clock-selected serializer, so a clock-wide gating query
   # falsely classifies MX2 S0 and ordinary synthesized logic as clock gates.
@@ -277,7 +350,6 @@ set flow_failed [catch {
   # Hold ECOs performed before final PG routing left short conventional hold
   # paths unresolved.  Re-optimize after final PG/RC, reconnect any inserted
   # cells, and require strict monotonic progress until every hold path closes.
-  setOptMode -fixHoldAllowSetupTnsDegrade false
   setAnalysisMode -checkType hold
   set hold_closure_rows [list [timing_metrics w2_hold_view hold]]
   set hold_status CLOSED

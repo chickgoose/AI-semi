@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict, dataclass
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 REGISTRY_PATH = HERE / "k2_physical_innovus_cohorts.json"
 AUTHORITY_PATH = HERE / "k2_physical_server_environment.json"
+ROOT = HERE.parents[1]
 GENERIC_RUNNER = HERE / "run_k2_physical_innovus.sh"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MODULE = re.compile(r"^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", re.MULTILINE)
@@ -54,6 +56,11 @@ class Binding:
     top: str
     cohort: str
     period_ns: str
+    timing_profile_id: str
+    genus_timing_manifest_sha256: str
+    genus_timing_profile_sha256: str
+    innovus_timing_profile_sha256: str
+    hold_fix_allow_setup_tns_degrade: bool
     netlist: Path
     netlist_sha256: str
     sdc: Path
@@ -144,7 +151,7 @@ def tracked_json(path: Path, schema: str) -> dict[str, Any]:
 
 
 def load_contracts() -> tuple[dict[str, Any], dict[str, Any]]:
-    registry = tracked_json(REGISTRY_PATH, "k2_w2_innovus_cohort_registry_v3")
+    registry = tracked_json(REGISTRY_PATH, "k2_w2_innovus_cohort_registry_v4")
     authority = tracked_json(AUTHORITY_PATH, "k2_w2_innovus_server_environment_v2")
     if registry.get("server_environment_authority") != \
             "scripts/ppa/k2_physical_server_environment.json":
@@ -152,6 +159,13 @@ def load_contracts() -> tuple[dict[str, Any], dict[str, Any]]:
     cohort = registry.get("cohorts", {}).get("tech_staged_complete_compositions")
     if set(registry.get("cohorts", {})) != {"tech_staged_complete_compositions"}:
         raise PlanError("final registry must contain only the tech-staged cohort")
+    for profile_id in registry.get("timing_profile_order", []):
+        timing_profile_binding(registry, profile_id)
+    if registry.get("timing_profile_order") != [
+            "three_endpoint_5p0ns", "three_endpoint_5p7ns"] or \
+            set(registry.get("timing_profiles", {})) != set(
+                registry["timing_profile_order"]):
+        raise PlanError("Innovus timing-profile order/set mismatch")
     pointer = registry.get("committed_techmap_manifest", {})
     if registry.get("integration_state") != "ready" or set(pointer) != {
             "source_repository_commit", "publication_repository_commit", "path",
@@ -177,6 +191,84 @@ def load_contracts() -> tuple[dict[str, Any], dict[str, Any]]:
             sha256((HERE.parents[1] / mmmc["path"]).read_bytes()) != mmmc["sha256"]:
         raise PlanError("tracked producer-aligned MMMC template changed")
     return registry, authority
+
+
+def timing_profile_binding(registry: dict[str, Any], profile_id: str) -> dict[str, Any]:
+    pointer = registry.get("timing_cohort_manifest", {})
+    if pointer != {
+            "required_schema": "k2_w2_genus_timing_cohorts_v1",
+            "path": "physical/k2_w2_genus/timing_cohorts.json",
+            "sha256":
+            "9984726e8d955a891b863e41adb4519c27c3b650879de88d07f063ebc886404f",
+            }:
+        raise PlanError("Genus timing-cohort manifest pointer mismatch")
+    timing_path = ROOT / pointer["path"]
+    payload = timing_path.read_bytes()
+    if sha256(payload) != pointer["sha256"]:
+        raise PlanError("Genus timing-cohort manifest SHA mismatch")
+    timing_manifest = load_json(payload, "Genus timing-cohort manifest")
+    if (timing_manifest.get("schema") != pointer["required_schema"] or
+            timing_manifest.get("cohort_order") != registry.get(
+                "timing_profile_order") or
+            timing_manifest.get("goal_order") !=
+            registry["cohorts"]["tech_staged_complete_compositions"][
+                "exact_design_set"]):
+        raise PlanError("Genus/Innovus timing-cohort manifest mismatch")
+    genus_profile = timing_manifest.get("cohorts", {}).get(profile_id)
+    innovus_profile = registry.get("timing_profiles", {}).get(profile_id)
+    if not isinstance(genus_profile, dict) or not isinstance(innovus_profile, dict):
+        raise PlanError(f"unknown Innovus timing profile: {profile_id}")
+    expected_policy_fields = {
+        "period_ns", "clock_waveforms_ns", "strict_timing_environment",
+        "activity_timestamp_ratio",
+        "post_init_boundary_drive", "forwarded_link_clock",
+        "hold_fix_allow_setup_tns_degrade",
+    }
+    expected_boundary = {
+        "clock_ports": ["ref_clk_i", "sample_clk_i"],
+        "clock_drive": 0,
+        "nonclock_input_ports": ["rst_n", "source_pending_i"],
+        "nonclock_driving_cell": "BUFX2",
+    }
+    expected_forwarded = {
+        "master_source_port": "sample_clk_i",
+        "forward_source_pin": "*w2_ep_icg_0/ECK",
+        "target_port": "link_clk_o",
+        "divide_by": 1, "false_path": "FORBIDDEN",
+    }
+    if (set(innovus_profile) != expected_policy_fields or
+            innovus_profile["clock_waveforms_ns"] !=
+            genus_profile.get("clock_waveforms_ns") or
+            innovus_profile["strict_timing_environment"] !=
+            genus_profile.get("strict_timing_environment") or
+            innovus_profile["post_init_boundary_drive"] != expected_boundary or
+            innovus_profile["forwarded_link_clock"] != expected_forwarded or
+            innovus_profile["strict_timing_environment"].get(
+                "W2_REF_PERIOD_NS") != innovus_profile["period_ns"]):
+        raise PlanError("Innovus timing profile differs from Genus timing authority")
+    try:
+        period_ps = Decimal(innovus_profile["period_ns"]) * 1000
+    except (InvalidOperation, TypeError) as error:
+        raise PlanError("Innovus timing profile period is invalid") from error
+    ratio = innovus_profile["activity_timestamp_ratio"]
+    if set(ratio) != {"numerator", "denominator"} or \
+            not all(isinstance(ratio[key], int) and not isinstance(ratio[key], bool)
+                    for key in ratio) or ratio["denominator"] <= 0 or \
+            Decimal(10000 * ratio["numerator"]) / ratio["denominator"] != period_ps:
+        raise PlanError("Innovus activity ratio does not reproduce timing period")
+    expected_hold = profile_id == "three_endpoint_5p7ns"
+    if innovus_profile["hold_fix_allow_setup_tns_degrade"] is not expected_hold:
+        raise PlanError("hold setup-degrade policy must be true only for 5.7ns")
+    return {
+        "id": profile_id,
+        "period_ns": innovus_profile["period_ns"],
+        "genus_timing_manifest_sha256": pointer["sha256"],
+        "genus_timing_profile_sha256": sha256(canonical({
+            "id": profile_id, "profile": genus_profile})),
+        "innovus_timing_profile_sha256": sha256(canonical({
+            "id": profile_id, "profile": innovus_profile})),
+        "hold_fix_allow_setup_tns_degrade": expected_hold,
+    }
 
 
 def staged_common_ports(cohort: dict[str, Any]) -> list[dict[str, Any]]:
@@ -461,12 +553,56 @@ def command_tokens(text: str, command: str) -> set[str]:
     return result
 
 
+def command_rows(text: str, command: str) -> list[str]:
+    return [row.strip() for row in re.split(r"[;\n]", text.replace("\\\n", " "))
+            if re.search(rf"\b{re.escape(command)}\b", row)]
+
+
+def decimal_option(row: str, option: str) -> Decimal | None:
+    match = re.search(
+        rf"(?:^|\s)-{re.escape(option)}\s+"
+        r"([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))(?=\s|$)", row)
+    if match is None:
+        return None
+    try:
+        return Decimal(match.group(1))
+    except InvalidOperation:
+        return None
+
+
+def decimal_argument(row: str, command: str) -> Decimal | None:
+    match = re.search(
+        rf"\b{re.escape(command)}\b\s+"
+        r"([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))(?=\s|$)", row)
+    if match is None:
+        return None
+    try:
+        return Decimal(match.group(1))
+    except InvalidOperation:
+        return None
+
+
+def waveform(row: str) -> tuple[Decimal, Decimal] | None:
+    match = re.search(
+        r"-waveform\s+(?:\{|\[list\s+)?\s*"
+        r"([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))\s+"
+        r"([-+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+))",
+        row)
+    if match is None:
+        return None
+    try:
+        return Decimal(match.group(1)), Decimal(match.group(2))
+    except InvalidOperation:
+        return None
+
+
 def covered(tokens: set[str], name: str, width: int) -> bool:
     return name in tokens or name + "*" in tokens or name + "[*]" in tokens or \
         (width > 1 and all(f"{name}[{index}]" in tokens for index in range(width)))
 
 
-def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str) -> None:
+def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str,
+                 timing_profile: dict[str, Any]) -> None:
     try:
         text = payload.decode()
     except UnicodeDecodeError as error:
@@ -478,41 +614,83 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
     current = re.findall(r"^\s*current_design\s+\{?([A-Za-z_]\w*)\}?\s*$", text, re.MULTILINE)
     if current != [top]:
         raise PlanError("mapped SDC current_design/top mismatch")
+    clock_rows = command_rows(text, "create_clock")
+    waveform_keys = {
+        "ref_clk_i": "ref_clk",
+        "sample_clk_i": "sample_clk",
+    }
     for port in contract["clocks"]["input"]:
-        if not covered(command_tokens(text, "create_clock"), port, 1):
-            raise PlanError(f"mapped SDC missing input clock {port}")
-    for port in contract["clocks"]["generated"]:
-        generated_on_port = covered(
-            command_tokens(text, "create_generated_clock"), port, 1)
-        endpoint_prefix = contract["endpoint_root"]["stable_prefix"]
-        generated_on_icg = any(
-            endpoint_prefix in row and "w2_ep_icg_" in row and
-            re.search(r"get_pins\s+(?:\{)?[^\]}\n]*?/ECK(?:\})?", row)
-            for row in re.split(r"[;\n]", text.replace("\\\n", " "))
-            if "create_generated_clock" in row)
-        if not generated_on_port and not generated_on_icg:
-            raise PlanError(f"mapped SDC missing generated clock {port}")
+        rows = [row for row in clock_rows if covered(sdc_tokens(row), port, 1)]
+        expected_waveform = tuple(Decimal(str(value)) for value in
+                                  timing_profile["clock_waveforms_ns"][
+                                      waveform_keys[port]])
+        if len(rows) != 1 or waveform(rows[0]) != expected_waveform:
+            raise PlanError(f"mapped SDC input clock waveform mismatch: {port}")
+    reset_rows = [row for row in clock_rows
+                  if re.search(r"-name\s+\S*reset_release_clk\b", row)]
+    expected_reset_waveform = tuple(Decimal(str(value)) for value in
+                                    timing_profile["clock_waveforms_ns"][
+                                        "reset_release_clk"])
+    if len(reset_rows) != 1 or waveform(reset_rows[0]) != expected_reset_waveform:
+        raise PlanError("mapped SDC reset-release clock waveform mismatch")
+    generated_rows = command_rows(text, "create_generated_clock")
+    forwarded = timing_profile["forwarded_link_clock"]
+    endpoint_prefix = contract["endpoint_root"]["stable_prefix"]
+    forwarded_rows = [row for row in generated_rows
+                      if endpoint_prefix in row and "w2_ep_icg_" in row and
+                      re.search(r"get_pins\s+(?:\{)?[^\]}\n]*?/ECK(?:\})?", row)]
+    if len(forwarded_rows) != 1 or not re.search(
+            rf"-source\s+\[get_ports\s+(?:\{{)?"
+            rf"{re.escape(forwarded['master_source_port'])}"
+            rf"(?:\}})?\]", forwarded_rows[0]) or not re.search(
+            rf"-divide_by\s+{forwarded['divide_by']}\b", forwarded_rows[0]):
+        raise PlanError("mapped SDC lacks exact endpoint ECK generated clock source")
     for pin in contract["link_pins"]:
         if pin["name"] not in contract["clocks"]["generated"] and not covered(
                 command_tokens(text, "set_output_delay"), pin["name"], pin["width"]):
             raise PlanError(f"mapped SDC does not constrain link pin {pin['name']}")
-    periods = re.findall(r"\bcreate_clock\b[^\n;]*?-period\s+([0-9.]+)", text)
-    if not periods or any(float(value) != float(period) for value in periods):
+    expected_period = Decimal(period)
+    periods = [decimal_option(row, "period") for row in clock_rows]
+    if not periods or any(value != expected_period for value in periods):
         raise PlanError("mapped SDC create_clock period mismatch")
-    if "set_load" not in text or "set_input_transition" not in text or \
-            "set_clock_gating_check" not in text or "-clock_fall" not in text:
+    timing_environment = timing_profile["strict_timing_environment"]
+    exact_option_commands = (
+        ("set_input_delay", "min", "W2_INPUT_DELAY_MIN_NS"),
+        ("set_input_delay", "max", "W2_INPUT_DELAY_MAX_NS"),
+        ("set_output_delay", "min", "W2_OUTPUT_DELAY_MIN_NS"),
+        ("set_output_delay", "max", "W2_OUTPUT_DELAY_MAX_NS"),
+        ("set_min_pulse_width", "high", "W2_MIN_PULSE_HIGH_NS"),
+        ("set_min_pulse_width", "low", "W2_MIN_PULSE_LOW_NS"),
+    )
+    for command, option, environment_key in exact_option_commands:
+        rows = [row for row in command_rows(text, command)
+                if decimal_option(row, option) is not None]
+        expected = Decimal(timing_environment[environment_key])
+        if not rows or any(decimal_option(row, option) != expected for row in rows):
+            raise PlanError(f"mapped SDC {command} -{option} value mismatch")
+    for command, environment_key in (
+            ("set_clock_uncertainty", "W2_CLOCK_UNCERTAINTY_NS"),
+            ("set_input_transition", "W2_INPUT_TRANSITION_NS"),
+            ("set_load", "W2_OUTPUT_LOAD_PF")):
+        rows = command_rows(text, command)
+        expected = Decimal(timing_environment[environment_key])
+        if not rows or any(decimal_argument(row, command) != expected for row in rows):
+            raise PlanError(f"mapped SDC {command} value mismatch")
+    if "set_clock_gating_check" not in text or "-clock_fall" not in text:
         raise PlanError("mapped SDC lost load/driver/gating/DDR constraint classes")
-    gating_rows = [row.strip() for row in re.split(
-        r"[;\n]", text.replace("\\\n", " ")) if "set_clock_gating_check" in row]
+    gating_rows = command_rows(text, "set_clock_gating_check")
     targeted_gating_rows = [row for row in gating_rows
                             if re.search(r"\[get_(?:pins|clocks)\b", row)]
     default_gating_rows = [row for row in gating_rows
                            if row not in targeted_gating_rows]
-    endpoint_prefix = contract["endpoint_root"]["stable_prefix"]
     if len(targeted_gating_rows) != 1 or \
             any(not re.fullmatch(
                 r"set_clock_gating_check\s+-(?:setup|hold)\s+0(?:\.0+)?", row)
                 for row in default_gating_rows) or \
+            decimal_option(targeted_gating_rows[0], "setup") != \
+            Decimal(timing_environment["W2_CLOCK_GATING_SETUP_NS"]) or \
+            decimal_option(targeted_gating_rows[0], "hold") != \
+            Decimal(timing_environment["W2_CLOCK_GATING_HOLD_NS"]) or \
             endpoint_prefix not in targeted_gating_rows[0] or \
             "w2_ep_icg_" not in targeted_gating_rows[0] or \
             not re.search(r"get_pins\s+(?:\{)?[^\]}\n]*?/E(?:\})?",
@@ -521,6 +699,8 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
         raise PlanError("mapped SDC gating check is not exact endpoint ICG E only")
     false_rows = [row.strip() for row in re.split(
         r"[;\n]", text.replace("\\\n", " ")) if "set_false_path" in row]
+    if any("link_clk_o" in row or "sample_clk_i" in row for row in false_rows):
+        raise PlanError("forwarded generated link clock may not be false-pathed")
     if false_rows:
         nonlink_outputs = []
         nonlink_contract = [
@@ -724,7 +904,8 @@ def validate_genus(producer: dict[str, Any], design: str, top: str,
                    template: dict[str, str],
                    endpoint_contract: dict[str, Any],
                    whole_inventory: dict[str, int],
-                   authority: dict[str, Any]) -> tuple[Path, str, Path, str, Path, str,
+                   authority: dict[str, Any],
+                   timing: dict[str, Any]) -> tuple[Path, str, Path, str, Path, str,
                                                        Path, str]:
     if set(producer) != {"kind", "receipt", "innovus_handoff",
                          "endpoint_connectivity_map", "mapped_functional_gate"} or \
@@ -741,6 +922,34 @@ def validate_genus(producer: dict[str, Any], design: str, top: str,
     functional_path, functional_sha, functional_payload = bound_payload(
         producer["mapped_functional_gate"], "mapped functional gate receipt")
     functional = load_json(functional_payload, "mapped functional gate receipt")
+    expected_timing_manifest = {
+        "path": "physical/k2_w2_genus/timing_cohorts.json",
+        "sha256": timing["genus_timing_manifest_sha256"],
+        "required_schema": "k2_w2_genus_timing_cohorts_v1",
+    }
+    receipt_timing = receipt.get("timing_cohort", {})
+    timing_profile_fields = {
+        "period_ns", "clock_waveforms_ns", "strict_timing_environment"}
+    timing_identity_fields = {
+        "id", "manifest_path", "manifest_sha256", "profile_sha256"}
+    if (not isinstance(receipt_timing, dict) or
+            set(receipt_timing) != timing_profile_fields | timing_identity_fields or
+            receipt_timing.get("id") != timing["id"] or
+            str(receipt_timing.get("period_ns")) != timing["period_ns"] or
+            receipt_timing.get("manifest_path") != expected_timing_manifest["path"] or
+            receipt_timing.get("manifest_sha256") !=
+            timing["genus_timing_manifest_sha256"] or
+            receipt_timing.get("profile_sha256") !=
+            timing["genus_timing_profile_sha256"] or
+            sha256(canonical({
+                "id": timing["id"],
+                "profile": {key: receipt_timing[key]
+                            for key in timing_profile_fields},
+            })) != timing["genus_timing_profile_sha256"] or
+            receipt.get("timing_cohort_manifest") != expected_timing_manifest or
+            handoff.get("timing_cohort_manifest") != expected_timing_manifest or
+            handoff.get("timing_cohort") != receipt_timing):
+        raise PlanError("Genus receipt/handoff timing-profile mismatch")
     if receipt.get("schema") != "k2_w2_genus_exact_three_endpoint_receipt_v3" or \
             receipt.get("status") != "PASS_EXACT_THREE_ENDPOINT_GENUS_TIMING_POWER_HOLD" or \
             receipt.get("design") != design or receipt.get("top") != top or \
@@ -757,7 +966,10 @@ def validate_genus(producer: dict[str, Any], design: str, top: str,
             receipt.get("innovus_handoff_sha256") != handoff_sha or \
             handoff.get("design") != design or handoff.get("top") != top or \
             handoff.get("strict_input_sdc_sha256") != template["sha256"] or \
-            receipt.get("strict_sdc_sha256") != template["sha256"]:
+            receipt.get("strict_sdc_sha256") != template["sha256"] or \
+            not SHA256.fullmatch(str(receipt.get("materialized_sdc_sha256", ""))) or \
+            handoff.get("materialized_input_sdc_sha256") != \
+            receipt.get("materialized_sdc_sha256"):
         raise PlanError("Genus v3 receipt/manifest/handoff identity mismatch")
     inventory = receipt.get("mapped_inventory", {})
     endpoint_counts = endpoint_contract["leaf_counts"]
@@ -859,14 +1071,22 @@ def validate_activity(value: Any) -> tuple[Path, str, str, str, str, str]:
 def validate_plan(plan_path: Path) -> list[Binding]:
     plan = load_json(stable_read(plan_path.absolute()), "Innovus plan")
     required = {"schema", "cohort", "purpose", "ranking_eligible",
+                "timing_profile",
                 "staged_manifest", "server_environment", "runs"}
-    if set(plan) != required or plan.get("schema") != "k2_w2_innovus_plan_v2":
+    if set(plan) != required or plan.get("schema") != "k2_w2_innovus_plan_v3":
         raise PlanError("Innovus plan schema/field set mismatch")
     registry, authority = load_contracts()
     cohort_name = "tech_staged_complete_compositions"
     if plan["cohort"] != cohort_name:
         raise PlanError("only tech-staged final cohort may be launched")
     cohort = registry["cohorts"][cohort_name]
+    requested_timing = plan["timing_profile"]
+    if not isinstance(requested_timing, dict) or set(requested_timing) != {"id", "profile_sha256"}:
+        raise PlanError("plan timing-profile selector is malformed")
+    timing = timing_profile_binding(registry, requested_timing["id"])
+    if requested_timing["profile_sha256"] != timing["innovus_timing_profile_sha256"]:
+        raise PlanError("plan timing-profile SHA mismatch")
+    timing_policy = registry["timing_profiles"][timing["id"]]
     if plan["purpose"] != cohort["purpose"] or plan["ranking_eligible"] is not True:
         raise PlanError("plan purpose/ranking mismatch")
     manifest_path, manifest_sha, manifest = validate_staged_manifest(
@@ -900,6 +1120,8 @@ def validate_plan(plan_path: Path) -> list[Binding]:
         if run["clocks"] != contract["clocks"] or run["link_pins"] != contract["link_pins"]:
             raise PlanError("plan clock/link contract mismatch")
         period = run["period_ns"]
+        if period != timing["period_ns"]:
+            raise PlanError("plan period differs from selected timing profile")
         if period_seen is None:
             period_seen = period
         elif period != period_seen:
@@ -915,13 +1137,13 @@ def validate_plan(plan_path: Path) -> list[Binding]:
         whole_inventory = validate_netlist(
             netlist_payload, top, contract, cohort["common_ports"],
             endpoint_contract, endpoint_map)
-        validate_sdc(sdc_payload, top, contract, period)
+        validate_sdc(sdc_payload, top, contract, period, timing_policy)
         template = authority["constraint_templates"][contract["constraint_template"]]
         (producer, producer_sha, handoff, handoff_sha, endpoint_map_path,
          endpoint_map_sha, mapped_functional, mapped_functional_sha) = validate_genus(
             run["producer"], design, top, netlist_sha, sdc_sha,
             producer_staged_identity, manifest["technology_authorities"], template,
-            endpoint_contract, whole_inventory, authority)
+            endpoint_contract, whole_inventory, authority, timing)
         activity = validate_activity(run["activity"])
         output = Path(run["output_dir"])
         if not output.is_absolute() or output.exists() or output in outputs:
@@ -933,7 +1155,12 @@ def validate_plan(plan_path: Path) -> list[Binding]:
                 raise PlanError("per-run evidence file reused across runs")
             seen.add(path)
         bindings.append(Binding(
-            design, top, cohort_name, period, netlist, netlist_sha, sdc, sdc_sha,
+            design, top, cohort_name, period,
+            timing["id"], timing["genus_timing_manifest_sha256"],
+            timing["genus_timing_profile_sha256"],
+            timing["innovus_timing_profile_sha256"],
+            timing["hold_fix_allow_setup_tns_degrade"],
+            netlist, netlist_sha, sdc, sdc_sha,
             output, producer, producer_sha, handoff, handoff_sha,
             endpoint_map_path, endpoint_map_sha,
             mapped_functional, mapped_functional_sha,
@@ -948,7 +1175,7 @@ def descriptor(binding: Binding) -> dict[str, Any]:
     for key, item in list(value.items()):
         if isinstance(item, Path):
             value[key] = str(item)
-    return {"schema": "k2_w2_innovus_execution_descriptor_v1", "binding": value,
+    return {"schema": "k2_w2_innovus_execution_descriptor_v2", "binding": value,
             "registry_sha256": sha256(REGISTRY_PATH.read_bytes()),
             "authority_sha256": sha256(AUTHORITY_PATH.read_bytes())}
 
@@ -958,7 +1185,7 @@ def verify_descriptor(path: Path, expected_sha: str, environment: dict[str, str]
     if not SHA256.fullmatch(expected_sha) or sha256(payload) != expected_sha:
         raise PlanError("execution descriptor SHA mismatch")
     value = load_json(payload, "execution descriptor")
-    if value.get("schema") != "k2_w2_innovus_execution_descriptor_v1" or \
+    if value.get("schema") != "k2_w2_innovus_execution_descriptor_v2" or \
             value.get("registry_sha256") != sha256(REGISTRY_PATH.read_bytes()) or \
             value.get("authority_sha256") != sha256(AUTHORITY_PATH.read_bytes()):
         raise PlanError("execution descriptor authority mismatch")
@@ -973,11 +1200,27 @@ def verify_descriptor(path: Path, expected_sha: str, environment: dict[str, str]
         raw[key] = Path(raw[key])
     binding = Binding(**raw)
     registry, authority = load_contracts()
+    timing = timing_profile_binding(registry, binding.timing_profile_id)
+    if (binding.period_ns != timing["period_ns"] or
+            binding.genus_timing_manifest_sha256 !=
+            timing["genus_timing_manifest_sha256"] or
+            binding.genus_timing_profile_sha256 !=
+            timing["genus_timing_profile_sha256"] or
+            binding.innovus_timing_profile_sha256 !=
+            timing["innovus_timing_profile_sha256"] or
+            binding.hold_fix_allow_setup_tns_degrade is not
+            timing["hold_fix_allow_setup_tns_degrade"]):
+        raise PlanError("execution descriptor timing-profile mismatch")
     policy = authority["physical_policy"]
     env_map = {
         "AER_TOP": binding.top, "AER_PNR_NETLIST": str(binding.netlist),
         "AER_PNR_SDC": str(binding.sdc), "AER_PNR_OUTPUT_DIR": str(binding.output_dir),
         "AER_W2_COHORT": binding.cohort, "AER_W2_DESIGN": binding.design,
+        "AER_W2_TIMING_PROFILE": binding.timing_profile_id,
+        "AER_W2_TIMING_PROFILE_SHA256": binding.innovus_timing_profile_sha256,
+        "AER_W2_PERIOD_NS": binding.period_ns,
+        "AER_HOLD_FIX_ALLOW_SETUP_TNS_DEGRADE":
+            str(binding.hold_fix_allow_setup_tns_degrade).lower(),
         "AER_ACTIVITY_FILE": str(binding.activity_path),
         "AER_ACTIVITY_FORMAT": binding.activity_format,
         "AER_ACTIVITY_SCOPE": binding.activity_scope,
@@ -1067,6 +1310,12 @@ def execute_plan(bindings: list[Binding]) -> None:
                 "AER_TOP": binding.top, "AER_PNR_NETLIST": str(binding.netlist),
                 "AER_PNR_SDC": str(binding.sdc), "AER_PNR_OUTPUT_DIR": str(binding.output_dir),
                 "AER_W2_COHORT": binding.cohort, "AER_W2_DESIGN": binding.design,
+                "AER_W2_TIMING_PROFILE": binding.timing_profile_id,
+                "AER_W2_TIMING_PROFILE_SHA256":
+                    binding.innovus_timing_profile_sha256,
+                "AER_W2_PERIOD_NS": binding.period_ns,
+                "AER_HOLD_FIX_ALLOW_SETUP_TNS_DEGRADE":
+                    str(binding.hold_fix_allow_setup_tns_degrade).lower(),
                 "AER_ACTIVITY_FILE": str(binding.activity_path),
                 "AER_ACTIVITY_FORMAT": binding.activity_format,
                 "AER_ACTIVITY_SCOPE": binding.activity_scope,
@@ -1121,7 +1370,8 @@ def main(argv: list[str] | None = None) -> int:
         bindings = validate_plan(args.plan)
         if args.execute:
             execute_plan(bindings)
-        print(f"W2_INNOVUS_PLAN_VALID cohort={bindings[0].cohort} runs={len(bindings)} "
+        print(f"W2_INNOVUS_PLAN_VALID cohort={bindings[0].cohort} "
+              f"timing_profile={bindings[0].timing_profile_id} runs={len(bindings)} "
               f"mode={'execute' if args.execute else 'validate-only'}")
         return 0
     except (OSError, PlanError, subprocess.SubprocessError) as error:
