@@ -611,8 +611,8 @@ def verify_tool(path: Path, contract_row: dict[str, Any]) -> dict[str, Any]:
         if any(token.casefold() in line.casefold() for token in version_tokens)
     ]
     versions = sorted(set(re.findall(
-        r"(?<![A-Za-z0-9_.-])\d{2}\.\d{2}-s\d+(?:_\d+)?(?![A-Za-z0-9_.-])",
-        "\n".join(product_lines))))
+        r"(?<![A-Za-z0-9_.-])v?(\d{2}\.\d{2}-s\d+(?:_\d+)?)(?![A-Za-z0-9_.-])",
+        "\n".join(product_lines), re.IGNORECASE)))
     if versions != [contract_row["version"]]:
         raise PreflightError(
             f"tool parsed version mismatch: {path}: {versions} != "
