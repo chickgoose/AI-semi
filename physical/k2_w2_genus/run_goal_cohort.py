@@ -29,7 +29,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             sys.executable, "-B", str(runner),
             "--repo-root", str(args.repo_root.resolve()),
             "--design", key,
-            "--genus", str(args.genus.resolve()),
+            "--genus", str(args.genus.absolute()),
             "--library", str(args.library.resolve()),
             "--hold-library", str(args.hold_library.resolve()),
             "--cell-lef", str(args.cell_lef.resolve()),

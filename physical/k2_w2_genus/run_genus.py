@@ -135,7 +135,8 @@ def verify_server_environment_receipt(
     }
     identities = gates["technology_files"]["evidence"]
     supplied_tool = tool_identity(genus)
-    if (tool.get("path") != supplied_tool["resolved_path"] or
+    if (tool.get("path") != supplied_tool["requested_path"] or
+            tool.get("resolved_path") != supplied_tool["resolved_path"] or
             tool.get("sha256") != supplied_tool["sha256"] or
             tool.get("parsed_version") not in supplied_tool["version_output"]):
         raise FlowError("Genus executable is not the proven server executable")
@@ -1086,7 +1087,7 @@ def tool_identity(path: Path) -> dict[str, Any]:
     if not os.access(resolved, os.X_OK):
         raise FlowError(f"tool is not executable: {resolved}")
     version = subprocess.run(
-        [str(resolved), "-version"], stdout=subprocess.PIPE,
+        [str(path), "-version"], stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, text=True, check=False,
     )
     if version.returncode:
@@ -1812,7 +1813,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "mmmc_template": registry["mmmc_template_identity"],
         "genus": tool_before,
         "driver_tcl_sha256": tcl_hash,
-        "genus_command": [tool_before["resolved_path"], "-batch", "-files",
+        "genus_command": [tool_before["requested_path"], "-batch", "-files",
                           "bundle/genus_driver.tcl"],
         "clock_gating_insertion": True,
         "scan_mapping": False,
@@ -1845,7 +1846,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
     })
     environment.update(registry["strict_timing_environment"])
     run = subprocess.run(
-        [tool_before["resolved_path"], "-batch", "-files", str(tcl_snapshot)],
+        [tool_before["requested_path"], "-batch", "-files", str(tcl_snapshot)],
         cwd=attempt, env=environment, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, check=False,
     )
