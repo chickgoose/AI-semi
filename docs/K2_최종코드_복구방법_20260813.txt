@@ -1,0 +1,29 @@
+K2 디지털 최종 코드 복구 방법
+
+Windows 보관 파일:
+C:\Users\박준영\AI-semi\AI-semi-k2-digital-final-20260813.bundle
+
+Bundle SHA-256:
+3bca3800e5e6233cf94f274aad6125bb7705bef7489c7a9973f1f42df0184c63
+
+포함 브랜치:
+integration/k2-digital-final
+
+최종 commit:
+69400c7d5beac2e9a75d59c8287caf17c4b0acc4
+
+새 폴더에 복구:
+git clone AI-semi-k2-digital-final-20260813.bundle AI-semi-k2-final
+cd AI-semi-k2-final
+git switch integration/k2-digital-final
+
+기존 저장소에 가져오기:
+git fetch AI-semi-k2-digital-final-20260813.bundle integration/k2-digital-final:refs/heads/integration/k2-digital-final
+
+최종 현황 문서:
+C:\Users\박준영\AI-semi\docs\K2_디지털개발_최종현황_20260813.txt
+
+주의:
+- 이 bundle은 디지털 RTL/검증 통합본이다.
+- 물리 PPA, STA, P&R, activity-based power와 CDC/RDC는 HOLD 상태다.
+- capacity22는 full50의 부분집합이며 독립 표본으로 합산하면 안 된다.
