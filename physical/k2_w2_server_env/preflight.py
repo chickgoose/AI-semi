@@ -447,10 +447,20 @@ def inspect_liberty(payload: bytes, expected_pvt: list[float] | None,
         pins = named_brace_blocks(cell, "pin")
         observed_pins = {
             name: liberty_attribute(block, "direction") for name, block in pins.items()}
-        if observed_pins != requirement["liberty_pins"]:
+        required_pins = requirement["liberty_pins"]
+        required_mismatch = {
+            name: observed_pins.get(name) for name in required_pins
+            if observed_pins.get(name) != required_pins[name]
+        }
+        unexpected_external = {
+            name: direction for name, direction in observed_pins.items()
+            if name not in required_pins and direction != "internal"
+        }
+        if required_mismatch or unexpected_external:
             raise PreflightError(
                 f"Liberty pin contract mismatch: {cell_name}: "
-                f"{observed_pins} != {requirement['liberty_pins']}")
+                f"required_mismatch={required_mismatch}, "
+                f"unexpected_external={unexpected_external}")
         row: dict[str, Any] = {"pins": observed_pins, "role": requirement["role"]}
         if "integrated_clock_gating" in requirement:
             observed_icg = liberty_attribute(cell, "clock_gating_integrated_cell")

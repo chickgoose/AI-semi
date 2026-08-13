@@ -51,6 +51,7 @@ SLOW = """library (slow) {
   nom_temperature : 125.0;
   cell (TLATNTSCAX2) {
     clock_gating_integrated_cell : latch_posedge_precontrol;
+    pin (EINT) { direction : internal; }
     pin (E) { direction : input; }
     pin (SE) { direction : input; }
     pin (CK) { direction : input; }
@@ -549,6 +550,11 @@ class PreflightTests(unittest.TestCase):
 
     def test_missing_icg_se_pin(self) -> None:
         self.semantic_mutation("pin (SE)", "pin (BAD_SE)")
+
+    def test_unpinned_extra_external_liberty_pin(self) -> None:
+        self.semantic_mutation(
+            "pin (EINT) { direction : internal; }",
+            "pin (EINT) { direction : input; }")
 
     def test_missing_negedge_recovery_arc(self) -> None:
         self.semantic_mutation("recovery_falling", "recovery_rising")
