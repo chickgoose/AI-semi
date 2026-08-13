@@ -39,7 +39,7 @@ BAD_TOOL_LOG = re.compile(
     r"seg(?:mentation)?\s+fault|simulation\s+failed"
 )
 BAD_SDF_LOG = re.compile(
-    r"(?mi)\*[WE],SDF|SDF[^\n]*(?:error|failed|not\s+annotated|0\s+annotated)"
+    r"(?mi)\*E,SDF|SDF[^\n]*(?:error|failed|pathdelays[^\n]*0\s+annotated)"
 )
 
 
@@ -411,9 +411,23 @@ def produce(args: argparse.Namespace) -> Path:
          "+ACTIVITY_VCD=" + str(raw_vcd), "+ACTIVITY_WINDOW=" + str(window),
          "+RETIRE_LEDGER=" + str(ledger)], output, log)
     tool_text = log.read_text(errors="replace")
+    sdf_warnings = re.findall(r"(?m)^xmelab: \*W,(SDF[A-Z0-9]+):", tool_text)
+    annotation = re.findall(
+        r"Annotation completed with (\d+) Errors and (\d+) Warnings", tool_text)
+    pathdelays = re.findall(
+        r"No\. of Pathdelays\s*=\s*(\d+).*?Annotated\s*=\s*100\.00%\s*\((\d+)/(\d+)\)",
+        tool_text)
+    tchecks = re.findall(
+        r"No\. of Tchecks\s*=\s*(\d+).*?Annotated\s*=\s*0\.00%\s*\((\d+)/(\d+)\)",
+        tool_text)
     if tool_text.count("K2_POSTROUTE_SDF_REQUESTED scope=aer_clean_tb.candidate.dut") != 1 or \
             tool_text.count("AER_CLEAN_TEST_PASS") != 1 or \
-            BAD_TOOL_LOG.search(tool_text) or BAD_SDF_LOG.search(tool_text):
+            BAD_TOOL_LOG.search(tool_text) or BAD_SDF_LOG.search(tool_text) or \
+            len(annotation) != 1 or annotation[0][0] != "0" or \
+            set(sdf_warnings) - {"SDFNET"} or \
+            len(pathdelays) != 1 or int(pathdelays[0][0]) <= 0 or \
+            pathdelays[0][0] != pathdelays[0][1] or \
+            pathdelays[0][1] != pathdelays[0][2] or len(tchecks) != 1:
         raise ActivityError("Xcelium/SDF/common-TB completion log gate failed")
     counts = validate_functional_evidence(summary, events, ledger)
 
@@ -464,7 +478,16 @@ def produce(args: argparse.Namespace) -> Path:
                          "run_manifest": manifest_snapshot},
         "postroute": {"netlist": netlist_snapshot, "sdf": sdf_snapshot,
                       "models": model_snapshots,
-                      "sdf_annotation": "PASS_NO_SDF_WARNING"},
+                      "sdf_annotation": {
+                          "status": "PASS_PATHDELAYS_100_PERCENT",
+                          "pathdelays": int(pathdelays[0][0]),
+                          "errors": 0,
+                          "warnings": int(annotation[0][1]),
+                          "warning_codes": sorted(set(sdf_warnings)),
+                          "timing_checks_total": int(tchecks[0][0]),
+                          "timing_checks_annotated": int(tchecks[0][1]),
+                          "timing_checks_authority":
+                              "INNOVUS_POSTROUTE_STA_NOT_GLS_VENDOR_MODEL"}},
         "tool": {"xrun": xrun_id,
                  "version_output": artifacts["xrun.version.txt"]},
         "producer_sources": source_snapshots,
