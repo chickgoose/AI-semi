@@ -482,7 +482,15 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
         if not covered(command_tokens(text, "create_clock"), port, 1):
             raise PlanError(f"mapped SDC missing input clock {port}")
     for port in contract["clocks"]["generated"]:
-        if not covered(command_tokens(text, "create_generated_clock"), port, 1):
+        generated_on_port = covered(
+            command_tokens(text, "create_generated_clock"), port, 1)
+        endpoint_prefix = contract["endpoint_root"]["stable_prefix"]
+        generated_on_icg = any(
+            endpoint_prefix in row and "w2_ep_icg_" in row and
+            re.search(r"get_pins\s+(?:\{)?[^\]}\n]*?/ECK(?:\})?", row)
+            for row in re.split(r"[;\n]", text.replace("\\\n", " "))
+            if "create_generated_clock" in row)
+        if not generated_on_port and not generated_on_icg:
             raise PlanError(f"mapped SDC missing generated clock {port}")
     for pin in contract["link_pins"]:
         if pin["name"] not in contract["clocks"]["generated"] and not covered(
