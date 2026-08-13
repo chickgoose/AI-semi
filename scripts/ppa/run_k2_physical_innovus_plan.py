@@ -1011,7 +1011,20 @@ def verify_descriptor(path: Path, expected_sha: str, environment: dict[str, str]
             sha256(stable_read(setup_qrc)) != qrc["sha256"]:
         raise PlanError("server QRC must be exact shared gpdk045.tch")
     tool = Path(environment.get("AER_INNOVUS_BIN", "innovus"))
-    if str(tool) != authority["tool"]["path"] or sha256(stable_read(tool)) != authority["tool"]["sha256"]:
+    environment_receipt = load_json(
+        stable_read(binding.environment_path), "PROVEN_ENVIRONMENT receipt")
+    tool_evidence = environment_receipt["gates"]["tool_executables"][
+        "evidence"]["innovus"]
+    if not tool.is_symlink():
+        raise PlanError("Innovus entrypoint is not the proven symlink wrapper")
+    link_before = os.readlink(tool)
+    resolved = tool.resolve(strict=True)
+    resolved_payload = stable_read(resolved)
+    link_after = os.readlink(tool)
+    if str(tool) != authority["tool"]["path"] or \
+            str(resolved) != tool_evidence.get("resolved_path") or \
+            link_before != link_after or \
+            sha256(resolved_payload) != authority["tool"]["sha256"]:
         raise PlanError("Innovus executable identity mismatch")
     if binding.output_dir.exists():
         raise PlanError("descriptor output directory already exists")
