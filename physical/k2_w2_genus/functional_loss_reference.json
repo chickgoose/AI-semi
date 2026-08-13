@@ -1,0 +1,45 @@
+{
+  "schema": "k2_w2_functional_loss_reference_v1",
+  "cohort": "fovea_cluster2_functional_loss_only",
+  "qualification": "NON_OFFICIAL_WORKSPACE_DIFF",
+  "claim_scope": "FULL50_GENERATED_ACCEPTED_DELIVERED_OVERRUN_ONLY_NOT_PPA",
+  "archive_filename": "eval-fovea-cluster2.yZr1kmYL.tar.gz",
+  "archive_sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39",
+  "ledger_prefix": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL/",
+  "ledger_entries": 338,
+  "snapshot_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+  "binding_reset_quiet_arming_patch": "workspace-diff",
+  "snapshot_archive_sha256": "3a970fd551e9ec7e2cc645e559889e30eaac4d9ec64152631e2e336e2c9664c3",
+  "simulator": "xrun(64)\t23.09-s013",
+  "excluded_artifacts": ["eval-driver-final.log"],
+  "candidates": {
+    "fovea": {
+      "run_passes": 50,
+      "reset_generated": 16,
+      "reset_accepted": 16,
+      "reset_delivered": 16,
+      "pairwise_status": 0,
+      "full50": {"generated": 106416, "accepted": 78229, "delivered": 78229, "overrun": 28187}
+    },
+    "cluster2": {
+      "run_passes": 50,
+      "reset_generated": 16,
+      "reset_accepted": 16,
+      "reset_delivered": 16,
+      "pairwise_status": 0,
+      "full50": {"generated": 106416, "accepted": 94157, "delivered": 94157, "overrun": 12259}
+    }
+  },
+  "anchors": {
+    "cluster2-run.log": [223090, "4a37e3e7107be0777d87a64b5ed5ff4cd104a592845a98611d9f0841cc73db68"],
+    "fovea-run.log": [222840, "32e0c008cf6e1b5918a1b0e8c4394b23fe4f8e91d9fb155ddb7f5170674c81f8"],
+    "provenance.txt": [398, "b9d119828a457886b80b5ae95b13d10a1d00541f52afd4d5cb127a48be89bdd0"],
+    "result-artifacts.sha256": [58277, "dd3799d9feefaa5c781eae3fbc84e0d1976aedeb3a68f1b8b245e64dc342b4a4"],
+    "results/cluster2/full50-nonmixed48.aggregate.json": [169066, "7ab2471eb186792d38aadbe2c46265c2a3243ec7fd6c4ef3c915205a4ae8e44e"],
+    "results/cluster2/pairwise-cross-map.status": [2, "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"],
+    "results/cluster2/reset/basic_reset_drain.log": [5208, "a70deceeb2a122b848675cc211a81966ad0e46cc53a294a4b04af70d1316eef1"],
+    "results/fovea/full50-nonmixed48.aggregate.json": [170947, "f926587246fe9d23c6bb3222502fcc11c488da7f3425eeefd7e3fea7a4f3529f"],
+    "results/fovea/pairwise-cross-map.status": [2, "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"],
+    "results/fovea/reset/basic_reset_drain.log": [5216, "48580287210048138f76b671ecd8408c3f90d1d7733c8934fa175befdbc1f78c"]
+  }
+}

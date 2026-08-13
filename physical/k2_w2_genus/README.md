@@ -26,6 +26,15 @@ buffered archives share byte-identical native core RTL but remain distinct
 measurement cohorts. Neither cohort's reports are promoted as endpoint
 candidate results.
 
+The functional loss-only reference is
+`eval-fovea-cluster2.yZr1kmYL.tar.gz`, SHA-256
+`22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39`.
+The verifier binds `provenance.txt`, both candidate run logs, the exact original
+attempt prefix, all 338 ledger entries, reset and pairwise status, and the
+archive. It deliberately excludes the stale outer `eval-driver-final.log`.
+This is labeled `NON_OFFICIAL_WORKSPACE_DIFF` and may support only generated,
+accepted, delivered and overrun accounting. It is forbidden as PPA evidence.
+
 The driver follows the byte-proven golden command order and assumptions:
 Genus `23.14-s090_1`, `slow_vdd1v0_basicCells.lib`, automatic clock-gating
 enabled, `read_hdl`, elaborate, SDC load, generic/map/opt, then the three real
@@ -76,6 +85,7 @@ python3 physical/k2_w2_genus/run_genus.py \
   --library /absolute/slow_vdd1v0_basicCells.lib \
   --golden-archive /tmp/ganghee-pnr-golden-20260813.tar.gz \
   --raw-golden-archive /tmp/ganghee-pnr-raw-golden-20260813.tar.gz \
+  --functional-loss-archive /tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz \
   --mapped-smoke-hook /absolute/pinned/mapped-smoke-hook \
   --output-root /absolute/new-results-root \
   --attempt a2-p6-period5-attempt1

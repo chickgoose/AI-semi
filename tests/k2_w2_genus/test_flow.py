@@ -19,6 +19,7 @@ SMOKE = FIXTURES / "mapped_smoke.py"
 FABRICATED_SMOKE = FIXTURES / "fabricated_smoke.py"
 GOLDEN_ARCHIVE = Path("/tmp/ganghee-pnr-golden-20260813.tar.gz")
 RAW_GOLDEN_ARCHIVE = Path("/tmp/ganghee-pnr-raw-golden-20260813.tar.gz")
+FUNCTIONAL_LOSS_ARCHIVE = Path("/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz")
 
 
 def load_flow():
@@ -38,7 +39,8 @@ class GenusFlowTests(unittest.TestCase):
                mode: str = "pass",
                smoke: Path | None = SMOKE,
                golden_archive: Path | None = GOLDEN_ARCHIVE,
-               raw_golden_archive: Path | None = RAW_GOLDEN_ARCHIVE
+               raw_golden_archive: Path | None = RAW_GOLDEN_ARCHIVE,
+               functional_loss_archive: Path | None = FUNCTIONAL_LOSS_ARCHIVE,
                ) -> subprocess.CompletedProcess[str]:
         command = [
             "python3", "-B", str(FLOW), "--repo-root", str(ROOT),
@@ -50,6 +52,8 @@ class GenusFlowTests(unittest.TestCase):
             command.extend(["--golden-archive", str(golden_archive)])
         if raw_golden_archive is not None:
             command.extend(["--raw-golden-archive", str(raw_golden_archive)])
+        if functional_loss_archive is not None:
+            command.extend(["--functional-loss-archive", str(functional_loss_archive)])
         if smoke is not None:
             command.extend(["--mapped-smoke-hook", str(smoke)])
         environment = os.environ.copy()
@@ -62,6 +66,8 @@ class GenusFlowTests(unittest.TestCase):
     def test_registry_exact_five_and_all_sources_match_commit(self):
         self.assertTrue(GOLDEN_ARCHIVE.is_file(), "authoritative archive is required")
         self.assertTrue(RAW_GOLDEN_ARCHIVE.is_file(), "authoritative raw archive is required")
+        self.assertTrue(
+            FUNCTIONAL_LOSS_ARCHIVE.is_file(), "functional loss archive is required")
         registry = self.module.load_registry()
         self.assertEqual(set(registry["designs"]), {
             "a2_k2", "a3_k2", "p6_endpoint", "a2_p6", "a3_p6"})
@@ -97,6 +103,23 @@ class GenusFlowTests(unittest.TestCase):
                 "TCL_LOG_REPORT_NETLIST_SDC_SOURCE_COMPLETE",
             )
 
+    def test_functional_loss_archive_exact_ledger_logs_and_totals(self):
+        reference = self.module.load_functional_loss_reference()
+        with tempfile.TemporaryDirectory(prefix="k2-w2-functional-loss-") as directory:
+            identity = self.module.verify_functional_loss_archive(
+                FUNCTIONAL_LOSS_ARCHIVE,
+                Path(directory) / reference["archive_filename"], reference,
+            )
+            self.assertEqual(identity["ledger"], "PASS_338_OF_338_EXACT_PREFIX")
+            self.assertEqual(identity["outer_driver_log"], "EXCLUDED_STALE")
+            self.assertEqual(identity["ppa_use"], "FORBIDDEN")
+            self.assertEqual(identity["full50_loss_totals"]["fovea"], {
+                "generated": 106416, "accepted": 78229,
+                "delivered": 78229, "overrun": 28187})
+            self.assertEqual(identity["full50_loss_totals"]["cluster2"], {
+                "generated": 106416, "accepted": 94157,
+                "delivered": 94157, "overrun": 12259})
+
     def test_all_five_designs_publish_bound_receipts(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-genus-") as directory:
             output = Path(directory)
@@ -112,7 +135,8 @@ class GenusFlowTests(unittest.TestCase):
                 self.assertEqual(receipt["mapped_smoke"]["status"], "PASS")
                 cohorts = receipt["evidence_cohorts"]
                 self.assertEqual(set(cohorts), {
-                    "raw_reference", "buffered_reference", "endpoint_candidate"})
+                    "raw_reference", "buffered_reference", "endpoint_candidate",
+                    "functional_loss_reference"})
                 self.assertNotEqual(
                     cohorts["raw_reference"]["cohort"],
                     cohorts["buffered_reference"]["cohort"],
@@ -121,6 +145,8 @@ class GenusFlowTests(unittest.TestCase):
                     receipt["checks"]["report_only_publication"],
                     "REJECTED_REQUIRES_SOURCE_TOOL_NETLIST_SDC_INVENTORY_SMOKE",
                 )
+                self.assertEqual(
+                    cohorts["functional_loss_reference"]["ppa_use"], "FORBIDDEN")
 
     def test_existing_attempt_is_not_overwritten(self):
         with tempfile.TemporaryDirectory(prefix="k2-w2-genus-") as directory:
@@ -197,6 +223,32 @@ class GenusFlowTests(unittest.TestCase):
             result = self.invoke(output, mode="report_only")
             self.assertNotEqual(result.returncode, 0, result.stdout)
             self.assertFalse((output / "attempt-1/receipt.json").exists())
+
+    def test_missing_mutated_or_rebound_functional_loss_evidence_is_rejected(self):
+        with tempfile.TemporaryDirectory(prefix="k2-w2-functional-loss-") as directory:
+            result = self.invoke(Path(directory), functional_loss_archive=None)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("--functional-loss-archive", result.stdout)
+        with tempfile.TemporaryDirectory(prefix="k2-w2-functional-loss-") as directory:
+            root = Path(directory)
+            fake = root / "eval-fovea-cluster2.yZr1kmYL.tar.gz"
+            shutil.copyfile(FUNCTIONAL_LOSS_ARCHIVE, fake)
+            payload = bytearray(fake.read_bytes())
+            payload[-1] ^= 1
+            fake.write_bytes(payload)
+            result = self.invoke(root / "out", functional_loss_archive=fake)
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn("functional loss archive SHA mismatch", result.stdout)
+            self.assertFalse((root / "out/attempt-1/receipt.json").exists())
+        with tempfile.TemporaryDirectory(prefix="k2-w2-functional-loss-") as directory:
+            reference = json.loads(json.dumps(
+                self.module.load_functional_loss_reference()))
+            reference["ledger_prefix"] = "/tmp/stale-0FfaT8kp/"
+            with self.assertRaisesRegex(self.module.FlowError, "provenance mismatch"):
+                self.module.verify_functional_loss_archive(
+                    FUNCTIONAL_LOSS_ARCHIVE,
+                    Path(directory) / reference["archive_filename"], reference,
+                )
 
     def test_raw_tool_library_and_source_setting_mutations_are_rejected(self):
         mutations = (

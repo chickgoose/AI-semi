@@ -24,6 +24,7 @@ REGISTRY = HERE / "designs.json"
 DRIVER_TCL = HERE / "genus_driver.tcl"
 GOLDEN_REFERENCE = HERE / "golden_reference.json"
 RAW_GOLDEN_REFERENCE = HERE / "raw_golden_reference.json"
+FUNCTIONAL_LOSS_REFERENCE = HERE / "functional_loss_reference.json"
 SAFE_ATTEMPT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 CELL_RE = re.compile(r"\bcell\s*\(\s*([A-Za-z_][A-Za-z0-9_$]*)\s*\)")
 MODULE_RE = re.compile(r"^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", re.MULTILINE)
@@ -171,11 +172,34 @@ def load_raw_golden_reference() -> dict[str, Any]:
     return document
 
 
+def load_functional_loss_reference() -> dict[str, Any]:
+    try:
+        document = json.loads(stable_read(FUNCTIONAL_LOSS_REFERENCE))
+    except json.JSONDecodeError as error:
+        raise FlowError(f"invalid functional loss reference manifest: {error}") from error
+    if document.get("schema") != "k2_w2_functional_loss_reference_v1":
+        raise FlowError("functional loss reference schema mismatch")
+    if (document.get("archive_sha256") !=
+            "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39" or
+            document.get("qualification") != "NON_OFFICIAL_WORKSPACE_DIFF" or
+            document.get("claim_scope") !=
+            "FULL50_GENERATED_ACCEPTED_DELIVERED_OVERRUN_ONLY_NOT_PPA"):
+        raise FlowError("functional loss authority/scope mismatch")
+    if document.get("excluded_artifacts") != ["eval-driver-final.log"]:
+        raise FlowError("stale outer-driver exclusion mismatch")
+    if set(document.get("candidates", {})) != {"fovea", "cluster2"}:
+        raise FlowError("functional loss candidate set mismatch")
+    if len(document.get("anchors", {})) != 10:
+        raise FlowError("functional loss anchor set must contain exactly 10 members")
+    return document
+
+
 def verify_flow_tree(root: Path) -> dict[str, str]:
     required = [
         "physical/k2_w2_genus/designs.json",
         "physical/k2_w2_genus/golden_reference.json",
         "physical/k2_w2_genus/raw_golden_reference.json",
+        "physical/k2_w2_genus/functional_loss_reference.json",
         "physical/k2_w2_genus/genus_driver.tcl",
         "physical/k2_w2_genus/run_genus.py",
         "physical/k2_w2_genus/filelists/a2_k2.f",
@@ -362,6 +386,108 @@ def verify_reference_cohort_separation(raw: dict[str, Any],
     for path in shared:
         if raw["anchor_sha256"].get(path) != buffered["anchor_sha256"].get(path):
             raise FlowError(f"raw/buffered shared native source mismatch: {path}")
+
+
+def verify_functional_loss_archive(source: Path, snapshot: Path,
+                                   reference: dict[str, Any]) -> dict[str, Any]:
+    resolved = source.resolve(strict=True)
+    if resolved.name != reference["archive_filename"]:
+        raise FlowError("functional loss archive filename mismatch")
+    archive_hash = copy_stable(resolved, snapshot)
+    if archive_hash != reference["archive_sha256"]:
+        raise FlowError("functional loss archive SHA mismatch")
+    anchors = read_golden_members(snapshot, reference)
+    provenance = anchors["provenance.txt"].decode("utf-8", errors="strict")
+    required_provenance = (
+        f"snapshot_head={reference['snapshot_head']}",
+        "binding_reset_quiet_arming_patch=workspace-diff",
+        f"snapshot_archive_sha256={reference['snapshot_archive_sha256']}",
+        f"attempt={reference['ledger_prefix'].rstrip('/')}",
+        f"TOOL:\t{reference['simulator']}",
+    )
+    if any(line not in provenance.splitlines() for line in required_provenance):
+        raise FlowError("functional loss provenance mismatch")
+
+    try:
+        with tarfile.open(snapshot, mode="r:gz") as bundle:
+            regular: dict[str, tarfile.TarInfo] = {}
+            duplicates: set[str] = set()
+            for member in bundle.getmembers():
+                if member.name in regular:
+                    duplicates.add(member.name)
+                elif member.isfile():
+                    regular[member.name] = member
+            if duplicates:
+                raise FlowError("functional loss archive contains duplicate regular members")
+            if "eval-driver-final.log" in regular:
+                raise FlowError("stale outer eval-driver-final.log must not be bound")
+            ledger = anchors["result-artifacts.sha256"].decode("utf-8").splitlines()
+            if len(ledger) != reference["ledger_entries"]:
+                raise FlowError("functional loss ledger cardinality mismatch")
+            seen: set[str] = set()
+            for line in ledger:
+                match = re.fullmatch(r"([0-9a-f]{64})  (/.+)", line)
+                if not match or not match.group(2).startswith(reference["ledger_prefix"]):
+                    raise FlowError("functional loss ledger prefix/schema mismatch")
+                relative = match.group(2)[len(reference["ledger_prefix"]):]
+                if (not relative.startswith("results/") or relative in seen or
+                        relative not in regular):
+                    raise FlowError("functional loss ledger missing/duplicate/unattached member")
+                extracted = bundle.extractfile(regular[relative])
+                if extracted is None or sha256_bytes(extracted.read()) != match.group(1):
+                    raise FlowError(f"functional loss ledger SHA mismatch: {relative}")
+                seen.add(relative)
+    except (tarfile.TarError, OSError) as error:
+        raise FlowError(f"invalid functional loss archive: {error}") from error
+
+    metric_pattern = re.compile(
+        r"AER_CLEAN_METRICS .*?generated=(\d+) overrun=(\d+) "
+        r"accepted=(\d+) delivered=(\d+)")
+    measured: dict[str, Any] = {}
+    for candidate, expected in reference["candidates"].items():
+        log = anchors[f"{candidate}-run.log"].decode("utf-8", errors="strict")
+        rows = [tuple(map(int, match.groups())) for match in metric_pattern.finditer(log)]
+        if len(rows) != expected["run_passes"] + 1:
+            raise FlowError(f"functional {candidate} metric cardinality mismatch")
+        full50 = tuple(map(sum, zip(*rows[:expected["run_passes"]])))
+        actual = {
+            "generated": full50[0], "overrun": full50[1],
+            "accepted": full50[2], "delivered": full50[3],
+        }
+        if actual != expected["full50"]:
+            raise FlowError(f"functional {candidate} full50 loss totals mismatch")
+        reset = rows[-1]
+        if reset != (
+                expected["reset_generated"], 0, expected["reset_accepted"],
+                expected["reset_delivered"]):
+            raise FlowError(f"functional {candidate} reset accounting mismatch")
+        if (log.count(f"RUN_PASS candidate={candidate} ") != expected["run_passes"] or
+                f"CANDIDATE_COMPLETE key={candidate} pairwise_status=0" not in log or
+                "AER_RESET_DRAIN_PASS generated=16 accepted=16 delivered=16" not in log):
+            raise FlowError(f"functional {candidate} run/reset/pairwise status mismatch")
+        status = anchors[f"results/{candidate}/pairwise-cross-map.status"]
+        if status != f"{expected['pairwise_status']}\n".encode("ascii"):
+            raise FlowError(f"functional {candidate} pairwise artifact mismatch")
+        aggregate = anchors[f"results/{candidate}/full50-nonmixed48.aggregate.json"]
+        try:
+            json.loads(aggregate)
+        except json.JSONDecodeError as error:
+            raise FlowError(f"functional {candidate} aggregate is invalid") from error
+        measured[candidate] = actual
+    if sha256_bytes(stable_read(resolved)) != archive_hash:
+        raise FlowError("functional loss archive changed during qualification")
+    return {
+        "cohort": reference["cohort"],
+        "qualification": reference["qualification"],
+        "claim_scope": reference["claim_scope"],
+        "archive_sha256": archive_hash,
+        "manifest_sha256": sha256_bytes(stable_read(FUNCTIONAL_LOSS_REFERENCE)),
+        "ledger": "PASS_338_OF_338_EXACT_PREFIX",
+        "outer_driver_log": "EXCLUDED_STALE",
+        "candidate_logs": "PASS_50_OF_50_EACH_RESET_AND_PAIRWISE",
+        "full50_loss_totals": measured,
+        "ppa_use": "FORBIDDEN",
+    }
 
 
 def verify_source_commit(root: Path, registry: dict[str, Any]) -> str:
@@ -591,13 +717,15 @@ def run_smoke(hook: Path | None, attempt: Path, top: str,
 def run_flow(root: Path, design_key: str, genus: Path, library: Path,
              output_root: Path, attempt_name: str,
              smoke_hook: Path | None, golden_archive: Path,
-             raw_golden_archive: Path) -> Path:
+             raw_golden_archive: Path,
+             functional_loss_archive: Path) -> Path:
     root = root.resolve(strict=True)
     if not SAFE_ATTEMPT.fullmatch(attempt_name):
         raise FlowError("invalid attempt name")
     registry = load_registry()
     golden = load_golden_reference()
     raw_golden = load_raw_golden_reference()
+    functional_loss = load_functional_loss_reference()
     if (raw_golden["genus_version"] != golden["genus_version"] or
             raw_golden["library_path"] != golden["library_path"] or
             raw_golden["clock_gating_insertion"] !=
@@ -619,6 +747,9 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         raw_golden_archive,
         attempt / "bundle" / raw_golden["archive_filename"], raw_golden)
     verify_reference_cohort_separation(raw_golden_identity, golden_identity)
+    functional_loss_identity = verify_functional_loss_archive(
+        functional_loss_archive,
+        attempt / "bundle" / functional_loss["archive_filename"], functional_loss)
     tool_before = tool_identity(genus)
     if golden["genus_version"] not in tool_before["version_output"]:
         raise FlowError("Genus version does not match authoritative golden archive")
@@ -667,6 +798,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
                 "design": design_key,
                 "source_commit": registry["repository_commit"],
             },
+            "functional_loss_reference": functional_loss_identity,
         },
         "filelist_path": design["filelist"],
         "filelist_sha256": design["filelist_sha256"],
@@ -733,6 +865,7 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
                 "design": design_key,
                 "source_commit": registry["repository_commit"],
             },
+            "functional_loss_reference": functional_loss_identity,
         },
         "mapped_inventory": inventory,
         "mapped_sdc_sha256": mapped_sdc_hash,
@@ -743,6 +876,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             "authoritative_ganghee_archive": "PASS_EXACT_SHA_AND_ANCHORS",
             "authoritative_raw_ganghee_archive": "PASS_EXACT_SHA_AND_ANCHORS",
             "raw_buffered_endpoint_cohort_separation": "PASS",
+            "functional_loss_reference": "PASS_NON_OFFICIAL_WORKSPACE_DIFF_LOSS_ONLY",
+            "functional_loss_used_for_ppa": "FORBIDDEN",
             "exclusive_attempt_namespace": "PASS",
             "tool_and_library_pre_post_stability": "PASS",
             "unresolved_and_blackbox": "PASS_ZERO",
@@ -765,6 +900,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--library", type=Path, required=True)
     parser.add_argument("--golden-archive", type=Path, required=True)
     parser.add_argument("--raw-golden-archive", type=Path, required=True)
+    parser.add_argument("--functional-loss-archive", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--attempt", required=True)
     parser.add_argument("--mapped-smoke-hook", type=Path)
@@ -774,6 +910,7 @@ def main(argv: list[str] | None = None) -> int:
             args.repo_root, args.design, args.genus, args.library,
             args.output_root, args.attempt, args.mapped_smoke_hook,
             args.golden_archive, args.raw_golden_archive,
+            args.functional_loss_archive,
         )
     except (FlowError, OSError, subprocess.SubprocessError) as error:
         print(f"K2_W2_GENUS_FAIL {error}", file=sys.stderr)
