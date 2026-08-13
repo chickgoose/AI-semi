@@ -464,6 +464,22 @@ class GenusFlowTests(unittest.TestCase):
                     "recovery_falling", "removal_falling", "set_driving_cell",
                     "set_input_transition", "set_load", "all_registers -clock"):
                 self.assertIn(token, text)
+            self.assertIn(
+                "get_pins -hierarchical *w2_ep_icg_0/ECK", text)
+            self.assertIn(
+                "-source $sample_port -divide_by 1 $link_icg_eck", text)
+            self.assertIn(
+                "set_clock_gating_check -setup $gate_setup "
+                "-hold $gate_hold $sample_clock", text)
+            self.assertIn(
+                "set ref_registers [w2_some ref_registers "
+                "[all_registers -clock $ref_clock]]", text)
+            self.assertIn(
+                "set link_registers [w2_some link_registers "
+                "[all_registers -clock $link_clock]]", text)
+            self.assertNotIn("get_timing_arcs", text)
+            self.assertNotIn("-divide_by 1 $link_clock_port", text)
+            self.assertNotIn("$gate_enable", text)
             self.assertNotIn("set_false_path", text)
             self.assertNotIn("set_multicycle_path", text)
 
@@ -476,19 +492,42 @@ class GenusFlowTests(unittest.TestCase):
             "set_clock_gating_check", "set_min_pulse_width -high",
             "set_min_pulse_width -low", "recovery_falling", "removal_falling",
             "set_driving_cell", "set_input_transition", "set_load",
-            "all_registers -clock",
+            "all_registers -clock", "*w2_ep_icg_0/ECK",
+            "-divide_by 1 $link_icg_eck", "-hold $gate_hold $sample_clock",
+            "set ref_registers [w2_some ref_registers",
+            "set link_registers [w2_some link_registers",
+            "set async_reset_pins [w2_some async_reset_endpoints",
         )
-        for token in tokens:
-            with self.subTest(token=token), tempfile.TemporaryDirectory(
-                    prefix="k2-w2-sdc-") as directory:
-                path = Path(directory) / "mutated.sdc"
-                payload = original.replace(token, "")
-                path.write_text(payload)
-                timing = {"path": "mutated.sdc",
-                          "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-                with self.assertRaisesRegex(self.module.FlowError,
-                                            "timing class missing"):
-                    self.module.materialize_sdc(Path(directory), {"strict_sdc": timing})
+        with tempfile.TemporaryDirectory(prefix="k2-w2-sdc-mutations-") as directory:
+            root = Path(directory)
+            path = root / "candidate.sdc"
+            for token in tokens:
+                with self.subTest(removed=token):
+                    self.assertIn(token, original)
+                    payload = original.replace(token, "").encode()
+                    path.write_bytes(payload)
+                    design = {"strict_sdc": {
+                        "path": "candidate.sdc",
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }}
+                    with self.assertRaisesRegex(
+                            self.module.FlowError,
+                            "strict SDC omits timing constraint class"):
+                        self.module.materialize_sdc(root, design)
+            for forbidden in (
+                    "get_timing_arcs", "-divide_by 1 $link_clock_port",
+                    "-hold $gate_hold $gate_enable"):
+                with self.subTest(inserted=forbidden):
+                    payload = (original + "\n# mutation\n" + forbidden + "\n").encode()
+                    path.write_bytes(payload)
+                    design = {"strict_sdc": {
+                        "path": "candidate.sdc",
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }}
+                    with self.assertRaisesRegex(
+                            self.module.FlowError,
+                            "forbidden timing exception or Genus query"):
+                        self.module.materialize_sdc(root, design)
 
     def test_shared_qrc_mmmc_discloses_single_typical_rc(self):
         registry = self.module.load_registry_document()
