@@ -1575,7 +1575,7 @@ def parse_timing_rows(text: str, label: str,
                       require_pass: bool = True) -> dict[str, Any]:
     headers = list(re.finditer(
         r"(?m)^Path\s+(\d+):\s+(MET|VIOLATED)\s+"
-        r"\(([-+]?(?:\d+(?:\.\d*)?|\.\d+)|NaN|Inf|-Inf)\s+ps\)\s+([^\n]+?)\s+Check",
+        r"\(([-+]?(?:\d+(?:\.\d*)?|\.\d+)|NaN|Inf|-Inf)\s+ps\)\s+([^\n]+?)\s*$",
         text))
     if not headers:
         raise FlowError(f"{label} has no complete timing path row")

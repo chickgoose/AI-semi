@@ -807,6 +807,12 @@ class GenusFlowTests(unittest.TestCase):
     def test_timing_report_and_coverage_negative_classes(self):
         good = "Path 1: MET (100 ps) Setup Check\n             Slack:=     100\n"
         self.module.parse_timing_rows(good, "good", "Setup")
+        external = (
+            "Path 1: MET (3 ps) Late External Delay Assertion at pin link_data_o[0]\n"
+            "             Slack:=       3\n")
+        self.assertEqual(
+            self.module.parse_timing_rows(external, "actual Genus external delay"),
+            {"path_count": 1, "minimum_slack_ps": 3.0})
         mutations = (
             (good.replace("MET", "VIOLATED"), "VIOLATED"),
             (good.replace("100 ps", "-1 ps").replace("     100", "     -1"), "negative"),
