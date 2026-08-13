@@ -30,7 +30,7 @@
     "hold_liberty": {
       "relative_path": "timing/fast_vdd1v0_basicCells.lib",
       "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
-      "pvt": null
+      "pvt": [1.0, 1.1, 0.0]
     },
     "tech_lef": {
       "relative_path": "lef/gsclib045_tech.lef",
@@ -55,10 +55,51 @@
     "required_qrc_tch_entries": ["gpdk045.tch"],
     "required_site": "CoreSite",
     "required_cells": {
-      "icg": "TLATNCAX2",
-      "mux": "MX2X1"
+      "icg": "TLATNTSCAX2",
+      "mux": "MX2X1",
+      "posedge_ff": "DFFRHQX1",
+      "negedge_ff": "DFFNSRX1"
     },
-    "required_ff_edges": ["posedge", "negedge"]
+    "cell_contracts": {
+      "TLATNTSCAX2": {
+        "role": "integrated_clock_gate",
+        "liberty_pins": {"E": "input", "SE": "input", "CK": "input", "ECK": "output"},
+        "lef_pins": {"E": "INPUT", "SE": "INPUT", "CK": "INPUT", "ECK": "OUTPUT", "VDD": "INOUT", "VSS": "INOUT"},
+        "integrated_clock_gating": "latch_posedge_precontrol"
+      },
+      "MX2X1": {
+        "role": "symbol_mux",
+        "liberty_pins": {"A": "input", "B": "input", "S0": "input", "Y": "output"},
+        "lef_pins": {"A": "INPUT", "B": "INPUT", "S0": "INPUT", "Y": "OUTPUT", "VDD": "INOUT", "VSS": "INOUT"}
+      },
+      "DFFRHQX1": {
+        "role": "burst_posedge_capture",
+        "liberty_pins": {"RN": "input", "CK": "input", "D": "input", "Q": "output"},
+        "lef_pins": {"RN": "INPUT", "CK": "INPUT", "D": "INPUT", "Q": "OUTPUT", "VDD": "INOUT", "VSS": "INOUT"},
+        "ff": {"clocked_on": "CK", "clear": "!RN"},
+        "timing": {
+          "D": {"related_pin": "CK", "types": ["setup_rising", "hold_rising"]},
+          "RN": {"related_pin": "CK", "types": ["recovery_rising", "removal_rising"]}
+        }
+      },
+      "DFFNSRX1": {
+        "role": "burst_negedge_commit_toggle",
+        "liberty_pins": {"Q": "output", "QN": "output", "CKN": "input", "D": "input", "SN": "input", "RN": "input"},
+        "lef_pins": {"Q": "OUTPUT", "QN": "OUTPUT", "CKN": "INPUT", "D": "INPUT", "SN": "INPUT", "RN": "INPUT", "VDD": "INOUT", "VSS": "INOUT"},
+        "ff": {"clocked_on": "!CKN", "clear": "!RN", "preset": "!SN"},
+        "timing": {
+          "D": {"related_pin": "CKN", "types": ["setup_falling", "hold_falling"]},
+          "RN": {"related_pin": "CKN", "types": ["recovery_falling", "removal_falling"]},
+          "SN": {"related_pin": "CKN", "types": ["recovery_falling", "removal_falling"]}
+        },
+        "mapped_binding": {"CKN": "link_clock", "RN": "rst_n", "SN": "1'b1"}
+      }
+    },
+    "mapped_inventory": {
+      "required_exact_counts": {"TLATNTSCAX2": 1},
+      "required_cells": ["TLATNTSCAX2", "MX2X1", "DFFRHQX1", "DFFNSRX1"],
+      "forbidden_cell_patterns": ["TLATXL", "TLATNCAX2", "SDFF"]
+    }
   },
   "corner_policy": {
     "setup_liberty": "slow_vdd1v0_basicCells.lib",
@@ -101,6 +142,13 @@
         "evidence": "The direct server banner reports build expiration, while the preserved server golden records a successful Genus execution."
       }
     ],
+    "cell_resolution": {
+      "icg": "TLATNTSCAX2(E,SE,CK,ECK), latch_posedge_precontrol; TLATNCAX2 is not an allowed mapped substitute",
+      "posedge_ff": "DFFRHQX1(RN,CK,D,Q)",
+      "negedge_ff": "DFFNSRX1(Q,QN,CKN,D,SN,RN), clocked_on=!CKN, clear=!RN, preset=!SN",
+      "mux": "MX2X1(A,B,S0,Y)",
+      "mapped_forbidden": ["TLATXL", "TLATNCAX2", "SDFF"]
+    },
     "limitations": [
       "Technology bytes are not present locally; a strict server preflight must re-read and match these SHAs.",
       "Tool executable paths, SHAs and versions are direct observations; strict preflight still must invoke each exact executable and parse the expected version."
