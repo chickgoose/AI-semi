@@ -126,3 +126,43 @@ A3+P6       22               24                          0
 - A3+P6: /tmp/k2-pnr-ccdbc2c-parallel/out-a3_p6
 - common scaled activity: /tmp/k2-pnr-ccdbc2c/activity5
 - validated plan: /tmp/k2-pnr-ccdbc2c/innovus-plan.json
+
+
+최종 재폐쇄 실행 (2026-08-14, 5.0 ns)
+======================================
+
+아래 결과는 위 최초 diagnostic 이후, 동일 RTL/공통 경계를 유지하면서 공통
+floorplan/PG/DRC/hold-closure flow를 보강하고 새 Genus 산출물로 다시 실행한 것이다.
+서버 root는 `/tmp/k2-pnr-8238c63`이다.
+
+후보        Setup WNS (viol.)   Hold ECO 최종 WNS (viol.)   DRC/PG 상태
+Fovea+A7    약 -0.2199 (7)      -0.0363948 (3)              hold STALLED로 최종 DRC 전 중단
+A2+P6       -0.281729 (22)      +0.00022052 (0)             DRC 0 / connectivity·PG 0
+A3+P6       약 -0.2769 (6)      -0.00701296 (2)             pre-ECO DRC 0 / PG 0
+
+- A2는 bounded post-route hold ECO 한 번으로 hold를 완전히 닫았고, signal-vs-PG
+  Metal1 short도 targeted ECO 후 0이 됐다. exact endpoint ICG gating setup/hold도
+  violation 0이다. 남은 실제 timing blocker는 setup 22개이며, strict verifier는
+  check_timing의 no_drive 19개도 별도 차단한다.
+- A3는 hold violation을 9개에서 2개로 줄였지만 같은 상태에서 더 개선되지 않아
+  fail-closed STALLED로 종료했다. 남은 hold WNS는 -7.013 ps다.
+- Fovea+A7은 hold violation을 5개에서 3개로 줄였지만 -36.395 ps에서 STALLED로
+  종료했다. 따라서 이 실행에서는 final DRC report까지 진행하지 않았다.
+- 과거 -2.6 ns대 gating-hold는 serializer MX2와 일반 조합논리를 ICG로 포함한
+  잘못된 광역 분류였다. 보정 후 실제 endpoint ICG gating check는 깨끗하다.
+- A2 로그의 문자열 `Error Limit = 1000`을 실제 tool error로 오인하던 검증기
+  정규식은 수정됐다. 수정 검증기로 재검사했을 때 이 오탐은 사라졌으며,
+  위 no_drive/setup 실패가 다음 실제 차단 사유로 확인됐다.
+
+최종 판정
+---------
+- 세 후보 모두 실제 Genus 합성 및 Innovus P&R을 수행했다.
+- 5.0 ns에서 완전한 FLOW_CLEAN 후보는 아직 없다.
+- 물리 폐쇄에 가장 가까이 간 후보는 A2+P6다: hold, DRC, connectivity/PG,
+  endpoint gating을 모두 닫았고 setup/no_drive constraint만 남았다.
+- 처리량·손실과 물리 폐쇄 진척은 A2가 우세하고, 면적·reported diagnostic power와
+  처리량의 균형은 A3가 우세하다. 따라서 목적함수 없이 단일 우승자를 확정하지 않는다.
+- 다음 물리 실행을 한다면 5.7 ns를 별도 버전의 timing cohort로 만들고 fresh
+  Genus부터 다시 실행해야 한다. 기존 5.0 ns receipt에 period만 덮어쓰지는 않는다.
+
+최신 flow commit: 54541e0
