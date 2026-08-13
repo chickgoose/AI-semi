@@ -759,6 +759,19 @@ class GenusFlowTests(unittest.TestCase):
                 self.module.parse_timing_rows(payload, "bad", "Setup")
         qor = "WNS (ps): 100\nTNS (ps): 0\nUnconstrained Paths: 0\n"
         self.module.parse_qor(qor, 100.0)
+        actual_qor = """\
+           Cost              Critical         Violating
+           Group            Path Slack  TNS     Paths
+--------------------------------------------------------
+cg_enable_group_r1_ref_clk       492.6   0.0          0
+r1_link_clk                       18.9   0.0          0
+r1_ref_clk                        85.9   0.0          0
+--------------------------------------------------------
+Total                                    0.0          0
+"""
+        parsed = self.module.parse_qor(actual_qor, 19.0)
+        self.assertEqual(parsed["wns_ps"], 18.9)
+        self.assertEqual(parsed["violating_paths"], 0)
         for bad_qor in (
                 qor.replace("WNS (ps): 100", "WNS (ps): -1"),
                 qor.replace("TNS (ps): 0", "TNS (ps): -1"),

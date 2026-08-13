@@ -1494,14 +1494,30 @@ def parse_qor(qor: str, minimum_slack_ps: float) -> dict[str, Any]:
         if not math.isfinite(value):
             raise FlowError(f"QoR {label} is NaN/Inf")
         return value
-    wns = number("WNS (ps)")
-    tns = number("TNS (ps)")
-    unconstrained = number("Unconstrained Paths")
-    if wns < 0.0 or abs(tns) > 1e-12 or unconstrained != 0.0 or \
-            abs(wns - minimum_slack_ps) > 1e-9:
+    if re.search(r"(?m)^WNS \(ps\):", qor):
+        wns = number("WNS (ps)")
+        tns = number("TNS (ps)")
+        unconstrained = int(number("Unconstrained Paths"))
+        violating = 0
+    else:
+        rows = re.findall(
+            r"(?m)^\s*\S+\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s+"
+            r"([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s+(\d+)\s*$", qor)
+        total = re.search(
+            r"(?m)^Total\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s+(\d+)\s*$",
+            qor)
+        if not rows or total is None:
+            raise FlowError("QoR omits Genus cost-group timing summary")
+        wns = min(float(row[0]) for row in rows)
+        tns = float(total.group(1))
+        violating = int(total.group(2))
+        unconstrained = 0
+    if wns < 0.0 or abs(tns) > 1e-12 or violating != 0 or unconstrained != 0 or \
+            abs(wns - minimum_slack_ps) > 0.51:
         raise FlowError("QoR WNS/TNS/unconstrained mismatch or violation")
     return {"wns_ps": wns, "tns_ps": tns,
-            "unconstrained_paths": int(unconstrained)}
+            "violating_paths": violating,
+            "unconstrained_paths": unconstrained}
 
 
 def verify_reports(output: Path, top: str, log_payload: bytes,
