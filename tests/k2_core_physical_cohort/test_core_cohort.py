@@ -176,6 +176,13 @@ class CoreCohortTests(unittest.TestCase):
         self.assertNotIn("read_activity_file", innovus)
         self.assertNotIn("set_interactive_constraint_modes", innovus)
 
+    def test_server_python_38_does_not_require_zip_strict(self) -> None:
+        producer = (ROOT / "physical/k2_core_physical_cohort/core_cohort.py").read_text()
+        self.assertNotIn("zip(descriptor[\"sources\"], expected_sources, strict=True)",
+                         producer)
+        self.assertIn("len(descriptor.get(\"sources\", [])) != len(expected_sources)",
+                      producer)
+
 
 if __name__ == "__main__":
     unittest.main()

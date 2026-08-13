@@ -547,8 +547,10 @@ def validate_prepared(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[
         expected_sources = contract["candidates"][candidate]["sources"]
         if len(descriptor.get("sources", [])) != len(expected_sources):
             raise CohortError(f"prepared source count mismatch: {candidate}")
+        # Server Python is 3.8; zip(strict=...) is only available from 3.10.
+        # The exact length equality above provides the same fail-closed guard.
         for index, (source, expected) in enumerate(
-                zip(descriptor["sources"], expected_sources, strict=True)):
+                zip(descriptor["sources"], expected_sources)):
             expected_path = root / candidate / "input/sources" / \
                 f"{index:02d}_{Path(expected['member']).name}"
             if source != {
