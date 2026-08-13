@@ -4,19 +4,19 @@
   "tools": {
     "genus": {
       "version": "23.14-s090_1",
-      "sha256": null,
+      "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
       "observed_path": "/tools/cadence/DDI231/bin/genus",
       "golden_executable_identity": null
     },
     "innovus": {
       "version": "23.14-s088_1",
-      "sha256": null,
+      "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
       "observed_path": "/tools/cadence/DDI231/bin/innovus",
       "golden_executable_identity": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_"
     },
     "xrun": {
       "version": "23.09-s013",
-      "sha256": null,
+      "sha256": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7",
       "observed_path": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun",
       "golden_executable_identity": null
     }
@@ -83,9 +83,27 @@
       "innovus": "/tools/cadence/DDI231/bin/innovus",
       "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun"
     },
+    "tool_sha256": {
+      "genus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+      "innovus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+      "xrun": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7"
+    },
+    "tool_versions": {
+      "genus": "23.14-s090_1",
+      "innovus": "23.14-s088_1",
+      "xrun": "23.09-s013"
+    },
+    "tool_warnings": [
+      {
+        "tool": "genus",
+        "code": "BUILD_EXPIRATION_BANNER",
+        "disposition": "Record as warning when invocation exits zero; fail when invocation exits nonzero.",
+        "evidence": "The direct server banner reports build expiration, while the preserved server golden records a successful Genus execution."
+      }
+    ],
     "limitations": [
       "Technology bytes are not present locally; a strict server preflight must re-read and match these SHAs.",
-      "Tool executable SHAs and runtime version probes are not supplied by this observation."
+      "Tool executable paths, SHAs and versions are direct observations; strict preflight still must invoke each exact executable and parse the expected version."
     ]
   },
   "source_archives": {

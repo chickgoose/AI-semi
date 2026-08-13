@@ -117,7 +117,7 @@ class Fixture:
         write(self.pdk / "lef/gsclib045_tech.lef", TECH_LEF)
         write(self.pdk / "lef/gsclib045_macro.lef", MACRO_LEF)
         write(self.pdk / "qrc/qx/gpdk045.tch", "QRC TYPICAL\n")
-        write(self.genus, "#!/bin/sh\necho 'Genus 23.14-s090_1'\n", executable=True)
+        write(self.genus, "#!/bin/sh\necho 'Genus 23.14-s090_1'\necho 'Build expiration notice'\n", executable=True)
         write(self.innovus, "#!/bin/sh\necho 'Innovus 23.14-s088_1'\n", executable=True)
         write(self.xrun, "#!/bin/sh\necho 'Xcelium 23.09-s013'\n", executable=True)
         make_tar(self.raw_archive, self.raw_members)
@@ -186,6 +186,19 @@ class Fixture:
                     "genus": str(self.genus), "innovus": str(self.innovus),
                     "xrun": str(self.xrun),
                 },
+                "tool_sha256": {
+                    "genus": file_hash(self.genus),
+                    "innovus": file_hash(self.innovus),
+                    "xrun": file_hash(self.xrun),
+                },
+                "tool_versions": {
+                    "genus": "23.14-s090_1", "innovus": "23.14-s088_1",
+                    "xrun": "23.09-s013",
+                },
+                "tool_warnings": [{
+                    "tool": "genus", "code": "BUILD_EXPIRATION_BANNER",
+                    "disposition": "warning on zero", "evidence": "fixture",
+                }],
                 "limitations": ["fixture"],
             },
             "source_archives": {
@@ -262,7 +275,17 @@ class PreflightTests(unittest.TestCase):
             self.assertEqual(contract["technology"][role]["sha256"], expected)
         for name, expected in observation["tool_paths"].items():
             self.assertEqual(contract["tools"][name]["observed_path"], expected)
-            self.assertIsNone(contract["tools"][name]["sha256"])
+        self.assertEqual(observation["tool_sha256"], {
+            "genus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+            "innovus": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+            "xrun": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7",
+        })
+        self.assertEqual(observation["tool_versions"], {
+            "genus": "23.14-s090_1", "innovus": "23.14-s088_1",
+            "xrun": "23.09-s013",
+        })
+        for name, expected in observation["tool_sha256"].items():
+            self.assertEqual(contract["tools"][name]["sha256"], expected)
 
     def test_pass_and_canonical_reproducibility(self) -> None:
         temporary, fixture = self.with_fixture()
@@ -275,6 +298,10 @@ class PreflightTests(unittest.TestCase):
             self.assertTrue(result["campaign_launch_allowed"])
             self.assertEqual(result["gates"]["rc_policy"]["status"],
                              "PROVEN_WITH_LIMITATION")
+            genus = result["gates"]["tool_executables"]["evidence"]["genus"]
+            self.assertEqual(genus["parsed_version"], "23.14-s090_1")
+            self.assertEqual(genus["warnings"][0]["code"],
+                             "TOOL_BANNER_EXPIRATION")
             second_output = fixture.root / "second.json"
             fixture.output = second_output
             self.assertEqual(fixture.run().returncode, 0)
@@ -330,6 +357,24 @@ class PreflightTests(unittest.TestCase):
         temporary, fixture = self.with_fixture()
         with temporary:
             write(fixture.xrun, "#!/bin/sh\necho 'Xcelium 99.0'\n", executable=True)
+            fixture.refresh_contract()
+            self.assert_fail(fixture)
+
+    def test_tool_version_invocation_nonzero(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            write(fixture.genus,
+                  "#!/bin/sh\necho 'Genus 23.14-s090_1'\n"
+                  "echo 'Build expiration notice'\nexit 7\n", executable=True)
+            fixture.refresh_contract()
+            self.assert_fail(fixture)
+
+    def test_ambiguous_parsed_version_rejected(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            write(fixture.xrun,
+                  "#!/bin/sh\necho 'Xcelium 23.09-s013 and 99.99-s999'\n",
+                  executable=True)
             fixture.refresh_contract()
             self.assert_fail(fixture)
 
