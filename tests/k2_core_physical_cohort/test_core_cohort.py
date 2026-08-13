@@ -73,6 +73,19 @@ class CoreCohortTests(unittest.TestCase):
         cohort.CONTRACT_PATH = self.original_contract_path
         self.temporary.cleanup()
 
+    def prepare_fixture(self, profile_id: str = "5ns") -> tuple[Path, Path]:
+        plan = self.temp / f"plan-{profile_id}.json"
+        cohort.create_plan(self.archive, plan, profile_id)
+        fake_receipt = self.temp / f"server-go-{profile_id}.json"
+        fake_document = {"environment_binding_sha256": "a" * 64}
+        fake_payload = json.dumps(fake_document, sort_keys=True).encode()
+        fake_receipt.write_bytes(fake_payload)
+        prepared = self.temp / f"prepared-{profile_id}"
+        cohort.prepare_run(
+            plan, fake_receipt, prepared,
+            verifier=lambda path, contract: (fake_payload, fake_document))
+        return plan, prepared
+
     def test_repository_contract_and_templates_are_exact(self) -> None:
         cohort.CONTRACT_PATH = self.original_contract_path
         _, contract = cohort.validate_contract()
@@ -81,6 +94,17 @@ class CoreCohortTests(unittest.TestCase):
         self.assertEqual(contract["common_conditions"]["physical"]["core_utilization"], "0.35")
         self.assertEqual(contract["technology"]["setup_liberty"]["pvt"], [1.0, 0.9, 125.0])
         self.assertEqual(contract["technology"]["hold_liberty"]["pvt"], [1.0, 1.1, 0.0])
+        self.assertEqual(contract["timing_cohort"], {
+            "default_profile_id": "5ns",
+            "profiles": {
+                "5ns": {"period_ns": "5.0", "waveform_ns": ["0.0", "2.5"]},
+                "4ns": {"period_ns": "4.0", "waveform_ns": ["0.0", "2.0"]},
+                "3p5ns": {"period_ns": "3.5", "waveform_ns": ["0.0", "1.75"]},
+                "2p2ns": {"period_ns": "2.2", "waveform_ns": ["0.0", "1.1"]},
+                "1p8ns": {"period_ns": "1.8", "waveform_ns": ["0.0", "0.9"]},
+                "1p5ns": {"period_ns": "1.5", "waveform_ns": ["0.0", "0.75"]},
+            },
+        })
 
     def test_plan_is_exact_two_rows_and_no_overwrite(self) -> None:
         plan = self.temp / "plan.json"
@@ -90,8 +114,144 @@ class CoreCohortTests(unittest.TestCase):
                          ["fovea", "cluster2"])
         self.assertEqual(document["state"], "PLANNED_NOT_EXECUTED")
         self.assertEqual(document["common_conditions"]["clock"]["period_ns"], "5.0")
+        self.assertEqual(document["timing_profile"], {
+            "id": "5ns", "period_ns": "5.0", "waveform_ns": ["0.0", "2.5"]})
+        self.assertEqual(document["clock_period_ns"], "5.0")
         with self.assertRaises(FileExistsError):
             cohort.create_plan(self.archive, plan)
+
+    def test_every_allowlisted_profile_selects_exact_sdc_for_both_rows(self) -> None:
+        expected = {
+            "5ns": ("5.0", "2.5"), "4ns": ("4.0", "2.0"),
+            "3p5ns": ("3.5", "1.75"), "2p2ns": ("2.2", "1.1"),
+            "1p8ns": ("1.8", "0.9"), "1p5ns": ("1.5", "0.75"),
+        }
+        for profile_id, (period, falling_edge) in expected.items():
+            with self.subTest(profile_id=profile_id):
+                plan, prepared = self.prepare_fixture(profile_id)
+                plan_document = json.loads(plan.read_text())
+                self.assertEqual(plan_document["timing_profile"]["id"], profile_id)
+                self.assertEqual(plan_document["timing_profile"]["period_ns"], period)
+                self.assertEqual(plan_document["clock_period_ns"], period)
+                self.assertEqual(
+                    plan_document["common_conditions"]["clock"]["waveform_ns"],
+                    ["0.0", falling_edge])
+                fovea_sdc = (prepared / f"fovea/input/common_{profile_id}.sdc").read_bytes()
+                cluster_sdc = (prepared / f"cluster2/input/common_{profile_id}.sdc").read_bytes()
+                self.assertEqual(fovea_sdc, cluster_sdc)
+                self.assertIn(f"-period {period}".encode(), fovea_sdc)
+                self.assertIn(f"-waveform {{0.0 {falling_edge}}}".encode(), fovea_sdc)
+                receipt, retained_plan, _ = cohort.validate_prepared(prepared)
+                self.assertEqual(receipt["timing_profile"], plan_document["timing_profile"])
+                self.assertEqual(receipt["clock_period_ns"], period)
+                self.assertEqual(retained_plan["timing_profile"], plan_document["timing_profile"])
+
+    def test_unknown_timing_profile_is_rejected_without_plan(self) -> None:
+        output = self.temp / "unknown-plan.json"
+        with self.assertRaisesRegex(cohort.CohortError, "unknown timing profile"):
+            cohort.create_plan(self.archive, output, "3p0ns")
+        self.assertFalse(output.exists())
+
+    def test_resealed_plan_cannot_substitute_period_for_profile(self) -> None:
+        plan = self.temp / "plan.json"
+        cohort.create_plan(self.archive, plan, "3p5ns")
+        document = json.loads(plan.read_text())
+        document.pop("document_sha256")
+        document["timing_profile"]["period_ns"] = "3.6"
+        document["common_conditions"]["clock"]["period_ns"] = "3.6"
+        document["common_condition_sha256"] = cohort.condition_sha(
+            document["common_conditions"])
+        document = cohort.seal(document)
+        plan.chmod(0o644)
+        plan.write_bytes(cohort.canonical(document))
+        with self.assertRaisesRegex(cohort.CohortError, "differs from current immutable contract"):
+            cohort.validate_plan(plan)
+
+    def test_resealed_preparation_and_descriptor_profile_mutations_fail(self) -> None:
+        _, prepared = self.prepare_fixture("4ns")
+        receipt_path = prepared / "PREPARATION_RECEIPT.json"
+        receipt = json.loads(receipt_path.read_text())
+        receipt.pop("document_sha256")
+        receipt["clock_period_ns"] = "3.5"
+        receipt_path.chmod(0o644)
+        receipt_path.write_bytes(cohort.canonical(cohort.seal(receipt)))
+        with self.assertRaisesRegex(cohort.CohortError, "plan/condition binding mismatch"):
+            cohort.validate_prepared(prepared)
+
+        _, prepared = self.prepare_fixture("3p5ns")
+        receipt_path = prepared / "PREPARATION_RECEIPT.json"
+        descriptor_path = prepared / "fovea/input/execution_descriptor.json"
+        descriptor = json.loads(descriptor_path.read_text())
+        descriptor.pop("document_sha256")
+        descriptor["timing_profile"]["period_ns"] = "4.0"
+        descriptor_path.chmod(0o644)
+        descriptor_payload = cohort.canonical(cohort.seal(descriptor))
+        descriptor_path.write_bytes(descriptor_payload)
+        receipt = json.loads(receipt_path.read_text())
+        receipt.pop("document_sha256")
+        receipt["descriptors"]["fovea"]["sha256"] = digest(descriptor_payload)
+        receipt_path.chmod(0o644)
+        receipt_path.write_bytes(cohort.canonical(cohort.seal(receipt)))
+        with self.assertRaisesRegex(cohort.CohortError, "descriptor binding mismatch"):
+            cohort.validate_prepared(prepared)
+
+    def test_execution_receipt_profile_substitution_fails_before_artifacts(self) -> None:
+        _, prepared = self.prepare_fixture("2p2ns")
+        prep = json.loads((prepared / "PREPARATION_RECEIPT.json").read_text())
+        _, plan, contract = cohort.validate_prepared(prepared)
+        output = prepared / "fovea/genus"
+        output.mkdir()
+        execution = cohort.seal({
+            "schema": "k2_core_physical_execution_receipt_v1",
+            "state": "NATIVE_TOOL_COMPLETED_AND_VERIFIED",
+            "stage": "genus", "candidate": "fovea",
+            "top": contract["candidates"]["fovea"]["top"],
+            "prepared_receipt_sha256": digest(
+                (prepared / "PREPARATION_RECEIPT.json").read_bytes()),
+            "descriptor_sha256": prep["descriptors"]["fovea"]["sha256"],
+            "timing_profile": {
+                "id": "2p2ns", "period_ns": "1.8", "waveform_ns": ["0.0", "0.9"]},
+            "clock_period_ns": "1.8",
+            "common_condition_sha256": cohort.condition_sha(plan["common_conditions"]),
+            "tool": contract["tools"]["genus"],
+            "source_archive_sha256": contract["source_archive"]["sha256"],
+            "power_disclosure": "VECTORLESS_DISCLOSED_SCREENING_ONLY_NOT_SIGNOFF",
+            "metrics": {}, "artifacts": {},
+        })
+        receipt_path = output / "EXECUTION_RECEIPT.json"
+        receipt_path.write_bytes(cohort.canonical(execution))
+        with self.assertRaisesRegex(cohort.CohortError, "execution receipt binding mismatch"):
+            cohort.validate_execution_receipt(
+                receipt_path, prepared, "fovea", "genus")
+
+    def test_final_seal_records_profile_and_rejects_mixed_profile_receipt(self) -> None:
+        _, prepared = self.prepare_fixture("1p8ns")
+        _, plan, _ = cohort.validate_prepared(prepared)
+        for candidate in ("fovea", "cluster2"):
+            for stage in ("genus", "innovus"):
+                output = prepared / candidate / stage
+                output.mkdir()
+                (output / "EXECUTION_RECEIPT.json").write_text("placeholder\n")
+
+        clean_execution = {
+            "state": "NATIVE_TOOL_COMPLETED_AND_VERIFIED",
+            "timing_profile": plan["timing_profile"],
+            "clock_period_ns": "1.8",
+        }
+        final_path = self.temp / "final.json"
+        with mock.patch.object(
+                cohort, "validate_execution_receipt", return_value=clean_execution):
+            cohort.seal_cohort(prepared, final_path)
+        final = json.loads(final_path.read_text())
+        self.assertEqual(final["timing_profile"], plan["timing_profile"])
+        self.assertEqual(final["clock_period_ns"], "1.8")
+
+        mixed = dict(clean_execution)
+        mixed["clock_period_ns"] = "1.5"
+        with mock.patch.object(
+                cohort, "validate_execution_receipt", return_value=mixed):
+            with self.assertRaisesRegex(cohort.CohortError, "profile binding mismatch"):
+                cohort.seal_cohort(prepared, self.temp / "mixed-final.json")
 
     def test_archive_byte_mutation_fails_closed(self) -> None:
         payload = bytearray(self.archive.read_bytes())

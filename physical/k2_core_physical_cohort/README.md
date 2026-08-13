@@ -8,7 +8,11 @@ common TB remain read-only. Source bytes are selected from the pinned raw
 archive only after the archive SHA-256, member uniqueness, regular-file type,
 member order, and member SHA-256 all pass.
 
-Both rows use the same 5.0 ns clock, 0.25 ns clock uncertainty, 0.5 ns input
+Both rows in one cohort use the same selected clock profile. The default is
+`5ns` (5.0 ns), preserving the original flow. The complete fail-closed
+allowlist is `5ns` (5.0 ns), `4ns` (4.0 ns), `3p5ns` (3.5 ns), `2p2ns`
+(2.2 ns), `1p8ns` (1.8 ns), and `1p5ns` (1.5 ns); every profile uses a 50%
+duty-cycle waveform. All profiles retain 0.25 ns clock uncertainty, 0.5 ns input
 and output delays, 0.01 pF output load, slow setup Liberty, fast hold Liberty,
 shared typical QRC, LEFs, CoreSite floorplan, 35% target utilization, 10 um
 margins, pin policy, and power-ring geometry. Genus clock-gating insertion is
@@ -24,8 +28,16 @@ semantics:
 ```sh
 python3 -B physical/k2_core_physical_cohort/core_cohort.py plan \
   --source-archive /tmp/ganghee-pnr-raw-golden-20260813.tar.gz \
+  --timing-profile 3p5ns \
   --output /absolute/new/path/core-plan.json
 ```
+
+Omit `--timing-profile` to select the original `5ns` default. Each profile must
+use its own new plan and prepared output root. Arbitrary numeric periods are not
+accepted. The selected profile ID, exact period/waveform, selected-condition
+hash, and plan lineage are retained through the preparation, per-stage native
+execution, and final cohort receipts. A profile or period substitution is
+rejected even if the modified JSON is self-hashed again.
 
 On the server, first generate a current `GO` receipt with
 `physical/k2_w2_server_env/preflight.py`. Preparation revalidates that receipt,

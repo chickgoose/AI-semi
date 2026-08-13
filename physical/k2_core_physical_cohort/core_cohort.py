@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import importlib.util
 import io
@@ -29,6 +30,7 @@ BAD_LOG = re.compile(
     r"SEG(?:MENTATION)?\s+FAULT|INTERRUPT|K2_CORE_(?:GENUS|INNOVUS)_FATAL"
 )
 UNSAFE_TCL_PATH = re.compile(r"[\s{}\[\]$;\\\"]")
+TIMING_PROFILE_ID = re.compile(r"^[0-9]+(?:p[0-9]+)?ns$")
 
 
 class CohortError(RuntimeError):
@@ -164,6 +166,20 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
     if observed != exact_common or common.get("boundary") != \
             "raw_core_only_no_wrapper_no_endpoint":
         raise CohortError("common timing/load/floorplan contract mismatch")
+    exact_profiles = {
+        "5ns": {"period_ns": "5.0", "waveform_ns": ["0.0", "2.5"]},
+        "4ns": {"period_ns": "4.0", "waveform_ns": ["0.0", "2.0"]},
+        "3p5ns": {"period_ns": "3.5", "waveform_ns": ["0.0", "1.75"]},
+        "2p2ns": {"period_ns": "2.2", "waveform_ns": ["0.0", "1.1"]},
+        "1p8ns": {"period_ns": "1.8", "waveform_ns": ["0.0", "0.9"]},
+        "1p5ns": {"period_ns": "1.5", "waveform_ns": ["0.0", "0.75"]},
+    }
+    timing_cohort = contract.get("timing_cohort", {})
+    if timing_cohort != {
+            "default_profile_id": "5ns", "profiles": exact_profiles} or \
+            common["clock"]["period_ns"] != exact_profiles["5ns"]["period_ns"] or \
+            common["clock"]["waveform_ns"] != exact_profiles["5ns"]["waveform_ns"]:
+        raise CohortError("timing cohort profile contract mismatch")
     if common.get("physical", {}).get("site_normalization") != \
             "REPLACE_BUFX2_WITH_BUFX4_AND_DONT_USE_BUFX2":
         raise CohortError("common placement-site normalization mismatch")
@@ -281,12 +297,38 @@ def archive_members(contract: dict[str, Any], archive_path: Path) -> tuple[bytes
     return archive_payload, payloads
 
 
-def condition_sha(contract: dict[str, Any]) -> str:
-    return sha256(canonical(contract["common_conditions"]))
+def timing_profile(contract: dict[str, Any], profile_id: str | None = None) -> dict[str, Any]:
+    timing = contract["timing_cohort"]
+    selected = profile_id if profile_id is not None else timing["default_profile_id"]
+    if not isinstance(selected, str) or not TIMING_PROFILE_ID.fullmatch(selected) or \
+            selected not in timing["profiles"]:
+        raise CohortError(f"unknown timing profile: {selected}")
+    profile = timing["profiles"][selected]
+    return {
+        "id": selected,
+        "period_ns": profile["period_ns"],
+        "waveform_ns": list(profile["waveform_ns"]),
+    }
 
 
-def create_plan(archive_path: Path, output: Path) -> Path:
+def conditions_for_profile(contract: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    expected = timing_profile(contract, profile.get("id") if isinstance(profile, dict) else None)
+    if profile != expected:
+        raise CohortError("timing profile identity/period mismatch")
+    conditions = copy.deepcopy(contract["common_conditions"])
+    conditions["clock"]["period_ns"] = expected["period_ns"]
+    conditions["clock"]["waveform_ns"] = expected["waveform_ns"]
+    return conditions
+
+
+def condition_sha(conditions: dict[str, Any]) -> str:
+    return sha256(canonical(conditions))
+
+
+def create_plan(archive_path: Path, output: Path, profile_id: str | None = None) -> Path:
     contract_payload, contract = validate_contract()
+    profile = timing_profile(contract, profile_id)
+    conditions = conditions_for_profile(contract, profile)
     archive_payload, _ = archive_members(contract, archive_path)
     rows = []
     for candidate in contract["candidate_order"]:
@@ -307,8 +349,10 @@ def create_plan(archive_path: Path, output: Path) -> Path:
                            "sha256": sha256(archive_payload)},
         "authority_identities": contract["authorities"],
         "flow_template_identities": contract["flow_templates"],
-        "common_conditions": contract["common_conditions"],
-        "common_condition_sha256": condition_sha(contract),
+        "timing_profile": profile,
+        "clock_period_ns": profile["period_ns"],
+        "common_conditions": conditions,
+        "common_condition_sha256": condition_sha(conditions),
         "technology": contract["technology"],
         "tools": contract["tools"],
         "rows": rows,
@@ -322,11 +366,18 @@ def validate_plan(path: Path) -> tuple[bytes, dict[str, Any], dict[str, Any], di
     plan_payload, plan = load_json(path, "cohort plan")
     verify_seal(plan, "cohort plan")
     contract_payload, contract = validate_contract()
+    raw_profile = plan.get("timing_profile")
+    if not isinstance(raw_profile, dict):
+        raise CohortError("plan timing profile is malformed")
+    profile = timing_profile(contract, raw_profile.get("id"))
+    conditions = conditions_for_profile(contract, profile)
     if plan.get("schema") != "k2_core_physical_cohort_plan_v1" or \
             plan.get("state") != "PLANNED_NOT_EXECUTED" or \
             plan.get("contract", {}).get("sha256") != sha256(contract_payload) or \
-            plan.get("common_condition_sha256") != condition_sha(contract) or \
-            plan.get("common_conditions") != contract["common_conditions"] or \
+            plan.get("timing_profile") != profile or \
+            plan.get("clock_period_ns") != profile["period_ns"] or \
+            plan.get("common_condition_sha256") != condition_sha(conditions) or \
+            plan.get("common_conditions") != conditions or \
             plan.get("technology") != contract["technology"] or \
             plan.get("tools") != contract["tools"] or \
             plan.get("authority_identities") != contract["authorities"] or \
@@ -390,9 +441,9 @@ def verify_server_receipt(path: Path, contract: dict[str, Any]) -> tuple[bytes, 
     return payload, receipt
 
 
-def sdc_payload(contract: dict[str, Any]) -> bytes:
-    clock = contract["common_conditions"]["clock"]
-    io_contract = contract["common_conditions"]["io"]
+def sdc_payload(conditions: dict[str, Any]) -> bytes:
+    clock = conditions["clock"]
+    io_contract = conditions["io"]
     text = (
         f"create_clock -name {clock['name']} -period {clock['period_ns']} "
         f"-waveform {{{clock['waveform_ns'][0]} {clock['waveform_ns'][1]}}} "
@@ -432,7 +483,10 @@ def prepare_run(plan_path: Path, receipt_path: Path, output_root: Path,
         source, payload = relative_file(identity, f"flow template {name}")
         write_exclusive(bundle / source.name, payload)
 
-    common_sdc = sdc_payload(contract)
+    profile = plan["timing_profile"]
+    conditions = plan["common_conditions"]
+    common_sdc = sdc_payload(conditions)
+    sdc_name = f"common_{profile['id']}.sdc"
     descriptors: dict[str, dict[str, Any]] = {}
     for candidate in contract["candidate_order"]:
         row_root = output_root / candidate
@@ -449,7 +503,7 @@ def prepare_run(plan_path: Path, receipt_path: Path, output_root: Path,
                 "path": str(source_path),
                 "sha256": identity["sha256"],
             })
-        sdc_path = input_root / "common_5ns.sdc"
+        sdc_path = input_root / sdc_name
         write_exclusive(sdc_path, common_sdc)
         filelist_path = input_root / "sources.f"
         filelist = "".join(f"{item['path']}\n" for item in staged_sources).encode()
@@ -462,7 +516,9 @@ def prepare_run(plan_path: Path, receipt_path: Path, output_root: Path,
             "plan_sha256": sha256(plan_payload),
             "server_environment_receipt_sha256": sha256(server_payload),
             "environment_binding_sha256": server["environment_binding_sha256"],
-            "common_condition_sha256": condition_sha(contract),
+            "timing_profile": profile,
+            "common_conditions": conditions,
+            "common_condition_sha256": condition_sha(conditions),
             "source_archive_sha256": contract["source_archive"]["sha256"],
             "sources": staged_sources,
             "filelist": {"path": str(filelist_path), "sha256": sha256(filelist)},
@@ -486,7 +542,9 @@ def prepare_run(plan_path: Path, receipt_path: Path, output_root: Path,
             "path": str(receipt_path.resolve()), "sha256": sha256(server_payload),
             "environment_binding_sha256": server["environment_binding_sha256"],
         },
-        "common_condition_sha256": condition_sha(contract),
+        "timing_profile": profile,
+        "clock_period_ns": profile["period_ns"],
+        "common_condition_sha256": condition_sha(conditions),
         "candidate_order": contract["candidate_order"],
         "descriptors": descriptors,
     })
@@ -505,8 +563,12 @@ def validate_prepared(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[
         raise CohortError("preparation receipt contract mismatch")
     plan_path = Path(receipt["plan"]["path"])
     plan_payload, plan, contract, _ = validate_plan(plan_path)
+    profile = plan["timing_profile"]
+    conditions = plan["common_conditions"]
     if sha256(plan_payload) != receipt["plan"]["sha256"] or \
-            receipt["common_condition_sha256"] != condition_sha(contract):
+            receipt.get("timing_profile") != profile or \
+            receipt.get("clock_period_ns") != profile["period_ns"] or \
+            receipt["common_condition_sha256"] != condition_sha(conditions):
         raise CohortError("preparation receipt plan/condition binding mismatch")
     copied = stable_read(root / "bundle/plan.json")
     if copied != plan_payload:
@@ -531,7 +593,9 @@ def validate_prepared(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[
         if (sha256(descriptor_payload) != descriptor_identity.get("sha256") or
                 descriptor.get("candidate") != candidate or
                 descriptor.get("top") != contract["candidates"][candidate]["top"] or
-                descriptor.get("common_condition_sha256") != condition_sha(contract) or
+                descriptor.get("timing_profile") != profile or
+                descriptor.get("common_conditions") != conditions or
+                descriptor.get("common_condition_sha256") != condition_sha(conditions) or
                 descriptor.get("plan_sha256") != sha256(plan_payload) or
                 descriptor.get("technology") != contract["technology"] or
                 descriptor.get("tools") != contract["tools"] or
@@ -560,10 +624,10 @@ def validate_prepared(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[
                 raise CohortError(f"prepared source identity mismatch: {candidate}")
             if sha256(stable_read(Path(source["path"]))) != source["sha256"]:
                 raise CohortError(f"prepared source mutated: {candidate}")
-        expected_sdc = root / candidate / "input/common_5ns.sdc"
+        expected_sdc = root / candidate / "input" / f"common_{profile['id']}.sdc"
         if descriptor.get("sdc") != {
-                "path": str(expected_sdc), "sha256": sha256(sdc_payload(contract))} or \
-                stable_read(expected_sdc) != sdc_payload(contract):
+                "path": str(expected_sdc), "sha256": sha256(sdc_payload(conditions))} or \
+                stable_read(expected_sdc) != sdc_payload(conditions):
             raise CohortError(f"prepared SDC mutated: {candidate}")
         expected_filelist_path = root / candidate / "input/sources.f"
         if descriptor.get("filelist", {}).get("path") != str(expected_filelist_path):
@@ -724,7 +788,7 @@ def clean_innovus(log: str, version: str) -> None:
 
 
 def execute_stage(root: Path, candidate: str, stage: str, authorization: str) -> Path:
-    receipt, _, contract = validate_prepared(root.resolve())
+    receipt, plan, contract = validate_prepared(root.resolve())
     expected_auth = f"I_UNDERSTAND_THIS_LAUNCHES_{stage.upper()}"
     if authorization != expected_auth:
         raise CohortError(f"explicit execution authorization must equal {expected_auth}")
@@ -858,7 +922,9 @@ def execute_stage(root: Path, candidate: str, stage: str, authorization: str) ->
         "top": descriptor["top"],
         "prepared_receipt_sha256": sha256(stable_read(root / "PREPARATION_RECEIPT.json")),
         "descriptor_sha256": sha256(stable_read(descriptor_path)),
-        "common_condition_sha256": condition_sha(contract),
+        "timing_profile": plan["timing_profile"],
+        "clock_period_ns": plan["timing_profile"]["period_ns"],
+        "common_condition_sha256": condition_sha(plan["common_conditions"]),
         "tool": tool,
         "source_archive_sha256": contract["source_archive"]["sha256"],
         "power_disclosure": "VECTORLESS_DISCLOSED_SCREENING_ONLY_NOT_SIGNOFF",
@@ -874,12 +940,20 @@ def validate_execution_receipt(path: Path, root: Path, candidate: str,
                                stage: str) -> dict[str, Any]:
     payload, document = load_json(path, f"{stage} execution receipt")
     verify_seal(document, f"{stage} execution receipt")
-    _, _, contract = validate_prepared(root)
+    prepared, plan, contract = validate_prepared(root)
     if (document.get("schema") != "k2_core_physical_execution_receipt_v1" or
             document.get("state") != "NATIVE_TOOL_COMPLETED_AND_VERIFIED" or
             document.get("candidate") != candidate or document.get("stage") != stage or
             document.get("top") != contract["candidates"][candidate]["top"] or
-            document.get("common_condition_sha256") != condition_sha(contract) or
+            document.get("prepared_receipt_sha256") !=
+            sha256(stable_read(root / "PREPARATION_RECEIPT.json")) or
+            document.get("descriptor_sha256") !=
+            prepared["descriptors"][candidate]["sha256"] or
+            document.get("timing_profile") != plan["timing_profile"] or
+            document.get("clock_period_ns") != plan["timing_profile"]["period_ns"] or
+            document.get("common_condition_sha256") !=
+            condition_sha(plan["common_conditions"]) or
+            document.get("source_archive_sha256") != contract["source_archive"]["sha256"] or
             document.get("tool") != contract["tools"][stage] or
             document.get("power_disclosure") !=
             "VECTORLESS_DISCLOSED_SCREENING_ONLY_NOT_SIGNOFF"):
@@ -919,12 +993,15 @@ def validate_execution_receipt(path: Path, root: Path, candidate: str,
 
 
 def seal_cohort(root: Path, output: Path) -> Path:
-    _, _, contract = validate_prepared(root.resolve())
+    _, plan, contract = validate_prepared(root.resolve())
     executions = {}
     for candidate in contract["candidate_order"]:
         for stage in ("genus", "innovus"):
             receipt_path = root / candidate / stage / "EXECUTION_RECEIPT.json"
             document = validate_execution_receipt(receipt_path, root, candidate, stage)
+            if document.get("timing_profile") != plan["timing_profile"] or \
+                    document.get("clock_period_ns") != plan["timing_profile"]["period_ns"]:
+                raise CohortError(f"{stage} execution timing profile binding mismatch")
             executions[f"{candidate}:{stage}"] = {
                 "path": str(receipt_path),
                 "sha256": sha256(stable_read(receipt_path)),
@@ -934,7 +1011,9 @@ def seal_cohort(root: Path, output: Path) -> Path:
         "schema": "k2_core_physical_cohort_receipt_v1",
         "state": "EXACT_TWO_ROW_COHORT_COMPLETE",
         "candidate_order": contract["candidate_order"],
-        "common_condition_sha256": condition_sha(contract),
+        "timing_profile": plan["timing_profile"],
+        "clock_period_ns": plan["timing_profile"]["period_ns"],
+        "common_condition_sha256": condition_sha(plan["common_conditions"]),
         "source_archive_sha256": contract["source_archive"]["sha256"],
         "power_disclosure": "VECTORLESS_DISCLOSED_SCREENING_ONLY_NOT_SIGNOFF",
         "executions": executions,
@@ -948,6 +1027,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     plan = commands.add_parser("plan", help="write an immutable no-EDA cohort plan")
     plan.add_argument("--source-archive", type=Path, default=None)
+    plan.add_argument(
+        "--timing-profile", default=None,
+        help="allowlisted timing profile ID (default: contract default, 5ns)")
     plan.add_argument("--output", type=Path, required=True)
     prepare = commands.add_parser("prepare", help="prepare exclusive server run directories")
     prepare.add_argument("--plan", type=Path, required=True)
@@ -966,7 +1048,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "plan":
             _, contract = validate_contract()
             archive = args.source_archive or Path(contract["source_archive"]["default_path"])
-            result = create_plan(archive, args.output)
+            result = create_plan(archive, args.output, args.timing_profile)
             print(f"K2_CORE_COHORT_PLAN_READY path={result}")
         elif args.command == "prepare":
             result = prepare_run(args.plan, args.server_environment_receipt, args.output_root)
