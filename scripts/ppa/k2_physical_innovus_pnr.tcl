@@ -196,18 +196,16 @@ set flow_failed [catch {
   redirect -file "$output/reports/check_place_post_route.rpt" {checkPlace}
   report_area > "$output/reports/area.rpt"
   report_power > "$output/reports/power.rpt"
+
+  # Innovus 23.14 defaults interactive timing queries to late/setup analysis.
+  # Select each mode explicitly before querying its compatible view/checks.
+  setAnalysisMode -checkType setup
   report_timing -view w2_setup_view -check_type setup -max_paths 50 \
     > "$output/reports/setup_timing.rpt"
-  report_timing -view w2_hold_view -check_type hold -max_paths 50 \
-    > "$output/reports/hold_timing.rpt"
   report_timing -view w2_setup_view -check_type recovery -max_paths 50 \
     > "$output/reports/recovery_timing.rpt"
-  report_timing -view w2_hold_view -check_type removal -max_paths 50 \
-    > "$output/reports/removal_timing.rpt"
   report_timing -view w2_setup_view -check_type clock_gating_setup -max_paths 50 \
     > "$output/reports/gating_setup_timing.rpt"
-  report_timing -view w2_hold_view -check_type clock_gating_hold -max_paths 50 \
-    > "$output/reports/gating_hold_timing.rpt"
   report_timing -view w2_setup_view -check_type pulse_width -max_paths 50 \
     > "$output/reports/pulse_width_timing.rpt"
   set link_data_ports [get_ports link_data_o*]
@@ -217,27 +215,36 @@ set flow_failed [catch {
   report_timing -view w2_setup_view -check_type setup \
     -to $link_data_ports -max_paths 50 \
     > "$output/reports/half_cycle_setup_timing.rpt"
-  report_timing -view w2_hold_view -check_type hold \
-    -to $link_data_ports -max_paths 50 \
-    > "$output/reports/half_cycle_hold_timing.rpt"
   write_timing_machine_summary "$output/reports/setup_timing.machine" \
     w2_setup_view setup
-  write_timing_machine_summary "$output/reports/hold_timing.machine" \
-    w2_hold_view hold
   write_timing_machine_summary "$output/reports/recovery_timing.machine" \
     w2_setup_view recovery
-  write_timing_machine_summary "$output/reports/removal_timing.machine" \
-    w2_hold_view removal
   write_timing_machine_summary "$output/reports/gating_setup_timing.machine" \
     w2_setup_view clock_gating_setup
-  write_timing_machine_summary "$output/reports/gating_hold_timing.machine" \
-    w2_hold_view clock_gating_hold
   write_timing_machine_summary "$output/reports/pulse_width_timing.machine" \
     w2_setup_view pulse_width
   write_timing_machine_summary "$output/reports/half_cycle_setup_timing.machine" \
     w2_setup_view setup half_cycle_setup $link_data_ports
+
+  setAnalysisMode -checkType hold
+  report_timing -view w2_hold_view -check_type hold -max_paths 50 \
+    > "$output/reports/hold_timing.rpt"
+  report_timing -view w2_hold_view -check_type removal -max_paths 50 \
+    > "$output/reports/removal_timing.rpt"
+  report_timing -view w2_hold_view -check_type clock_gating_hold -max_paths 50 \
+    > "$output/reports/gating_hold_timing.rpt"
+  report_timing -view w2_hold_view -check_type hold \
+    -to $link_data_ports -max_paths 50 \
+    > "$output/reports/half_cycle_hold_timing.rpt"
+  write_timing_machine_summary "$output/reports/hold_timing.machine" \
+    w2_hold_view hold
+  write_timing_machine_summary "$output/reports/removal_timing.machine" \
+    w2_hold_view removal
+  write_timing_machine_summary "$output/reports/gating_hold_timing.machine" \
+    w2_hold_view clock_gating_hold
   write_timing_machine_summary "$output/reports/half_cycle_hold_timing.machine" \
     w2_hold_view hold half_cycle_hold $link_data_ports
+  setAnalysisMode -checkType setup
   redirect -file "$output/reports/check_timing.rpt" {check_timing -verbose}
   redirect -file "$output/reports/check_design_post_route.rpt" {checkDesign -all}
   verifyConnectivity -type all -error 1000 -warning 1000 \

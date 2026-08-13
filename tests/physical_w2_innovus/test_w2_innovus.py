@@ -126,6 +126,20 @@ class StaticFlowContractTests(unittest.TestCase):
         self.assertEqual(text.count(propagated), 1)
         self.assertLess(text.index(interactive), text.index(propagated))
 
+    def test_timing_reports_select_compatible_setup_and_hold_modes(self):
+        text = PNR.read_text(encoding="utf-8")
+        setup_mode = "setAnalysisMode -checkType setup"
+        hold_mode = "setAnalysisMode -checkType hold"
+        self.assertEqual(text.count(setup_mode), 2)
+        self.assertEqual(text.count(hold_mode), 1)
+        setup_start = text.index(setup_mode)
+        hold_start = text.index(hold_mode)
+        setup_restore = text.rindex(setup_mode)
+        self.assertLess(setup_start, text.index("-check_type recovery", setup_start))
+        self.assertLess(text.index("-check_type recovery", setup_start), hold_start)
+        self.assertLess(hold_start, text.index("-check_type removal", hold_start))
+        self.assertLess(text.index("-check_type removal", hold_start), setup_restore)
+
     def test_runner_delegates_clean_marker_to_independent_verifier(self):
         text = RUNNER.read_text(encoding="utf-8")
         self.assertIn("--write-clean-marker", text)
