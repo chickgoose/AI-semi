@@ -183,6 +183,16 @@ class CoreCohortTests(unittest.TestCase):
         self.assertIn("len(descriptor.get(\"sources\", [])) != len(expected_sources)",
                       producer)
 
+    def test_native_stages_use_isolated_work_and_tmp_and_post_pg_hold(self) -> None:
+        producer = (ROOT / "physical/k2_core_physical_cohort/core_cohort.py").read_text()
+        innovus = (ROOT / "physical/k2_core_physical_cohort/innovus_core.tcl").read_text()
+        self.assertIn('env["TMPDIR"] = str(temporary)', producer)
+        self.assertIn("subprocess.run(command, cwd=work", producer)
+        self.assertIn("setOptMode -fixHoldAllowSetupTnsDegrade true", innovus)
+        self.assertIn("for {set hold_iteration 0} {$hold_iteration < 2}", innovus)
+        self.assertGreaterEqual(innovus.count("sroute -nets"), 2)
+        self.assertGreaterEqual(innovus.count("extractRC"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
