@@ -3,15 +3,15 @@
   "integration_state": "ready",
   "cohort": "tech_staged_complete_compositions",
   "ranking_policy": "ONLY_THREE_TECH_STAGED_COMPLETE_COMPOSITIONS_COMPARABLE",
-  "repository_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
+  "repository_commit": "fa48ed6e15debce6b0cda49a93d8f36a767bc63c",
   "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
   "staged_manifest": {
     "required_schema": "k2_w2_tech_staged_compositions_v1",
     "required_status": "READY_FOR_GENUS_AND_INNOVUS",
     "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
-    "sha256": "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b",
-    "source_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
-    "publication_commit": "7f149e043a740c032e2cd22b3ed1d6876b6670ce"
+    "sha256": "fdeaa0fc7cf2fc50e3fc4bc4faf869b11d9fe8a9a17bc32d7b5ca820d3d6f37e",
+    "source_commit": "fa48ed6e15debce6b0cda49a93d8f36a767bc63c",
+    "publication_commit": "d64b905e2c1026fee7b4781472f0911f92b1d925"
   },
   "required_technology_authorities": {
     "raw_golden": {

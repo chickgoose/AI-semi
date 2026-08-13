@@ -190,9 +190,9 @@ def validate_final_registry_document(document: dict[str, Any]) -> dict[str, Any]
         "required_schema": "k2_w2_tech_staged_compositions_v1",
         "required_status": "READY_FOR_GENUS_AND_INNOVUS",
         "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
-        "sha256": "923c898e883f535547aa6eee309ecc7270e9c431e872667561c1902afc55279b",
-        "source_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
-        "publication_commit": "7f149e043a740c032e2cd22b3ed1d6876b6670ce",
+        "sha256": "fdeaa0fc7cf2fc50e3fc4bc4faf869b11d9fe8a9a17bc32d7b5ca820d3d6f37e",
+        "source_commit": "fa48ed6e15debce6b0cda49a93d8f36a767bc63c",
+        "publication_commit": "d64b905e2c1026fee7b4781472f0911f92b1d925",
     }
     if document.get("integration_state") != "ready" or pointer != expected_pointer:
         raise FlowError("canonical staged-manifest registry pointer mismatch")
