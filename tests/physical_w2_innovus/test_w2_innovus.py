@@ -158,7 +158,7 @@ class FixtureQualificationTests(unittest.TestCase):
             "top=dut\n"
             "cohort=tech_staged_complete_compositions\n"
             "design=fovea_a7\n"
-            "innovus_path=/tools/cadence/DDI231/bin/innovus\n"
+            "innovus_path=/tools/cadence/DDI231/INNOVUS231/bin/innovus\n"
             "innovus_sha256=41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa\n"
             "tech_lef_sha256=0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70\n"
             "cell_lef_sha256=7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2\n"

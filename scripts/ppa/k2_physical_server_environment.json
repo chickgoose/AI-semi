@@ -2,7 +2,7 @@
   "schema": "k2_w2_innovus_server_environment_v2",
   "tool": {
     "name": "innovus",
-    "path": "/tools/cadence/DDI231/bin/innovus",
+    "path": "/tools/cadence/DDI231/INNOVUS231/bin/innovus",
     "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
     "version": "23.14-s088_1"
   },

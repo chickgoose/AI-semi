@@ -56,7 +56,7 @@ handoff provenance.
 
 ## Technology and timing contract
 
-Innovus is pinned to `/tools/cadence/DDI231/bin/innovus`, SHA-256
+Innovus is pinned to `/tools/cadence/DDI231/INNOVUS231/bin/innovus`, SHA-256
 `41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa`,
 version `23.14-s088_1`. Setup uses the slow 0.9 V/125 C Liberty and hold uses
 the fast 1.1 V/0 C Liberty. GPDK045 has one characterized
