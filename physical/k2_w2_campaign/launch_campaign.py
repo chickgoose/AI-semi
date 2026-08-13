@@ -379,8 +379,18 @@ def validate_campaign(document: dict[str, Any], repo_root: Path) -> list[str]:
     if policy.get("sealed_stage_order") != expected_order:
         raise CampaignError("sealed campaign order mismatch")
     registry = document["authority"]["fair_top_registry"]
+    exact(registry, {"path", "repository_commit", "sha256"},
+          "fair-top registry authority")
+    if (registry["path"] != "physical/k2_w2_tops/designs.json" or
+            not COMMIT.fullmatch(registry["repository_commit"]) or
+            not SHA256.fullmatch(registry["sha256"])):
+        raise CampaignError("fair-top registry identity mismatch")
     registry_payload = stable_read((repo_root / registry["path"]).resolve())
-    if digest(registry_payload) != registry["sha256"]:
+    committed_registry = git_bytes(
+        repo_root, registry["repository_commit"], registry["path"],
+        "fair-top registry")
+    if (digest(registry_payload) != registry["sha256"] or
+            registry_payload != committed_registry):
         raise CampaignError("fair-top registry SHA mismatch")
     if document["authority"]["functional_loss_archive"]["usage"] != "loss_only_never_ppa":
         raise CampaignError("functional loss evidence escaped into PPA")

@@ -21,9 +21,9 @@
   },
   "authority": {
     "fair_top_registry": {
-      "path": "physical/k2_w2_boundaries.json",
-      "repository_commit": "ea75e6dc3d9582bda522a89b3ae3bcd402c17272",
-      "sha256": "6919fdbcd1094c06dec1c1c36962b5d87f2321ff08fad8e8a6b29766b5e3d206"
+      "path": "physical/k2_w2_tops/designs.json",
+      "repository_commit": "911421b5c078c23213fc6baf31eff5aa5467817e",
+      "sha256": "770e44a1396f58285b04526eedddc0f3b239cc26c22fff0b756cf83ba7ac565f"
     },
     "buffered_server_archive": {
       "path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",

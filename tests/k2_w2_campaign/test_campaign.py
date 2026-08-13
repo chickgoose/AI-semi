@@ -112,6 +112,31 @@ def calibration_fixture(root: Path, doc: dict, environment_sha: str) -> dict[str
 
 
 class StaticContractTest(unittest.TestCase):
+    def test_fair_top_registry_is_exact_current_committed_closure(self) -> None:
+        authority = campaign()["authority"]["fair_top_registry"]
+        self.assertEqual(authority, {
+            "path": "physical/k2_w2_tops/designs.json",
+            "repository_commit": "911421b5c078c23213fc6baf31eff5aa5467817e",
+            "sha256":
+                "770e44a1396f58285b04526eedddc0f3b239cc26c22fff0b756cf83ba7ac565f",
+        })
+        payload = (ROOT / authority["path"]).read_bytes()
+        committed = subprocess.run(
+            ["git", "-C", str(ROOT), "show",
+             f"{authority['repository_commit']}:{authority['path']}"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True).stdout
+        self.assertEqual(payload, committed)
+        self.assertEqual(sha(payload), authority["sha256"])
+
+    def test_fair_top_registry_commit_or_sha_mutation_rejects(self) -> None:
+        for field, value in (("repository_commit", "0" * 40),
+                             ("sha256", "0" * 64)):
+            mutated = campaign()
+            mutated["authority"]["fair_top_registry"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                    campaign_module.CampaignError, "fair-top registry"):
+                campaign_module.validate_campaign(mutated, ROOT)
+
     def test_current_package_is_honestly_hold(self) -> None:
         blockers = campaign_module.validate_campaign(campaign(), ROOT)
         self.assertGreaterEqual(len(blockers), 10)
