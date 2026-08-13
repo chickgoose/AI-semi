@@ -223,6 +223,17 @@ class CoreCohortTests(unittest.TestCase):
         with self.assertRaisesRegex(cohort.CohortError, "zero-error evidence"):
             cohort.clean_innovus(failed_log, "23.14-s088_1")
 
+    def test_clean_native_check_timing_may_omit_detail_section(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report = Path(temporary) / "check_timing.rpt"
+            report.write_text(
+                "TIMING CHECK SUMMARY\n"
+                "| ideal_clock_waveform | Clock waveform is ideal | 1 |\n"
+                "TIMING CHECK IDEAL CLOCKS\n"
+                "| core_clk | core_setup_view |\n",
+                encoding="utf-8")
+            cohort.require_clean_check_timing(report)
+
     def test_server_python_38_does_not_require_zip_strict(self) -> None:
         producer = (ROOT / "physical/k2_core_physical_cohort/core_cohort.py").read_text()
         self.assertNotIn("zip(descriptor[\"sources\"], expected_sources, strict=True)",

@@ -686,8 +686,8 @@ def require_zero_report(path: Path, kind: str) -> None:
 
 def require_clean_check_timing(path: Path) -> None:
     text = stable_read(path).decode("utf-8", errors="strict")
-    if "TIMING CHECK SUMMARY" not in text or "TIMING CHECK DETAIL" not in text:
-        raise CohortError("check_timing report lacks native summary/detail")
+    if "TIMING CHECK SUMMARY" not in text:
+        raise CohortError("check_timing report lacks native summary")
     blockers = ("no_clock", "no_input_delay", "no_output_delay", "unconstrained",
                 "no_drive", "no_load")
     for name in blockers:
