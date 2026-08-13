@@ -122,9 +122,9 @@ class StaticFlowContractTests(unittest.TestCase):
             "set_drive 0 $boundary_clock_ports",
             "set_driving_cell -lib_cell BUFX2 $boundary_nonclock_inputs",
             "set forwarded_link_source [get_pins -hierarchical *w2_ep_icg_0/ECK]",
-            "create_generated_clock -name w2_forwarded_link_port_clk",
+            "set forwarded_link_clock [create_generated_clock",
+            "-name w2_forwarded_link_port_clk",
             "-source $forwarded_link_source -divide_by 1 $forwarded_link_port",
-            "set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]",
             "expected exactly one forwarded generated clock on link_clk_o",
             "boundary_timing.machine",
             "set_propagated_clock [all_clocks]",
@@ -168,9 +168,9 @@ class StaticFlowContractTests(unittest.TestCase):
 
     def test_forwarded_link_clock_is_created_before_it_is_checked(self):
         text = PNR.read_text(encoding="utf-8")
-        create = "create_generated_clock -name w2_forwarded_link_port_clk"
+        create = "set forwarded_link_clock [create_generated_clock"
         source = "set forwarded_link_source [get_pins -hierarchical *w2_ep_icg_0/ECK]"
-        check = "set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]"
+        check = "[sizeof_collection $forwarded_link_clock] != 1"
         self.assertEqual(text.count(create), 1)
         self.assertEqual(text.count(source), 1)
         self.assertLess(text.index(source), text.index(create))

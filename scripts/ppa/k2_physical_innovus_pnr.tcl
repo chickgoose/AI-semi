@@ -210,9 +210,9 @@ set flow_failed [catch {
       [sizeof_collection $forwarded_link_port] != 1} {
     error "expected exactly one *w2_ep_icg_0/ECK source and link_clk_o target"
   }
-  create_generated_clock -name w2_forwarded_link_port_clk \
-    -source $forwarded_link_source -divide_by 1 $forwarded_link_port
-  set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]
+  set forwarded_link_clock [create_generated_clock \
+    -name w2_forwarded_link_port_clk \
+    -source $forwarded_link_source -divide_by 1 $forwarded_link_port]
   if {[sizeof_collection $forwarded_link_clock] != 1} {
     error "expected exactly one forwarded generated clock on link_clk_o"
   }
