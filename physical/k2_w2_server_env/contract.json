@@ -1,0 +1,85 @@
+{
+  "schema": "k2_w2_server_env_contract_v1",
+  "server_pdk_root": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045",
+  "tools": {
+    "genus": {
+      "version": "23.14-s090_1",
+      "sha256": null,
+      "golden_executable_identity": null
+    },
+    "innovus": {
+      "version": "23.14-s088_1",
+      "sha256": null,
+      "golden_executable_identity": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_"
+    }
+  },
+  "technology": {
+    "setup_liberty": {
+      "relative_path": "timing/slow_vdd1v0_basicCells.lib",
+      "sha256": null,
+      "pvt": [1.0, 0.9, 125.0]
+    },
+    "hold_liberty": {
+      "relative_path": "timing/fast_vdd1v0_basicCells.lib",
+      "sha256": null,
+      "pvt": null
+    },
+    "tech_lef": {
+      "relative_path": "lef/gsclib045_tech.lef",
+      "sha256": null
+    },
+    "macro_lef": {
+      "relative_path": "lef/gsclib045_macro.lef",
+      "sha256": null
+    },
+    "setup_qrc": {
+      "relative_path": "qrc/qx/gpdk045.tch",
+      "sha256": null
+    },
+    "hold_qrc": {
+      "relative_path": "qrc/qx/gpdk045.tch",
+      "sha256": null
+    },
+    "required_timing_directory_entries": [
+      "fast_vdd1v0_basicCells.lib",
+      "slow_vdd1v0_basicCells.lib"
+    ],
+    "required_qrc_tch_entries": ["gpdk045.tch"],
+    "required_site": "CoreSite",
+    "required_cells": {
+      "icg": "TLATNCAX2",
+      "mux": "MX2X1"
+    },
+    "required_ff_edges": ["posedge", "negedge"]
+  },
+  "corner_policy": {
+    "setup_liberty": "slow_vdd1v0_basicCells.lib",
+    "hold_liberty": "fast_vdd1v0_basicCells.lib",
+    "setup_qrc": "gpdk045.tch",
+    "hold_qrc": "gpdk045.tch",
+    "shared_rc_limitation": "Only gpdk045.tch is present under qrc/qx. Setup and hold use the same typical QRC technology file; no distinct best/worst RC evidence exists, so RC-corner physical signoff remains HOLD."
+  },
+  "source_archives": {
+    "raw_core": {
+      "default_path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+      "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3"
+    },
+    "buffered_extension": {
+      "default_path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+      "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f"
+    }
+  },
+  "golden_anchors": {
+    "raw_core": {
+      "synth/pnr/resynth_fovea_raw/genus_1.2.log": "a152f2e0f2b77ef422114f6fa20bbe7cd7015a835879584887fc382565ab1229",
+      "synth/pnr/resynth_fovea_raw/innovus_1.2.log": "324c303927b6744f3c1591df61e54c9d8946037389f488384054f88cf37c2efe",
+      "synth/pnr/resynth_fovea_raw/mmmc_1.2.tcl": "95a3e593876017873d5fa780929c24f46b46bc11512f05e35aecc8459c27dee1",
+      "synth/pnr/resynth_fovea_raw/aer_tx16_trad_rowcol_fovea_1.2_netlist.v": "1741184539a96cf80389d8380bde3bd21aeab14f05d11f4880424531190313d2",
+      "synth/pnr/resynth_cluster2_raw/innovus_0.7.log": "39e97c268e01249c29a1fd7864f947872c55801edb5529dfaf3057b29ce21b75"
+    },
+    "buffered_extension": {
+      "synth/pnr/resynth_cluster2_buffered/aer_cluster2_buffered_1.0_netlist.v": "b47a171ed15e5838bab03448946acc449be8fb3a6c1b2c280704bc7e390a426a",
+      "synth/pnr/resynth_cluster2_buffered/innovus_1.0.log": "07cf8d00a015e1d44610a187886292b78165a36bf04d2bae1e3b2951d33afd71"
+    }
+  }
+}

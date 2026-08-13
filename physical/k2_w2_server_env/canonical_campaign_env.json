@@ -1,0 +1,66 @@
+{
+  "campaign_launch_allowed": false,
+  "contract_sha256": "afb5fb3934bf176d13603688902269a633a46001a1490d735529de360ce842ac",
+  "corner_policy": {
+    "hold_liberty": "fast_vdd1v0_basicCells.lib",
+    "hold_qrc": "gpdk045.tch",
+    "setup_liberty": "slow_vdd1v0_basicCells.lib",
+    "setup_qrc": "gpdk045.tch",
+    "shared_rc_limitation": "Only gpdk045.tch is present under qrc/qx. Setup and hold use the same typical QRC technology file; no distinct best/worst RC evidence exists, so RC-corner physical signoff remains HOLD."
+  },
+  "gates": {
+    "golden_environment": {
+      "evidence": {
+        "cells": [
+          "TLATNCAX2",
+          "MX2X1"
+        ],
+        "genus_version": "23.14-s090_1",
+        "innovus_internal_executable": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_",
+        "innovus_version": "23.14-s088_1",
+        "negedge_ff": null,
+        "posedge_ff": true,
+        "site": "CoreSite",
+        "slow_pvt": [
+          1.0,
+          0.9,
+          125.0
+        ]
+      },
+      "reason": "negative-edge FF and byte identities of live server inputs are not present in historical golden logs",
+      "status": "PROVEN_PARTIAL"
+    },
+    "live_server_inputs": {
+      "evidence": null,
+      "reason": "local golden-only run: executable and technology byte evidence unavailable",
+      "status": "HOLD"
+    },
+    "source_archives": {
+      "evidence": {
+        "buffered_extension": {
+          "anchors_verified": 2,
+          "path": "/tmp/ganghee-pnr-golden-20260813.tar.gz",
+          "sha256": "1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f",
+          "size_bytes": 4626544
+        },
+        "raw_core": {
+          "anchors_verified": 5,
+          "path": "/tmp/ganghee-pnr-raw-golden-20260813.tar.gz",
+          "sha256": "7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3",
+          "size_bytes": 3162552
+        }
+      },
+      "status": "PROVEN"
+    }
+  },
+  "qualification_status": "HOLD",
+  "schema": "k2_w2_server_env_result_v1",
+  "unresolved_environment_evidence": [
+    "Genus resolved executable path and byte SHA",
+    "Innovus launcher executable byte SHA",
+    "slow and fast Liberty byte SHAs",
+    "fast Liberty PVT and direct posedge/negedge FF inspection",
+    "technology and macro LEF byte SHAs and direct site legality",
+    "gpdk045.tch byte SHA and direct qrc/qx directory inventory"
+  ]
+}
