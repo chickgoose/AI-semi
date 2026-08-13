@@ -1,0 +1,18 @@
+Saved: 2026-08-14 KST
+Window: dev:0 (all-agents)
+Pane count: 21
+
+Exact tmux layout:
+6ca1,128x50,0,0[128x9,0,0{24x9,0,0,0,24x9,25,0,29,24x9,50,0,28,24x9,75,0,27,28x9,100,0,26},128x9,0,10{24x9,0,10,25,24x9,25,10,24,24x9,50,10,23,24x9,75,10,22,28x9,100,10,19},128x9,0,20{24x9,0,20,21,24x9,25,20,20,24x9,50,20,18,24x9,75,20,17,28x9,100,20,16},128x9,0,30{24x9,0,30,30,24x9,25,30,8,24x9,50,30,6,24x9,75,30,15,28x9,100,30,14},128x10,0,40,3]
+
+Linked session/window aliases observed before shutdown:
+- dev:0
+- dev-agents:0
+- dev-shell:0
+
+The separate two-pane shell window dev:1 is not part of this saved layout.
+
+Restore geometry after recreating 21 panes:
+  tmux select-layout -t <session>:<window> '6ca1,128x50,0,0[128x9,0,0{24x9,0,0,0,24x9,25,0,29,24x9,50,0,28,24x9,75,0,27,28x9,100,0,26},128x9,0,10{24x9,0,10,25,24x9,25,10,24,24x9,50,10,23,24x9,75,10,22,28x9,100,10,19},128x9,0,20{24x9,0,20,21,24x9,25,20,20,24x9,50,20,18,24x9,75,20,17,28x9,100,20,16},128x9,0,30{24x9,0,30,30,24x9,25,30,8,24x9,50,30,6,24x9,75,30,15,28x9,100,30,14},128x10,0,40,3]'
+
+This file preserves geometry and aliases, not live Codex process state.
