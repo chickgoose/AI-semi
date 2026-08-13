@@ -471,10 +471,14 @@ class GenusFlowTests(unittest.TestCase):
             self.assertIn(
                 "get_pins -hierarchical *w2_ep_icg_0/ECK", text)
             self.assertIn(
+                "set link_icg_e [w2_one link_icg_E "
+                "[get_pins -hierarchical *w2_ep_icg_0/E]]", text)
+            self.assertIn(
                 "-source $sample_port -divide_by 1 $link_icg_eck", text)
             self.assertIn(
                 "set_clock_gating_check -setup $gate_setup "
-                "-hold $gate_hold $sample_clock", text)
+                "-hold $gate_hold $link_icg_e", text)
+            self.assertNotIn("-hold $gate_hold $sample_clock", text)
             self.assertIn("set reset_release_rise $half", text)
             self.assertIn("set reset_release_fall $three_quarter", text)
             self.assertIn(
@@ -501,7 +505,8 @@ class GenusFlowTests(unittest.TestCase):
             "set_min_pulse_width -low", "set_driving_cell",
             "set_input_transition", "set_load",
             "all_registers -clock", "*w2_ep_icg_0/ECK",
-            "-divide_by 1 $link_icg_eck", "-hold $gate_hold $sample_clock",
+            "-divide_by 1 $link_icg_eck", "*w2_ep_icg_0/E]",
+            "-hold $gate_hold $link_icg_e",
             "set ref_registers [w2_some ref_registers",
             "set link_registers [w2_some link_registers",
             "set async_reset_pins [w2_some async_reset_endpoints",

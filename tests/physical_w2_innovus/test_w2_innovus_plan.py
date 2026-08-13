@@ -20,7 +20,7 @@ REGISTRY = ROOT / "scripts/ppa/k2_physical_innovus_cohorts.json"
 AUTHORITY = ROOT / "scripts/ppa/k2_physical_server_environment.json"
 GENUS_PROVIDER_REPO = Path(os.environ.get(
     "W2_GENUS_PROVIDER_REPO", str(ROOT)))
-GENUS_PROVIDER_COMMIT = "bcbcdf8226ca8c1211727012e4ea7ccc7f179550"
+GENUS_PROVIDER_COMMIT = os.environ.get("W2_GENUS_PROVIDER_COMMIT", "HEAD")
 
 
 def load_runner():
@@ -300,7 +300,9 @@ class InnovusPlanTests(unittest.TestCase):
             lines.append(f"create_clock -period {period} [get_ports {clock}]")
         lines += [
             "create_generated_clock -source [get_ports sample_clk_i] [get_ports link_clk_o]",
-            "set_clock_gating_check -setup 0.1 -hold 0.1 [get_pins gate/E]",
+            "set_clock_gating_check -setup 0.0",
+            f"set_clock_gating_check -setup 0.1 -hold 0.1 "
+            f"[get_pins {root}_tx_clock_boundary_w2_ep_icg_0/E]",
             "set_input_transition 0.1 [all_inputs]",
             "set_output_delay -min 0.1 -clock link [get_ports link_data_o*]",
             "set_output_delay -max 0.2 -clock link [get_ports link_data_o*]",
@@ -677,6 +679,9 @@ class InnovusPlanTests(unittest.TestCase):
              "SDFFX1 \\w2_endpoint_link__r1_rx_closing_capture_gen_capture[0].w2_ep_neg_bit"),
             ("mapped_sdc", "set_input_transition", "removed_transition"),
             ("mapped_sdc", "-clock_fall", "-clock_rise"),
+            ("mapped_sdc",
+             "w2_endpoint_link__r1_tx_clock_boundary_w2_ep_icg_0/E",
+             "w2_endpoint_link__r1_tx_gen_symbol_mux[0].w2_ep_mux_bit/S0"),
         ):
             with self.subTest(target=target, new=new):
                 path, document = self.plan()
@@ -750,7 +755,7 @@ class InnovusPlanTests(unittest.TestCase):
             f"{GENUS_PROVIDER_COMMIT}:physical/k2_w2_genus/run_genus.py",
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         self.assertEqual(hashlib.sha256(provider.stdout).hexdigest(),
-                         "fce81e7a825d75cc08385125f5dee2d9236067512819f4b66f9a774078a193d8")
+                         "c8a5fd218099746265deaa08e7c55ccdc77730228dbe7d83533540a586119934")
         for source, local in (
                 ("constraints/r1_multiclock_strict.sdc",
                  ROOT / "constraints/r1_multiclock.sdc"),

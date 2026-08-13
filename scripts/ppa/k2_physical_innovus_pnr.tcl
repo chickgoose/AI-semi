@@ -211,6 +211,13 @@ set flow_failed [catch {
   # setup and hold views intentionally share this one strict functional mode.
   set_interactive_constraint_modes [list w2_strict_functional]
   set_propagated_clock [all_clocks]
+  # The link uses a clock-selected serializer, so a clock-wide gating query
+  # falsely classifies MX2 S0 and ordinary synthesized logic as clock gates.
+  # Rank only the one preserved endpoint ICG enable constrained by the SDC.
+  set endpoint_icg_enable [get_pins -hierarchical *w2_ep_icg_0/E]
+  if {[sizeof_collection $endpoint_icg_enable] != 1} {
+    error "expected exactly one preserved endpoint ICG enable pin"
+  }
   # Preserve a resumable post-route checkpoint before activity/report parsing.
   # Later compatibility failures can then be diagnosed without rerunning P&R.
   saveDesign -mmmc2 "$output/database/${top}.postroute_checkpoint.enc"
@@ -234,7 +241,8 @@ set flow_failed [catch {
     > "$output/reports/setup_timing.rpt"
   report_timing -view w2_setup_view -check_type recovery -max_paths 50 \
     > "$output/reports/recovery_timing.rpt"
-  report_timing -view w2_setup_view -check_type clock_gating_setup -max_paths 50 \
+  report_timing -view w2_setup_view -check_type clock_gating_setup \
+    -to $endpoint_icg_enable -max_paths 50 \
     > "$output/reports/gating_setup_timing.rpt"
   report_timing -view w2_setup_view -check_type pulse_width -max_paths 50 \
     > "$output/reports/pulse_width_timing.rpt"
@@ -250,7 +258,7 @@ set flow_failed [catch {
   write_timing_machine_summary "$output/reports/recovery_timing.machine" \
     w2_setup_view recovery
   write_timing_machine_summary "$output/reports/gating_setup_timing.machine" \
-    w2_setup_view clock_gating_setup
+    w2_setup_view clock_gating_setup gating_setup $endpoint_icg_enable
   write_timing_machine_summary "$output/reports/pulse_width_timing.machine" \
     w2_setup_view pulse_width
   write_timing_machine_summary "$output/reports/half_cycle_setup_timing.machine" \
@@ -261,7 +269,8 @@ set flow_failed [catch {
     > "$output/reports/hold_timing.rpt"
   report_timing -view w2_hold_view -check_type removal -max_paths 50 \
     > "$output/reports/removal_timing.rpt"
-  report_timing -view w2_hold_view -check_type clock_gating_hold -max_paths 50 \
+  report_timing -view w2_hold_view -check_type clock_gating_hold \
+    -to $endpoint_icg_enable -max_paths 50 \
     > "$output/reports/gating_hold_timing.rpt"
   report_timing -view w2_hold_view -check_type hold \
     -to $link_data_ports -max_paths 50 \
@@ -271,7 +280,7 @@ set flow_failed [catch {
   write_timing_machine_summary "$output/reports/removal_timing.machine" \
     w2_hold_view removal
   write_timing_machine_summary "$output/reports/gating_hold_timing.machine" \
-    w2_hold_view clock_gating_hold
+    w2_hold_view clock_gating_hold gating_hold $endpoint_icg_enable
   write_timing_machine_summary "$output/reports/half_cycle_hold_timing.machine" \
     w2_hold_view hold half_cycle_hold $link_data_ports
   setAnalysisMode -checkType setup

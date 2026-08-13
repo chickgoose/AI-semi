@@ -71,6 +71,13 @@ class StaticFlowContractTests(unittest.TestCase):
                               "pending_i", "source_ready_o", "protocol_fault_o"):
                     self.assertNotIn(alias, text)
                 self.assertIn(f"!= {width}", text)
+                self.assertIn(
+                    "set link_icg_e [w2_one link_icg_E "
+                    "[get_pins -hierarchical *w2_ep_icg_0/E]]", text)
+                self.assertIn(
+                    "set_clock_gating_check -setup $gate_setup "
+                    "-hold $gate_hold $link_icg_e", text)
+                self.assertNotIn("-hold $gate_hold $sample_clock", text)
 
     def test_authoritative_environment_pins_exact_tool_and_technology(self):
         authority = json.loads((ROOT / "scripts/ppa/k2_physical_server_environment.json").read_text())
@@ -118,6 +125,9 @@ class StaticFlowContractTests(unittest.TestCase):
             "-check_type clock_gating_setup", "-check_type clock_gating_hold",
             "-check_type pulse_width", "half_cycle_setup_timing.rpt",
             "half_cycle_hold_timing.rpt",
+            "get_pins -hierarchical *w2_ep_icg_0/E",
+            "expected exactly one preserved endpoint ICG enable pin",
+            "-to $endpoint_icg_enable -max_paths 50",
             "verifyConnectivity -type all", "verifyConnectivity -type special",
             "verify_drc", "verify_process_antenna", "saveNetlist",
             "write_sdf", "rcOut -spef",
@@ -128,6 +138,14 @@ class StaticFlowContractTests(unittest.TestCase):
         self.assertNotIn("concat $used_sites [list $site CoreSiteDouble]", text)
         self.assertNotIn("floorPlan -site", text)
         self.assertNotIn("FLOW_CLEAN", text.split("# FLOW_CLEAN", 1)[0])
+        self.assertEqual(
+            text.count("-to $endpoint_icg_enable -max_paths 50"), 2)
+        self.assertIn(
+            "w2_setup_view clock_gating_setup gating_setup $endpoint_icg_enable",
+            text)
+        self.assertIn(
+            "w2_hold_view clock_gating_hold gating_hold $endpoint_icg_enable",
+            text)
 
     def test_pg_route_runs_once_after_all_cell_insertion(self):
         text = PNR.read_text(encoding="utf-8")

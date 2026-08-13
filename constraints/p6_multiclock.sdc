@@ -48,6 +48,7 @@ set reset_port [w2_one rst_n [get_ports rst_n]]
 set link_clock_port [w2_one link_clk_o [get_ports link_clk_o]]
 set link_data_ports [w2_some link_data_o [get_ports link_data_o*]]
 set link_icg_eck [w2_one link_icg_ECK [get_pins -hierarchical *w2_ep_icg_0/ECK]]
+set link_icg_e [w2_one link_icg_E [get_pins -hierarchical *w2_ep_icg_0/E]]
 if {[sizeof_collection $link_data_ports] != 5} { error "P6 requires exactly five DDR data ports" }
 create_clock -name p6_ref_clk -period $period -waveform [list 0.0 $half] $ref_port
 create_clock -name p6_sample_clk -period $period -waveform [list $quarter $three_quarter] $sample_port
@@ -62,7 +63,7 @@ foreach clock [list $ref_clock $sample_clock $link_clock] {
   set_min_pulse_width -high $pulse_high $clock
   set_min_pulse_width -low $pulse_low $clock
 }
-set_clock_gating_check -setup $gate_setup -hold $gate_hold $sample_clock
+set_clock_gating_check -setup $gate_setup -hold $gate_hold $link_icg_e
 
 set clock_inputs [get_ports {ref_clk_i sample_clk_i}]
 set nonclock_inputs [remove_from_collection [all_inputs] $clock_inputs]
