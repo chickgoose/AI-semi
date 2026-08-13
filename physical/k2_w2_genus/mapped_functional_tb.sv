@@ -109,8 +109,9 @@ module k2_w2_mapped_functional_tb;
       $fatal(2, "missing RESULT plusarg");
     fd = $fopen(result_path, "w");
     if (fd == 0) $fatal(2, "cannot open result");
-    if ($value$plusargs("SDF_FILE=%s", sdf_path))
-      $sdf_annotate(sdf_path, dut);
+`ifdef W2_FUNCTIONAL_SDF
+    $sdf_annotate(`W2_FUNCTIONAL_SDF, dut);
+`endif
     accepted_total = 0;
     retired_total = 0;
     errors = 0;
@@ -148,4 +149,3 @@ module k2_w2_mapped_functional_tb;
     $finish;
   end
 endmodule
-

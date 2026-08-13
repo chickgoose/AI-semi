@@ -66,9 +66,11 @@ def main() -> int:
     execute([*common, "-xmlibdirname", str(work / "rtl.xcelium.d"),
              *map(str, args.model), *map(str, sources), str(tb),
              "+RESULT=" + str(rtl_result)], work, args.log)
-    execute([*common, "-xmlibdirname", str(work / "mapped.xcelium.d"),
+    mapped_sdf_define = f'W2_FUNCTIONAL_SDF="{args.sdf.resolve(strict=True)}"'
+    execute([*common, "-define", mapped_sdf_define,
+             "-xmlibdirname", str(work / "mapped.xcelium.d"),
              *map(str, args.model), str(args.netlist), str(tb),
-             "+RESULT=" + str(mapped_result), "+SDF_FILE=" + str(args.sdf)],
+             "+RESULT=" + str(mapped_result)],
             work, args.log)
     if rtl_result.read_bytes() != mapped_result.read_bytes():
         raise RuntimeError("staged RTL and mapped/SDF functional transcripts differ")

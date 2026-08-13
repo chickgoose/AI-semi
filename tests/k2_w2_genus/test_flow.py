@@ -903,6 +903,13 @@ Total                                    0.0          0
         driver = (ROOT / "physical/k2_w2_genus/genus_driver.tcl").read_text()
         self.assertIn('if {$defines eq ""}', driver)
         self.assertIn("read_hdl -v {*}$::env(W2_SOURCES_V)", driver)
+        mapped_runner = (ROOT /
+            "physical/k2_w2_genus/run_mapped_functional_xcelium.py").read_text()
+        mapped_tb = (ROOT /
+            "physical/k2_w2_genus/mapped_functional_tb.sv").read_text()
+        self.assertIn("W2_FUNCTIONAL_SDF=", mapped_runner)
+        self.assertIn("$sdf_annotate(`W2_FUNCTIONAL_SDF, dut)", mapped_tb)
+        self.assertNotIn('$value$plusargs("SDF_FILE=', mapped_tb)
 
 
 if __name__ == "__main__":
