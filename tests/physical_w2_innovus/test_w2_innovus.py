@@ -140,10 +140,10 @@ class StaticFlowContractTests(unittest.TestCase):
             "setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade",
             "for {set hold_iteration 1} {$hold_iteration <= 3}",
             "hold_metrics_improved $before $after",
-            "for {set setup_iteration 1} {$setup_iteration <= 3}",
+            "for {set setup_iteration 1} {$setup_iteration <= 6}",
             "setup_metrics_improved $before $after",
             "setup_closure.machine",
-            "setOptMode -fixHoldAllowSetupTnsDegrade false",
+            "setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade",
             "for {set final_hold_iteration 1} {$final_hold_iteration <= 3}",
             "post-route hold closure did not converge",
             "hold_closure.machine",
@@ -378,7 +378,7 @@ class FixtureQualificationTests(unittest.TestCase):
             "phase=setup_recovery\ncheck=setup\nview=w2_setup_view\n"
             "optimizer=postRoute\nallow_setup_tns_degrade=NA\n"
             "status=CLOSED\n"
-            "max_iterations=3\n"
+            "max_iterations=6\n"
             "observation_count=2\n"
             "observation_0=1,2,-0.100,-0.150\n"
             "observation_1=1,0,0.010,0.0\n"
@@ -442,6 +442,11 @@ class FixtureQualificationTests(unittest.TestCase):
         rows["allow_setup_tns_degrade"] = timing[
             "hold_fix_allow_setup_tns_degrade"]
         pre_hold.write_text("".join(f"{key}={value}\n" for key, value in rows.items()))
+        final_hold = self.root / "reports/hold_closure.machine"
+        rows = dict(line.split("=", 1) for line in final_hold.read_text().splitlines())
+        rows["allow_setup_tns_degrade"] = timing[
+            "hold_fix_allow_setup_tns_degrade"]
+        final_hold.write_text("".join(f"{key}={value}\n" for key, value in rows.items()))
         return timing
 
     def test_clean_fixture_passes(self):
@@ -568,7 +573,7 @@ class FixtureQualificationTests(unittest.TestCase):
                 original.replace("phase=final_hold_reclosure",
                                  "phase=pre_setup_hold"),
                 original.replace("allow_setup_tns_degrade=false",
-                                 "allow_setup_tns_degrade=true"),
+                                 "allow_setup_tns_degrade=invalid"),
                 original.replace("observation_0=1,2,-0.100,-0.150",
                                  "observation_0=1,2,0.100,0.150"),
                 original.replace("observation_1=1,0,0.010,0.0",

@@ -86,8 +86,10 @@ init, Innovus creates the actual divide-by-one forwarded generated clock from
 that exact ECK pin onto `link_clk_o`; that path may not be false-pathed. Hold ECO
 setup-TNS degradation is disabled for 5.0 ns and enabled only for the initial
 hold-repair phase of both relaxed profiles. After that phase the flow performs
-up to three monotonic setup-recovery iterations, disables setup-TNS
-degradation, and performs a final bounded hold reclosure. Phase-specific
+up to six monotonic setup-recovery iterations, and performs a final bounded
+hold reclosure under the selected profile policy. Any resulting setup
+degradation is still rejected by the final setup report and machine summary;
+there is no setup waiver. Phase-specific
 machine receipts bind the timing check, view, optimizer, and setup-degradation
 policy; the final hold receipt must exactly match the final hold timing summary.
 The descriptor, technology contract, and boundary machine report bind the

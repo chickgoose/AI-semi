@@ -125,7 +125,7 @@ proc write_setup_closure {path status rows} {
   puts $handle "optimizer=postRoute"
   puts $handle "allow_setup_tns_degrade=NA"
   puts $handle "status=$status"
-  puts $handle "max_iterations=3"
+  puts $handle "max_iterations=6"
   puts $handle "observation_count=[llength $rows]"
   set index 0
   foreach metrics $rows {
@@ -419,7 +419,7 @@ set flow_failed [catch {
   setAnalysisMode -checkType setup
   set setup_closure_rows [list [timing_metrics w2_setup_view setup]]
   set setup_status CLOSED
-  for {set setup_iteration 1} {$setup_iteration <= 3} {incr setup_iteration} {
+  for {set setup_iteration 1} {$setup_iteration <= 6} {incr setup_iteration} {
     set before [lindex $setup_closure_rows end]
     if {[lindex $before 1] == 0} { break }
     optDesign -postRoute
@@ -442,7 +442,10 @@ set flow_failed [catch {
     error "post-route setup recovery did not converge: $setup_status"
   }
 
-  setOptMode -fixHoldAllowSetupTnsDegrade false
+  # The relaxed profiles need permission to repair sub-picosecond hold
+  # residue.  This does not waive setup: the final native and machine setup
+  # reports below are generated after this reclosure and remain mandatory.
+  setOptMode -fixHoldAllowSetupTnsDegrade $hold_setup_degrade
   setAnalysisMode -checkType hold
   set final_hold_rows [list [timing_metrics w2_hold_view hold]]
   set final_hold_status CLOSED
@@ -465,7 +468,7 @@ set flow_failed [catch {
     set final_hold_status EXHAUSTED
   }
   write_hold_closure "$output/reports/hold_closure.machine" \
-    final_hold_reclosure false $final_hold_status $final_hold_rows
+    final_hold_reclosure $hold_setup_degrade $final_hold_status $final_hold_rows
   if {$final_hold_status ne "CLOSED"} {
     error "final post-setup hold closure did not converge: $final_hold_status"
   }

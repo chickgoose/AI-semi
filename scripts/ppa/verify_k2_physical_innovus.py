@@ -455,7 +455,7 @@ def _timing_machine_summary(path: Path, expected: str) -> dict[str, float | int 
 
 
 def _require_timing_closure(
-    path: Path, expected_schema: str, expected_meta: dict[str, str]
+    path: Path, expected_schema: str, expected_meta: dict[str, str], maximum_expected: int
 ) -> tuple[int, int, float, float]:
     rows = {}
     for line in _text(path).splitlines():
@@ -471,7 +471,7 @@ def _require_timing_closure(
     except (KeyError, ValueError) as error:
         raise QualificationError(f"hold closure report count mismatch: {path}") from error
     if rows.pop("schema", None) != expected_schema or \
-            rows.pop("status", None) != "CLOSED" or maximum != 3 or \
+            rows.pop("status", None) != "CLOSED" or maximum != maximum_expected or \
             count < 1 or count > maximum + 1:
         raise QualificationError(f"hold closure report contract mismatch: {path}")
     for key, value in expected_meta.items():
@@ -512,14 +512,14 @@ def _require_hold_closure(path: Path, phase: str, policy: str) -> tuple[int, int
     return _require_timing_closure(path, "k2_w2_hold_closure_v1", {
         "phase": phase, "check": "hold", "view": "w2_hold_view",
         "optimizer": "postRoute_hold", "allow_setup_tns_degrade": policy,
-    })
+    }, 3)
 
 
 def _require_setup_closure(path: Path) -> tuple[int, int, float, float]:
     return _require_timing_closure(path, "k2_w2_setup_closure_v1", {
         "phase": "setup_recovery", "check": "setup", "view": "w2_setup_view",
         "optimizer": "postRoute", "allow_setup_tns_degrade": "NA",
-    })
+    }, 6)
 
 
 def _require_check_design_all(path: Path) -> None:
@@ -669,7 +669,8 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         "pre_setup_hold", str(timing["hold_fix_allow_setup_tns_degrade"]).lower())
     _require_setup_closure(run_dir / "reports" / SETUP_CLOSURE_REPORT)
     final_hold_closure = _require_hold_closure(
-        run_dir / "reports" / HOLD_CLOSURE_REPORT, "final_hold_reclosure", "false")
+        run_dir / "reports" / HOLD_CLOSURE_REPORT, "final_hold_reclosure",
+        str(timing["hold_fix_allow_setup_tns_degrade"]).lower())
     _require_boundary_timing(
         run_dir / "reports" / BOUNDARY_TIMING_REPORT, timing)
 
