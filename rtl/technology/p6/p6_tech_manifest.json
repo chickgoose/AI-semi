@@ -1,0 +1,102 @@
+{
+  "schema": "w2-p6-clock-edge-techmap-v1",
+  "status": "PARTIAL_GO_DDR_HOLD",
+  "selection": {
+    "exactly_one_required": true,
+    "generic_macro": "W2_P6_TECH_GENERIC",
+    "gsclib045_macro": "W2_P6_TECH_GSCLIB045",
+    "implicit_fallback_allowed": false
+  },
+  "top": "w2_p6_exact_pair_endpoint_tech",
+  "frozen_owner": {
+    "origin_commit": "bdf4d5a7b5f4837d80e9a748693beab28d3ffad3",
+    "policy": "read_only_byte_exact",
+    "files": {
+      "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c",
+      "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb",
+      "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018",
+      "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877",
+      "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68"
+    }
+  },
+  "local_cell_evidence": {
+    "archive": "reports/a7-drec-physical/archives/drec-genus-n16-k4-5ns-0e04b8f.tar.gz",
+    "archive_sha256": "2d279d74b7968cfccbccbe72597175e417b8a00d73112a211732ea7505f68dcc",
+    "member": "results/drec-n16-k4-5ns-20260808/prefix-k4/netlist/a7_prefix_structural_top.v",
+    "member_sha256": "c71d051a3982ee6679f1bdbe98989a64d08cdfc0c6fa3fb5b3b38ede4e926b59",
+    "library_manifest": "reports/a7-drec-physical/genus-n16-k4-5ns-20260808/prefix-k4/manifest.txt",
+    "library_manifest_sha256": "7d3768d37a2e9ab8c07b4b89cbf74af7136eda7fbb3a2693d7569988f1baf704",
+    "library_sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10"
+  },
+  "icg_cell_evidence": {
+    "commit": "8d91d041ce9dd7acbbb1778c08dec4a1627c4e7c",
+    "feasibility_path": "physical/a6_w7_fovea_a7/icg_candidates/feasibility.md",
+    "feasibility_sha256": "83e10db1edb0eaae6abe073c4c8a885f3f8890cd516262ffada5fe5c9862fdbc",
+    "adapter_path": "physical/a6_w7_fovea_a7/icg_candidates/a7_r1_icg_boundary_tlatnca.sv",
+    "adapter_sha256": "437f7ac7f52770deb76ddfe9d152bcd36d9c74adfab1d69f616ba5bd11e95aaf",
+    "preserved_innovus_log": "/tmp/a6-w7-audit-f786982-full-20260812T171655Z-23034/innovus.log",
+    "note": "Git-pinned evidence is normative; the /tmp log is corroborating local evidence only"
+  },
+  "bindings": {
+    "clock_boolean_and": {
+      "status": "EVIDENCED_NOT_SELECTED",
+      "cell": "CLKAND2X2",
+      "observed_instance_count": 12,
+      "ports": {"clock": "A", "enable": "B", "output": "Y"},
+      "claim": "exact owner Boolean AND only; not an ICG or glitch-free claim"
+    },
+    "positive_edge_async_clear_bit": {
+      "status": "GO_LOGIC_BINDING_PHYSICAL_TIMING_HOLD",
+      "cell": "DFFRHQX1",
+      "observed_instance_count": 92,
+      "ports": {"reset_n": "RN", "clock": "CK", "data": "D", "output": "Q"}
+    },
+    "negative_edge_async_clear_bit": {
+      "status": "HOLD_NO_IMMUTABLY_EVIDENCED_COMPLETE_CELL_INTERFACE",
+      "cell": null,
+      "implementation": "synthesizable inferred always_ff"
+    },
+    "oddr": {"status": "HOLD_NO_EVIDENCED_DDR_CELL", "cell": null},
+    "iddr": {"status": "HOLD_NO_EVIDENCED_DDR_CELL", "cell": null},
+    "integrated_clock_gate": {
+      "status": "GO_FOR_LEGAL_RESET_CONTRACT_PHYSICAL_TIMING_HOLD",
+      "cell": "TLATNCAX2",
+      "ports": {"clock": "CK", "enable": "E", "output": "ECK"},
+      "reset_limit": "owner-versus-cell equivalence requires reset assertion and release while the source clock is low"
+    }
+  },
+  "production_source_closure": [
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv",
+    "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv",
+    "rtl/technology/p6/w2_p6_clock_boundary.sv",
+    "rtl/technology/p6/w2_p6_posedge_capture.sv",
+    "rtl/technology/p6/w2_p6_negedge_capture.sv",
+    "rtl/technology/p6/w2_p6_pair_tx_tech.sv",
+    "rtl/technology/p6/w2_p6_pair_rx_tech.sv",
+    "rtl/technology/p6/w2_p6_exact_pair_endpoint_tech.sv"
+  ],
+  "test_only_sources": [
+    "tests/w2_p6_techmap/gsclib045_test_models.sv",
+    "tests/w2_p6_techmap/owner_vs_tech_tb.sv"
+  ],
+  "mock_policy": {
+    "required_macro": "W2_P6_TEST_ONLY",
+    "production_filelist_allowed": false,
+    "synthesis_evidence_allowed": false
+  },
+  "execution": {
+    "generic_owner_lockstep": true,
+    "gsclib_test_model_owner_lockstep": true,
+    "real_library_model_simulation": false,
+    "real_library_compile": false,
+    "mapped_sta": false,
+    "place_and_route": false,
+    "physical_ppa": false
+  },
+  "holds": [
+    "no immutable evidence of a complete negative-edge async-clear cell interface and no evidenced ODDR or IDDR cell",
+    "no library-functional or timing-model simulation was run",
+    "no mapped STA, clock-gating check, CTS, place-and-route, or physical PPA was run",
+    "TLATNCAX2 lacks an asynchronous reset pin; arbitrary high-phase reset assertion is outside the frozen legal drained-reset contract"
+  ]
+}
