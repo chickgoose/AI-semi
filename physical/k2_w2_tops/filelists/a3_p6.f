@@ -1,0 +1,10 @@
+rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv
+rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6_top.sv
+physical/k2_w2_tops/rtl/k2_w2_a3_p6_top.sv

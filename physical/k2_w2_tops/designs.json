@@ -1,0 +1,44 @@
+{
+  "schema": "k2-w2-fair-physical-tops-v1",
+  "common_inputs": [
+    {"name": "ref_clk_i", "width": 1, "role": "reference_clock"},
+    {"name": "sample_clk_i", "width": 1, "role": "sample_clock"},
+    {"name": "rst_n", "width": 1, "role": "active_low_reset"},
+    {"name": "load_i", "width": 16, "role": "source_load_bitmap"}
+  ],
+  "common_input_bits": 19,
+  "designs": {
+    "fovea_a7": {
+      "top": "k2_w2_fovea_a7_top",
+      "filelist": "physical/k2_w2_tops/filelists/fovea_a7.f",
+      "composition": "Fovea+A7",
+      "output_bits": 26,
+      "link_cut": [
+        {"name": "burst_clk_o", "width": 1},
+        {"name": "burst_data_o", "width": 2}
+      ]
+    },
+    "a2_p6": {
+      "top": "k2_w2_a2_p6_top",
+      "filelist": "physical/k2_w2_tops/filelists/a2_p6.f",
+      "composition": "A2+P6",
+      "output_bits": 45,
+      "link_cut": [
+        {"name": "p6_clk_o", "width": 1},
+        {"name": "p6_data_o", "width": 5}
+      ]
+    },
+    "a3_p6": {
+      "top": "k2_w2_a3_p6_top",
+      "filelist": "physical/k2_w2_tops/filelists/a3_p6.f",
+      "composition": "A3+P6",
+      "output_bits": 34,
+      "link_cut": [
+        {"name": "p6_clk_o", "width": 1},
+        {"name": "p6_data_o", "width": 5}
+      ]
+    }
+  },
+  "boundary_scope": "complete_endpoint_compositions",
+  "boundary_registry": "physical/k2_w2_boundaries.json"
+}

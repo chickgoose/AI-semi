@@ -1,0 +1,62 @@
+{
+  "schema": "k2-w2-functional-loss-evidence-v1",
+  "receipt_status": "workspace-diff/non-official",
+  "evidence_usage": "loss_only",
+  "physical_cohort": null,
+  "ppa_eligible": false,
+  "ranking_eligible": false,
+  "prohibited_uses": ["area", "power", "timing", "energy", "ppa", "physical_ranking"],
+  "server_origin": {
+    "attempt": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL",
+    "archive": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL.tar.gz"
+  },
+  "immutable_local_archive": {
+    "path": "/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz",
+    "sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39"
+  },
+  "bound_members": [
+    {"path": "provenance.txt", "sha256": "b9d119828a457886b80b5ae95b13d10a1d00541f52afd4d5cb127a48be89bdd0"},
+    {"path": "result-artifacts.sha256", "sha256": "dd3799d9feefaa5c781eae3fbc84e0d1976aedeb3a68f1b8b245e64dc342b4a4"},
+    {"path": "fovea-run.log", "sha256": "32e0c008cf6e1b5918a1b0e8c4394b23fe4f8e91d9fb155ddb7f5170674c81f8"},
+    {"path": "cluster2-run.log", "sha256": "4a37e3e7107be0777d87a64b5ed5ff4cd104a592845a98611d9f0841cc73db68"},
+    {"path": "results/fovea/full50-nonmixed48.aggregate.json", "sha256": "f926587246fe9d23c6bb3222502fcc11c488da7f3425eeefd7e3fea7a4f3529f"},
+    {"path": "results/cluster2/full50-nonmixed48.aggregate.json", "sha256": "7ab2471eb186792d38aadbe2c46265c2a3243ec7fd6c4ef3c915205a4ae8e44e"}
+  ],
+  "provenance": {
+    "member": "provenance.txt",
+    "snapshot_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "binding_reset_quiet_arming_patch": "workspace-diff",
+    "attempt": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL"
+  },
+  "ledger": {
+    "member": "result-artifacts.sha256",
+    "entries": 338,
+    "verified_entries": 338,
+    "coverage": "all regular results/ members"
+  },
+  "candidates": {
+    "fovea": {
+      "run_log": "fovea-run.log",
+      "functional_runs_passed": 50,
+      "functional_runs_total": 50,
+      "reset_pass": true,
+      "pairwise_status": 0,
+      "full50": {"generated": 106416, "accepted": 78229, "delivered": 78229, "overrun": 28187}
+    },
+    "cluster2": {
+      "run_log": "cluster2-run.log",
+      "functional_runs_passed": 50,
+      "functional_runs_total": 50,
+      "reset_pass": true,
+      "pairwise_status": 0,
+      "full50": {"generated": 106416, "accepted": 94157, "delivered": 94157, "overrun": 12259}
+    }
+  },
+  "excluded_artifacts": [
+    {
+      "path": "/tmp/aer-eval-47e1f2f/eval-driver-final.log",
+      "reason": "stale outer log names old attempt 0FfaT8kp and is not provenance for yZr1kmYL"
+    }
+  ],
+  "boundary_registry": "physical/k2_w2_boundaries.json"
+}

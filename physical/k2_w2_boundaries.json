@@ -1,0 +1,40 @@
+{
+  "schema": "k2-w2-physical-boundary-cohorts-v1",
+  "ranking_policy": {
+    "cross_cohort_area_power_ranking": false,
+    "rule": "Area and power may be ranked only within one cohort using that cohort's exact synthesis boundary and evidence root."
+  },
+  "cohorts": [
+    {
+      "id": "raw_core_only",
+      "manifest": "physical/k2_w2_raw_golden/raw_golden.json",
+      "tops": [
+        "aer_tx16_trad_rowcol_fovea",
+        "aer_tx16_trad_rowcol_fovea_cluster2"
+      ]
+    },
+    {
+      "id": "buffered_server_golden",
+      "manifest": "physical/k2_w2_server_golden/server_golden.json",
+      "tops": ["aer_fovea_buffered", "aer_cluster2_buffered"]
+    },
+    {
+      "id": "complete_endpoint_wrappers",
+      "manifest": "physical/k2_w2_tops/designs.json",
+      "tops": [
+        "k2_w2_fovea_a7_top",
+        "k2_w2_a2_p6_top",
+        "k2_w2_a3_p6_top"
+      ]
+    }
+  ],
+  "functional_evidence": [
+    {
+      "id": "fovea_cluster2_workspace_diff_loss",
+      "manifest": "physical/k2_w2_functional_loss/loss_evidence.json",
+      "usage": "loss_only",
+      "physical_cohort": null,
+      "ppa_or_ranking_eligible": false
+    }
+  ]
+}
