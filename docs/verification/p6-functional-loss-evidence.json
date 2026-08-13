@@ -1,0 +1,62 @@
+{
+  "schema": "p6-functional-loss-evidence-v1",
+  "receipt_class": "workspace-diff-non-official",
+  "allowed_use": "functional-loss-only",
+  "forbidden_uses": [
+    "PPA",
+    "timing qualification",
+    "physical qualification",
+    "official common receipt"
+  ],
+  "attempt": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL",
+  "local_relocated_root": "/tmp/eval-fovea-cluster2.yZr1kmYL",
+  "archive": {
+    "canonical_path": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL.tar.gz",
+    "local_relocated_path": "/tmp/eval-fovea-cluster2.yZr1kmYL.tar.gz",
+    "sha256": "22e2e649deaf1c6698af5a21bacfd37933fd93f000166fd39b7955ef00782f39"
+  },
+  "provenance": {
+    "snapshot_head": "47e1f2ff2aeb9d902e6f8bf0f1998b95579bd3be",
+    "binding_reset_quiet_arming_patch": "workspace-diff",
+    "xcelium": "23.09-s013"
+  },
+  "ledger": {
+    "path": "result-artifacts.sha256",
+    "entries": 338,
+    "canonical_path_prefix": "/tmp/aer-eval-47e1f2f/eval-fovea-cluster2.yZr1kmYL/"
+  },
+  "pinned_files": {
+    "provenance.txt": "b9d119828a457886b80b5ae95b13d10a1d00541f52afd4d5cb127a48be89bdd0",
+    "fovea-run.log": "32e0c008cf6e1b5918a1b0e8c4394b23fe4f8e91d9fb155ddb7f5170674c81f8",
+    "cluster2-run.log": "4a37e3e7107be0777d87a64b5ed5ff4cd104a592845a98611d9f0841cc73db68",
+    "result-artifacts.sha256": "dd3799d9feefaa5c781eae3fbc84e0d1976aedeb3a68f1b8b245e64dc342b4a4",
+    "results/fovea/full50-nonmixed48.aggregate.json": "f926587246fe9d23c6bb3222502fcc11c488da7f3425eeefd7e3fea7a4f3529f",
+    "results/cluster2/full50-nonmixed48.aggregate.json": "7ab2471eb186792d38aadbe2c46265c2a3243ec7fd6c4ef3c915205a4ae8e44e",
+    "results/fovea/pairwise-cross-map.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "results/cluster2/pairwise-cross-map.status": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "full50": {
+    "fovea": {
+      "run_pass": 50,
+      "reset_pass": true,
+      "pairwise_status": 0,
+      "generated": 106416,
+      "accepted": 78229,
+      "delivered": 78229,
+      "overrun": 28187
+    },
+    "cluster2": {
+      "run_pass": 50,
+      "reset_pass": true,
+      "pairwise_status": 0,
+      "generated": 106416,
+      "accepted": 94157,
+      "delivered": 94157,
+      "overrun": 12259
+    }
+  },
+  "excluded_outer_log": {
+    "name": "eval-driver-final.log",
+    "reason": "stale outer log identifies attempt 0FfaT8kp and is not provenance for yZr1kmYL"
+  }
+}
