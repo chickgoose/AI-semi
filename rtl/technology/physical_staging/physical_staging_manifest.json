@@ -1,7 +1,7 @@
 {
   "schema": "k2_w2_tech_staged_compositions_v1",
   "status": "READY_FOR_GENUS_AND_INNOVUS",
-  "repository_commit": "fa48ed6e15debce6b0cda49a93d8f36a767bc63c",
+  "repository_commit": "ba0116029bb79573dca23c3957845885837f4b82",
   "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
   "common_ports": [
     {"direction":"input","name":"ref_clk_i","width":1},
@@ -81,7 +81,7 @@
     "rtl/technology/physical_staging/w2_p6_atomic_bundle_adapter_tech.sv":"6961616e483ddcb75dfa3ffc2a5b5d455dbb5bc16dd1b29f34c00c97e45fca15",
     "rtl/technology/physical_staging/w2_fovea_r1_physical_staging_top.sv":"9509d3ef078354ff403f4c4f99190d458ea2b9e849e3828ed8cce115e34fcf85",
     "rtl/technology/physical_staging/w2_a2_p6_physical_staging_top.sv":"edb6860f81718be4275bf885f8716637890b61f0f76e0c2c88a94efe32933334",
-    "rtl/technology/physical_staging/w2_a3_p6_physical_staging_top.sv":"c7779e0c1468c46d4626428fe52f9ba6409af67212681e106d90ee8a6634e8bd"
+    "rtl/technology/physical_staging/w2_a3_p6_physical_staging_top.sv":"0a169762d99ea2524e4a0c45fe94f7d02aa01e2c87b2e2cb0d48e71f7998c69a"
   },
   "test_policy": {"acceptance_sample":"posedge_ref_active_region_pre_NBA","pending_hold":"through_charged_posedge","protocol_error_must_equal_zero":true,"epoch_accepted_equals_retired":true,"cell_models_test_only":true},
   "consumer_contract": {
