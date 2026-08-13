@@ -61,6 +61,43 @@ def stable_read(path: Path) -> tuple[bytes, os.stat_result]:
         os.close(descriptor)
 
 
+def stable_read_tool_entrypoint(
+        path: Path, contract_row: dict[str, Any]) -> tuple[bytes, os.stat_result, Path, str]:
+    """Read a tool payload while preserving Cadence argv[0] wrapper semantics.
+
+    Genus and Innovus are deliberately invoked through product-named symlinks to
+    the same regular ``.cdnWrapperIndep`` file.  Hash the resolved regular file,
+    but execute the immutable, contract-pinned entrypoint name.
+    """
+    try:
+        before = path.lstat()
+    except FileNotFoundError as error:
+        raise PreflightError(f"missing tool entrypoint: {path}") from error
+    expected_kind = contract_row.get("entrypoint_kind", "regular")
+    expected_resolved = contract_row.get("resolved_path")
+    if not expected_resolved:
+        raise PreflightError(f"tool resolved path is not pinned: {path}")
+    if stat.S_ISLNK(before.st_mode):
+        if expected_kind != "symlink_wrapper":
+            raise PreflightError(f"unexpected tool symlink: {path}")
+        link_text = os.readlink(path)
+        resolved = path.resolve(strict=True)
+        payload, metadata = stable_read(resolved)
+        after = path.lstat()
+        identity = lambda row: (row.st_dev, row.st_ino, row.st_size, row.st_mtime_ns)
+        if identity(before) != identity(after) or os.readlink(path) != link_text:
+            raise PreflightError(f"tool entrypoint changed while read: {path}")
+    else:
+        if expected_kind != "regular" or not stat.S_ISREG(before.st_mode):
+            raise PreflightError(f"tool entrypoint kind mismatch: {path}")
+        resolved = path.resolve(strict=True)
+        payload, metadata = stable_read(path)
+    if str(resolved) != expected_resolved:
+        raise PreflightError(
+            f"tool resolved path mismatch: {path}: {resolved} != {expected_resolved}")
+    return payload, metadata, resolved, expected_kind
+
+
 def write_result(path: Path, document: dict[str, Any],
                  exclusive: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -232,6 +269,9 @@ def validate_contract(contract: dict[str, Any]) -> None:
         expected_version = observation.get("tool_versions", {}).get(name)
         if not expected_version or contract["tools"][name].get("version") != expected_version:
             raise PreflightError(f"direct tool version observation mismatch: {name}")
+        resolved = observation.get("tool_resolved_paths", {}).get(name)
+        if not resolved or contract["tools"][name].get("resolved_path") != resolved:
+            raise PreflightError(f"direct resolved tool path mismatch: {name}")
     warnings = observation.get("tool_warnings", [])
     if not any(row.get("tool") == "genus" and
                row.get("code") == "BUILD_EXPIRATION_BANNER" for row in warnings):
@@ -550,7 +590,8 @@ def verify_tool(path: Path, contract_row: dict[str, Any]) -> dict[str, Any]:
         raise PreflightError(
             f"tool path differs from direct observation: {path} != "
             f"{contract_row.get('observed_path')}")
-    payload, metadata = stable_read(path)
+    payload, metadata, resolved, entrypoint_kind = stable_read_tool_entrypoint(
+        path, contract_row)
     expected = contract_row.get("sha256")
     if not expected or sha_bytes(payload) != expected:
         raise PreflightError(f"tool executable SHA unpinned/mismatch: {path}")
@@ -575,7 +616,8 @@ def verify_tool(path: Path, contract_row: dict[str, Any]) -> dict[str, Any]:
         "message": line,
         "disposition": "warning_only_after_zero_exit",
     } for line in expiration_lines]
-    return {"path": str(path), "sha256": sha_bytes(payload),
+    return {"path": str(path), "resolved_path": str(resolved),
+            "entrypoint_kind": entrypoint_kind, "sha256": sha_bytes(payload),
             "size_bytes": metadata.st_size,
             "expected_version": contract_row["version"],
             "parsed_version": versions[0], "version_output": probe.stdout.strip(),

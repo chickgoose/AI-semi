@@ -193,8 +193,11 @@ class Fixture:
                       "xrun": self.xrun}
         for name, path in tool_paths.items():
             document["tools"][name]["observed_path"] = str(path)
+            document["tools"][name]["resolved_path"] = str(path)
+            document["tools"][name]["entrypoint_kind"] = "regular"
             document["tools"][name]["sha256"] = file_hash(path)
             document["direct_server_observation"]["tool_paths"][name] = str(path)
+            document["direct_server_observation"]["tool_resolved_paths"][name] = str(path)
             document["direct_server_observation"]["tool_sha256"][name] = file_hash(path)
         technology_paths = {
             "setup_liberty": self.pdk / "timing/slow_vdd1v0_basicCells.lib",
@@ -300,6 +303,11 @@ class PreflightTests(unittest.TestCase):
             "hold_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
         })
         self.assertEqual(observation["tool_paths"], {
+            "genus": "/tools/cadence/DDI231/GENUS231/bin/genus",
+            "innovus": "/tools/cadence/DDI231/INNOVUS231/bin/innovus",
+            "xrun": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun",
+        })
+        self.assertEqual(observation["tool_resolved_paths"], {
             "genus": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
             "innovus": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep",
             "xrun": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun",
@@ -454,6 +462,42 @@ class PreflightTests(unittest.TestCase):
             alternate.write_bytes(payload)
             alternate.chmod(0o755)
             fixture.innovus.symlink_to(alternate)
+            self.assert_fail(fixture)
+
+    def test_pinned_product_named_tool_symlink(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            target = fixture.root / "bin" / ".cdnWrapperIndep"
+            fixture.genus.rename(target)
+            fixture.genus.symlink_to(target.name)
+            contract = json.loads(fixture.contract.read_text())
+            row = contract["tools"]["genus"]
+            row["resolved_path"] = str(target)
+            row["entrypoint_kind"] = "symlink_wrapper"
+            contract["direct_server_observation"]["tool_resolved_paths"][
+                "genus"] = str(target)
+            write(fixture.contract, json.dumps(contract))
+            run = fixture.run()
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            evidence = fixture.result()["gates"]["tool_executables"][
+                "evidence"]["genus"]
+            self.assertEqual(evidence["path"], str(fixture.genus))
+            self.assertEqual(evidence["resolved_path"], str(target))
+            self.assertEqual(evidence["entrypoint_kind"], "symlink_wrapper")
+
+    def test_pinned_tool_symlink_wrong_target_rejected(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            target = fixture.root / "bin" / ".cdnWrapperIndep"
+            fixture.genus.rename(target)
+            fixture.genus.symlink_to(target.name)
+            contract = json.loads(fixture.contract.read_text())
+            contract["tools"]["genus"]["entrypoint_kind"] = "symlink_wrapper"
+            contract["tools"]["genus"]["resolved_path"] = str(
+                fixture.root / "bin" / "wrong")
+            contract["direct_server_observation"]["tool_resolved_paths"][
+                "genus"] = str(fixture.root / "bin" / "wrong")
+            write(fixture.contract, json.dumps(contract))
             self.assert_fail(fixture)
 
     def test_pvt_mutation(self) -> None:

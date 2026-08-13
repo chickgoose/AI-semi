@@ -5,19 +5,25 @@
     "genus": {
       "version": "23.14-s090_1",
       "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
-      "observed_path": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
+      "observed_path": "/tools/cadence/DDI231/GENUS231/bin/genus",
+      "resolved_path": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
+      "entrypoint_kind": "symlink_wrapper",
       "golden_executable_identity": null
     },
     "innovus": {
       "version": "23.14-s088_1",
       "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
-      "observed_path": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep",
+      "observed_path": "/tools/cadence/DDI231/INNOVUS231/bin/innovus",
+      "resolved_path": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep",
+      "entrypoint_kind": "symlink_wrapper",
       "golden_executable_identity": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_"
     },
     "xrun": {
       "version": "23.09-s013",
       "sha256": "b797ff6331f16102dfa453abf88761235f4d6bb75885b7b5e15b2e6f5bc7a5d7",
       "observed_path": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun",
+      "resolved_path": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun",
+      "entrypoint_kind": "regular",
       "golden_executable_identity": null
     }
   },
@@ -120,6 +126,11 @@
       "hold_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5"
     },
     "tool_paths": {
+      "genus": "/tools/cadence/DDI231/GENUS231/bin/genus",
+      "innovus": "/tools/cadence/DDI231/INNOVUS231/bin/innovus",
+      "xrun": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun"
+    },
+    "tool_resolved_paths": {
       "genus": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
       "innovus": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep",
       "xrun": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun"
