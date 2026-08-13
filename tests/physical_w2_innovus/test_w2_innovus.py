@@ -106,6 +106,7 @@ class StaticFlowContractTests(unittest.TestCase):
             "optDesign -postRoute", "optDesign -postRoute -hold",
             "set_interactive_constraint_modes [list w2_strict_functional]",
             "set_propagated_clock [all_clocks]",
+            "saveDesign -mmmc2 \"$output/database/${top}.postroute_checkpoint.enc\"",
             "-check_type setup", "-check_type hold",
             "-check_type recovery", "-check_type removal",
             "-check_type clock_gating_setup", "-check_type clock_gating_hold",

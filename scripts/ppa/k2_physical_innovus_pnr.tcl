@@ -190,6 +190,9 @@ set flow_failed [catch {
   # setup and hold views intentionally share this one strict functional mode.
   set_interactive_constraint_modes [list w2_strict_functional]
   set_propagated_clock [all_clocks]
+  # Preserve a resumable post-route checkpoint before activity/report parsing.
+  # Later compatibility failures can then be diagnosed without rerunning P&R.
+  saveDesign -mmmc2 "$output/database/${top}.postroute_checkpoint.enc"
 
   if {$activity_format ni {SAIF VCD}} {
     error "activity format must be SAIF or VCD"
