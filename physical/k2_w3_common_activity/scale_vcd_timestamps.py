@@ -17,7 +17,7 @@ from typing import BinaryIO
 
 SCHEMA = "k2_w3_vcd_timestamp_scale_v1"
 PRODUCER_ID = "k2-w3-vcd-timestamp-scaler-v1"
-ALLOWED_RATIOS = {(1, 2): 5000, (57, 100): 5700}
+ALLOWED_RATIOS = {(1, 2): 5000, (57, 100): 5700, (13, 20): 6500}
 MAX_LINE_BYTES = 1024 * 1024
 MAX_TIMESTAMP_DIGITS = 30
 TIMESTAMP = re.compile(rb"#[0-9]+")
@@ -452,7 +452,8 @@ def scale(input_path: Path, validation_path: Path,
           numerator: int, denominator: int) -> None:
     ratio = (numerator, denominator)
     if ratio not in ALLOWED_RATIOS:
-        raise ScalingError("this converter permits only exact reduced scales 1/2 or 57/100")
+        raise ScalingError(
+            "this converter permits only exact reduced scales 1/2, 57/100, or 13/20")
     output_period_ps = ALLOWED_RATIOS[ratio]
     input_absolute = _absolute(input_path)
     validation_absolute = _absolute(validation_path)
@@ -487,6 +488,7 @@ def scale(input_path: Path, validation_path: Path,
                 "role": {
                     5000: "exact_5ns_common_activity_vcd",
                     5700: "exact_5p7ns_common_activity_vcd",
+                    6500: "exact_6p5ns_common_activity_vcd",
                 }[output_period_ps],
                 "sha256": metrics["output_sha256"],
                 "size_bytes": metrics["output_size_bytes"],

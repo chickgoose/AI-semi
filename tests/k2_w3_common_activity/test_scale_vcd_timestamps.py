@@ -143,6 +143,30 @@ class TimestampScalerTest(unittest.TestCase):
             self.assertEqual(document["output"]["role"],
                              "exact_5p7ns_common_activity_vcd")
 
+    def test_exact_13_over_20_period_and_window_receipt(self):
+        source_bytes = vcd((0, 10000, 20000))
+        expected = source_bytes.replace(b"#10000\n", b"#6500\n").replace(
+            b"#20000\n", b"#13000\n")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "validated-10ns.vcd"
+            output = root / "scaled-6p5ns.vcd"
+            receipt = root / "scaled-6p5ns.json"
+            source.write_bytes(source_bytes)
+            self.run_tool(source, output, receipt, "13", "20", check=True)
+            self.assertEqual(output.read_bytes(), expected)
+            document = json.loads(receipt.read_bytes())
+            self.assertEqual(document["transform"]["ratio"], "13/20")
+            self.assertEqual(document["periods_ps"], {
+                "source_requested": 10000,
+                "target_effective": 6500,
+                "target_requested": 6500,
+            })
+            self.assertEqual(document["windows_tick_1ps"][
+                "output_effective_end"], 13000)
+            self.assertEqual(document["output"]["role"],
+                             "exact_6p5ns_common_activity_vcd")
+
     def assert_rejected(self, source_bytes: bytes, message: str | None = None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -257,7 +281,7 @@ class TimestampScalerTest(unittest.TestCase):
             root = Path(directory)
             source, output, receipt = root / "in.vcd", root / "out.vcd", root / "out.json"
             source.write_bytes(vcd())
-            for ratio in (("2", "4"), ("114", "200"),
+            for ratio in (("2", "4"), ("114", "200"), ("26", "40"),
                           ("1", "3"), ("-1", "-2")):
                 with self.subTest(ratio=ratio):
                     result = self.run_tool(source, output, receipt, *ratio)

@@ -88,10 +88,12 @@ only smoke result cannot pass. Common workloads are never synthesized into
 this boundary; scoped workload activity may be attached later as a separately
 bound SAIF artifact.
 
-The existing omitted-selector behavior remains the 5.0 ns cohort; a 5.7 ns
-launch must explicitly pass `--timing-cohort three_endpoint_5p7ns`.
+The existing omitted-selector behavior remains the 5.0 ns cohort; 5.7 ns and
+6.5 ns launches must explicitly pass `--timing-cohort
+three_endpoint_5p7ns` or `--timing-cohort three_endpoint_6p5ns`.
 `--timing-cohort three_endpoint_5p0ns` is also accepted explicitly.
-`timing_cohorts.json` keeps both profiles side by side and pins the 5.7 ns
+`timing_cohorts.json` keeps all profiles side by side and pins each relaxed
+profile's
 reference/sample period, reference
 waveform `[0.0, 2.85]`, phase-shifted sample waveform `[1.425, 4.275]`, reset
 release waveform `[2.85, 4.275]`, and every min/max I/O/reset delay and related

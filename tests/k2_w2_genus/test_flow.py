@@ -41,7 +41,8 @@ class GenusFlowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.module = load_flow()
 
-    def blocked_command(self, cohort: bool, output: Path) -> list[str]:
+    def blocked_command(self, cohort: bool, output: Path,
+                        timing: str = "three_endpoint_5p7ns") -> list[str]:
         entrypoint = COHORT_FLOW if cohort else FLOW
         command = [
             "python3", "-B", str(entrypoint), "--repo-root", str(ROOT),
@@ -53,7 +54,7 @@ class GenusFlowTests(unittest.TestCase):
             "--functional-loss-archive", str(FUNCTIONAL_LOSS_ARCHIVE),
             "--server-environment-receipt",
             str(ROOT / "physical/k2_w2_server_env/canonical_campaign_env.json"),
-            "--timing-cohort", "three_endpoint_5p7ns",
+            "--timing-cohort", timing,
             "--mapped-functional-hook", str(FUNCTIONAL_HOOK),
             "--functional-model", str(FIXTURES / "gsclib045_functional.v"),
             "--output-root", str(output),
@@ -225,7 +226,7 @@ class GenusFlowTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(published).hexdigest(),
                          registry["staged_manifest"]["sha256"])
 
-    def test_explicit_5p0_and_5p7_timing_cohorts_are_hash_bound(self):
+    def test_explicit_5p0_5p7_and_6p5_timing_cohorts_are_hash_bound(self):
         registry = self.module.load_registry_document()
         pointer = registry["timing_cohort_manifest"]
         manifest_payload = (ROOT / pointer["path"]).read_bytes()
@@ -233,10 +234,18 @@ class GenusFlowTests(unittest.TestCase):
                          pointer["sha256"])
         five0 = self.module.load_registry(ROOT, "three_endpoint_5p0ns")
         five7 = self.module.load_registry(ROOT, "three_endpoint_5p7ns")
+        six5 = self.module.load_registry(ROOT, "three_endpoint_6p5ns")
         self.assertEqual(self.module.load_registry(ROOT)[
             "selected_timing_cohort"]["id"], "three_endpoint_5p0ns")
         self.assertEqual(five0["selected_timing_cohort"]["period_ns"], 5.0)
         self.assertEqual(five7["selected_timing_cohort"]["period_ns"], 5.7)
+        self.assertEqual(six5["selected_timing_cohort"]["period_ns"], 6.5)
+        self.assertEqual(
+            six5["selected_timing_cohort"]["clock_waveforms_ns"], {
+                "ref_clk": [0.0, 3.25],
+                "sample_clk": [1.625, 4.875],
+                "reset_release_clk": [3.25, 4.875],
+            })
         self.assertEqual(
             five7["selected_timing_cohort"]["clock_waveforms_ns"], {
                 "ref_clk": [0.0, 2.85],
@@ -252,13 +261,20 @@ class GenusFlowTests(unittest.TestCase):
         self.assertNotEqual(
             five0["selected_timing_cohort"]["profile_sha256"],
             five7["selected_timing_cohort"]["profile_sha256"])
+        self.assertNotEqual(
+            five7["selected_timing_cohort"]["profile_sha256"],
+            six5["selected_timing_cohort"]["profile_sha256"])
         design = five7["designs"]["fovea_a7"]
         sdc0 = self.module.materialize_sdc(
             ROOT, design, five0["selected_timing_cohort"])
         sdc7 = self.module.materialize_sdc(
             ROOT, design, five7["selected_timing_cohort"])
+        sdc65 = self.module.materialize_sdc(
+            ROOT, design, six5["selected_timing_cohort"])
         self.assertNotEqual(hashlib.sha256(sdc0).hexdigest(),
                             hashlib.sha256(sdc7).hexdigest())
+        self.assertNotEqual(hashlib.sha256(sdc7).hexdigest(),
+                            hashlib.sha256(sdc65).hexdigest())
         text = sdc7.decode()
         for token in (
                 "three_endpoint_5p7ns", pointer["sha256"],
@@ -273,6 +289,12 @@ class GenusFlowTests(unittest.TestCase):
                 "W2_RESET_DELAY_MIN_NS {0.10}",
                 "W2_RESET_DELAY_MAX_NS {0.50}"):
             self.assertIn(token, text)
+        text65 = sdc65.decode()
+        for token in ("three_endpoint_6p5ns", "W2_REF_PERIOD_NS {6.5}",
+                      "ref_clk waveform_ns=[0.0, 3.25]",
+                      "sample_clk waveform_ns=[1.625, 4.875]",
+                      "reset_release_clk waveform_ns=[3.25, 4.875]"):
+            self.assertIn(token, text65)
         mutated = copy.deepcopy(five7["selected_timing_cohort"])
         mutated["strict_timing_environment"]["W2_REF_PERIOD_NS"] = "5.6"
         with self.assertRaisesRegex(self.module.FlowError,
@@ -316,10 +338,14 @@ class GenusFlowTests(unittest.TestCase):
                     self.assertEqual(list(output.rglob("receipt.json")), [])
                     self.assertEqual(list(output.rglob("goal-publication.json")), [])
 
-    def test_5p7_goal_plan_covers_exactly_three_endpoints(self):
-        with tempfile.TemporaryDirectory(prefix="k2-w2-plan-") as directory:
+    def test_relaxed_goal_plans_cover_exactly_three_endpoints(self):
+      for profile, period in (("three_endpoint_5p7ns", 5.7),
+                              ("three_endpoint_6p5ns", 6.5)):
+        with self.subTest(profile=profile), tempfile.TemporaryDirectory(
+                prefix="k2-w2-plan-") as directory:
             output = Path(directory) / "not-created"
-            command = self.blocked_command(True, output) + ["--plan-only"]
+            command = self.blocked_command(
+                True, output, profile) + ["--plan-only"]
             result = subprocess.run(
                 command, cwd=ROOT, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True, check=False)
@@ -330,14 +356,14 @@ class GenusFlowTests(unittest.TestCase):
             self.assertEqual(plan["goal_order"],
                              ["fovea_a7", "a2_p6", "a3_p6"])
             self.assertEqual(plan["timing_cohort"]["id"],
-                             "three_endpoint_5p7ns")
-            self.assertEqual(plan["timing_cohort"]["period_ns"], 5.7)
+                             profile)
+            self.assertEqual(plan["timing_cohort"]["period_ns"], period)
             self.assertEqual(len(plan["rows"]), 3)
             for row in plan["rows"]:
                 self.assertEqual(row["timing_cohort"], plan["timing_cohort"])
                 index = row["command"].index("--timing-cohort")
                 self.assertEqual(row["command"][index + 1],
-                                 "three_endpoint_5p7ns")
+                                 profile)
             self.assertFalse(output.exists())
 
     def test_diagnostic_registries_cannot_be_final_or_ranked(self):

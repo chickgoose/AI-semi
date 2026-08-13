@@ -425,7 +425,14 @@ class FixtureQualificationTests(unittest.TestCase):
         self.assertEqual(timing["hold_fix_allow_setup_tns_degrade"], "true")
         self.module.validate(self.root, "dut")
 
+    def test_6p5_boundary_drive_forwarded_clock_and_hold_policy_pass(self):
+        timing = self.set_timing_profile("three_endpoint_6p5ns")
+        self.assertEqual(timing["period_ns"], "6.5")
+        self.assertEqual(timing["hold_fix_allow_setup_tns_degrade"], "true")
+        self.module.validate(self.root, "dut")
+
     def test_5p7_boundary_profile_mutations_fail_closed(self):
+      for profile in ("three_endpoint_5p7ns", "three_endpoint_6p5ns"):
         for field, old, new in (
                 ("clock_drive", "0", "1"),
                 ("nonclock_driving_cell", "BUFX2", "BUFX4"),
@@ -434,8 +441,8 @@ class FixtureQualificationTests(unittest.TestCase):
                  "*w2_ep_icg_0/ECK,link_clk_o,divide_by_2"),
                 ("link_clock_false_path", "FORBIDDEN", "ENABLED"),
                 ("hold_fix_allow_setup_tns_degrade", "true", "false")):
-            with self.subTest(field=field):
-                self.set_timing_profile("three_endpoint_5p7ns")
+            with self.subTest(profile=profile, field=field):
+                self.set_timing_profile(profile)
                 path = self.root / "reports/boundary_timing.machine"
                 original = path.read_text()
                 path.write_text(original.replace(f"{field}={old}",

@@ -138,6 +138,10 @@ if {$timing_profile eq "three_endpoint_5p0ns"} {
   if {$timing_period ne "5.7" || $hold_setup_degrade ne "true"} {
     error "5.7ns timing profile/hold policy mismatch"
   }
+} elseif {$timing_profile eq "three_endpoint_6p5ns"} {
+  if {$timing_period ne "6.5" || $hold_setup_degrade ne "true"} {
+    error "6.5ns timing profile/hold policy mismatch"
+  }
 } else {
   error "unsupported W2 timing profile $timing_profile"
 }

@@ -43,7 +43,8 @@ INSTANCE_RE = re.compile(
     r"(?:\\\S+|[A-Za-z_][A-Za-z0-9_$]*)\s*\(", re.MULTILINE)
 SCAN_RE = re.compile(r"(?:^|_)(?:SDFF|SCAN)", re.IGNORECASE)
 KEYWORDS = {"module", "if", "for", "case", "assign", "always", "function", "task"}
-TIMING_COHORT_ORDER = ["three_endpoint_5p0ns", "three_endpoint_5p7ns"]
+TIMING_COHORT_ORDER = [
+    "three_endpoint_5p0ns", "three_endpoint_5p7ns", "three_endpoint_6p5ns"]
 TIMING_ENVIRONMENT_BASE = {
     "W2_CLOCK_UNCERTAINTY_NS": "0.25",
     "W2_INPUT_DELAY_MIN_NS": "0.10",
@@ -220,7 +221,7 @@ def validate_final_registry_document(document: dict[str, Any]) -> dict[str, Any]
             "required_schema": "k2_w2_genus_timing_cohorts_v1",
             "path": "physical/k2_w2_genus/timing_cohorts.json",
             "sha256":
-            "9984726e8d955a891b863e41adb4519c27c3b650879de88d07f063ebc886404f",
+            "4966b7c077f7f8595db22ed373a6843a69e85367d70689219773eec83b90a64e",
             }:
         raise FlowError("canonical timing-cohort manifest pointer mismatch")
     default_profile = expected_timing_cohort_manifest(goal_order)["cohorts"][
@@ -266,6 +267,11 @@ def expected_timing_cohort_manifest(goal_order: list[str]) -> dict[str, Any]:
                 "ref_clk": [0.0, 2.85],
                 "sample_clk": [1.425, 4.275],
                 "reset_release_clk": [2.85, 4.275],
+            }),
+            ("three_endpoint_6p5ns", "6.5", {
+                "ref_clk": [0.0, 3.25],
+                "sample_clk": [1.625, 4.875],
+                "reset_release_clk": [3.25, 4.875],
             })):
         profiles[cohort_id] = {
             "period_ns": float(period_text),

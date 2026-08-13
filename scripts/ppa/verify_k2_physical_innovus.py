@@ -200,8 +200,9 @@ def _timing_profile_contract(profile_id: str) -> dict[str, str]:
         {"id": profile_id, "profile": profile}, indent=2, sort_keys=True
     ) + "\n").encode()).hexdigest()
     hold = profile.get("hold_fix_allow_setup_tns_degrade")
-    if hold is not (profile_id == "three_endpoint_5p7ns"):
-        raise QualificationError("hold setup-degrade policy is not 5.7-only")
+    if hold is not (profile_id in {
+            "three_endpoint_5p7ns", "three_endpoint_6p5ns"}):
+        raise QualificationError("hold setup-degrade policy does not match profile")
     pointer = registry.get("timing_cohort_manifest", {})
     timing_path = HERE.parents[1] / str(pointer.get("path", ""))
     try:

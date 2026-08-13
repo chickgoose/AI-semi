@@ -2,7 +2,7 @@
   "schema": "k2_w2_genus_timing_cohorts_v1",
   "status": "READY",
   "default_cohort": "three_endpoint_5p0ns",
-  "cohort_order": ["three_endpoint_5p0ns", "three_endpoint_5p7ns"],
+  "cohort_order": ["three_endpoint_5p0ns", "three_endpoint_5p7ns", "three_endpoint_6p5ns"],
   "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
   "cohorts": {
     "three_endpoint_5p0ns": {
@@ -39,6 +39,31 @@
       },
       "strict_timing_environment": {
         "W2_REF_PERIOD_NS": "5.7",
+        "W2_CLOCK_UNCERTAINTY_NS": "0.25",
+        "W2_INPUT_DELAY_MIN_NS": "0.10",
+        "W2_INPUT_DELAY_MAX_NS": "0.50",
+        "W2_OUTPUT_DELAY_MIN_NS": "0.10",
+        "W2_OUTPUT_DELAY_MAX_NS": "0.50",
+        "W2_RESET_DELAY_MIN_NS": "0.10",
+        "W2_RESET_DELAY_MAX_NS": "0.50",
+        "W2_INPUT_TRANSITION_NS": "0.05",
+        "W2_OUTPUT_LOAD_PF": "0.01",
+        "W2_CLOCK_GATING_SETUP_NS": "0.10",
+        "W2_CLOCK_GATING_HOLD_NS": "0.05",
+        "W2_MIN_PULSE_HIGH_NS": "0.50",
+        "W2_MIN_PULSE_LOW_NS": "0.50",
+        "W2_DRIVE_CELL": "BUFX2"
+      }
+    },
+    "three_endpoint_6p5ns": {
+      "period_ns": 6.5,
+      "clock_waveforms_ns": {
+        "ref_clk": [0.0, 3.25],
+        "sample_clk": [1.625, 4.875],
+        "reset_release_clk": [3.25, 4.875]
+      },
+      "strict_timing_environment": {
+        "W2_REF_PERIOD_NS": "6.5",
         "W2_CLOCK_UNCERTAINTY_NS": "0.25",
         "W2_INPUT_DELAY_MIN_NS": "0.10",
         "W2_INPUT_DELAY_MAX_NS": "0.50",

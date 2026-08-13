@@ -8,7 +8,7 @@
   "timing_cohort_manifest": {
     "required_schema": "k2_w2_genus_timing_cohorts_v1",
     "path": "physical/k2_w2_genus/timing_cohorts.json",
-    "sha256": "9984726e8d955a891b863e41adb4519c27c3b650879de88d07f063ebc886404f"
+    "sha256": "4966b7c077f7f8595db22ed373a6843a69e85367d70689219773eec83b90a64e"
   },
   "staged_manifest": {
     "required_schema": "k2_w2_tech_staged_compositions_v1",

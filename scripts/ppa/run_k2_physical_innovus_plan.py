@@ -162,7 +162,7 @@ def load_contracts() -> tuple[dict[str, Any], dict[str, Any]]:
     for profile_id in registry.get("timing_profile_order", []):
         timing_profile_binding(registry, profile_id)
     if registry.get("timing_profile_order") != [
-            "three_endpoint_5p0ns", "three_endpoint_5p7ns"] or \
+            "three_endpoint_5p0ns", "three_endpoint_5p7ns", "three_endpoint_6p5ns"] or \
             set(registry.get("timing_profiles", {})) != set(
                 registry["timing_profile_order"]):
         raise PlanError("Innovus timing-profile order/set mismatch")
@@ -199,7 +199,7 @@ def timing_profile_binding(registry: dict[str, Any], profile_id: str) -> dict[st
             "required_schema": "k2_w2_genus_timing_cohorts_v1",
             "path": "physical/k2_w2_genus/timing_cohorts.json",
             "sha256":
-            "9984726e8d955a891b863e41adb4519c27c3b650879de88d07f063ebc886404f",
+            "4966b7c077f7f8595db22ed373a6843a69e85367d70689219773eec83b90a64e",
             }:
         raise PlanError("Genus timing-cohort manifest pointer mismatch")
     timing_path = ROOT / pointer["path"]
@@ -248,17 +248,21 @@ def timing_profile_binding(registry: dict[str, Any], profile_id: str) -> dict[st
         raise PlanError("Innovus timing profile differs from Genus timing authority")
     try:
         period_ps = Decimal(innovus_profile["period_ns"]) * 1000
+        genus_period_ps = Decimal(str(genus_profile["period_ns"])) * 1000
     except (InvalidOperation, TypeError) as error:
         raise PlanError("Innovus timing profile period is invalid") from error
+    if genus_period_ps != period_ps:
+        raise PlanError("Genus/Innovus timing profile periods differ")
     ratio = innovus_profile["activity_timestamp_ratio"]
     if set(ratio) != {"numerator", "denominator"} or \
             not all(isinstance(ratio[key], int) and not isinstance(ratio[key], bool)
                     for key in ratio) or ratio["denominator"] <= 0 or \
             Decimal(10000 * ratio["numerator"]) / ratio["denominator"] != period_ps:
         raise PlanError("Innovus activity ratio does not reproduce timing period")
-    expected_hold = profile_id == "three_endpoint_5p7ns"
+    expected_hold = profile_id in {
+        "three_endpoint_5p7ns", "three_endpoint_6p5ns"}
     if innovus_profile["hold_fix_allow_setup_tns_degrade"] is not expected_hold:
-        raise PlanError("hold setup-degrade policy must be true only for 5.7ns")
+        raise PlanError("hold setup-degrade policy must match the relaxed profile")
     return {
         "id": profile_id,
         "period_ns": innovus_profile["period_ns"],

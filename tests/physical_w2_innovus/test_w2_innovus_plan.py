@@ -518,11 +518,14 @@ class InnovusPlanTests(unittest.TestCase):
         self.assertEqual(self.registry["schema"],
                          "k2_w2_innovus_cohort_registry_v4")
         self.assertEqual(self.registry["timing_profile_order"],
-                         ["three_endpoint_5p0ns", "three_endpoint_5p7ns"])
+                         ["three_endpoint_5p0ns", "three_endpoint_5p7ns",
+                          "three_endpoint_6p5ns"])
         self.assertFalse(self.registry["timing_profiles"][
             "three_endpoint_5p0ns"]["hold_fix_allow_setup_tns_degrade"])
         self.assertTrue(self.registry["timing_profiles"][
             "three_endpoint_5p7ns"]["hold_fix_allow_setup_tns_degrade"])
+        self.assertTrue(self.registry["timing_profiles"][
+            "three_endpoint_6p5ns"]["hold_fix_allow_setup_tns_degrade"])
         self.assertEqual(set(self.registry["cohorts"]), {"tech_staged_complete_compositions"})
         cohort = self.registry["cohorts"]["tech_staged_complete_compositions"]
         self.assertEqual([cohort["designs"][d]["top"] for d in cohort["exact_design_set"]], [
@@ -626,11 +629,35 @@ class InnovusPlanTests(unittest.TestCase):
             "divide_by": 1, "false_path": "FORBIDDEN",
         })
 
-    def test_5p7_profile_sdc_forwarded_clock_and_receipt_mutations_reject(self):
+    def test_6p5_profile_binds_three_runs_activity_and_hold_policy(self):
+        path, document = self.plan("three_endpoint_6p5ns")
+        bindings = self.module.validate_plan(path)
+        self.assertEqual(document["timing_profile"]["id"],
+                         "three_endpoint_6p5ns")
+        self.assertEqual([row.period_ns for row in bindings], ["6.5"] * 3)
+        self.assertTrue(all(row.timing_profile_id == "three_endpoint_6p5ns"
+                            for row in bindings))
+        self.assertTrue(all(row.hold_fix_allow_setup_tns_degrade
+                            for row in bindings))
+        policy = self.registry["timing_profiles"]["three_endpoint_6p5ns"]
+        self.assertEqual(policy["activity_timestamp_ratio"],
+                         {"numerator": 13, "denominator": 20})
+        self.assertEqual(policy["clock_waveforms_ns"], {
+            "ref_clk": [0.0, 3.25],
+            "sample_clk": [1.625, 4.875],
+            "reset_release_clk": [3.25, 4.875],
+        })
+
+    def test_relaxed_profile_sdc_clock_and_receipt_mutations_reject(self):
+      profiles = {
+          "three_endpoint_5p7ns": "{0.0 2.85}",
+          "three_endpoint_6p5ns": "{0.0 3.25}",
+      }
+      for profile, waveform in profiles.items():
         for mutation in ("profile_sha", "period", "waveform", "input_delay",
                          "eck_source", "divide", "false_path", "receipt_profile"):
-            with self.subTest(mutation=mutation):
-                path, document = self.plan("three_endpoint_5p7ns")
+            with self.subTest(profile=profile, mutation=mutation):
+                path, document = self.plan(profile)
                 run = document["runs"][0]
                 if mutation == "profile_sha":
                     document["timing_profile"]["profile_sha256"] = "0" * 64
@@ -641,7 +668,7 @@ class InnovusPlanTests(unittest.TestCase):
                     sdc = Path(run["mapped_sdc"]["path"])
                     text = sdc.read_text()
                     if mutation == "waveform":
-                        text = text.replace("{0.0 2.85}", "{0.0 2.80}", 1)
+                        text = text.replace(waveform, "{0.0 2.80}", 1)
                     elif mutation == "input_delay":
                         text = text.replace("set_input_delay -max 0.50",
                                             "set_input_delay -max 0.60", 1)

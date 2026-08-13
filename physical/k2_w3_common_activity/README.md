@@ -39,6 +39,7 @@ later campaign and are not regenerated or changed here.
 `scale_vcd_timestamps.py` is the offline, no-EDA conversion boundary for a
 validated 10 ns common-activity VCD.  It streams either the existing exact
 `1/2` transform to a 5 ns VCD or the exact `57/100` transform to a 5.7 ns VCD,
+or the exact `13/20` transform to a 6.5 ns VCD,
 rejects nonintegral or malformed timelines and
 unsafe filesystem inputs, and emits a deterministic JSON receipt binding the
 upstream `activity.sha256.txt` validation, input bytes, output bytes, converter,
