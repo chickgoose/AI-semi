@@ -5,40 +5,48 @@
     "genus": {
       "version": "23.14-s090_1",
       "sha256": null,
+      "observed_path": "/tools/cadence/DDI231/bin/genus",
       "golden_executable_identity": null
     },
     "innovus": {
       "version": "23.14-s088_1",
       "sha256": null,
+      "observed_path": "/tools/cadence/DDI231/bin/innovus",
       "golden_executable_identity": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_"
+    },
+    "xrun": {
+      "version": "23.09-s013",
+      "sha256": null,
+      "observed_path": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun",
+      "golden_executable_identity": null
     }
   },
   "technology": {
     "setup_liberty": {
       "relative_path": "timing/slow_vdd1v0_basicCells.lib",
-      "sha256": null,
+      "sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
       "pvt": [1.0, 0.9, 125.0]
     },
     "hold_liberty": {
       "relative_path": "timing/fast_vdd1v0_basicCells.lib",
-      "sha256": null,
+      "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
       "pvt": null
     },
     "tech_lef": {
       "relative_path": "lef/gsclib045_tech.lef",
-      "sha256": null
+      "sha256": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70"
     },
     "macro_lef": {
       "relative_path": "lef/gsclib045_macro.lef",
-      "sha256": null
+      "sha256": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2"
     },
     "setup_qrc": {
       "relative_path": "qrc/qx/gpdk045.tch",
-      "sha256": null
+      "sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5"
     },
     "hold_qrc": {
       "relative_path": "qrc/qx/gpdk045.tch",
-      "sha256": null
+      "sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5"
     },
     "required_timing_directory_entries": [
       "fast_vdd1v0_basicCells.lib",
@@ -58,6 +66,27 @@
     "setup_qrc": "gpdk045.tch",
     "hold_qrc": "gpdk045.tch",
     "shared_rc_limitation": "Only gpdk045.tch is present under qrc/qx. Setup and hold use the same typical QRC technology file; no distinct best/worst RC evidence exists, so RC-corner physical signoff remains HOLD."
+  },
+  "direct_server_observation": {
+    "evidence_class": "user_confirmed_live_shell_observation",
+    "observation_date": "2026-08-13",
+    "technology_sha256": {
+      "setup_liberty": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
+      "hold_liberty": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
+      "tech_lef": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70",
+      "macro_lef": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2",
+      "setup_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+      "hold_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5"
+    },
+    "tool_paths": {
+      "genus": "/tools/cadence/DDI231/bin/genus",
+      "innovus": "/tools/cadence/DDI231/bin/innovus",
+      "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun"
+    },
+    "limitations": [
+      "Technology bytes are not present locally; a strict server preflight must re-read and match these SHAs.",
+      "Tool executable SHAs and runtime version probes are not supplied by this observation."
+    ]
   },
   "source_archives": {
     "raw_core": {

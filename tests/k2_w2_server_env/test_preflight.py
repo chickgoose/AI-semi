@@ -87,6 +87,7 @@ class Fixture:
         self.buffered_archive = root / "buffered.tar.gz"
         self.genus = root / "bin" / "genus"
         self.innovus = root / "bin" / "innovus"
+        self.xrun = root / "bin" / "xrun"
         self.contract = root / "contract.json"
         self.output = root / "result.json"
         self.raw_members = {
@@ -118,6 +119,7 @@ class Fixture:
         write(self.pdk / "qrc/qx/gpdk045.tch", "QRC TYPICAL\n")
         write(self.genus, "#!/bin/sh\necho 'Genus 23.14-s090_1'\n", executable=True)
         write(self.innovus, "#!/bin/sh\necho 'Innovus 23.14-s088_1'\n", executable=True)
+        write(self.xrun, "#!/bin/sh\necho 'Xcelium 23.09-s013'\n", executable=True)
         make_tar(self.raw_archive, self.raw_members)
         make_tar(self.buffered_archive, self.buffered_members)
         self.refresh_contract()
@@ -129,9 +131,14 @@ class Fixture:
             "server_pdk_root": str(self.pdk),
             "tools": {
                 "genus": {"version": "23.14-s090_1", "sha256": file_hash(self.genus),
+                          "observed_path": str(self.genus),
                           "golden_executable_identity": None},
                 "innovus": {"version": "23.14-s088_1", "sha256": file_hash(self.innovus),
+                            "observed_path": str(self.innovus),
                             "golden_executable_identity": "/tools/cadence/DDI231/INNOVUS231/bin/innovus_"},
+                "xrun": {"version": "23.09-s013", "sha256": file_hash(self.xrun),
+                         "observed_path": str(self.xrun),
+                         "golden_executable_identity": None},
             },
             "technology": {
                 "setup_liberty": {"relative_path": "timing/slow_vdd1v0_basicCells.lib",
@@ -161,6 +168,26 @@ class Fixture:
                 "setup_qrc": "gpdk045.tch", "hold_qrc": "gpdk045.tch",
                 "shared_rc_limitation": "single shared typical QRC; physical signoff HOLD",
             },
+            "direct_server_observation": {
+                "evidence_class": "user_confirmed_live_shell_observation",
+                "observation_date": "2026-08-13",
+                "technology_sha256": {
+                    role: document_sha
+                    for role, document_sha in {
+                        "setup_liberty": file_hash(self.pdk / "timing/slow_vdd1v0_basicCells.lib"),
+                        "hold_liberty": file_hash(self.pdk / "timing/fast_vdd1v0_basicCells.lib"),
+                        "tech_lef": file_hash(self.pdk / "lef/gsclib045_tech.lef"),
+                        "macro_lef": file_hash(self.pdk / "lef/gsclib045_macro.lef"),
+                        "setup_qrc": file_hash(self.pdk / "qrc/qx/gpdk045.tch"),
+                        "hold_qrc": file_hash(self.pdk / "qrc/qx/gpdk045.tch"),
+                    }.items()
+                },
+                "tool_paths": {
+                    "genus": str(self.genus), "innovus": str(self.innovus),
+                    "xrun": str(self.xrun),
+                },
+                "limitations": ["fixture"],
+            },
             "source_archives": {
                 "raw_core": {"default_path": str(self.raw_archive),
                              "sha256": file_hash(self.raw_archive)},
@@ -181,7 +208,7 @@ class Fixture:
                    str(self.buffered_archive), "--output", str(self.output)]
         if server:
             command += ["--pdk-root", str(self.pdk), "--genus", str(self.genus),
-                        "--innovus", str(self.innovus)]
+                        "--innovus", str(self.innovus), "--xrun", str(self.xrun)]
         if allow_hold:
             command.append("--allow-hold")
         return subprocess.run(command, text=True, stdout=subprocess.PIPE,
@@ -214,6 +241,28 @@ class PreflightTests(unittest.TestCase):
             result = json.loads(output.read_text())
             self.assertEqual(result["qualification_status"], "HOLD")
             self.assertFalse(result["campaign_launch_allowed"])
+
+    def test_repository_direct_server_observation_exact(self) -> None:
+        contract = json.loads(REPO_CONTRACT.read_text())
+        observation = contract["direct_server_observation"]
+        self.assertEqual(observation["technology_sha256"], {
+            "setup_liberty": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
+            "hold_liberty": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
+            "tech_lef": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70",
+            "macro_lef": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2",
+            "setup_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+            "hold_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+        })
+        self.assertEqual(observation["tool_paths"], {
+            "genus": "/tools/cadence/DDI231/bin/genus",
+            "innovus": "/tools/cadence/DDI231/bin/innovus",
+            "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun",
+        })
+        for role, expected in observation["technology_sha256"].items():
+            self.assertEqual(contract["technology"][role]["sha256"], expected)
+        for name, expected in observation["tool_paths"].items():
+            self.assertEqual(contract["tools"][name]["observed_path"], expected)
+            self.assertIsNone(contract["tools"][name]["sha256"])
 
     def test_pass_and_canonical_reproducibility(self) -> None:
         temporary, fixture = self.with_fixture()
@@ -262,11 +311,43 @@ class PreflightTests(unittest.TestCase):
                 stream.write(b"mutation")
             self.assert_fail(fixture)
 
+    def test_pdk_root_path_substitution(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            contract = json.loads(fixture.contract.read_text())
+            contract["server_pdk_root"] = str(fixture.root / "different-pdk")
+            write(fixture.contract, json.dumps(contract))
+            self.assert_fail(fixture)
+
     def test_tool_version_mutation(self) -> None:
         temporary, fixture = self.with_fixture()
         with temporary:
             write(fixture.genus, "#!/bin/sh\necho 'Genus 99.0'\n", executable=True)
             fixture.refresh_contract()
+            self.assert_fail(fixture)
+
+    def test_xrun_version_mutation(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            write(fixture.xrun, "#!/bin/sh\necho 'Xcelium 99.0'\n", executable=True)
+            fixture.refresh_contract()
+            self.assert_fail(fixture)
+
+    def test_tool_observed_path_mutation(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            contract = json.loads(fixture.contract.read_text())
+            contract["tools"]["innovus"]["observed_path"] = str(fixture.root / "wrong")
+            write(fixture.contract, json.dumps(contract))
+            self.assert_fail(fixture)
+
+    def test_direct_technology_observation_mutation(self) -> None:
+        temporary, fixture = self.with_fixture()
+        with temporary:
+            contract = json.loads(fixture.contract.read_text())
+            contract["direct_server_observation"]["technology_sha256"][
+                "macro_lef"] = "0" * 64
+            write(fixture.contract, json.dumps(contract))
             self.assert_fail(fixture)
 
     def test_unpinned_tool_hash(self) -> None:

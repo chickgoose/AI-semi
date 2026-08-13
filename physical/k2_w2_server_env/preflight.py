@@ -132,6 +132,20 @@ def validate_contract(contract: dict[str, Any]) -> None:
         raise PreflightError("setup and hold Liberty must remain slow/fast distinct")
     if not contract["corner_policy"].get("shared_rc_limitation"):
         raise PreflightError("shared-RC limitation must be explicit")
+    observation = contract.get("direct_server_observation")
+    if not observation or observation.get("evidence_class") != "user_confirmed_live_shell_observation":
+        raise PreflightError("direct server observation is missing")
+    for role, expected in observation.get("technology_sha256", {}).items():
+        if role not in tech or tech[role].get("sha256") != expected or not SHA_RE.fullmatch(expected):
+            raise PreflightError(f"direct technology observation mismatch: {role}")
+    if set(observation.get("technology_sha256", {})) != {
+            "setup_liberty", "hold_liberty", "tech_lef", "macro_lef",
+            "setup_qrc", "hold_qrc"}:
+        raise PreflightError("direct technology observation is incomplete")
+    for name in ("genus", "innovus", "xrun"):
+        path = observation.get("tool_paths", {}).get(name)
+        if not path or contract["tools"].get(name, {}).get("observed_path") != path:
+            raise PreflightError(f"direct tool path observation mismatch: {name}")
 
 
 def verify_golden(contract: dict[str, Any], raw_path: Path,
@@ -264,6 +278,10 @@ def inspect_lef(tech_payload: bytes, macro_payload: bytes, site: str,
 
 
 def verify_tool(path: Path, contract_row: dict[str, Any]) -> dict[str, Any]:
+    if str(path) != contract_row.get("observed_path"):
+        raise PreflightError(
+            f"tool path differs from direct observation: {path} != "
+            f"{contract_row.get('observed_path')}")
     payload, metadata = stable_read(path)
     expected = contract_row.get("sha256")
     if not expected or sha_bytes(payload) != expected:
@@ -280,12 +298,17 @@ def verify_tool(path: Path, contract_row: dict[str, Any]) -> dict[str, Any]:
 
 
 def verify_server(contract: dict[str, Any], pdk_root: Path, genus: Path,
-                  innovus: Path, gates: dict[str, Any]) -> None:
+                  innovus: Path, xrun: Path, gates: dict[str, Any]) -> None:
+    if str(pdk_root) != contract.get("server_pdk_root"):
+        raise PreflightError(
+            f"PDK root differs from contract: {pdk_root} != "
+            f"{contract.get('server_pdk_root')}")
     if pdk_root.is_symlink() or not pdk_root.is_dir():
         raise PreflightError(f"PDK root missing or symlinked: {pdk_root}")
     tools = {
         "genus": verify_tool(genus, contract["tools"]["genus"]),
         "innovus": verify_tool(innovus, contract["tools"]["innovus"]),
+        "xrun": verify_tool(xrun, contract["tools"]["xrun"]),
     }
     add_gate(gates, "tool_executables", "PROVEN", tools)
     tech = contract["technology"]
@@ -345,6 +368,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pdk-root", type=Path)
     parser.add_argument("--genus", type=Path)
     parser.add_argument("--innovus", type=Path)
+    parser.add_argument("--xrun", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--allow-hold", action="store_true")
     return parser.parse_args()
@@ -363,29 +387,37 @@ def main() -> int:
         contract = load_json(args.contract)
         validate_contract(contract)
         result["contract_sha256"] = sha_bytes(stable_read(args.contract)[0])
+        result["direct_server_observation"] = contract["direct_server_observation"]
+        add_gate(gates, "direct_server_observation", "PROVEN_DIRECT_OBSERVATION", {
+            "observation_date": contract["direct_server_observation"]["observation_date"],
+            "technology_sha256": contract["direct_server_observation"]["technology_sha256"],
+            "tool_paths": contract["direct_server_observation"]["tool_paths"],
+        }, "external live-shell evidence; strict preflight has not locally re-read these inputs")
         raw = args.raw_archive or Path(contract["source_archives"]["raw_core"]["default_path"])
         buffered = args.buffered_archive or Path(
             contract["source_archives"]["buffered_extension"]["default_path"])
         verify_golden(contract, raw, buffered, gates)
-        server_args = (args.pdk_root, args.genus, args.innovus)
+        server_args = (args.pdk_root, args.genus, args.innovus, args.xrun)
         if all(server_args):
-            verify_server(contract, args.pdk_root, args.genus, args.innovus, gates)
+            verify_server(contract, args.pdk_root, args.genus, args.innovus,
+                          args.xrun, gates)
             result["qualification_status"] = "PROVEN_ENVIRONMENT"
             result["campaign_launch_allowed"] = True
             result["unresolved_environment_evidence"] = []
         elif any(server_args):
-            raise PreflightError("pdk-root, genus, and innovus must be supplied together")
+            raise PreflightError("pdk-root, genus, innovus, and xrun must be supplied together")
         else:
             add_gate(gates, "live_server_inputs", "HOLD", None,
-                     "local golden-only run: executable and technology byte evidence unavailable")
+                     "direct paths/technology SHAs are bound, but local bytes and runtime probes are unavailable")
             result["qualification_status"] = "HOLD"
             result["unresolved_environment_evidence"] = [
-                "Genus resolved executable path and byte SHA",
-                "Innovus launcher executable byte SHA",
-                "slow and fast Liberty byte SHAs",
+                "Genus executable byte SHA and runtime version probe",
+                "Innovus executable byte SHA and runtime version probe",
+                "Xrun executable byte SHA and runtime version probe",
+                "strict server re-read matching five observed technology files (six roles with shared QRC)",
                 "fast Liberty PVT and direct posedge/negedge FF inspection",
-                "technology and macro LEF byte SHAs and direct site legality",
-                "gpdk045.tch byte SHA and direct qrc/qx directory inventory",
+                "direct technology/macro LEF site legality",
+                "direct qrc/qx directory inventory",
             ]
         result["corner_policy"] = contract["corner_policy"]
     except (PreflightError, OSError, tarfile.TarError, UnicodeError) as error:
