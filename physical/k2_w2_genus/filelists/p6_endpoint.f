@@ -1,0 +1,7 @@
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv
+rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv

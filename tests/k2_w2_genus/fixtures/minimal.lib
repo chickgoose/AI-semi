@@ -1,0 +1,22 @@
+library (w2_fixture) {
+  cell (DFFX1) {
+    area : 1.0;
+    ff (IQ, IQN) { clocked_on : "CK"; next_state : "D"; }
+    pin (CK) { direction : input; clock : true; }
+    pin (D) { direction : input; }
+    pin (Q) { direction : output; function : "IQ"; }
+  }
+  cell (AND2X1) {
+    area : 0.5;
+    pin (A) { direction : input; }
+    pin (B) { direction : input; }
+    pin (Y) { direction : output; function : "A & B"; }
+  }
+  cell (SDFFX1) {
+    area : 1.2;
+    ff (IQ, IQN) { clocked_on : "CK"; next_state : "D"; }
+    pin (CK) { direction : input; clock : true; }
+    pin (D) { direction : input; }
+    pin (Q) { direction : output; function : "IQ"; }
+  }
+}

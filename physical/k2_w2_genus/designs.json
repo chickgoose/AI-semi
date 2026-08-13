@@ -1,0 +1,120 @@
+{
+  "schema": "k2_w2_genus_design_registry_v1",
+  "repository_commit": "13c60f936fe5a265e650b4b91436ed79fc20dc91",
+  "cohort": "A2_A3_P6_component_and_composition",
+  "common_constraints": {
+    "period_ns": 5.0,
+    "clock_uncertainty_ns": 0.25,
+    "input_delay_ns": 0.5,
+    "output_delay_ns": 0.5,
+    "output_load_pf": 0.01,
+    "clock_gating_insertion": false,
+    "scan_mapping": false
+  },
+  "designs": {
+    "a2_k2": {
+      "top": "a2_batched_iwrr_k2",
+      "filelist": "physical/k2_w2_genus/filelists/a2_k2.f",
+      "filelist_sha256": "5e0eb4779d630dc9e8fc6ad47e3c1c942c5f1a9ea0dbbc0d95327872279e735a",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [{"name": "core_clk", "port": "clk", "waveform_ns": [0.0, 2.5]}],
+      "reset": {"port": "rst", "active": "high", "synchronous": true},
+      "data_inputs": ["req", "bundle_ready"],
+      "outputs": ["grant_count", "grant_addr0", "grant_addr1", "grant_bitmap", "drain_idle"],
+      "sources": [
+        {"path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"}
+      ]
+    },
+    "a3_k2": {
+      "top": "a3_exact_scalar_prefix_k2",
+      "filelist": "physical/k2_w2_genus/filelists/a3_k2.f",
+      "filelist_sha256": "d979056f109df93c7015c98c1d4a1455ecb817856106b012cda4045633327137",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [{"name": "core_clk", "port": "clk", "waveform_ns": [0.0, 2.5]}],
+      "reset": {"port": "rst", "active": "high", "synchronous": true},
+      "data_inputs": ["source_pending", "bundle_ready"],
+      "outputs": ["grant_count", "lane0_addr", "lane1_addr"],
+      "sources": [
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"}
+      ]
+    },
+    "p6_endpoint": {
+      "top": "a7_p6_atomic_bundle_adapter",
+      "filelist": "physical/k2_w2_genus/filelists/p6_endpoint.f",
+      "filelist_sha256": "70ba34093da75f403365da390105f615a3fc1ef09a8a8a59e4d570d3ec074e16",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [
+        {"name": "ref_clk", "port": "ref_clk_i", "waveform_ns": [0.0, 2.5]},
+        {"name": "sample_clk", "port": "sample_clk_i", "waveform_ns": [1.25, 3.75]}
+      ],
+      "generated_clock": {"name": "p6_link_clk", "source_port": "sample_clk_i", "target_port": "p6_clk_o", "divide_by": 1},
+      "reset": {"port": "rst_n", "active": "low", "asynchronous_assertion": true, "release_contract": "drained_phase_related"},
+      "data_inputs": ["bundle_valid_i", "grant_count_i", "grant_addr0_i", "grant_addr1_i"],
+      "outputs": ["bundle_ready_o", "bundle_commit_o", "policy_microsteps_o", "bundle_protocol_error_o", "p6_clk_o", "p6_data_o", "retire_valid_o", "retire_addr0_o", "retire_addr1_o", "retire_protocol_error_o", "drain_idle_o"],
+      "sources": [
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv", "sha256": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv", "sha256": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv", "sha256": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv", "sha256": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv", "sha256": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv", "sha256": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv", "sha256": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4"}
+      ]
+    },
+    "a2_p6": {
+      "top": "a2_batched_iwrr_p6_top",
+      "filelist": "physical/k2_w2_genus/filelists/a2_p6.f",
+      "filelist_sha256": "645197b9fc529853df479032798e1dc6b36b13c143e4c45c34933b8afafbd043",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [
+        {"name": "ref_clk", "port": "ref_clk_i", "waveform_ns": [0.0, 2.5]},
+        {"name": "sample_clk", "port": "sample_clk_i", "waveform_ns": [1.25, 3.75]}
+      ],
+      "generated_clock": {"name": "p6_link_clk", "source_port": "sample_clk_i", "target_port": "p6_clk_o", "divide_by": 1},
+      "reset": {"port": "rst_n", "active": "low", "asynchronous_assertion": true, "release_contract": "drained_phase_related"},
+      "data_inputs": ["link_enable_i", "req_i"],
+      "outputs": ["grant_commit_o", "grant_count_o", "grant_addr0_o", "grant_addr1_o", "grant_bitmap_o", "p6_clk_o", "p6_data_o", "retire_valid_o", "retire_addr0_o", "retire_addr1_o", "protocol_error_o", "drain_idle_o"],
+      "sources": [
+        {"path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv", "sha256": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv", "sha256": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv", "sha256": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv", "sha256": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv", "sha256": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv", "sha256": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv", "sha256": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4"},
+        {"path": "rtl/candidates/a2_batched_iwrr_p6/a2_batched_iwrr_p6_top.sv", "sha256": "d095c0dd79a76d0a2027757258f006e6913bed45273b1bba22af22c0ce0ac29b"}
+      ]
+    },
+    "a3_p6": {
+      "top": "a3_exact_scalar_prefix_k2_p6_top",
+      "filelist": "physical/k2_w2_genus/filelists/a3_p6.f",
+      "filelist_sha256": "ed04b6ac6dc76b6b993180763f116257c1188a6e9b71da3d299d0dd9746ef3fc",
+      "parameters": {},
+      "defines": ["SYNTHESIS"],
+      "clocks": [
+        {"name": "ref_clk", "port": "ref_clk_i", "waveform_ns": [0.0, 2.5]},
+        {"name": "sample_clk", "port": "sample_clk_i", "waveform_ns": [1.25, 3.75]}
+      ],
+      "generated_clock": {"name": "p6_link_clk", "source_port": "sample_clk_i", "target_port": "p6_clk_o", "divide_by": 1},
+      "reset": {"port": "rst_n", "active": "low", "asynchronous_assertion": true, "release_contract": "drained_phase_related"},
+      "data_inputs": ["link_enable_i", "source_pending_i"],
+      "outputs": ["bundle_valid_o", "bundle_ready_o", "bundle_commit_o", "grant_count_o", "grant_addr0_o", "grant_addr1_o", "policy_microsteps_o", "bundle_protocol_error_o", "p6_clk_o", "p6_data_o", "retire_valid_o", "retire_addr0_o", "retire_addr1_o", "retire_protocol_error_o", "drain_idle_o"],
+      "sources": [
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_launch.sv", "sha256": "696c08a8275aa2e955b88bc72d5bf1d59d37f21eea5a1e33d85a172078de280c"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_tx.sv", "sha256": "28a0290c5759e5e0ca8a39acd3bdb7182ee15011f4703ddb22dd194b207caceb"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_rx.sv", "sha256": "0691a1b8726de015ac9475218aa173729d29da19532a480aa94324a224b8b018"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_pair_observer.sv", "sha256": "7bb460ef147211e5af890773feea3d7e3dad150630c366b3740ddf646c5ee877"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_exact_pair_endpoint.sv", "sha256": "73fab090ab363d44d5910d563785a4c28faf703185fc6715b140efcf64524c68"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_frontend.sv", "sha256": "369d878c40f31364c197830ae8534eff4b8c9e6b3fd326cb855b1d99566fc170"},
+        {"path": "rtl/candidates/a7_p6_exact_pair_endpoint/a7_p6_atomic_bundle_adapter.sv", "sha256": "8000cf6de7b4eb64fe73ca3f1f4d38417d306408d04a21db26a718320ead5df4"},
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2_p6/a3_exact_scalar_prefix_k2_p6_top.sv", "sha256": "b5c2eab34dec9a3c6dc7879a587508fcbd38ae10ac2dd927ef420e0e091ae793"}
+      ]
+    }
+  }
+}

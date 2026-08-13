@@ -1,0 +1,1 @@
+rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv
