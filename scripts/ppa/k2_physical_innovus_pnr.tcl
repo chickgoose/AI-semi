@@ -22,6 +22,39 @@ proc write_failure_marker {output message} {
   }
 }
 
+proc write_timing_machine_summary {path view check {label ""} {targets ""}} {
+  if {$label eq ""} { set label $check }
+  if {$targets eq ""} {
+    set paths [report_timing -collection -view $view -check_type $check \
+      -max_paths 1000000]
+  } else {
+    set paths [report_timing -collection -view $view -check_type $check \
+      -to $targets -max_paths 1000000]
+  }
+  set path_count [sizeof_collection $paths]
+  set violation_count 0
+  set tns 0.0
+  set wns ""
+  foreach_in_collection timing_path $paths {
+    set slack [get_db $timing_path .slack]
+    if {$wns eq "" || $slack < $wns} { set wns $slack }
+    if {$slack < 0.0} {
+      incr violation_count
+      set tns [expr {$tns + $slack}]
+    }
+  }
+  if {$path_count == 0} { error "no $check timing paths in $view" }
+  set handle [open $path {WRONLY CREAT EXCL}]
+  puts $handle "schema=k2_w2_timing_machine_summary_v1"
+  puts $handle "check=$label"
+  puts $handle "view=$view"
+  puts $handle "path_count=$path_count"
+  puts $handle "violation_count=$violation_count"
+  puts $handle "wns=$wns"
+  puts $handle "tns=$tns"
+  close $handle
+}
+
 set top       [require_env AER_TOP]
 set netlist   [file normalize [require_env AER_PNR_NETLIST]]
 set tech_lef  [file normalize [require_env AER_TECH_LEF]]
@@ -43,12 +76,17 @@ set ring_v    [require_env AER_RING_VERTICAL_LAYER]
 set ring_w    [positive_number AER_RING_WIDTH_UM]
 set ring_s    [positive_number AER_RING_SPACING_UM]
 set ring_o    [positive_number AER_RING_OFFSET_UM]
+set activity_file [file normalize [require_env AER_ACTIVITY_FILE]]
+set activity_format [require_env AER_ACTIVITY_FORMAT]
+set activity_scope [require_env AER_ACTIVITY_SCOPE]
+set activity_start [require_env AER_ACTIVITY_WINDOW_START_NS]
+set activity_end [require_env AER_ACTIVITY_WINDOW_END_NS]
 
 if {$util <= 0.0 || $util >= 1.0} {
   error "AER_CORE_UTILIZATION must be strictly between zero and one"
 }
 
-foreach path [list $netlist $tech_lef $cell_lef $mmmc $io_file] {
+foreach path [list $netlist $tech_lef $cell_lef $mmmc $io_file $activity_file] {
   if {![file isfile $path]} {
     error "required physical input is not a regular file: $path"
   }
@@ -118,19 +156,62 @@ set flow_failed [catch {
   clock_opt_design
   routeDesign
   extractRC
+  optDesign -postRoute
+  optDesign -postRoute -hold
+  extractRC
   set_propagated_clock [all_clocks]
+
+  if {$activity_format ni {SAIF VCD}} {
+    error "activity format must be SAIF or VCD"
+  }
+  read_activity_file -format $activity_format -scope $activity_scope \
+    -start $activity_start -end $activity_end $activity_file
 
   redirect -file "$output/reports/check_place_post_route.rpt" {checkPlace}
   report_area > "$output/reports/area.rpt"
   report_power > "$output/reports/power.rpt"
-  report_timing -view w2_view_setup -check_type setup -max_paths 50 \
+  report_timing -view w2_setup_view -check_type setup -max_paths 50 \
     > "$output/reports/setup_timing.rpt"
-  report_timing -view w2_view_hold -check_type hold -max_paths 50 \
+  report_timing -view w2_hold_view -check_type hold -max_paths 50 \
     > "$output/reports/hold_timing.rpt"
-  report_timing -view w2_view_setup -check_type recovery -max_paths 50 \
+  report_timing -view w2_setup_view -check_type recovery -max_paths 50 \
     > "$output/reports/recovery_timing.rpt"
-  report_timing -view w2_view_hold -check_type removal -max_paths 50 \
+  report_timing -view w2_hold_view -check_type removal -max_paths 50 \
     > "$output/reports/removal_timing.rpt"
+  report_timing -view w2_setup_view -check_type clock_gating_setup -max_paths 50 \
+    > "$output/reports/gating_setup_timing.rpt"
+  report_timing -view w2_hold_view -check_type clock_gating_hold -max_paths 50 \
+    > "$output/reports/gating_hold_timing.rpt"
+  report_timing -view w2_setup_view -check_type pulse_width -max_paths 50 \
+    > "$output/reports/pulse_width_timing.rpt"
+  set link_data_ports [get_ports link_data_o*]
+  if {[sizeof_collection $link_data_ports] == 0} {
+    error "canonical link_data_o ports are absent"
+  }
+  report_timing -view w2_setup_view -check_type setup \
+    -to $link_data_ports -max_paths 50 \
+    > "$output/reports/half_cycle_setup_timing.rpt"
+  report_timing -view w2_hold_view -check_type hold \
+    -to $link_data_ports -max_paths 50 \
+    > "$output/reports/half_cycle_hold_timing.rpt"
+  write_timing_machine_summary "$output/reports/setup_timing.machine" \
+    w2_setup_view setup
+  write_timing_machine_summary "$output/reports/hold_timing.machine" \
+    w2_hold_view hold
+  write_timing_machine_summary "$output/reports/recovery_timing.machine" \
+    w2_setup_view recovery
+  write_timing_machine_summary "$output/reports/removal_timing.machine" \
+    w2_hold_view removal
+  write_timing_machine_summary "$output/reports/gating_setup_timing.machine" \
+    w2_setup_view clock_gating_setup
+  write_timing_machine_summary "$output/reports/gating_hold_timing.machine" \
+    w2_hold_view clock_gating_hold
+  write_timing_machine_summary "$output/reports/pulse_width_timing.machine" \
+    w2_setup_view pulse_width
+  write_timing_machine_summary "$output/reports/half_cycle_setup_timing.machine" \
+    w2_setup_view setup half_cycle_setup $link_data_ports
+  write_timing_machine_summary "$output/reports/half_cycle_hold_timing.machine" \
+    w2_hold_view hold half_cycle_hold $link_data_ports
   redirect -file "$output/reports/check_timing.rpt" {check_timing -verbose}
   redirect -file "$output/reports/check_design_post_route.rpt" {checkDesign -all}
   verifyConnectivity -type all -error 1000 -warning 1000 \
@@ -144,6 +225,8 @@ set flow_failed [catch {
   # Both the database and a portable post-route netlist are authoritative W2
   # artifacts.  saveDesign alone is not a substitute for saveNetlist.
   saveNetlist "$output/netlist/${top}.postroute.v"
+  write_sdf "$output/netlist/${top}.postroute.sdf"
+  rcOut -spef "$output/netlist/${top}.postroute.spef"
   # The golden's Stylus write_db failed with IMPIMEX-7043 and explicitly
   # required saveDesign -mmmc2 for an MMMC1 design.
   saveDesign -mmmc2 "$output/database/${top}.enc"

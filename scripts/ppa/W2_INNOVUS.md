@@ -1,98 +1,128 @@
-# W2 candidate-neutral Innovus flow
+# W2 tech-staged Innovus flow
 
-This package is the common Innovus implementation boundary for every physical
-candidate. It does not contain candidate RTL, candidate-specific floorplanning,
-or a server result.
+This directory defines the candidate-neutral physical implementation boundary
+for exactly three final compositions, in fixed order:
 
-`run_k2_physical_innovus.sh` requires immutable netlist, SDC, IO assignment,
-technology/cell LEF, the server's `slow_vdd1v0_basicCells.lib` for setup, and
-`fast_vdd1v0_basicCells.lib` for hold. GPDK045 provides only one characterized
-`gpdk045.tch`; its exact same path is therefore mandatory for both QRC inputs.
-The two Liberty-based delay corners share one `w2_rc_shared_typical` RC corner.
-An arbitrary second QRC path is rejected rather than treated as a fabricated
-hold characterization. The same site, utilization, aspect ratio, margins, PG
-nets/pins, ring layers and dimensions must be supplied for every candidate.
-Candidate-specific values are not defaults: every physical policy input is
-mandatory.
+1. `fovea_a7` / `w2_fovea_r1_physical_staging_top`
+2. `a2_p6` / `w2_a2_p6_physical_staging_top`
+3. `a3_p6` / `w2_a3_p6_physical_staging_top`
 
-The flow creates separate slow/max/setup and fast/min/hold MMMC views over that
-shared typical RC model, enables OCV with CPPR, names the standard-cell site
-explicitly, rejects missing or mismatched rows, constructs and checks the PG
-network, performs placement, CTS, detailed routing and extraction, and saves
-both an Innovus database and post-route netlist. It reports setup, hold, reset
-recovery, reset removal, placement, unconstrained paths, signal/PG
-connectivity, DRC, antenna and route status. Before Innovus starts, the launcher
-records the Liberty roles and SHA-256 identities plus the one shared QRC
-SHA-256 in `status/TECHNOLOGY_CONTRACT`; clean qualification requires this
-receipt and its explicit `shared_typical_gpdk045` accounting.
+The tracked registry is intentionally
+`blocked_missing_committed_techmap_manifest`. No Innovus process can start
+until one committed `w2-physical-staging-v2` / `GO_FOR_SERVER_STAGING`
+manifest, its Git blob
+SHA, and committed R1/P6 authority manifests replace the null registry pins.
+Owner-generic `k2_w2_*`, native/debug A2/A3, and standalone link tops are
+always forbidden.
 
-Innovus writes only `status/COMMANDS_COMPLETE`. That marker is not physical
-qualification. `verify_k2_physical_innovus.py` independently rejects negative
-timing slack, missing timing paths, errors/interruption, nonzero physical
-counts, incomplete detailed route, missing database/netlist, failure markers,
-symlinks, and pre-existing clean markers. Only then does it exclusively create
-`status/FLOW_CLEAN`. Unrecognized server-report syntax fails closed and must be
-added from captured report bytes rather than guessed.
+## Exact boundary and producer gates
 
-## Authoritative server-format binding
+Every final top has only these common ports:
 
-The buffered format fixtures are bound to Kanghee's server archive
-`ganghee-pnr-golden-20260813.tar.gz`, SHA-256
+- inputs: `ref_clk_i`, `sample_clk_i`, `rst_n`,
+  `source_pending_i[15:0]`;
+- outputs: `source_accept_o[15:0]`, `retire_valid_o[1:0]`,
+  `retire_addr0_o[3:0]`, `retire_addr1_o[3:0]`, `drain_idle_o`, and
+  `protocol_error_o`;
+- link outputs: `link_clk_o` and `link_data_o[1:0]` for R1, or
+  `link_data_o[4:0]` for P6.
+
+`load_i`, `pending_i`, `source_ready_o`, `protocol_fault_o`, and extra debug
+ports are rejected even if all affected artifacts are consistently rehashed.
+
+The endpoint link hierarchy is accounted separately from the flattened whole
+top. Preserved endpoint leaves are R1 `1 TLATNTSCAX2 / 2 MX2X1 / 2 DFFRHQX1 /
+5 DFFNSRX1` and P6 `1 / 5 / 5 / 12`. Cell-specific stable prefixes are
+`w2_ep_icg_`, `w2_ep_mux_`, `w2_ep_pos_`, and `w2_ep_neg_`. A bound pre-map
+connectivity map must match the mapped names and pins. Scheduler, observer,
+buffer, and automatically inserted posedge FF/MUX/ICG cells remain visible in
+the independently recorded whole-top inventory and may increase its counts.
+DFFNSRX1 is globally exact only when the bound provenance explicitly proves no
+other negedge state. Endpoint DFFNSRX1 must use `CKN=link_clk_o`, `RN=rst_n`,
+and `SN=1'b1`; SDFF/scan cells are forbidden.
+
+The only accepted producer kind and receipt schema are both literally
+`k2_w2_genus_exact_three_endpoint_receipt_v3`. The authenticated screening receipt
+plus its Innovus handoff, endpoint connectivity map, and mapped-functional
+receipt. The mapped gate must compare staged RTL against the mapped netlist by
+vendor-model simulation (SDF when available) or formal LEC. It requires exact
+accept/retire/order/conservation/error/reset/drain checks over held-pending R1
+and ordered/back-to-back P6 scenarios. Model, log, netlist, and optional SDF
+hashes are receipt-bound. Genus remains a mapped timing screen: vectorless
+power and physical PPA stay on HOLD. Slow Liberty is the synthesis/timing
+input; fast Liberty, macro LEF, and the shared QRC are authenticated downstream
+handoff provenance.
+
+## Technology and timing contract
+
+Innovus is pinned to `/tools/cadence/DDI231/bin/innovus`, SHA-256
+`41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa`,
+version `23.14-s088_1`. Setup uses the slow 0.9 V/125 C Liberty and hold uses
+the fast 1.1 V/0 C Liberty. GPDK045 has one characterized
+`gpdk045.tch`, so setup and hold deliberately share that exact typical RC
+file; an arbitrary second QRC is rejected. Exact Liberty, technology LEF,
+macro LEF, QRC, and tool hashes are checked against a
+`PROVEN_ENVIRONMENT` receipt and rechecked from the execution descriptor.
+
+The strict R1/P6 SDC templates keep ref/sample/generated clocks phase-related,
+constrain both DDR edges, fixed IO drive/load, gating setup/hold, pulse width,
+and reset recovery/removal. No reset false path is allowed. All three runs use
+one period and the same site, utilization, aspect ratio, margin, PG/ring, IO,
+and activity-window policy. Power requires scoped SAIF/VCD activity; vectorless
+reports cannot qualify.
+
+## Launch and qualification
+
+Only the plan CLI is public:
+
+```sh
+python3 -B scripts/ppa/run_k2_physical_innovus_plan.py \
+  --plan /absolute/path/to/innovus-plan.json --validate-only
+
+python3 -B scripts/ppa/run_k2_physical_innovus_plan.py \
+  --plan /absolute/path/to/innovus-plan.json --execute
+```
+
+Exactly one of `--validate-only` and `--execute` is accepted. The internal
+shell cannot be enabled by an environment sentinel: it requires the temporary,
+read-only plan-owned execution descriptor and SHA, then rechecks every
+netlist/SDC/Genus/handoff/map/functional/environment/activity hash plus the
+live server tool and technology files. Each run retains that descriptor and
+SHA in its result directory.
+
+The flow performs floorplan/site-row validation, OCV/CPPR, PG connection and
+ring routing, placement, CTS, detailed routing, extraction, setup/hold and
+recovery/removal, clock-gating setup/hold, pulse-width, and scoped DDR
+half-cycle timing, check_timing, checkDesign `-all`, placement,
+signal/PG connectivity, DRC, antenna, area, annotated power, database save,
+post-route `saveNetlist`, SDF, and SPEF. Tcl writes only `COMMANDS_COMPLETE`.
+The independent verifier creates `FLOW_CLEAN` exclusively after clean tool
+termination, nonnegative WNS, zero TNS and violations, nonzero timing path
+counts, zero no_drive/no_load/unconstrained/checkDesign/placement/connectivity/
+DRC/antenna counts, completed route, and retained output checks.
+
+The raw and buffered Kanghee archives remain report-format authorities only.
+The raw SHA is
+`7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3`;
+the buffered SHA is
 `1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f`.
-`tests/physical_w2_innovus/ganghee_golden_pin.json` additionally pins every
-archive member consumed by the tests. The default archive path is
-`/tmp/ganghee-pnr-golden-20260813.tar.gz`; set
-`W2_GANGHEE_GOLDEN_ARCHIVE` to use an identical archive elsewhere. A missing
-or mismatched archive or member is a test failure.
+Raw logs contain known Innovus errors and actual check_timing `no_drive=18`,
+so they are negative calibration evidence, never PASS/PPA evidence.
+No clean native checkDesign fixture exists in those archives. The first server
+attempt must therefore retain the native bytes for calibration and remains
+fail-closed if the all-class grammar is not recognized; this commit does not
+claim a calibrated server PASS.
 
-The raw source is independently bound by
-`tests/physical_w2_innovus/ganghee_raw_golden_pin.json` to
-`ganghee-pnr-raw-golden-20260813.tar.gz`, SHA-256
-`7989dd65c220b4b58d131cda0a49678e915c2422b2f6d321b960dd2213118cd3`.
-Its default path is `/tmp/ganghee-pnr-raw-golden-20260813.tar.gz`, overridable
-only with `W2_GANGHEE_RAW_GOLDEN_ARCHIVE`. Raw and buffered kind, basename and
-digest are asserted separately.
+Local tests (fake/synthetic execution only; no Innovus launch):
 
-Those captured bytes anchor Innovus `v23.14-s088_1`, the proven `floorPlan -r`,
-PG/ring/sroute, placement/CTS/route/extraction command spellings, Path/Slack
-timing records, the timing-check warning table, and the exact clean DRC and
-antenna messages. The W2 floorplan verifies that the resulting rows use the
-mandatory site. Database save uses `saveDesign -mmmc2`, as prescribed by the
-captured `IMPIMEX-7043` failure for the original MMMC1 `write_db` attempt.
+```sh
+python3 -m unittest \
+  tests/physical_w2_innovus/test_w2_innovus.py \
+  tests/physical_w2_innovus/test_w2_innovus_plan.py -v
+```
 
-The archive is an authoritative format/calibration source, not a clean W2
-receipt. Its log contains `IMPCCOPT-2215` and `IMPIMEX-7043`; setup and hold use
-the same slow view; and it has no recovery report, connectivity report, or
-post-route netlist. Tests require the hardened verifier to reject those
-conditions and separately prove parsing of real positive setup/hold, negative
-setup/removal, DRC, antenna, and check-timing bytes.
-
-## Raw sweep reconstruction
-
-The raw archive contains two independently resynthesized period sweeps:
-
-- Cluster2: 0.7, 0.8, 0.9, 1.0 and 1.3 ns. Setup WNS is respectively -0.178,
-  -0.088, -0.029, 0.042 and 0.080 ns; hold WNS is 0.163, 0.160, 0.162, 0.160
-  and 0.166 ns.
-- Fovea: 1.2, 1.3, 1.4, 1.6 and 2.0 ns. Setup WNS is respectively 0.000,
-  -0.024, 0.036, -0.003 and -0.007 ns; hold WNS is 0.058, 0.120, 0.120,
-  0.125 and 0.125 ns.
-
-Every raw `run_<period>.tcl` uses the same 45 nm floorplan/PG/place/CTS/route/
-extraction recipe and selects period-specific netlist, SDC, MMMC and output
-names. It emits setup with `report_timing -late`, hold with
-`report_timing -early`, then check-timing, DRC and antenna reports. The actual
-MMMC files reuse one slow/typical view for setup and hold, so they are
-diagnostic inputs rather than the hardened two-corner W2 qualification.
-
-All ten raw logs contain both `IMPCCOPT-2215` (disconnected clock traversal
-graph) and `IMPIMEX-7043` (`write_db` cannot save the MMMC1 database). Therefore
-none of the raw sweep points is a physical PASS, including points with
-nonnegative setup and hold. Qualification requires a pinned-version log with
-no error marker, all-zero error summaries and the normal Innovus ending, plus
-content-validated nonnegative setup/hold, zero DRC, zero antenna and a complete
-check-timing report. Merely finding nonempty files never qualifies a run.
-
-This local commit does not run Innovus. No new PPA number, timing bracket, or
-physical winner is claimed. A server run remains required to validate the
-candidate-neutral hardened commands and produce all qualification artifacts.
+The CLI compatibility test reads exact Genus provider commit
+`63e98ccf189f992c443a05ba28f63b610bbc3f9f` and confirms the supported
+`--hold-library`, `--cell-lef`, and `--shared-qrc` options and absence of the
+unsupported `--activity-receipt`. No server launch or physical result is
+claimed here.

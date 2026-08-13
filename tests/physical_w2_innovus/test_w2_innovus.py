@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -13,7 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 PNR = ROOT / "scripts/ppa/k2_physical_innovus_pnr.tcl"
-MMMC = ROOT / "scripts/ppa/k2_physical_innovus_mmmc.tcl"
+MMMC = ROOT / "scripts/ppa/p6_multiclock_mmmc.tcl"
 RUNNER = ROOT / "scripts/ppa/run_k2_physical_innovus.sh"
 VERIFY = ROOT / "scripts/ppa/verify_k2_physical_innovus.py"
 BUFFERED_GOLDEN_PIN = ROOT / "tests/physical_w2_innovus/ganghee_golden_pin.json"
@@ -49,109 +48,48 @@ class StaticFlowContractTests(unittest.TestCase):
     def test_mmmc_has_distinct_setup_and_hold_corners(self):
         text = MMMC.read_text(encoding="utf-8")
         for token in (
-            "AER_SETUP_LIBRARY_FILE", "AER_HOLD_LIBRARY_FILE",
-            "AER_SETUP_QRC_TECH", "AER_HOLD_QRC_TECH",
-            "w2_view_setup", "w2_view_hold", "set_analysis_view",
+            "W2_SETUP_LIBERTY", "W2_HOLD_LIBERTY",
+            "W2_SHARED_TYPICAL_QRC", "W2_STRICT_MULTICLOCK_SDC",
+            "w2_setup_view", "w2_hold_view", "set_analysis_view",
         ):
             self.assertIn(token, text)
-        self.assertIn("setup and hold Liberty files must be distinct", text)
-        self.assertIn("slow_vdd1v0_basicCells.lib", text)
-        self.assertIn("fast_vdd1v0_basicCells.lib", text)
-        self.assertIn("setup and hold QRC must be one shared", text)
-        self.assertEqual(text.count("create_rc_corner"), 1)
-        self.assertEqual(text.count("-rc_corner w2_rc_shared_typical"), 2)
-        self.assertNotIn("-hold {w2_view_setup}", text)
+        self.assertIn("setup and hold Liberty must be distinct", text)
+        self.assertIn("W2_SHARED_TYPICAL_QRC", text)
+        self.assertEqual(text.count("create_rc_corner"), 2)
+        self.assertEqual(text.count("-qrc_tech $shared_qrc"), 2)
+        self.assertNotIn("-hold {w2_setup_view}", text)
 
-    def runner_environment(self, root: Path) -> dict[str, str]:
-        files = {
-            "AER_PNR_NETLIST": "mapped.v",
-            "AER_TECH_LEF": "tech.lef",
-            "AER_CELL_LEF": "cells.lef",
-            "AER_IO_FILE": "pins.io",
-            "AER_SETUP_LIBRARY_FILE": "slow_vdd1v0_basicCells.lib",
-            "AER_HOLD_LIBRARY_FILE": "fast_vdd1v0_basicCells.lib",
-            "AER_SETUP_QRC_TECH": "gpdk045.tch",
-            "AER_HOLD_QRC_TECH": "gpdk045.tch",
-            "AER_PNR_SDC": "mapped.sdc",
-        }
-        environment = os.environ.copy()
-        for name, relative in files.items():
-            path = root / relative
-            path.write_text(name + "\n")
-            environment[name] = str(path)
-        environment.update({
-            "AER_TOP": "dut",
-            "AER_PNR_OUTPUT_DIR": str(root / "run"),
-            "AER_CORE_SITE": "CoreSite",
-            "AER_PROCESS_NODE_NM": "45",
-            "AER_CORE_ASPECT_RATIO": "1.0",
-            "AER_CORE_UTILIZATION": "0.70",
-            "AER_CORE_MARGIN_UM": "10",
-            "AER_VDD_NET": "VDD",
-            "AER_VSS_NET": "VSS",
-            "AER_VDD_PIN": "VDD",
-            "AER_VSS_PIN": "VSS",
-            "AER_RING_HORIZONTAL_LAYER": "METAL5",
-            "AER_RING_VERTICAL_LAYER": "METAL6",
-            "AER_RING_WIDTH_UM": "2",
-            "AER_RING_SPACING_UM": "1",
-            "AER_RING_OFFSET_UM": "2",
-            "AER_W2_COHORT": "complete_endpoint_wrappers",
-            "AER_W2_DESIGN": "fovea_a7",
-            "AER_W2_PLAN_VALIDATED": "k2_w2_innovus_plan_v1",
-            "AER_INNOVUS_BIN": "/bin/false",
-        })
-        return environment
+    def test_strict_templates_use_only_canonical_link_and_source_ports(self):
+        for relative, width in (("constraints/r1_multiclock_strict.sdc", 2),
+                                ("constraints/p6_multiclock_strict.sdc", 5)):
+            with self.subTest(relative=relative):
+                text = (ROOT / relative).read_text()
+                for required in ("ref_clk_i", "sample_clk_i", "rst_n",
+                                 "link_clk_o", "link_data_o"):
+                    self.assertIn(required, text)
+                for alias in ("burst_clk_o", "burst_data_o", "load_i",
+                              "pending_i", "source_ready_o", "protocol_fault_o"):
+                    self.assertNotIn(alias, text)
+                self.assertIn(f"!= {width}", text)
 
-    def test_runner_allows_exact_shared_gpdk045_qrc_and_records_typical_rc(self):
-        with tempfile.TemporaryDirectory(prefix="w2-shared-qrc-") as temporary:
-            root = Path(temporary)
-            environment = self.runner_environment(root)
-            result = subprocess.run(
-                [str(RUNNER)], env=environment, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-            )
-            self.assertEqual(result.returncode, 1, result.stderr)
-            receipt = (root / "run/status/TECHNOLOGY_CONTRACT").read_text()
-            self.assertIn("setup_library_role=slow_max_setup\n", receipt)
-            self.assertIn("hold_library_role=fast_min_hold\n", receipt)
-            self.assertIn("rc_model=shared_typical_gpdk045\n", receipt)
-            self.assertIn("qrc_source_count=1\n", receipt)
-            self.assertEqual(receipt.count("qrc_sha256="), 1)
-
-    def test_runner_rejects_arbitrary_mismatched_qrc_before_launch(self):
-        with tempfile.TemporaryDirectory(prefix="w2-mismatched-qrc-") as temporary:
-            root = Path(temporary)
-            environment = self.runner_environment(root)
-            other = root / "other"
-            other.mkdir()
-            alternate = other / "gpdk045.tch"
-            alternate.write_text("arbitrary second QRC mutation\n")
-            environment["AER_HOLD_QRC_TECH"] = str(alternate)
-            result = subprocess.run(
-                [str(RUNNER)], env=environment, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-            )
-            self.assertEqual(result.returncode, 2)
-            self.assertIn("same shared typical-RC file", result.stderr)
-            self.assertFalse((root / "run").exists())
-
-    def test_runner_rejects_reversed_liberty_roles_before_launch(self):
-        with tempfile.TemporaryDirectory(prefix="w2-liberty-roles-") as temporary:
-            root = Path(temporary)
-            environment = self.runner_environment(root)
-            setup = environment["AER_SETUP_LIBRARY_FILE"]
-            environment["AER_SETUP_LIBRARY_FILE"] = environment[
-                "AER_HOLD_LIBRARY_FILE"
-            ]
-            environment["AER_HOLD_LIBRARY_FILE"] = setup
-            result = subprocess.run(
-                [str(RUNNER)], env=environment, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-            )
-            self.assertEqual(result.returncode, 2)
-            self.assertIn("setup Liberty must be slow", result.stderr)
-            self.assertFalse((root / "run").exists())
+    def test_authoritative_environment_pins_exact_tool_and_technology(self):
+        authority = json.loads((ROOT / "scripts/ppa/k2_physical_server_environment.json").read_text())
+        self.assertEqual(authority["tool"]["version"], "23.14-s088_1")
+        self.assertEqual(
+            authority["tool"]["sha256"],
+            "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+        )
+        technology = authority["technology"]
+        self.assertEqual(technology["setup_liberty"]["pvt"], [1.0, 0.9, 125.0])
+        self.assertEqual(technology["hold_liberty"]["pvt"], [1.0, 1.1, 0.0])
+        self.assertEqual(
+            technology["shared_qrc"]["sha256"],
+            "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+        )
+        self.assertEqual(
+            authority["mmmc_template"]["sha256"],
+            hashlib.sha256(MMMC.read_bytes()).hexdigest(),
+        )
 
     def test_pnr_closes_requested_physical_commands(self):
         text = PNR.read_text(encoding="utf-8")
@@ -163,10 +101,15 @@ class StaticFlowContractTests(unittest.TestCase):
             "globalNetConnect $vss -type pgpin",
             "addRing", "sroute", "checkPlace", "place_opt_design",
             "clock_opt_design", "routeDesign", "extractRC",
+            "optDesign -postRoute", "optDesign -postRoute -hold",
             "-check_type setup", "-check_type hold",
             "-check_type recovery", "-check_type removal",
+            "-check_type clock_gating_setup", "-check_type clock_gating_hold",
+            "-check_type pulse_width", "half_cycle_setup_timing.rpt",
+            "half_cycle_hold_timing.rpt",
             "verifyConnectivity -type all", "verifyConnectivity -type special",
             "verify_drc", "verify_process_antenna", "saveNetlist",
+            "write_sdf", "rcOut -spef",
             "saveDesign -mmmc2", "COMMANDS_COMPLETE",
         ):
             self.assertIn(token, text)
@@ -176,7 +119,10 @@ class StaticFlowContractTests(unittest.TestCase):
     def test_runner_delegates_clean_marker_to_independent_verifier(self):
         text = RUNNER.read_text(encoding="utf-8")
         self.assertIn("--write-clean-marker", text)
+        self.assertIn("--verify-descriptor", text)
+        self.assertIn("AER_W2_EXECUTION_DESCRIPTOR_SHA256", text)
         self.assertIn("[[ ! -e \"$AER_PNR_OUTPUT_DIR\" ]]", text)
+        self.assertNotIn("AER_W2_PLAN_VALIDATED", text)
         self.assertNotIn("FLOW_CLEAN", text)
 
 
@@ -193,23 +139,50 @@ class FixtureQualificationTests(unittest.TestCase):
         (self.root / "status/COMMANDS_COMPLETE").write_bytes(
             self.module.COMMAND_SENTINEL
         )
+        descriptor = {
+            "schema": "k2_w2_innovus_execution_descriptor_v1",
+            "binding": {"top": "dut", "cohort": "tech_staged_complete_compositions"},
+            "registry_sha256": hashlib.sha256(
+                (ROOT / "scripts/ppa/k2_physical_innovus_cohorts.json").read_bytes()
+            ).hexdigest(),
+            "authority_sha256": hashlib.sha256(
+                (ROOT / "scripts/ppa/k2_physical_server_environment.json").read_bytes()
+            ).hexdigest(),
+        }
+        descriptor_payload = (json.dumps(descriptor, sort_keys=True) + "\n").encode()
+        (self.root / "status/EXECUTION_DESCRIPTOR.json").write_bytes(descriptor_payload)
+        (self.root / "status/EXECUTION_DESCRIPTOR.sha256").write_text(
+            hashlib.sha256(descriptor_payload).hexdigest() + "\n")
         (self.root / "status/TECHNOLOGY_CONTRACT").write_text(
             "schema=k2_w2_innovus_technology_contract_v1\n"
             "top=dut\n"
-            "cohort=complete_endpoint_wrappers\n"
+            "cohort=tech_staged_complete_compositions\n"
             "design=fovea_a7\n"
+            "innovus_path=/tools/cadence/DDI231/bin/innovus\n"
+            "innovus_sha256=41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa\n"
+            "tech_lef_sha256=0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70\n"
+            "cell_lef_sha256=7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2\n"
             "setup_library_role=slow_max_setup\n"
             "setup_library_basename=slow_vdd1v0_basicCells.lib\n"
-            f"setup_library_sha256={'0' * 64}\n"
+            "setup_library_sha256=dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10\n"
             "hold_library_role=fast_min_hold\n"
             "hold_library_basename=fast_vdd1v0_basicCells.lib\n"
-            f"hold_library_sha256={'1' * 64}\n"
+            "hold_library_sha256=e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560\n"
             "rc_model=shared_typical_gpdk045\n"
             "qrc_source_count=1\n"
-            "setup_rc_corner=w2_rc_shared_typical\n"
-            "hold_rc_corner=w2_rc_shared_typical\n"
+            "setup_rc_corner=w2_shared_setup_rc\n"
+            "hold_rc_corner=w2_shared_hold_rc\n"
             "qrc_basename=gpdk045.tch\n"
-            f"qrc_sha256={'2' * 64}\n"
+            "qrc_sha256=a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5\n"
+        )
+        (self.root / "status/ACTIVITY_POWER_CONTRACT").write_text(
+            "schema=k2_w2_activity_power_contract_v1\n"
+            "mode=annotated_activity\n"
+            "format=SAIF\n"
+            "scope=tb/dut\n"
+            f"activity_sha256={'a' * 64}\n"
+            "window_start_ns=100\n"
+            "window_end_ns=900\n"
         )
         (self.root / "tool.log").write_text(clean_log())
         for name in self.module.TIMING_REPORTS:
@@ -218,14 +191,30 @@ class FixtureQualificationTests(unittest.TestCase):
                 f"Path 1: MET {check} Check with Pin fixture/CK\n"
                 "  Slack Time                    0.010\n"
             )
+            (self.root / "reports" / name.replace(".rpt", ".machine")).write_text(
+                "schema=k2_w2_timing_machine_summary_v1\n"
+                f"check={self.module.EXPECTED_MACHINE_CHECK.get(name, self.module.EXPECTED_TIMING_CHECK[name])}\n"
+                f"view={'w2_hold_view' if check.lower() in {'hold', 'removal'} else 'w2_setup_view'}\n"
+                "path_count=1\n"
+                "violation_count=0\n"
+                "wns=0.010\n"
+                "tns=0.0\n"
+            )
         for name, key in self.module.ZERO_COUNT_REPORTS.items():
-            (self.root / "reports" / name).write_text(f"{key}=0\n")
+            suffix = ""
+            if name.startswith("check_design_"):
+                suffix = "check_design_errors=0\ncheck_design_violations=0\n"
+            (self.root / "reports" / name).write_text(f"{key}=0\n{suffix}")
         (self.root / "reports/area.rpt").write_text("area report\n")
         (self.root / "reports/power.rpt").write_text("power report\n")
         (self.root / "reports/route.rpt").write_text(
             "detailed_route_completed=1\n"
         )
         (self.root / "netlist/dut.postroute.v").write_text("module dut; endmodule\n")
+        (self.root / "netlist/dut.postroute.sdf").write_text(
+            '(DELAYFILE (DESIGN "dut"))\n')
+        (self.root / "netlist/dut.postroute.spef").write_text(
+            '*SPEF "IEEE 1481-1998"\n*DESIGN "dut"\n')
         (self.root / "database/dut.enc.dat").write_text("database fixture\n")
 
     def tearDown(self):
@@ -233,7 +222,10 @@ class FixtureQualificationTests(unittest.TestCase):
 
     def test_clean_fixture_passes(self):
         slacks = self.module.validate(self.root, "dut")
-        self.assertEqual(set(slacks), {"setup", "hold", "recovery", "removal"})
+        self.assertEqual(set(slacks), {
+            "setup", "hold", "recovery", "removal", "gating_setup",
+            "gating_hold", "pulse_width", "half_cycle_setup", "half_cycle_hold",
+        })
 
     def test_shared_typical_rc_contract_is_required_and_fail_closed(self):
         path = self.root / "status/TECHNOLOGY_CONTRACT"
@@ -277,10 +269,45 @@ class FixtureQualificationTests(unittest.TestCase):
         for name, key in self.module.ZERO_COUNT_REPORTS.items():
             with self.subTest(name=name):
                 path = self.root / "reports" / name
+                original = path.read_text()
                 path.write_text(f"{key}=1\n")
                 with self.assertRaisesRegex(self.module.QualificationError, "nonzero"):
                     self.module.validate(self.root, "dut")
-                path.write_text(f"{key}=0\n")
+                path.write_text(original)
+
+    def test_actual_format_no_drive_and_no_load_are_rejected(self):
+        path = self.root / "reports/check_timing.rpt"
+        for warning in ("no_drive", "no_load"):
+            with self.subTest(warning=warning):
+                path.write_text(
+                    "unconstrained_paths=0\n"
+                    f"| {warning} | fixture warning | 1 |\n"
+                )
+                with self.assertRaisesRegex(
+                    self.module.QualificationError, "no_drive/no_load"
+                ):
+                    self.module.validate(self.root, "dut")
+
+    def test_tns_violation_and_vectorless_power_are_rejected(self):
+        summary = self.root / "reports/setup_timing.machine"
+        original = summary.read_text()
+        for old, new in (("tns=0.0", "tns=-0.1"),
+                         ("violation_count=0", "violation_count=1")):
+            with self.subTest(new=new):
+                summary.write_text(original.replace(old, new))
+                with self.assertRaisesRegex(
+                    self.module.QualificationError, "machine summary"
+                ):
+                    self.module.validate(self.root, "dut")
+        summary.write_text(original)
+        activity = self.root / "status/ACTIVITY_POWER_CONTRACT"
+        activity.write_text(activity.read_text().replace(
+            "mode=annotated_activity", "mode=vectorless"
+        ))
+        with self.assertRaisesRegex(
+            self.module.QualificationError, "vectorless"
+        ):
+            self.module.validate(self.root, "dut")
 
     def test_interrupted_or_error_log_fails(self):
         for marker in ("**ERROR: bad", "FATAL: bad", "INTERRUPT", "SEGMENTATION FAULT"):
@@ -322,6 +349,18 @@ class FixtureQualificationTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(self.module.QualificationError, "missing artifact"):
             self.module.validate(self.root, "dut")
+
+    def test_missing_or_cross_top_sdf_spef_fails(self):
+        for name in ("dut.postroute.sdf", "dut.postroute.spef"):
+            with self.subTest(name=name):
+                path = self.root / "netlist" / name
+                original = path.read_text()
+                path.write_text(original.replace("dut", "other_top"))
+                with self.assertRaisesRegex(
+                    self.module.QualificationError, "SDF|SPEF"
+                ):
+                    self.module.validate(self.root, "dut")
+                path.write_text(original)
 
     def test_clean_marker_is_exclusive_and_not_overwritten(self):
         marker = self.root / "status/FLOW_CLEAN"
@@ -611,12 +650,28 @@ class AuthoritativeGangheeRawGoldenTests(unittest.TestCase):
             )
 
         paths["log"].write_text(clean_log())
+        with self.assertRaisesRegex(
+            self.module.QualificationError, "no_drive/no_load"
+        ):
+            self.module.validate_minimum_signoff(
+                paths["log"], paths["setup"], paths["hold"], paths["drc"],
+                paths["antenna"], paths["check_timing"],
+            )
+
+        # The captured raw report is a negative calibration fixture.  Only an
+        # explicit zero-count mutation demonstrates the remaining grammar.
+        timing_text = paths["check_timing"].read_text()
+        paths["check_timing"].write_text(
+            self.module.TIMING_WARNING_ROW.sub(
+                lambda match: f"| {match.group(1)} | calibrated zero | 0 |",
+                timing_text,
+            )
+        )
         self.assertEqual(
             self.module.validate_minimum_signoff(
                 paths["log"], paths["setup"], paths["hold"], paths["drc"],
                 paths["antenna"], paths["check_timing"],
-            ),
-            {"setup": 0.042, "hold": 0.160},
+            ), {"setup": 0.042, "hold": 0.160}
         )
 
         garbage_by_key = {
@@ -642,6 +697,12 @@ class AuthoritativeGangheeRawGoldenTests(unittest.TestCase):
         spec = self.pin["sweeps"]["cluster2"]
         paths = self.materialize_signoff(spec, "0.7")
         paths["log"].write_text(clean_log())
+        paths["check_timing"].write_text(
+            self.module.TIMING_WARNING_ROW.sub(
+                lambda match: f"| {match.group(1)} | calibrated zero | 0 |",
+                paths["check_timing"].read_text(),
+            )
+        )
         with self.assertRaisesRegex(self.module.QualificationError, "setup WNS"):
             self.module.validate_minimum_signoff(
                 paths["log"], paths["setup"], paths["hold"], paths["drc"],

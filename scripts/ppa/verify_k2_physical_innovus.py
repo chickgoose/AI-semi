@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import math
 import os
 from pathlib import Path
@@ -16,18 +18,40 @@ from typing import Sequence
 COMMAND_SENTINEL = b"W2_INNOVUS_COMMANDS_COMPLETE\n"
 CLEAN_SENTINEL = b"W2_INNOVUS_FLOW_CLEAN\n"
 INNOVUS_VERSION = "v23.14-s088_1"
+HERE = Path(__file__).resolve().parent
 
 TIMING_REPORTS = (
     "setup_timing.rpt",
     "hold_timing.rpt",
     "recovery_timing.rpt",
     "removal_timing.rpt",
+    "gating_setup_timing.rpt",
+    "gating_hold_timing.rpt",
+    "pulse_width_timing.rpt",
+    "half_cycle_setup_timing.rpt",
+    "half_cycle_hold_timing.rpt",
 )
 EXPECTED_TIMING_CHECK = {
     "setup_timing.rpt": "setup",
     "hold_timing.rpt": "hold",
     "recovery_timing.rpt": "recovery",
     "removal_timing.rpt": "removal",
+    "gating_setup_timing.rpt": "clock gating setup",
+    "gating_hold_timing.rpt": "clock gating hold",
+    "pulse_width_timing.rpt": "pulse width",
+    "half_cycle_setup_timing.rpt": "setup",
+    "half_cycle_hold_timing.rpt": "hold",
+}
+EXPECTED_MACHINE_CHECK = {
+    "setup_timing.rpt": "setup",
+    "hold_timing.rpt": "hold",
+    "recovery_timing.rpt": "recovery",
+    "removal_timing.rpt": "removal",
+    "gating_setup_timing.rpt": "clock_gating_setup",
+    "gating_hold_timing.rpt": "clock_gating_hold",
+    "pulse_width_timing.rpt": "pulse_width",
+    "half_cycle_setup_timing.rpt": "half_cycle_setup",
+    "half_cycle_hold_timing.rpt": "half_cycle_hold",
 }
 ZERO_COUNT_REPORTS = {
     "check_place_post_place.rpt": "placement_violations",
@@ -65,11 +89,16 @@ SLACK = re.compile(
 )
 PATH_CHECK = re.compile(
     r"^Path\s+[0-9]+:\s+(?:MET|VIOLATED)\s+"
-    r"(Setup|Hold|Recovery|Removal)\s+Check\b",
+    r"(Setup|Hold|Recovery|Removal|Clock\s+Gating\s+Setup|"
+    r"Clock\s+Gating\s+Hold|Pulse\s+Width)\s+Check\b",
     re.IGNORECASE | re.MULTILINE,
 )
 COUNT_LINE = re.compile(r"^([a-z][a-z0-9_]*)=([0-9]+)$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+TIMING_WARNING_ROW = re.compile(
+    r"\|\s*(no_drive|no_load)\s*\|[^\n|]*\|\s*([0-9]+)\s*\|",
+    re.IGNORECASE,
+)
 NATIVE_COUNT_PATTERNS = {
     "placement_violations": (
         r"(?:total\s+(?:number\s+of\s+)?)?(?:place(?:ment)?)[^\n:]*"
@@ -168,28 +197,119 @@ def _require_technology_contract(path: Path, top: str) -> dict[str, str]:
         "hold_library_basename": "fast_vdd1v0_basicCells.lib",
         "rc_model": "shared_typical_gpdk045",
         "qrc_source_count": "1",
-        "setup_rc_corner": "w2_rc_shared_typical",
-        "hold_rc_corner": "w2_rc_shared_typical",
+        "setup_rc_corner": "w2_shared_setup_rc",
+        "hold_rc_corner": "w2_shared_hold_rc",
         "qrc_basename": "gpdk045.tch",
     }
     variable = {
         "cohort", "design", "setup_library_sha256",
-        "hold_library_sha256", "qrc_sha256",
+        "hold_library_sha256", "qrc_sha256", "innovus_path",
+        "innovus_sha256", "tech_lef_sha256", "cell_lef_sha256",
     }
     if set(rows) != set(expected) | variable:
         raise QualificationError("technology contract field set mismatch")
     if any(rows.get(key) != value for key, value in expected.items()):
         raise QualificationError("technology contract role/corner mismatch")
-    if rows["cohort"] not in {
-        "complete_endpoint_wrappers", "raw_fovea_cluster2_diagnostic",
-    } or not rows["design"]:
+    if rows["cohort"] != "tech_staged_complete_compositions" or not rows["design"]:
         raise QualificationError("technology contract cohort/design mismatch")
     for key in ("setup_library_sha256", "hold_library_sha256", "qrc_sha256"):
         if not SHA256.fullmatch(rows[key]):
             raise QualificationError(f"technology contract {key} is malformed")
     if rows["setup_library_sha256"] == rows["hold_library_sha256"]:
         raise QualificationError("setup and hold Liberty hashes must differ")
+    exact = {
+        "innovus_path": "/tools/cadence/DDI231/bin/innovus",
+        "innovus_sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+        "tech_lef_sha256": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70",
+        "cell_lef_sha256": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2",
+        "setup_library_sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
+        "hold_library_sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
+        "qrc_sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+    }
+    if any(rows[key] != value for key, value in exact.items()):
+        raise QualificationError("technology contract authoritative SHA mismatch")
     return rows
+
+
+def _require_execution_descriptor(run_dir: Path, top: str) -> None:
+    descriptor_path = run_dir / "status/EXECUTION_DESCRIPTOR.json"
+    payload = _regular(descriptor_path)
+    recorded = _text(run_dir / "status/EXECUTION_DESCRIPTOR.sha256").strip()
+    if not SHA256.fullmatch(recorded) or hashlib.sha256(payload).hexdigest() != recorded:
+        raise QualificationError("retained execution descriptor SHA mismatch")
+    try:
+        document = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise QualificationError("retained execution descriptor is invalid JSON") from error
+    registry_hash = hashlib.sha256(
+        (HERE / "k2_physical_innovus_cohorts.json").read_bytes()).hexdigest()
+    authority_hash = hashlib.sha256(
+        (HERE / "k2_physical_server_environment.json").read_bytes()).hexdigest()
+    binding = document.get("binding", {})
+    if document.get("schema") != "k2_w2_innovus_execution_descriptor_v1" or \
+            document.get("registry_sha256") != registry_hash or \
+            document.get("authority_sha256") != authority_hash or \
+            binding.get("top") != top or \
+            binding.get("cohort") != "tech_staged_complete_compositions":
+        raise QualificationError("retained execution descriptor identity mismatch")
+
+
+def _require_activity_contract(path: Path) -> dict[str, str]:
+    rows = {}
+    for line in _text(path).splitlines():
+        if line.count("=") != 1:
+            raise QualificationError("activity contract malformed")
+        key, value = line.split("=", 1)
+        if key in rows or not value:
+            raise QualificationError("activity contract duplicate/empty field")
+        rows[key] = value
+    if set(rows) != {"schema", "mode", "format", "scope", "activity_sha256",
+                     "window_start_ns", "window_end_ns"} or \
+            rows["schema"] != "k2_w2_activity_power_contract_v1" or \
+            rows["mode"] != "annotated_activity" or rows["format"] not in {"SAIF", "VCD"} or \
+            not SHA256.fullmatch(rows["activity_sha256"]):
+        raise QualificationError("vectorless or invalid activity power contract")
+    try:
+        start, end = float(rows["window_start_ns"]), float(rows["window_end_ns"])
+    except ValueError as error:
+        raise QualificationError("activity window is not numeric") from error
+    if start < 0 or end <= start:
+        raise QualificationError("activity window is empty/reversed")
+    return rows
+
+
+def _timing_machine_summary(path: Path, expected: str) -> dict[str, float | int | str]:
+    rows = {}
+    for line in _text(path).splitlines():
+        if line.count("=") != 1:
+            raise QualificationError(f"timing machine summary malformed: {path}")
+        key, value = line.split("=", 1)
+        if key in rows:
+            raise QualificationError(f"timing machine summary duplicate field: {path}")
+        rows[key] = value
+    if set(rows) != {"schema", "check", "view", "path_count", "violation_count", "wns", "tns"} or \
+            rows["schema"] != "k2_w2_timing_machine_summary_v1" or rows["check"] != expected:
+        raise QualificationError(f"timing machine summary contract mismatch: {path}")
+    try:
+        path_count = int(rows["path_count"])
+        violations = int(rows["violation_count"])
+        wns, tns = float(rows["wns"]), float(rows["tns"])
+    except ValueError as error:
+        raise QualificationError(f"timing machine summary numeric mismatch: {path}") from error
+    if path_count <= 0 or violations != 0 or wns < 0.0 or tns != 0.0 or \
+            not math.isfinite(wns) or not math.isfinite(tns):
+        raise QualificationError(f"timing machine summary is not clean: {path}")
+    return {"check": expected, "path_count": path_count, "violation_count": violations,
+            "wns": wns, "tns": tns}
+
+
+def _require_check_design_all(path: Path) -> None:
+    text = _text(path)
+    counts = _canonical_counts(path)
+    if counts.get("check_design_errors") != 0 or counts.get("check_design_violations") != 0:
+        raise QualificationError(f"checkDesign all-class summary is absent/nonzero: {path}")
+    if re.search(r"(?mi)^\s*(?:\*\*)?(?:ERROR|FATAL|VIOLATION)\b", text):
+        raise QualificationError(f"checkDesign native report contains an error class: {path}")
 
 
 def _timing_observation(path: Path, expected_check: str | None = None) -> tuple[str, float]:
@@ -281,6 +401,12 @@ def validate_minimum_signoff(
 ) -> dict[str, float]:
     """Qualify the minimum server signoff set by content, never existence."""
     _require_clean_log(log_path)
+    warning_counts = {"no_drive": 0, "no_load": 0}
+    for name, value in TIMING_WARNING_ROW.findall(_text(check_timing_path)):
+        warning_counts[name.lower()] += int(value)
+    if warning_counts["no_drive"] or warning_counts["no_load"]:
+        raise QualificationError(
+            f"check_timing has no_drive/no_load warnings: {warning_counts}")
     slacks = {
         "setup": _timing_observation(setup_path, "setup")[1],
         "hold": _timing_observation(hold_path, "hold")[1],
@@ -304,9 +430,11 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         raise QualificationError("Innovus failure sentinel is present")
     if (run_dir / "status" / "FLOW_CLEAN").exists():
         raise QualificationError("FLOW_CLEAN already exists")
+    _require_execution_descriptor(run_dir, top)
     _require_technology_contract(
         run_dir / "status" / "TECHNOLOGY_CONTRACT", top
     )
+    _require_activity_contract(run_dir / "status" / "ACTIVITY_POWER_CONTRACT")
 
     reports = run_dir / "reports"
     slacks = validate_minimum_signoff(
@@ -325,6 +453,14 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
     for check, value in slacks.items():
         if value < 0.0:
             raise QualificationError(f"{check} WNS is negative ({value})")
+    for name in TIMING_REPORTS:
+        check = EXPECTED_MACHINE_CHECK[name]
+        summary = _timing_machine_summary(
+            reports / name.replace(".rpt", ".machine"), check
+        )
+        slack_key = name.removesuffix("_timing.rpt")
+        if abs(float(summary["wns"]) - slacks[slack_key]) > 1e-9:
+            raise QualificationError(f"native timing report/machine WNS mismatch: {name}")
     minimum_zero_reports = {"drc.rpt", "antenna.rpt", "check_timing.rpt"}
     for name, key in ZERO_COUNT_REPORTS.items():
         if name in minimum_zero_reports:
@@ -332,6 +468,8 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         _require_zero(reports / name, key)
     for name in OTHER_REPORTS:
         _regular(reports / name)
+    _require_check_design_all(reports / "check_design_pre_place.rpt")
+    _require_check_design_all(reports / "check_design_post_route.rpt")
     route_text = _text(reports / "route.rpt")
     route = _canonical_counts(reports / "route.rpt")
     native_route_complete = re.search(
@@ -342,6 +480,12 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         raise QualificationError("detailed route is not canonically complete")
 
     _regular(run_dir / "netlist" / f"{top}.postroute.v")
+    sdf = _regular(run_dir / "netlist" / f"{top}.postroute.sdf")
+    spef = _regular(run_dir / "netlist" / f"{top}.postroute.spef")
+    if b"(DELAYFILE" not in sdf or top.encode() not in sdf:
+        raise QualificationError("post-route SDF is malformed or bound to another top")
+    if b"*SPEF" not in spef or top.encode() not in spef:
+        raise QualificationError("post-route SPEF is malformed or bound to another top")
     _require_nonempty_directory(run_dir / "database")
     return slacks
 

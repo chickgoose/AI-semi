@@ -1,0 +1,62 @@
+{
+  "schema": "k2_w2_innovus_server_environment_v2",
+  "tool": {
+    "name": "innovus",
+    "path": "/tools/cadence/DDI231/bin/innovus",
+    "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+    "version": "23.14-s088_1"
+  },
+  "technology": {
+    "setup_liberty": {
+      "relative_path": "timing/slow_vdd1v0_basicCells.lib",
+      "sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10",
+      "pvt": [1.0, 0.9, 125.0]
+    },
+    "hold_liberty": {
+      "relative_path": "timing/fast_vdd1v0_basicCells.lib",
+      "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560",
+      "pvt": [1.0, 1.1, 0.0]
+    },
+    "tech_lef": {
+      "relative_path": "lef/gsclib045_tech.lef",
+      "sha256": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70"
+    },
+    "macro_lef": {
+      "relative_path": "lef/gsclib045_macro.lef",
+      "sha256": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2"
+    },
+    "shared_qrc": {
+      "relative_path": "qrc/qx/gpdk045.tch",
+      "sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
+      "role": "shared_typical_no_distinct_best_worst_rc"
+    },
+    "site": "CoreSite"
+  },
+  "rx_cell": {
+    "name": "DFFNSRX1",
+    "clocked_on": "(!CKN)",
+    "clear": "(!RN)",
+    "preset": "(!SN)",
+    "data_checks": ["setup_falling", "hold_falling"],
+    "reset_checks": ["recovery_falling", "removal_falling"],
+    "lef_pins": ["Q", "QN", "CKN", "D", "SN", "RN", "VDD", "VSS"],
+    "required_connections": {"CKN": "link_clock", "RN": "rst_n", "SN": "1'b1"},
+    "scan_cells_forbidden": true
+  },
+  "constraint_templates": {
+    "r1": {
+      "path": "constraints/r1_multiclock_strict.sdc",
+      "sha256": "afae60d3bb201817fbdbc8f47615247f81264bb9552f686325063a768f9edf78",
+      "kind": "R1_STRICT_PHASE_RELATED_DDR"
+    },
+    "p6": {
+      "path": "constraints/p6_multiclock_strict.sdc",
+      "sha256": "16900abe0717f3ce88da7e462a5735836b8045b7e3f2f93a18a33fa1da2f6cfb",
+      "kind": "P6_STRICT_PHASE_RELATED_DDR"
+    }
+  },
+  "mmmc_template": {
+    "path": "scripts/ppa/p6_multiclock_mmmc.tcl",
+    "sha256": "26e4c126b33b54ad84cef86fd69cbd08498e90212663d9c9205bef6250d7e6d0"
+  }
+}

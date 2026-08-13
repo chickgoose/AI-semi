@@ -1,0 +1,120 @@
+{
+  "schema": "k2_w2_innovus_cohort_registry_v3",
+  "integration_state": "blocked_missing_committed_techmap_manifest",
+  "server_environment_authority": "scripts/ppa/k2_physical_server_environment.json",
+  "committed_techmap_manifest": {
+    "repository_commit": null,
+    "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+    "sha256": null
+  },
+  "technology_stage_authorities": {
+    "r1": {"repository_commit": null, "path": null, "sha256": null},
+    "p6": {"repository_commit": null, "path": null, "sha256": null}
+  },
+  "staged_manifest_contract": {
+    "schema": "w2-physical-staging-v2",
+    "status": "GO_FOR_SERVER_STAGING",
+    "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
+    "required_constraint_template_keys": ["r1", "p6"]
+  },
+  "cohorts": {
+    "tech_staged_complete_compositions": {
+      "exact_design_set": ["fovea_a7", "a2_p6", "a3_p6"],
+      "purpose": "final_physical_comparison",
+      "ranking_eligible": true,
+      "producer_kind": "k2_w2_genus_exact_three_endpoint_receipt_v3",
+      "common_ports": [
+        {"direction": "input", "name": "ref_clk_i", "width": 1},
+        {"direction": "input", "name": "sample_clk_i", "width": 1},
+        {"direction": "input", "name": "rst_n", "width": 1},
+        {"direction": "input", "name": "source_pending_i", "width": 16},
+        {"direction": "output", "name": "source_accept_o", "width": 16},
+        {"direction": "output", "name": "retire_valid_o", "width": 2},
+        {"direction": "output", "name": "retire_addr0_o", "width": 4},
+        {"direction": "output", "name": "retire_addr1_o", "width": 4},
+        {"direction": "output", "name": "drain_idle_o", "width": 1},
+        {"direction": "output", "name": "protocol_error_o", "width": 1}
+      ],
+      "designs": {
+        "fovea_a7": {
+          "top": "w2_fovea_r1_physical_staging_top",
+          "constraint_template": "r1",
+          "clocks": {"input": ["ref_clk_i", "sample_clk_i"], "generated": ["link_clk_o"]},
+          "link_pins": [
+            {"direction": "output", "name": "link_clk_o", "width": 1},
+            {"direction": "output", "name": "link_data_o", "width": 2}
+          ],
+          "endpoint_leaf_contract": {
+            "preserved_name_prefixes": {
+              "TLATNTSCAX2": "w2_ep_icg_",
+              "MX2X1": "w2_ep_mux_",
+              "DFFRHQX1": "w2_ep_pos_",
+              "DFFNSRX1": "w2_ep_neg_"
+            },
+            "no_other_negedge_state_proven": true,
+            "leaf_counts": {
+            "TLATNTSCAX2": 1,
+            "MX2X1": 2,
+            "DFFRHQX1": 2,
+            "DFFNSRX1": 5
+            }
+          }
+        },
+        "a2_p6": {
+          "top": "w2_a2_p6_physical_staging_top",
+          "constraint_template": "p6",
+          "clocks": {"input": ["ref_clk_i", "sample_clk_i"], "generated": ["link_clk_o"]},
+          "link_pins": [
+            {"direction": "output", "name": "link_clk_o", "width": 1},
+            {"direction": "output", "name": "link_data_o", "width": 5}
+          ],
+          "endpoint_leaf_contract": {
+            "preserved_name_prefixes": {
+              "TLATNTSCAX2": "w2_ep_icg_",
+              "MX2X1": "w2_ep_mux_",
+              "DFFRHQX1": "w2_ep_pos_",
+              "DFFNSRX1": "w2_ep_neg_"
+            },
+            "no_other_negedge_state_proven": true,
+            "leaf_counts": {
+            "TLATNTSCAX2": 1,
+            "MX2X1": 5,
+            "DFFRHQX1": 5,
+            "DFFNSRX1": 12
+            }
+          }
+        },
+        "a3_p6": {
+          "top": "w2_a3_p6_physical_staging_top",
+          "constraint_template": "p6",
+          "clocks": {"input": ["ref_clk_i", "sample_clk_i"], "generated": ["link_clk_o"]},
+          "link_pins": [
+            {"direction": "output", "name": "link_clk_o", "width": 1},
+            {"direction": "output", "name": "link_data_o", "width": 5}
+          ],
+          "endpoint_leaf_contract": {
+            "preserved_name_prefixes": {
+              "TLATNTSCAX2": "w2_ep_icg_",
+              "MX2X1": "w2_ep_mux_",
+              "DFFRHQX1": "w2_ep_pos_",
+              "DFFNSRX1": "w2_ep_neg_"
+            },
+            "no_other_negedge_state_proven": true,
+            "leaf_counts": {
+            "TLATNTSCAX2": 1,
+            "MX2X1": 5,
+            "DFFRHQX1": 5,
+            "DFFNSRX1": 12
+            }
+          }
+        }
+      }
+    }
+  },
+  "forbidden_final_tops": [
+    "k2_w2_fovea_a7_top", "k2_w2_a2_p6_top", "k2_w2_a3_p6_top",
+    "a2_batched_iwrr_k2", "a3_exact_scalar_prefix_k2",
+    "a2_batched_iwrr_p6_top", "a3_exact_scalar_prefix_k2_p6_top",
+    "a7_p6_atomic_bundle_adapter"
+  ]
+}
