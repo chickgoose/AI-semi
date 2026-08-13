@@ -121,6 +121,27 @@ set flow_failed [catch {
   # OCV is common to both candidates and CPPR is enabled symmetrically.
   setAnalysisMode -analysisType onChipVariation -cppr both
 
+  # BUFX2 is anomalously declared on CoreSiteDouble while its physical height
+  # is one CoreSite row.  Creating overlapping rows for that site caused the
+  # observed post-place overlaps, 93% density, Metal1 shorts, and PG opens.
+  # Canonicalize any mapped occurrence, then prevent optimization from adding
+  # the cell again.  BUFX4 is the common single-row functional replacement.
+  set bufx2_base_cells [get_db base_cells -if {.name == BUFX2}]
+  set bufx4_base_cells [get_db base_cells -if {.name == BUFX4}]
+  if {[llength $bufx2_base_cells] != 1 || [llength $bufx4_base_cells] != 1} {
+    error "required BUFX2/BUFX4 library cells are not uniquely available"
+  }
+  if {[get_db [lindex $bufx4_base_cells 0] .site.name] ne $site} {
+    error "BUFX4 replacement does not use canonical site $site"
+  }
+  foreach bufx2_inst [get_db insts -if {.base_cell.name == BUFX2}] {
+    ecoChangeCell -inst [get_db $bufx2_inst .name] -cell BUFX4
+  }
+  if {[llength [get_db insts -if {.base_cell.name == BUFX2}]] != 0} {
+    error "BUFX2 instances remain after canonical-site replacement"
+  }
+  setDontUse BUFX2 true
+
   # An explicit library site is mandatory.  The old implicit floorPlan call
   # could create no legal rows or choose a different site across bundles.
   # The server golden proves the -r form on Innovus 23.14.  Freeze the actual
@@ -129,16 +150,9 @@ set flow_failed [catch {
   floorPlan -r $aspect $util $margin $margin $margin $margin
   set core_box [get_db current_design .core_bbox]
   set used_sites [lsort -unique [get_db insts .base_cell.site.name]]
-  # Optimization may insert CoreSiteDouble buffers even when the incoming
-  # mapped netlist contains only CoreSite cells.  Rows therefore cover both
-  # the mapped inventory and the fixed PDK insertion-site inventory.
-  set planned_sites [lsort -unique [concat $used_sites [list $site CoreSiteDouble]]]
-  foreach used_site $planned_sites {
-    if {$used_site ni [list $site CoreSiteDouble]} {
-      error "mapped instance uses unsupported placement site $used_site"
-    }
+  foreach used_site $used_sites {
     if {$used_site ne $site} {
-      createRow -site $used_site -area $core_box
+      error "mapped instance uses unsupported placement site $used_site"
     }
   }
   set row_names [dbGet top.fPlan.rows.name]
@@ -146,13 +160,11 @@ set flow_failed [catch {
     error "floorplan created no standard-cell rows for site $site"
   }
   set actual_row_sites [dbGet top.fPlan.rows.site.name -u]
-  foreach planned_site $planned_sites {
-    if {[lsearch -exact $actual_row_sites $planned_site] < 0} {
-      error "floorplan is missing required placement rows for site $planned_site"
-    }
+  if {[lsearch -exact $actual_row_sites $site] < 0} {
+    error "floorplan is missing required placement rows for site $site"
   }
   foreach row_site $actual_row_sites {
-    if {[lsearch -exact $planned_sites $row_site] < 0} {
+    if {$row_site ne $site} {
       error "floorplan row uses unrequired site $row_site"
     }
   }
@@ -172,7 +184,6 @@ set flow_failed [catch {
   addRing -nets [list $vdd $vss] -type core_rings \
     -layer [list top $ring_h bottom $ring_h left $ring_v right $ring_v] \
     -width $ring_w -spacing $ring_s -offset $ring_o
-  sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}
 
   redirect -file "$output/reports/check_design_pre_place.rpt" {checkDesign -all}
   verifyConnectivity -type special -error 1000 -warning 1000 \
@@ -190,6 +201,10 @@ set flow_failed [catch {
   extractRC
   optDesign -postRoute
   optDesign -postRoute -hold
+  # Connect PG only after every optimization/CTS insertion and movement is
+  # complete.  The previous pre-place sroute left final cells disconnected
+  # and placed cells across stale Metal1 special wires.
+  sroute -nets [list $vdd $vss] -connect {blockPin padPin corePin}
   extractRC
   # Innovus 23.14 rejects interactive constraint updates in an MMMC design
   # until their constraint mode is selected explicitly (TCLCMD-1048).  Both

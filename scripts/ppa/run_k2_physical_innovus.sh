@@ -2,7 +2,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PNR_TCL="$SCRIPT_DIR/k2_physical_innovus_pnr.tcl"
 MMMC_TCL="$SCRIPT_DIR/p6_multiclock_mmmc.tcl"
 VERIFY="$SCRIPT_DIR/verify_k2_physical_innovus.py"
@@ -66,7 +65,9 @@ command -v "$INNOVUS_BIN" >/dev/null 2>&1 || {
   printf 'Innovus not found: %s\n' "$INNOVUS_BIN" >&2; exit 2;
 }
 
-mkdir -p "$AER_PNR_OUTPUT_DIR/status"
+mkdir -p "$AER_PNR_OUTPUT_DIR/status" "$AER_PNR_OUTPUT_DIR/work" \
+  "$AER_PNR_OUTPUT_DIR/tmp"
+export TMPDIR="$AER_PNR_OUTPUT_DIR/tmp"
 install -m 0444 "$AER_W2_EXECUTION_DESCRIPTOR" \
   "$AER_PNR_OUTPUT_DIR/status/EXECUTION_DESCRIPTOR.json"
 printf '%s\n' "$AER_W2_EXECUTION_DESCRIPTOR_SHA256" \
@@ -114,7 +115,7 @@ export W2_HOLD_LIBERTY="$AER_HOLD_LIBRARY_FILE"
 export W2_SHARED_TYPICAL_QRC="$AER_SETUP_QRC_TECH"
 export W2_STRICT_MULTICLOCK_SDC="$AER_PNR_SDC"
 set +e
-(cd "$PROJECT_ROOT" && "$INNOVUS_BIN" -no_gui -files "$PNR_TCL") \
+(cd "$AER_PNR_OUTPUT_DIR/work" && "$INNOVUS_BIN" -no_gui -files "$PNR_TCL") \
   >"$AER_PNR_OUTPUT_DIR/tool.log" 2>&1
 tool_status=$?
 set -e
