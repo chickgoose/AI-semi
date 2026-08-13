@@ -710,7 +710,10 @@ def validate(run_dir: Path, top: str) -> dict[str, float]:
         )
         machine_summaries[name] = summary
         slack_key = name[:-len("_timing.rpt")]
-        if abs(float(summary["wns"]) - slacks[slack_key]) > 1e-9:
+        # Native 23.14 text reports print slack to 0.001 ns while the machine
+        # collection retains full precision.  Require agreement within exactly
+        # one half of the native least-significant digit.
+        if abs(float(summary["wns"]) - slacks[slack_key]) > 0.0005001:
             raise QualificationError(f"native timing report/machine WNS mismatch: {name}")
     final_hold_summary = machine_summaries["hold_timing.rpt"]
     if final_hold_closure[:2] != (

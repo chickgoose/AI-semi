@@ -790,6 +790,16 @@ class FixtureQualificationTests(unittest.TestCase):
                 ):
                     self.module.validate(self.root, "dut")
 
+    def test_native_three_decimal_slack_matches_precise_machine_summary(self):
+        machine = self.root / "reports/setup_timing.machine"
+        original = machine.read_text()
+        machine.write_text(original.replace("wns=0.010", "wns=0.009501"))
+        self.module.validate(self.root, "dut")
+        machine.write_text(original.replace("wns=0.010", "wns=0.009499"))
+        with self.assertRaisesRegex(self.module.QualificationError, "WNS mismatch"):
+            self.module.validate(self.root, "dut")
+        machine.write_text(original)
+
     def test_tns_violation_and_vectorless_power_are_rejected(self):
         summary = self.root / "reports/setup_timing.machine"
         original = summary.read_text()
