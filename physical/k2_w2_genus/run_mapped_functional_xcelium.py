@@ -35,6 +35,7 @@ def main() -> int:
     parser.add_argument("--sdf", type=Path, required=True)
     parser.add_argument("--model", type=Path, action="append", required=True)
     parser.add_argument("--define", action="append", default=[])
+    parser.add_argument("--include-dir", type=Path, action="append", default=[])
     parser.add_argument("--scenarios", required=True)
     parser.add_argument("--xrun", type=Path, required=True)
     parser.add_argument("--testbench", type=Path, required=True)
@@ -60,6 +61,8 @@ def main() -> int:
     mapped_result = work / "mapped.result"
     common = [str(args.xrun), "-64bit", "-sv", "-timescale", "1ns/1ps",
               "-top", "k2_w2_mapped_functional_tb", *defines]
+    for include_dir in args.include_dir:
+        common += ["-incdir", str(include_dir.resolve(strict=True))]
     execute([*common, "-xmlibdirname", str(work / "rtl.xcelium.d"),
              *map(str, args.model), *map(str, sources), str(tb),
              "+RESULT=" + str(rtl_result)], work, args.log)

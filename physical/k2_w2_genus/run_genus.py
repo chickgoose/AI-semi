@@ -1707,6 +1707,7 @@ def run_mapped_functional_gate(
         hook: Path | None, attempt: Path, design_key: str, design: dict[str, Any],
         mapped: Path, sdf: Path, models: list[Path],
         source_snapshots: list[dict[str, Any]], xrun_identity: dict[str, str]
+        , include_dirs: list[Path] | None = None
         ) -> tuple[dict[str, Any], str]:
     if hook is None:
         raise FlowError("mapped functional gate hook is required")
@@ -1753,6 +1754,8 @@ def run_mapped_functional_gate(
     ]
     for define in design["defines"]:
         command.extend(["--define", define])
+    for include_dir in include_dirs or []:
+        command.extend(["--include-dir", str(include_dir)])
     for model in model_snapshots:
         command.extend(["--model", str(model)])
     result = subprocess.run(
@@ -2068,6 +2071,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         functional_hook, attempt, design_key, design,
         attempt / "work" / f"{design['top']}_netlist.v", sdf_path,
         functional_models, source_snapshots, proven_environment["xrun"],
+        include_dirs=[attempt / "bundle" / "sources" / path
+                      for path in design["include_dirs"]],
     )
     handoff = {
         "schema": "k2_w2_innovus_strict_sdc_handoff_v1",
