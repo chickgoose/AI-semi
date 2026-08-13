@@ -668,6 +668,65 @@ class GenusFlowTests(unittest.TestCase):
                         expectation["endpoint_link_roots"],
                         expectation["endpoint_preserved_name_prefixes"])
 
+    def test_flattened_genus_endpoint_names_remain_exact_and_fail_closed(self):
+        expectation = self.module.load_registry_document()["design_expectations"][
+            "fovea_a7"]
+
+        def flattened() -> str:
+            return (
+                "module staged_top(input ref_clk_i,sample_clk_i,rst_n,frame_active,"
+                "input [3:0] word,output link_clk_o,output [1:0] link_data_o);\n"
+                "  wire icg_e; wire [1:0] low; wire [4:0] close;\n"
+                "  AND2X1 endpoint_enable (.A(frame_active),.B(rst_n),.Y(icg_e));\n"
+                "  TLATNTSCAX2 w2_endpoint_link__r1_tx_w2_ep_icg_0 "
+                "(.E(icg_e),.SE(1'b0),.CK(sample_clk_i),.ECK(link_clk_o));\n"
+                "  MX2X1 w2_endpoint_link__r1_tx_w2_ep_mux_0 "
+                "(.A(word[2]),.B(word[0]),.S0(ref_clk_i),.Y(link_data_o[0]));\n"
+                "  MX2X1 w2_endpoint_link__r1_tx_w2_ep_mux_1 "
+                "(.A(word[3]),.B(word[1]),.S0(ref_clk_i),.Y(link_data_o[1]));\n" +
+                "".join(
+                    f"  DFFRHQX1 w2_endpoint_link__r1_rx_w2_ep_pos_{index} "
+                    f"(.RN(rst_n),.CK(link_clk_o),.D(link_data_o[{index}]),.Q(low[{index}]));\n"
+                    for index in range(2)) +
+                "".join(
+                    f"  DFFNSRX1 w2_endpoint_link__r1_rx_w2_ep_neg_{index} "
+                    f"(.RN(rst_n),.SN(1'b1),.CKN(link_clk_o),.D(word[0]),"
+                    f".Q(close[{index}]),.QN());\n" for index in range(5)) +
+                "  DFFRHQX1 owner_extra (.RN(rst_n),.CK(ref_clk_i),.D(word[0]),.Q());\n"
+                "endmodule\n")
+
+        with tempfile.TemporaryDirectory(prefix="k2-w2-flat-mapped-") as directory:
+            mapped = Path(directory) / "mapped.v"
+            mapped.write_text(flattened())
+            inventory = self.module.mapped_inventory(
+                mapped, LIBRARY, "staged_top", expectation["mapped_rx_contract"],
+                expectation["mapped_posedge_contract"],
+                expectation["endpoint_expected_inventory"],
+                expectation["endpoint_link_roots"],
+                expectation["endpoint_preserved_name_prefixes"])
+            self.assertEqual(inventory["endpoint_cell_types"],
+                             expectation["endpoint_expected_inventory"])
+            self.assertEqual(len(inventory["endpoint_instances"]), 10)
+            self.assertTrue(all(
+                row["provenance_root"] == "w2_endpoint_link__r1"
+                for row in inventory["endpoint_instances"]))
+            for old, new, message in (
+                    ("w2_endpoint_link__r1_tx_w2_ep_mux_0",
+                     "w2_endpoint_link__r1_tx_mux_0", "flattened endpoint mapped inventory"),
+                    (".CKN(link_clk_o)", ".CKN(ref_clk_i)", "DFFNSRX1 pin binding"),
+                    (".B(rst_n),.Y(icg_e)", ".B(word[0]),.Y(icg_e)",
+                     "ICG enable fanin"),
+                    (".S0(ref_clk_i)", ".S0(sample_clk_i)", "MX2X1 pin binding")):
+                mapped.write_text(flattened().replace(old, new, 1))
+                with self.assertRaisesRegex(self.module.FlowError, message):
+                    self.module.mapped_inventory(
+                        mapped, LIBRARY, "staged_top",
+                        expectation["mapped_rx_contract"],
+                        expectation["mapped_posedge_contract"],
+                        expectation["endpoint_expected_inventory"],
+                        expectation["endpoint_link_roots"],
+                        expectation["endpoint_preserved_name_prefixes"])
+
     def test_tool_identity_ignores_volatile_banner_and_tmpdir(self):
         probes = [
             subprocess.CompletedProcess(

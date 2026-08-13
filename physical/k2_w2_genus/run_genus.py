@@ -733,6 +733,14 @@ def verify_driver_contract(golden: dict[str, Any]) -> None:
         raise FlowError(f"Genus driver omits mapped-screening report: {','.join(missing)}")
     if "report_timing -check_type" in commands or "check_timing -verbose" in commands:
         raise FlowError("Genus driver uses an unsupported Genus 23.14 timing command")
+    required_mux_tokens = (
+        "W2_MUX_EXACT_INSTANCES", "*w2_ep_mux_bit*",
+        "set_db $endpoint_muxes .preserve true",
+        "endpoint mux pre-map count mismatch",
+        "endpoint mux post-map count mismatch",
+    )
+    if any(token not in commands for token in required_mux_tokens):
+        raise FlowError("Genus driver omits fail-closed endpoint mux preservation")
 
 
 def read_golden_members(archive: Path, golden: dict[str, Any]) -> dict[str, bytes]:
@@ -1305,8 +1313,102 @@ def endpoint_instance_records(root: str, modules: dict[str, str],
     return records
 
 
-def verify_endpoint_inventory(modules: dict[str, str], library_cells: set[str],
-                              roots: list[str], expected: dict[str, int],
+def flattened_endpoint_kind(roots: list[str]) -> str:
+    kinds = set()
+    for root in roots:
+        if "_r1_" in root:
+            kinds.add("r1")
+        elif "_p6_" in root:
+            kinds.add("p6")
+        else:
+            raise FlowError(f"unrecognized endpoint hierarchy root: {root}")
+    if len(kinds) != 1:
+        raise FlowError("endpoint hierarchy roots span multiple link kinds")
+    return kinds.pop()
+
+
+def flattened_endpoint_records(top: str, modules: dict[str, str],
+                               library_cells: set[str], roots: list[str],
+                               prefixes: dict[str, str]) -> list[dict[str, Any]]:
+    """Recover explicitly named endpoint leaves after Genus hierarchy flattening.
+
+    Genus 23.14 preserves the endpoint/path and leaf-name prefixes in the
+    flattened instance name, but does not necessarily retain the RTL wrapper
+    modules.  Requiring the vanished module definitions rejects a real mapped
+    design.  Conversely, accepting cells by type alone can accidentally charge
+    scheduler cells as endpoint cells.  Require both the endpoint path segment
+    and the role-specific leaf prefix in every recovered record.
+    """
+    endpoint_segment = f"w2_endpoint_link__{flattened_endpoint_kind(roots)}"
+    records: list[dict[str, Any]] = []
+    for kind, name, pins in mapped_instances(reachable_module_text(
+            top, modules, library_cells)):
+        if kind not in prefixes or prefixes[kind] not in name:
+            continue
+        if endpoint_segment not in name:
+            raise FlowError(
+                f"mapped endpoint leaf escaped preserved path: {kind} {name}")
+        records.append({
+            "hierarchy": f"{top}.{name}",
+            "mapped_instance": name,
+            "cell_type": kind,
+            "pin_bindings": dict(sorted(pins.items())),
+            "provenance_root": endpoint_segment,
+        })
+    return records
+
+
+def verify_flattened_endpoint_connections(top: str, modules: dict[str, str],
+                                          library_cells: set[str],
+                                          records: list[dict[str, Any]],
+                                          expected: dict[str, int]) -> None:
+    by_cell: dict[str, list[dict[str, str]]] = {
+        cell: [] for cell in expected}
+    for record in records:
+        by_cell[record["cell_type"]].append(record["pin_bindings"])
+
+    def compact(value: str) -> str:
+        return "".join(value.split())
+
+    for row in by_cell["DFFNSRX1"]:
+        if (compact(row.get("CKN", "")) != "link_clk_o" or
+                compact(row.get("RN", "")) != "rst_n" or
+                compact(row.get("SN", "")) not in {"1", "1'b1", "1'h1", "1'd1"} or
+                "D" not in row or "Q" not in row):
+            raise FlowError("flattened mapped DFFNSRX1 pin binding mismatch")
+    for row in by_cell["DFFRHQX1"]:
+        if (compact(row.get("CK", "")) != "link_clk_o" or
+                compact(row.get("RN", "")) != "rst_n" or
+                "D" not in row or "Q" not in row):
+            raise FlowError("flattened mapped DFFRHQX1 pin binding mismatch")
+    for row in by_cell["TLATNTSCAX2"]:
+        if (compact(row.get("CK", "")) != "sample_clk_i" or
+                compact(row.get("ECK", "")) != "link_clk_o" or
+                compact(row.get("SE", "")) not in {"0", "1'b0", "1'h0", "1'd0"} or
+                not row.get("E") or compact(row["E"]) in {"0", "1'b0"}):
+            raise FlowError("flattened mapped TLATNTSCAX2 pin binding mismatch")
+        e_net = compact(row["E"])
+        drivers = []
+        for kind, _, pins in mapped_instances(
+                reachable_module_text(top, modules, library_cells)):
+            if compact(pins.get("Y", "")) == e_net:
+                drivers.append((kind, pins))
+        if len(drivers) != 1 or not drivers[0][0].startswith("AND2"):
+            raise FlowError("flattened mapped ICG enable driver mismatch")
+        driver_inputs = {compact(drivers[0][1].get(pin, "")) for pin in ("A", "B")}
+        if "rst_n" not in driver_inputs or not any(
+                "frame_active" in net for net in driver_inputs):
+            raise FlowError("flattened mapped ICG enable fanin mismatch")
+    for row in by_cell["MX2X1"]:
+        if (compact(row.get("S0", "")) != "ref_clk_i" or
+                not compact(row.get("Y", "")).startswith("link_data_o") or
+                not all(row.get(pin) for pin in ("A", "B"))):
+            raise FlowError("flattened mapped MX2X1 pin binding mismatch")
+
+
+def verify_endpoint_inventory(top: str, modules: dict[str, str],
+                              library_cells: set[str], roots: list[str],
+                              expected: dict[str, int],
                               rx_contract: dict[str, Any],
                               posedge_contract: dict[str, Any],
                               prefixes: dict[str, str]) -> tuple[dict[str, int],
@@ -1325,52 +1427,72 @@ def verify_endpoint_inventory(modules: dict[str, str], library_cells: set[str],
     observed = {cell: 0 for cell in required}
     endpoint_text = []
     records: list[dict[str, Any]] = []
-    for root in roots:
-        inventory, _ = hierarchy_inventory(root, modules, library_cells)
-        for cell in required:
-            observed[cell] += inventory.get(cell, 0)
-        endpoint_text.append(reachable_module_text(root, modules, library_cells))
-        records.extend(endpoint_instance_records(
-            root, modules, library_cells, prefixes))
-    if observed != expected:
-        raise FlowError(f"exact endpoint mapped inventory mismatch: {observed} != {expected}")
-    endpoint_payload = "\n".join(endpoint_text)
-    rx_rows = mapped_named_instances(endpoint_payload, rx_contract["cell"])
-    rx_text = "\n".join(
-        f"{rx_contract['cell']} endpoint_{index} (" + ",".join(
-            f".{pin}({net})" for pin, net in ports.items()) + ");"
-        for index, (_, ports) in enumerate(rx_rows))
-    verify_mapped_rx_contract(rx_text, rx_contract)
-    positive = [ports for _, ports in mapped_named_instances(
-        endpoint_payload, posedge_contract["cell"])]
-    if len(positive) != posedge_contract["exact_instances"]:
-        raise FlowError("mapped positive-edge endpoint count mismatch")
-    for ports in positive:
-        bindings = {
-            posedge_contract["clock_pin"]: posedge_contract["clock_net"],
-            posedge_contract["reset_pin"]: posedge_contract["reset_net"],
-        }
-        for pin, net in bindings.items():
-            if "".join(ports.get(pin, "").split()) != "".join(net.split()):
-                raise FlowError(f"mapped {posedge_contract['cell']} {pin} binding mismatch")
-        if "D" not in ports or "Q" not in ports:
-            raise FlowError(f"mapped {posedge_contract['cell']} omits D/Q connectivity")
-    icg = [ports for _, ports in mapped_named_instances(
-        endpoint_payload, "TLATNTSCAX2")]
-    if any(set(row) != {"E", "SE", "CK", "ECK"} or
-           "".join(row["SE"].split()) not in {"0", "1'b0", "1'h0", "1'd0"} or
-           "".join(row["CK"].split()) != "clock_i" or
-           "".join(row["E"].split()) not in {
-               "enable_i&rst_n", "rst_n&enable_i"} or
-           "".join(row["ECK"].split()) != "clock_o"
-           for row in icg):
-        raise FlowError("mapped TLATNTSCAX2 exact pin binding mismatch")
-    if any({pin: "".join(row.get(pin, "").split()) for pin in
-            ("A", "B", "S0", "Y")} != {
-                "A": "data0_i", "B": "data1_i",
-                "S0": "select_i", "Y": "data_o"}
-           for _, row in mapped_named_instances(endpoint_payload, "MX2X1")):
-        raise FlowError("mapped MX2X1 exact pin binding mismatch")
+    retained_roots = all(root in modules for root in roots)
+    if retained_roots:
+        for root in roots:
+            inventory, _ = hierarchy_inventory(root, modules, library_cells)
+            for cell in required:
+                observed[cell] += inventory.get(cell, 0)
+            endpoint_text.append(reachable_module_text(root, modules, library_cells))
+            records.extend(endpoint_instance_records(
+                root, modules, library_cells, prefixes))
+        if observed != expected:
+            raise FlowError(
+                f"exact endpoint mapped inventory mismatch: {observed} != {expected}")
+    else:
+        if any(root in modules for root in roots):
+            raise FlowError("mapped endpoint hierarchy is only partially retained")
+        records = flattened_endpoint_records(
+            top, modules, library_cells, roots, prefixes)
+        for row in records:
+            observed[row["cell_type"]] += 1
+        if observed != expected:
+            raise FlowError(
+                f"exact flattened endpoint mapped inventory mismatch: {observed} != {expected}")
+        verify_flattened_endpoint_connections(
+            top, modules, library_cells, records, expected)
+        endpoint_text.append("\n".join(
+            f"{row['cell_type']} {row['mapped_instance']} (" + ",".join(
+                f".{pin}({net})" for pin, net in row["pin_bindings"].items()) + ");"
+            for row in records))
+    if retained_roots:
+        endpoint_payload = "\n".join(endpoint_text)
+        rx_rows = mapped_named_instances(endpoint_payload, rx_contract["cell"])
+        rx_text = "\n".join(
+            f"{rx_contract['cell']} endpoint_{index} (" + ",".join(
+                f".{pin}({net})" for pin, net in ports.items()) + ");"
+            for index, (_, ports) in enumerate(rx_rows))
+        verify_mapped_rx_contract(rx_text, rx_contract)
+        positive = [ports for _, ports in mapped_named_instances(
+            endpoint_payload, posedge_contract["cell"])]
+        if len(positive) != posedge_contract["exact_instances"]:
+            raise FlowError("mapped positive-edge endpoint count mismatch")
+        for ports in positive:
+            bindings = {
+                posedge_contract["clock_pin"]: posedge_contract["clock_net"],
+                posedge_contract["reset_pin"]: posedge_contract["reset_net"],
+            }
+            for pin, net in bindings.items():
+                if "".join(ports.get(pin, "").split()) != "".join(net.split()):
+                    raise FlowError(f"mapped {posedge_contract['cell']} {pin} binding mismatch")
+            if "D" not in ports or "Q" not in ports:
+                raise FlowError(f"mapped {posedge_contract['cell']} omits D/Q connectivity")
+        icg = [ports for _, ports in mapped_named_instances(
+            endpoint_payload, "TLATNTSCAX2")]
+        if any(set(row) != {"E", "SE", "CK", "ECK"} or
+               "".join(row["SE"].split()) not in {"0", "1'b0", "1'h0", "1'd0"} or
+               "".join(row["CK"].split()) != "clock_i" or
+               "".join(row["E"].split()) not in {
+                   "enable_i&rst_n", "rst_n&enable_i"} or
+               "".join(row["ECK"].split()) != "clock_o"
+               for row in icg):
+            raise FlowError("mapped TLATNTSCAX2 exact pin binding mismatch")
+        if any({pin: "".join(row.get(pin, "").split()) for pin in
+                ("A", "B", "S0", "Y")} != {
+                    "A": "data0_i", "B": "data1_i",
+                    "S0": "select_i", "Y": "data_o"}
+               for _, row in mapped_named_instances(endpoint_payload, "MX2X1")):
+            raise FlowError("mapped MX2X1 exact pin binding mismatch")
     record_counts = {cell: 0 for cell in required}
     for row in records:
         record_counts[row["cell_type"]] += 1
@@ -1405,7 +1527,7 @@ def mapped_inventory(mapped: Path, library: Path, expected_top: str,
     if not inventory:
         raise FlowError("mapped netlist has zero library-cell instances")
     endpoint_inventory, endpoint_instances = verify_endpoint_inventory(
-        modules, library_cells, endpoint_roots, expected_endpoint, rx_contract,
+        expected_top, modules, library_cells, endpoint_roots, expected_endpoint, rx_contract,
         posedge_contract, preserved_prefixes)
     return {
         "mapped_netlist_sha256": sha256_bytes(mapped_payload),
@@ -1854,6 +1976,8 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             f"{cell}={count}" for cell, count in sorted(
                 design["endpoint_expected_inventory"].items())),
         "W2_ENDPOINT_ROOTS": ",".join(design["endpoint_link_roots"]),
+        "W2_MUX_EXACT_INSTANCES": str(
+            design["endpoint_expected_inventory"]["MX2X1"]),
     })
     environment.update(registry["strict_timing_environment"])
     run = subprocess.run(

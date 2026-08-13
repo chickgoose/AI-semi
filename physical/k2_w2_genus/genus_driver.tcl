@@ -1,4 +1,4 @@
-foreach required {W2_TOP W2_SOURCES_V W2_SOURCES_SV W2_DEFINES W2_INCDIRS W2_LIBRARY W2_SDC W2_OUTPUT} {
+foreach required {W2_TOP W2_SOURCES_V W2_SOURCES_SV W2_DEFINES W2_INCDIRS W2_LIBRARY W2_SDC W2_OUTPUT W2_MUX_EXACT_INSTANCES} {
   if {![info exists ::env($required)]} {
     error "missing required environment variable $required"
   }
@@ -42,11 +42,27 @@ if {$::env(W2_SOURCES_SV) ne ""} {
   }
 }
 elaborate $DESIGN
+
+# The technology-staged serializer uses an explicitly selected ordinary data
+# mux.  Genus 23.14 otherwise absorbs these leaves into equivalent AOI/OAI
+# logic even when the HDL carries generic keep/dont_touch attributes.  Pin the
+# exact declared bank before generic synthesis so the mapped receipt can prove
+# the selected cell and its per-bit connectivity rather than merely infer it.
+set endpoint_muxes [get_db insts -if {.name =~ *w2_ep_mux_bit*}]
+if {[llength $endpoint_muxes] != $::env(W2_MUX_EXACT_INSTANCES)} {
+  error "endpoint mux pre-map count mismatch"
+}
+set_db $endpoint_muxes .preserve true
 read_sdc $SDC_FILE
 
 syn_generic
 syn_map
 syn_opt
+
+set mapped_endpoint_muxes [get_db insts -if {.name =~ *w2_ep_mux_bit*}]
+if {[llength $mapped_endpoint_muxes] != $::env(W2_MUX_EXACT_INSTANCES)} {
+  error "endpoint mux post-map count mismatch"
+}
 
 report_area   > $OUT_DIR/${DESIGN}_area.rpt
 report_timing > $OUT_DIR/${DESIGN}_gtiming.rpt

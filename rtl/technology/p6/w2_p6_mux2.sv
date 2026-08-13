@@ -13,7 +13,7 @@ module w2_p6_mux2 (
 `elsif W2_P6_TECH_GENERIC
   assign data_o = select_i ? data1_i : data0_i;
 `elsif W2_P6_TECH_GSCLIB045
-  (* keep = "true", dont_touch = "true",
+  (* keep = "true", preserve = "true", dont_touch = "true",
      w2_endpoint_leaf_role = "symbol_mux_bit" *)
   MX2X1 w2_ep_mux_bit (
     .A(data0_i),
