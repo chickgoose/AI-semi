@@ -35,3 +35,10 @@ are resolved, checked as regular non-symlink files, and hashed into the output.
 
 The server environment receipts in `physical/k2_w2_server_env` are inputs to a
 later campaign and are not regenerated or changed here.
+
+`scale_vcd_timestamps.py` is the offline, no-EDA conversion boundary for a
+validated 10 ns common-activity VCD.  It streams an exact `1/2` timestamp
+transform to a new 5 ns VCD, rejects nonintegral or malformed timelines and
+unsafe filesystem inputs, and emits a deterministic JSON receipt binding the
+upstream `activity.sha256.txt` validation, input bytes, output bytes, converter,
+and fixed scale.  It never rewrites the validated source VCD in place.
