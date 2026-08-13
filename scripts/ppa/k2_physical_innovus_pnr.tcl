@@ -203,8 +203,10 @@ set flow_failed [catch {
   if {$activity_format ni {SAIF VCD}} {
     error "activity format must be SAIF or VCD"
   }
-  read_activity_file -format $activity_format -scope $activity_scope \
-    -start $activity_start -end $activity_end $activity_file
+  redirect -tee -file "$output/reports/activity_annotation.rpt" {
+    read_activity_file -format $activity_format -scope $activity_scope \
+      -start $activity_start -end $activity_end $activity_file
+  }
 
   redirect -file "$output/reports/check_place_post_route.rpt" {checkPlace}
   report_area > "$output/reports/area.rpt"
