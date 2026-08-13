@@ -300,9 +300,9 @@ class PreflightTests(unittest.TestCase):
             "hold_qrc": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5",
         })
         self.assertEqual(observation["tool_paths"], {
-            "genus": "/tools/cadence/DDI231/bin/genus",
-            "innovus": "/tools/cadence/DDI231/bin/innovus",
-            "xrun": "/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun",
+            "genus": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
+            "innovus": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep",
+            "xrun": "/tools/cadence/XCELIUMMAIN2309/tools.lnx86/inca/bin/64bit/xrun",
         })
         for role, expected in observation["technology_sha256"].items():
             self.assertEqual(contract["technology"][role]["sha256"], expected)
