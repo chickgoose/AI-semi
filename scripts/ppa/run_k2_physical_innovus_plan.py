@@ -411,6 +411,7 @@ def validate_netlist(payload: bytes, top: str, contract: dict[str, Any],
         raise PlanError("endpoint root contract mismatch")
     records, _ = flattened_endpoint_records(
         top, body.group(0), root, prefixes)
+    records.sort(key=lambda row: (row["hierarchy"], row["cell_type"]))
     whole = recursive_technology_counts(top, mapped_module_bodies(text))
     endpoint_counts = {cell: 0 for cell in TECH_CELLS}
     for row in records:
@@ -429,7 +430,9 @@ def validate_netlist(payload: bytes, top: str, contract: dict[str, Any],
             endpoint_map.get("top") != top or \
             endpoint_map.get("mapped_netlist_sha256") != sha256(payload) or \
             endpoint_map.get("endpoint_link_roots") != endpoint_roots or \
-            endpoint_map.get("instances") != records or \
+            sorted(endpoint_map.get("instances", []),
+                   key=lambda row: (row.get("hierarchy", ""),
+                                    row.get("cell_type", ""))) != records or \
             endpoint_map.get("leaf_counts") != expected_counts or \
             endpoint_map.get("preserved_name_prefixes") != prefixes:
         raise PlanError("Genus canonical endpoint provenance/connectivity map mismatch")
