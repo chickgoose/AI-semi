@@ -1084,7 +1084,8 @@ def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
         "set_min_pulse_width -low", "set_driving_cell", "set_input_transition",
         "set_load", "all_registers -clock",
         "get_pins -hierarchical *w2_ep_icg_0/ECK", "-divide_by 1 $link_icg_eck",
-        "-hold $gate_hold $sample_clock", "set ref_registers [w2_some ref_registers",
+        "set link_icg_e [w2_one link_icg_E [get_pins -hierarchical *w2_ep_icg_0/E]]",
+        "-hold $gate_hold $link_icg_e", "set ref_registers [w2_some ref_registers",
         "set link_registers [w2_some link_registers",
         "set async_reset_pins [w2_some async_reset_endpoints",
         "set_false_path -from $reset_port -to $nonlink_outputs",
@@ -1097,7 +1098,7 @@ def materialize_sdc(root: Path, design: dict[str, Any]) -> bytes:
     forbidden = (
         "set_multicycle_path", "set_clock_groups -asynchronous",
         "get_timing_arcs", "-divide_by 1 $link_clock_port",
-        "-hold $gate_hold $gate_enable",
+        "-hold $gate_hold $gate_enable", "-hold $gate_hold $sample_clock",
     )
     if any(token in text for token in forbidden):
         raise FlowError("strict SDC contains a forbidden timing exception or Genus query")

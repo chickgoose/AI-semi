@@ -502,6 +502,23 @@ def validate_sdc(payload: bytes, top: str, contract: dict[str, Any], period: str
     if "set_load" not in text or "set_input_transition" not in text or \
             "set_clock_gating_check" not in text or "-clock_fall" not in text:
         raise PlanError("mapped SDC lost load/driver/gating/DDR constraint classes")
+    gating_rows = [row.strip() for row in re.split(
+        r"[;\n]", text.replace("\\\n", " ")) if "set_clock_gating_check" in row]
+    targeted_gating_rows = [row for row in gating_rows
+                            if re.search(r"\[get_(?:pins|clocks)\b", row)]
+    default_gating_rows = [row for row in gating_rows
+                           if row not in targeted_gating_rows]
+    endpoint_prefix = contract["endpoint_root"]["stable_prefix"]
+    if len(targeted_gating_rows) != 1 or \
+            any(not re.fullmatch(
+                r"set_clock_gating_check\s+-(?:setup|hold)\s+0(?:\.0+)?", row)
+                for row in default_gating_rows) or \
+            endpoint_prefix not in targeted_gating_rows[0] or \
+            "w2_ep_icg_" not in targeted_gating_rows[0] or \
+            not re.search(r"get_pins\s+(?:\{)?[^\]}\n]*?/E(?:\})?",
+                          targeted_gating_rows[0]) or \
+            re.search(r"/(?:S0|ECK)\b", targeted_gating_rows[0]):
+        raise PlanError("mapped SDC gating check is not exact endpoint ICG E only")
     false_rows = [row.strip() for row in re.split(
         r"[;\n]", text.replace("\\\n", " ")) if "set_false_path" in row]
     if false_rows:
