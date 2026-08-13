@@ -1,7 +1,7 @@
 {
   "schema": "k2_w2_tech_staged_compositions_v1",
   "status": "READY_FOR_GENUS_AND_INNOVUS",
-  "repository_commit": "66e030cdcb9fde85b25eda49aff1a732ed9276e5",
+  "repository_commit": "07f2413f07357fa1ef34c48fc74c32d238873c30",
   "goal_order": ["fovea_a7", "a2_p6", "a3_p6"],
   "common_ports": [
     {"direction":"input","name":"ref_clk_i","width":1},
