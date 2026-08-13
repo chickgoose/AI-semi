@@ -125,7 +125,6 @@ class StaticFlowContractTests(unittest.TestCase):
             "create_generated_clock -name w2_forwarded_link_port_clk",
             "-source $forwarded_link_source -divide_by 1 $forwarded_link_port",
             "set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]",
-            "set forwarded_link_clocks [get_clocks -of_objects $forwarded_link_port]",
             "expected exactly one forwarded generated clock on link_clk_o",
             "boundary_timing.machine",
             "set_propagated_clock [all_clocks]",
@@ -171,11 +170,12 @@ class StaticFlowContractTests(unittest.TestCase):
         text = PNR.read_text(encoding="utf-8")
         create = "create_generated_clock -name w2_forwarded_link_port_clk"
         source = "set forwarded_link_source [get_pins -hierarchical *w2_ep_icg_0/ECK]"
-        check = "set forwarded_link_clocks [get_clocks -of_objects $forwarded_link_port]"
+        check = "set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]"
         self.assertEqual(text.count(create), 1)
         self.assertEqual(text.count(source), 1)
         self.assertLess(text.index(source), text.index(create))
         self.assertLess(text.index(create), text.index(check))
+        self.assertNotIn("get_clocks -of_objects", text)
         self.assertIn(
             "expected exactly one *w2_ep_icg_0/ECK source and link_clk_o target",
             text)

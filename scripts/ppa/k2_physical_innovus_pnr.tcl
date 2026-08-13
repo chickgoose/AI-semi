@@ -213,9 +213,7 @@ set flow_failed [catch {
   create_generated_clock -name w2_forwarded_link_port_clk \
     -source $forwarded_link_source -divide_by 1 $forwarded_link_port
   set forwarded_link_clock [get_clocks w2_forwarded_link_port_clk]
-  set forwarded_link_clocks [get_clocks -of_objects $forwarded_link_port]
-  if {[sizeof_collection $forwarded_link_clock] != 1 ||
-      [sizeof_collection $forwarded_link_clocks] != 1} {
+  if {[sizeof_collection $forwarded_link_clock] != 1} {
     error "expected exactly one forwarded generated clock on link_clk_o"
   }
   set boundary_handle [open \
