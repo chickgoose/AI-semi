@@ -20,7 +20,7 @@ module w2_a3_p6_physical_staging_top (
   logic bundle_protocol_error, retire_protocol_error;
   always_comb begin
     source_accept_o = 16'd0;
-    if (bundle_commit) begin
+    if (rst_n && bundle_commit) begin
       source_accept_o[grant_addr0] = 1'b1;
       if (grant_count == 2'd2) source_accept_o[grant_addr1] = 1'b1;
     end
@@ -44,8 +44,9 @@ module w2_a3_p6_physical_staging_top (
     .retire_protocol_error_o(retire_protocol_error),
     .drain_idle_o(adapter_idle)
   );
-  assign protocol_error_o = bundle_protocol_error || retire_protocol_error ||
-                            (bundle_commit && (policy_microsteps != grant_count));
+  assign protocol_error_o = rst_n &&
+                            (bundle_protocol_error || retire_protocol_error ||
+                             (bundle_commit && (policy_microsteps != grant_count)));
   assign drain_idle_o = rst_n && !(|source_pending_i) && adapter_idle &&
                         !bundle_valid && !(|retire_valid_o) &&
                         !protocol_error_o;
