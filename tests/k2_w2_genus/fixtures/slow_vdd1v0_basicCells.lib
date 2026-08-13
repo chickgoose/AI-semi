@@ -19,4 +19,54 @@ library (w2_fixture) {
     pin (D) { direction : input; }
     pin (Q) { direction : output; function : "IQ"; }
   }
+  cell (BUFX2) {
+    area : 0.4;
+    pin (A) { direction : input; }
+    pin (Y) { direction : output; function : "A"; }
+  }
+  cell (TLATNTSCAX2) {
+    area : 1.0;
+    pin (E) { direction : input; }
+    pin (SE) { direction : input; }
+    pin (CK) { direction : input; clock : true; }
+    pin (ECK) { direction : output; function : "CK"; }
+  }
+  cell (MX2X1) {
+    area : 0.6;
+    pin (A) { direction : input; }
+    pin (B) { direction : input; }
+    pin (S0) { direction : input; }
+    pin (Y) { direction : output; function : "(A & !S0) | (B & S0)"; }
+  }
+  cell (DFFRHQX1) {
+    area : 1.3;
+    ff (IQ, IQN) { clocked_on : "CK"; next_state : "D"; clear : "(!RN)"; }
+    pin (RN) { direction : input; }
+    pin (CK) { direction : input; clock : true; }
+    pin (D) { direction : input; }
+    pin (Q) { direction : output; function : "IQ"; }
+  }
+  cell (DFFNSRX1) {
+    area : 1.4;
+    ff (IQ, IQN) {
+      clocked_on : "(!CKN)";
+      next_state : "D";
+      clear : "(!RN)";
+      preset : "(!SN)";
+    }
+    pin (CKN) { direction : input; clock : true; }
+    pin (D) {
+      direction : input;
+      timing () { related_pin : "CKN"; timing_type : setup_falling; values ("0.10"); }
+      timing () { related_pin : "CKN"; timing_type : hold_falling; values ("0.05"); }
+    }
+    pin (RN) {
+      direction : input;
+      timing () { related_pin : "CKN"; timing_type : recovery_falling; values ("0.12"); }
+      timing () { related_pin : "CKN"; timing_type : removal_falling; values ("0.08"); }
+    }
+    pin (SN) { direction : input; }
+    pin (Q) { direction : output; function : "IQ"; }
+    pin (QN) { direction : output; function : "IQN"; }
+  }
 }

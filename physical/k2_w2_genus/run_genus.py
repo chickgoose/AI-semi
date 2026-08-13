@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -25,6 +26,12 @@ DRIVER_TCL = HERE / "genus_driver.tcl"
 GOLDEN_REFERENCE = HERE / "golden_reference.json"
 RAW_GOLDEN_REFERENCE = HERE / "raw_golden_reference.json"
 FUNCTIONAL_LOSS_REFERENCE = HERE / "functional_loss_reference.json"
+MAPPED_FUNCTIONAL_TB = HERE / "mapped_functional_tb.sv"
+MAPPED_FUNCTIONAL_HOOK = HERE / "run_mapped_functional_xcelium.py"
+SERVER_ENV_CONTRACT = ROOT / "physical/k2_w2_server_env/contract.json"
+SERVER_ENV_PREFLIGHT = ROOT / "physical/k2_w2_server_env/preflight.py"
+BOUNDARY_REGISTRY = HERE.parent / "k2_w2_boundaries.json"
+FAIR_TOP_REGISTRY = HERE.parent / "k2_w2_tops" / "designs.json"
 SAFE_ATTEMPT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
 CELL_RE = re.compile(r"\bcell\s*\(\s*([A-Za-z_][A-Za-z0-9_$]*)\s*\)")
 MODULE_RE = re.compile(r"^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", re.MULTILINE)
@@ -95,6 +102,64 @@ def copy_stable(source: Path, destination: Path, mode: int = 0o444) -> str:
     return sha256_bytes(payload)
 
 
+def verify_server_environment_receipt(
+        receipt_path: Path, genus: Path, setup_liberty: Path,
+        hold_liberty: Path, macro_lef: Path, shared_qrc: Path
+        ) -> tuple[bytes, dict[str, Any]]:
+    spec = importlib.util.spec_from_file_location(
+        "k2_w2_server_env_preflight", SERVER_ENV_PREFLIGHT)
+    if spec is None or spec.loader is None:
+        raise FlowError("server-environment verifier cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        contract_payload = stable_read(SERVER_ENV_CONTRACT)
+        contract = json.loads(contract_payload)
+        module.validate_contract(contract)
+        payload = stable_read(receipt_path.resolve(strict=True))
+        document = json.loads(payload)
+        contract_sha = sha256_bytes(contract_payload)
+        module.verify_go_document(document, contract_sha)
+    except (OSError, ValueError, json.JSONDecodeError,
+            module.PreflightError) as error:
+        raise FlowError(f"server environment receipt is not GO: {error}") from error
+    gates = document["gates"]
+    tool = gates["tool_executables"]["evidence"]["genus"]
+    xrun = gates["tool_executables"]["evidence"]["xrun"]
+    expected_paths = {
+        "setup_liberty": setup_liberty.resolve(strict=True),
+        "hold_liberty": hold_liberty.resolve(strict=True),
+        "macro_lef": macro_lef.resolve(strict=True),
+        "setup_qrc": shared_qrc.resolve(strict=True),
+    }
+    identities = gates["technology_files"]["evidence"]
+    supplied_tool = tool_identity(genus)
+    if (tool.get("path") != supplied_tool["resolved_path"] or
+            tool.get("sha256") != supplied_tool["sha256"] or
+            tool.get("parsed_version") not in supplied_tool["version_output"]):
+        raise FlowError("Genus executable is not the proven server executable")
+    for role, path in expected_paths.items():
+        row = identities.get(role, {})
+        if (row.get("path") != str(path) or
+                row.get("sha256") != sha256_bytes(stable_read(path))):
+            raise FlowError(f"{role} is not the proven server technology input")
+    hold_qrc = identities.get("hold_qrc", {})
+    if (hold_qrc.get("path") != str(expected_paths["setup_qrc"]) or
+            hold_qrc.get("sha256") != identities["setup_qrc"]["sha256"]):
+        raise FlowError("server receipt does not prove one shared setup/hold QRC")
+    return payload, {
+        "path": str(receipt_path.resolve(strict=True)),
+        "sha256": sha256_bytes(payload),
+        "contract_sha256": contract_sha,
+        "environment_binding_sha256": document["environment_binding_sha256"],
+        "xrun": {
+            "resolved_path": xrun["path"],
+            "sha256": xrun["sha256"],
+            "parsed_version": xrun["parsed_version"],
+        },
+    }
+
+
 def git(root: Path, *args: str, binary: bool = False) -> bytes | str:
     result = subprocess.run(
         ["git", *args], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -111,16 +176,223 @@ def load_registry() -> dict[str, Any]:
         document = json.loads(stable_read(REGISTRY))
     except json.JSONDecodeError as error:
         raise FlowError(f"invalid design registry: {error}") from error
-    if document.get("schema") != "k2_w2_genus_design_registry_v1":
-        raise FlowError("design registry schema mismatch")
-    if set(document.get("designs", {})) != {
-            "a2_k2", "a3_k2", "p6_endpoint", "a2_p6", "a3_p6"}:
-        raise FlowError("design registry must contain the exact five-design cohort")
-    if document.get("common_constraints", {}).get("clock_gating_insertion") is not True:
-        raise FlowError("design registry must use the golden clock-gating assumption")
-    if document.get("evidence_cohort") != "a2_a3_k2_p6_endpoint_candidate":
-        raise FlowError("endpoint candidate evidence cohort mismatch")
-    return document
+    return validate_final_registry_document(document)
+
+
+def relative_repo_path(root: Path, value: Any, label: str) -> tuple[str, Path]:
+    if not isinstance(value, str) or not value or value.startswith("/"):
+        raise FlowError(f"{label} must be a nonempty repository-relative path")
+    candidate = (root / value).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError as error:
+        raise FlowError(f"{label} escapes repository root") from error
+    return value, candidate
+
+
+def parse_ansi_ports(payload: bytes, top: str) -> list[dict[str, Any]]:
+    text = payload.decode("utf-8", errors="strict")
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    text = re.sub(r"//[^\n]*", "", text)
+    match = re.search(
+        rf"\bmodule\s+{re.escape(top)}\s*\((.*?)\)\s*;", text, re.DOTALL)
+    if match is None:
+        raise FlowError(f"staged top lacks canonical ANSI module boundary: {top}")
+    rows: list[dict[str, Any]] = []
+    pattern = re.compile(
+        r"^(input|output)\s+(?:(?:wire|logic|reg)\s+)?"
+        r"(?:\[\s*(\d+)\s*:\s*(\d+)\s*\]\s+)?"
+        r"([A-Za-z_][A-Za-z0-9_$]*)$")
+    for declaration in match.group(1).split(","):
+        normalized = " ".join(declaration.split())
+        port = pattern.fullmatch(normalized)
+        if port is None:
+            raise FlowError(f"unsupported/ambiguous staged top port: {normalized}")
+        direction, msb, lsb, name = port.groups()
+        width = 1 if msb is None else abs(int(msb) - int(lsb)) + 1
+        rows.append({"direction": direction, "name": name, "width": width})
+    if len({row["name"] for row in rows}) != len(rows):
+        raise FlowError(f"duplicate staged top port: {top}")
+    return rows
+
+
+def validate_staged_manifest(root: Path, registry: dict[str, Any],
+                             manifest: dict[str, Any]) -> dict[str, Any]:
+    expected_order = registry["goal_order"]
+    pointer = registry["staged_manifest"]
+    if (manifest.get("schema") != pointer["required_schema"] or
+            manifest.get("status") != pointer["required_status"] or
+            manifest.get("goal_order") != expected_order or
+            set(manifest.get("tops", {})) != set(expected_order)):
+        raise FlowError("shared tech-staged manifest schema/status/top order mismatch")
+    commit = manifest.get("repository_commit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise FlowError("tech-staged manifest repository commit is missing")
+    if manifest.get("technology_authorities") != registry.get(
+            "required_technology_authorities"):
+        raise FlowError("tech-staged manifest technology authority mismatch")
+    expected_templates = {
+        "r1": registry["design_expectations"]["fovea_a7"]["strict_sdc"],
+        "p6": registry["design_expectations"]["a2_p6"]["strict_sdc"],
+    }
+    if manifest.get("constraint_templates") != expected_templates:
+        raise FlowError("tech-staged manifest constraint-template mismatch")
+    forbidden_tops = set(registry["forbidden_final_tops"])
+    forbidden_paths = set(registry["forbidden_final_source_paths"])
+    designs: dict[str, Any] = {}
+    for key in expected_order:
+        row = manifest["tops"][key]
+        expectation = registry["design_expectations"][key]
+        top = row.get("staged_top")
+        if (not isinstance(top, str) or not top or top in forbidden_tops or
+                top != expectation["staged_top"] or
+                row.get("technology_stage") != expectation["technology_stage"] or
+                row.get("link_kind") != expectation["link_kind"] or
+                row.get("mapped_rx_contract") != expectation["mapped_rx_contract"] or
+                row.get("mapped_posedge_contract") !=
+                expectation["mapped_posedge_contract"]):
+            raise FlowError(f"forbidden or wrong technology-staged top: {key}")
+        if (row.get("endpoint_expected_inventory") != expectation[
+                "endpoint_expected_inventory"] or
+                row.get("endpoint_link_roots") != expectation[
+                    "endpoint_link_roots"] or
+                row.get("endpoint_preserved_name_prefixes") != expectation[
+                    "endpoint_preserved_name_prefixes"] or
+                row.get("no_other_negedge_state_proven") is not expectation[
+                    "no_other_negedge_state_proven"]):
+            raise FlowError(f"staged exact endpoint inventory mismatch: {key}")
+        filelist_name, filelist_path = relative_repo_path(
+            root, row.get("filelist"), f"{key} filelist")
+        filelist_payload = stable_read(filelist_path)
+        if sha256_bytes(filelist_payload) != row.get("filelist_sha256"):
+            raise FlowError(f"staged filelist SHA mismatch: {key}")
+        sources = row.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise FlowError(f"staged source list is empty: {key}")
+        source_names = [source.get("path") for source in sources]
+        listed = [line.strip() for line in filelist_payload.decode("utf-8").splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+        if source_names != listed or len(set(source_names)) != len(source_names):
+            raise FlowError(f"staged filelist/source order mismatch: {key}")
+        top_source = row.get("top_source")
+        if top_source not in source_names or top_source in forbidden_paths:
+            raise FlowError(f"staged top source missing or generic wrapper substituted: {key}")
+        for source in sources:
+            name, path = relative_repo_path(root, source.get("path"), f"{key} source")
+            if name in forbidden_paths or sha256_bytes(stable_read(path)) != source.get("sha256"):
+                raise FlowError(f"staged source SHA/path mismatch: {name}")
+        top_payload = stable_read(root / top_source)
+        ports = parse_ansi_ports(top_payload, top)
+        expected_ports = (registry["required_common_inputs"] +
+                          registry["required_common_outputs"] +
+                          expectation["link_outputs"])
+        by_name = lambda values: sorted(values, key=lambda value: value["name"])
+        if (by_name(ports) != by_name(expected_ports) or
+                by_name(row.get("required_ports", [])) != by_name(
+                    registry["required_common_inputs"] +
+                    registry["required_common_outputs"]) or
+                by_name(row.get("link_pins", [])) != by_name(
+                    expectation["link_outputs"])):
+            raise FlowError(f"staged top boundary mismatch: {key}")
+        if sum(port["width"] for port in expectation["link_outputs"]) != \
+                expectation["link_bits"]:
+            raise FlowError(f"staged link-width contract mismatch: {key}")
+        defines = row.get("defines")
+        if (not isinstance(defines, list) or "SYNTHESIS" not in defines or
+                any(not isinstance(item, str) or not item for item in defines)):
+            raise FlowError(f"staged define set is invalid: {key}")
+        if row.get("parameters") != {}:
+            raise FlowError(f"staged parameter overrides are unsupported: {key}")
+        link_names = [port["name"] for port in expectation["link_outputs"]]
+        designs[key] = {
+            **row,
+            "top": top,
+            "boundary_cohort": "tech_staged_complete_compositions",
+            "source_origin": "tech_staged_repository_exact",
+            "clocks": [
+                {"name": "ref_clk", "port": "ref_clk_i", "waveform_ns": [0.0, 2.5]},
+                {"name": "sample_clk", "port": "sample_clk_i",
+                 "waveform_ns": [1.25, 3.75]},
+            ],
+            "generated_clock": {
+                "name": "staged_link_clk", "source_port": "sample_clk_i",
+                "target_port": link_names[0], "divide_by": 1,
+            },
+            "reset": {"port": "rst_n", "active": "low",
+                      "asynchronous_assertion": True,
+                      "release_contract": "phase_related_drained"},
+            "data_inputs": ["source_pending_i"],
+            "outputs": [port["name"] for port in
+                        registry["required_common_outputs"] + expectation["link_outputs"]],
+        }
+    return designs
+
+
+def resolve_staged_registry(root: Path, document: dict[str, Any]) -> dict[str, Any]:
+    pointer = document.get("staged_manifest", {})
+    if document.get("integration_state") != "ready" or any(
+            pointer.get(field) is None for field in ("path", "sha256", "repository_commit")):
+        raise FlowError(
+            "final tech-staged composition manifest is missing; generic/native substitution forbidden")
+    authorities = document.get("required_technology_authorities", {})
+    if (set(authorities) != {"r1", "p6"} or
+            any(value is None for authority in authorities.values()
+                for value in authority.values())):
+        raise FlowError(
+            "R1/P6 technology-stage authority is incomplete; generic substitution forbidden")
+    authority_identities: dict[str, Any] = {}
+    for key, authority in authorities.items():
+        name, path = relative_repo_path(
+            root, authority["manifest_path"], f"{key} technology manifest")
+        payload = stable_read(path)
+        if sha256_bytes(payload) != authority["manifest_sha256"]:
+            raise FlowError(f"{key} technology manifest SHA mismatch")
+        authority_identities[key] = {
+            "repository_commit": authority["repository_commit"],
+            "manifest_path": name,
+            "manifest_sha256": authority["manifest_sha256"],
+        }
+    timing_identities: dict[str, Any] = {}
+    for key, expectation in document["design_expectations"].items():
+        timing = expectation["strict_sdc"]
+        name, path = relative_repo_path(root, timing["path"], f"{key} strict SDC")
+        payload = stable_read(path)
+        if sha256_bytes(payload) != timing["sha256"]:
+            raise FlowError(f"{key} strict SDC SHA mismatch")
+        timing_identities[key] = dict(timing)
+    mmmc = document.get("mmmc_template", {})
+    mmmc_name, mmmc_path = relative_repo_path(
+        root, mmmc.get("path"), "shared-QRC MMMC template")
+    mmmc_payload = stable_read(mmmc_path)
+    if (sha256_bytes(mmmc_payload) != mmmc.get("sha256") or
+            mmmc.get("qrc_policy") != "shared_single_gpdk045_typical_rc_disclosed"):
+        raise FlowError("shared-QRC MMMC template/policy mismatch")
+    manifest_name, manifest_path = relative_repo_path(
+        root, pointer["path"], "staged manifest")
+    payload = stable_read(manifest_path)
+    if sha256_bytes(payload) != pointer["sha256"]:
+        raise FlowError("tech-staged manifest SHA mismatch")
+    try:
+        manifest = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise FlowError(f"invalid tech-staged manifest: {error}") from error
+    if manifest.get("repository_commit") != pointer["repository_commit"]:
+        raise FlowError("tech-staged manifest commit pointer mismatch")
+    runtime = dict(document)
+    runtime["repository_commit"] = pointer["repository_commit"]
+    runtime["designs"] = validate_staged_manifest(root, document, manifest)
+    runtime["staged_manifest_identity"] = {
+        "path": manifest_name, "sha256": pointer["sha256"],
+        "repository_commit": pointer["repository_commit"],
+    }
+    runtime["technology_authority_identities"] = authority_identities
+    runtime["timing_template_identities"] = timing_identities
+    runtime["mmmc_template_identity"] = {**mmmc, "path": mmmc_name}
+    return runtime
+
+
+def load_registry(root: Path = ROOT) -> dict[str, Any]:
+    return resolve_staged_registry(root, load_registry_document())
 
 
 def load_golden_reference() -> dict[str, Any]:
@@ -202,11 +474,11 @@ def verify_flow_tree(root: Path) -> dict[str, str]:
         "physical/k2_w2_genus/functional_loss_reference.json",
         "physical/k2_w2_genus/genus_driver.tcl",
         "physical/k2_w2_genus/run_genus.py",
-        "physical/k2_w2_genus/filelists/a2_k2.f",
-        "physical/k2_w2_genus/filelists/a3_k2.f",
-        "physical/k2_w2_genus/filelists/p6_endpoint.f",
-        "physical/k2_w2_genus/filelists/a2_p6.f",
-        "physical/k2_w2_genus/filelists/a3_p6.f",
+        "physical/k2_w2_genus/run_goal_cohort.py",
+        "physical/k2_w2_genus/run_mapped_functional_xcelium.py",
+        "physical/k2_w2_genus/mapped_functional_tb.sv",
+        "physical/k2_w2_boundaries.json",
+        "physical/k2_w2_tops/designs.json",
     ]
     for relative in required:
         tracked = subprocess.run(
@@ -591,12 +863,272 @@ def tool_identity(path: Path) -> dict[str, Any]:
     }
 
 
-def mapped_inventory(mapped: Path, library: Path, expected_top: str) -> dict[str, Any]:
+def dffnsrx1_preflight(liberty: Path, lef: Path, label: str) -> dict[str, Any]:
+    liberty_payload = stable_read(liberty)
+    lef_payload = stable_read(lef)
+    text = liberty_payload.decode("utf-8", errors="strict")
+    start = re.search(r"\bcell\s*\(\s*DFFNSRX1\s*\)\s*\{", text)
+    if start is None:
+        raise FlowError(f"{label} Liberty lacks DFFNSRX1")
+    following = re.search(r"\n\s*cell\s*\(", text[start.end():])
+    cell = text[start.start():start.end() + following.start()] if following else text[start.start():]
+    required_tokens = (
+        'clocked_on : "(!CKN)"', 'clear : "(!RN)"', 'preset : "(!SN)"',
+        "pin (CKN)", "pin (D)", "pin (SN)", "pin (RN)", "pin (Q)", "pin (QN)",
+        "setup_falling", "hold_falling", "recovery_falling", "removal_falling",
+    )
+    missing = [token for token in required_tokens if token not in cell]
+    if missing:
+        raise FlowError(f"{label} DFFNSRX1 Liberty contract missing: {','.join(missing)}")
+    for timing_type in ("recovery_falling", "removal_falling"):
+        arc = re.search(
+            rf"timing_type\s*:\s*{timing_type}\s*;.*?values\s*\(\s*\"([^\"]+)\"",
+            cell, re.DOTALL)
+        if arc is None:
+            raise FlowError(f"{label} DFFNSRX1 lacks numeric {timing_type} arc")
+        try:
+            values = [float(value) for value in re.split(r"[ ,]+", arc.group(1).strip())]
+        except ValueError as error:
+            raise FlowError(f"{label} DFFNSRX1 invalid {timing_type} values") from error
+        if not values or any(not math.isfinite(value) for value in values) or \
+                max(abs(value) for value in values) <= 0.0:
+            raise FlowError(f"{label} DFFNSRX1 zero/NaN {timing_type} arc")
+    lef_text = lef_payload.decode("utf-8", errors="strict")
+    macro = re.search(r"(?ms)^MACRO DFFNSRX1\s+(.*?)^END DFFNSRX1\s*$", lef_text)
+    if macro is None or "SITE CoreSite" not in macro.group(1):
+        raise FlowError("LEF lacks DFFNSRX1 CoreSite macro")
+    pins = set(re.findall(r"(?m)^\s*PIN\s+(\S+)\s*$", macro.group(1)))
+    required_pins = {"Q", "QN", "CKN", "D", "SN", "RN", "VDD", "VSS"}
+    if pins != required_pins:
+        raise FlowError("LEF DFFNSRX1 pin set mismatch")
+    return {
+        "cell": "DFFNSRX1", "liberty_sha256": sha256_bytes(liberty_payload),
+        "lef_sha256": sha256_bytes(lef_payload), "site": "CoreSite",
+        "pins": sorted(pins),
+        "clocked_on": "(!CKN)", "clear": "(!RN)", "preset": "(!SN)",
+        "timing_types": ["setup_falling", "hold_falling",
+                         "recovery_falling", "removal_falling"],
+        "recovery_removal_nonzero": True,
+    }
+
+
+def verify_mapped_rx_contract(text: str, contract: dict[str, Any]) -> None:
+    cell = contract["cell"]
+    instances = re.findall(
+        rf"\b{re.escape(cell)}\s+(?:\\\S+|[A-Za-z_][A-Za-z0-9_$]*)\s*\((.*?)\)\s*;",
+        text, re.DOTALL)
+    if len(instances) != contract["exact_instances"]:
+        raise FlowError(
+            f"mapped {cell} count mismatch: {len(instances)} != {contract['exact_instances']}")
+    for body in instances:
+        connections = dict(re.findall(
+            r"\.([A-Za-z_][A-Za-z0-9_$]*)\s*\(\s*([^()]+?)\s*\)", body))
+        expected = {
+            contract["clock_pin"]: contract["clock_net"],
+            contract["reset_pin"]: contract["reset_net"],
+            contract["preset_pin"]: contract["preset_tie"],
+        }
+        for pin, net in expected.items():
+            if "".join(connections.get(pin, "").split()) != "".join(net.split()):
+                raise FlowError(f"mapped {cell} {pin} binding mismatch")
+        if "D" not in connections or not ({"Q", "QN"} & set(connections)):
+            raise FlowError(f"mapped {cell} omits D/Q connectivity")
+
+
+def mapped_named_instances(text: str, cell: str) -> list[tuple[str, dict[str, str]]]:
+    rows = re.findall(
+        rf"\b{re.escape(cell)}\s+(\\\S+|[A-Za-z_][A-Za-z0-9_$]*)\s*\((.*?)\)\s*;",
+        text, re.DOTALL)
+    return [(name.lstrip("\\"), dict(re.findall(
+        r"\.([A-Za-z_][A-Za-z0-9_$]*)\s*\(\s*([^()]+?)\s*\)", body)))
+            for name, body in rows]
+
+
+def mapped_instances(text: str) -> list[tuple[str, str, dict[str, str]]]:
+    rows = re.findall(
+        r"\b([A-Za-z_][A-Za-z0-9_$]*)\s+"
+        r"(\\\S+|[A-Za-z_][A-Za-z0-9_$]*)\s*\((.*?)\)\s*;",
+        text, re.DOTALL)
+    return [(kind, name.lstrip("\\"), dict(re.findall(
+        r"\.([A-Za-z_][A-Za-z0-9_$]*)\s*\(\s*([^()]*?)\s*\)", body)))
+            for kind, name, body in rows if kind not in KEYWORDS]
+
+
+def mapped_module_bodies(text: str) -> dict[str, str]:
+    rows = re.findall(
+        r"(?ms)(?:^|\n)\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b.*?;"
+        r"(.*?)\bendmodule\b", text)
+    modules = {name: body for name, body in rows}
+    if len(modules) != len(rows):
+        raise FlowError("mapped netlist contains duplicate module definitions")
+    return modules
+
+
+def hierarchy_inventory(root: str, modules: dict[str, str],
+                        library_cells: set[str],
+                        active: tuple[str, ...] = ()) -> tuple[dict[str, int], dict[str, int]]:
+    if root in active:
+        raise FlowError(f"recursive mapped hierarchy at {root}")
+    if root not in modules:
+        raise FlowError(f"mapped hierarchy root missing: {root}")
+    cells: dict[str, int] = {}
+    child_modules: dict[str, int] = {}
+    for kind in INSTANCE_RE.findall(modules[root]):
+        if kind in KEYWORDS:
+            continue
+        if kind in library_cells:
+            cells[kind] = cells.get(kind, 0) + 1
+        elif kind in modules:
+            child_cells, descendants = hierarchy_inventory(
+                kind, modules, library_cells, active + (root,))
+            for cell, count in child_cells.items():
+                cells[cell] = cells.get(cell, 0) + count
+            child_modules[kind] = child_modules.get(kind, 0) + 1
+            for module, count in descendants.items():
+                child_modules[module] = child_modules.get(module, 0) + count
+        else:
+            raise FlowError(f"unresolved/blackbox mapped cell type: {kind}")
+    return cells, child_modules
+
+
+def reachable_module_text(root: str, modules: dict[str, str],
+                          library_cells: set[str]) -> str:
+    visited: set[str] = set()
+    pending = [root]
+    bodies = []
+    while pending:
+        module = pending.pop()
+        if module in visited:
+            continue
+        if module not in modules:
+            raise FlowError(f"mapped endpoint hierarchy root missing: {module}")
+        visited.add(module)
+        body = modules[module]
+        bodies.append(body)
+        for kind in INSTANCE_RE.findall(body):
+            if kind in modules and kind not in visited:
+                pending.append(kind)
+            elif kind not in library_cells and kind not in KEYWORDS:
+                raise FlowError(f"unresolved endpoint hierarchy type: {kind}")
+    return "\n".join(bodies)
+
+
+def endpoint_instance_records(root: str, modules: dict[str, str],
+                              library_cells: set[str], prefixes: dict[str, str],
+                              path: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+    if root not in modules:
+        raise FlowError(f"mapped endpoint hierarchy root missing: {root}")
+    if root in path:
+        raise FlowError(f"recursive mapped endpoint hierarchy at {root}")
+    records: list[dict[str, Any]] = []
+    for kind, name, pins in mapped_instances(modules[root]):
+        hierarchy = ".".join((*path, root, name))
+        if kind in library_cells:
+            if kind in prefixes:
+                if prefixes[kind] not in name:
+                    raise FlowError(
+                        f"mapped endpoint {kind} lost preserved leaf name: {hierarchy}")
+                records.append({
+                    "hierarchy": hierarchy,
+                    "mapped_instance": name,
+                    "cell_type": kind,
+                    "pin_bindings": dict(sorted(pins.items())),
+                    "provenance_root": root if not path else path[0],
+                })
+        elif kind in modules:
+            records.extend(endpoint_instance_records(
+                kind, modules, library_cells, prefixes, (*path, root, name)))
+        else:
+            raise FlowError(f"unresolved endpoint hierarchy type: {kind}")
+    return records
+
+
+def verify_endpoint_inventory(modules: dict[str, str], library_cells: set[str],
+                              roots: list[str], expected: dict[str, int],
+                              rx_contract: dict[str, Any],
+                              posedge_contract: dict[str, Any],
+                              prefixes: dict[str, str]) -> tuple[dict[str, int],
+                                                                 list[dict[str, Any]]]:
+    required = {"TLATNTSCAX2", "MX2X1", "DFFRHQX1", "DFFNSRX1"}
+    if set(expected) != required or any(
+            not isinstance(count, int) or count <= 0 for count in expected.values()):
+        raise FlowError("exact endpoint mapped inventory contract is malformed")
+    if (set(prefixes) != required or
+            any(not isinstance(value, str) or not value for value in prefixes.values()) or
+            len(set(prefixes.values())) != len(prefixes)):
+        raise FlowError("endpoint preserved-name contract is malformed")
+    if (not isinstance(roots, list) or len(roots) != 2 or
+            len(set(roots)) != len(roots)):
+        raise FlowError("endpoint link hierarchy root contract is malformed")
+    observed = {cell: 0 for cell in required}
+    endpoint_text = []
+    records: list[dict[str, Any]] = []
+    for root in roots:
+        inventory, _ = hierarchy_inventory(root, modules, library_cells)
+        for cell in required:
+            observed[cell] += inventory.get(cell, 0)
+        endpoint_text.append(reachable_module_text(root, modules, library_cells))
+        records.extend(endpoint_instance_records(
+            root, modules, library_cells, prefixes))
+    if observed != expected:
+        raise FlowError(f"exact endpoint mapped inventory mismatch: {observed} != {expected}")
+    endpoint_payload = "\n".join(endpoint_text)
+    rx_rows = mapped_named_instances(endpoint_payload, rx_contract["cell"])
+    rx_text = "\n".join(
+        f"{rx_contract['cell']} endpoint_{index} (" + ",".join(
+            f".{pin}({net})" for pin, net in ports.items()) + ");"
+        for index, (_, ports) in enumerate(rx_rows))
+    verify_mapped_rx_contract(rx_text, rx_contract)
+    positive = [ports for _, ports in mapped_named_instances(
+        endpoint_payload, posedge_contract["cell"])]
+    if len(positive) != posedge_contract["exact_instances"]:
+        raise FlowError("mapped positive-edge endpoint count mismatch")
+    for ports in positive:
+        bindings = {
+            posedge_contract["clock_pin"]: posedge_contract["clock_net"],
+            posedge_contract["reset_pin"]: posedge_contract["reset_net"],
+        }
+        for pin, net in bindings.items():
+            if "".join(ports.get(pin, "").split()) != "".join(net.split()):
+                raise FlowError(f"mapped {posedge_contract['cell']} {pin} binding mismatch")
+        if "D" not in ports or "Q" not in ports:
+            raise FlowError(f"mapped {posedge_contract['cell']} omits D/Q connectivity")
+    icg = [ports for _, ports in mapped_named_instances(
+        endpoint_payload, "TLATNTSCAX2")]
+    if any(set(row) != {"E", "SE", "CK", "ECK"} or
+           "".join(row["SE"].split()) not in {"0", "1'b0", "1'h0", "1'd0"} or
+           "".join(row["CK"].split()) != "clock_i" or
+           "".join(row["E"].split()) not in {
+               "enable_i&rst_n", "rst_n&enable_i"} or
+           "".join(row["ECK"].split()) != "clock_o"
+           for row in icg):
+        raise FlowError("mapped TLATNTSCAX2 exact pin binding mismatch")
+    if any({pin: "".join(row.get(pin, "").split()) for pin in
+            ("A", "B", "S0", "Y")} != {
+                "A": "data0_i", "B": "data1_i",
+                "S0": "select_i", "Y": "data_o"}
+           for _, row in mapped_named_instances(endpoint_payload, "MX2X1")):
+        raise FlowError("mapped MX2X1 exact pin binding mismatch")
+    record_counts = {cell: 0 for cell in required}
+    for row in records:
+        record_counts[row["cell_type"]] += 1
+    if record_counts != observed:
+        raise FlowError("endpoint connectivity records do not match hierarchy inventory")
+    records.sort(key=lambda row: (row["hierarchy"], row["cell_type"]))
+    return dict(sorted(observed.items())), records
+
+
+def mapped_inventory(mapped: Path, library: Path, expected_top: str,
+                     rx_contract: dict[str, Any],
+                     posedge_contract: dict[str, Any],
+                     expected_endpoint: dict[str, int],
+                     endpoint_roots: list[str],
+                     preserved_prefixes: dict[str, str]) -> dict[str, Any]:
     mapped_payload = stable_read(mapped)
     library_payload = stable_read(library)
     text = mapped_payload.decode("utf-8", errors="strict")
     library_text = library_payload.decode("utf-8", errors="strict")
-    modules = set(MODULE_RE.findall(text))
+    modules = mapped_module_bodies(text)
     if BLACKBOX_RE.search(text):
         raise FlowError("explicit blackbox marker in mapped netlist")
     if expected_top not in modules:
@@ -604,29 +1136,30 @@ def mapped_inventory(mapped: Path, library: Path, expected_top: str) -> dict[str
     library_cells = set(CELL_RE.findall(library_text))
     if not library_cells:
         raise FlowError("library contains no parseable cell declarations")
-    instances: list[str] = []
-    for cell in INSTANCE_RE.findall(text):
-        if cell not in KEYWORDS:
-            instances.append(cell)
-    inventory: dict[str, int] = {}
-    for cell in instances:
-        if cell not in modules:
-            inventory[cell] = inventory.get(cell, 0) + 1
-    unknown = sorted(cell for cell in inventory if cell not in library_cells)
-    if unknown:
-        raise FlowError(f"unresolved/blackbox mapped cell types: {','.join(unknown)}")
+    inventory, hierarchy = hierarchy_inventory(expected_top, modules, library_cells)
     scan = sorted(cell for cell in inventory if SCAN_RE.search(cell))
     if scan:
         raise FlowError(f"scan cells are forbidden: {','.join(scan)}")
     if not inventory:
         raise FlowError("mapped netlist has zero library-cell instances")
+    endpoint_inventory, endpoint_instances = verify_endpoint_inventory(
+        modules, library_cells, endpoint_roots, expected_endpoint, rx_contract,
+        posedge_contract, preserved_prefixes)
     return {
         "mapped_netlist_sha256": sha256_bytes(mapped_payload),
         "library_cell_types_available": len(library_cells),
         "mapped_cell_count": sum(inventory.values()),
         "mapped_cell_types": dict(sorted(inventory.items())),
-        "unresolved_or_blackbox_cell_types": [],
+        "mapped_module_instance_types": dict(sorted(hierarchy.items())),
+        "endpoint_cell_types": endpoint_inventory,
+        "endpoint_link_roots": endpoint_roots,
+        "endpoint_instances": endpoint_instances,
+        "endpoint_preserved_name_prefixes": preserved_prefixes,
+        "dffnsrx1_global_exclusivity_proven":
+            inventory.get("DFFNSRX1", 0) == endpoint_inventory["DFFNSRX1"],
         "scan_cell_types": [],
+        "unresolved_or_blackbox_cell_types": [],
+        "required_rx_contract": rx_contract,
     }
 
 
@@ -678,47 +1211,117 @@ def verify_reports(output: Path, top: str, log_payload: bytes,
     return {names[kind]: sha256_bytes(payload) for kind, payload in payloads.items()}
 
 
-def run_smoke(hook: Path | None, attempt: Path, top: str,
-              mapped: Path, library: Path) -> dict[str, Any]:
+def run_mapped_functional_gate(
+        hook: Path | None, attempt: Path, design_key: str, design: dict[str, Any],
+        mapped: Path, sdf: Path, models: list[Path],
+        source_snapshots: list[dict[str, Any]], xrun_identity: dict[str, str]
+        ) -> tuple[dict[str, Any], str]:
     if hook is None:
-        raise FlowError("mapped smoke hook is required")
-    snapshot = attempt / "bundle" / "smoke_hook"
+        raise FlowError("mapped functional gate hook is required")
+    if not models:
+        raise FlowError("mapped functional gate requires vendor functional models")
+    snapshot = attempt / "bundle" / "mapped_functional_hook"
     hook_hash = copy_stable(hook.resolve(strict=True), snapshot, 0o555)
-    smoke_json = attempt / "work" / "mapped_smoke.json"
+    tb_snapshot = attempt / "bundle" / "mapped_functional_tb.sv"
+    tb_hash = copy_stable(MAPPED_FUNCTIONAL_TB, tb_snapshot)
+    xrun = Path(xrun_identity["resolved_path"]).resolve(strict=True)
+    xrun_before = tool_identity(xrun)
+    if (xrun_before["sha256"] != xrun_identity["sha256"] or
+            xrun_identity["parsed_version"] not in xrun_before["version_output"]):
+        raise FlowError("mapped functional simulator is not the proven Xcelium")
+    model_snapshots: list[Path] = []
+    model_hashes: dict[str, str] = {}
+    source_model_hashes: dict[Path, str] = {}
+    for index, model in enumerate(models):
+        resolved = model.resolve(strict=True)
+        source_hash = sha256_bytes(stable_read(resolved))
+        destination = attempt / "bundle" / "functional_models" / (
+            f"{index:02d}_{resolved.name}")
+        if copy_stable(resolved, destination) != source_hash:
+            raise FlowError("vendor functional model snapshot SHA mismatch")
+        model_snapshots.append(destination)
+        if destination.name in model_hashes:
+            raise FlowError("duplicate vendor functional model basename")
+        model_hashes[destination.name] = source_hash
+        source_model_hashes[resolved] = source_hash
+    rtl_filelist = attempt / "bundle" / "mapped_functional_rtl.f"
+    rtl_rows = [str(attempt / "bundle" / "sources" / row["path"])
+                for row in source_snapshots]
+    write_exclusive(rtl_filelist, ("\n".join(rtl_rows) + "\n").encode(), 0o444)
+    hook_json = attempt / "work" / "mapped-functional-hook.json"
+    gate_json = attempt / "mapped-functional-gate.json"
+    gate_log = attempt / "logs" / "mapped-functional-gate.log"
+    command = [
+        str(snapshot), "--design", design_key, "--top", design["top"],
+        "--rtl-filelist", str(rtl_filelist), "--netlist", str(mapped),
+        "--sdf", str(sdf), "--scenarios",
+        ",".join(design["required_mapped_functional_tests"]),
+        "--xrun", str(xrun), "--testbench", str(tb_snapshot),
+        "--output", str(hook_json), "--log", str(gate_log),
+    ]
+    for define in design["defines"]:
+        command.extend(["--define", define])
+    for model in model_snapshots:
+        command.extend(["--model", str(model)])
     result = subprocess.run(
-        [str(snapshot), "--top", top, "--netlist", str(mapped),
-         "--library", str(library), "--output", str(smoke_json)],
+        command,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False,
     )
-    write_exclusive(attempt / "logs" / "mapped_smoke.log", result.stdout.encode())
-    if result.returncode or "W2_MAPPED_SMOKE_PASS" not in result.stdout:
-        raise FlowError("mapped smoke hook failed or omitted PASS sentinel")
+    write_exclusive(
+        attempt / "logs" / "mapped-functional-hook.stdout.log",
+        result.stdout.encode())
+    if result.returncode or "W2_MAPPED_FUNCTIONAL_PASS" not in result.stdout:
+        raise FlowError("mapped functional hook failed or omitted PASS sentinel")
     try:
-        document = json.loads(stable_read(smoke_json))
+        document = json.loads(stable_read(hook_json))
     except json.JSONDecodeError as error:
-        raise FlowError(f"invalid mapped smoke JSON: {error}") from error
+        raise FlowError(f"invalid mapped functional gate JSON: {error}") from error
     mapped_hash = sha256_bytes(stable_read(mapped))
-    library_hash = sha256_bytes(stable_read(library))
-    if (document.get("schema") != "k2_w2_mapped_smoke_v1" or
-            document.get("status") != "PASS" or document.get("top") != top or
-            document.get("mapped_netlist_sha256") != mapped_hash or
-            document.get("library_sha256") != library_hash):
-        raise FlowError(
-            "mapped smoke result is not bound to the mapped netlist/library/top")
-    if sha256_bytes(stable_read(hook.resolve(strict=True))) != hook_hash:
-        raise FlowError("mapped smoke hook changed during execution")
-    return {
-        "status": "PASS", "required": True, "hook_sha256": hook_hash,
-        "result_sha256": sha256_bytes(stable_read(smoke_json)),
-        "mapped_netlist_sha256": mapped_hash, "library_sha256": library_hash,
+    sdf_hash = sha256_bytes(stable_read(sdf))
+    checks = {
+        "accepted": "EXACT", "retired": "EXACT", "global_order": "EXACT",
+        "conservation": "EXACT", "protocol_error": "ZERO",
+        "reset_and_drain": "PASS",
     }
+    if (document.get("schema") != "k2_w2_mapped_functional_gate_v1" or
+            document.get("status") != "PASS" or
+            document.get("design") != design_key or
+            document.get("top") != design["top"] or
+            document.get("mapped_netlist_sha256") != mapped_hash or
+            document.get("method") not in {"xcelium_vendor_models", "formal_lec"} or
+            document.get("scenarios") != design[
+                "required_mapped_functional_tests"] or
+            document.get("checks") != checks or
+            document.get("model_sha256") != model_hashes or
+            document.get("sdf_status") != "ANNOTATED" or
+            document.get("sdf_sha256") != sdf_hash or
+            document.get("log_sha256") != sha256_bytes(stable_read(gate_log))):
+        raise FlowError("mapped staged-vs-netlist functional gate mismatch")
+    if sha256_bytes(stable_read(hook.resolve(strict=True))) != hook_hash:
+        raise FlowError("mapped functional hook changed during execution")
+    if (sha256_bytes(stable_read(MAPPED_FUNCTIONAL_TB)) != tb_hash or
+            tool_identity(xrun) != xrun_before):
+        raise FlowError("mapped functional TB or Xcelium changed during execution")
+    for source, expected in source_model_hashes.items():
+        if sha256_bytes(stable_read(source)) != expected:
+            raise FlowError("vendor functional model changed during execution")
+    document["hook_sha256"] = hook_hash
+    document["testbench_sha256"] = tb_hash
+    document["simulator"] = xrun_before
+    document["rtl_filelist_sha256"] = sha256_bytes(stable_read(rtl_filelist))
+    # Re-publish the normalized producer-owned form so downstream bytes bind
+    # exactly what was validated rather than an untrusted hook serialization.
+    write_exclusive(gate_json, canonical(document))
+    return document, sha256_bytes(stable_read(gate_json))
 
 
 def run_flow(root: Path, design_key: str, genus: Path, library: Path,
              output_root: Path, attempt_name: str,
-             smoke_hook: Path | None, golden_archive: Path,
+             functional_hook: Path | None, functional_models: list[Path],
+             golden_archive: Path,
              raw_golden_archive: Path,
-             functional_loss_archive: Path) -> Path:
+             functional_loss_archive: Path,
+             server_environment_receipt: Path) -> Path:
     root = root.resolve(strict=True)
     if not SAFE_ATTEMPT.fullmatch(attempt_name):
         raise FlowError("invalid attempt name")
@@ -735,6 +1338,12 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
     flow_files = verify_flow_tree(root)
     head = verify_source_commit(root, registry)
     design = verify_design(root, registry, design_key)
+    if (functional_hook is None or functional_hook.resolve(strict=True) !=
+            MAPPED_FUNCTIONAL_HOOK.resolve(strict=True)):
+        raise FlowError("mapped functional hook is not the immutable production runner")
+    environment_payload, proven_environment = verify_server_environment_receipt(
+        server_environment_receipt, genus, library, hold_library, cell_lef,
+        shared_qrc)
     attempt = output_root.resolve() / attempt_name
     attempt.mkdir(parents=True, exist_ok=False)
     (attempt / "bundle" / "sources").mkdir(parents=True)
@@ -750,6 +1359,13 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
     functional_loss_identity = verify_functional_loss_archive(
         functional_loss_archive,
         attempt / "bundle" / functional_loss["archive_filename"], functional_loss)
+    server_environment_snapshot = attempt / "bundle" / "server-environment.json"
+    write_exclusive(server_environment_snapshot, environment_payload, 0o444)
+    environment_identity = {
+        "path": "bundle/server-environment.json",
+        "sha256": sha256_bytes(environment_payload),
+        "xrun": proven_environment["xrun"],
+    }
     tool_before = tool_identity(genus)
     if golden["genus_version"] not in tool_before["version_output"]:
         raise FlowError("Genus version does not match authoritative golden archive")
@@ -789,6 +1405,9 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "flow_git_head": head,
         "source_commit": registry["repository_commit"],
         "registry_sha256": registry_hash,
+        "staged_manifest": registry["staged_manifest_identity"],
+        "technology_authorities": registry["technology_authority_identities"],
+        "proven_environment": environment_identity,
         "flow_files_sha256": flow_files,
         "evidence_cohorts": {
             "raw_reference": raw_golden_identity,
@@ -826,6 +1445,17 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         "W2_LIBRARY": str(library_snapshot),
         "W2_SDC": str(sdc_path),
         "W2_OUTPUT": str(attempt / "work"),
+        "W2_RX_CELL": design["mapped_rx_contract"]["cell"],
+        "W2_RX_EXACT_INSTANCES": str(design["mapped_rx_contract"]["exact_instances"]),
+        "W2_RX_CLOCK_NET": design["mapped_rx_contract"]["clock_net"],
+        "W2_POS_CELL": design["mapped_posedge_contract"]["cell"],
+        "W2_POS_EXACT_INSTANCES": str(
+            design["mapped_posedge_contract"]["exact_instances"]),
+        "W2_POS_CLOCK_NET": design["mapped_posedge_contract"]["clock_net"],
+        "W2_ENDPOINT_INVENTORY": ",".join(
+            f"{cell}={count}" for cell, count in sorted(
+                design["endpoint_expected_inventory"].items())),
+        "W2_ENDPOINT_ROOTS": ",".join(design["endpoint_link_roots"]),
     })
     run = subprocess.run(
         [tool_before["resolved_path"], "-batch", "-files", str(tcl_snapshot)],
@@ -842,15 +1472,67 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
         raise FlowError("source library changed during execution")
     report_hashes = verify_reports(
         attempt / "work", design["top"], run.stdout, golden["genus_version"])
+    sdf_path = attempt / "work" / f"{design['top']}.sdf"
+    sdf_payload = stable_read(sdf_path)
+    try:
+        sdf_text = sdf_payload.decode("utf-8", errors="strict")
+    except UnicodeError as error:
+        raise FlowError("mapped SDF is not UTF-8 text") from error
+    if (not sdf_payload or "(DELAYFILE" not in sdf_text or
+            design["top"] not in sdf_text):
+        raise FlowError("mapped SDF is empty, truncated, or bound to the wrong top")
+    sdf_hash = sha256_bytes(sdf_payload)
     inventory = mapped_inventory(
         attempt / "work" / f"{design['top']}_netlist.v",
-        library_snapshot, design["top"])
+        library_snapshot, design["top"], design["mapped_rx_contract"],
+        design["mapped_posedge_contract"],
+        design["endpoint_expected_inventory"],
+        design["endpoint_link_roots"],
+        design["endpoint_preserved_name_prefixes"])
+    endpoint_instances = inventory.pop("endpoint_instances")
+    no_other_negedge = inventory["dffnsrx1_global_exclusivity_proven"]
+    if no_other_negedge is not design["no_other_negedge_state_proven"]:
+        raise FlowError("whole-top DFFNS inventory contradicts staged endpoint contract")
+    endpoint_map = {
+        "schema": "k2_w2_endpoint_connectivity_map_v1",
+        "design": design_key,
+        "top": design["top"],
+        "mapped_netlist_sha256": inventory["mapped_netlist_sha256"],
+        "endpoint_link_roots": design["endpoint_link_roots"],
+        "preserved_name_prefixes": design["endpoint_preserved_name_prefixes"],
+        "leaf_counts": design["endpoint_expected_inventory"],
+        "no_other_negedge_state_proven": no_other_negedge,
+        "instances": endpoint_instances,
+    }
+    endpoint_map_path = attempt / "endpoint-connectivity-map.json"
+    write_exclusive(endpoint_map_path, canonical(endpoint_map))
+    endpoint_map_hash = sha256_bytes(stable_read(endpoint_map_path))
     mapped_sdc_hash = sha256_bytes(stable_read(
         attempt / "work" / f"{design['top']}_out.sdc"))
-    smoke = run_smoke(
-        smoke_hook, attempt, design["top"],
-        attempt / "work" / f"{design['top']}_netlist.v", library_snapshot,
+    functional_gate, functional_gate_hash = run_mapped_functional_gate(
+        functional_hook, attempt, design_key, design,
+        attempt / "work" / f"{design['top']}_netlist.v", sdf_path,
+        functional_models, source_snapshots, proven_environment["xrun"],
     )
+    handoff = {
+        "schema": "k2_w2_innovus_strict_sdc_handoff_v1",
+        "design": design_key,
+        "top": design["top"],
+        "mapped_netlist_sha256": inventory["mapped_netlist_sha256"],
+        "mapped_sdf_sha256": sdf_hash,
+        "mapped_sdc_sha256": mapped_sdc_hash,
+        "strict_input_sdc_path": design["strict_sdc"]["path"],
+        "strict_input_sdc_sha256": sha256_bytes(sdc),
+        "mmmc_template": registry["mmmc_template_identity"],
+        "setup_liberty_sha256": library_source_hash,
+        "hold_liberty_sha256": hold_library_hash,
+        "cell_lef_sha256": cell_lef_hash,
+        "shared_setup_hold_qrc_sha256": shared_qrc_hash,
+        "shared_qrc_limitation": "ONE_TYPICAL_GPDK045_TCH_FOR_SETUP_AND_HOLD",
+        "innovus_consumption_status": "PENDING_REQUIRES_EXACT_HASH_RECEIPT",
+    }
+    handoff_path = attempt / "innovus-handoff.json"
+    write_exclusive(handoff_path, canonical(handoff))
     receipt = {
         "schema": "k2_w2_genus_receipt_v1",
         "status": "PASS",
@@ -868,9 +1550,20 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             "functional_loss_reference": functional_loss_identity,
         },
         "mapped_inventory": inventory,
+        "endpoint_leaf_inventory": {
+            "connectivity_map_sha256": endpoint_map_hash,
+            "preserved_name_prefixes": design[
+                "endpoint_preserved_name_prefixes"],
+            "leaf_counts": design["endpoint_expected_inventory"],
+            "no_other_negedge_state_proven": no_other_negedge,
+        },
+        "mapped_sdf_sha256": sdf_hash,
         "mapped_sdc_sha256": mapped_sdc_hash,
         "report_sha256": report_hashes,
-        "mapped_smoke": smoke,
+        "mapped_functional_gate_sha256": functional_gate_hash,
+        "innovus_handoff_sha256": sha256_bytes(stable_read(handoff_path)),
+        "strict_sdc_sha256": sha256_bytes(sdc),
+        "dffnsrx1_preflight": {"setup": dff_setup, "hold": dff_hold},
         "checks": {
             "source_and_filelist_hashes": "PASS",
             "authoritative_ganghee_archive": "PASS_EXACT_SHA_AND_ANCHORS",
@@ -883,7 +1576,12 @@ def run_flow(root: Path, design_key: str, genus: Path, library: Path,
             "unresolved_and_blackbox": "PASS_ZERO",
             "scan_cells": "PASS_ZERO",
             "mapped_netlist_export": "PASS",
-            "report_only_publication": "REJECTED_REQUIRES_SOURCE_TOOL_NETLIST_SDC_INVENTORY_SMOKE",
+            "strict_multiclock_sdc": "PASS_HASH_BOUND_RISE_FALL_MIN_MAX_RESET_GATING_PULSE_IO",
+            "dffnsrx1_rx_mapping": "PASS_EXACT_COUNT_PINS_AND_NONZERO_RECOVERY_REMOVAL",
+            "innovus_exact_sdc_consumption": "PENDING_REQUIRES_DOWNSTREAM_RECEIPT",
+            "power_activity_gate": "HOLD_VECTORLESS_IS_NOT_ACTIVITY_QUALIFIED",
+            "mapped_functional_gate": "PASS_STAGED_VS_MAPPED_SDF_VENDOR_MODELS",
+            "report_only_publication": "REJECTED_REQUIRES_SOURCE_TOOL_NETLIST_SDC_CONNECTIVITY_FUNCTIONAL_GATE",
         },
         "claim_boundary": "GENUS_MAPPED_SCREENING_ONLY_NOT_PHYSICAL_PPA",
     }
@@ -901,16 +1599,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--golden-archive", type=Path, required=True)
     parser.add_argument("--raw-golden-archive", type=Path, required=True)
     parser.add_argument("--functional-loss-archive", type=Path, required=True)
+    parser.add_argument("--server-environment-receipt", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--attempt", required=True)
-    parser.add_argument("--mapped-smoke-hook", type=Path)
+    parser.add_argument("--mapped-functional-hook", type=Path, required=True)
+    parser.add_argument("--functional-model", type=Path, action="append",
+                        required=True)
     args = parser.parse_args(argv)
     try:
         receipt = run_flow(
             args.repo_root, args.design, args.genus, args.library,
-            args.output_root, args.attempt, args.mapped_smoke_hook,
+            args.hold_library, args.cell_lef, args.shared_qrc,
+            args.output_root, args.attempt, args.mapped_functional_hook,
+            args.functional_model,
             args.golden_archive, args.raw_golden_archive,
             args.functional_loss_archive,
+            args.server_environment_receipt,
         )
     except (FlowError, OSError, subprocess.SubprocessError) as error:
         print(f"K2_W2_GENUS_FAIL {error}", file=sys.stderr)

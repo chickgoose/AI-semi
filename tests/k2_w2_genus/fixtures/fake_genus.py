@@ -17,6 +17,9 @@ if len(sys.argv) != 4 or sys.argv[1:3] != ["-batch", "-files"]:
 required = (
     "W2_TOP", "W2_SOURCES_V", "W2_SOURCES_SV", "W2_DEFINES",
     "W2_LIBRARY", "W2_SDC", "W2_OUTPUT",
+    "W2_RX_CELL", "W2_RX_EXACT_INSTANCES", "W2_RX_CLOCK_NET",
+    "W2_POS_CELL", "W2_POS_EXACT_INSTANCES", "W2_POS_CLOCK_NET",
+    "W2_ENDPOINT_INVENTORY", "W2_ENDPOINT_ROOTS",
 )
 if any(name not in os.environ for name in required):
     print("missing W2 environment", file=sys.stderr)
@@ -38,12 +41,54 @@ if mode == "defined_blackbox":
     cell = "DEFINED_BLACKBOX"
     prefix = "(* blackbox *) module DEFINED_BLACKBOX(input CK,D, output Q); endmodule\n"
 if mode != "report_only":
+    rx_cell = os.environ["W2_RX_CELL"]
+    rx_count = int(os.environ["W2_RX_EXACT_INSTANCES"])
+    rx_clock = os.environ["W2_RX_CLOCK_NET"]
+    tx_root, rx_root = os.environ["W2_ENDPOINT_ROOTS"].split(",")
+    rx_instances = "".join(
+        f"  wire rx_q_{index};\n"
+        f"  {rx_cell} w2_ep_neg_{index} (.CKN({rx_clock}), .RN(rst_ni), "
+        f".SN(1'b1), .D(D), .Q(rx_q_{index}), .QN());\n"
+        for index in range(rx_count)
+    )
+    endpoint = dict(row.split("=", 1) for row in
+                    os.environ["W2_ENDPOINT_INVENTORY"].split(","))
+    pos_cell = os.environ["W2_POS_CELL"]
+    pos_clock = os.environ["W2_POS_CLOCK_NET"]
+    pos_instances = "".join(
+        f"  wire pos_q_{index};\n"
+        f"  {pos_cell} w2_ep_pos_{index} (.RN(rst_ni), .CK({pos_clock}), "
+        f".D(D), .Q(pos_q_{index}));\n"
+        for index in range(int(endpoint[pos_cell]))
+    )
+    mux_instances = "".join(
+        f"  wire mux_y_{index};\n"
+        f"  MX2X1 w2_ep_mux_{index} (.A(data0_i), .B(data1_i), .S0(select_i), .Y(data_o));\n"
+        for index in range(int(endpoint["MX2X1"]))
+    )
+    icg_instances = "".join(
+        f"  wire gated_{index};\n"
+        f"  TLATNTSCAX2 w2_ep_icg_{index} (.E(enable_i & rst_n), .SE(1'b0), .CK(clock_i), .ECK(clock_o));\n"
+        for index in range(int(endpoint["TLATNTSCAX2"]))
+    )
     (output / f"{top}_netlist.v").write_text(
-        prefix + f"module {top}(input wire CK, input wire D, output wire Q);\n"
+        prefix + f"module {top}(input wire CK, input wire D, input wire rst_n, "
+        "input wire link_clk_o, output wire Q);\n"
         f"  {cell} u_state (.CK(CK), .D(D), .Q(Q));\n"
-        "endmodule\n"
+        "  DFFRHQX1 scheduler_extra (.RN(rst_n), .CK(CK), .D(D), .Q());\n"
+        "  MX2X1 scheduler_mux (.A(D), .B(D), .S0(D), .Y());\n"
+        f"  {tx_root} tx (.clock_i(CK), .enable_i(D), .rst_n(rst_n), .data0_i(D), .data1_i(D), .select_i(D), .clock_o(), .data_o());\n"
+        f"  {rx_root} rx (.clock_i(link_clk_o), .burst_clk_i(link_clk_o), "
+        ".rst_n(rst_n), .rst_ni(rst_n), .D(D));\n"
+        "endmodule\n" +
+        f"module {tx_root}(input wire clock_i,enable_i,rst_n,data0_i,data1_i,select_i,output wire clock_o,data_o);\n" + icg_instances + mux_instances +
+        "endmodule\n" +
+        f"module {rx_root}(input wire clock_i,burst_clk_i,rst_n,rst_ni,D);\n" +
+        pos_instances + rx_instances + "endmodule\n"
     )
     (output / f"{top}_out.sdc").write_text("# fake mapped SDC\n")
+    (output / f"{top}.sdf").write_text(
+        f'(DELAYFILE (SDFVERSION "3.0") (DESIGN "{top}"))\n')
 
 reports = {
     "area": (

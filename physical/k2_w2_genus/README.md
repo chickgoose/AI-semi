@@ -9,13 +9,12 @@ commit `13c60f936fe5a265e650b4b91436ed79fc20dc91`:
 4. `a2_p6`
 5. `a3_p6`
 
-`designs.json` is the top/filelist/source-hash registry. The sole server-flow
-authority is `ganghee-pnr-golden-20260813.tar.gz`, SHA-256
-`1f01904669b159190bdf8497c62e68dff87214ddecb8f05fb20a226289c2ac5f`.
-`golden_reference.json` binds 25 exact members: both 1.0 ns Genus Tcl/log/cmd
-runs, their area/timing/power/netlist/SDC outputs, and every Fovea/Cluster2
-wrapper/core RTL input. A renamed local source tree, repacked archive, modified
-member, missing archive, or different archive bytes are rejected.
+The registry is intentionally `blocked_missing_tech_staged_manifest`. The
+techmap owner has not yet supplied a committed `w2-physical-staging-v2`
+manifest with exact top, filelist, source hashes and repository commit. Until
+all of those fields exist, both the single-design runner and cohort launcher
+exit nonzero before Genus and create no result namespace. An owner-generic or
+native-debug top is never used as a fallback.
 
 The native-core authority is separately pinned as
 `ganghee-pnr-raw-golden-20260813.tar.gz`, SHA-256
@@ -35,14 +34,8 @@ archive. It deliberately excludes the stale outer `eval-driver-final.log`.
 This is labeled `NON_OFFICIAL_WORKSPACE_DIFF` and may support only generated,
 accepted, delivered and overrun accounting. It is forbidden as PPA evidence.
 
-The driver follows the byte-proven golden command order and assumptions:
-Genus `23.14-s090_1`, `slow_vdd1v0_basicCells.lib`, automatic clock-gating
-enabled, `read_hdl`, elaborate, SDC load, generic/map/opt, then the three real
-report classes `*_area.rpt`, `*_gtiming.rpt`, `*_gpower.rpt` and mapped
-`*_netlist.v`/`*_out.sdc`. It does not fabricate the earlier local-only
-check/QoR/clocks report set. Candidate reports must match the actual Ganghee
-Genus report grammar and the log must show the pinned version, zero Error/Fatal,
-and normal exit.
+- `ref_clk_i`, `sample_clk_i`, `rst_n`
+- `source_pending_i[15:0]`
 
 The runner rejects any candidate source that differs from the named source
 commit, snapshots the authoritative archive, every source and supplied Liberty
@@ -59,7 +52,13 @@ Reports alone are never sufficient: exact candidate source/tool/library, both
 golden archives, mapped netlist, mapped SDC, mapped-cell inventory and bound
 functional smoke evidence are all mandatory.
 
-## Mapped smoke hook
+All three also expose `link_clk_o`; R1 has `link_data_o[1:0]`, while P6 has
+`link_data_o[4:0]`. These are the only inherent width differences. The aliases
+`load_i`, `pending_i`, `source_ready_o`, `protocol_fault_o`, `burst_*`, and
+`p6_*` are forbidden at the final top.
+No scheduler/debug output, padding, normalized-away link pin, or extra port is
+accepted. The runner parses the actual staged top's ANSI port declaration and
+checks the exact name/direction/width set rather than trusting manifest claims.
 
 Physical mapped simulation depends on the selected Liberty's functional model
 and installed simulator, so it is an explicit mandatory hook rather than a
@@ -76,7 +75,13 @@ The server hook must compile the mapped netlist with the matching functional
 cell model and perform candidate-specific reset/output smoke checks; a hook
 that merely echoes PASS does not constitute hardware qualification.
 
-## Invocation
+The shared manifest also pins the complete endpoint technology inventory. R1
+requires exactly 1 `TLATNTSCAX2`, 2 `MX2X1`, 2 `DFFRHQX1`, and 5
+`DFFNSRX1`; P6 requires exactly 1, 5, 5, and 12 respectively. The negative-edge
+cells are the four/ten address-or-closing-state bits plus the commit toggle,
+not merely the serialized data width.
+
+## Diagnostic registries
 
 ```sh
 python3 physical/k2_w2_genus/run_genus.py \
@@ -96,7 +101,32 @@ remain phase-related in the generated SDC; there are no false paths or
 multicycle exceptions. Vectorless `report_power` is retained only as screening
 evidence. Genus output is not post-route area, power, timing, or physical PPA.
 
-Run local fixture and mutation tests with:
+Raw and buffered golden archives remain tool/report/source authorities, while
+the yZr1 functional archive remains non-official loss-only evidence and is
+forbidden as PPA evidence.
+
+## Launch behavior
+
+Once the staged manifest is ready, `run_goal_cohort.py` creates an exclusive
+attempt root, records the exact three commands, and publishes a cohort result
+only after all three mapped Genus receipts, endpoint connectivity maps, and
+mapped staged-vs-netlist functional gates pass. In the current
+blocked state, even `--plan-only` exits nonzero instead of rendering commands
+for substitute tops.
+
+Execution additionally requires a byte-bound `PROVEN_SERVER_ENV` receipt. The
+Genus mapping run consumes the slow setup Liberty only. Fast hold Liberty,
+macro LEF, and the shared typical QRC are verified environment and downstream
+Innovus provenance inputs; they are not relabeled as Genus MMMC consumption.
+Each passing screening receipt hashes the mapped netlist, mapped SDF, mapped
+SDC, endpoint leaf hierarchy/pin map, SDF-annotated functional transcript,
+vendor functional models, and every timing/area report. The functional hook
+must use the Xcelium executable authenticated by `PROVEN_SERVER_ENV`; a hash-
+only smoke result cannot pass. Common workloads are never synthesized into
+this boundary; scoped workload activity may be attached later as a separately
+bound SAIF artifact.
+
+Run local contract, provenance, archive and mutation tests with:
 
 ```sh
 tests/k2_w2_genus/run_all.sh

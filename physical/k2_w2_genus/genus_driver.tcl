@@ -37,6 +37,7 @@ report_power  > $OUT_DIR/${DESIGN}_gpower.rpt
 
 write_hdl > $OUT_DIR/${DESIGN}_netlist.v
 write_sdc > $OUT_DIR/${DESIGN}_out.sdc
+write_sdf > $OUT_DIR/${DESIGN}.sdf
 
 puts "W2_GENUS_PASS top=$DESIGN"
 exit
