@@ -173,6 +173,10 @@ module a4_k2_replay_driver;
         fail("non-Boolean vector control");
 
       expected_mask = 0;
+      // Frozen common-TB order: occurrences are classified at this negedge
+      // against the still-pending source latch.  The following posedge may
+      // accept/retire the old record, but cannot retroactively rearm a new
+      // same-source occurrence that was already classified as overrun.
       for (source = 0; source < SOURCE_COUNT; source = source + 1) begin
         if (event_code[source] < 0)
           fail("negative occurrence identity code");

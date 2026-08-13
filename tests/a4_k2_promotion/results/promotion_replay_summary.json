@@ -1,0 +1,90 @@
+{
+  "schema": "a4_a2_a3_a4_k2_promotion_summary_v1",
+  "qualification": "OWNER_RTL_TRANSACTION_REPLAY_PASS",
+  "fresh_full_report_sha256": "e9d4795e6a2d9a303775b221c41946c876108c5f6487a55da3bd56040322ee3f",
+  "vector_bundle_sha256": "2a6e84b589e35cf26779aee25a354a70aea5aa2d374f8a1e449272fc07cc17f6",
+  "suite_run_counts": {
+    "full50": 50,
+    "capacity22": 22,
+    "directed": 1
+  },
+  "runs_per_owner": 73,
+  "common_edge_ordering": {
+    "a1_common_tb_sha256": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2",
+    "focused_owner_tests": 3,
+    "generated_per_owner": 3,
+    "source_overrun_per_owner": 1,
+    "accepted_per_owner": 2,
+    "retired_per_owner": 2,
+    "status": "PASS"
+  },
+  "owners": [
+    {
+      "owner": "a2",
+      "commit": "d74ff962aaf07c5209f1a1d1c69832735c654a0d",
+      "run_count": 73,
+      "generated": 172039,
+      "source_overrun": 4741,
+      "reset_aborted": 4,
+      "accepted": 167294,
+      "retired": 167294,
+      "measurement_retired": 167294,
+      "max_occurrence_to_accept_latency": 23,
+      "max_accept_to_retire_latency": 0
+    },
+    {
+      "owner": "a3",
+      "commit": "bd1c1ee955685fc077afe930116a03bc49a8218f",
+      "run_count": 73,
+      "generated": 172039,
+      "source_overrun": 21108,
+      "reset_aborted": 4,
+      "accepted": 150927,
+      "retired": 150927,
+      "measurement_retired": 150873,
+      "max_occurrence_to_accept_latency": 265,
+      "max_accept_to_retire_latency": 0
+    },
+    {
+      "owner": "a4",
+      "commit": "0e613b6933f1bb92e9b2f75b79a50663187f17d3",
+      "run_count": 73,
+      "generated": 172039,
+      "source_overrun": 8482,
+      "reset_aborted": 4,
+      "accepted": 163553,
+      "retired": 163553,
+      "measurement_retired": 163549,
+      "max_occurrence_to_accept_latency": 23,
+      "max_accept_to_retire_latency": 0
+    }
+  ],
+  "old_new_result_delta": {
+    "baseline_commit": "0dda9a738ddd3fc7339063e2bdcdd7034674a354",
+    "baseline_role": "comparison_only_never_reused_as_current_result",
+    "fields": [
+      "generated",
+      "overrun",
+      "reset_aborted",
+      "accepted",
+      "retired",
+      "measured_retired",
+      "max_occ_accept",
+      "max_accept_retire"
+    ],
+    "owner_suite_comparisons": 9,
+    "all_deltas_zero": true
+  },
+  "mutation_kills": [
+    "malicious_trace",
+    "malicious_generation_index",
+    "malicious_occurrence_time_shift_rehashed",
+    "malicious_driver_time_index_shift"
+  ],
+  "provenance": {
+    "runner_sha256": "406ac8509ceea57d7b42454ec5274cabefefe10cdd5c328b08e63c252790bea7",
+    "exporter_sha256": "c5ff7a28c7e992ed0cd176a34ea2095579ac2cb62453f3b572d8d358eff62f8f",
+    "replay_driver_sha256": "75446c227d7ed32400a1749cd009c33c13501715771ab3269524adada235c3bb",
+    "focused_ordering_tb_sha256": "83db0896c7e7291e9224ad01813e91439363e51acd613c9e2d3926178a5064c7"
+  }
+}

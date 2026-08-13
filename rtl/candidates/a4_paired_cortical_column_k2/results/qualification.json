@@ -51,19 +51,19 @@
     "common_head": "2a3a3be94be8f12585f484b5b1da2b372f7282d9",
     "generator_sha256": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
     "material_source_sha256": {
-      "README.md": "297928ed94e7528964b0e07bd889ec0f660d89a8585e95d3189706f1a112ec38",
+      "README.md": "959a71c51fa78a8da6f873d141bbf03511f72cb06d73d6336209eb00d7f388a6",
       "a4_paired_cortical_column_k2.sv": "56bde1a765cd750e5b4581e51d90ec1cf6893bcea9cbe904b09aeeafe89a0185",
-      "a4_pcck2_ordered_link_adapter.sv": "ec91ebfaa2358323def5711c083f9d2dfd7b8da85a49c8c321d152b0f1148689",
+      "a4_pcck2_ordered_link_adapter.sv": "91626a4167a52e3211d25cef3839a22c3e2bffc3b8c2647c726e89edf0422c05",
       "contract_crosscheck.py": "b86d2eb2b6abe6b8e2213c7e5a621eb5a676294f43e964aead8fc5811ce1c434",
-      "docs/architecture.md": "6e9612403a60c7f898e25b997176cdad32cbcd09bb939d3e32c57ffce9cffcf3",
+      "docs/architecture.md": "a2f9e1d6836c9e34d894a319d8e029c740772fcb039284c89337120d8f8889ea",
       "model.py": "88bf2637a30d251d80f066a45bc5e392726e67a94e0de465eebd162e5e701c52",
       "replay_v4.py": "edce17242dc02d5f7e6391c3d82ecba259b111d6e5f86c2aab8ee7c5ef0c4139",
-      "run_qualification.py": "33ef7b2d6e4bc26a2e234e4aab40c6be5237c2b03bbccc173ccad9b7983a4774",
+      "run_qualification.py": "347fde04667a423c408b13c6e211112918618f93bb40af5eae61370dfdfe683a",
       "structural.py": "3c2cb601a0c674cc094e0d38ba8a010bf7c43d2db96c61031cda38a8cd80d511",
       "tests/generate_vectors.py": "bd73091e6c3bb47772792bf28cdd09e12d52eb073f77458f90800e3c255dff90",
       "tests/lockstep_tb.sv": "f67ab6bac2bc4ba805284867ba07edb3371dcdf61d168be569cd41f6221305c9",
-      "tests/ordered_link_tb.sv": "eebe30eab7db614ba110cbdf89ee09021e64dc6ec1ca9cb726922abc3373a590",
-      "tests/run_mutations.py": "f26e6f3bbc6c32409b2c2e04d1dca0c4c3fcd4531bb132aa414cc3f5a9b8edb8",
+      "tests/ordered_link_tb.sv": "0c58f6c081245eb24efb88c1320fc46b5add6b3561122b9bdc50f4b28accfae3",
+      "tests/run_mutations.py": "f7415a24c551afa06811c51fec14c77f16867014e3b492a280723a167f255b2b",
       "tests/test_model.py": "b73b61fa6c7efa5a87fc6a6b66d02654775060f3f537ae201df253112bf42826"
     },
     "verilator_version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"
@@ -122,7 +122,7 @@
     "frozen_v4_full50": 50,
     "frozen_v4_rtl_executions": 72,
     "model_unit_tests": 6,
-    "mutation_falsifiers_killed": 4,
-    "ordered_link_cases": 1
+    "mutation_falsifiers_killed": 5,
+    "ordered_link_cases": 4
   }
 }

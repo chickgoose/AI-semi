@@ -41,6 +41,33 @@ OWNER_PINS = {
 }
 OWNER_ORDER = ("a2", "a3", "a4")
 PASS_RE = re.compile(r"^A4_K2_REPLAY_PASS (.*)$", re.MULTILINE)
+COMMON_ORDERING_PASS_RE = re.compile(
+    r"^A4_K2_COMMON_ORDERING_PASS owner=(\S+) generated=3 overrun=1 accepted=2 retired=2$",
+    re.MULTILINE)
+PRE_ALIGNMENT_BASELINE_COMMIT = "0dda9a738ddd3fc7339063e2bdcdd7034674a354"
+# Receipt values produced by PRE_ALIGNMENT_BASELINE_COMMIT.  They are used
+# only to report a delta; current results always come from fresh RTL runs.
+PRE_ALIGNMENT_BASELINE = {
+    "a2": {
+        "full50": (106416, 2370, 0, 104046, 104046, 104046, 23, 0),
+        "capacity22": (65616, 2370, 0, 63246, 63246, 63246, 23, 0),
+        "directed": (7, 1, 4, 2, 2, 2, 0, 0),
+    },
+    "a3": {
+        "full50": (106416, 12771, 0, 93645, 93645, 93611, 265, 0),
+        "capacity22": (65616, 8336, 0, 57280, 57280, 57260, 265, 0),
+        "directed": (7, 1, 4, 2, 2, 2, 1, 0),
+    },
+    "a4": {
+        "full50": (106416, 4245, 0, 102171, 102171, 102169, 23, 0),
+        "capacity22": (65616, 4236, 0, 61380, 61380, 61378, 23, 0),
+        "directed": (7, 1, 4, 2, 2, 2, 0, 0),
+    },
+}
+DELTA_FIELDS = (
+    "generated", "overrun", "reset_aborted", "accepted", "retired",
+    "measured_retired", "max_occ_accept", "max_accept_retire",
+)
 
 
 class ReplayError(RuntimeError):
@@ -142,6 +169,32 @@ def compile_owner(iverilog: Path, owner: str, source: Path, work_root: Path) -> 
     return executable
 
 
+def compile_common_ordering_test(iverilog: Path, owner: str, source: Path,
+                                 work_root: Path) -> Path:
+    executable = work_root / f"{owner}-a4-k2-common-ordering.vvp"
+    arguments = [
+        str(iverilog), "-g2012", "-s", "a4_k2_common_ordering_tb",
+        "-o", str(executable), str(source), str(OWNER_PINS[owner]["binding"]),
+        str(HERE / "a4_k2_transaction_boundary.sv"),
+        str(HERE / "a4_k2_common_ordering_tb.sv"),
+    ]
+    result = command(arguments, cwd=HERE)
+    if result.returncode:
+        raise ReplayError(f"{owner}: common-ordering compilation failed:\n{result.stdout}")
+    return executable
+
+
+def run_common_ordering_test(vvp: Path, executable: Path, owner: str) -> dict[str, Any]:
+    result = command([str(vvp), str(executable), f"+OWNER={owner}"])
+    match = COMMON_ORDERING_PASS_RE.search(result.stdout)
+    if result.returncode or match is None or match.group(1) != owner:
+        raise ReplayError(f"{owner}: common-ordering RTL test failed:\n{result.stdout}")
+    return {
+        "owner": owner, "generated": 3, "source_overrun": 1,
+        "accepted": 2, "retired": 2, "status": "PASS",
+    }
+
+
 def parse_metrics(output: str) -> dict[str, Any]:
     matches = PASS_RE.findall(output)
     if len(matches) != 1:
@@ -195,6 +248,42 @@ def simulate_owner(vvp: Path, executable: Path, owner: str, bundle: dict[str, An
         "max_occurrence_to_accept_latency": max(item["max_occ_accept"] for item in results),
         "max_accept_to_retire_latency": max(item["max_accept_retire"] for item in results),
         "runs": results,
+    }
+
+
+def result_delta(owner_results: list[dict[str, Any]]) -> dict[str, Any]:
+    owners: dict[str, Any] = {}
+    unchanged = True
+    for owner_result in owner_results:
+        owner = owner_result["owner"]
+        suites: dict[str, Any] = {}
+        for suite in ("full50", "capacity22", "directed"):
+            rows = [row for row in owner_result["runs"] if row["suite"] == suite]
+            observed = (
+                sum(row["generated"] for row in rows),
+                sum(row["overrun"] for row in rows),
+                sum(row["reset_aborted"] for row in rows),
+                sum(row["accepted"] for row in rows),
+                sum(row["retired"] for row in rows),
+                sum(row["measured_retired"] for row in rows),
+                max(row["max_occ_accept"] for row in rows),
+                max(row["max_accept_retire"] for row in rows),
+            )
+            baseline = PRE_ALIGNMENT_BASELINE[owner][suite]
+            delta = {field: current - old for field, current, old in
+                     zip(DELTA_FIELDS, observed, baseline)}
+            unchanged = unchanged and all(value == 0 for value in delta.values())
+            suites[suite] = {
+                "old": dict(zip(DELTA_FIELDS, baseline)),
+                "new": dict(zip(DELTA_FIELDS, observed)),
+                "delta": delta,
+            }
+        owners[owner] = suites
+    return {
+        "baseline_commit": PRE_ALIGNMENT_BASELINE_COMMIT,
+        "baseline_role": "comparison_only_never_reused_as_current_result",
+        "all_metrics_unchanged": unchanged,
+        "owners": owners,
     }
 
 
@@ -337,6 +426,14 @@ def main(argv: list[str] | None = None) -> int:
 
         executables = {owner: compile_owner(iverilog, owner, source, args.work_dir)
                        for owner, source in owner_sources.items()}
+        ordering_executables = {
+            owner: compile_common_ordering_test(iverilog, owner, source, args.work_dir)
+            for owner, source in owner_sources.items()
+        }
+        ordering_results = [
+            run_common_ordering_test(vvp, ordering_executables[owner], owner)
+            for owner in OWNER_ORDER
+        ]
         mutations = run_mutation_gate(a1_repo, bundle, trace_root, vector_root,
                                       vvp, executables["a2"])
         owner_results = []
@@ -346,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"A4_K2_OWNER_REPLAY_PASS owner={owner} runs={owner_results[-1]['run_count']}")
 
         report = {
-            "schema": "a4_a2_a3_a4_k2_digital_promotion_replay_v1",
+            "schema": "a4_a2_a3_a4_k2_digital_promotion_replay_v2",
             "qualification": "OWNER_RTL_TRANSACTION_REPLAY_PASS",
             "vector_bundle_sha256": bundle["bundle_sha256"],
             "provenance": {
@@ -360,6 +457,14 @@ def main(argv: list[str] | None = None) -> int:
                 } for owner in OWNER_ORDER
             },
             "suite_run_counts": {"full50": 50, "capacity22": 22, "directed": 1},
+            "common_edge_ordering": {
+                "a1_common_tb_sha256": exporter.PINNED["common_tb_sha256"],
+                "rule": "occurrence_and_overrun_classification_precedes_following_posedge_accept_and_retire",
+                "same_source_same_edge_outcome": "new_occurrence_is_source_overrun_then_old_event_fires",
+                "next_occurrence_edge_outcome": "source_is_rearmed",
+                "focused_owner_results": ordering_results,
+            },
+            "old_new_result_delta": result_delta(owner_results),
             "mutation_kills": mutations,
             "owners": owner_results,
         }
@@ -367,7 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ReplayError, exporter.ExportError, OSError, ValueError, KeyError, TypeError) as error:
         print(f"A4_K2_PROMOTION_REPLAY_FAIL {error}", file=sys.stderr)
         return 2
-    print(f"A4_K2_PROMOTION_REPLAY_PASS owners=3 runs_per_owner=73 mutations={len(mutations)} output={args.output}")
+    print(f"A4_K2_PROMOTION_REPLAY_PASS owners=3 runs_per_owner=73 ordering_tests=3 mutations={len(mutations)} output={args.output}")
     return 0
 
 
