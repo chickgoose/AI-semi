@@ -96,6 +96,8 @@ class StaticFlowContractTests(unittest.TestCase):
         for token in (
             "floorPlan -r $aspect $util", "dbGet top.fPlan.rows.name",
             "dbGet top.fPlan.rows.site.name -u",
+            "concat $used_sites [list $site CoreSiteDouble]",
+            "foreach used_site $planned_sites",
             "setAnalysisMode -analysisType onChipVariation -cppr both",
             "globalNetConnect $vdd -type pgpin",
             "globalNetConnect $vss -type pgpin",

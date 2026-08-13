@@ -129,7 +129,11 @@ set flow_failed [catch {
   floorPlan -r $aspect $util $margin $margin $margin $margin
   set core_box [get_db current_design .core_bbox]
   set used_sites [lsort -unique [get_db insts .base_cell.site.name]]
-  foreach used_site $used_sites {
+  # Optimization may insert CoreSiteDouble buffers even when the incoming
+  # mapped netlist contains only CoreSite cells.  Rows therefore cover both
+  # the mapped inventory and the fixed PDK insertion-site inventory.
+  set planned_sites [lsort -unique [concat $used_sites [list $site CoreSiteDouble]]]
+  foreach used_site $planned_sites {
     if {$used_site ni [list $site CoreSiteDouble]} {
       error "mapped instance uses unsupported placement site $used_site"
     }
@@ -142,7 +146,7 @@ set flow_failed [catch {
     error "floorplan created no standard-cell rows for site $site"
   }
   foreach row_site [dbGet top.fPlan.rows.site.name -u] {
-    if {[lsearch -exact $used_sites $row_site] < 0} {
+    if {[lsearch -exact $planned_sites $row_site] < 0} {
       error "floorplan row uses unrequired site $row_site"
     }
   }
