@@ -30,7 +30,10 @@ module w2_single_edge_pair_tx (
     case (input_count_i)
       2'd0: shape_error = (input_addr0_i != 4'd0) ||
                             (input_addr1_i != 4'd0);
-      2'd1: shape_error = 1'b0;
+      // Count-one has one canonical scheduler-side representation.  The TX
+      // later duplicates addr0 onto the wire; a nonzero unused addr1 is an
+      // upstream protocol error rather than an alternate singleton encoding.
+      2'd1: shape_error = (input_addr1_i != 4'd0);
       2'd2: shape_error = (input_addr0_i == input_addr1_i);
       default: shape_error = 1'b1;
     endcase
