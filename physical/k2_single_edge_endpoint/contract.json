@@ -124,7 +124,7 @@
   },
   "constraints": {
     "sdc": "physical/k2_single_edge_endpoint/constraints/single_edge_placeholder.sdc",
-    "sdc_sha256": "1fb093c888d04d51de2a9ed944671304058edc972b9cd31788161dc4930b4d4b",
+    "sdc_sha256": "fe7a4456dfe18148ac1386d1ce63a6c93c0b50c85e02fd25020eae5ea06c2ae4",
     "authority_status": "UNCONFIRMED_TEAM_PLACEHOLDER",
     "evidence_class": "TEAM_PLACEHOLDER_SCREENING_ONLY",
     "candidate_go_eligible": false,
@@ -137,7 +137,9 @@
       "SE_OUTPUT_DELAY_MIN_NS": "0.10",
       "SE_OUTPUT_DELAY_MAX_NS": "0.50",
       "SE_INPUT_TRANSITION_NS": "0.05",
-      "SE_OUTPUT_LOAD_PF": "0.01"
+      "SE_OUTPUT_LOAD_PF": "0.01",
+      "SE_MIN_PULSE_HIGH_NS": "0.50",
+      "SE_MIN_PULSE_LOW_NS": "0.50"
     },
     "prohibited_claims": [
       "organizer_required_operating_point",

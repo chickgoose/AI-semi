@@ -43,6 +43,11 @@ contract sets `candidate_go_eligible=false`; neither a command-line override
 nor an otherwise clean run can promote those values. Organizer or board-level
 conditions require a new reviewed contract with external authority.
 
+The screening clock also has explicit 0.50 ns high and low minimum pulse-width
+constraints. These match the separate default-vectorless screening profile so
+the two local diagnostic paths no longer differ on pulse-width intent. They do
+not establish organizer authority or prove a routed pulse-width check.
+
 ## Gates
 
 Run the local package check without Cadence or PDK access:
@@ -161,9 +166,10 @@ headers separately, strips comments before interpreting diagnostic claims,
 and rejects missing, duplicate, foreign, fatal, incomplete, or contradictory
 report context.
 
-The mapped SDC parser accepts exactly eight commands: one named primary clock
+The mapped SDC parser accepts exactly ten commands: one named primary clock
 with the 6.5 ns period and `{0.0 3.25}` rising/falling waveform, uncertainty,
-min/max input and output delays, input transition, and output load. Collections
+high/low minimum pulse width, min/max input and output delays, input transition,
+and output load. Collections
 must enumerate exactly `clk_i`, every non-clock input, and every output as
 appropriate. Extra clocks, commands, values, collections, generated clocks,
 or timing exceptions are rejected even when placed after a semicolon. Mapped

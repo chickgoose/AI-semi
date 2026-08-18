@@ -357,13 +357,14 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
         "SE_PERIOD_NS": "6.5", "SE_CLOCK_UNCERTAINTY_NS": "0.25",
         "SE_INPUT_DELAY_MIN_NS": "0.10", "SE_INPUT_DELAY_MAX_NS": "0.50",
         "SE_OUTPUT_DELAY_MIN_NS": "0.10", "SE_OUTPUT_DELAY_MAX_NS": "0.50",
-        "SE_INPUT_TRANSITION_NS": "0.05", "SE_OUTPUT_LOAD_PF": "0.01"}
+        "SE_INPUT_TRANSITION_NS": "0.05", "SE_OUTPUT_LOAD_PF": "0.01",
+        "SE_MIN_PULSE_HIGH_NS": "0.50", "SE_MIN_PULSE_LOW_NS": "0.50"}
     if constraints.get("authority_status") != "UNCONFIRMED_TEAM_PLACEHOLDER" or \
             constraints.get("evidence_class") != "TEAM_PLACEHOLDER_SCREENING_ONLY" or \
             constraints.get("candidate_go_eligible") is not False or \
             constraints.get("values") != exact_values or \
             constraints.get("sdc_sha256") != \
-            "1fb093c888d04d51de2a9ed944671304058edc972b9cd31788161dc4930b4d4b" or \
+            "fe7a4456dfe18148ac1386d1ce63a6c93c0b50c85e02fd25020eae5ea06c2ae4" or \
             constraints.get("prohibited_claims") != [
                 "organizer_required_operating_point", "pad_or_package_loading",
                 "silicon_signoff", "fmax", "interface_legality"] or \
@@ -403,7 +404,8 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
     required_sdc = (
         "TEAM_PLACEHOLDER_SCREENING_ONLY", "create_clock -name se_primary_clk",
         "get_ports clk_i", "set_input_delay", "set_output_delay", "set_load",
-        "set_input_transition", "get_clocks *",
+        "set_input_transition", "set_min_pulse_width -high",
+        "set_min_pulse_width -low", "get_clocks *",
     )
     forbidden_sdc = r"(?mi)^\s*set_(?:false_path|multicycle_path|case_analysis|disable_timing|clock_groups|max_delay|min_delay)\b"
     if any(item not in sdc for item in required_sdc) or \
@@ -946,6 +948,8 @@ def validate_sdc(text: str, contract: dict[str, Any]) -> None:
     exact = (
         rf"create_clock -name se_primary_clk -period 6\.5(?:0+)? -waveform \{{0(?:\.0+)? 3\.25(?:0+)?\}} {clock_port}",
         rf"set_clock_uncertainty 0\.25(?:0+)? {clock}",
+        rf"set_min_pulse_width -high 0\.5(?:0+)? {clock}",
+        rf"set_min_pulse_width -low 0\.5(?:0+)? {clock}",
         rf"set_input_delay -clock se_primary_clk -min 0\.1(?:0+)? {input_ports}",
         rf"set_input_delay -clock se_primary_clk -max 0\.5(?:0+)? {input_ports}",
         rf"set_input_transition 0\.05(?:0+)? {input_ports}",

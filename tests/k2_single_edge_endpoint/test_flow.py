@@ -169,6 +169,8 @@ class MutationTests(unittest.TestCase):
         outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o drain_idle_o protocol_error_o"
         good = f"""create_clock -name se_primary_clk -period 6.5 -waveform {{0.0 3.25}} [get_ports {{clk_i}}]
 set_clock_uncertainty 0.25 [get_clocks {{se_primary_clk}}]
+set_min_pulse_width -high 0.50 [get_clocks {{se_primary_clk}}]
+set_min_pulse_width -low 0.50 [get_clocks {{se_primary_clk}}]
 set_input_delay -clock se_primary_clk -min 0.10 [get_ports {{{inputs}}}]
 set_input_delay -clock se_primary_clk -max 0.50 [get_ports {{{inputs}}}]
 set_input_transition 0.05 [get_ports {{{inputs}}}]
@@ -179,6 +181,8 @@ set_load 0.01 [get_ports {{{outputs}}}]
         flow.validate_sdc(good, self.fixture.contract)
         bad_sdcs = (
             good.replace("6.5", "7.0", 1),
+            good.replace("set_min_pulse_width -high 0.50", "set_min_pulse_width -high 0.60", 1),
+            good.replace("set_min_pulse_width -low 0.50", "", 1),
             good + "set_false_path -from [all_inputs]\n",
             good.rstrip() + "; set_false_path -from [all_inputs]\n",
             good + "create_clock -period 9.0 [get_ports {rst_i}]\n",
@@ -525,6 +529,8 @@ class EvidenceTests(unittest.TestCase):
         outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o drain_idle_o protocol_error_o"
         sdc = f"""create_clock -name se_primary_clk -period 6.5 -waveform {{0.0 3.25}} [get_ports {{clk_i}}]
 set_clock_uncertainty 0.25 [get_clocks {{se_primary_clk}}]
+set_min_pulse_width -high 0.50 [get_clocks {{se_primary_clk}}]
+set_min_pulse_width -low 0.50 [get_clocks {{se_primary_clk}}]
 set_input_delay -clock se_primary_clk -min 0.10 [get_ports {{{inputs}}}]
 set_input_delay -clock se_primary_clk -max 0.50 [get_ports {{{inputs}}}]
 set_input_transition 0.05 [get_ports {{{inputs}}}]

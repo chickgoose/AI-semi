@@ -14,6 +14,7 @@ foreach name {
   SE_INPUT_DELAY_MIN_NS SE_INPUT_DELAY_MAX_NS
   SE_OUTPUT_DELAY_MIN_NS SE_OUTPUT_DELAY_MAX_NS
   SE_INPUT_TRANSITION_NS SE_OUTPUT_LOAD_PF
+  SE_MIN_PULSE_HIGH_NS SE_MIN_PULSE_LOW_NS
 } {
   if {![info exists ::env($name)] ||
       ![string is double -strict $::env($name)] || $::env($name) < 0.0} {
@@ -31,6 +32,10 @@ if {[sizeof_collection $se_clock_port] != 1} {
 create_clock -name se_primary_clk -period $::env(SE_PERIOD_NS) \
   -waveform [list 0.0 [expr {$::env(SE_PERIOD_NS) / 2.0}]] $se_clock_port
 set_clock_uncertainty $::env(SE_CLOCK_UNCERTAINTY_NS) \
+  [get_clocks se_primary_clk]
+set_min_pulse_width -high $::env(SE_MIN_PULSE_HIGH_NS) \
+  [get_clocks se_primary_clk]
+set_min_pulse_width -low $::env(SE_MIN_PULSE_LOW_NS) \
   [get_clocks se_primary_clk]
 
 set se_nonclock_inputs [remove_from_collection [all_inputs] $se_clock_port]
