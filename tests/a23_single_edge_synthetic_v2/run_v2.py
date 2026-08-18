@@ -26,6 +26,7 @@ PROJECT = PACKAGE.parents[1]
 BASE_PACKAGE = PROJECT / "tests/a23_full_single_edge_replay"
 BASE_RUNNER = BASE_PACKAGE / "run_replay.py"
 BASE_PINS = BASE_PACKAGE / "pins.json"
+ORDINAL_TB = PACKAGE / "a23_synthetic_v2_ordinal_tb.sv"
 EXPORT_HELPER_DIR = PROJECT / "tests/a23_single_edge_synthetic_export"
 EXPECTED_SOURCE_COMMIT = "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
 EXPECTED_SOURCE_TREE = "e6030c7990f602a7fc1c73ac529b008b8e2c4133"
@@ -43,6 +44,7 @@ IMPLEMENTATION_FILES = (
     "tests/a23_single_edge_synthetic_v2/run_all.sh",
     "tests/a23_single_edge_synthetic_v2/run_v2.py",
     "tests/a23_single_edge_synthetic_v2/test_synthetic_v2.py",
+    "tests/a23_single_edge_synthetic_v2/a23_synthetic_v2_ordinal_tb.sv",
     "tests/a23_single_edge_synthetic_export/export_preserved.py",
 )
 
@@ -288,21 +290,58 @@ def sequence_evidence(root: Path, names: list[str]) -> list[dict[str, Any]]:
               "retire_cycle", "event_state"]
     for owner in ("a2", "a3"):
         for name in names:
-            path = root / f"work/artifacts/{owner}/none/{name}/events.csv"
-            with path.open(encoding="utf-8", newline="") as source:
-                rows = list(csv.DictReader(source))
+            event_path = root / f"work/artifacts/{owner}/none/{name}/events.csv"
+            ordinal_path = root / f"work/ordinal/{owner}/{name}/ordinals.csv"
+            simulation_path = root / f"work/ordinal/{owner}/{name}/simulation.log"
+            with event_path.open(encoding="utf-8", newline="") as source:
+                event_rows = list(csv.DictReader(source))
+            with ordinal_path.open(encoding="utf-8", newline="") as source:
+                ordinal_rows = list(csv.DictReader(source))
             sequence = [[int(row[key]) if key != "event_state" else row[key]
-                         for key in fields] for row in rows]
+                         for key in fields] for row in event_rows]
+            if len(ordinal_rows) != len(sequence):
+                raise V2Error(f"ordinal/event cardinality differs: {owner}/{name}")
             if [row[0] for row in sequence] != list(range(len(sequence))):
                 raise V2Error(f"event row sequence is not contiguous: {owner}/{name}")
-            retired = [row for row in sequence if row[-1] == "retired"]
+            accepted_order: list[list[int]] = []
+            retired_order: list[list[int]] = []
+            for index, (event, ordinal) in enumerate(zip(event_rows, ordinal_rows)):
+                common = ("owner", "trace", "tb_event_id", "logical_source",
+                          "occurrence_cycle", "accept_cycle", "retire_cycle", "event_state")
+                if any(event[key] != ordinal[key] for key in common):
+                    raise V2Error(f"ordinal/event row differs: {owner}/{name}/{index}")
+                accept_ordinal = int(ordinal["accept_ordinal"])
+                retire_ordinal = int(ordinal["retire_ordinal"])
+                if event["event_state"] == "retired":
+                    accepted_order.append([
+                        accept_ordinal, index, int(event["logical_source"]),
+                        int(event["accept_cycle"]),
+                    ])
+                    retired_order.append([
+                        retire_ordinal, index, int(event["logical_source"]),
+                        int(event["retire_cycle"]),
+                    ])
+                elif accept_ordinal != -1 or retire_ordinal != -1:
+                    raise V2Error(f"overrun carries ordinal: {owner}/{name}/{index}")
+            accepted_order.sort()
+            retired_order.sort()
+            expected_ordinals = list(range(len(accepted_order)))
+            if ([row[0] for row in accepted_order] != expected_ordinals or
+                    [row[0] for row in retired_order] != expected_ordinals):
+                raise V2Error(f"ordinals are not contiguous: {owner}/{name}")
+            if [row[1:3] for row in accepted_order] != [row[1:3] for row in retired_order]:
+                raise V2Error(f"accepted/retired ordinal identity differs: {owner}/{name}")
             evidence.append({
                 "owner": owner,
                 "trace": name,
                 "event_row_count": len(sequence),
-                "retired_row_count": len(retired),
+                "accepted_ordinal_count": len(accepted_order),
+                "retired_ordinal_count": len(retired_order),
                 "event_row_sequence_sha256": digest(semantic_bytes(sequence)),
-                "retired_timing_rows_sha256": digest(semantic_bytes(retired)),
+                "accept_order_sha256": digest(semantic_bytes(accepted_order)),
+                "retire_order_sha256": digest(semantic_bytes(retired_order)),
+                "ordinal_csv_sha256": file_digest(ordinal_path),
+                "ordinal_simulation_log_sha256": file_digest(simulation_path),
             })
     return evidence
 
@@ -329,7 +368,88 @@ def run_campaign(retained_root: Path) -> int:
     verify_result_identity(result, current_commit())
     if "A23_FULL_SINGLE_EDGE_REPLAY_PASS" not in process.stdout:
         raise V2Error("fresh replay lacks campaign PASS sentinel")
+    run_ordinal_campaign(retained_root, result)
     return 0
+
+
+def run_logged(
+    command: list[str], log: Path, *, environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.run(
+        command, cwd=PROJECT, env=environment, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+    )
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(process.stdout, encoding="utf-8")
+    if process.returncode:
+        raise V2Error(f"ordinal command failed exit={process.returncode}: {' '.join(command)}")
+    return process
+
+
+def run_ordinal_campaign(root: Path, result: dict[str, Any]) -> None:
+    sys.path.insert(0, str(BASE_PACKAGE))
+    import run_replay as base  # noqa: PLC0415
+
+    document = base.load_document()
+    sources, _, _, _, _ = base.validate_integration(
+        document, Path(result["provenance"]["verified_tools"]["verilator"]["path"]),
+        allow_dirty=False,
+    )
+    environment = os.environ.copy()
+    environment["MAKE"] = document["tools"]["make"]["path"]
+    environment["CXX"] = document["tools"]["cxx"]["path"]
+    verilator = document["tools"]["verilator"]["path"]
+    campaign_lines: list[str] = []
+    names = sorted(result["owners"]["a2"]["full50"]["runs"])
+    for owner in ("a2", "a3"):
+        build = root / f"work/build/ordinal/{owner}"
+        build.mkdir(parents=True, exist_ok=False)
+        binary = build / "sim"
+        config = document["owners"][owner]
+        command = [
+            verilator, "--binary", "--timing", "--assert", "-Wall",
+            "-Wno-fatal", "-Wno-BLKSEQ", "-Wno-WIDTHEXPAND",
+            "-Wno-WIDTHTRUNC", "-Wno-UNUSEDSIGNAL", "-Wno-SYNCASYNCNET",
+            f"-D{config['define']}", "--top-module", "a23_synthetic_v2_ordinal_tb",
+            "--Mdir", str(build), "-o", "sim",
+            *[str(path) for path in sources[owner]],
+            str(PROJECT / config["wrapper"]), str(ORDINAL_TB),
+        ]
+        run_logged(command, root / f"work/ordinal/logs/build-{owner}.log",
+                   environment=environment)
+        if not binary.is_file():
+            raise V2Error(f"ordinal simulator is absent: {owner}")
+        for index, name in enumerate(names, start=1):
+            case = root / f"work/ordinal/{owner}/{name}"
+            case.mkdir(parents=True, exist_ok=False)
+            ordinal = case / "ordinals.csv"
+            simulation = case / "simulation.log"
+            process = run_logged([
+                str(binary), f"+OWNER={owner}", f"+TRACE_NAME={name}",
+                f"+TRACE_FILE={root / f'work/prepared/{name}.trace'}",
+                f"+ORDINAL_OUTPUT={ordinal}",
+            ], simulation)
+            if "A23_SYNTHETIC_V2_ORDINAL_PASS" not in process.stdout:
+                raise V2Error(f"ordinal PASS sentinel is absent: {owner}/{name}")
+            if index % 10 == 0:
+                line = f"A23_SYNTHETIC_V2_ORDINAL_PROGRESS owner={owner} full50={index}/50"
+                campaign_lines.append(line)
+                print(line, flush=True)
+    (root / "ordinal_campaign.log").write_text(
+        "\n".join(campaign_lines) + "\n", encoding="utf-8"
+    )
+
+
+def ordinal_paths(names: list[str]) -> set[str]:
+    paths = {"ordinal_campaign.log"}
+    for owner in ("a2", "a3"):
+        paths.add(f"work/ordinal/logs/build-{owner}.log")
+        for name in names:
+            paths.update({
+                f"work/ordinal/{owner}/{name}/ordinals.csv",
+                f"work/ordinal/{owner}/{name}/simulation.log",
+            })
+    return paths
 
 
 def retained_payload(
@@ -338,14 +458,15 @@ def retained_payload(
 ) -> tuple[dict[str, bytes], dict[str, Any]]:
     files, directories = retained.scan_regular_tree(root)
     if full:
-        required = retained.expected_evidence_paths(names) | {"campaign.log"}
+        required = (retained.expected_evidence_paths(names) | {"campaign.log"} |
+                    ordinal_paths(names))
         missing, scratch = retained.closed_inventory(files, directories, required)
         if missing:
             raise V2Error(f"retained evidence is missing: {sorted(missing)}")
         retained.validate_claims(root, files, result, names)
         selected = required
     else:
-        selected = {"result.json", "campaign.log"}
+        selected = {"result.json", "campaign.log", "ordinal_campaign.log"}
         missing = selected - set(files)
         if missing:
             raise V2Error(f"reproduction identity bytes are missing: {sorted(missing)}")
@@ -451,6 +572,27 @@ def read_archive(path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
     manifest = load_json_bytes(contents.pop(manifest_name), "sealed export manifest")
     if manifest.get("schema") != EXPORT_SCHEMA or manifest.get("status") != STATUS:
         raise V2Error("sealed export manifest schema/status differs")
+    if set(manifest) != {
+        "schema", "status", "archive_prefix", "safe_metadata", "closure",
+        "inventory_entry_count", "inventory_size_bytes", "inventory",
+    }:
+        raise V2Error("sealed export manifest fields differ")
+    if manifest.get("archive_prefix") != ARCHIVE_PREFIX:
+        raise V2Error("sealed export prefix differs")
+    if manifest.get("safe_metadata") != {
+        "regular_files_only": True,
+        "mode": "0444",
+        "uid": 0, "gid": 0, "uname": "", "gname": "", "mtime": 0,
+        "gzip_mtime": 0,
+    }:
+        raise V2Error("sealed export metadata contract differs")
+    if manifest.get("closure") != {
+        "manifest_is_the_only_non_inventory_member": True,
+        "symlinks": "FORBIDDEN", "hardlinks": "FORBIDDEN",
+        "path_escapes": "FORBIDDEN", "duplicate_paths": "FORBIDDEN",
+        "missing_or_extra_entries": "FORBIDDEN",
+    }:
+        raise V2Error("sealed export closure contract differs")
     expected: dict[str, dict[str, Any]] = {}
     rows = manifest.get("inventory")
     if not isinstance(rows, list):
@@ -463,6 +605,10 @@ def read_archive(path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         if name in expected:
             raise V2Error(f"duplicate inventory path: {name}")
         expected[name] = row
+    if manifest.get("inventory_entry_count") != len(rows):
+        raise V2Error("sealed export inventory counter differs")
+    if manifest.get("inventory_size_bytes") != sum(row["size_bytes"] for row in rows):
+        raise V2Error("sealed export inventory byte counter differs")
     if set(contents) != set(expected):
         raise V2Error(
             f"sealed export is not closed: missing={sorted(set(expected)-set(contents))} "
@@ -475,6 +621,35 @@ def read_archive(path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
     payload = {name.removeprefix(f"{ARCHIVE_PREFIX}/"): data
                for name, data in contents.items()}
     return manifest, payload
+
+
+def validate_publication_inventory_counter(
+    manifest: dict[str, Any], publication: dict[str, Any],
+) -> None:
+    actual = len(manifest["inventory"])
+    if publication.get("export_inventory_entry_count") != actual:
+        raise V2Error("publication inventory counter differs")
+
+
+def archived_package_identity(
+    payload: dict[str, bytes], primary: dict[str, Any], package_commit: str,
+) -> str:
+    expected: dict[str, str] = dict(primary["provenance"]["verified_files"])
+    for relative in IMPLEMENTATION_FILES:
+        expected[relative] = digest(git_bytes(package_commit, relative))
+    observed: dict[str, str] = {}
+    for relative, expected_sha in sorted(expected.items()):
+        path = f"inputs/repository/{relative}"
+        if path not in payload or digest(payload[path]) != expected_sha:
+            raise V2Error(f"archived package input differs: {relative}")
+        observed[relative] = expected_sha
+    archived_paths = {
+        path.removeprefix("inputs/repository/") for path in payload
+        if path.startswith("inputs/repository/")
+    }
+    if archived_paths != set(expected):
+        raise V2Error("archived package input inventory is not closed")
+    return digest(semantic_bytes(observed))
 
 
 def materialize_primary(payload: dict[str, bytes], root: Path) -> None:
@@ -510,6 +685,7 @@ def validate_reopened(
         raise V2Error("publication v2 result size differs")
     if publication.get("export_size_bytes") != archive_path.stat().st_size:
         raise V2Error("publication export size differs")
+    validate_publication_inventory_counter(manifest, publication)
     embedded_result = payload.get("result/synthetic_v2_result.json")
     if embedded_result != result_path.read_bytes():
         raise V2Error("embedded and published v2 results differ")
@@ -528,12 +704,21 @@ def validate_reopened(
         raise V2Error("v2 observed difference pointers differ after reopen")
     if not set(differences) <= set(EPHEMERAL_LOG_POINTERS):
         raise V2Error("non-ephemeral result field differs across reproduction")
+    names = verify_result_identity(primary_result, publication["package_commit"])
+    if verify_result_identity(reproduction_result, publication["package_commit"]) != names:
+        raise V2Error("reopened reproduction identity differs")
+    verify_rtl_git_blobs(primary_result)
+    actual_tool_digest = verify_tools(primary_result)
+    _, actual_trace_digest = trace_identity(primary_result, names)
+    actual_package_digest = archived_package_identity(
+        payload, primary_result, publication["package_commit"]
+    )
     with tempfile.TemporaryDirectory(prefix="a23-v2-reopen-") as temporary:
         extracted = Path(temporary)
         materialize_primary(payload, extracted)
         files, directories = retained.scan_regular_tree(extracted)
-        names = verify_result_identity(primary_result, publication["package_commit"])
-        required = retained.expected_evidence_paths(names) | {"campaign.log"}
+        required = (retained.expected_evidence_paths(names) | {"campaign.log"} |
+                    ordinal_paths(names))
         missing, scratch = retained.closed_inventory(files, directories, required)
         if missing or scratch:
             raise V2Error("reopened primary payload is missing evidence or contains scratch")
@@ -542,6 +727,29 @@ def validate_reopened(
         if sequences != v2_result["sequence_evidence"]["full50_runs"]:
             raise V2Error("reopened sequence evidence differs")
     identity = v2_result["identities"]
+    dataset = v2_result.get("dataset", {})
+    if (dataset.get("trace_count") != 50 or
+            dataset.get("actual_full50_executions") != 100 or
+            dataset.get("shared_prepared_trace_count") != 50 or
+            len(dataset.get("trace_identities", [])) != 50):
+        raise V2Error("v2 dataset counters differ")
+    expected_accounting = {
+        **retained.EXPECTED_EXECUTION_ACCOUNTING,
+        "ordinal_observation_actual_RTL_executions": 100,
+    }
+    if v2_result.get("execution_accounting") != expected_accounting:
+        raise V2Error("v2 execution accounting differs")
+    sequence_rows = v2_result.get("sequence_evidence", {}).get("full50_runs", [])
+    if len(sequence_rows) != 100:
+        raise V2Error("v2 sequence evidence counter differs")
+    independently_recomputed = {
+        "tool_identity_sha256": actual_tool_digest,
+        "trace_identity_sha256": actual_trace_digest,
+        "package_input_identity_sha256": actual_package_digest,
+    }
+    for key, actual in independently_recomputed.items():
+        if identity.get(key) != actual:
+            raise V2Error(f"independently recomputed identity differs for {key}")
     for key in ("package_commit", "source_commit", "source_tree",
                 "integration_commit", "integration_tree", "tool_identity_sha256",
                 "trace_identity_sha256", "package_input_identity_sha256"):
@@ -637,9 +845,10 @@ def seal(
             "execution_time_global_retire_order": (
                 "checked by the pinned TB accepted FIFO and bound by each retained PASS log"
             ),
-            "within_same_cycle_lane_order_reconstructable_from_event_csv": False,
-            "nonclaim": (
-                "row/timing digests do not independently reconstruct within-cycle lane order"
+            "ordinal_observation_actual_RTL_executions": 100,
+            "within_same_cycle_global_order_reconstructable_from_ordinal_sidecars": True,
+            "ordinal_definition": (
+                "monotonic global ordinal assigned lane0 then lane1 on each observed edge"
             ),
         },
         "qualification": {
@@ -649,6 +858,10 @@ def seal(
             "power": "HOLD",
             "CDC_RDC": "HOLD",
         },
+    }
+    v2_result["execution_accounting"] = {
+        **primary["execution_accounting"],
+        "ordinal_observation_actual_RTL_executions": 100,
     }
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_bytes(pretty(v2_result))
@@ -662,6 +875,9 @@ def seal(
     roles["primary/campaign.log"] = "primary_campaign_driver_log"
     roles["reproduction/result.json"] = "semantic_reproduction_legacy_result"
     roles["reproduction/campaign.log"] = "semantic_reproduction_campaign_driver_log"
+    roles["reproduction/ordinal_campaign.log"] = (
+        "semantic_reproduction_ordinal_campaign_driver_log"
+    )
     roles["result/synthetic_v2_result.json"] = "published_v2_result"
     rows = inventory(payload, roles)
     manifest = {

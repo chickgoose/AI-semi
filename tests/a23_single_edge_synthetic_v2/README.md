@@ -16,7 +16,9 @@ Two fresh executions use the pinned producer through an explicit retained root:
 
 Each execution is exactly 100 full50 actual-RTL processes, two clean-drain
 reset processes, two count-two activation processes, and eight separately
-compiled/executed source mutants. Both executions must record the same package,
+compiled/executed source mutants. A separate actual-RTL ordinal observer runs
+all 100 full50 owner/trace cases and assigns explicit global acceptance and
+retirement ordinals, including lane order within the same cycle. Both executions must record the same package,
 hardened source/integration, tool, trace, and prepared-input identities.
 
 The semantic digest removes exactly the 22 concrete build/simulation log-hash

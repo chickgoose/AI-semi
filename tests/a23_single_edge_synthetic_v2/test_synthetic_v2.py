@@ -69,7 +69,20 @@ class SyntheticV2Test(unittest.TestCase):
         rows = v2.inventory(payload, roles)
         manifest = {
             "schema": v2.EXPORT_SCHEMA, "status": v2.STATUS,
+            "archive_prefix": v2.ARCHIVE_PREFIX,
+            "safe_metadata": {
+                "regular_files_only": True, "mode": "0444",
+                "uid": 0, "gid": 0, "uname": "", "gname": "", "mtime": 0,
+                "gzip_mtime": 0,
+            },
+            "closure": {
+                "manifest_is_the_only_non_inventory_member": True,
+                "symlinks": "FORBIDDEN", "hardlinks": "FORBIDDEN",
+                "path_escapes": "FORBIDDEN", "duplicate_paths": "FORBIDDEN",
+                "missing_or_extra_entries": "FORBIDDEN",
+            },
             "inventory": rows, "inventory_entry_count": 2,
+            "inventory_size_bytes": sum(row["size_bytes"] for row in rows),
         }
         with tempfile.TemporaryDirectory() as temporary:
             first = Path(temporary) / "first.tar.gz"
@@ -125,7 +138,23 @@ class SyntheticV2Test(unittest.TestCase):
     def test_archive_rejects_missing_extra_hash_and_size(self) -> None:
         payload = {"payload/a": b"alpha"}
         rows = v2.inventory(payload, {"payload/a": "test"})
-        base = {"schema": v2.EXPORT_SCHEMA, "status": v2.STATUS, "inventory": rows}
+        base = {
+            "schema": v2.EXPORT_SCHEMA, "status": v2.STATUS,
+            "archive_prefix": v2.ARCHIVE_PREFIX,
+            "safe_metadata": {
+                "regular_files_only": True, "mode": "0444",
+                "uid": 0, "gid": 0, "uname": "", "gname": "", "mtime": 0,
+                "gzip_mtime": 0,
+            },
+            "closure": {
+                "manifest_is_the_only_non_inventory_member": True,
+                "symlinks": "FORBIDDEN", "hardlinks": "FORBIDDEN",
+                "path_escapes": "FORBIDDEN", "duplicate_paths": "FORBIDDEN",
+                "missing_or_extra_entries": "FORBIDDEN",
+            },
+            "inventory": rows, "inventory_entry_count": len(rows),
+            "inventory_size_bytes": sum(row["size_bytes"] for row in rows),
+        }
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             for label, manifest, actual_payload, pattern in (
@@ -133,13 +162,55 @@ class SyntheticV2Test(unittest.TestCase):
                 ("extra", base, {**payload, "payload/extra": b"x"}, "not closed"),
                 ("hash", {**base, "inventory": [{**rows[0], "sha256": "0" * 64}]},
                  payload, "hash/size"),
-                ("size", {**base, "inventory": [{**rows[0], "size_bytes": 99}]},
+                ("size", {**base, "inventory": [{**rows[0], "size_bytes": 99}],
+                          "inventory_size_bytes": 99},
                  payload, "hash/size"),
             ):
                 archive = root / f"{label}.tgz"
                 v2.write_archive(archive, manifest, actual_payload)
                 with self.assertRaisesRegex(v2.V2Error, pattern):
                     v2.read_archive(archive)
+
+    def test_archive_rejects_derived_counter_drift(self) -> None:
+        payload = {"payload/a": b"alpha"}
+        rows = v2.inventory(payload, {"payload/a": "test"})
+        manifest = {
+            "schema": v2.EXPORT_SCHEMA,
+            "status": v2.STATUS,
+            "archive_prefix": v2.ARCHIVE_PREFIX,
+            "safe_metadata": {
+                "regular_files_only": True, "mode": "0444",
+                "uid": 0, "gid": 0, "uname": "", "gname": "", "mtime": 0,
+                "gzip_mtime": 0,
+            },
+            "closure": {
+                "manifest_is_the_only_non_inventory_member": True,
+                "symlinks": "FORBIDDEN", "hardlinks": "FORBIDDEN",
+                "path_escapes": "FORBIDDEN", "duplicate_paths": "FORBIDDEN",
+                "missing_or_extra_entries": "FORBIDDEN",
+            },
+            "inventory": rows,
+            "inventory_entry_count": 999,
+            "inventory_size_bytes": 999,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = Path(temporary) / "counter-drift.tgz"
+            v2.write_archive(archive, manifest, payload)
+            with self.assertRaisesRegex(v2.V2Error, "counter differs"):
+                v2.read_archive(archive)
+        valid_manifest = {**manifest, "inventory_entry_count": 1,
+                          "inventory_size_bytes": 5}
+        with self.assertRaisesRegex(v2.V2Error, "publication inventory counter"):
+            v2.validate_publication_inventory_counter(
+                valid_manifest, {"export_inventory_entry_count": 999}
+            )
+
+    def test_ordinal_contract_has_explicit_global_fields(self) -> None:
+        tb = (HERE / "a23_synthetic_v2_ordinal_tb.sv").read_text(encoding="utf-8")
+        self.assertIn("accept_ordinal", tb)
+        self.assertIn("retire_ordinal", tb)
+        self.assertIn("accept_ordinal_next", tb)
+        self.assertIn("retire_ordinal_next", tb)
 
     def test_committed_publication_reopens_when_present(self) -> None:
         result = HERE / "synthetic_v2_result.json"
