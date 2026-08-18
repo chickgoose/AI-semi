@@ -106,6 +106,15 @@ python3 physical/k2_single_edge_endpoint/flow.py execute --design a2 \
 These commands are documented for the licensed server; the local regression
 never calls them.
 
+Execution receipts use schema `k2_single_edge_execution_receipt_v3`. Exit-zero
+runs classify their complete artifact manifest as
+`BOUND_COMPLETE_EXIT_ZERO_STAGE_MANIFEST`. A nonzero run may leave safely
+collected diagnostic files in its exclusive stage directory, but the receipt
+uses `UNBOUND_NONZERO_EXIT_FILES_NOT_LEDGER_ELIGIBLE`, carries an empty artifact
+manifest, and cannot enter ledger construction or qualification. This makes
+the failure files' lack of provenance binding explicit; it does not promote
+them to evidence.
+
 ## Artifact ledger and decision
 
 After both commands complete, generate the exact-path ledger (this command does
@@ -223,7 +232,9 @@ python3 physical/k2_single_edge_endpoint/flow.py bind-cohort \
 This binds only caller-self-sealed diagnostic bytes. It emits
 `freshness_verified=false`, `comparison_ready=false`, and
 `candidate_physical_go=false`; a controlled runner, trusted freshness source,
-and producer-held authentication remain external blockers.
+producer-held authentication, and an organizer-controlled captured real-report
+corpus remain external blockers. Local parser fixtures do not substitute for
+that corpus or alter HOLD.
 
 Run the adversarial local regression with:
 

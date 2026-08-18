@@ -191,6 +191,9 @@
     },
     "exclusive_no_overwrite_stage_directories": true,
     "innovus_requires_successful_bound_genus_receipt": true,
+    "execution_receipt_schema": "k2_single_edge_execution_receipt_v3",
+    "exit_zero_artifact_evidence_classification": "BOUND_COMPLETE_EXIT_ZERO_STAGE_MANIFEST",
+    "nonzero_artifact_evidence_classification": "UNBOUND_NONZERO_EXIT_FILES_NOT_LEDGER_ELIGIBLE",
     "local_tests_must_not_invoke_real_tools": true
   },
   "artifact_ledger": {
