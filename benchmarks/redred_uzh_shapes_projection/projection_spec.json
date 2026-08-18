@@ -1,0 +1,80 @@
+{
+  "schema": "redred-uzh-shapes-projection-spec-v1",
+  "status": "PUBLIC_PROJECTED_EXTENSION_UNREPLAYED",
+  "release_status": "HOLD",
+  "dataset": {
+    "provider": "University of Zurich Robotics and Perception Group",
+    "collection": "Event-Camera Dataset",
+    "sequence": "shapes_rotation",
+    "sensor": "DAVIS240C",
+    "license_spdx": "CC-BY-NC-SA-3.0",
+    "canonical_redred_traffic": false,
+    "official_redred_traffic": false
+  },
+  "artifacts": {
+    "archive": {
+      "basename": "uzh-shapes_rotation.zip",
+      "size_bytes": 157446920,
+      "sha256": "56aade6bf53dcf73e8fe40905ccac8385cd7606bc9a85103bf2c9f9045117551",
+      "events_member": "events.txt",
+      "events_member_size_bytes": 509907771,
+      "events_member_crc32": "c54a9cef"
+    },
+    "events": {
+      "basename": "events.txt",
+      "size_bytes": 509907771,
+      "line_count": 23126288,
+      "sha256": "d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda"
+    },
+    "license": {
+      "basename": "CC-BY-NC-SA-3.0.txt",
+      "size_bytes": 22306,
+      "sha256": "8812f83442fd0eca14eb0208988e190fdcbfebec58fa5459d3218edfdfdc5a32"
+    }
+  },
+  "input_format": {
+    "fields": ["timestamp_seconds", "x", "y", "polarity"],
+    "separator": "single_ascii_space",
+    "timestamp_fractional_digits": 9,
+    "polarity_values": [0, 1]
+  },
+  "sensor_geometry": {"width": 240, "height": 180},
+  "projection": {
+    "width": 4,
+    "height": 4,
+    "bx_formula": "floor(x*4/240)",
+    "by_formula": "floor(y*4/180)",
+    "source_formula": "4*by+bx",
+    "preserve_every_event": true,
+    "preserve_collisions": true
+  },
+  "window": {
+    "start_seconds_inclusive": "41.321",
+    "end_seconds_exclusive": "41.322",
+    "expected_event_count": 1100,
+    "expected_first_dataset_event_index": 13856250,
+    "expected_last_dataset_event_index": 13857349
+  },
+  "clock": {
+    "period_ns": "6.5",
+    "period_rational_ns": {"numerator": 13, "denominator": 2},
+    "cycle_formula": "floor((timestamp_ns-window_start_ns)*2/(13*time_compression))"
+  },
+  "scenarios": [
+    {"id": "1x", "time_compression": 1},
+    {"id": "64x", "time_compression": 64},
+    {"id": "256x", "time_compression": 256}
+  ],
+  "resource_limits": {
+    "max_input_line_bytes": 96,
+    "max_selected_events": 2000,
+    "max_license_bytes": 65536,
+    "max_zip_entries": 4096
+  },
+  "lineage": {
+    "interface": "SINGLE_EDGE_REPLAY_PREPARER_INPUT_ONLY",
+    "p6_evidence_used": false,
+    "actual_replay_receipt": null,
+    "replay_status": "UNREPLAYED"
+  }
+}
