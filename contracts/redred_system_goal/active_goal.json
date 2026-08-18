@@ -190,17 +190,202 @@
     },
     "PARALLEL_FALLBACK": {
       "role": "LEGALITY_FALLBACK",
-      "competition_release_status": "HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER",
+      "competition_release_status": "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION",
       "transfer_mode": "SINGLE_EDGE_PARALLEL",
-      "integrated_digital_evidence": "MISSING",
-      "post_route_evidence": "MISSING",
-      "vectorless_power_evidence": "MISSING",
-      "hold_id": "H_PARALLEL_INTEGRATION",
+      "integrated_digital_evidence": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
+      "source_cdc_rdc": "PASS_SYNCHRONOUS_INPUT_SCOPE",
+      "source_structure_pdk_legality": "PASS_SOURCE_ONLY",
+      "mapped_pdk_legality": "HOLD",
+      "organizer_pdk_legality": "HOLD",
+      "post_route_evidence": "HOLD_NO_REAL_PNR_OR_POST_ROUTE_TIMING",
+      "vectorless_power_evidence": "HOLD_NO_REAL_MAPPED_VECTORLESS_POWER",
+      "hold_id": "H_PARALLEL_REAL_EVIDENCE",
       "may_borrow_p6_physical_evidence": false,
       "disallowed_borrowed_dependencies": [
         "INHERITED_6P5_STANDARD_CELL_REFERENCE",
         "P6_VECTORLESS_POWER",
         "P6_PAD_PACKAGE_CHANNEL"
+      ]
+    }
+  },
+  "bounded_current_evidence": {
+    "policy": {
+      "git_objects_rehashed": true,
+      "selected_claim_fields_checked": true,
+      "campaigns_reexecuted_by_policy_verifier": false,
+      "policy_pass_is_evidence_pass": false,
+      "policy_pass_is_release_pass": false
+    },
+    "single_edge_actual_rtl_synthetic": {
+      "status": "PASS",
+      "claim_scope": "HARDENED_SINGLE_EDGE_ACTUAL_RTL_SYNTHETIC_SEMANTICS",
+      "release_status": "HOLD",
+      "selection_status": "HOLD",
+      "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+      "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+      "publication_commit": "72491e45a35e6883bd4ee65d5c30409c108ab190",
+      "p6_evidence_used": false,
+      "dataset_scope": "TEAM_SYNTHETIC_FULL50_NONOFFICIAL",
+      "artifacts": {
+        "result": {
+          "commit": "72491e45a35e6883bd4ee65d5c30409c108ab190",
+          "path": "tests/a23_full_single_edge_replay/result.json",
+          "sha256": "e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4"
+        },
+        "pins": {
+          "commit": "72491e45a35e6883bd4ee65d5c30409c108ab190",
+          "path": "tests/a23_full_single_edge_replay/pins.json",
+          "sha256": "0daba2132010272a78b56ec2a1541f30f7cb5d2b0d8562102cb70cf9e098d8e0"
+        }
+      },
+      "execution_accounting": {
+        "full50_actual_rtl_executions": 100,
+        "reset_actual_rtl_executions": 2,
+        "mutation_activation_actual_rtl_executions": 2,
+        "mutation_actual_rtl_executions": 8,
+        "receipt_only_executions": 0
+      },
+      "full50_aggregate": {
+        "A2": {"generated": 106416, "source_overrun": 2370, "accepted": 104046, "retired": 104046},
+        "A3": {"generated": 106416, "source_overrun": 12771, "accepted": 93645, "retired": 93645}
+      }
+    },
+    "public_uzh_projected_actual_rtl": {
+      "status": "PASS",
+      "claim_scope": "PUBLIC_UZH_PROJECTED_EXTENSION_ACTUAL_SINGLE_EDGE_RTL",
+      "release_status": "HOLD",
+      "selection_status": "HOLD",
+      "canonical_redred_traffic": false,
+      "official_redred_traffic": false,
+      "p6_evidence_used": false,
+      "publication_commit": "f30fec14572d9efb58a98d8f61dd22604a91446b",
+      "artifacts": {
+        "publication": {
+          "commit": "f30fec14572d9efb58a98d8f61dd22604a91446b",
+          "path": "tests/a23_full_single_edge_replay/public_projected_publication.json",
+          "sha256": "3e12686de29459bbe8f2d292ca23892281e9760e9fbe6f65d979bc43a259c725"
+        },
+        "result": {
+          "commit": "f30fec14572d9efb58a98d8f61dd22604a91446b",
+          "path": "tests/a23_full_single_edge_replay/public_projected_result.json",
+          "sha256": "c6172d39d476c1db0733b1952613e9f17d2b0849e8b398b33ee66bb6e24d30da"
+        },
+        "pins": {
+          "commit": "f30fec14572d9efb58a98d8f61dd22604a91446b",
+          "path": "tests/a23_full_single_edge_replay/public_projected_pins.json",
+          "sha256": "a29ad84883ef00afbc781f2328ed805c9abd24c5a9fd8449abe1886f38ff7958"
+        },
+        "export_bundle": {
+          "commit": "f30fec14572d9efb58a98d8f61dd22604a91446b",
+          "path": "tests/a23_full_single_edge_replay/public_projected_export.tar.gz",
+          "sha256": "7eb025d9ba6de3dcd538311e75b11b55c51439ba9fc8fbf747213af1577053e0"
+        }
+      },
+      "dataset_accounting": {
+        "unique_projected_window_events": 1100,
+        "retiming_scenarios": ["1x", "64x", "256x"],
+        "retimings_are_independent_unique_samples": false,
+        "projected_actual_rtl_executions": 6,
+        "receipt_only_executions": 0
+      }
+    },
+    "single_edge_source_cdc_rdc": {
+      "status": "PASS",
+      "claim_scope": "SOURCE_AND_ELABORATED_SINGLE_POSEDGE_CLOCK_STRUCTURE",
+      "external_input_scope": "BOUND_SYNCHRONOUS_TO_PRIMARY_CLOCK_ASSUMPTION",
+      "reset_scope": "SYNCHRONOUS_ASSERT_SYNCHRONOUS_DEASSERT_DRAIN_BEFORE_ASSERT",
+      "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+      "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+      "publication_commit": "9d1dced49d3fceabf812d2ba2275c8d4c02eef13",
+      "mapped_cdc_rdc_status": "HOLD",
+      "final_selected_interface_status": "HOLD",
+      "artifacts": {
+        "contract": {
+          "commit": "9d1dced49d3fceabf812d2ba2275c8d4c02eef13",
+          "path": "contracts/redred_single_edge_cdc_rdc/contract.json",
+          "sha256": "c4cbe85d704274a2f5d41a80652222880761465abeeca23df5b8291a7b4db44d"
+        },
+        "source_binding": {
+          "commit": "9d1dced49d3fceabf812d2ba2275c8d4c02eef13",
+          "path": "contracts/redred_single_edge_cdc_rdc/source_binding.json",
+          "sha256": "48974c5831f75177703b00853fdad1b3074d77b9faa8e5ef3a64cbbadd46887f"
+        },
+        "verifier": {
+          "commit": "9d1dced49d3fceabf812d2ba2275c8d4c02eef13",
+          "path": "contracts/redred_single_edge_cdc_rdc/verify_contract.py",
+          "sha256": "729ca50cd23d5b1abcbd12dc1c22bfea67fdc184316660c2f7b7b5ab935fed4d"
+        }
+      }
+    },
+    "single_edge_source_structure_pdk": {
+      "status": "PASS",
+      "claim_scope": "RTL_SOURCE_STRUCTURE_ONLY_NOT_MAPPED_NOT_ORGANIZER_APPROVAL",
+      "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+      "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+      "publication_commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+      "mapped_legality_status": "HOLD",
+      "organizer_legality_status": "HOLD",
+      "release_status": "HOLD",
+      "artifacts": {
+        "matrix": {
+          "commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+          "path": "tests/redred_single_edge_pdk_legality/legality_matrix.json",
+          "sha256": "6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247"
+        },
+        "verifier": {
+          "commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+          "path": "tests/redred_single_edge_pdk_legality/verify_matrix.py",
+          "sha256": "b86fd7de7b675e6329c7e256362c334113e9956da77d926c63c915f2c83e3b91"
+        }
+      }
+    },
+    "single_edge_physical": {
+      "status": "HOLD",
+      "claim_scope": "SOURCE_BOUND_STATIC_FLOW_SCAFFOLD_ONLY",
+      "real_pnr_status": "HOLD",
+      "post_route_timing_status": "HOLD",
+      "constraint_authority_status": "HOLD_UNCONFIRMED_TEAM_PLACEHOLDER",
+      "contract": {
+        "commit": "e933a89181ec1e279ff0d1d1f24a562e6bf49da7",
+        "path": "physical/k2_single_edge_endpoint/contract.json",
+        "sha256": "db2918c2707bca06ecce050e2ca67bd9934b3d6c5476efac41251bfa1b618c0a"
+      }
+    },
+    "single_edge_vectorless": {
+      "status": "HOLD",
+      "claim_scope": "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER",
+      "real_mapped_vectorless_status": "HOLD",
+      "release_comparison_eligible": false,
+      "publication_commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+      "artifacts": {
+        "contract": {
+          "commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+          "path": "physical/k2_single_edge_vectorless/contract.json",
+          "sha256": "b6aed31406fc8dee4566e1905313aced6998cf0be621817101f694221ef2e328"
+        },
+        "source_manifests": {
+          "commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+          "path": "physical/k2_single_edge_vectorless/source-manifests.json",
+          "sha256": "7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c"
+        }
+      }
+    },
+    "known_motion_supplied_rotation_synthetic_demo": {
+      "status": "PASS",
+      "claim_scope": "KNOWN_MOTION_SUPPLIED_ROTATION_SYNTHETIC_DEMO_ONLY",
+      "evidence_class": "SYNTHETIC_DEMO",
+      "inside_endpoint_ppa": false,
+      "canonical_coordinate_status": "HOLD",
+      "coordinate_rtl_status": "HOLD",
+      "release_status": "HOLD",
+      "publication_commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256",
+      "artifacts": [
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/README.md", "sha256": "60348b88e6a52c6bc2fb661ff41cea125b7a57df0bc20fc2176afacfead39756"},
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/model.py", "sha256": "11ab64067e626a3d4717f830d8633e905b38d1353fcd3e1ca94038cdbf6f0b4c"},
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/fixtures/intrinsics.json", "sha256": "917ad7ef66870cab5aa49096fbc79778a7c308521892ca6edae4baeca01f5a35"},
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/fixtures/poses.jsonl", "sha256": "c5001da1a131aaf5373b5d26b6065b54acc1763ebb4600236697bce7f359dd98"},
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/fixtures/retired_events.jsonl", "sha256": "c43ae25c79e712f179aaf43b127c2429312f36889250c50089fdc253a312336f"},
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "tests/known_motion_coordinate/test_coordinate.py", "sha256": "9772c830bb55840d516ed77f8b3b93409d1b895308be8409aaa622fd6fe8bf77"}
       ]
     }
   },
@@ -518,11 +703,14 @@
         "competition_legality": "HOLD"
       },
       "PARALLEL_FALLBACK": {
-        "integrated_digital": "MISSING",
-        "standard_cell_post_route": "MISSING",
-        "vectorless_power": "MISSING",
+        "integrated_digital": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
+        "source_cdc_rdc": "PASS_SYNCHRONOUS_INPUT_SCOPE",
+        "source_structure_pdk_legality": "PASS_SOURCE_ONLY",
+        "mapped_pdk_legality": "HOLD",
+        "standard_cell_post_route": "HOLD_NO_REAL_PNR_OR_POST_ROUTE_TIMING",
+        "vectorless_power": "HOLD_NO_REAL_MAPPED_VECTORLESS_POWER",
         "real_pad_package_channel": "UNPROVEN",
-        "competition_legality": "NOT_YET_EVALUATED"
+        "competition_legality": "HOLD_MAPPED_AND_ORGANIZER_AUTHORITY"
       }
     },
     "core_only_reference": {
@@ -621,6 +809,38 @@
         "kind": "DECISION",
         "state": "HOLD"
       },
+      "PARALLEL_SYNTHETIC_DIGITAL": {
+        "kind": "BOUNDED_EVIDENCE",
+        "state": "PASS"
+      },
+      "PARALLEL_PUBLIC_PROJECTED_DIGITAL": {
+        "kind": "BOUNDED_EVIDENCE",
+        "state": "PASS"
+      },
+      "PARALLEL_SOURCE_CDC_RDC": {
+        "kind": "BOUNDED_EVIDENCE",
+        "state": "PASS"
+      },
+      "PARALLEL_SOURCE_STRUCTURE_PDK": {
+        "kind": "BOUNDED_EVIDENCE",
+        "state": "PASS"
+      },
+      "PARALLEL_MAPPED_PDK": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "PARALLEL_ORGANIZER_PDK": {
+        "kind": "EXTERNAL_AUTHORITY",
+        "state": "HOLD"
+      },
+      "PARALLEL_REAL_PNR_POST_ROUTE": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "PARALLEL_REAL_VECTORLESS_POWER": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
       "PARALLEL_COMPLETE_EVIDENCE": {
         "kind": "EVIDENCE",
         "state": "HOLD"
@@ -635,6 +855,10 @@
       },
       "FINAL_CDC_RDC": {
         "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "FINAL_A2_A3_SELECTION": {
+        "kind": "DECISION",
         "state": "HOLD"
       },
       "PDK_ENDPOINT_IO": {
@@ -660,6 +884,10 @@
       "COORDINATE_RTL": {
         "kind": "DECISION",
         "state": "HOLD"
+      },
+      "KNOWN_MOTION_SYNTHETIC_DEMO": {
+        "kind": "BOUNDED_EVIDENCE",
+        "state": "PASS"
       }
     },
     "requirements": [
@@ -671,6 +899,20 @@
           "P6_LEGALITY",
           "P6_PAD_PHY",
           "P6_VECTORLESS_POWER"
+        ]
+      },
+      {
+        "target": "PARALLEL_COMPLETE_EVIDENCE",
+        "operator": "ALL",
+        "sources": [
+          "PARALLEL_SYNTHETIC_DIGITAL",
+          "PARALLEL_PUBLIC_PROJECTED_DIGITAL",
+          "PARALLEL_SOURCE_CDC_RDC",
+          "PARALLEL_SOURCE_STRUCTURE_PDK",
+          "PARALLEL_MAPPED_PDK",
+          "PARALLEL_ORGANIZER_PDK",
+          "PARALLEL_REAL_PNR_POST_ROUTE",
+          "PARALLEL_REAL_VECTORLESS_POWER"
         ]
       },
       {
@@ -696,6 +938,7 @@
           "CANONICAL_DIGITAL",
           "SELECTED_INTERFACE_RELEASE",
           "FINAL_CDC_RDC",
+          "FINAL_A2_A3_SELECTION",
           "PDK_ENDPOINT_IO"
         ]
       },
@@ -755,9 +998,16 @@
       "blocks": ["P6_VECTORLESS_POWER", "P6_RELEASE"],
       "blocks_core_development": false
     },
-    "H_PARALLEL_INTEGRATION": {
+    "H_PARALLEL_REAL_EVIDENCE": {
       "status": "HOLD",
-      "blocks": ["PARALLEL_COMPLETE_EVIDENCE", "PARALLEL_RELEASE"],
+      "blocks": [
+        "PARALLEL_MAPPED_PDK",
+        "PARALLEL_ORGANIZER_PDK",
+        "PARALLEL_REAL_PNR_POST_ROUTE",
+        "PARALLEL_REAL_VECTORLESS_POWER",
+        "PARALLEL_COMPLETE_EVIDENCE",
+        "PARALLEL_RELEASE"
+      ],
       "blocks_core_development": false
     },
     "H_INHERITED_6P5_ARCHIVE_UNAVAILABLE": {
@@ -768,6 +1018,11 @@
     "H_FINAL_CDC_RDC": {
       "status": "HOLD",
       "blocks": ["FINAL_CDC_RDC", "TEAM_CANONICAL_RELEASE"],
+      "blocks_core_development": false
+    },
+    "H_FINAL_A2_A3_SELECTION": {
+      "status": "HOLD",
+      "blocks": ["FINAL_A2_A3_SELECTION", "TEAM_CANONICAL_RELEASE"],
       "blocks_core_development": false
     },
     "H_PDK_ENDPOINT_IO_RULES": {

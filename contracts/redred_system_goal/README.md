@@ -47,13 +47,74 @@ The inherited 6.5 ns Fovea+A7/R1, A2+P6, and A3+P6 standard-cell cohort is
 channel. Competition multi-edge legality, real pad/package/channel behavior,
 and qualified complete-endpoint vectorless power remain separate P6 HOLDs.
 
-The single-edge parallel fallback is
-`HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER`. It cannot borrow P6 physical or power
-evidence.
+The single-edge parallel fallback now has bounded digital and source-structure
+evidence. Its competition release remains
+`HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION`: it cannot borrow P6
+physical, power, pad/package/channel, or inherited 6.5 ns evidence.
+
+## Bounded current evidence
+
+`PASS` below describes only the named evidence class. It does not change the
+verifier's policy-only authority, select an interface or candidate, or release
+the team result.
+
+| Evidence class | Status | Exact claim boundary | Remaining HOLD |
+| --- | --- | --- | --- |
+| Hardened single-edge actual RTL | PASS | Synthetic `full50` semantics, exact accepted-event retirement, overrun accounting, reset and activated mutations | Canonical campaign, physical, power, release and selection |
+| Public UZH projected actual RTL extension | PASS | Noncanonical/nonofficial projected-extension behavior on A2/A3 single-edge actual RTL | Official/canonical status, release and selection |
+| Single-edge CDC/RDC | PASS | Source/elaborated, one posedge domain, with inputs assumed synchronous to the primary clock | Mapped CDC/RDC and final selected-interface CDC/RDC |
+| Single-edge PDK legality | PASS | RTL source structure only | Mapped legality and organizer PDK approval |
+| Single-edge physical | HOLD | Source-bound static flow scaffold only | Real P&R, post-route timing and authoritative constraints |
+| Single-edge vectorless | HOLD | Diagnostic-only scaffold with placeholder I/O and no controlled producer | Real mapped vectorless power and comparison eligibility |
+| Supplied-rotation known-motion demo | PASS | Synthetic, post-retire, rotation-only behavior | Canonical coordinate evidence, coordinate RTL and release |
+
+The synthetic actual-RTL result is pinned at integration commit
+`72491e45a35e6883bd4ee65d5c30409c108ab190`: result SHA-256
+`e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4`
+and pins SHA-256
+`0daba2132010272a78b56ec2a1541f30f7cb5d2b0d8562102cb70cf9e098d8e0`.
+It binds hardened source commit
+`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b` and integrated RTL commit
+`a0a4eb38632245db8ff5937ea5b6c6e3f3839246`. The 100 `full50` actual-RTL
+executions report A2 `generated=106416, overrun=2370, accepted=retired=104046`
+and A3 `generated=106416, overrun=12771, accepted=retired=93645`.
+
+The public UZH projection publication is pinned at
+`f30fec14572d9efb58a98d8f61dd22604a91446b`; publication/result/pins SHA-256
+values are respectively
+`3e12686de29459bbe8f2d292ca23892281e9760e9fbe6f65d979bc43a259c725`,
+`c6172d39d476c1db0733b1952613e9f17d2b0849e8b398b33ee66bb6e24d30da`,
+and `a29ad84883ef00afbc781f2328ed805c9abd24c5a9fd8449abe1886f38ff7958`.
+Its 1x/64x/256x scenarios are three retimings of 1,100 unique projected
+events, not 3,300 independent unique events. It is explicitly noncanonical,
+nonofficial, uses no P6 evidence, and remains release/selection HOLD.
+
+The source CDC/RDC contract is pinned at
+`9d1dced49d3fceabf812d2ba2275c8d4c02eef13`; its contract SHA-256 is
+`c4cbe85d704274a2f5d41a80652222880761465abeeca23df5b8291a7b4db44d`.
+The source-structure PDK matrix is pinned at
+`bbc6d8b8e82c795659d0bfe6b27b97a3428953e4`, SHA-256
+`6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247`.
+Those PASS rows do not promote mapped or organizer legality.
+
+The physical HOLD contract is pinned at
+`e933a89181ec1e279ff0d1d1f24a562e6bf49da7`, SHA-256
+`db2918c2707bca06ecce050e2ca67bd9934b3d6c5476efac41251bfa1b618c0a`.
+The vectorless HOLD contract and source manifest are pinned at
+`c68af0e73bb06bb99eb838c684dbffb2a8dd4995`, with SHA-256 values
+`b6aed31406fc8dee4566e1905313aced6998cf0be621817101f694221ef2e328`
+and `7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c`.
+Neither is real physical or vectorless evidence.
+
+The known-motion package is pinned at
+`78eb019c56f2aab4b844c0fe925a5f2252fca256`. It consumes already-retired
+events and supplied rotations, and remains outside endpoint PPA. The exact six
+package/test Git-object hashes are recorded in `active_goal.json`.
 
 ## Evidence bindings
 
-The canonical digital campaign is an external dependency. This policy binds
+The canonical digital campaign remains an external dependency. The bounded
+single-edge results above do not satisfy or replace it. This policy binds
 the official trace registry, both frozen manifests, exact suite membership,
 clean TB/interface/assertion bytes, and required receipt fields. `capacity22`
 is an exact subset view of `full50`: it contributes zero additional independent
@@ -78,8 +139,9 @@ be combined with the complete-endpoint cohort.
 ## Remaining release boundaries
 
 Team canonical release remains HOLD on canonical digital evidence, an interface
-with its own complete digital/PNR/power/legal evidence, final CDC/RDC, and
-competition PDK endpoint I/O rules. Organizer data is not one of those blockers:
+with its own complete digital/PNR/power/legal evidence, final selected-interface
+CDC/RDC, the final A2-versus-A3 decision, and competition PDK endpoint I/O rules.
+No release interface is selected. Organizer data is not one of those blockers:
 its absence blocks only organizer-data and generalization claims. Dataset
 arrival creates a versioned extension and cannot mutate `full50` or
 `capacity22`.
