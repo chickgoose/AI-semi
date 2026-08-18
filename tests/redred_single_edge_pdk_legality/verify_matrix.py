@@ -85,6 +85,33 @@ EXPECTED_REPOSITORY_EVIDENCE = {
         "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
     ),
 }
+EXPECTED_GOAL_POLICY_PIN = {
+    "path": "contracts/redred_system_goal/active_goal.json",
+    "sha256": "b67307b8f7dd8c643a580ac13f99623188fd9852f4c1d763cd648004a0eef8ff",
+    "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
+    "verifier_pass_status": "POLICY_INTERNALLY_VALID",
+    "result_authority": "POLICY_ONLY",
+    "evidence_qualified": False,
+    "release_qualified": False,
+    "policy_pass_is_evidence_pass": False,
+    "policy_pass_is_release_pass": False,
+    "fallback_integrated_digital":
+        "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
+    "canonical_digital_dependency":
+        "HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY",
+    "canonical_results_embedded_in_policy": False,
+    "mapped_pdk_legality": "HOLD",
+    "organizer_pdk_legality": "HOLD",
+    "fallback_release_status":
+        "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION",
+    "pinned_legality_publication": {
+        "commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+        "path": "tests/redred_single_edge_pdk_legality/legality_matrix.json",
+        "sha256": "6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247",
+    },
+    "pin_semantics":
+        "IMMUTABLE_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH",
+}
 EXPECTED_EXTERNAL = {
     "GSCLIB_ARCHIVE": (
         "/home/aiasic26911/gsclib045_all_v4.7.tgz",
@@ -142,7 +169,8 @@ ALLOWED_EVENT_CLOCKS = {"clk", "clk_i"}
 TOP_KEYS = {
     "schema", "audit_date", "audit_source_commit", "audit_integrated_commit",
     "decision", "decision_rule",
-    "repository_evidence", "expected_external_artifacts", "local_test_doubles",
+    "repository_evidence", "current_goal_policy_pin", "expected_external_artifacts",
+    "local_test_doubles",
     "recorded_real_cell_contracts", "team_profiles_not_organizer_rules",
     "audited_rtl", "gates",
 }
@@ -474,6 +502,54 @@ def validate_repository_evidence(matrix: dict[str, Any], root: Path) -> None:
         "team timing profile was promoted to organizer authority")
 
 
+def validate_goal_policy_pin(matrix: dict[str, Any], root: Path) -> None:
+    pin = exact_keys(matrix["current_goal_policy_pin"], {
+        "path", "sha256", "authority", "verifier_pass_status",
+        "result_authority", "evidence_qualified", "release_qualified",
+        "policy_pass_is_evidence_pass", "policy_pass_is_release_pass",
+        "fallback_integrated_digital", "canonical_digital_dependency",
+        "canonical_results_embedded_in_policy", "mapped_pdk_legality",
+        "organizer_pdk_legality", "fallback_release_status",
+        "pinned_legality_publication", "pin_semantics",
+    }, "current_goal_policy_pin")
+    exact_keys(pin["pinned_legality_publication"], {"commit", "path", "sha256"},
+               "current_goal_policy_pin.pinned_legality_publication")
+    require(pin == EXPECTED_GOAL_POLICY_PIN, "current goal policy pin changed")
+
+    policy_path = relative_path(pin["path"], "current_goal_policy_pin.path")
+    policy_file = local_regular_file(root, policy_path, "current goal policy pin")
+    require(sha256(policy_file) == pin["sha256"], "current goal policy hash mismatch")
+    policy = load_json_strict(policy_file)
+    verifier = policy["verifier_claim"]
+    fallback = policy["interfaces"]["PARALLEL_FALLBACK"]
+    bounded_policy = policy["bounded_current_evidence"]["policy"]
+    canonical = policy["canonical_digital_dependency"]
+    publication = policy["bounded_current_evidence"][
+        "single_edge_source_structure_pdk"
+    ]["artifacts"]["matrix"]
+    observed = {
+        "path": policy_path,
+        "sha256": sha256(policy_file),
+        "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
+        "verifier_pass_status": verifier["pass_status"],
+        "result_authority": verifier["result_authority"],
+        "evidence_qualified": verifier["evidence_qualified"],
+        "release_qualified": verifier["release_qualified"],
+        "policy_pass_is_evidence_pass": bounded_policy["policy_pass_is_evidence_pass"],
+        "policy_pass_is_release_pass": bounded_policy["policy_pass_is_release_pass"],
+        "fallback_integrated_digital": fallback["integrated_digital_evidence"],
+        "canonical_digital_dependency": canonical["status"],
+        "canonical_results_embedded_in_policy": canonical["results_embedded_in_policy"],
+        "mapped_pdk_legality": fallback["mapped_pdk_legality"],
+        "organizer_pdk_legality": fallback["organizer_pdk_legality"],
+        "fallback_release_status": fallback["competition_release_status"],
+        "pinned_legality_publication": publication,
+        "pin_semantics":
+            "IMMUTABLE_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH",
+    }
+    require(observed == pin, "current goal policy semantics differ from the pinned claims")
+
+
 def validate_external_and_fixtures(matrix: dict[str, Any], root: Path) -> None:
     external_rows = matrix["expected_external_artifacts"]
     fixture_rows = matrix["local_test_doubles"]
@@ -569,6 +645,19 @@ def validate_policy_shape(matrix: dict[str, Any]) -> None:
             "source-level RTL structure passes" in
             by_id["G05_FALLBACK_SINGLE_EDGE_STRUCTURE"]["current_reason"],
             "G05 does not preserve source-PASS/mapped-HOLD separation")
+    g06 = by_id["G06_FALLBACK_CANONICAL_DIGITAL"]
+    g06_reason = g06["current_reason"]
+    require(g06["status"] == "HOLD" and
+            EXPECTED_GOAL_POLICY_PIN["fallback_integrated_digital"] in g06_reason and
+            EXPECTED_GOAL_POLICY_PIN["result_authority"] in g06_reason and
+            EXPECTED_GOAL_POLICY_PIN["canonical_digital_dependency"] in g06_reason and
+            "evidence_qualified=false" in g06_reason and
+            "release_qualified=false" in g06_reason and
+            "no canonical results embedded" in g06_reason and
+            "P6 evidence cannot be borrowed" in g06_reason,
+            "G06 does not preserve bounded-digital-PASS/canonical-HOLD separation")
+    require("integrated fallback digital evidence is missing" not in g06_reason.lower(),
+            "G06 regressed to the stale integrated-digital claim")
 
     cells = exact_keys(matrix["recorded_real_cell_contracts"], {
         "evidence_scope", "cells", "single_edge_rule", "forbidden_absence_rule",
@@ -598,6 +687,7 @@ def validate(matrix_path: Path = MATRIX_PATH, root: Path = ROOT) -> dict[str, An
     matrix = load_json_strict(matrix_path)
     validate_policy_shape(matrix)
     validate_repository_evidence(matrix, root)
+    validate_goal_policy_pin(matrix, root)
     validate_external_and_fixtures(matrix, root)
     validate_rtl(matrix)
     return matrix

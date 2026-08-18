@@ -207,13 +207,17 @@ SINGLE_EDGE_RELEASE_GO = G01 && G02 && G03 && G04 && G05
 | G03 official library/corner | HOLD | Organizer-selected setup, hold, RC, and power views/conditions. |
 | G04 mapped cell legality | HOLD | Fallback mapped inventory; every cell verified in real slow/fast Liberty and macro LEF. |
 | G05 single-edge structure | HOLD (`hardened RTL source PASS`; mapped/clock-report HOLD) | The byte-identical `6fc5e16`/`a0a4eb3` RTL closures are source-clean; mapped netlist and clock reports must independently prove the same declared active edge and absence of undeclared edge/clock primitives. The superseded `4ce4836` baseline is not PASS authority. |
-| G06 canonical digital | HOLD | Fallback-specific complete-endpoint exact-once/conservation/order/reset/drain receipt. |
+| G06 canonical digital | HOLD (`bounded synthetic/public-projected actual-RTL PASS`; canonical campaign HOLD) | The current goal-policy pin is `POLICY_ONLY`, not evidence- or release-qualified. It records bounded integrated digital PASS, but embeds no canonical results; G06 still requires a fallback-specific complete-endpoint exact-once/conservation/order/reset/drain receipt. |
 | G07 official clock/I/O/load | HOLD | Organizer-pinned/accepted numeric clock, uncertainty, drive/transition, delays, reset, and load. |
 | G08 post-route | HOLD | Fallback-specific P&R/timing/DRC/antenna/connectivity receipt at the chosen conditions. |
 | G09 vectorless power | HOLD | Fallback-specific mapped complete-endpoint vectorless receipt at the official profile. |
 
 Promotion rules are fail-closed:
 
+- The goal-policy pin is an immutable snapshot that references the prior
+  published legality package. It is not a recursive assertion that the current
+  package bytes equal that prior SHA, and policy validity is not evidence or
+  release qualification.
 - P6/R1 digital, timing, P&R, or power artifacts cannot satisfy a fallback gate.
 - A no-ODDR/no-IDDR/no-negedge result can be attached only to G05/G04; it has
   no evidentiary path to G01.
