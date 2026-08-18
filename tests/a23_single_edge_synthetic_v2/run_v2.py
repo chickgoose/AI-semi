@@ -26,6 +26,7 @@ PROJECT = PACKAGE.parents[1]
 BASE_PACKAGE = PROJECT / "tests/a23_full_single_edge_replay"
 BASE_RUNNER = BASE_PACKAGE / "run_replay.py"
 BASE_PINS = BASE_PACKAGE / "pins.json"
+BASE_PINS_RELATIVE = "tests/a23_full_single_edge_replay/pins.json"
 ORDINAL_TB = PACKAGE / "a23_synthetic_v2_ordinal_tb.sv"
 EXPORT_HELPER_DIR = PROJECT / "tests/a23_single_edge_synthetic_export"
 EXPECTED_SOURCE_COMMIT = "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
@@ -40,6 +41,7 @@ PUBLICATION_SCHEMA = "a23_single_edge_synthetic_v2_publication_v1"
 STATUS = "PASS_HARDENED_SYNTHETIC_V2"
 ARCHIVE_PREFIX = "a23-single-edge-synthetic-v2"
 IMPLEMENTATION_FILES = (
+    BASE_PINS_RELATIVE,
     "tests/a23_single_edge_synthetic_v2/README.md",
     "tests/a23_single_edge_synthetic_v2/run_all.sh",
     "tests/a23_single_edge_synthetic_v2/run_v2.py",
@@ -232,7 +234,160 @@ def verified_commit_tree(commit: str, label: str) -> str:
     return str(git_output(["rev-parse", f"{commit}^{{tree}}"]).strip())
 
 
+def authoritative_roster(package_commit: str) -> tuple[dict[str, str], list[str]]:
+    pins_data = git_bytes(package_commit, BASE_PINS_RELATIVE)
+    if digest(pins_data) != EXPECTED_PINS_SHA256:
+        raise V2Error("package pins bytes differ")
+    pins = load_json_bytes(pins_data, "pinned replay document")
+    if set(pins) != {
+        "schema", "integration_state", "rtl_provenance", "files", "owners",
+        "mutation_anchor_sha256", "mutations", "tools",
+    } or pins.get("schema") != "a23_full_single_edge_replay_pins_v1":
+        raise V2Error("pinned replay document fields differ")
+    files = retained.require_object(pins.get("files"), "pinned file roster")
+    for path, expected_sha in files.items():
+        relative = retained.safe_relative(path, "pinned file path")
+        if relative != path or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None:
+            raise V2Error("pinned file roster value differs")
+        if digest(git_bytes(package_commit, path)) != expected_sha:
+            raise V2Error(f"pinned package blob differs: {path}")
+    expected_rtl = {path for path in files if path.startswith("rtl/")}
+    filelists: set[str] = set()
+    sources: set[str] = set()
+
+    def walk(path: str) -> None:
+        if path in filelists:
+            return
+        filelists.add(path)
+        for raw in git_bytes(package_commit, path).decode("utf-8").splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) == 2 and parts[0] == "-f":
+                walk(retained.safe_relative(parts[1], "nested filelist path"))
+            elif len(parts) == 1 and not parts[0].startswith("+"):
+                sources.add(retained.safe_relative(parts[0], "filelist source path"))
+            else:
+                raise V2Error(f"unsupported pinned filelist entry: {path}: {line}")
+
+    owners = retained.require_object(pins.get("owners"), "pinned owner roster")
+    if set(owners) != {"a2", "a3"}:
+        raise V2Error("pinned owner roster differs")
+    owner_keys = {"define", "scheduler", "filelist", "top", "top_module",
+                  "mutation_target", "wrapper"}
+    for owner in ("a2", "a3"):
+        spec = retained.require_object(owners[owner], f"pinned {owner} owner")
+        if set(spec) != owner_keys:
+            raise V2Error(f"pinned {owner} fields differ")
+        walk(retained.safe_relative(spec["filelist"], "owner filelist path"))
+    if filelists | sources != expected_rtl:
+        raise V2Error("pinned recursive RTL/filelist closure differs from file roster")
+    return files, sorted(expected_rtl)
+
+
+def require_exact_keys(value: Any, keys: set[str], label: str) -> dict[str, Any]:
+    record = retained.require_object(value, label)
+    if set(record) != keys:
+        raise V2Error(f"{label} fields differ")
+    return record
+
+
+def validate_latency_schema(value: Any, label: str) -> None:
+    require_exact_keys(value, {"count", "max", "mean", "p50", "p95", "p99"}, label)
+
+
+def validate_base_result_schema(result: dict[str, Any]) -> None:
+    require_exact_keys(result, {
+        "acceptance_observation", "boundary", "conservation", "event_identity_scope",
+        "execution_accounting", "generator", "mutations", "owners", "provenance",
+        "qualification", "reset_qualification", "retirement_scoreboard", "schema",
+        "source_overrun_semantics", "status",
+    }, "base result")
+    require_exact_keys(result["execution_accounting"],
+                       set(retained.EXPECTED_EXECUTION_ACCOUNTING),
+                       "base execution accounting")
+    require_exact_keys(result["generator"], {
+        "full50_manifest_sha256", "source_commit", "trace_count", "version",
+    }, "base generator")
+    require_exact_keys(result["qualification"], {
+        "CDC_RDC", "physical", "power", "single_edge_digital_RTL",
+    }, "base qualification")
+    provenance = require_exact_keys(result["provenance"], {
+        "actual_rtl_git", "package_commit", "pins_path", "pins_sha256",
+        "verified_files", "verified_tools",
+    }, "base provenance")
+    require_exact_keys(provenance["actual_rtl_git"], {
+        "integration_commit", "integration_tree", "source_commit", "source_tree",
+        "verified_rtl_paths",
+    }, "base actual RTL Git")
+    tools = require_exact_keys(provenance["verified_tools"], {
+        "python", "verilator", "verilator_bin", "make", "cxx",
+    }, "base verified tools")
+    for role, identity in tools.items():
+        require_exact_keys(identity, {"path", "sha256", "version"},
+                           f"base tool {role}")
+    owners = require_exact_keys(result["owners"], {"a2", "a3"}, "base owners")
+    run_keys = {
+        "accept_to_retire", "accepted", "count2_commits", "events_sha256",
+        "fixed_window_cycles", "fixed_window_events_per_cycle", "fixed_window_retired",
+        "generated", "observation_cycles", "occurrence_to_accept",
+        "pre_reset_clean_drain", "prepared_trace_sha256", "reset_test", "retired",
+        "source_overrun", "summary_sha256", "trace_sha256",
+    }
+    special_keys = (run_keys - {"prepared_trace_sha256", "trace_sha256"}) | {
+        "simulation_log_sha256",
+    }
+    for owner in ("a2", "a3"):
+        owner_record = require_exact_keys(owners[owner], {
+            "baseline_build_log_sha256", "full50", "mutation_activation", "reset",
+        }, f"base owner {owner}")
+        full50 = require_exact_keys(owner_record["full50"], {
+            "actual_execution_count", "aggregate", "runs",
+        }, f"base {owner} full50")
+        aggregate = require_exact_keys(full50["aggregate"], {
+            "accept_to_retire", "actual_execution_count", "fixed_window_events_per_cycle",
+            "occurrence_to_accept", "totals",
+        }, f"base {owner} aggregate")
+        validate_latency_schema(aggregate["accept_to_retire"],
+                                f"base {owner} aggregate accept latency")
+        validate_latency_schema(aggregate["occurrence_to_accept"],
+                                f"base {owner} aggregate occurrence latency")
+        require_exact_keys(aggregate["totals"], {
+            "accepted", "count2_commits", "fixed_window_cycles", "fixed_window_retired",
+            "generated", "retired", "source_overrun",
+        }, f"base {owner} aggregate totals")
+        runs = retained.require_object(full50["runs"], f"base {owner} runs")
+        for name, run in runs.items():
+            record = require_exact_keys(run, run_keys, f"base {owner} run {name}")
+            validate_latency_schema(record["accept_to_retire"],
+                                    f"base {owner} run {name} accept latency")
+            validate_latency_schema(record["occurrence_to_accept"],
+                                    f"base {owner} run {name} occurrence latency")
+        for label in ("reset", "mutation_activation"):
+            record = require_exact_keys(owner_record[label], special_keys,
+                                        f"base {owner} {label}")
+            validate_latency_schema(record["accept_to_retire"],
+                                    f"base {owner} {label} accept latency")
+            validate_latency_schema(record["occurrence_to_accept"],
+                                    f"base {owner} {label} occurrence latency")
+    mutations = result["mutations"]
+    if not isinstance(mutations, list) or len(mutations) != 8:
+        raise V2Error("base mutation roster differs")
+    for index, mutation in enumerate(mutations):
+        record = require_exact_keys(mutation, {
+            "actual_endpoint_RTL_source_rewrite", "build_log_sha256",
+            "compiled_successfully", "executed", "exit_code", "first_diagnostic",
+            "killed", "mutation", "owner", "simulation_log_sha256", "source_identity",
+        }, f"base mutation {index}")
+        require_exact_keys(record["source_identity"], {
+            "base_sha256", "literal_replacement_count", "mutant_sha256",
+            "new_anchor_sha256", "old_anchor_sha256", "target",
+        }, f"base mutation {index} source identity")
+
+
 def verify_result_identity(result: dict[str, Any], package_commit: str | None = None) -> list[str]:
+    validate_base_result_schema(result)
     names = retained.validate_result_contract(result)
     provenance = retained.require_object(result.get("provenance"), "result provenance")
     rtl = retained.require_object(provenance.get("actual_rtl_git"), "actual RTL Git")
@@ -247,10 +402,17 @@ def verify_result_identity(result: dict[str, Any], package_commit: str | None = 
             raise V2Error(f"actual RTL identity differs for {key}")
     if provenance.get("pins_sha256") != EXPECTED_PINS_SHA256:
         raise V2Error("hardened replay pins identity differs")
+    if provenance.get("pins_path") != BASE_PINS_RELATIVE:
+        raise V2Error("hardened replay pins path differs")
     claimed_package = provenance.get("package_commit")
     if package_commit is not None and claimed_package != package_commit:
         raise V2Error("replay package commit differs from v2 implementation commit")
     verified_commit_tree(claimed_package, "replay package commit")
+    authoritative_files, authoritative_rtl = authoritative_roster(claimed_package)
+    if provenance.get("verified_files") != authoritative_files:
+        raise V2Error("producer verified-file roster/hash map differs from pins")
+    if rtl.get("verified_rtl_paths") != authoritative_rtl:
+        raise V2Error("producer verified RTL roster differs from recursive pins closure")
     ancestor = subprocess.run(
         ["git", "merge-base", "--is-ancestor", EXPECTED_INTEGRATION_COMMIT,
          claimed_package], cwd=PROJECT, check=False,
@@ -267,6 +429,21 @@ def verify_tools(result: dict[str, Any]) -> str:
     tools = result["provenance"]["verified_tools"]
     if set(tools) != {"python", "verilator", "verilator_bin", "make", "cxx"}:
         raise V2Error("tool role roster differs")
+    pins_data = git_bytes(result["provenance"]["package_commit"], BASE_PINS_RELATIVE)
+    pins = load_json_bytes(pins_data, "pinned replay document")
+    pinned_tools = retained.require_object(pins.get("tools"), "pinned tools")
+    expected_tools: dict[str, dict[str, str]] = {}
+    if set(pinned_tools) != set(tools):
+        raise V2Error("pinned tool role roster differs")
+    for role, pinned in pinned_tools.items():
+        pinned = require_exact_keys(pinned, {"path", "sha256", "version_args", "version"},
+                                    f"pinned tool {role}")
+        expected_tools[role] = {
+            "path": pinned["path"], "sha256": pinned["sha256"],
+            "version": pinned["version"],
+        }
+    if tools != expected_tools:
+        raise V2Error("producer tool identities differ from pins")
     for role, identity in tools.items():
         path = Path(identity["path"])
         if path.is_symlink() or not path.is_file():
@@ -279,9 +456,9 @@ def verify_tools(result: dict[str, Any]) -> str:
 def verify_package_inputs(
     result: dict[str, Any], package_commit: str,
 ) -> tuple[dict[str, bytes], str]:
-    verified = result["provenance"]["verified_files"]
-    if not isinstance(verified, dict) or not verified:
-        raise V2Error("producer verified-file inventory is absent")
+    verified, _ = authoritative_roster(package_commit)
+    if result["provenance"]["verified_files"] != verified:
+        raise V2Error("producer verified-file inventory differs from pins")
     contents: dict[str, bytes] = {}
     identities: dict[str, str] = {}
     for relative, expected_sha in sorted(verified.items()):
@@ -301,13 +478,15 @@ def verify_package_inputs(
 
 def verify_rtl_git_blobs(result: dict[str, Any]) -> None:
     rtl = result["provenance"]["actual_rtl_git"]
-    verified = result["provenance"]["verified_files"]
+    verified, rtl_paths = authoritative_roster(result["provenance"]["package_commit"])
+    if rtl["verified_rtl_paths"] != rtl_paths:
+        raise V2Error("producer verified RTL roster differs from pins")
     for label in ("source", "integration"):
         commit = rtl[f"{label}_commit"]
         tree = str(git_output(["rev-parse", f"{commit}^{{tree}}"])).strip()
         if tree != rtl[f"{label}_tree"]:
             raise V2Error(f"{label} RTL tree differs")
-        for relative in rtl["verified_rtl_paths"]:
+        for relative in rtl_paths:
             if digest(git_bytes(commit, relative)) != verified[relative]:
                 raise V2Error(f"{label} RTL blob differs: {relative}")
 
@@ -395,7 +574,7 @@ def sequence_record(
         f"generated={len(sequence)} accepted={len(accepted_order)} "
         f"retired={len(retired_order)}"
     )
-    if log.count(sentinel) != 1 or "A23_SYNTHETIC_V2_ORDINAL_FAIL" in log:
+    if log.splitlines().count(sentinel) != 1 or "A23_SYNTHETIC_V2_ORDINAL_FAIL" in log:
         raise V2Error(f"ordinal simulation PASS log differs: {owner}/{name}")
     return {
         "owner": owner,
@@ -557,7 +736,7 @@ def ordinal_paths(names: list[str]) -> set[str]:
 
 def retained_payload(
     root: Path, result: dict[str, Any], names: list[str], prefix: str,
-) -> tuple[dict[str, bytes], dict[str, Any]]:
+) -> dict[str, bytes]:
     files, directories = retained.scan_regular_tree(root)
     required = (retained.expected_evidence_paths(names) | {"campaign.log"} |
                 ordinal_paths(names))
@@ -569,20 +748,7 @@ def retained_payload(
     payload: dict[str, bytes] = {}
     for relative in sorted(selected):
         payload[f"{prefix}/{relative}"] = retained.read_regular(root, relative, files[relative])
-    scratch_rows = []
-    for relative in sorted(scratch):
-        data = retained.read_regular(root, relative, files[relative])
-        scratch_rows.append([relative, len(data), digest(data)])
-    summary = {
-        "root_basename": root.name,
-        "scanned_regular_file_count": len(files),
-        "scanned_size_bytes": sum(info.st_size for info in files.values()),
-        "retained_payload_file_count": len(selected),
-        "retained_payload_size_bytes": sum(len(value) for value in payload.values()),
-        "excluded_scratch_file_count": len(scratch_rows),
-        "excluded_scratch_inventory_sha256": digest(semantic_bytes(scratch_rows)),
-    }
-    return payload, summary
+    return payload
 
 
 def semantic_definition() -> dict[str, Any]:
@@ -787,6 +953,13 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         "tool_identity_sha256", "trace_identity_sha256", "pins_sha256",
     }:
         raise V2Error("v2 identity fields differ")
+    primary = require_exact_keys(v2_result.get("primary"), {
+        "legacy_result_sha256", "legacy_result_size_bytes",
+    }, "v2 primary")
+    if (not isinstance(primary["legacy_result_size_bytes"], int) or
+            isinstance(primary["legacy_result_size_bytes"], bool) or
+            primary["legacy_result_size_bytes"] < 0):
+        raise V2Error("v2 primary result size differs")
     reproduction = retained.require_object(
         v2_result.get("semantic_reproduction"), "v2 semantic reproduction"
     )
@@ -794,11 +967,15 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         "definition", "semantic_digest_sha256", "ordinal_semantic_digest_sha256",
         "primary_legacy_result_sha256", "reproduction_legacy_result_sha256",
         "reproduction_legacy_result_size_bytes", "observed_difference_json_pointers",
-        "retention", "reproduction_full50_runs",
+        "reproduction_full50_runs",
     }:
         raise V2Error("v2 semantic reproduction fields differ")
     if reproduction.get("definition") != semantic_definition():
         raise V2Error("v2 semantic reproduction definition differs")
+    if (not isinstance(reproduction["reproduction_legacy_result_size_bytes"], int) or
+            isinstance(reproduction["reproduction_legacy_result_size_bytes"], bool) or
+            reproduction["reproduction_legacy_result_size_bytes"] < 0):
+        raise V2Error("v2 reproduction result size differs")
     sequence = retained.require_object(v2_result.get("sequence_evidence"),
                                        "v2 sequence evidence")
     if set(sequence) != {
@@ -840,7 +1017,10 @@ def validate_publication_metadata(publication: dict[str, Any]) -> None:
 def archived_package_identity(
     payload: dict[str, bytes], primary: dict[str, Any], package_commit: str,
 ) -> str:
-    expected: dict[str, str] = dict(primary["provenance"]["verified_files"])
+    expected, _ = authoritative_roster(package_commit)
+    if primary["provenance"]["verified_files"] != expected:
+        raise V2Error("embedded producer roster differs from pins")
+    expected = dict(expected)
     for relative in IMPLEMENTATION_FILES:
         expected[relative] = digest(git_bytes(package_commit, relative))
     observed: dict[str, str] = {}
@@ -908,7 +1088,7 @@ def validate_reopened(
             raise V2Error(f"publication {campaign} result identity differs")
     primary_metadata = v2_result["primary"]
     if set(primary_metadata) != {
-        "legacy_result_sha256", "legacy_result_size_bytes", "retention",
+        "legacy_result_sha256", "legacy_result_size_bytes",
     }:
         raise V2Error("v2 primary fields differ")
     if (primary_metadata["legacy_result_sha256"] != digest(payload["primary/result.json"]) or
@@ -1057,10 +1237,10 @@ def seal(
     tool_digest = verify_tools(primary)
     package_payload, package_digest = verify_package_inputs(primary, package_commit)
     traces, trace_digest = trace_identity(primary, names)
-    primary_payload, primary_summary = retained_payload(
+    primary_payload = retained_payload(
         primary_root, primary, names, "primary",
     )
-    reproduction_payload, reproduction_summary = retained_payload(
+    reproduction_payload = retained_payload(
         reproduction_root, reproduction, names, "reproduction",
     )
     primary_sequences = sequence_evidence(primary_root, names)
@@ -1101,7 +1281,6 @@ def seal(
         "primary": {
             "legacy_result_sha256": file_digest(primary_root / "result.json"),
             "legacy_result_size_bytes": (primary_root / "result.json").stat().st_size,
-            "retention": primary_summary,
         },
         "semantic_reproduction": {
             "definition": semantic_definition(),
@@ -1115,7 +1294,6 @@ def seal(
                 reproduction_root / "result.json"
             ).stat().st_size,
             "observed_difference_json_pointers": differences,
-            "retention": reproduction_summary,
             "reproduction_full50_runs": reproduction_sequences,
         },
         "sequence_evidence": {

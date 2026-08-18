@@ -65,7 +65,8 @@ def v2_metadata_fixture() -> dict:
             "trace_identity_sha256": "5" * 64,
             "pins_sha256": v2.EXPECTED_PINS_SHA256,
         },
-        "primary": {},
+        "primary": {"legacy_result_sha256": "8" * 64,
+                    "legacy_result_size_bytes": 1},
         "semantic_reproduction": {
             "definition": v2.semantic_definition(),
             "semantic_digest_sha256": "6" * 64,
@@ -73,7 +74,7 @@ def v2_metadata_fixture() -> dict:
             "primary_legacy_result_sha256": "8" * 64,
             "reproduction_legacy_result_sha256": "9" * 64,
             "reproduction_legacy_result_size_bytes": 1,
-            "observed_difference_json_pointers": [], "retention": {},
+            "observed_difference_json_pointers": [],
             "reproduction_full50_runs": copy.deepcopy(rows),
         },
         "sequence_evidence": {
@@ -104,6 +105,12 @@ def publication_fixture() -> dict:
         "canonical_campaign_status": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
     })
     return value
+
+
+def current_base_result() -> dict:
+    result = v2.load_json(v2.BASE_PACKAGE / "result.json", "committed base result")
+    result["provenance"]["package_commit"] = v2.current_commit()
+    return result
 
 
 class SyntheticV2Test(unittest.TestCase):
@@ -279,6 +286,52 @@ class SyntheticV2Test(unittest.TestCase):
         with self.assertRaisesRegex(v2.V2Error, "Git command failed"):
             v2.verify_result_identity(result, "0" * 40)
 
+    def test_pinned_roster_rejects_omission_extra_and_relabel(self) -> None:
+        valid = current_base_result()
+        v2.verify_result_identity(valid, v2.current_commit())
+        self.assertIn("tests/a23_full_single_edge_replay/run_replay.py",
+                      valid["provenance"]["verified_files"])
+        self.assertIn("rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
+                      valid["provenance"]["actual_rtl_git"]["verified_rtl_paths"])
+        mutations = []
+        omitted = copy.deepcopy(valid)
+        del omitted["provenance"]["verified_files"][
+            "tests/a23_full_single_edge_replay/run_replay.py"]
+        mutations.append(omitted)
+        extra = copy.deepcopy(valid)
+        extra["provenance"]["verified_files"]["tests/rogue"] = "0" * 64
+        mutations.append(extra)
+        relabeled = copy.deepcopy(valid)
+        relabeled["provenance"]["verified_files"][
+            "tests/a23_full_single_edge_replay/run_replay.py"] = "0" * 64
+        mutations.append(relabeled)
+        rtl_omitted = copy.deepcopy(valid)
+        rtl_omitted["provenance"]["actual_rtl_git"]["verified_rtl_paths"].remove(
+            "rtl/technology/single_edge/w2_single_edge_pair_tx.sv")
+        mutations.append(rtl_omitted)
+        for changed in mutations:
+            with self.assertRaisesRegex(v2.V2Error, "roster|hash map"):
+                v2.verify_result_identity(changed, v2.current_commit())
+
+    def test_base_result_recursive_schema_rejects_extra_and_missing(self) -> None:
+        valid = current_base_result()
+        cases = []
+        top = copy.deepcopy(valid)
+        top["unexpected_top_level_claim"] = {"counter": 999}
+        cases.append(top)
+        mutation = copy.deepcopy(valid)
+        mutation["mutations"][0]["unexpected_mutation_claim"] = True
+        cases.append(mutation)
+        missing = copy.deepcopy(valid)
+        del missing["owners"]["a2"]["reset"]["events_sha256"]
+        cases.append(missing)
+        source = copy.deepcopy(valid)
+        source["mutations"][0]["source_identity"]["extra"] = "x"
+        cases.append(source)
+        for changed in cases:
+            with self.assertRaisesRegex(v2.V2Error, "fields differ"):
+                v2.verify_result_identity(changed, v2.current_commit())
+
     def test_metadata_rejects_definition_keys_pins_and_counters(self) -> None:
         valid = v2_metadata_fixture()
         v2.validate_v2_metadata(valid)
@@ -303,6 +356,27 @@ class SyntheticV2Test(unittest.TestCase):
         publication["extra"] = "drift"
         with self.assertRaisesRegex(v2.V2Error, "fields"):
             v2.validate_publication_metadata(publication)
+        for path in (("primary", "retention"),
+                     ("semantic_reproduction", "retention")):
+            changed = copy.deepcopy(valid)
+            changed[path[0]][path[1]] = {
+                "retained_payload_file_count": -999, "rogue": "accepted"
+            }
+            with self.assertRaisesRegex(v2.V2Error, "fields"):
+                v2.validate_v2_metadata(changed)
+        missing = copy.deepcopy(valid)
+        del missing["primary"]["legacy_result_size_bytes"]
+        with self.assertRaisesRegex(v2.V2Error, "fields"):
+            v2.validate_v2_metadata(missing)
+        coherent_counter = copy.deepcopy(valid)
+        coherent_counter["primary"]["retained_payload_file_count"] = 999
+        with self.assertRaisesRegex(v2.V2Error, "fields"):
+            v2.validate_v2_metadata(coherent_counter)
+        for bad_size in (-1, True):
+            changed = copy.deepcopy(valid)
+            changed["primary"]["legacy_result_size_bytes"] = bad_size
+            with self.assertRaisesRegex(v2.V2Error, "size"):
+                v2.validate_v2_metadata(changed)
 
     def test_ordinal_csv_schema_and_pass_log_fail_closed(self) -> None:
         event_header = ",".join(v2.EVENT_CSV_FIELDS)
@@ -331,6 +405,10 @@ class SyntheticV2Test(unittest.TestCase):
             ordinal.write_text(ordinal_header + "\n" + ordinal_row + "\n",
                                encoding="utf-8")
             simulation.write_text("arbitrary log\n", encoding="utf-8")
+            with self.assertRaisesRegex(v2.V2Error, "PASS log"):
+                v2.sequence_record(event, ordinal, simulation, "a2", "case")
+            simulation.write_text("FORGED_PREFIX " + sentinel.strip() +
+                                  " FORGED_SUFFIX\n", encoding="utf-8")
             with self.assertRaisesRegex(v2.V2Error, "PASS log"):
                 v2.sequence_record(event, ordinal, simulation, "a2", "case")
 

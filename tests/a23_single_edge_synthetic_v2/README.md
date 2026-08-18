@@ -36,8 +36,9 @@ event/summary/simulation triplets, all 100 ordinal CSV/simulation pairs,
 generator JSONL/manifests and logs, reset/activation artifacts, all
 baseline/mutant build logs, eight mutation logs and mutant sources, the base
 result, exact repository inputs, and the v2 result. Compiler products under
-`work/build/` are inventory-hashed as excluded reproducible scratch but are not
-publication evidence.
+`work/build/` are excluded reproducible scratch and are not publication
+evidence; the v2 result makes no counters or digest claims about excluded
+scratch.
 
 The archive uses fixed gzip/tar metadata and a closed hash/size inventory.
 Validation rejects symlinks, hardlinks, path escapes, duplicate/missing/extra
