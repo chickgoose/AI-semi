@@ -1,0 +1,21 @@
+{
+  "schema": "redred-single-edge-cdc-rdc-contract-v1",
+  "contract_id": "REDRED_A2_A3_SINGLE_EDGE_FALLBACK",
+  "decision": "BOUND_VERIFY_REQUIRED",
+  "a2_source_set": {
+    "binding": "source_binding.json",
+    "binding_sha256": "60684f7bfafc5e05f2a577dc5625e3e3ac5c818e494b8f03ee9f711daf9b8c2c",
+    "repository_commit": "4ce4836fab1309d3468db8e660d2da9af371f784"
+  },
+  "policy": {
+    "clock_domains": 1,
+    "clock_edge": "posedge",
+    "generated_gated_forwarded_clocks": "FORBIDDEN",
+    "negedge_sequential_processes": "FORBIDDEN",
+    "event_transfer": "REGISTERED_TX_TO_REGISTERED_RX_SAME_EDGE",
+    "reset": "SYNCHRONOUS_ASSERT_SYNCHRONOUS_DEASSERT_DRAIN_BEFORE_ASSERT",
+    "unsynchronized_crossings": "FORBIDDEN",
+    "external_input_domain": "BOUND_SYNCHRONOUS_TO_PRIMARY_CLOCK_ASSUMPTION",
+    "unknown_modules_or_clocks": "FAIL"
+  }
+}
