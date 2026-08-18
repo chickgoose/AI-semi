@@ -1,0 +1,78 @@
+K2 complete-endpoint server physical results — 2026-08-14
+============================================================
+
+Scope
+-----
+- Server Genus + Innovus P&R of the same normalized complete-endpoint boundary.
+- Candidates: Fovea+A7/R1, A2+P6, A3+P6.
+- Common target period: 6.5 ns (153.846 MHz nominal).
+- PNR source commit: b5888526ae8edfab04b768ca5c7b00a920bcad19
+- Final verifier commit: bc61c470d75dee6adb236ca6761f32e77a250cb0
+- Final verifier SHA-256: 80f3d6270fc792862f5d651bd550493bcc7f6ee359cb6b3845878e5c4947c5ed
+- Server result root: /tmp/k2-pnr-b588852-6p5-final2
+- Final validation log SHA-256: 5b32a45bd077c1ff370f96f31d789904f5aced8d71d243a0ce9c95f083106aa1
+- Evidence archive SHA-256: 5112c2a447725532f628d5eb4dba9df0f7bd36e52040261a0582128fe3a63645
+- Local archive: /tmp/endpoint-6p5-final/k2-pnr-b588852-6p5-final2-evidence-bc61c47.tar.gz
+
+Headline post-route results
+---------------------------
+Candidate      Inst   Area raw*   Setup WNS ns   Hold WNS ns   Routed um   Vias   I/O bits
+Fovea+A7/R1     374    1264.374      +0.009553      +0.003825       6273     2293       50
+A2+P6           992    2766.780      +0.000049      +0.005531      12070     6449       53
+A3+P6           742    2055.078      +0.014223      +0.006578       9493     4711       53
+
+All three have setup/hold TNS=0 and zero timing violations. Recovery, removal,
+endpoint-ICG gating setup/hold, pulse-width, and DDR half-cycle setup/hold all
+also have nonnegative WNS, zero TNS, and nonzero checked path counts.
+
+Physical signoff gates
+----------------------
+- Final post-route unplaced/overlap violations: 0 for all three.
+- Regular and PG connectivity problems: 0 for all three.
+- DRC violations: 0 for all three.
+- Antenna violations: 0 for all three.
+- Routing reports contain successful native Innovus 23.14 completion summaries,
+  positive routed geometry, and positive via counts.
+- Innovus reports one intentional `uncons_endpoint`: `link_clk_o`, the forwarded
+  generated-clock output. The verifier accepts only this exact pin/count/view
+  after the boundary receipt binds ICG ECK -> link_clk_o; data endpoints remain
+  forbidden from being unconstrained.
+
+Annotated power diagnostic at the same representative common trace
+------------------------------------------------------------------
+Candidate      Internal mW   Switching mW   Leakage mW   Total mW   Direct VCD coverage
+Fovea+A7/R1      0.038028       0.026370      0.000025    0.064423     50/399 = 12.5313%
+A2+P6            0.098920       0.080405      0.000069    0.179393     65/1023 = 6.35386%
+A3+P6            0.078736       0.059858      0.000048    0.138641     64/773 = 8.27943%
+
+This power comparison is provisional diagnostic evidence, not signoff-quality
+power ranking. It uses one common trace and a 0..26630.5 ns window. Direct VCD
+coverage is low and unequal; Innovus propagates activity and applies documented
+default activity for unmatched objects. The raw report area has no explicit
+unit; under this library/Innovus database it is conventionally interpreted as
+um^2, so the table preserves the raw values.
+
+Interpretation
+--------------
+- All three complete endpoints now have a genuinely clean 6.5 ns server P&R
+  point. This proves a qualified operating point of 153.846 MHz, not Fmax; no
+  faster passing/failing bracket has been swept.
+- A3+P6 is the leaner K2 endpoint: versus A2+P6 it uses 25.7% less raw area,
+  21.4% less routed wire, 27.0% fewer vias, and 22.7% less reported diagnostic
+  power, while keeping positive setup and hold margin.
+- Fovea+A7/R1 is smallest and lowest reported power, but it is a K1/3-wire
+  endpoint. A2/A3 are K2/6-wire endpoints, so raw PPA alone is not an equivalent
+  service comparison. Common-workload delivery/loss and energy per completed
+  logical event must accompany any architectural ranking.
+- Existing representative workload accounting for this activity trace is:
+  generated 9228 for each; Fovea accepted/delivered 4103 with 5125 source
+  overruns, A2 8037 with 1191 overruns, A3 6881 with 2347 overruns. This is one
+  trace, not the full50 aggregate.
+
+Separate core-only reference
+----------------------------
+The native Fovea vs Cluster2 core-only cohort is a different boundary and must
+not be mixed into the complete-endpoint PPA ranking. Its clean 5 ns server P&R
+reference remains: Fovea core area 310.536, setup/hold +0.943599/+0.001244 ns;
+Cluster2 core area 191.520, setup/hold +3.01774/+0.004525 ns. Its power is
+vectorless only.

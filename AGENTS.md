@@ -1,5 +1,8 @@
 # AI-semi Codex Working Rules
 
+Persistent new-session context: `docs/NEW_SESSION_HANDOFF_20260818.md`.
+Canonical tmux bootstrap: `scripts/bootstrap_codex_team_tmux.sh`.
+
 ## Default eight-agent parallel operation
 
 - For every substantial AI-semi task, use the existing tmux Codex panes

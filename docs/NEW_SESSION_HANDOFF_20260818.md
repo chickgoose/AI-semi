@@ -1,0 +1,413 @@
+# AI-semi 새 대화 세션 인수인계
+
+기준 시각: 2026-08-18 KST
+목적: 과거 작업을 자동 재개하기 위한 문서가 아니라, 새 대화가 검증된 핵심 사실과 운영 환경을 잃지 않고 **새 목표부터 다시 시작**하게 하는 로컬 영구 메모리다.
+
+## 0. 새 세션이 가장 먼저 지킬 것
+
+1. 이 문서를 끝까지 읽고 `AGENTS.md`를 따른다.
+2. 이전 P&R, sweep, GLS/activity 작업을 임의로 재개하지 않는다. 사용자의 새 목표가 우선이다.
+3. 실질적인 작업이면 supervisor가 a2–a9 여덟 tmux Codex에 처음부터 서로 겹치지 않는 일을 배분한다.
+4. `node` 프로세스나 입력된 명령만 보고 작업 중이라고 말하지 않는다. `tmux capture-pane`에서 각 pane의 `Working`, 완료, block 상태를 확인한다.
+5. 편집은 별도 worktree와 비겹치는 파일 집합을 사용한다. 팀원 RTL/TB는 사용자가 수정하라고 하지 않는 한 read-only다.
+6. 기존 dirty/untracked 결과를 삭제하거나 덮어쓰지 않는다.
+7. 서버 비밀번호, license 문자열, PDK 본문은 Git이나 이 문서에 저장하지 않는다.
+
+## 1. 저장소와 보존 상태
+
+- 주 작업 경로: `/home/chickgoose/projects/a1`
+- 이 문서를 작성할 때 checkout: `integration/a7-k4-physical-candidate`
+- handoff 작성 직전 기준 HEAD: `61de7fdbd3b3160d3ce91dcb3ce0a1cc5fc4d078`
+- 사용자 소유로 간주하여 보존할 untracked 경로:
+  - `.w2-build-artifacts/`
+  - `docs/주최측_QA_문의사항.txt`
+  - `results/a7-parallel-event-compactor/`
+  - `results/common-multilane/`
+
+핵심 브랜치:
+
+| 역할 | 브랜치 | 기준 commit |
+| --- | --- | --- |
+| K2 디지털 최종본 | `integration/k2-digital-final` | `13c60f936fe5a265e650b4b91436ed79fc20dc91` |
+| K2 물리 flow/후속 activity | `integration/k2-physical-final` | `d73b611c87340b2a480735166e2abfa0af07b2e1` |
+| 현재 설명/결과 문서 | `integration/a7-k4-physical-candidate` | `61de7fdbd3b3160d3ce91dcb3ce0a1cc5fc4d078` |
+| core sweep 독립 구현 | `codex/core-sweep-profiles` | `7f33baff32b36894c7d035f3d63fe822dc218713` |
+
+디지털 복구용 bundle 기록:
+
+- Windows 경로: `C:\Users\박준영\AI-semi\AI-semi-k2-digital-final-20260813.bundle`
+- SHA-256: `5a7e71f0c09af9debfc20315bbbe52b7cc94934da49ffc9ff44f3c146e1ff4ae`
+- 상세: `docs/K2_최종코드_복구방법_20260813.txt`
+
+복구 주의:
+
+- shared Git directory는 `/home/chickgoose/projects/AI-semi/.git`이다.
+- 감사 시 등록 worktree는 42개였고 그중 다수가 `/tmp` 삭제로 prunable 상태였다. `/home/chickgoose/projects/a1`~`a9` 영구 worktree는 존재했다.
+- `refs/stash`는 `c7c306d2836a638a496c3389db30451a5f972f85`였다.
+- 현재 문서 브랜치의 local history는 origin보다 크게 앞서 있었다. origin만으로 복구 가능하다고 가정하지 않는다.
+- 위 Windows digital bundle과 아래 6.5 ns evidence archive는 감사 시 이 Linux 로컬 파일시스템에는 없었다.
+- untracked result는 Git bundle에 들어가지 않는다. 별도 archive 전에 `git gc`, `git prune`, `git worktree prune`을 실행하지 않는다.
+
+새 세션은 작업 전에 아래를 먼저 기록한다.
+
+```bash
+cd /home/chickgoose/projects/a1
+git status --short --branch
+git worktree list
+git branch --show-current
+git rev-parse HEAD
+```
+
+## 2. 보존할 설계 핵심
+
+### Fovea
+
+- scalar K1, 한 cycle에 최대 1 event.
+- 중심 가중 `[1,5,5,1]` 선택 의미가 가장 명확하다.
+- 좁고 작지만 1-event/cycle 병목과 source overrun이 크다.
+
+### Cluster2
+
+- 중심/주변 두 native lane과 row bitmap으로 최대 8 occurrence/cycle을 표현한다.
+- 처리량과 손실 면에서 Fovea보다 유리하지만 Fovea의 scalar weight/round/prefer-center 의미를 그대로 보존하지 않는다.
+- Fovea와의 **native core-only** 비교 대상이다.
+
+### Fovea+A7 / R1
+
+- Fovea selector는 유지하고 scalar 4-bit address를 2-bit DDR로 보낸다.
+- K1 complete endpoint, physical link 3 wires.
+- Fovea의 처리량/overrun 자체는 개선하지 않고 link 폭만 줄인다.
+
+### A2 Batched-IWRR K2 + P6
+
+- 성능 우선 K2 설계.
+- `[1,5,5,1]` 장기 aggregate service 비율은 보존하지만 exact scalar-prefix는 아니다.
+- P6 6-wire link, complete endpoint에서 charged 11-bit elastic buffer를 포함한다.
+- 디지털 처리량은 가장 높지만 A3보다 물리 비용이 크다.
+
+### A3 Exact Scalar-Prefix K2 + P6
+
+- 의미 보존 우선 K2 설계.
+- 현재 pending snapshot에 Fovea scalar 선택을 두 microstep 적용한다.
+- exact scalar-prefix K2이며 A2보다 작고 얕지만 처리량은 낮다.
+
+### A4
+
+- aggregate-only K2 연구 후보다.
+- 최종 디지털 Pareto에서 A2보다 성능/비용이 불리하여 발표 주후보에서 제외했다.
+- 별도 연구 결과로만 보존한다.
+
+핵심 해석:
+
+- A2: `Fovea aggregate 의미 + Cluster2 이상급 처리량`의 성능형 hybrid.
+- A3: `Fovea exact-prefix 의미 + Cluster2급 처리량`의 의미보존형 hybrid.
+- “A2/A3가 모든 면에서 Fovea/Cluster2보다 우월하다”는 주장은 틀리다. A2/A3는 더 넓고 복잡한 K2 complete endpoint다.
+
+## 3. 공용 workload/TB 계약
+
+공용 TB와 workload는 candidate-neutral clean-slate 기준이다. 팀원 native RTL/TB와 섞어 수정하지 않는다.
+
+주요 경로:
+
+- `tb/clean/aer_clean_tb.sv`
+- `tb/clean/aer_bench_if.sv`
+- `tb/clean/aer_clean_assertions.sv`
+- `benchmarks/clean_slate_aer/`
+- `docs/TEAM_COMMON_WORKLOAD_GUIDE.md`
+- `docs/팀원_공용_AER_워크로드_TB_안내.txt`
+
+알려진 frozen SHA:
+
+- `aer_clean_tb.sv`: `27d9437a...`
+- `aer_bench_if.sv`: `fbca24e7...`
+- assertions: `ab3bca49...`
+- full50 official manifest: `9fe40060...`
+- capacity22 official manifest: `99a8bbd3...`
+
+새 증거를 만들 때는 줄임표가 아닌 전체 SHA를 실제 파일/manifest에서 다시 읽어 기록한다.
+
+필수 의미:
+
+```text
+generated = source_overrun + accepted
+accepted = delivered          # hard-correct run
+```
+
+- source마다 pending latch는 정확히 1개다.
+- pending 중 같은 source가 재발화하면 무제한 TB queue에 넣지 않고 `source_overrun`이다.
+- `source_overrun`은 capacity/performance 결과이지 hard correctness 오류가 아니다.
+- phantom, duplicate, corrupt, reorder, accepted-missing, illegal/X output, drain timeout은 hard failure다.
+- TB-only binding은 FIFO, retry, arbitration, serializer, storage, 새로운 기능을 추가하면 안 된다.
+- 없는 기능은 `SKIP_UNSUPPORTED`로 표시한다.
+- `capacity22`는 full50의 exact 22-trace subset이다. 50+22를 72개의 독립 표본으로 합산하지 않는다.
+- native unit tests, common workload evidence, physical PPA evidence는 서로 별도 증거다.
+
+## 4. 디지털 결과의 현재 기준
+
+상세 원문: `docs/K2_디지털개발_최종현황_20260813.txt`
+주요 receipt는 `integration/k2-digital-final` 브랜치의 `tests/a23_full_p6_replay/result.json`, `audits/a7_k2_cost_closure/result.json`, `audits/k2_final_selection/result.json`이다. 현재 checkout에 없으면 파일이 사라진 것이 아니라 브랜치가 다른 것이다.
+
+```bash
+git show integration/k2-digital-final:tests/a23_full_p6_replay/result.json
+git show integration/k2-digital-final:audits/k2_final_selection/result.json
+```
+
+| 후보 | full50 accepted=retired | overrun | fixed-window EPC | capacity22 accepted | capacity22 EPC |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Fovea | 78,229 | 28,187 | 0.673901421 | 42,163 | 0.757866503 |
+| Cluster2 | 94,157 | 12,259 | 0.811620447 | 57,802 | 1.040124568 |
+| A2+P6 | 104,046 | 2,370 | 0.896281733 | 63,246 | 1.137384793 |
+| A3+P6 | 93,645 | 12,771 | 0.806670806 | 57,280 | 1.030061924 |
+
+A2/A3 actual-P6 replay는 full50 150회, reset/drain 3회, actual-RTL mutant 15개 kill, 두 캠페인 byte-identical까지 확보했다. A2 accept→retire는 고정 3 cycle, A3는 고정 2 cycle이다.
+
+중요한 증거 경계:
+
+- Fovea/Cluster2 회수 Xcelium 결과와 A2/A3 actual-P6 replay는 같은 frozen 수요를 사용했지만 하나의 동일 official attempt는 아니다.
+- 따라서 위 표는 설계 판단에 유용하지만 단일 canonical receipt의 완전한 head-to-head로 과장하지 않는다.
+- 디지털 최종 선택은 A2 primary, A3 semantic fallback이다.
+
+## 5. 물리 비교 경계
+
+모든 다섯 설계를 한 PPA 표에서 순위화하지 않는다.
+
+1. **native core-only cohort**: Fovea core vs Cluster2 core.
+2. **complete-endpoint cohort**: Fovea+A7/R1 vs A2+P6 vs A3+P6.
+
+complete endpoint의 정규화 외부 역할은 ref/sample clocks, reset, 16-source pending/accept, retire lanes/addresses, drain/error다. scheduler debug 출력은 top I/O에서 숨기되 내부 실제 logic/state 비용은 포함한다. Fovea는 K1/3-wire, A2/A3는 K2/6-wire이므로 raw PPA만으로 동등 서비스 승자를 선언하지 않는다.
+
+## 6. 실서버 물리 결과
+
+상세 원문: `docs/k2_endpoint_physical_results_20260814.txt`
+
+### Complete endpoint, clean 6.5 ns point
+
+- nominal 153.846 MHz.
+- source commit: `b5888526ae8edfab04b768ca5c7b00a920bcad19`
+- final verifier commit: `bc61c470d75dee6adb236ca6761f32e77a250cb0`
+- server result root: `/tmp/k2-pnr-b588852-6p5-final2`
+- evidence archive SHA-256: `5112c2a447725532f628d5eb4dba9df0f7bd36e52040261a0582128fe3a63645`
+
+| Candidate | Inst | Area raw | Setup WNS ns | Hold WNS ns | Routed um | Vias | I/O bits |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Fovea+A7/R1 | 374 | 1264.374 | +0.00955343 | +0.00382453 | 6273 | 2293 | 50 |
+| A2+P6 | 992 | 2766.780 | +0.00004911 | +0.00553125 | 12070 | 6449 | 53 |
+| A3+P6 | 742 | 2055.078 | +0.0142229 | +0.00657797 | 9493 | 4711 | 53 |
+
+세 후보 모두 setup/hold/recovery/removal/gating/pulse/half-cycle timing clean, TNS 0, DRC 0, antenna 0, regular/PG connectivity 0, placement violation 0이다.
+
+Area report에는 단위가 명시되지 않는다. 해당 Innovus/library 관례상 um²로 해석하지만 발표에는 `area raw` 또는 이 caveat를 붙인다.
+
+한 common trace의 diagnostic power:
+
+| Candidate | Total mW | Direct VCD coverage |
+| --- | ---: | ---: |
+| Fovea+A7/R1 | 0.06442312 | 12.5313% |
+| A2+P6 | 0.17939317 | 6.35386% |
+| A3+P6 | 0.13864122 | 8.27943% |
+
+이 전력값은 low/unequal direct coverage와 propagated/default activity를 사용한 **provisional diagnostic**이다. signoff power, full50 평균, 정밀 power ranking이 아니다.
+
+### Complete endpoint timing 관측
+
+- 6.5 ns: 세 후보 모두 clean PASS.
+- 대화 중 수행한 5.7 ns fresh P&R에서는 세 후보 모두 setup recovery가 닫히지 않아 FAIL로 관측됐다.
+  - Fovea setup WNS `-0.0845961 ns`
+  - A2 setup WNS `-0.100518 ns`
+  - A3 setup WNS `-0.075951 ns`
+- 그러나 이 5.7 ns 결과의 immutable local archive/receipt는 현재 checkout에서 확인되지 않았다. 따라서 새 세션은 6.5 ns를 clean qualified operating point로만 유지하고, 5.7 ns bytes를 회수·검증하기 전에는 정식 Fmax bracket으로 발표하지 않는다.
+
+### Core-only same-flow reference
+
+5.0 ns clean reference:
+
+| Core | Area raw | Setup WNS ns | Hold WNS ns | Power |
+| --- | ---: | ---: | ---: | --- |
+| Fovea | 310.536 | +0.943599 | +0.00124423 | 0.01796521 mW, vectorless |
+| Cluster2 | 191.520 | +3.01774 | +0.00452548 | 0.01269190 mW, vectorless |
+
+같은 flow에서 4.0, 3.5, 2.2 ns도 둘 다 PASS했다. 1.8 ns는 사용자가 중단시켜 증거가 아니다. 그러므로 둘 다 454.5 MHz 이상의 passing point만 있고 first-fail bracket은 없다.
+
+사용자가 별도로 전달한 강희 결과(예: Fovea 714–769 MHz, Cluster2 1053–1111 MHz)는 다른 workload/flow 가능성이 있는 외부 자료다. same-flow 표에 섞지 않는다.
+
+## 7. 미완료/재개 금지 항목
+
+아래는 “다음에 반드시 해야 할 일”이 아니다. 새 목표가 요구할 때만 재개한다.
+
+- Post-route SDF GLS activity producer는 `integration/k2-physical-final`의 `ef23641`, `ebe0544`, `80b9d03`, `d73b611`에 구현돼 있다. 현재 checkout에 경로가 없으면 `git show integration/k2-physical-final:physical/k2_postroute_activity/run_postroute_activity.py`로 확인한다.
+- endpoint SDF GLS의 common-TB 기능/path-delay annotation은 진전이 있었지만 strict SAIF unknown-state/duration/log gate까지 완전한 authoritative power receipt는 발행하지 못했다.
+- full50/capacity22 전체 activity/power는 없다.
+- exact Fmax, silicon signoff, CDC/RDC, mid-flight reset abort/flush는 미검증이다.
+- 서버 `/tmp`와 로컬 `/tmp` 결과는 재부팅/정리로 사라질 수 있다. 존재를 가정하지 말고 먼저 확인한다.
+- 과거 실패 P&R, stale runner, false-pass fixture, 21-pane 감독 체계를 그대로 되살리지 않는다.
+
+## 8. 서버 접근 메모리
+
+실제로 접근한 endpoint:
+
+- account: `aiasic26911`
+- IP: `210.126.11.79`
+- remote shell: `/bin/csh`
+- home: `/home/aiasic26911`
+- environment: `~/control_digi.cshrc`
+
+`snu.polaris.09`는 서버 내부 hostname으로 기록돼 있지만 로컬 DNS에서 해석되지 않았던 적이 있다. 새 세션은 IP를 기본으로 사용한다.
+
+새 연결:
+
+```bash
+ssh aiasic26911@210.126.11.79
+```
+
+비밀번호는 사용자가 허용한 대화/입력에서만 사용하고 저장하지 않는다. 기존 ControlMaster socket은 재사용 가능할 때만 쓴다.
+
+```bash
+test -S /tmp/k2-pnr-ssh3.sock
+ssh -F /dev/null -S /tmp/k2-pnr-ssh3.sock -o BatchMode=yes \
+  aiasic26911@210.126.11.79 'hostname; pwd'
+```
+
+socket이 없거나 죽었으면 새 인증이 필요하다. 권한 창을 피하려고 보안을 우회하지 않는다.
+
+원격 초기화(csh):
+
+```csh
+setenv TERM xterm
+source ~/control_digi.cshrc
+rehash
+```
+
+확인된 도구:
+
+- Xcelium `23.09-s013`
+- Genus `23.14-s090_1`
+- Innovus `23.14-s088_1`
+- Tempus/Voltus `23.14-s089_1`
+- GPDK045, slow Liberty header는 0.9 V / 125 C (`PVT_0P9V_125C`)
+
+주의:
+
+- login shell이 csh라 bash용 loop/redirection을 직접 붙이면 깨질 수 있다. 복잡한 작업은 검토된 script를 전송하거나 명시적으로 bash를 사용한다.
+- 서버 공용 repo의 과거 위치는 `~/AI-semi/integration`이다. live bytes와 commit/hash를 먼저 확인하고 “최신”이라고 가정하지 않는다.
+- PDK/license 설정은 Git에 복사하지 않는다.
+
+## 9. 표준 tmux 구조
+
+현재 표준은 **supervisor 1개 + a2–a9 8개 worker**다. 21-pane 파일은 과거 레이아웃 기록일 뿐 기본값이 아니다.
+
+생성:
+
+```bash
+cd /home/chickgoose/projects/a1
+scripts/bootstrap_codex_team_tmux.sh
+```
+
+기본 session 이름은 `ai-semi`; 변경하려면 첫 인자로 준다.
+
+```bash
+scripts/bootstrap_codex_team_tmux.sh my-session
+```
+
+worker Codex까지 대기 상태로 실행하려면 다음을 사용한다.
+
+```bash
+scripts/bootstrap_codex_team_tmux.sh ai-semi --launch-workers
+```
+
+구성:
+
+- window 0 `supervisor`: head Codex/통합/최종 판단.
+- window 1 `agents`: a2–a9, tiled 8 panes.
+- 기본 script는 안전하게 shell pane만 만들며 각 pane의 cwd를 `/home/chickgoose/projects/a2`~`a9`로 분리한다. `--launch-workers`를 명시하면 각 독립 worktree에서 interactive Codex를 시작하지만, 과거 task는 자동 재개하지 않는다.
+
+점검:
+
+```bash
+tmux list-windows -t ai-semi
+tmux list-panes -t ai-semi:agents -F '#{pane_index}|#{pane_title}|#{pane_current_command}'
+tmux capture-pane -p -t ai-semi:agents.0 -S -80
+```
+
+attach:
+
+```bash
+tmux attach-session -t ai-semi
+```
+
+두 터미널에서 창을 독립적으로 보고 싶으면 grouped session을 먼저 만든다. 원 session에 `:window`를 붙여 직접 attach해 다른 client의 active window를 바꾸지 않는다.
+
+```bash
+tmux new-session -d -t ai-semi -s ai-semi-supervisor
+tmux select-window -t ai-semi-supervisor:supervisor
+tmux new-session -d -t ai-semi -s ai-semi-agents
+tmux select-window -t ai-semi-agents:agents
+```
+
+작업 배분 원칙:
+
+- a2–a9 모두에게 같은 “검증”을 복제하지 않는다.
+- 목표 자체를 독립 산출물로 쪼갠다: architecture, RTL, common TB binding, receipt, physical boundary, server execution, evidence audit, adversarial integration처럼 겹치지 않게 한다.
+- 구현자는 자기 worktree만 편집하고 다른 pane은 read-only review를 한다.
+- supervisor만 통합/merge/최종 GO-HOLD를 결정한다.
+- 유용한 병렬 일이 8개보다 적으면 억지 일을 만들지 않는다. 다만 독립 분해 가능한 실질 작업에서는 a2–a9를 기본으로 사용한다.
+
+## 10. 과거에 반복된 실패를 피하는 규칙
+
+- “서버에서 돌아감”과 “qualified PASS”를 구분한다.
+- Genus area/power는 post-route PPA/Fmax가 아니다.
+- fixed-netlist period 변경은 최종 Fmax 비교가 아니다. 최종 비교는 period별 fresh synthesis+P&R이 필요하다.
+- output/TB wrapper가 storage/arbitration을 추가하면 candidate 비용/의미가 바뀐다.
+- 동일 외부 역할과 load가 아닌 top들의 raw PPA를 순위화하지 않는다.
+- ready/valid는 synchronous edge에서 판정한다. off-edge combinational ready를 accept로 세지 않는다.
+- NBA 이후 값을 같은 edge의 synchronous consumer가 본 것처럼 세지 않는다.
+- phase 종료 시 pending request를 강제로 0으로 지워 source withdrawal을 만들지 않는다.
+- `capacity22`를 22개 추가 독립 표본처럼 합산하지 않는다.
+- simulator/tool가 정상 종료해도 timing/DRC/connectivity/activity coverage가 실패하면 HOLD다.
+- low/unequal direct VCD coverage의 propagated/default power를 signoff ranking으로 부르지 않는다.
+- tmux pane에 명령이 보이거나 `node`가 떠 있는 것만으로 일하고 있다고 말하지 않는다.
+- audit가 implementation을 계속 재설계해 서버 실행을 무기한 늦추지 않도록, 시작 전에 최소 성공 정의와 stop rule을 고정한다.
+
+## 11. 새 세션 시작 프롬프트
+
+복사용 파일은 `docs/NEW_SESSION_START_PROMPT.txt`다. 새 대화에 그 파일의 내용을 그대로 붙여 넣거나 아래를 사용한다.
+
+```text
+/home/chickgoose/projects/a1/AGENTS.md와
+/home/chickgoose/projects/a1/docs/NEW_SESSION_HANDOFF_20260818.md를 먼저 끝까지 읽어.
+
+이전 P&R/sweep/activity 작업을 자동으로 재개하지 말고, handoff의 검증된 사실과
+GO/HOLD 경계만 로컬 메모리로 유지해. 기존 dirty/untracked 파일과 팀원 RTL/TB는
+건드리지 마. 비밀번호나 license 정보도 저장하지 마.
+
+tmux 기본 운영은 supervisor 1개 + a2~a9 여덟 worker다. substantial task이면
+처음부터 목표 자체를 서로 겹치지 않는 8개 작업으로 분해하고, 편집은 별도
+worktree로 격리해. 각 pane은 capture-pane으로 실제 Working 여부를 확인하고
+supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기록이지 기본값이 아니다.
+
+먼저 현재 Git branch/HEAD/status/worktree, tmux session, SSH ControlMaster socket과
+서버 접근 가능 여부를 읽기 전용으로 확인해. 그 다음 handoff에서 기억한 핵심을
+짧게 요약하되, 과거 작업을 시작하지 말고 내가 이번 새 세션에서 제시하는 목표를
+기준으로 계획을 세워.
+```
+
+그 뒤 같은 메시지 아래에 새 목표를 적는다.
+
+예:
+
+```text
+이번 새 목표: [여기에 새 목표를 한 문장으로 작성]
+```
+
+## 12. 참고 문서 우선순위
+
+1. `docs/NEW_SESSION_HANDOFF_20260818.md` — 현재 진입점.
+2. `docs/NEW_SESSION_START_PROMPT.txt` — 새 대화에 붙여 넣을 시작문.
+3. `AGENTS.md` — 1+8 운영과 안전 규칙.
+4. `docs/K2_디지털개발_최종현황_20260813.txt` — 디지털 상세.
+5. `docs/k2_endpoint_physical_results_20260814.txt` — clean endpoint physical 결과.
+6. `docs/K2_최종코드_복구방법_20260813.txt` — 디지털 bundle 복구.
+7. `docs/팀원_공용_AER_워크로드_TB_안내.txt` — common TB 의미.
+8. `docs/server-audit-a1.md` — 서버/도구 기록.
+9. `docs/tmux-workflow.md` — tmux 운용 상세.
+
+`docs/K2_물리검증_실서버_결과_20260813.txt`와 `docs/tmux_all_agents_layout_20260814.txt`는 중간/과거 기록이다. 현재 최종 판정보다 우선하지 않는다.
