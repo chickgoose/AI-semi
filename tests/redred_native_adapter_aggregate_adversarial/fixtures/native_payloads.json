@@ -1,0 +1,33 @@
+{
+  "synthetic_v2": {
+    "schema": "redred-native-security-scaffold-v1",
+    "slot": "synthetic_v2",
+    "evidence_class": "REDRED_SINGLE_EDGE_SYNTHETIC_ACTUAL_RTL_SEALED_V2",
+    "source_class": "TEAM_DEFINED_SYNTHETIC",
+    "canonical_redred_traffic": true,
+    "official_contest_traffic": false,
+    "release_status": "HOLD",
+    "selection_status": "HOLD",
+    "events": [
+      {"event_id": 0, "accept_ordinal": 0, "retire_ordinal": 0},
+      {"event_id": 1, "accept_ordinal": 1, "retire_ordinal": 1},
+      {"event_id": 2, "accept_ordinal": 2, "retire_ordinal": 2}
+    ],
+    "counts": {"generated": 3, "source_overrun": 0, "accepted": 3, "retired": 3}
+  },
+  "public_v2": {
+    "schema": "redred-native-security-scaffold-v1",
+    "slot": "public_v2",
+    "evidence_class": "REDRED_SINGLE_EDGE_PUBLIC_PROJECTED_ACTUAL_RTL_SEALED_V2",
+    "source_class": "PUBLIC_PROJECTED_EXTENSION",
+    "canonical_redred_traffic": false,
+    "official_contest_traffic": false,
+    "release_status": "HOLD",
+    "selection_status": "HOLD",
+    "events": [
+      {"event_id": 0, "accept_ordinal": 0, "retire_ordinal": 0},
+      {"event_id": 1, "accept_ordinal": 1, "retire_ordinal": 1}
+    ],
+    "counts": {"generated": 2, "source_overrun": 0, "accepted": 2, "retired": 2}
+  }
+}
