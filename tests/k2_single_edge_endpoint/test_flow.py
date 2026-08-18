@@ -79,9 +79,9 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(contract["source_policy"]["nested_generic_filelist"]["entries"][0],
                          "rtl/technology/single_edge/w2_single_edge_error_latch.sv")
 
-    def test_static_reports_this_checkout_missing_hardened_worktree_bytes(self):
+    def test_static_reports_integrated_hardened_worktree_bytes_present(self):
         self.assertEqual(flow.static_preflight(None)["candidate_sources_present"],
-                         {"a2": False, "a3": False})
+                         {"a2": True, "a3": True})
 
 
 class MutationTests(unittest.TestCase):
