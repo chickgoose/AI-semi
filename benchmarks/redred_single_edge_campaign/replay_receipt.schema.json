@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred_single_edge_replay_receipt_v1",
+  "title": "A23 A2/A3 full50 independent single-edge replay receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "evidence_class", "campaign_id", "producer", "interface",
+    "dataset", "common_binding", "evidence_lineage", "candidates"
+  ],
+  "properties": {
+    "schema": {"const": "a23_full_single_edge_replay_receipt_v1"},
+    "status": {"const": "PASS"},
+    "evidence_class": {"const": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1"},
+    "campaign_id": {"const": "redred-a2-a3-single-edge-full50-v1"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "evidence_class", "rtl_source_commit"],
+      "properties": {
+        "id": {"const": "a23_full_single_edge_replay"},
+        "path": {"const": "tests/a23_full_single_edge_replay"},
+        "evidence_class": {"const": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1"},
+        "rtl_source_commit": {"const": "4ce4836fab1309d3468db8e660d2da9af371f784"}
+      }
+    },
+    "interface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "clock_edge", "transport", "p6_used", "parallel_used",
+        "boundary", "acceptance_observation", "retirement_observation"
+      ],
+      "properties": {
+        "id": {"const": "single_edge"},
+        "clock_edge": {"const": "posedge_only"},
+        "transport": {"const": "one_retirement_per_rising_edge"},
+        "p6_used": {"const": false},
+        "parallel_used": {"const": false},
+        "boundary": {"const": "synchronous_source_admission_through_synchronous_retirement"},
+        "acceptance_observation": {"const": "actual_atomic_scheduler_commit"},
+        "retirement_observation": {"const": "actual_single_edge_receiver_retire_valid_and_address"}
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "display_name", "source_class", "organizer_official", "run_count",
+        "manifest", "trace_registry", "runs"
+      ],
+      "properties": {
+        "id": {"const": "full50"},
+        "display_name": {"const": "team-defined synthetic full50"},
+        "source_class": {"const": "TEAM_DEFINED_SYNTHETIC"},
+        "organizer_official": {"const": false},
+        "run_count": {"const": 50},
+        "manifest": {"$ref": "#/$defs/artifact"},
+        "trace_registry": {"$ref": "#/$defs/artifact"},
+        "runs": {
+          "type": "array",
+          "minItems": 50,
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/dataset_run"}
+        }
+      }
+    },
+    "common_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cycle_semantics", "tool", "tool_version", "testbench", "runner"],
+      "properties": {
+        "cycle_semantics": {
+          "const": "common_TB_one_entry_occurrence_latch_before_indexed_accept_edge_nonblocking_clear"
+        },
+        "tool": {"$ref": "#/$defs/artifact"},
+        "tool_version": {"type": "string", "minLength": 1},
+        "testbench": {"$ref": "#/$defs/artifact"},
+        "runner": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "evidence_lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replay_kind", "independent_execution", "borrowed_p6_results",
+        "borrowed_parallel_results", "source_result_paths"
+      ],
+      "properties": {
+        "replay_kind": {"const": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL"},
+        "independent_execution": {"const": true},
+        "borrowed_p6_results": {"const": false},
+        "borrowed_parallel_results": {"const": false},
+        "source_result_paths": {"type": "array", "maxItems": 0}
+      }
+    },
+    "candidates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["A2", "A3"],
+      "properties": {
+        "A2": {"$ref": "#/$defs/candidate"},
+        "A3": {"$ref": "#/$defs/candidate"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "dataset_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name", "trace_sha256", "fixed_window_cycles", "window_start_cycle",
+        "window_end_cycle_exclusive", "trace", "prepared_input"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "trace_sha256": {"$ref": "#/$defs/sha256"},
+        "fixed_window_cycles": {"type": "integer", "minimum": 1},
+        "window_start_cycle": {"type": "integer", "minimum": 0},
+        "window_end_cycle_exclusive": {"type": "integer", "minimum": 1},
+        "trace": {"$ref": "#/$defs/artifact"},
+        "prepared_input": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "candidate_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name", "trace_sha256", "prepared_input_sha256", "fixed_window_cycles",
+        "window_start_cycle", "window_end_cycle_exclusive", "events", "summary",
+        "simulator_log"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "trace_sha256": {"$ref": "#/$defs/sha256"},
+        "prepared_input_sha256": {"$ref": "#/$defs/sha256"},
+        "fixed_window_cycles": {"type": "integer", "minimum": 1},
+        "window_start_cycle": {"type": "integer", "minimum": 0},
+        "window_end_cycle_exclusive": {"type": "integer", "minimum": 1},
+        "events": {"$ref": "#/$defs/artifact"},
+        "summary": {"$ref": "#/$defs/artifact"},
+        "simulator_log": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id", "semantic_role", "endpoint_id", "common_binding_sha256",
+        "rtl_inventory", "runs"
+      ],
+      "properties": {
+        "candidate_id": {"enum": ["A2", "A3"]},
+        "semantic_role": {"enum": ["PRIMARY", "EXACT_PREFIX_FALLBACK"]},
+        "endpoint_id": {
+          "enum": ["A2_SINGLE_EDGE_COMPLETE_ENDPOINT", "A3_SINGLE_EDGE_COMPLETE_ENDPOINT"]
+        },
+        "common_binding_sha256": {"$ref": "#/$defs/sha256"},
+        "rtl_inventory": {"$ref": "#/$defs/artifact"},
+        "runs": {
+          "type": "array",
+          "minItems": 50,
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/candidate_run"}
+        }
+      }
+    }
+  }
+}
