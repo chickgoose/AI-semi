@@ -1,0 +1,69 @@
+{
+  "schema": "a23_public_projected_extension_pins_v1",
+  "status": "PUBLIC_PROJECTED_EXTENSION",
+  "release_status": "HOLD",
+  "selection_status": "HOLD",
+  "canonical_redred_traffic": false,
+  "official_redred_traffic": false,
+  "p6_evidence_used": false,
+  "identity_accounting": {
+    "unique_projected_window_events": 1100,
+    "scenario_retimings": 3,
+    "pooled_3300_unique_events": false
+  },
+  "projection_receipt_sha256": "257dadc09916ac8fa47056b77d1ab4fbecbde25e42855d7f3ddbb94ed7246807",
+  "projection_completion_sha256": "f1bb58811a419dbb16bca522b9806176d466a268144502f0fb2342b3d762d230",
+  "hardened_replay_pins_sha256": "0daba2132010272a78b56ec2a1541f30f7cb5d2b0d8562102cb70cf9e098d8e0",
+  "scenarios": [
+    {
+      "id": "1x",
+      "trace_file": "trace_1x.jsonl",
+      "trace_sha256": "c02aa20d8dc6cb2b85a500648e91f320d05f1f7e3b2d6e11d7189550b639ec94",
+      "event_count": 1100,
+      "first_cycle": 0,
+      "last_cycle": 153692
+    },
+    {
+      "id": "64x",
+      "trace_file": "trace_64x.jsonl",
+      "trace_sha256": "b005def64b130bc0e83b73cd9e6e4ab6d0a8f6e83f12b5b008b03642e17dcebb",
+      "event_count": 1100,
+      "first_cycle": 0,
+      "last_cycle": 2401
+    },
+    {
+      "id": "256x",
+      "trace_file": "trace_256x.jsonl",
+      "trace_sha256": "8428936e62b494747e9b75445e2a9b1f40677b92ede9f6569923729237c6f14a",
+      "event_count": 1100,
+      "first_cycle": 0,
+      "last_cycle": 600
+    }
+  ],
+  "projection_source_provenance": {
+    "source_commit": "a2ca2a492eeb6760f2d9aeca1c34445df245b304",
+    "integrated_commit": "597f8e6a1b3b1762092269847056022e8c3ad96d",
+    "source_tree": "500d100332b2e33c73a8eef4012a66f26d25d9e5",
+    "integrated_tree": "732877ed200574417e9d415f5ac02e16d0ea8c4d",
+    "verified_paths": [
+      "benchmarks/redred_uzh_shapes_projection/README.md",
+      "benchmarks/redred_uzh_shapes_projection/__init__.py",
+      "benchmarks/redred_uzh_shapes_projection/project.py",
+      "benchmarks/redred_uzh_shapes_projection/projection_spec.json",
+      "tests/redred_uzh_shapes_projection/run_all.sh",
+      "tests/redred_uzh_shapes_projection/test_projection.py"
+    ]
+  },
+  "files": {
+    "benchmarks/redred_uzh_shapes_projection/README.md": "38880e6849d4ca5e81da9e48152185ada35cb32a18b5b7990b9e84d841542ece",
+    "benchmarks/redred_uzh_shapes_projection/__init__.py": "27e84e038fa4a02f059a8fb62b3ec25e1db3486042725c805a85c26b845482e6",
+    "benchmarks/redred_uzh_shapes_projection/project.py": "15fc4521e4812abfa53fd8690076f3446e5f4544bc7d2e2780232a79bc2e1e3f",
+    "benchmarks/redred_uzh_shapes_projection/projection_spec.json": "5c5d63eb86897247908df1bc9bcca3eb31dd12db4f8a34653f7727abaaecbd03",
+    "tests/redred_uzh_shapes_projection/run_all.sh": "cdec68a30a24241656978809c5fadc706311af314266f000bb4186509872d3fc",
+    "tests/redred_uzh_shapes_projection/test_projection.py": "9fc90b51f4b45a6951d69ce5bb161d4fa414247cafc790bf908b2384d066c30c",
+    "tests/a23_full_single_edge_replay/PUBLIC_PROJECTED_EXTENSION.md": "463452f8c2c36b09616214ce971c5ed7bf62a79e1fdafda511a8f8beb097d834",
+    "tests/a23_full_single_edge_replay/run_public_projected_all.sh": "f4fc2edd62ad289c6d4a1e7e8867ec85ed69195d6f2e49274cdfc53c12ce41e1",
+    "tests/a23_full_single_edge_replay/run_public_projected_extension.py": "2d2b8539a3325a3b18423b97957c5c76caeb15ac09e47bf6eb002504cb172836",
+    "tests/a23_full_single_edge_replay/test_public_projected_extension.py": "06a76828684f05a3779ca60c60c82bc92c3d837c97ee13c8ee8e81296fb99c7a"
+  }
+}
