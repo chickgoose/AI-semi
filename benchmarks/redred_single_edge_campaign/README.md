@@ -95,3 +95,55 @@ valid HOLD and exits 3; add `--allow-hold` to make that expected state exit 0.
 python3 benchmarks/redred_single_edge_campaign/campaign.py evaluate --allow-hold
 tests/redred_single_edge_campaign/run_all.sh
 ```
+
+## Version-three sealed-tuple consumer
+
+`campaign_v3.py` is a separately versioned consumer. It does not reinterpret
+the legacy receipt and it does not search producer directories. Its committed
+manifest has two independent `UNBOUND` inputs:
+
+- `synthetic_v2`: canonical `TEAM_DEFINED_SYNTHETIC` actual-RTL evidence.
+- `public_v2`: noncanonical `PUBLIC_PROJECTED_EXTENSION` actual-RTL evidence.
+
+With neither tuple available, the exact gates are
+`HOLD_MISSING_SYNTHETIC_V2_PRODUCER_TUPLE` and
+`HOLD_MISSING_PUBLIC_V2_PRODUCER_TUPLE`. Supplying only a publication or only a
+bundle is an error. Supplying bytes while the corresponding committed producer
+entry is still `UNBOUND` is also an error; it can never manufacture a PASS.
+
+```sh
+python3 benchmarks/redred_single_edge_campaign/campaign_v3.py evaluate
+# exit 3: valid HOLD
+python3 benchmarks/redred_single_edge_campaign/campaign_v3.py evaluate --allow-hold
+# exit 0: the same valid HOLD
+```
+
+A future producer promotion must update the committed manifest from `UNBOUND`
+to `BOUND` and provide all of these independently reviewable fields:
+
+```text
+publication_sha256, publication_size_bytes
+producer.commit, producer.tree
+producer.verifier_sha256, producer.schema_sha256, producer.runner_sha256
+producer.testbench_sha256, producer.tool_pins_sha256
+rtl.source_commit, rtl.source_tree, rtl.integration_commit, rtl.integration_tree
+bundle_sha256, bundle_size_bytes
+manifest_schema, manifest_member, manifest_sha256, entry_count
+result_schema, result_member, result_sha256, result_semantic_sha256,
+result_size_bytes
+owners, traffic_runs, reset_run, activation_run, mutations, diagnostics
+```
+
+The publication and gzip bundle are then required as one tuple. The consumer
+rejects symlinks, hard links, aliases, unsafe or duplicate archive members,
+duplicate JSON keys, unknown fields, stale/extra/missing members, and any raw or
+semantic digest mismatch. It reads, but never extracts, the archive.
+
+The bundle must retain one source JSONL and one prepared trace per traffic run;
+both A2 and A3 run artifacts are recomputed against those same bytes. It also
+requires per-event accept and retirement ordinals, recomputes conservation,
+fixed-window throughput and both latency distributions, proves bounded reset
+after clean drain with no protocol error, and checks nonvacuous activation and
+the exact killed-mutation roster. Synthetic and public aggregates remain
+separate. Official, P6, physical, power, selection, and release claims remain
+outside the tuple and stay false/HOLD even after both tuple gates validate.
