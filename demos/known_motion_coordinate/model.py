@@ -16,16 +16,14 @@ from typing import Any
 INTRINSICS_SCHEMA = "redred.known_motion.intrinsics/v2"
 POSE_HEADER_SCHEMA = "redred.known_motion.pose_stream/v2"
 POSE_SCHEMA = "redred.known_motion.pose/v2"
-EVENT_HEADER_SCHEMA = "redred.aer.retired_event_stream/v2"
-EVENT_SCHEMA = "redred.aer.retired_event/v2"
-RECEIPT_SCHEMA = "redred.known_motion.transport_receipt_sidecar/v1"
-RESULT_HEADER_SCHEMA = "redred.known_motion.transform_stream/v2"
-RESULT_SCHEMA = "redred.known_motion.transform_result/v2"
-SUMMARY_SCHEMA = "redred.known_motion.summary/v2"
+EVENT_HEADER_SCHEMA = "redred.aer.retired_event_stream/v3"
+EVENT_SCHEMA = "redred.aer.retired_event/v3"
+RESULT_HEADER_SCHEMA = "redred.known_motion.transform_stream/v3"
+RESULT_SCHEMA = "redred.known_motion.transform_result/v3"
+SUMMARY_SCHEMA = "redred.known_motion.summary/v3"
 
 SYNTHETIC_DEMO = "SYNTHETIC_DEMO"
 CANONICAL_COMMON_SUITE = "CANONICAL_COMMON_SUITE"
-EVIDENCE_CLASSES = {SYNTHETIC_DEMO, CANONICAL_COMMON_SUITE}
 CONVENTION_ID = "redred.camera.xyz-rdf.active-w2s.rrtp.deg.pinhole-row-major/v1"
 COORDINATE_CONVENTION: dict[str, Any] = {
     "convention_id": CONVENTION_ID,
@@ -222,6 +220,22 @@ def _timebase(obj: Any, where: str) -> Timebase:
         _required_string(row, "epoch", where),
         unit,
     )
+
+
+def _clock_domains(obj: Any, where: str, timebase: Timebase) -> dict[str, str]:
+    fields = {
+        "pose_timestamp", "occurrence_time", "capture_time", "accept_time",
+        "retire_time",
+    }
+    row = _exact_keys(obj, fields, where)
+    for field in sorted(fields):
+        label = _required_string(row, field, where)
+        if label != timebase.clock_domain:
+            raise InterfaceError(
+                f"{where}.{field} must equal absolute clock domain "
+                f"{timebase.clock_domain}"
+            )
+    return row
 
 
 def _timestamp(obj: Any, where: str) -> Timestamp:
@@ -486,56 +500,11 @@ def _event_provenance(obj: Any, where: str) -> dict[str, Any]:
     return row
 
 
-def _load_transport_receipt(
-    event_blob: InputBlob,
-    header: dict[str, Any],
-    accounting: dict[str, int],
-) -> InputBlob | None:
-    evidence_class = header["evidence_class"]
-    reference = header["provenance"]["transport_receipt"]
-    if evidence_class == SYNTHETIC_DEMO:
-        if reference is not None:
-            raise InterfaceError("SYNTHETIC_DEMO must not claim a canonical transport receipt")
-        return None
-    ref = _exact_keys(reference, {"path", "sha256"}, "transport_receipt reference")
-    raw_path = _required_string(ref, "path", "transport_receipt reference")
-    relative_path = Path(raw_path)
-    if relative_path.is_absolute() or ".." in relative_path.parts:
-        raise InterfaceError(
-            "transport receipt path must stay relative to the event-stream directory"
-        )
-    expected_sha = _digest(ref["sha256"], "transport_receipt reference.sha256")
-    receipt_blob = _read_once(
-        event_blob.path.parent / relative_path, "transport receipt sidecar"
-    )
-    if receipt_blob.sha256 != expected_sha:
-        raise InterfaceError("transport receipt sidecar SHA-256 mismatch")
-    receipt = _exact_keys(
-        _load_json(receipt_blob),
-        {
-            "schema", "evidence_class", "run_id", "candidate_id", "workload_id",
-            "manifest_sha256", "content_sha256", "transport_accounting",
-        },
-        str(receipt_blob.path),
-    )
-    if receipt["schema"] != RECEIPT_SCHEMA or receipt["evidence_class"] != CANONICAL_COMMON_SUITE:
-        raise InterfaceError("transport receipt sidecar schema/evidence class mismatch")
-    provenance = header["provenance"]
-    for key in ("run_id", "candidate_id", "workload_id", "manifest_sha256", "content_sha256"):
-        if receipt[key] != provenance[key]:
-            raise InterfaceError(f"transport receipt sidecar {key} binding mismatch")
-    _digest(receipt["manifest_sha256"], "transport receipt manifest_sha256")
-    _digest(receipt["content_sha256"], "transport receipt content_sha256")
-    if _transport_accounting(receipt["transport_accounting"], "transport receipt accounting") != accounting:
-        raise InterfaceError("transport receipt accounting binding mismatch")
-    return receipt_blob
-
-
 def _load_events_blob(
     blob: InputBlob,
     intrinsics: Intrinsics,
     pose_header: dict[str, Any],
-) -> tuple[dict[str, Any], list[dict[str, Any]], InputBlob | None]:
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     records = _load_jsonl(blob)
     header = _exact_keys(
         records[0],
@@ -543,14 +512,19 @@ def _load_events_blob(
             "schema", "record_type", "evidence_class", "camera_id",
             "intrinsics_id", "pose_stream_id", "convention_id",
             "coordinate_frame", "pose_lookup_time", "transport_accounting",
-            "provenance",
+            "absolute_timebase", "clock_domains", "provenance",
         },
         f"{blob.path}:1",
     )
     if header["schema"] != EVENT_HEADER_SCHEMA or header["record_type"] != "header":
-        raise InterfaceError(f"{blob.path}: first record is not the v2 event header")
-    if header["evidence_class"] not in EVIDENCE_CLASSES:
-        raise InterfaceError(f"{blob.path}: unsupported evidence_class")
+        raise InterfaceError(f"{blob.path}: first record is not the v3 event header")
+    if header["evidence_class"] == CANONICAL_COMMON_SUITE:
+        raise InterfaceError(
+            "CANONICAL_COMMON_SUITE is HOLD/unsupported: no trusted post-retire "
+            "exporter and receipt exists"
+        )
+    if header["evidence_class"] != SYNTHETIC_DEMO:
+        raise InterfaceError(f"{blob.path}: only SYNTHETIC_DEMO is supported")
     if header["camera_id"] != intrinsics.camera_id or header["intrinsics_id"] != intrinsics.intrinsics_id:
         raise InterfaceError(f"{blob.path}: camera/intrinsics binding mismatch")
     if header["pose_stream_id"] != pose_header["pose_stream_id"]:
@@ -561,19 +535,32 @@ def _load_events_blob(
         raise InterfaceError(f"{blob.path}: unsupported coordinate_frame")
     if header["pose_lookup_time"] not in ("occurrence_time", "capture_time"):
         raise InterfaceError(f"{blob.path}: pose_lookup_time must select occurrence_time or capture_time")
+    absolute_timebase = _timebase(
+        header["absolute_timebase"], f"{blob.path}:1.absolute_timebase"
+    )
+    _clock_domains(
+        header["clock_domains"], f"{blob.path}:1.clock_domains", absolute_timebase
+    )
+    if _timebase(pose_header["timebase"], "pose header timebase") != absolute_timebase:
+        raise InterfaceError(f"{blob.path}: pose stream differs from absolute timebase")
     provenance = _event_provenance(header["provenance"], f"{blob.path}:1.provenance")
+    if provenance["transport_receipt"] is not None:
+        raise InterfaceError(
+            "SYNTHETIC_DEMO rejects transport receipts; canonical coordinate join is HOLD"
+        )
     header["provenance"] = provenance
     accounting = _transport_accounting(
         header["transport_accounting"], f"{blob.path}:1.transport_accounting"
     )
 
     event_keys = {
-        "schema", "record_type", "tb_only_event_id", "logical_source", "address",
-        "occurrence_time", "capture_time", "accept_time", "retire_time",
-        "pose_id", "x", "y", "polarity",
+        "schema", "record_type", "tb_only_event_id", "retire_sequence_index",
+        "logical_source", "address", "occurrence_time", "capture_time",
+        "accept_time", "retire_time", "pose_id", "x", "y", "polarity",
     }
     events: list[dict[str, Any]] = []
     ids: set[int] = set()
+    previous_retire_value = -1
     for line_number, raw in enumerate(records[1:], 2):
         where = f"{blob.path}:{line_number}"
         event = _exact_keys(raw, event_keys, where)
@@ -583,23 +570,43 @@ def _load_events_blob(
         if event_id in ids:
             raise InterfaceError(f"{where}: duplicate tb_only_event_id {event_id}")
         ids.add(event_id)
+        retire_sequence_index = _nonnegative_integer(
+            event["retire_sequence_index"], f"{where}.retire_sequence_index"
+        )
+        if retire_sequence_index != len(events):
+            raise InterfaceError(
+                f"{where}: retire_sequence_index must be contiguous JSONL retirement order"
+            )
         event["logical_source"] = _nonnegative_integer(event["logical_source"], f"{where}.logical_source")
         event["address"] = _nonnegative_integer(event["address"], f"{where}.address")
         if event["logical_source"] >= 16 or event["address"] >= 16:
             raise InterfaceError(f"{where}: logical_source/address must be N=16 values")
+        if event["address"] != event["logical_source"]:
+            raise InterfaceError(
+                f"{where}: SYNTHETIC_DEMO address must equal logical_source"
+            )
         for key in ("occurrence_time", "capture_time", "accept_time", "retire_time"):
             event[key] = _timestamp(event[key], f"{where}.{key}")
         occurrence = event["occurrence_time"]
         capture = event["capture_time"]
         accept = event["accept_time"]
         retire = event["retire_time"]
-        if occurrence.timebase != capture.timebase or occurrence.value > capture.value:
-            raise InterfaceError(f"{where}: occurrence/capture chronology or timebase is invalid")
-        if accept.timebase != retire.timebase or accept.value > retire.value:
-            raise InterfaceError(f"{where}: accept/retire chronology or timebase is invalid")
-        selected_time = event[header["pose_lookup_time"]]
-        if selected_time.timebase != _timebase(pose_header["timebase"], "pose header timebase"):
-            raise InterfaceError(f"{where}: selected pose-lookup timestamp differs from pose timebase")
+        if any(
+            timestamp.timebase != absolute_timebase
+            for timestamp in (occurrence, capture, accept, retire)
+        ):
+            raise InterfaceError(
+                f"{where}: every stage timestamp must use the exact absolute timebase"
+            )
+        if not occurrence.value <= capture.value <= accept.value <= retire.value:
+            raise InterfaceError(
+                f"{where}: require occurrence <= capture <= accept <= retire"
+            )
+        if retire.value < previous_retire_value:
+            raise InterfaceError(
+                f"{where}: retire timestamps must follow retire_sequence_index order"
+            )
+        previous_retire_value = retire.value
         if event["pose_id"] is not None and (
             not isinstance(event["pose_id"], str) or not event["pose_id"]
         ):
@@ -610,14 +617,11 @@ def _load_events_blob(
         if isinstance(polarity, bool) or not isinstance(polarity, int) or polarity not in (-1, 0, 1):
             raise InterfaceError(f"{where}.polarity must be one of -1, 0, or 1")
         events.append(event)
-    if ids != set(range(len(events))):
-        raise InterfaceError(f"{blob.path}: tb_only_event_id values must be exact contiguous IDs")
     if accounting["accepted"] != accounting["retired"] or accounting["retired"] != len(events):
         raise InterfaceError(
             f"{blob.path}: hard precondition requires accepted == retired == event-record count"
         )
-    receipt_blob = _load_transport_receipt(blob, header, accounting)
-    return header, events, receipt_blob
+    return header, events
 
 
 def _select_pose(
@@ -698,9 +702,7 @@ def transform_files(
     pose_blob = _read_once(poses_path, "pose input")
     intrinsics = _load_intrinsics_blob(intrinsics_blob)
     pose_header, poses = _load_pose_blob(pose_blob, intrinsics)
-    event_header, events, receipt_blob = _load_events_blob(
-        event_blob, intrinsics, pose_header
-    )
+    event_header, events = _load_events_blob(event_blob, intrinsics, pose_header)
     required_frame = "world_reference_image" if mode == "world-to-sensor" else "sensor_image"
     output_frame = "sensor_image" if mode == "world-to-sensor" else "world_reference_image"
     if mode not in ("world-to-sensor", "sensor-to-world"):
@@ -719,7 +721,6 @@ def transform_files(
         "events_input_sha256": event_blob.sha256,
         "intrinsics_input_sha256": intrinsics_blob.sha256,
         "poses_input_sha256": pose_blob.sha256,
-        "transport_receipt_input_sha256": receipt_blob.sha256 if receipt_blob else None,
     }
     result_header = {
         "schema": RESULT_HEADER_SCHEMA,
@@ -731,6 +732,8 @@ def transform_files(
         "intrinsics_id": intrinsics.intrinsics_id,
         "pose_stream_id": pose_header["pose_stream_id"],
         "convention": COORDINATE_CONVENTION,
+        "absolute_timebase": event_header["absolute_timebase"],
+        "clock_domains": event_header["clock_domains"],
         "pose_lookup_time": event_header["pose_lookup_time"],
         "maximum_pose_age_ns_inclusive": max_pose_age_ns,
         "provenance": result_provenance,
@@ -758,6 +761,7 @@ def transform_files(
                 "schema": RESULT_SCHEMA,
                 "record_type": "event",
                 "tb_only_event_id": event["tb_only_event_id"],
+                "retire_sequence_index": event["retire_sequence_index"],
                 "logical_source": event["logical_source"],
                 "address": event["address"],
                 "occurrence_time": event["occurrence_time"].as_json(),
@@ -804,11 +808,16 @@ def transform_files(
             "accepted_equals_retired_equals_event_records": True,
             "retired_equals_in_fov_plus_coordinate_out_of_fov": True,
         },
+        "event_identity": {
+            "tb_only_event_id": "preserved_unique_noncontiguous_identity",
+            "retire_sequence_index": "contiguous_JSONL_retirement_order",
+        },
         "scope": {
             "stage": "strictly_external_post_retire_software_demo",
             "model": "rotation-only pinhole rays; no translation, depth, distortion, or pose estimation",
             "ppa": "not candidate RTL/TB and not included in endpoint PPA",
             "loss_separation": "coordinate_out_of_fov is geometry accounting, not AER transport loss",
+            "canonical_coordinate_join": "HOLD_UNSUPPORTED",
         },
     }
     jsonl_text = "".join(
