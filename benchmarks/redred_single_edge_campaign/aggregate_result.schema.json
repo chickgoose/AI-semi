@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred_single_edge_campaign_aggregate_result_v1",
+  "title": "REDRED campaign-native aggregate gate result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "campaign_id",
+    "semantic_requirement",
+    "input_views",
+    "aggregation",
+    "candidate_policy",
+    "candidate_rollup",
+    "shared_nonpass",
+    "gates",
+    "decision",
+    "claims"
+  ],
+  "properties": {
+    "schema": {"const": "redred_single_edge_campaign_aggregate_result_v1"},
+    "status": {
+      "enum": [
+        "PASS_SCOPED_CAMPAIGN_RECOMMENDATION",
+        "HOLD_CAMPAIGN_RECOMMENDATION"
+      ]
+    },
+    "campaign_id": {"const": "redred-a2-a3-single-edge-campaign-native-v1"},
+    "semantic_requirement": {
+      "enum": ["AGGREGATE_WEIGHTED", "EXACT_SCALAR_PREFIX"]
+    },
+    "input_views": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["synthetic_v2", "public_v2"],
+      "properties": {
+        "synthetic_v2": {"$ref": "#/$defs/inputView"},
+        "public_v2": {"$ref": "#/$defs/inputView"}
+      }
+    },
+    "aggregation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "synthetic_public_pooling",
+        "pooled_totals_emitted",
+        "public_unit_kind",
+        "public_independent_sample_count",
+        "public_retiming_labels",
+        "public_retimings_counted_as_independent_samples"
+      ],
+      "properties": {
+        "synthetic_public_pooling": {"const": "FORBIDDEN"},
+        "pooled_totals_emitted": {"const": false},
+        "public_unit_kind": {"const": "PUBLIC_DATASET_RETIMING_FAMILY"},
+        "public_independent_sample_count": {"const": 1},
+        "public_retiming_labels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"}
+        },
+        "public_retimings_counted_as_independent_samples": {"const": false}
+      }
+    },
+    "candidate_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary",
+        "fallback",
+        "A2_semantics",
+        "A3_semantics",
+        "fallback_allowed_triggers",
+        "fallback_forbidden_triggers"
+      ],
+      "properties": {
+        "primary": {"const": "A2"},
+        "fallback": {"const": "A3"},
+        "A2_semantics": {"const": "AGGREGATE_WEIGHTED_PERFORMANCE"},
+        "A3_semantics": {"const": "EXACT_SCALAR_PREFIX"},
+        "fallback_allowed_triggers": {
+          "const": ["EXACT_PREFIX_REQUIRED", "A2_SPECIFIC_GATE_FAILURE"]
+        },
+        "fallback_forbidden_triggers": {
+          "const": [
+            "SHARED_CAMPAIGN_FAILURE",
+            "SHARED_INTERFACE_FAILURE",
+            "SHARED_CDC_RDC_FAILURE",
+            "SHARED_PDK_IO_FAILURE"
+          ]
+        }
+      }
+    },
+    "candidate_rollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["A2", "A3"],
+      "properties": {
+        "A2": {"$ref": "#/$defs/candidateRollup"},
+        "A3": {"$ref": "#/$defs/candidateRollup"}
+      }
+    },
+    "shared_nonpass": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/sharedNonpass"}
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalized_views_separately_verified",
+        "shared_campaign_gates",
+        "A2_candidate",
+        "A3_candidate",
+        "official",
+        "physical",
+        "power",
+        "final_release"
+      ],
+      "properties": {
+        "normalized_views_separately_verified": {"const": "PASS"},
+        "shared_campaign_gates": {"enum": ["PASS", "HOLD"]},
+        "A2_candidate": {"$ref": "#/$defs/gateStatus"},
+        "A3_candidate": {"$ref": "#/$defs/gateStatus"},
+        "official": {"const": "HOLD_FALSE_CLAIM"},
+        "physical": {"const": "HOLD_FALSE_CLAIM"},
+        "power": {"const": "HOLD_FALSE_CLAIM"},
+        "final_release": {"const": "HOLD"}
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "campaign_recommendation",
+        "reason",
+        "fallback_activated",
+        "fallback_trigger",
+        "final_selected_candidate",
+        "final_selection_status",
+        "final_release_status",
+        "release_authority"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "A2_PRIMARY",
+            "A3_FALLBACK",
+            "HOLD_SHARED_GATE",
+            "HOLD_A3_NOT_QUALIFIED",
+            "HOLD_NO_QUALIFIED_CAMPAIGN_RECOMMENDATION"
+          ]
+        },
+        "campaign_recommendation": {"enum": ["A2", "A3", null]},
+        "reason": {"type": "string", "minLength": 1},
+        "fallback_activated": {"type": "boolean"},
+        "fallback_trigger": {
+          "enum": ["EXACT_PREFIX_REQUIRED", "A2_SPECIFIC_GATE_FAILURE", null]
+        },
+        "final_selected_candidate": {"const": null},
+        "final_selection_status": {"const": "HOLD"},
+        "final_release_status": {"const": "HOLD"},
+        "release_authority": {"const": false}
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["official", "physical", "power", "release", "final_candidate_selection"],
+      "properties": {
+        "official": {"const": false},
+        "physical": {"const": false},
+        "power": {"const": false},
+        "release": {"const": false},
+        "final_candidate_selection": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS_SCOPED_CAMPAIGN_RECOMMENDATION"}}},
+      "then": {
+        "properties": {
+          "decision": {
+            "properties": {"campaign_recommendation": {"enum": ["A2", "A3"]}}
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "decision": {"properties": {"campaign_recommendation": {"const": null}}}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "semantic_requirement": {"const": "EXACT_SCALAR_PREFIX"}
+        }
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "properties": {"campaign_recommendation": {"enum": ["A3", null]}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {"properties": {"status": {"const": "A2_PRIMARY"}}}
+        }
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "properties": {
+              "campaign_recommendation": {"const": "A2"},
+              "fallback_activated": {"const": false},
+              "fallback_trigger": {"const": null}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {"properties": {"status": {"const": "A3_FALLBACK"}}}
+        }
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "properties": {
+              "campaign_recommendation": {"const": "A3"},
+              "fallback_activated": {"const": true},
+              "fallback_trigger": {
+                "enum": ["EXACT_PREFIX_REQUIRED", "A2_SPECIFIC_GATE_FAILURE"]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "HOLD_SHARED_GATE",
+                  "HOLD_A3_NOT_QUALIFIED",
+                  "HOLD_NO_QUALIFIED_CAMPAIGN_RECOMMENDATION"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "properties": {
+              "campaign_recommendation": {"const": null},
+              "fallback_activated": {"const": false},
+              "fallback_trigger": {"const": null}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "gateStatus": {"enum": ["PASS", "FAIL", "HOLD"]},
+    "inputView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "sha256",
+        "verification_status",
+        "adapter_id",
+        "source_result_sha256",
+        "source_publication_sha256",
+        "family_id"
+      ],
+      "properties": {
+        "schema": {"const": "redred_single_edge_campaign_normalized_view_v1"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "verification_status": {"const": "PASS"},
+        "adapter_id": {"type": "string", "minLength": 1},
+        "source_result_sha256": {"$ref": "#/$defs/sha256"},
+        "source_publication_sha256": {"$ref": "#/$defs/sha256"},
+        "family_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "candidateRollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "per_view", "nonpass"],
+      "properties": {
+        "status": {"$ref": "#/$defs/gateStatus"},
+        "per_view": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["synthetic_v2", "public_v2"],
+          "properties": {
+            "synthetic_v2": {"$ref": "#/$defs/gateStatus"},
+            "public_v2": {"$ref": "#/$defs/gateStatus"}
+          }
+        },
+        "nonpass": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slot", "gate_status", "reason_codes"],
+            "properties": {
+              "slot": {"enum": ["synthetic_v2", "public_v2"]},
+              "gate_status": {"enum": ["FAIL", "HOLD"]},
+              "reason_codes": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "sharedNonpass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slot", "gate", "status"],
+      "properties": {
+        "slot": {"enum": ["synthetic_v2", "public_v2"]},
+        "gate": {"type": "string", "minLength": 1},
+        "status": {"enum": ["FAIL", "HOLD"]}
+      }
+    }
+  }
+}
