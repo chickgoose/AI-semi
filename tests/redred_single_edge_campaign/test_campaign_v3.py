@@ -382,6 +382,49 @@ class SealedTupleTests(unittest.TestCase):
         with self.assertRaisesRegex(sealed.SealedTupleError, "temporal order"):
             self.validate(members)
 
+    def test_coherently_resealed_duplicate_source_acceptance_fails_latch_replay(self):
+        members = copy.deepcopy(self.fixture.members)
+        event_path = "runs/a2/trace0/events.csv"
+        events = sealed.csv_records(members[event_path], sealed.EVENT_FIELDS, "fixture")
+        events[1].update({
+            "accept_cycle": "0", "retire_cycle": "1",
+            "accept_ordinal": "1", "retire_ordinal": "1", "event_state": "retired",
+        })
+        events[2]["accept_ordinal"] = "2"
+        events[2]["retire_ordinal"] = "2"
+        members[event_path] = csv_bytes(sealed.EVENT_FIELDS, events)
+
+        summary_path = "runs/a2/trace0/summary.csv"
+        summary = sealed.csv_records(members[summary_path], sealed.SUMMARY_FIELDS, "fixture")
+        summary[0].update({
+            "source_overrun": "0", "accepted": "3", "retired": "3",
+            "fixed_window_retired": "3",
+        })
+        members[summary_path] = csv_bytes(sealed.SUMMARY_FIELDS, summary)
+
+        result = sealed.load_json_bytes(members["result/result.json"], "result")
+        run = result["owners"]["a2"]["runs"]["trace0"]
+        run.update({
+            "source_overrun": 0, "accepted": 3, "retired": 3,
+            "fixed_window_retired": 3,
+            "occurrence_to_accept": sealed.latency([0, 0, 0]),
+            "accept_to_retire": sealed.latency([1, 1, 1]),
+            "fixed_window_events_per_cycle": 1.0,
+        })
+        aggregate = result["owners"]["a2"]["aggregate"]
+        aggregate.update({
+            "totals": {
+                "generated": 3, "source_overrun": 0, "accepted": 3,
+                "retired": 3, "fixed_window_retired": 3,
+            },
+            "occurrence_to_accept": sealed.latency([0, 0, 0]),
+            "accept_to_retire": sealed.latency([1, 1, 1]),
+            "fixed_window_events_per_cycle": 1.0,
+        })
+        members["result/result.json"] = json_bytes(result)
+        with self.assertRaisesRegex(sealed.SealedTupleError, "source-latch replay differs"):
+            self.validate(members)
+
     def test_resealed_summary_and_result_claim_mutations_fail(self):
         members = copy.deepcopy(self.fixture.members)
         path = "runs/a2/trace0/summary.csv"

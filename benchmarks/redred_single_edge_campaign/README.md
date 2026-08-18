@@ -144,6 +144,11 @@ both A2 and A3 run artifacts are recomputed against those same bytes. It also
 requires per-event accept and retirement ordinals, recomputes conservation,
 fixed-window throughput and both latency distributions, proves bounded reset
 after clean drain with no protocol error, and checks nonvacuous activation and
-the exact killed-mutation roster. Synthetic and public aggregates remain
-separate. Official, P6, physical, power, selection, and release claims remain
-outside the tuple and stay false/HOLD even after both tuple gates validate.
+the exact killed-mutation roster. A per-source one-entry latch replay requires
+the first occurrence seen while a source is free to be the accepted occurrence,
+keeps that source occupied through its acceptance edge, and classifies all
+other same-source occurrences during that interval as overruns. Thus two
+occurrences of one source on one edge can never both be accepted. Synthetic and
+public aggregates remain separate. Official, P6, physical, power, selection,
+and release claims remain outside the tuple and stay false/HOLD even after both
+tuple gates validate.
