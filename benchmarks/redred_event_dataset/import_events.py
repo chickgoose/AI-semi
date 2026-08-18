@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Iterable
-from urllib.parse import urlsplit
 
 
 SPEC_SCHEMA = "redred-event-import-v2"
@@ -26,6 +25,10 @@ COMPLETION_SCHEMA = "redred-event-import-completion-v2"
 TRACE_NAME = "events.jsonl"
 RECEIPT_NAME = "receipt.json"
 COMPLETION_NAME = "COMPLETE.json"
+LOCAL_COMPLETE = "LOCAL_IMPORT_COMPLETE_UNQUALIFIED"
+FORMAT_HOLD = "HOLD_UNSUPPORTED_FORMAT"
+QUALIFIER_HOLD = "HOLD_LOCAL_IMPORT_NOT_CANONICAL"
+EVIDENCE_CLASS = "LOCAL_CAPTURED_BYTE_SNAPSHOT_TRANSFORMATION"
 TRACE_FIELDS = (
     "occurrence_cycle",
     "tb_only_event_id",
@@ -57,10 +60,17 @@ COUNTER_FIELDS = {
 }
 TIME_TO_NS = {"s": 1_000_000_000, "ms": 1_000_000, "us": 1_000, "ns": 1}
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-EXACT_DECIMAL_RE = re.compile(
-    r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?(?:0|[1-9][0-9]*))?\Z"
+MAX_EXACT_DECIMAL_CHARS = 136
+MAX_INTEGER_DIGITS = 64
+MAX_EXPONENT = 128
+EXACT_DECIMAL_PATTERN = (
+    r"^-?(?:0|[1-9][0-9]{0,63})(?:\.[0-9]{1,64})?"
+    r"(?:[eE][+-]?(?:0|[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?(?![\s\S])"
 )
-INTEGER_TEXT_RE = re.compile(r"-?(?:0|[1-9][0-9]*)\Z")
+URI_PATTERN = r"^[A-Za-z][A-Za-z0-9+.-]*:[^\s\u0000-\u001F\u007F]+(?![\s\S])"
+EXACT_DECIMAL_RE = re.compile(EXACT_DECIMAL_PATTERN)
+URI_RE = re.compile(URI_PATTERN)
+INTEGER_TEXT_RE = re.compile(r"-?(?:0|[1-9][0-9]{0,63})(?![\s\S])")
 SPDX_RE = re.compile(r"(?:[A-Za-z0-9][A-Za-z0-9.-]*|LicenseRef-[A-Za-z0-9.-]+)\Z")
 ACQUISITION_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}\Z")
 
@@ -77,6 +87,7 @@ class ImportHold(ImportFailure):
 class StableBytes:
     data: bytes
     raw_sha256: str
+    captured_stat: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -102,14 +113,42 @@ def _canonical_sha256(value: Any) -> str:
     return _sha256_bytes(_canonical_bytes(value))
 
 
-def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
-    return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns)
+def _captured_stat(info: os.stat_result) -> dict[str, int]:
+    return {
+        "device": info.st_dev,
+        "inode": info.st_ino,
+        "mode": info.st_mode,
+        "size": info.st_size,
+        "mtime_ns": info.st_mtime_ns,
+        "ctime_ns": info.st_ctime_ns,
+    }
+
+
+def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    captured = _captured_stat(info)
+    return tuple(captured[key] for key in ("device", "inode", "mode", "size", "mtime_ns", "ctime_ns"))
+
+
+def _reject_symlink_components(path: Path) -> None:
+    absolute = Path(os.path.abspath(path))
+    current = Path(absolute.anchor)
+    for component in absolute.parts[1:]:
+        current /= component
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            raise ImportFailure(f"cannot inspect path component {current}: {error}") from error
+        if stat.S_ISLNK(info.st_mode):
+            raise ImportFailure(f"symlink path component is forbidden: {current}")
 
 
 def _stable_read(
     path: Path, *, _after_read_hook: Callable[[], None] | None = None
 ) -> StableBytes:
     """Read exact bytes once and reject identity/size/mtime changes around the read."""
+    _reject_symlink_components(path)
     try:
         before = path.stat(follow_symlinks=False)
     except OSError as error:
@@ -146,7 +185,7 @@ def _stable_read(
         raise ImportFailure(f"artifact changed during stable read: {path}")
     if len(data) != before.st_size:
         raise ImportFailure(f"artifact size changed during stable read: {path}")
-    return StableBytes(data=data, raw_sha256=_sha256_bytes(data))
+    return StableBytes(data=data, raw_sha256=_sha256_bytes(data), captured_stat=_captured_stat(after))
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -158,26 +197,49 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _bounded_json_int(text: str) -> int:
+    digits = text[1:] if text.startswith("-") else text
+    if len(digits) > MAX_INTEGER_DIGITS:
+        raise ImportFailure("JSON integer exceeds the 64-digit resource bound")
+    try:
+        return int(text, 10)
+    except (ValueError, OverflowError) as error:
+        raise ImportFailure(f"invalid JSON integer: {error}") from error
+
+
+def _reject_json_float(text: str) -> Any:
+    raise ImportFailure(f"JSON floating-point number is forbidden: {text!r}")
+
+
+def _reject_json_constant(text: str) -> Any:
+    raise ImportFailure(f"non-finite JSON constant is forbidden: {text!r}")
+
+
+def _json_load_text(text: str, where: str) -> Any:
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_int=_bounded_json_int,
+            parse_float=_reject_json_float,
+            parse_constant=_reject_json_constant,
+        )
+    except ImportFailure:
+        raise
+    except Exception as error:
+        raise ImportFailure(f"invalid JSON in {where}: {error}") from error
+
+
 def _json_load_bytes(data: bytes, where: str) -> Any:
     try:
         text = data.decode("utf-8", errors="strict")
     except UnicodeError as error:
         raise ImportFailure(f"{where} is not valid UTF-8: {error}") from error
-    try:
-        return json.loads(text, object_pairs_hook=_reject_duplicate_keys)
-    except ImportFailure:
-        raise
-    except json.JSONDecodeError as error:
-        raise ImportFailure(f"invalid JSON in {where}: {error}") from error
+    return _json_load_text(text, where)
 
 
 def _json_load_line(line: str, where: str) -> Any:
-    try:
-        return json.loads(line, object_pairs_hook=_reject_duplicate_keys)
-    except ImportFailure:
-        raise
-    except json.JSONDecodeError as error:
-        raise ImportFailure(f"invalid JSON in {where}: {error}") from error
+    return _json_load_text(line, where)
 
 
 def _strict_keys(value: dict[str, Any], expected: set[str], where: str) -> None:
@@ -194,7 +256,7 @@ def _strict_keys(value: dict[str, Any], expected: set[str], where: str) -> None:
 
 def _text(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value or value != value.strip() or any(
-        ord(character) < 0x20 for character in value
+        ord(character) < 0x20 or ord(character) == 0x7F for character in value
     ):
         raise ImportFailure(f"{field} must be a non-empty trimmed string without control characters")
     return value
@@ -213,20 +275,30 @@ def _nonnegative_int(value: Any, field: str) -> int:
 
 
 def _exact_fraction(value: Any, field: str) -> Fraction:
-    if not isinstance(value, str) or not EXACT_DECIMAL_RE.fullmatch(value):
+    if not isinstance(value, str) or len(value) > MAX_EXACT_DECIMAL_CHARS or not EXACT_DECIMAL_RE.match(value):
         raise ImportFailure(
-            f"{field} must match the exact-decimal grammar "
-            "-?(0|[1-9][0-9]*)(.[0-9]+)?([eE][+-]?(0|[1-9][0-9]*))?"
+            f"{field} exceeds bounds or does not match the exact-decimal grammar"
         )
-    mantissa, exponent_text = re.split(r"[eE]", value, maxsplit=1) if re.search(r"[eE]", value) else (value, "0")
-    exponent = int(exponent_text, 10)
+    try:
+        mantissa, exponent_text = re.split(r"[eE]", value, maxsplit=1) if re.search(r"[eE]", value) else (value, "0")
+        exponent = int(exponent_text, 10)
+    except (ValueError, OverflowError) as error:
+        raise ImportFailure(f"{field} has an invalid exponent") from error
+    if abs(exponent) > MAX_EXPONENT:
+        raise ImportFailure(f"{field} exponent exceeds {MAX_EXPONENT}")
     negative = mantissa.startswith("-")
     unsigned = mantissa[1:] if negative else mantissa
     if "." in unsigned:
         whole, fractional = unsigned.split(".", 1)
     else:
         whole, fractional = unsigned, ""
-    coefficient = int(whole + fractional, 10)
+    coefficient_digits = whole + fractional
+    if len(coefficient_digits) > 128:
+        raise ImportFailure(f"{field} exceeds the 128-digit coefficient bound")
+    try:
+        coefficient = int(coefficient_digits, 10)
+    except (ValueError, OverflowError) as error:
+        raise ImportFailure(f"{field} has an invalid coefficient") from error
     if negative:
         coefficient = -coefficient
     scale = len(fractional) - exponent
@@ -269,9 +341,12 @@ def _integer(value: Any, field: str, *, json_input: bool) -> int:
         if not isinstance(value, int):
             raise ImportFailure(f"{field} must be a JSON integer")
         return value
-    if not isinstance(value, str) or not INTEGER_TEXT_RE.fullmatch(value):
+    if not isinstance(value, str) or len(value.lstrip("-")) > MAX_INTEGER_DIGITS or not INTEGER_TEXT_RE.match(value):
         raise ImportFailure(f"{field} must be a canonical base-10 integer")
-    return int(value, 10)
+    try:
+        return int(value, 10)
+    except (ValueError, OverflowError) as error:
+        raise ImportFailure(f"{field} is outside the integer resource bound") from error
 
 
 def _normalize_polarity(value: Any, encoding: str, field: str, *, json_input: bool) -> int:
@@ -291,8 +366,8 @@ def _validate_sha(value: Any, field: str) -> str:
 def _validate_source_spec(source: Any) -> dict[str, Any]:
     if not isinstance(source, dict):
         raise ImportFailure("source must be an object")
-    _strict_keys(source, {"raw_sha256"}, "source")
-    _validate_sha(source["raw_sha256"], "source.raw_sha256")
+    _strict_keys(source, {"snapshot_sha256"}, "source")
+    _validate_sha(source["snapshot_sha256"], "source.snapshot_sha256")
     return source
 
 
@@ -311,8 +386,8 @@ def _validate_dataset(dataset: Any) -> dict[str, Any]:
         raise ImportFailure("dataset.provenance must contain exactly one of uri or acquisition_id")
     if "uri" in provenance:
         uri = _text(provenance["uri"], "dataset.provenance.uri")
-        if not urlsplit(uri).scheme or any(character.isspace() for character in uri):
-            raise ImportFailure("dataset.provenance.uri must be an absolute URI without whitespace")
+        if not URI_RE.match(uri):
+            raise ImportFailure("dataset.provenance.uri does not match the absolute-URI language")
     else:
         acquisition = _text(provenance["acquisition_id"], "dataset.provenance.acquisition_id")
         if not ACQUISITION_RE.fullmatch(acquisition):
@@ -462,6 +537,8 @@ def _parse_delimited(data: bytes, input_spec: dict[str, Any]) -> tuple[list[RawE
     delimiter = input_spec["delimiter"]
     if delimiter != "whitespace" and (not isinstance(delimiter, str) or len(delimiter) != 1):
         raise ImportFailure("input.delimiter must be one character or whitespace")
+    if delimiter in {"\r", "\n", "\x00"}:
+        raise ImportFailure("input.delimiter cannot be CR, LF, or NUL")
     header = input_spec["header"]
     if not isinstance(header, bool):
         raise ImportFailure("input.header must be boolean")
@@ -638,6 +715,7 @@ def _write_exclusive(path: Path, data: bytes) -> None:
 
 
 def _publish_package(result_dir: Path, receipt: dict[str, Any], trace: bytes | None) -> None:
+    _reject_symlink_components(result_dir.parent)
     if os.path.lexists(result_dir):
         raise ImportFailure(f"result directory already exists; refusing overwrite: {result_dir}")
     parent = result_dir.parent
@@ -660,8 +738,8 @@ def _publish_package(result_dir: Path, receipt: dict[str, Any], trace: bytes | N
     completion = {
         "schema": COMPLETION_SCHEMA,
         "status": receipt["status"],
-        "receipt_sha256": _sha256_bytes(receipt_bytes),
-        "trace_sha256": _sha256_bytes(trace) if trace is not None else None,
+        "receipt_snapshot_sha256": _sha256_bytes(receipt_bytes),
+        "trace_snapshot_sha256": _sha256_bytes(trace) if trace is not None else None,
     }
     completion_bytes = json.dumps(
         completion, indent=2, sort_keys=True, ensure_ascii=True
@@ -680,31 +758,42 @@ def _publish_package(result_dir: Path, receipt: dict[str, Any], trace: bytes | N
 
 
 def import_dataset(source_path: Path, spec_path: Path, result_dir: Path) -> dict[str, Any]:
+    _reject_symlink_components(result_dir.parent)
     if os.path.lexists(result_dir):
         raise ImportFailure(f"result directory already exists; refusing overwrite: {result_dir}")
     spec_artifact = _stable_read(spec_path)
     spec, spec_semantic_sha256 = _load_spec(spec_artifact)
     source_format, width, height, address_width, input_spec, cycle_spec = _validate_spec(spec)
     source_artifact = _stable_read(source_path)
-    expected_sha256 = spec["source"]["raw_sha256"]
+    expected_sha256 = spec["source"]["snapshot_sha256"]
     if source_artifact.raw_sha256 != expected_sha256:
         raise ImportFailure(
-            f"source raw SHA-256 mismatch: expected {expected_sha256}, got {source_artifact.raw_sha256}"
+            f"source snapshot SHA-256 mismatch: expected {expected_sha256}, got {source_artifact.raw_sha256}"
         )
     spec_hashes = {
-        "raw_sha256": spec_artifact.raw_sha256,
+        "snapshot_sha256": spec_artifact.raw_sha256,
         "semantic_sha256": spec_semantic_sha256,
+        "captured_stat": spec_artifact.captured_stat,
+        "path_scope": "CAPTURE_ONLY_NOT_REVALIDATED",
     }
     if source_format == "samsung_official":
         reason = "official Samsung event format is unsupported until its actual specification is provided"
         receipt = {
             "schema": RECEIPT_SCHEMA,
-            "status": "HOLD",
+            "status": FORMAT_HOLD,
             "reason": reason,
-            "source": {"file": source_path.name, "raw_sha256": source_artifact.raw_sha256},
+            "evidence_class": EVIDENCE_CLASS,
+            "source": {
+                "file": source_path.name,
+                "snapshot_sha256": source_artifact.raw_sha256,
+                "captured_stat": source_artifact.captured_stat,
+                "path_scope": "CAPTURE_ONLY_NOT_REVALIDATED",
+            },
             "specification": spec_hashes,
         }
+        _qualify_receipt_and_trace(receipt, None)
         _publish_package(result_dir, receipt, None)
+        _inspect_result_dir(result_dir)
         raise ImportHold(f"HOLD: {reason}")
     assert width is not None and height is not None and address_width is not None
     assert input_spec is not None and cycle_spec is not None
@@ -716,12 +805,17 @@ def import_dataset(source_path: Path, spec_path: Path, result_dir: Path) -> dict
     trace = _trace_bytes(events)
     receipt = {
         "schema": RECEIPT_SCHEMA,
-        "status": "PASS",
+        "status": LOCAL_COMPLETE,
+        "evidence_class": EVIDENCE_CLASS,
+        "canonical_or_official": False,
+        "campaign_provenance_bridge": "HOLD",
         "dataset": spec["dataset"],
         "source": {
             "file": source_path.name,
-            "raw_sha256": source_artifact.raw_sha256,
+            "snapshot_sha256": source_artifact.raw_sha256,
             "semantic_sha256": source_semantic_sha256,
+            "captured_stat": source_artifact.captured_stat,
+            "path_scope": "CAPTURE_ONLY_NOT_REVALIDATED",
         },
         "specification": spec_hashes,
         "input_contract": {
@@ -745,9 +839,13 @@ def import_dataset(source_path: Path, spec_path: Path, result_dir: Path) -> dict
         },
         "conservation": "input_event_records == events_emitted + events_dropped",
         "counts": counters,
+        "counter_evidence": {
+            "clipping_and_source_parse_counters": "IMPORTER_ATTESTED",
+            "canonical_or_official": False,
+        },
         "trace": {
             "file": TRACE_NAME,
-            "raw_sha256": _sha256_bytes(trace),
+            "snapshot_sha256": _sha256_bytes(trace),
             "event_count": len(events),
             "event_schema": list(TRACE_FIELDS),
             "identity_mode": "address_only",
@@ -756,59 +854,95 @@ def import_dataset(source_path: Path, spec_path: Path, result_dir: Path) -> dict
     }
     _qualify_receipt_and_trace(receipt, trace)
     _publish_package(result_dir, receipt, trace)
-    qualify_result_dir(result_dir)
+    _inspect_result_dir(result_dir)
     return receipt
 
 
-def _validate_hash_pair(value: Any, where: str) -> None:
+CAPTURED_STAT_FIELDS = {"device", "inode", "mode", "size", "mtime_ns", "ctime_ns"}
+
+
+def _validate_captured_stat(value: Any, where: str) -> None:
     if not isinstance(value, dict):
         raise ImportFailure(f"{where} must be an object")
-    _strict_keys(value, {"raw_sha256", "semantic_sha256"}, where)
-    _validate_sha(value["raw_sha256"], f"{where}.raw_sha256")
-    _validate_sha(value["semantic_sha256"], f"{where}.semantic_sha256")
+    _strict_keys(value, CAPTURED_STAT_FIELDS, where)
+    for key, item in value.items():
+        _nonnegative_int(item, f"{where}.{key}")
+
+
+def _validate_snapshot(value: Any, where: str, *, semantic: bool) -> None:
+    if not isinstance(value, dict):
+        raise ImportFailure(f"{where} must be an object")
+    expected = {"snapshot_sha256", "captured_stat", "path_scope"}
+    if semantic:
+        expected.add("semantic_sha256")
+    _strict_keys(value, expected, where)
+    _validate_sha(value["snapshot_sha256"], f"{where}.snapshot_sha256")
+    if semantic:
+        _validate_sha(value["semantic_sha256"], f"{where}.semantic_sha256")
+    _validate_captured_stat(value["captured_stat"], f"{where}.captured_stat")
+    if value["captured_stat"]["size"] < 0:
+        raise ImportFailure(f"{where}.captured_stat.size is invalid")
+    if value["path_scope"] != "CAPTURE_ONLY_NOT_REVALIDATED":
+        raise ImportFailure(f"{where}.path_scope must disclaim current-path identity")
 
 
 def _qualify_receipt_and_trace(receipt: dict[str, Any], trace_data: bytes | None) -> None:
     if receipt.get("schema") != RECEIPT_SCHEMA:
         raise ImportFailure("receipt schema mismatch")
     status = receipt.get("status")
-    if status == "HOLD":
-        _strict_keys(receipt, {"schema", "status", "reason", "source", "specification"}, "HOLD receipt")
+    if status == FORMAT_HOLD:
+        _strict_keys(
+            receipt,
+            {"schema", "status", "reason", "evidence_class", "source", "specification"},
+            "format-HOLD receipt",
+        )
         _text(receipt["reason"], "HOLD receipt.reason")
+        if receipt["evidence_class"] != EVIDENCE_CLASS:
+            raise ImportFailure("HOLD receipt evidence class mismatch")
         source = receipt["source"]
         if not isinstance(source, dict):
             raise ImportFailure("HOLD receipt.source must be an object")
-        _strict_keys(source, {"file", "raw_sha256"}, "HOLD receipt.source")
-        _text(source["file"], "HOLD receipt.source.file")
-        _validate_sha(source["raw_sha256"], "HOLD receipt.source.raw_sha256")
-        _validate_hash_pair(receipt["specification"], "HOLD receipt.specification")
+        _text(source.get("file"), "HOLD receipt.source.file")
+        snapshot = dict(source)
+        snapshot.pop("file", None)
+        _validate_snapshot(snapshot, "HOLD receipt.source snapshot", semantic=False)
+        _validate_snapshot(receipt["specification"], "HOLD receipt.specification", semantic=True)
         if trace_data is not None:
             raise ImportFailure("HOLD package must not contain a trace")
         return
-    if status != "PASS":
-        raise ImportFailure("receipt status must be PASS or HOLD")
+    if status != LOCAL_COMPLETE:
+        raise ImportFailure("receipt status is not a recognized local conversion state")
     _strict_keys(
         receipt,
-        {"schema", "status", "dataset", "source", "specification", "input_contract", "ordering", "cycle_mapping", "conservation", "counts", "trace"},
-        "PASS receipt",
+        {
+            "schema", "status", "evidence_class", "canonical_or_official",
+            "campaign_provenance_bridge", "dataset", "source", "specification",
+            "input_contract", "ordering", "cycle_mapping", "conservation",
+            "counts", "counter_evidence", "trace",
+        },
+        "local import receipt",
     )
+    if receipt["evidence_class"] != EVIDENCE_CLASS or receipt["canonical_or_official"] is not False:
+        raise ImportFailure("local receipt evidence scope mismatch")
+    if receipt["campaign_provenance_bridge"] != "HOLD":
+        raise ImportFailure("campaign provenance bridge must remain HOLD")
     _validate_dataset(receipt["dataset"])
     source = receipt["source"]
     if not isinstance(source, dict):
-        raise ImportFailure("PASS receipt.source must be an object")
-    _strict_keys(source, {"file", "raw_sha256", "semantic_sha256"}, "PASS receipt.source")
-    _text(source["file"], "PASS receipt.source.file")
-    _validate_sha(source["raw_sha256"], "PASS receipt.source.raw_sha256")
-    _validate_sha(source["semantic_sha256"], "PASS receipt.source.semantic_sha256")
-    _validate_hash_pair(receipt["specification"], "PASS receipt.specification")
+        raise ImportFailure("local receipt.source must be an object")
+    _text(source.get("file"), "local receipt.source.file")
+    source_snapshot = dict(source)
+    source_snapshot.pop("file", None)
+    _validate_snapshot(source_snapshot, "local receipt.source snapshot", semantic=True)
+    _validate_snapshot(receipt["specification"], "local receipt.specification", semantic=True)
     contract = receipt["input_contract"]
     if not isinstance(contract, dict):
         raise ImportFailure("input_contract must be an object")
     _strict_keys(contract, {"format", "time_unit", "polarity_encoding", "sensor", "address_width", "bounds_policy"}, "input_contract")
     if contract["format"] not in {"canonical_jsonl", "generic_delimited"}:
-        raise ImportFailure("PASS input format is unsupported")
+        raise ImportFailure("local input format is unsupported")
     if contract["time_unit"] not in TIME_TO_NS or contract["polarity_encoding"] not in {"minus_plus_one", "zero_one"}:
-        raise ImportFailure("PASS input unit or polarity encoding is invalid")
+        raise ImportFailure("local input unit or polarity encoding is invalid")
     sensor = contract["sensor"]
     if not isinstance(sensor, dict):
         raise ImportFailure("input_contract.sensor must be an object")
@@ -845,36 +979,46 @@ def _qualify_receipt_and_trace(receipt: dict[str, Any], trace_data: bytes | None
     _strict_keys(counts, COUNTER_FIELDS, "counts")
     for key, value in counts.items():
         _nonnegative_int(value, f"counts.{key}")
+    event_cardinality = counts["input_event_records"]
+    for key, value in counts.items():
+        bound = 2 * event_cardinality if key == "clipped_coordinates" else event_cardinality
+        if value > bound:
+            raise ImportFailure(f"counts.{key} exceeds its input-cardinality bound")
+    axis_keys = ("x_below_range", "x_above_range", "y_below_range", "y_above_range")
+    if sum(counts[key] for key in axis_keys) > 2 * event_cardinality:
+        raise ImportFailure("axis counters exceed twice the input event cardinality")
     if counts["events_dropped"] != 0 or counts["input_event_records"] != counts["events_emitted"]:
         raise ImportFailure("zero-drop import conservation failed")
     if contract["bounds_policy"] == "clip":
         if counts["clipped_events"] != counts["out_of_range_events"]:
             raise ImportFailure("clip/out-of-range counters disagree")
     elif counts["out_of_range_events"] or counts["clipped_events"] or counts["clipped_coordinates"]:
-        raise ImportFailure("reject-policy PASS receipt contains out-of-range events")
+        raise ImportFailure("reject-policy local receipt contains out-of-range events")
     if not counts["clipped_events"] <= counts["clipped_coordinates"] <= 2 * counts["clipped_events"]:
         raise ImportFailure("clipped coordinate counters are inconsistent")
-    axis_violations = sum(
-        counts[key]
-        for key in ("x_below_range", "x_above_range", "y_below_range", "y_above_range")
-    )
+    axis_violations = sum(counts[key] for key in axis_keys)
     if axis_violations != counts["clipped_coordinates"]:
         raise ImportFailure("axis violation and clipped-coordinate counters disagree")
     for key in ("timestamp_tied_events", "same_cycle_events", "same_source_cycle_retriggers"):
         if counts[key] >= counts["input_event_records"]:
             raise ImportFailure(f"counts.{key} exceeds possible event relationships")
+    if receipt["counter_evidence"] != {
+        "clipping_and_source_parse_counters": "IMPORTER_ATTESTED",
+        "canonical_or_official": False,
+    }:
+        raise ImportFailure("counter evidence must remain IMPORTER_ATTESTED and noncanonical")
     trace = receipt["trace"]
     if not isinstance(trace, dict):
-        raise ImportFailure("PASS trace metadata must be an object")
-    _strict_keys(trace, {"file", "raw_sha256", "event_count", "event_schema", "identity_mode", "required_relation"}, "trace")
+        raise ImportFailure("local trace metadata must be an object")
+    _strict_keys(trace, {"file", "snapshot_sha256", "event_count", "event_schema", "identity_mode", "required_relation"}, "trace")
     if trace["file"] != TRACE_NAME or trace["event_schema"] != list(TRACE_FIELDS):
         raise ImportFailure("trace filename or schema mismatch")
-    _validate_sha(trace["raw_sha256"], "trace.raw_sha256")
+    _validate_sha(trace["snapshot_sha256"], "trace.snapshot_sha256")
     event_count = _positive_int(trace["event_count"], "trace.event_count")
     if trace["identity_mode"] != "address_only" or trace["required_relation"] != "logical_source == y * sensor.width + x":
         raise ImportFailure("trace identity contract mismatch")
-    if trace_data is None or _sha256_bytes(trace_data) != trace["raw_sha256"]:
-        raise ImportFailure("trace raw SHA-256 mismatch")
+    if trace_data is None or _sha256_bytes(trace_data) != trace["snapshot_sha256"]:
+        raise ImportFailure("trace snapshot SHA-256 mismatch")
     events: list[dict[str, Any]] = []
     for line_number, line in enumerate(_decode_source(trace_data).splitlines(), 1):
         if not line or line != line.strip():
@@ -883,7 +1027,7 @@ def _qualify_receipt_and_trace(receipt: dict[str, Any], trace_data: bytes | None
         if not isinstance(event, dict):
             raise ImportFailure(f"trace line {line_number} must be an object")
         _strict_keys(event, set(TRACE_FIELDS), f"trace line {line_number}")
-        if line.encode("ascii") != _canonical_bytes(event):
+        if line != _canonical_bytes(event).decode("ascii"):
             raise ImportFailure(f"trace line {line_number} is not canonical JSON")
         events.append(event)
     if len(events) != event_count or event_count != counts["events_emitted"]:
@@ -925,7 +1069,8 @@ def _qualify_receipt_and_trace(receipt: dict[str, Any], trace_data: bytes | None
         raise ImportFailure("trace collision counters disagree")
 
 
-def qualify_result_dir(result_dir: Path) -> dict[str, Any]:
+def _inspect_result_dir(result_dir: Path) -> tuple[dict[str, Any], str]:
+    _reject_symlink_components(result_dir)
     try:
         info = result_dir.stat(follow_symlinks=False)
     except OSError as error:
@@ -942,29 +1087,47 @@ def qualify_result_dir(result_dir: Path) -> dict[str, Any]:
     completion = _json_load_bytes(completion_artifact.data, "completion sentinel")
     if not isinstance(completion, dict):
         raise ImportFailure("completion sentinel must be an object")
-    _strict_keys(completion, {"schema", "status", "receipt_sha256", "trace_sha256"}, "completion sentinel")
-    if completion["schema"] != COMPLETION_SCHEMA or completion["status"] not in {"PASS", "HOLD"}:
+    _strict_keys(
+        completion,
+        {"schema", "status", "receipt_snapshot_sha256", "trace_snapshot_sha256"},
+        "completion sentinel",
+    )
+    if completion["schema"] != COMPLETION_SCHEMA or completion["status"] not in {LOCAL_COMPLETE, FORMAT_HOLD}:
         raise ImportFailure("completion sentinel schema/status mismatch")
-    _validate_sha(completion["receipt_sha256"], "completion receipt_sha256")
+    _validate_sha(completion["receipt_snapshot_sha256"], "completion receipt_snapshot_sha256")
     receipt_artifact = _stable_read(result_dir / RECEIPT_NAME)
-    if receipt_artifact.raw_sha256 != completion["receipt_sha256"]:
+    if receipt_artifact.raw_sha256 != completion["receipt_snapshot_sha256"]:
         raise ImportFailure("completion/receipt SHA-256 mismatch")
     receipt = _json_load_bytes(receipt_artifact.data, "receipt")
     if not isinstance(receipt, dict) or receipt.get("status") != completion["status"]:
         raise ImportFailure("completion/receipt status mismatch")
-    if completion["status"] == "HOLD":
-        if names != {RECEIPT_NAME, COMPLETION_NAME} or completion["trace_sha256"] is not None:
+    if completion["status"] == FORMAT_HOLD:
+        if names != {RECEIPT_NAME, COMPLETION_NAME} or completion["trace_snapshot_sha256"] is not None:
             raise ImportFailure("HOLD package shape is invalid")
         _qualify_receipt_and_trace(receipt, None)
     else:
         if names != {TRACE_NAME, RECEIPT_NAME, COMPLETION_NAME}:
-            raise ImportFailure("PASS package shape is invalid")
-        _validate_sha(completion["trace_sha256"], "completion trace_sha256")
+            raise ImportFailure("local conversion package shape is invalid")
+        _validate_sha(completion["trace_snapshot_sha256"], "completion trace_snapshot_sha256")
         trace_artifact = _stable_read(result_dir / TRACE_NAME)
-        if trace_artifact.raw_sha256 != completion["trace_sha256"]:
+        if trace_artifact.raw_sha256 != completion["trace_snapshot_sha256"]:
             raise ImportFailure("completion/trace SHA-256 mismatch")
         _qualify_receipt_and_trace(receipt, trace_artifact.data)
-    return receipt
+    return receipt, receipt_artifact.raw_sha256
+
+
+def qualify_result_dir(result_dir: Path) -> dict[str, Any]:
+    receipt, receipt_snapshot_sha256 = _inspect_result_dir(result_dir)
+    trace = receipt.get("trace")
+    return {
+        "status": QUALIFIER_HOLD,
+        "evidence_class": EVIDENCE_CLASS,
+        "canonical_or_official": False,
+        "campaign_provenance_bridge": "HOLD",
+        "conversion_status": receipt["status"],
+        "receipt_snapshot_sha256": receipt_snapshot_sha256,
+        "trace_snapshot_sha256": trace.get("snapshot_sha256") if isinstance(trace, dict) else None,
+    }
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -982,26 +1145,30 @@ def main(argv: list[str] | None = None) -> int:
         if args.qualify:
             if args.source is not None or args.spec is not None:
                 raise ImportFailure("--qualify cannot be combined with --source or --spec")
-            receipt = qualify_result_dir(args.result_dir)
+            result = qualify_result_dir(args.result_dir)
         else:
             if args.source is None or args.spec is None:
                 raise ImportFailure("--source and --spec are required unless --qualify is used")
-            receipt = import_dataset(args.source, args.spec, args.result_dir)
+            result = import_dataset(args.source, args.spec, args.result_dir)
     except ImportHold as error:
         print(str(error), file=sys.stderr)
         return 3
     except ImportFailure as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-    if receipt["status"] == "HOLD":
-        print(f"EVENT_DATASET_IMPORT_HOLD result_dir={args.result_dir}")
+    if result["status"] == QUALIFIER_HOLD:
+        print(
+            f"{QUALIFIER_HOLD} evidence_class={EVIDENCE_CLASS} "
+            f"result_dir={args.result_dir}"
+        )
         return 3
-    counts = receipt["counts"]
+    counts = result["counts"]
     print(
-        "EVENT_DATASET_IMPORT_PASS "
+        f"{LOCAL_COMPLETE} evidence_class={EVIDENCE_CLASS} "
         f"events={counts['events_emitted']} clipped={counts['clipped_events']} "
         f"out_of_range={counts['out_of_range_events']} "
-        f"trace_sha256={receipt['trace']['raw_sha256']} result_dir={args.result_dir}"
+        f"trace_snapshot_sha256={result['trace']['snapshot_sha256']} "
+        f"result_dir={args.result_dir}"
     )
     return 0
 

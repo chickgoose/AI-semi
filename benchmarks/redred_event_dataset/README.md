@@ -1,152 +1,171 @@
-# Dataset-neutral event import v2
+# Dataset-neutral local event import
 
-This standard-library-only package converts provenance-bound event-camera
-records into the existing REDRED logical AER occurrence form. It is an input
-adapter, not an official workload, dataset endorsement, transport model, or
-candidate score.
+This standard-library-only package transforms one captured byte snapshot of an
+event-camera file into the existing REDRED logical AER occurrence form. Its
+exact evidence class is:
 
-## Input contracts
+```text
+LOCAL_CAPTURED_BYTE_SNAPSHOT_TRANSFORMATION
+```
 
-Supported specifications use `schema: redred-event-import-v2` and must declare:
+A successful conversion is `LOCAL_IMPORT_COMPLETE_UNQUALIFIED`. Inspection of
+any intact package returns `HOLD_LOCAL_IMPORT_NOT_CANONICAL`. Neither outcome
+is canonical, official, release-qualified, competition evidence, or a campaign
+provenance bridge. The campaign bridge remains explicitly `HOLD`.
 
-- provider, dataset, release, version, and original artifact;
-- exactly one absolute provenance URI or acquisition ID;
-- SPDX license ID, license-text SHA-256, and redistribution status;
-- source-file raw SHA-256;
-- sensor width/height and an explicit `address_width` (the committed common
-  fixtures explicitly use 4; there is no implicit default);
-- input format, time unit, polarity encoding, cycle period/origin/deadline,
-  and reject-or-clip bounds policy.
+`canonical_jsonl` below is only the name of a strict local input syntax. It
+does not mean the source or output is a canonical benchmark.
 
-`canonical_jsonl` accepts exactly one object per nonblank line:
+## Supported local syntax
+
+A supported specification declares provider/dataset/release/version labels,
+original artifact, one provenance URI or acquisition ID, SPDX license fields,
+source snapshot SHA-256, sensor geometry, explicit address width, time/polarity
+mapping, cycle mapping, and clipping policy. These are importer inputs copied
+into a local receipt; the importer does not independently establish their
+truth or elevate them into release provenance.
+
+`canonical_jsonl` accepts exactly one four-key object per nonblank line:
 
 ```json
 {"timestamp":"12.500","x":10,"y":7,"polarity":1}
 ```
 
-Objects have exactly those four keys. Coordinates and polarity are JSON
-integers. Timestamp and `cycle_mapping.period_ns` are exact-decimal strings
-matching:
+Coordinates and polarity are bounded JSON integers. Timestamp and cycle period
+are exact-decimal strings. Runtime and schema use the same end-anchored
+language, without `$` final-newline ambiguity:
 
 ```text
--?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?(0|[1-9][0-9]*))?
+^-?(?:0|[1-9][0-9]{0,63})(?:\.[0-9]{1,64})?(?:[eE][+-]?(?:0|[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?(?![\s\S])
 ```
 
-Leading/trailing whitespace, underscores, leading `+`, `.5`, `1.`, leading
-zeros, and noncanonical exponent integers are rejected. Conversion parses an
-integer coefficient and exponent into `fractions.Fraction`; it never uses the
-process `Decimal` context or binary floating point.
+The lexical form is limited to 136 characters, at most 64 integer and 64
+fractional digits, and exponent magnitude 128. Bounds are checked before
+`int()` or powers of ten. Conversion uses `fractions.Fraction`, never the
+process decimal context or binary floating point. Whitespace, underscores,
+leading `+`, `.5`, `1.`, leading zeros, and noncanonical exponent integers are
+rejected.
 
-`generic_delimited` accepts a declared one-character CSV delimiter or
-`whitespace`. Its specification declares header handling and maps
-`timestamp`, `x`, `y`, and `polarity` by header name or zero-based position.
-No column order, time unit, or polarity convention is guessed.
+`generic_delimited` accepts a declared one-character CSV delimiter or the
+special value `whitespace`. CR, LF, and NUL delimiters are forbidden. Header
+handling and the `timestamp`, `x`, `y`, and `polarity` columns are explicit;
+the importer guesses no source convention.
 
-`samsung_official` has a separate minimal HOLD specification containing only
-the schema, raw source hash, and reserved format name. It publishes no trace
-and encodes no imagined Samsung columns, timestamp unit, sensor, polarity,
-license, provider, or record layout. Actual Samsung support remains HOLD until
-the real format and provenance are supplied.
+`samsung_official` remains an unsupported-format HOLD. Its minimal
+specification contains only the schema, source snapshot hash, and reserved
+format name. No Samsung columns, sensor, time unit, polarity, provider,
+license, or record structure are invented.
 
-See [import_spec.schema.json](import_spec.schema.json),
-[import_receipt.schema.json](import_receipt.schema.json), and
-[completion.schema.json](completion.schema.json).
+Machine-readable contracts:
 
-## Stable provenance reads
+- [import_spec.schema.json](import_spec.schema.json)
+- [import_receipt.schema.json](import_receipt.schema.json)
+- [completion.schema.json](completion.schema.json)
 
-The specification and source are each opened and read into bytes exactly once.
-The importer compares file type, device, inode, size, and nanosecond mtime
-before opening, on the descriptor before/after reading, and on the path after
-reading. Symlinks and files that change during the read fail closed. Parsing
-uses only the captured bytes. JSON duplicate keys and unknown keys are errors.
+## Captured-byte scope
 
-PASS receipts record raw and canonical-semantic SHA-256 values for both source
-events and the specification. The source semantic hash covers exact rational
-timestamps, coordinates, normalized polarity, and source-record order. A HOLD
-receipt records no semantic source hash because the format was not parsed.
+Source and specification paths reject symlink components. Each file is opened
+and read into bytes once. File type, device, inode, mode, size, nanosecond
+mtime, and nanosecond ctime are compared before opening, on the descriptor
+before and after reading, and on the path after reading. Parsing uses only the
+captured bytes. Duplicate JSON keys, unknown keys, oversized numbers, floats,
+non-finite values, and parser errors fail as `ImportFailure`.
 
-## Deterministic, lossless conversion
+Receipts record snapshot SHA-256, semantic SHA-256 where parsing is possible,
+and the captured stat fields. They also state:
 
-Events sort by exact timestamp and then source record index, so timestamp ties
-retain source-file order. Cycles use exact floor division:
+```text
+path_scope = CAPTURE_ONLY_NOT_REVALIDATED
+```
+
+The importer does not assert that a pathname still denotes those bytes after
+capture. Result-directory or path replacement cannot promote evidence because
+the inspector always returns `HOLD_LOCAL_IMPORT_NOT_CANONICAL`. This package
+does not claim authenticity or transactional safety against hostile concurrent
+filesystem replacement.
+
+## Conversion and counters
+
+Events sort by exact timestamp and source-record index. Equal timestamps keep
+source order. Cycles are:
 
 ```text
 floor((timestamp - first_timestamp) * time_unit_ns / period_ns)
 ```
 
-Ties are never spread across invented cycles. Every parsed event becomes one
-occurrence with a contiguous `tb_only_event_id`. Timestamp ties, same-cycle
-events, and same-source/same-cycle retriggers are counted. The invariant is:
+Every parsed event becomes one output occurrence. Ties and duplicate
+source/cycle occurrences are preserved. Polarity is normalized according to
+the declared encoding. The local conservation check is:
 
 ```text
 input_event_records == events_emitted + events_dropped
 events_dropped == 0
 ```
 
-A downstream one-entry AER source latch can classify a preserved retrigger as
-`source_overrun`; the importer does not hide it in a queue or call clipping a
-transport loss. `bounds_policy: reject` fails before publication.
-`bounds_policy: clip` clamps coordinates but emits every event and reports
-out-of-range events, axis/direction violations, clipped events, and clipped
-coordinate components separately.
+Clipping is separate from downstream AER transport loss. Bounds policy is
+either whole-import rejection or coordinate clipping with explicit counters.
+Clipping, out-of-range, blank/comment, and source-parse counters that cannot be
+reconstructed from the output trace are marked `IMPORTER_ATTESTED`; they are
+never canonical or official. Every counter is bounded by input event
+cardinality, except clipped-coordinate and aggregate axis bounds, which are at
+most twice that cardinality.
 
-The output relation is checked during import and independent qualification:
+The logical address is checked locally and again during package inspection:
 
 ```text
 logical_source == y * sensor.width + x
 0 <= logical_source < 2**address_width
 ```
 
-Polarity remains trace metadata for the current address-only DUT contract.
+The committed fixtures explicitly declare the current common address width of
+4, and tests feed the output to the existing AER preparer at that width.
 
-## Exclusive result-directory protocol
+## Local package protocol
 
-The CLI accepts one result directory that must not already exist. It creates
-the directory exclusively and never overwrites a directory, file, trace,
-receipt, or sentinel. A PASS package contains exactly:
+The requested result directory must not exist. The importer exclusively
+creates it and never overwrites existing paths. A completed local conversion
+contains `events.jsonl`, `receipt.json`, and `COMPLETE.json`. An unsupported
+format HOLD contains only the receipt and sentinel. The receipt is fully
+validated before publication and re-read afterward. The completion sentinel
+is written last.
 
-```text
-events.jsonl
-receipt.json
-COMPLETE.json
-```
-
-A HOLD package contains only `receipt.json` and `COMPLETE.json`. The completion
-sentinel is written last, after the trace/receipt and directory sync. An I/O
-failure can leave an orphan directory, but without a valid sentinel it is not a
-result and the qualifier rejects it. The importer never reuses or cleans an
-orphan; choose a new result path after investigating it. This prevents a HOLD
-or failed run from coexisting with stale current-looking output.
-
-The qualifier checks exact directory membership, PASS/HOLD-exclusive receipt
-shapes, sentinel hashes, trace hash/cardinality, all event fields, declared
-address width, ordering, deadlines, collision counts, clipping relationships,
-and zero-drop conservation.
+A write failure can leave an orphan directory without a completion sentinel.
+The inspector rejects it. This sentinel protocol detects incomplete or changed
+captured package bytes; it is not a hostile-filesystem authenticity guarantee.
 
 ## CLI
 
-Import into a new directory:
+Convert into a new local directory:
 
 ```bash
 python3 benchmarks/redred_event_dataset/import_events.py \
   --source benchmarks/redred_event_dataset/fixtures/generic_events.csv \
   --spec benchmarks/redred_event_dataset/fixtures/generic_import.json \
-  --result-dir /tmp/redred-event-import-v2
+  --result-dir /tmp/redred-event-import-local
 ```
 
-Independently qualify it:
+Expected conversion class:
+
+```text
+LOCAL_IMPORT_COMPLETE_UNQUALIFIED
+```
+
+Inspect captured package integrity:
 
 ```bash
 python3 benchmarks/redred_event_dataset/import_events.py \
-  --result-dir /tmp/redred-event-import-v2 \
+  --result-dir /tmp/redred-event-import-local \
   --qualify
 ```
 
-Exit codes are 0 for PASS, 2 for failure, and 3 for a qualified HOLD. The
-committed fixtures and license are synthetic and are not Samsung or
-competition-provided data.
+The inspector deliberately exits 3 and reports:
 
-Run the focused tests:
+```text
+HOLD_LOCAL_IMPORT_NOT_CANONICAL
+```
+
+Exit code 0 means only that a local unqualified transformation was written;
+exit code 2 is failure; exit code 3 is an explicit HOLD. Run tests with:
 
 ```bash
 bash tests/redred_event_dataset/run_all.sh

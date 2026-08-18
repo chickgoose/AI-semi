@@ -10,13 +10,14 @@
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "exactDecimal": {
       "type": "string",
-      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?(?:0|[1-9][0-9]*))?$"
+      "maxLength": 136,
+      "pattern": "^-?(?:0|[1-9][0-9]{0,63})(?:\\.[0-9]{1,64})?(?:[eE][+-]?(?:0|[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?(?![\\s\\S])"
     },
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["raw_sha256"],
-      "properties": {"raw_sha256": {"$ref": "#/$defs/sha256"}}
+      "required": ["snapshot_sha256"],
+      "properties": {"snapshot_sha256": {"$ref": "#/$defs/sha256"}}
     },
     "provenance": {
       "oneOf": [
@@ -24,7 +25,7 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["uri"],
-          "properties": {"uri": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$"}}
+          "properties": {"uri": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s\\u0000-\\u001F\\u007F]+(?![\\s\\S])"}}
         },
         {
           "type": "object",
@@ -80,7 +81,15 @@
         "format": {"const": "generic_delimited"},
         "time_unit": {"enum": ["s", "ms", "us", "ns"]},
         "polarity_encoding": {"enum": ["minus_plus_one", "zero_one"]},
-        "delimiter": {"oneOf": [{"const": "whitespace"}, {"type": "string", "minLength": 1, "maxLength": 1}]},
+        "delimiter": {
+          "oneOf": [
+            {"const": "whitespace"},
+            {
+              "type": "string", "minLength": 1, "maxLength": 1,
+              "not": {"enum": ["\r", "\n", "\u0000"]}
+            }
+          ]
+        },
         "header": {"type": "boolean"},
         "comment_prefix": {"type": ["string", "null"], "minLength": 1},
         "columns": {

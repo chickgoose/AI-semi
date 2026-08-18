@@ -46,7 +46,7 @@ def make_spec(source: Path, **overrides: object) -> dict[str, object]:
     spec: dict[str, object] = {
         "schema": SPEC_SCHEMA,
         "dataset": dataset_metadata(),
-        "source": {"raw_sha256": digest(source)},
+        "source": {"snapshot_sha256": digest(source)},
         "sensor": {"width": 4, "height": 3},
         "address_width": 4,
         "input": {
@@ -83,7 +83,7 @@ def rewrite_receipt_and_completion(result: Path, receipt: dict[str, object]) -> 
     receipt_bytes = (json.dumps(receipt, indent=2, sort_keys=True) + "\n").encode("ascii")
     (result / importer.RECEIPT_NAME).write_bytes(receipt_bytes)
     completion = read_json(result / importer.COMPLETION_NAME)
-    completion["receipt_sha256"] = digest_bytes(receipt_bytes)
+    completion["receipt_snapshot_sha256"] = digest_bytes(receipt_bytes)
     (result / importer.COMPLETION_NAME).write_text(
         json.dumps(completion, indent=2, sort_keys=True) + "\n", encoding="ascii"
     )
@@ -100,7 +100,10 @@ class ImportEventsTest(unittest.TestCase):
             receipt_again = importer.import_dataset(source, spec, second)
             events = read_jsonl(first / importer.TRACE_NAME)
             self.assertEqual(digest(first / importer.TRACE_NAME), digest(second / importer.TRACE_NAME))
-            self.assertEqual(receipt["trace"]["raw_sha256"], receipt_again["trace"]["raw_sha256"])
+            self.assertEqual(receipt["status"], importer.LOCAL_COMPLETE)
+            self.assertEqual(receipt["evidence_class"], importer.EVIDENCE_CLASS)
+            self.assertFalse(receipt["canonical_or_official"])
+            self.assertEqual(receipt["trace"]["snapshot_sha256"], receipt_again["trace"]["snapshot_sha256"])
             self.assertEqual([event["occurrence_cycle"] for event in events], [0, 0, 1, 1])
             self.assertEqual([event["logical_source"] for event in events], [0, 0, 1, 3])
             self.assertEqual([event["polarity"] for event in events], [-1, 1, 1, 1])
@@ -113,9 +116,18 @@ class ImportEventsTest(unittest.TestCase):
             self.assertEqual(counts["same_source_cycle_retriggers"], 1)
             self.assertEqual(counts["out_of_range_events"], 1)
             self.assertEqual(counts["clipped_coordinates"], 2)
-            self.assertEqual(receipt["source"]["raw_sha256"], digest(source))
+            self.assertEqual(receipt["source"]["snapshot_sha256"], digest(source))
             self.assertRegex(receipt["source"]["semantic_sha256"], r"^[0-9a-f]{64}$")
-            self.assertEqual(importer.qualify_result_dir(first), receipt)
+            self.assertIn("ctime_ns", receipt["source"]["captured_stat"])
+            qualification = importer.qualify_result_dir(first)
+            self.assertEqual(qualification["status"], importer.QUALIFIER_HOLD)
+            self.assertEqual(qualification["evidence_class"], importer.EVIDENCE_CLASS)
+            self.assertFalse(qualification["canonical_or_official"])
+            swapped = root / "directory-swapped-after-capture"
+            first.rename(swapped)
+            swapped_qualification = importer.qualify_result_dir(swapped)
+            self.assertEqual(swapped_qualification["status"], importer.QUALIFIER_HOLD)
+            self.assertFalse(swapped_qualification["canonical_or_official"])
 
     def test_exact_fraction_boundaries_beyond_decimal_context_precision(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -240,7 +252,7 @@ class ImportEventsTest(unittest.TestCase):
             spec.write_text(
                 json.dumps({
                     "schema": SPEC_SCHEMA,
-                    "source": {"raw_sha256": digest(source)},
+                    "source": {"snapshot_sha256": digest(source)},
                     "input": {"format": "samsung_official"},
                 }),
                 encoding="utf-8",
@@ -252,9 +264,11 @@ class ImportEventsTest(unittest.TestCase):
                 {path.name for path in result.iterdir()},
                 {importer.RECEIPT_NAME, importer.COMPLETION_NAME},
             )
-            receipt = importer.qualify_result_dir(result)
-            self.assertEqual(receipt["status"], "HOLD")
+            receipt = read_json(result / importer.RECEIPT_NAME)
+            self.assertEqual(receipt["status"], importer.FORMAT_HOLD)
             self.assertNotIn("dataset", receipt)
+            qualification = importer.qualify_result_dir(result)
+            self.assertEqual(qualification["status"], importer.QUALIFIER_HOLD)
             stale = root / "stale"
             stale.mkdir()
             stale_trace = stale / importer.TRACE_NAME
@@ -279,7 +293,7 @@ class ImportEventsTest(unittest.TestCase):
             def both_ids(spec: dict[str, object]) -> None:
                 spec["dataset"]["provenance"] = {"uri": "urn:test:x", "acquisition_id": "x"}
 
-            cases.extend([("SPDX", bad_license), ("absolute URI", bad_uri), ("exactly one", both_ids)])
+            cases.extend([("SPDX", bad_license), ("absolute-URI", bad_uri), ("exactly one", both_ids)])
             for index, (message, mutate) in enumerate(cases):
                 spec_value = make_spec(source)
                 mutate(spec_value)
@@ -310,17 +324,17 @@ class ImportEventsTest(unittest.TestCase):
             with self.assertRaisesRegex(importer.ImportFailure, "zero-drop import conservation"):
                 importer.qualify_result_dir(result)
 
-    def test_qualifier_cross_checks_hash_event_count_and_pass_shape(self) -> None:
+    def test_qualifier_cross_checks_hash_event_count_and_local_shape(self) -> None:
         source = FIXTURES / "canonical_events.jsonl"
         spec = FIXTURES / "canonical_import.json"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for case in ("hash", "event_count", "shape"):
+            for case in ("hash", "event_count", "shape", "impossible_counter", "axis_counter"):
                 result = root / case
                 importer.import_dataset(source, spec, result)
                 if case == "hash":
                     completion = read_json(result / importer.COMPLETION_NAME)
-                    completion["trace_sha256"] = "0" * 64
+                    completion["trace_snapshot_sha256"] = "0" * 64
                     (result / importer.COMPLETION_NAME).write_text(
                         json.dumps(completion, indent=2, sort_keys=True) + "\n", encoding="ascii"
                     )
@@ -330,12 +344,134 @@ class ImportEventsTest(unittest.TestCase):
                     if case == "event_count":
                         receipt["trace"]["event_count"] = 4
                         expected = "event_count/counters/cardinality"
+                    elif case == "impossible_counter":
+                        receipt["counts"]["clipped_coordinates"] = (
+                            2 * receipt["counts"]["input_event_records"] + 1
+                        )
+                        expected = "clipped_coordinates exceeds its input-cardinality bound"
+                    elif case == "axis_counter":
+                        cardinality = receipt["counts"]["input_event_records"]
+                        for key in ("x_below_range", "x_above_range", "y_below_range", "y_above_range"):
+                            receipt["counts"][key] = cardinality
+                        expected = "axis counters exceed twice"
                     else:
-                        receipt["reason"] = "PASS cannot contain a HOLD reason"
-                        expected = "PASS receipt.*unexpected reason"
+                        receipt["reason"] = "local receipt cannot contain a format-HOLD reason"
+                        expected = "local import receipt.*unexpected reason"
                     rewrite_receipt_and_completion(result, receipt)
                 with self.assertRaisesRegex(importer.ImportFailure, expected):
                     importer.qualify_result_dir(result)
+
+    def test_resource_bounds_and_forbidden_delimiters_fail_as_import_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            values = [
+                "1" * 65,
+                "0." + "1" * 65,
+                "1e129",
+                "1e-129",
+                "1" * (importer.MAX_EXACT_DECIMAL_CHARS + 1),
+            ]
+            for index, value in enumerate(values):
+                source = root / f"bounded-{index}.jsonl"
+                source.write_text(
+                    json.dumps({"timestamp": value, "x": 0, "y": 0, "polarity": 1}) + "\n",
+                    encoding="utf-8",
+                )
+                spec = root / f"bounded-{index}.json"
+                write_spec(spec, source)
+                result = root / f"bounded-result-{index}"
+                with self.assertRaises(importer.ImportFailure):
+                    importer.import_dataset(source, spec, result)
+                self.assertFalse(result.exists())
+
+            huge_integer = root / "huge-integer.jsonl"
+            huge_integer.write_text(
+                '{"timestamp":"0","x":' + "9" * 65 + ',"y":0,"polarity":1}\n',
+                encoding="utf-8",
+            )
+            huge_spec = root / "huge-spec.json"
+            write_spec(huge_spec, huge_integer)
+            with self.assertRaisesRegex(importer.ImportFailure, "64-digit resource bound"):
+                importer.import_dataset(huge_integer, huge_spec, root / "huge-result")
+
+            csv_source = root / "events.csv"
+            csv_source.write_text("0,0,0,1\n", encoding="utf-8")
+            for index, delimiter in enumerate(("\r", "\n", "\x00")):
+                input_spec = {
+                    "format": "generic_delimited",
+                    "time_unit": "ns",
+                    "polarity_encoding": "minus_plus_one",
+                    "delimiter": delimiter,
+                    "header": False,
+                    "comment_prefix": None,
+                    "columns": {"timestamp": 0, "x": 1, "y": 2, "polarity": 3},
+                }
+                delimiter_spec = root / f"delimiter-{index}.json"
+                write_spec(delimiter_spec, csv_source, input=input_spec)
+                with self.assertRaisesRegex(importer.ImportFailure, "CR, LF, or NUL"):
+                    importer.import_dataset(csv_source, delimiter_spec, root / f"delimiter-result-{index}")
+
+            malformed_csv = root / "malformed.csv"
+            malformed_csv.write_text('"0,0,0,1\n', encoding="utf-8")
+            malformed_input = {
+                "format": "generic_delimited",
+                "time_unit": "ns",
+                "polarity_encoding": "minus_plus_one",
+                "delimiter": ",",
+                "header": False,
+                "comment_prefix": None,
+                "columns": {"timestamp": 0, "x": 1, "y": 2, "polarity": 3},
+            }
+            malformed_spec = root / "malformed.json"
+            write_spec(malformed_spec, malformed_csv, input=malformed_input)
+            with self.assertRaisesRegex(importer.ImportFailure, "invalid delimited record"):
+                importer.import_dataset(malformed_csv, malformed_spec, root / "malformed-result")
+
+            blank_source = root / "blank-heavy.jsonl"
+            blank_source.write_text(
+                '\n\n{"timestamp":"0","x":0,"y":0,"polarity":1}\n', encoding="utf-8"
+            )
+            blank_spec = root / "blank-heavy.json"
+            write_spec(blank_spec, blank_source)
+            with self.assertRaisesRegex(importer.ImportFailure, "blank_lines exceeds"):
+                importer.import_dataset(blank_source, blank_spec, root / "blank-result")
+
+    def test_hold_receipt_is_prevalidated_before_any_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "bad\nname.dat"
+            source.write_bytes(b"unknown")
+            spec = root / "hold.json"
+            spec.write_text(
+                json.dumps({
+                    "schema": SPEC_SCHEMA,
+                    "source": {"snapshot_sha256": digest(source)},
+                    "input": {"format": "samsung_official"},
+                }),
+                encoding="utf-8",
+            )
+            result = root / "hold-result"
+            with self.assertRaisesRegex(importer.ImportFailure, "trimmed string without control"):
+                importer.import_dataset(source, spec, result)
+            self.assertFalse(result.exists())
+
+    def test_symlink_path_components_are_rejected_and_never_qualified(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            real = root / "real"
+            real.mkdir()
+            source = real / "events.jsonl"
+            source.write_text('{"timestamp":"0","x":0,"y":0,"polarity":1}\n', encoding="utf-8")
+            spec = real / "spec.json"
+            write_spec(spec, source)
+            link = root / "link"
+            link.symlink_to(real, target_is_directory=True)
+            with self.assertRaisesRegex(importer.ImportFailure, "symlink path component"):
+                importer.import_dataset(link / source.name, spec, root / "result")
+            result_parent_link = root / "result-parent-link"
+            result_parent_link.symlink_to(real, target_is_directory=True)
+            with self.assertRaisesRegex(importer.ImportFailure, "symlink path component"):
+                importer.import_dataset(source, spec, result_parent_link / "result")
 
     def test_output_is_accepted_by_existing_preparer_at_declared_address_width(self) -> None:
         source = FIXTURES / "canonical_events.jsonl"
@@ -357,7 +493,7 @@ class ImportEventsTest(unittest.TestCase):
                 },
                 "report_group": "dataset_fixture",
                 "trace_file": trace.name,
-                "trace_sha256": receipt["trace"]["raw_sha256"],
+                "trace_sha256": receipt["trace"]["snapshot_sha256"],
                 "event_count": 3,
                 "event_identity_mode": "address_only",
             }
@@ -378,8 +514,8 @@ class ImportEventsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             result = Path(directory) / "result"
             receipt = importer.import_dataset(source, spec, result)
-            self.assertEqual(receipt["source"]["raw_sha256"], digest(source))
-            self.assertEqual(receipt["specification"]["raw_sha256"], digest(spec))
+            self.assertEqual(receipt["source"]["snapshot_sha256"], digest(source))
+            self.assertEqual(receipt["specification"]["snapshot_sha256"], digest(spec))
             semantic_spec = json.loads(spec.read_text(encoding="utf-8"))
             semantic_spec["cycle_mapping"]["period_ns"] = "1000"
             semantic = importer._canonical_sha256(semantic_spec)
@@ -407,7 +543,7 @@ class ImportEventsTest(unittest.TestCase):
                 "--result-dir", str(result),
             ]
             self.assertEqual(importer.main(args), 0)
-            self.assertEqual(importer.main(["--result-dir", str(result), "--qualify"]), 0)
+            self.assertEqual(importer.main(["--result-dir", str(result), "--qualify"]), 3)
             self.assertEqual(importer.main(args), 2)
 
     def test_schemas_and_fixture_provenance_are_consistent(self) -> None:
@@ -415,17 +551,53 @@ class ImportEventsTest(unittest.TestCase):
         receipt_schema = read_json(ROOT / "benchmarks" / "redred_event_dataset" / "import_receipt.schema.json")
         completion_schema = read_json(ROOT / "benchmarks" / "redred_event_dataset" / "completion.schema.json")
         self.assertEqual(spec_schema["$defs"]["supported"]["properties"]["schema"]["const"], SPEC_SCHEMA)
-        self.assertEqual(receipt_schema["$defs"]["pass"]["properties"]["schema"]["const"], importer.RECEIPT_SCHEMA)
+        self.assertEqual(receipt_schema["$defs"]["local"]["properties"]["schema"]["const"], importer.RECEIPT_SCHEMA)
         self.assertEqual(completion_schema["properties"]["schema"]["const"], importer.COMPLETION_SCHEMA)
-        exact_pattern = re.compile(spec_schema["$defs"]["exactDecimal"]["pattern"])
-        for value in ("0", "-1", "1.25", "1e+3"):
-            self.assertIsNotNone(exact_pattern.fullmatch(value))
-        for value in (" 1", "1 ", "1_0", "+.5", ".5", "+1", "01", "1.", "1e01"):
-            self.assertIsNone(exact_pattern.fullmatch(value))
+        self.assertEqual(
+            set(completion_schema["properties"]["status"]["enum"]),
+            {importer.LOCAL_COMPLETE, importer.FORMAT_HOLD},
+        )
+        self.assertEqual(
+            receipt_schema["$defs"]["local"]["properties"]["evidence_class"]["const"],
+            importer.EVIDENCE_CLASS,
+        )
+        exact_language = spec_schema["$defs"]["exactDecimal"]
+        self.assertEqual(exact_language["pattern"], importer.EXACT_DECIMAL_PATTERN)
+        self.assertEqual(exact_language["maxLength"], importer.MAX_EXACT_DECIMAL_CHARS)
+        self.assertEqual(
+            receipt_schema["$defs"]["exactDecimal"], exact_language
+        )
+        exact_pattern = re.compile(exact_language["pattern"])
+        valid_exact = ("0", "-1", "1.25", "1e+3", "1e128", "1e-128")
+        invalid_exact = (
+            " 1", "1 ", "1_0", "+.5", ".5", "+1", "01", "1.", "1e01",
+            "1e129", "1e-129", "1\n",
+        )
+        for value in valid_exact:
+            self.assertIsNotNone(exact_pattern.match(value))
+            importer._exact_fraction(value, "test")
+        for value in invalid_exact:
+            self.assertIsNone(exact_pattern.match(value))
+            with self.assertRaises(importer.ImportFailure):
+                importer._exact_fraction(value, "test")
+        uri_language = spec_schema["$defs"]["provenance"]["oneOf"][0]["properties"]["uri"]["pattern"]
+        self.assertEqual(uri_language, importer.URI_PATTERN)
+        receipt_uri_language = receipt_schema["$defs"]["dataset"]["properties"]["provenance"]["oneOf"][0]["properties"]["uri"]["pattern"]
+        self.assertEqual(receipt_uri_language, uri_language)
+        uri_pattern = re.compile(uri_language)
+        for value in ("urn:redred:x", "https://example.invalid/a"):
+            self.assertEqual(bool(uri_pattern.match(value)), bool(importer.URI_RE.match(value)))
+            self.assertTrue(importer.URI_RE.match(value))
+        for value in (
+            "urn:", "relative/path", "urn:redred:x\n", "https://example.invalid/a b",
+            "urn:redred:\x00", "urn:redred:\x7f",
+        ):
+            self.assertEqual(bool(uri_pattern.match(value)), bool(importer.URI_RE.match(value)))
+            self.assertFalse(importer.URI_RE.match(value))
         self.assertEqual(digest(FIXTURES / "LICENSE.txt"), LICENSE_SHA256)
         for stem, suffix in (("generic", "csv"), ("canonical", "jsonl")):
             spec = read_json(FIXTURES / f"{stem}_import.json")
-            self.assertEqual(spec["source"]["raw_sha256"], digest(FIXTURES / f"{stem}_events.{suffix}"))
+            self.assertEqual(spec["source"]["snapshot_sha256"], digest(FIXTURES / f"{stem}_events.{suffix}"))
             self.assertEqual(spec["address_width"], 4)
             self.assertEqual(spec["dataset"]["license"]["text_sha256"], LICENSE_SHA256)
 
