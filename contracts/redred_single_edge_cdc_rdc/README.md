@@ -9,11 +9,14 @@ All state, including TX and RX state, samples that clock.  Falling-edge and
 asynchronous-reset event controls, latches, derived/gated/forwarded clocks,
 and unsynchronised crossings are forbidden.  External reset assertion and
 deassertion are both sampled synchronously at the primary positive edge.  A
-simple polarity inversion at a child reset port is permitted; reset use in
-combinational data/output logic is not.
+simple polarity inversion at a child reset port is permitted. Combinational
+ready/error quiescing is not treated as state reset and adds no sensitivity
+edge.
 
 `contract.json` binds the exact source blobs introduced by commit
-`4ce4836fab1309d3468db8e660d2da9af371f784`.  The blobs are read from Git, so
+`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b` and proves those blobs are
+byte-identical in integration commit
+`a0a4eb38632245db8ff5937ea5b6c6e3f3839246`. The blobs are read from Git, so
 the verification is independent of whether that commit has already been
 merged into the current checkout.  The canonical invocation is:
 
@@ -37,6 +40,7 @@ has this exact shape (no extra keys):
   "schema": "redred-single-edge-source-binding-v1",
   "source_set_id": "immutable descriptive id",
   "repository_commit": "40 lowercase hex digits",
+  "integration_commit": "40 lowercase hex digits",
   "files": [
     {"path": "repo/relative/file.sv", "sha256": "64 lowercase hex digits"}
   ],
@@ -74,8 +78,9 @@ has this exact shape (no extra keys):
 ```
 
 Files are ordered repository-relative Git blobs.  The commit must resolve to
-the exact 40-hex object named by the canonical contract; every blob is hashed
-before the elaborator runs.  Verilator must resolve each complete top;
+the exact 40-hex objects named by the canonical contract; every source and
+integration blob must match and is hashed before the elaborator runs. The
+binding document itself is SHA-256 pinned. Verilator must resolve each complete top;
 unresolved modules and duplicate-module shadowing fail explicitly.
 
 The structural verifier then walks the reachable elaborated hierarchy.  It
@@ -97,7 +102,9 @@ in-flight accepted record, the release protocol requires `drain_idle_o == 1`
 before reset assertion.  The verifier proves that the top drain output depends
 on the endpoint drain output, and that endpoint drain depends on both the TX
 valid state and the RX retirement-pending state; the receipt records the
-drain-before-reset precondition explicitly.
+drain-before-reset precondition explicitly. Hardened clean drain additionally
+requires `!protocol_error_o` at both endpoint and complete-top boundaries; the
+new `w2_single_edge_error_latch` is part of the reachable pinned closure.
 
 Run the independent mutation suite with:
 

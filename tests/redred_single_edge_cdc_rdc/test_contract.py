@@ -73,7 +73,9 @@ class SingleEdgeContractTests(unittest.TestCase):
     def test_canonical_pinned_a2_a3_pass(self) -> None:
         result = self.run_cli()
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn('"repository_commit": "4ce4836fab1309d3468db8e660d2da9af371f784"',
+        self.assertIn('"repository_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"',
+                      result.stdout)
+        self.assertIn('"integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"',
                       result.stdout)
         self.assertIn('"reset_assertion_precondition": "drain_idle_o == 1"',
                       result.stdout)
@@ -147,14 +149,14 @@ class SingleEdgeContractTests(unittest.TestCase):
         path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
         self.assert_mutant_fails(
             {path: (b"always_ff @(posedge clk_i)", b"always_ff @(negedge clk_i)")},
-            "negedge/unknown sequential edge")
+            "sequential event must be direct posedge clock input")
 
     def test_async_reset_event_control_fails(self) -> None:
         path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
         self.assert_mutant_fails(
             {path: (b"always_ff @(posedge clk_i)",
                     b"always_ff @(posedge clk_i or posedge rst_i)")},
-            "exactly one edge")
+            "sequential event must be direct posedge clock input")
 
     def test_gated_clock_fails(self) -> None:
         path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
@@ -162,14 +164,30 @@ class SingleEdgeContractTests(unittest.TestCase):
             {path: (b"always_ff @(posedge clk_i)",
                     b"wire gated_clk = clk_i & link_enable_i;\n"
                     b"  always_ff @(posedge gated_clk)")},
-            "generated/gated/unknown clock")
+            "sequential event must be direct posedge clock input")
+
+    def test_forwarded_child_clock_alias_fails_source_check(self) -> None:
+        path = "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv"
+        self.assert_mutant_fails(
+            {path: (b"w2_single_edge_pair_tx tx (\n    .clk_i,",
+                    b"wire forwarded_clk = clk_i;\n\n"
+                    b"  w2_single_edge_pair_tx tx (\n    .clk_i(forwarded_clk),")},
+            "clock port connection is derived/forwarded")
+
+    def test_explicit_latch_fails_source_check(self) -> None:
+        path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
+        self.assert_mutant_fails(
+            {path: (b"logic protocol_error_q;",
+                    b"logic protocol_error_q;\n"
+                    b"  always_latch protocol_error_q <= protocol_error_q;")},
+            "latch process is forbidden")
 
     def test_second_clock_domain_fails(self) -> None:
         path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
         self.assert_mutant_fails(
             {path: (b"always_ff @(posedge clk_i)",
                     b"always_ff @(posedge link_enable_i)")},
-            "multiple or inconsistent clock domains")
+            "sequential event must be direct posedge clock input")
 
     def test_forwarded_clock_use_fails(self) -> None:
         path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
@@ -183,6 +201,12 @@ class SingleEdgeContractTests(unittest.TestCase):
         self.assert_mutant_fails(
             {path: (b"if (rst_i) begin", b"if (link_valid_i) begin")},
             "reset|inconsistent")
+
+    def test_tx_valid_reset_must_be_quiescent(self) -> None:
+        path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
+        self.assert_mutant_fails(
+            {path: (b"link_valid_o <= 1'b0;", b"link_valid_o <= 1'b1;")},
+            "TX valid is not reset to quiescent zero")
 
     def test_tx_must_be_registered(self) -> None:
         path = "rtl/technology/single_edge/w2_single_edge_pair_tx.sv"
@@ -202,16 +226,23 @@ class SingleEdgeContractTests(unittest.TestCase):
     def test_drain_must_cover_rx_pending_state(self) -> None:
         path = "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv"
         self.assert_mutant_fails(
-            {path: (b"!link_valid_o && (retire_valid_o == 2'b00)",
+            {path: (b"!link_valid_o &&\n                        (retire_valid_o == 2'b00)",
                     b"!link_valid_o")},
             "endpoint drain omits TX/RX in-flight state")
 
     def test_drain_or_logic_cannot_weaken_empty_requirement(self) -> None:
         path = "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv"
         self.assert_mutant_fails(
-            {path: (b"!link_valid_o && (retire_valid_o == 2'b00)",
+            {path: (b"!link_valid_o &&\n                        (retire_valid_o == 2'b00)",
                     b"!link_valid_o || (retire_valid_o == 2'b00)")},
             "endpoint drain can assert with in-flight state")
+
+    def test_clean_drain_requires_no_protocol_error(self) -> None:
+        path = "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv"
+        self.assert_mutant_fails(
+            {path: (b"!protocol_error_o && !link_valid_o &&",
+                    b"!link_valid_o &&")},
+            "endpoint clean drain does not require !protocol_error_o")
 
     def test_top_drain_must_include_endpoint(self) -> None:
         path = "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv"

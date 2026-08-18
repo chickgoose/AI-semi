@@ -4,8 +4,9 @@
   "decision": "BOUND_VERIFY_REQUIRED",
   "a2_source_set": {
     "binding": "source_binding.json",
-    "binding_sha256": "60684f7bfafc5e05f2a577dc5625e3e3ac5c818e494b8f03ee9f711daf9b8c2c",
-    "repository_commit": "4ce4836fab1309d3468db8e660d2da9af371f784"
+    "binding_sha256": "48974c5831f75177703b00853fdad1b3074d77b9faa8e5ef3a64cbbadd46887f",
+    "repository_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+    "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"
   },
   "policy": {
     "clock_domains": 1,
