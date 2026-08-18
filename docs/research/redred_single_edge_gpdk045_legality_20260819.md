@@ -2,7 +2,9 @@
 
 Audit date: 2026-08-19
 
-Audited RTL commit: `4ce4836fab1309d3468db8e660d2da9af371f784`
+Hardened source commit: `6fc5e167918fa4c54786c9a3abb5f60ecd8b991b`
+
+Audited integrated commit: `a0a4eb38632245db8ff5937ea5b6c6e3f3839246`
 
 Machine matrix: `tests/redred_single_edge_pdk_legality/legality_matrix.json`
 
@@ -50,15 +52,21 @@ a careful secondary interpretation, not organizer-primary written approval.
 
 ### Integrated RTL source structure
 
-The audit target is the immutable Git object
-`4ce4836fab1309d3468db8e660d2da9af371f784`. The verifier reads the two release
-root filelists from that object, recursively expands the shared generic
-filelist, and requires the exact three-filelist/seven-source path and SHA-256
-inventory recorded in the matrix. A missing, added, P6-substituted, escaped,
-symlink-mode, non-regular, or hash-different committed object fails closed.
+The source authority is the hardened Git object
+`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b`, audited at integrated Git object
+`a0a4eb38632245db8ff5937ea5b6c6e3f3839246`. The verifier independently reads
+the two release root filelists from both objects, recursively expands the
+shared generic filelist, and requires their exact, byte-identical
+three-filelist/eight-source path and SHA-256 inventories. The expanded closure
+includes `w2_single_edge_error_latch.sv`. A missing, added, reordered,
+P6-substituted, escaped, symlink-mode, non-regular, or hash-different committed
+object fails closed.
 
-After removing comments and string literals, all six sequential event controls
-in that closure are rising-edge events on the declared `clk`/`clk_i` clock.
+After removing comments and string literals, all seven sequential event
+controls in that closure are rising-edge events on the declared `clk`/`clk_i`
+clock. The verifier pins the ordered clock-event inventory for every source,
+including sources with zero events, so a clock event cannot silently move
+between files while preserving the total.
 The source closure contains no falling-edge event, derived/gated event
 expression, forwarded clock output/assignment, ODDR, IDDR, known technology
 cell, vendor primitive, UDP primitive, or `always_latch` construct. This result
@@ -74,6 +82,9 @@ claim_limit = RTL_SOURCE_ONLY_NOT_MAPPED_NOT_ORGANIZER_APPROVAL
 This PASS is necessary source evidence only. It does not prove what Genus maps,
 does not validate a clock report or SDC, does not establish real-library cell
 legality, and has no path to organizer approval or release GO by itself.
+The earlier baseline
+`4ce4836fab1309d3468db8e660d2da9af371f784` is explicitly superseded and is
+ineligible to publish this source-structure PASS.
 
 ### PDK and library identities
 
@@ -141,8 +152,9 @@ their absence from a new fallback does not prove the fallback is approved.
 | Hold corner | fast Liberty, process 1.0, 1.1 V, 0 C | `REPOSITORY_RECORD`; exact external payload absent; operating-condition name and organizer selection unproven. |
 | RC | same `gpdk045.tch` for setup and hold | `REPOSITORY_RECORD`; disclosed typical-only limitation, not multi-corner signoff. |
 
-The audited fallback source declares one shared functional clock (`clk_i` at
-the complete tops and link, `clk` inside the unchanged schedulers), with
+The audited hardened fallback source declares one shared functional clock
+(`clk_i` at the complete tops and link/error latch, `clk` inside the unchanged
+schedulers), with
 rising-edge state only and no `sample_clk_i` or `link_clk_o` in the release
 filelist closure. None of the inherited numeric clock values can be silently
 applied to it. A fallback-specific SDC and mapped clock report must still bind
@@ -194,7 +206,7 @@ SINGLE_EDGE_RELEASE_GO = G01 && G02 && G03 && G04 && G05
 | G02 real PDK bytes | HOLD | Exact live SHA matches plus retained strict `PROVEN_SERVER_ENV` receipt. |
 | G03 official library/corner | HOLD | Organizer-selected setup, hold, RC, and power views/conditions. |
 | G04 mapped cell legality | HOLD | Fallback mapped inventory; every cell verified in real slow/fast Liberty and macro LEF. |
-| G05 single-edge structure | HOLD (`RTL source PASS`; mapped/clock-report HOLD) | The pinned RTL closure is source-clean; mapped netlist and clock reports must independently prove the same declared active edge and absence of undeclared edge/clock primitives. |
+| G05 single-edge structure | HOLD (`hardened RTL source PASS`; mapped/clock-report HOLD) | The byte-identical `6fc5e16`/`a0a4eb3` RTL closures are source-clean; mapped netlist and clock reports must independently prove the same declared active edge and absence of undeclared edge/clock primitives. The superseded `4ce4836` baseline is not PASS authority. |
 | G06 canonical digital | HOLD | Fallback-specific complete-endpoint exact-once/conservation/order/reset/drain receipt. |
 | G07 official clock/I/O/load | HOLD | Organizer-pinned/accepted numeric clock, uncertainty, drive/transition, delays, reset, and load. |
 | G08 post-route | HOLD | Fallback-specific P&R/timing/DRC/antenna/connectivity receipt at the chosen conditions. |
@@ -215,9 +227,10 @@ Run the local verifier with:
 bash tests/redred_single_edge_pdk_legality/run_all.sh
 ```
 
-The runner also executes mutation tests for duplicate/unknown keys, audit
-commit and source/hash substitution, P6 filelist borrowing, source-PASS
-promotion, repository/external/fixture identity changes, traversal/symlinks,
+The runner also executes mutation tests for duplicate/unknown keys, hardened
+source/integrated commit authority and stale-baseline substitution, exact
+per-source posedge inventory, source/hash substitution, P6 filelist borrowing,
+source-PASS promotion, repository/external/fixture identity changes, traversal/symlinks,
 undeclared PDK-like checkout files, filelist cycles/options, opposite-edge
 state, derived/gated/forwarded clocks, ODDR/IDDR/technology/vendor primitives,
 UDP primitives, and latches.
