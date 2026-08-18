@@ -1,27 +1,35 @@
 {
-  "schema": "k2_single_edge_vectorless_diagnostic_receipt_template_v2",
+  "schema": "k2_single_edge_vectorless_diagnostic_receipt_v2",
   "status": "HOLD_TEMPLATE_NOT_DIAGNOSTIC_ARTIFACTS",
+  "evidence_class": "GENUS_MAPPED_A2_A3_SINGLE_EDGE_DEFAULT_VECTORLESS_DIAGNOSTIC",
   "candidate": null,
+  "architecture": null,
+  "interface": "SINGLE_EDGE_PARALLEL",
+  "boundary": null,
+  "lineage": {
+    "synthetic": false,
+    "inherited": false,
+    "p6": false,
+    "borrowed_dependency_ids": []
+  },
   "top": null,
-  "mapped_netlist_sha256": null,
-  "materialized_sdc_sha256": null,
-  "setup_liberty_sha256": null,
-  "hold_liberty_sha256": null,
-  "genus_log_sha256": null,
-  "report_sha256": null,
-  "exact_executed_argv": null,
-  "exact_cwd": null,
-  "semantic_environment_sha256": null,
-  "genus_exit_code": null,
-  "complete_artifact_ledger_sha256": null,
-  "candidate_go": false,
-  "comparison_ready": false,
-  "maximum_status": "HOLD_PLACEHOLDER_IO_AND_NO_CONTROLLED_PRODUCER",
-  "limitations": [
-    "NO_EXTERNAL_IO_CONSTRAINT_AUTHORITY",
-    "NO_CONTROLLED_PRODUCER_RUNNER",
-    "NO_LIVE_HOST_BINDING",
-    "NO_FRESHNESS_OR_REPLAY_PROTECTION",
-    "NO_EQUIVALENCE_OR_SIGNOFF_CLAIM"
-  ]
+  "capture": {
+    "origin": "UNCONTROLLED_EXTERNAL_CAPTURE",
+    "capture_id": null,
+    "claimed_host_fingerprint_sha256": null,
+    "started_utc": null,
+    "finished_utc": null
+  },
+  "operating_point": null,
+  "activity_policy": null,
+  "tool": null,
+  "execution": {
+    "argv": null,
+    "cwd": null,
+    "exit_code": null,
+    "semantic_environment": null,
+    "semantic_environment_sha256": null
+  },
+  "artifacts": null,
+  "complete_artifact_ledger_sha256": null
 }
