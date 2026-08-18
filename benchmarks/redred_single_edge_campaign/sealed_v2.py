@@ -531,6 +531,8 @@ def validate_tuple(
                 raise SealedTupleError(f"{kind} {label} inventory bytes differ: {path}")
             if isinstance(expected_paths, dict) and expected_paths[row["role"]] != path:
                 raise SealedTupleError(f"{kind} {label} role path differs: {row['role']}")
+            if isinstance(expected_paths, tuple) and row["role"] != path:
+                raise SealedTupleError(f"{kind} {label} role path differs: {row['role']}")
 
     def blob_sha256(commit: str, path: str) -> str:
         try:
