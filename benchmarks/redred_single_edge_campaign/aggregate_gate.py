@@ -19,12 +19,17 @@ import sys
 from typing import Any
 
 
+PACKAGE = Path(__file__).resolve().parent
 VIEW_SCHEMA = "redred_single_edge_campaign_normalized_view_v1"
+VIEW_CONTRACT = PACKAGE / "campaign_normalized_view.schema.json"
+VIEW_CONTRACT_SHA256 = "f0c719659f632c81bcb6bf0c489d9a00cb9801db33f642ee5160cb3f10c37ae3"
+VIEW_CONTRACT_SIZE_BYTES = 6498
 RESULT_SCHEMA = "redred_single_edge_campaign_aggregate_result_v1"
 CAMPAIGN_ID = "redred-a2-a3-single-edge-campaign-native-v1"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 SAFE_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]*\Z")
 CLAIMS_FALSE = {"official": False, "physical": False, "power": False, "release": False}
+_PIPELINE_CONTEXT = object()
 SLOT_IDENTITIES = {
     "synthetic_v2": {
         "evidence_status": "PASS",
@@ -251,6 +256,30 @@ def load_view(path: Path, slot: str) -> tuple[dict[str, Any], dict[str, Any], Pa
     return view, record, resolved, identity
 
 
+def view_record(view: dict[str, Any], data: bytes) -> dict[str, Any]:
+    return {
+        "schema": view["schema"],
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "verification_status": view["verification"]["status"],
+        "adapter_id": view["verification"]["adapter_id"],
+        "source_result_sha256": view["verification"]["source_result_sha256"],
+        "source_publication_sha256": view["verification"]["source_publication_sha256"],
+        "family_id": view["campaign_units"]["family_id"],
+    }
+
+
+def validate_view_contract() -> None:
+    resolved, data, identity = stable_file(VIEW_CONTRACT, "normalized view contract")
+    if len(data) != VIEW_CONTRACT_SIZE_BYTES or hashlib.sha256(data).hexdigest() != \
+            VIEW_CONTRACT_SHA256:
+        raise AggregateGateError("normalized view contract committed bytes differ")
+    schema = load_json(data, "normalized view contract")
+    if not isinstance(schema, dict) or schema.get("$id") != VIEW_SCHEMA \
+            or schema.get("properties", {}).get("schema") != {"const": VIEW_SCHEMA}:
+        raise AggregateGateError("normalized view contract identity differs")
+    recheck_file(resolved, identity, "normalized view contract")
+
+
 def candidate_rollup(views: dict[str, dict[str, Any]], candidate: str) -> dict[str, Any]:
     rows = {slot: view["candidates"][candidate] for slot, view in views.items()}
     statuses = [row["gate_status"] for row in rows.values()]
@@ -319,16 +348,54 @@ def decide(views: dict[str, dict[str, Any]], semantic_requirement: str) -> tuple
     return decision, {"shared_nonpass": shared_nonpass, "candidates": candidates, "gates": gates}
 
 
-def evaluate(synthetic_path: Path, public_path: Path,
-             semantic_requirement: str = "AGGREGATE_WEIGHTED") -> dict[str, Any]:
-    synthetic, synthetic_record, synthetic_resolved, synthetic_identity = load_view(
-        synthetic_path, "synthetic_v2"
-    )
-    public, public_record, public_resolved, public_identity = load_view(public_path, "public_v2")
-    if synthetic_resolved == public_resolved or synthetic_resolved.samefile(public_resolved):
-        raise AggregateGateError("synthetic_v2 and public_v2 views alias the same file")
-    views = {"synthetic_v2": synthetic, "public_v2": public}
-    decision, state = decide(views, semantic_requirement)
+def build_result(views: dict[str, dict[str, Any]], records: dict[str, dict[str, Any]],
+                 semantic_requirement: str, *, authenticated: bool) -> dict[str, Any]:
+    synthetic = views["synthetic_v2"]
+    public = views["public_v2"]
+    if authenticated:
+        decision, state = decide(views, semantic_requirement)
+        authentication = {
+            "status": "PASS_HASH_PINNED_IN_PROCESS_NATIVE_ADAPTERS",
+            "in_process_native_adapters": True,
+            "external_view_authority": False,
+        }
+    else:
+        candidates = {name: candidate_rollup(views, name) for name in ("A2", "A3")}
+        shared_nonpass = [
+            {"slot": slot, "gate": gate, "status": status}
+            for slot, view in views.items() for gate, status in view["shared_gates"].items()
+            if status != "PASS"
+        ]
+        decision = {
+            "status": "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS",
+            "campaign_recommendation": None,
+            "reason": "standalone normalized files are not authenticated native-adapter evidence",
+            "fallback_activated": False,
+            "fallback_trigger": None,
+            "final_selected_candidate": None,
+            "final_selection_status": "HOLD",
+            "final_release_status": "HOLD",
+            "release_authority": False,
+        }
+        state = {
+            "shared_nonpass": shared_nonpass,
+            "candidates": candidates,
+            "gates": {
+                "normalized_views_separately_verified": "HOLD_UNAUTHENTICATED",
+                "shared_campaign_gates": "HOLD",
+                "A2_candidate": candidates["A2"]["status"],
+                "A3_candidate": candidates["A3"]["status"],
+                "official": "HOLD_FALSE_CLAIM",
+                "physical": "HOLD_FALSE_CLAIM",
+                "power": "HOLD_FALSE_CLAIM",
+                "final_release": "HOLD",
+            },
+        }
+        authentication = {
+            "status": "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS",
+            "in_process_native_adapters": False,
+            "external_view_authority": False,
+        }
     public_units = public["campaign_units"]
     result = {
         "schema": RESULT_SCHEMA,
@@ -338,10 +405,8 @@ def evaluate(synthetic_path: Path, public_path: Path,
         ),
         "campaign_id": CAMPAIGN_ID,
         "semantic_requirement": semantic_requirement,
-        "input_views": {
-            "synthetic_v2": synthetic_record,
-            "public_v2": public_record,
-        },
+        "authentication": authentication,
+        "input_views": records,
         "aggregation": {
             "synthetic_public_pooling": "FORBIDDEN",
             "pooled_totals_emitted": False,
@@ -369,6 +434,48 @@ def evaluate(synthetic_path: Path, public_path: Path,
         "decision": decision,
         "claims": {**CLAIMS_FALSE, "final_candidate_selection": False},
     }
+    return result
+
+
+def evaluate_authenticated_views(
+    synthetic: dict[str, Any], public: dict[str, Any],
+    semantic_requirement: str = "AGGREGATE_WEIGHTED", *, authentication: object,
+) -> dict[str, Any]:
+    """Evaluate in-memory views created by the hash-pinned native pipeline only."""
+    if authentication is not _PIPELINE_CONTEXT:
+        raise AggregateGateError("authenticated pipeline context is required")
+    validate_view_contract()
+    validate_view(synthetic, "synthetic_v2")
+    validate_view(public, "public_v2")
+    synthetic_data = (json.dumps(synthetic, indent=2, sort_keys=True) + "\n").encode("ascii")
+    public_data = (json.dumps(public, indent=2, sort_keys=True) + "\n").encode("ascii")
+    return build_result(
+        {"synthetic_v2": synthetic, "public_v2": public},
+        {
+            "synthetic_v2": view_record(synthetic, synthetic_data),
+            "public_v2": view_record(public, public_data),
+        },
+        semantic_requirement,
+        authenticated=True,
+    )
+
+
+def evaluate(synthetic_path: Path, public_path: Path,
+             semantic_requirement: str = "AGGREGATE_WEIGHTED") -> dict[str, Any]:
+    """Validate external views, but never grant them campaign decision authority."""
+    validate_view_contract()
+    synthetic, synthetic_record, synthetic_resolved, synthetic_identity = load_view(
+        synthetic_path, "synthetic_v2"
+    )
+    public, public_record, public_resolved, public_identity = load_view(public_path, "public_v2")
+    if synthetic_resolved == public_resolved or synthetic_resolved.samefile(public_resolved):
+        raise AggregateGateError("synthetic_v2 and public_v2 views alias the same file")
+    result = build_result(
+        {"synthetic_v2": synthetic, "public_v2": public},
+        {"synthetic_v2": synthetic_record, "public_v2": public_record},
+        semantic_requirement,
+        authenticated=False,
+    )
     recheck_file(synthetic_resolved, synthetic_identity, "synthetic_v2 normalized view")
     recheck_file(public_resolved, public_identity, "public_v2 normalized view")
     return result

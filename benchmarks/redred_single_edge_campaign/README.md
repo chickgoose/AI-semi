@@ -163,10 +163,12 @@ tuple gates validate.
 
 `aggregate_gate.py` consumes two separately verified normalized views rather
 than reopening either producer-native archive. The input contract is
-`redred_single_edge_campaign_normalized_view_v1`: one `synthetic_v2` view and
-one `public_v2` view, each with a PASS verification envelope, source result and
-publication hashes, false official/P6/physical/power/release classifications,
-shared gate states, and independent A2/A3 candidate gate states.
+[`redred_single_edge_campaign_normalized_view_v1`](campaign_normalized_view.schema.json):
+one `synthetic_v2` view and one `public_v2` view, each with a PASS verification
+envelope, source result and publication hashes, false
+official/P6/physical/power/release classifications, shared gate states, and
+independent A2/A3 candidate gate states. This small schema is the stable seam
+targeted by both producer-native adapters.
 
 The public view must classify all retiming labels as one
 `PUBLIC_DATASET_RETIMING_FAMILY` with `independent_sample_count: 1`.
@@ -187,11 +189,41 @@ The decision is deliberately campaign-scoped:
 
 The output conforms to
 [`aggregate_result.schema.json`](aggregate_result.schema.json). A scoped A2/A3
-campaign recommendation exits 0, a valid HOLD exits 3, `--allow-hold` converts
-that HOLD to exit 0, and malformed/contradictory inputs exit 2.
+campaign recommendation is available only to the authenticated in-process
+pipeline context. Standalone file inputs cannot prove which adapter created
+them, even when their schema and claimed adapter hash look valid, so the CLI
+always emits `HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS` and exits 3.
+`--allow-hold` converts that expected HOLD to exit 0; malformed or
+contradictory inputs exit 2.
 
 ```sh
 python3 benchmarks/redred_single_edge_campaign/aggregate_gate.py evaluate \
   --synthetic-v2-view /path/to/verified-synthetic-view.json \
   --public-v2-view /path/to/verified-public-view.json
+```
+
+`native_pipeline.py` is the end-to-end repository path. It invokes both native
+adapters itself from hash-pinned local module bytes, validates the byte-pinned
+[`team_canonical_policy.json`](team_canonical_policy.json), and applies exactly
+three authorized synthetic changes: the full50 canonical-policy gate and the
+A2/A3 candidate gates move from HOLD to PASS. No native adapter or public view
+is rewritten. The promoted synthetic common view and unchanged public common
+view are then passed to `aggregate_gate.py`.
+The pass-capable aggregate call stays in memory and requires the pipeline's
+private authentication context; external normalized files are never used by
+this path.
+
+The pipeline receipt retains each upstream raw artifact hash and the full
+synthetic and public candidate metrics. Public 1x/64x/256x values remain
+visible separately but still count as one public dataset family. Its result
+schema is
+[`native_pipeline_result.schema.json`](native_pipeline_result.schema.json).
+The successful current result is only `A2_PRIMARY` at campaign scope; final
+selection, official evidence, physical, power, and release remain false/HOLD.
+The receipt ends with a canonical-JSON SHA-256 seal covering every non-seal
+field.
+
+```sh
+python3 benchmarks/redred_single_edge_campaign/native_pipeline.py evaluate \
+  --output /path/to/new-pipeline-result.json
 ```

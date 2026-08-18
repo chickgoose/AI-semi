@@ -1,0 +1,95 @@
+{
+  "schema": "redred_single_edge_team_canonical_policy_v1",
+  "policy_id": "redred-team-full50-canonical-2026-08-19",
+  "status": "ATTESTED_TEAM_POLICY",
+  "authority": "TEAM_DEFINED_CAMPAIGN_POLICY_ONLY",
+  "canonical_synthetic": {
+    "slot": "synthetic_v2",
+    "dataset_id": "full50",
+    "family_id": "team-full50-family",
+    "source_class": "TEAM_DEFINED_SYNTHETIC",
+    "trace_count": 50,
+    "canonical_redred_traffic": true,
+    "organizer_official": false
+  },
+  "public_extension": {
+    "slot": "public_v2",
+    "family_id": "uzh-shapes-rotation-public-projected-v2",
+    "source_class": "PUBLIC_PROJECTED_EXTENSION",
+    "canonical_redred_traffic": false,
+    "independent_sample_count": 1,
+    "retiming_labels": [
+      "1x",
+      "64x",
+      "256x"
+    ],
+    "retimings_are_independent_samples": false,
+    "pool_with_synthetic": false
+  },
+  "authorized_synthetic_promotions": [
+    {
+      "json_pointer": "/shared_gates/canonical_campaign_policy",
+      "from": "HOLD",
+      "to": "PASS"
+    },
+    {
+      "json_pointer": "/candidates/A2",
+      "from": {
+        "role": "PRIMARY",
+        "semantic_class": "AGGREGATE_WEIGHTED_PERFORMANCE",
+        "gate_status": "HOLD",
+        "failure_scope": "UNRESOLVED",
+        "reason_codes": [
+          "CANONICAL_POLICY_NOT_ATTESTED_BY_NATIVE_VERIFICATION"
+        ]
+      },
+      "to": {
+        "role": "PRIMARY",
+        "semantic_class": "AGGREGATE_WEIGHTED_PERFORMANCE",
+        "gate_status": "PASS",
+        "failure_scope": "NONE",
+        "reason_codes": []
+      }
+    },
+    {
+      "json_pointer": "/candidates/A3",
+      "from": {
+        "role": "SEMANTIC_FALLBACK",
+        "semantic_class": "EXACT_SCALAR_PREFIX",
+        "gate_status": "HOLD",
+        "failure_scope": "UNRESOLVED",
+        "reason_codes": [
+          "CANONICAL_POLICY_NOT_ATTESTED_BY_NATIVE_VERIFICATION"
+        ]
+      },
+      "to": {
+        "role": "SEMANTIC_FALLBACK",
+        "semantic_class": "EXACT_SCALAR_PREFIX",
+        "gate_status": "PASS",
+        "failure_scope": "NONE",
+        "reason_codes": []
+      }
+    }
+  ],
+  "candidate_policy": {
+    "primary": "A2",
+    "fallback": "A3",
+    "fallback_allowed_triggers": [
+      "EXACT_PREFIX_REQUIRED",
+      "A2_SPECIFIC_GATE_FAILURE"
+    ],
+    "fallback_forbidden_triggers": [
+      "SHARED_CAMPAIGN_FAILURE",
+      "SHARED_INTERFACE_FAILURE",
+      "SHARED_CDC_RDC_FAILURE",
+      "SHARED_PDK_IO_FAILURE"
+    ]
+  },
+  "claim_boundary": {
+    "final_selection": "HOLD",
+    "official": false,
+    "physical": false,
+    "power": false,
+    "release": false
+  }
+}

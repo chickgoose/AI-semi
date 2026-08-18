@@ -104,9 +104,15 @@ class AggregateFixture(unittest.TestCase):
         return path
 
     def evaluate(self, semantic_requirement: str = "AGGREGATE_WEIGHTED") -> dict:
-        synthetic = self.write("synthetic.json", self.synthetic)
-        public = self.write("public.json", self.public)
-        return gate.evaluate(synthetic, public, semantic_requirement)
+        return gate.evaluate_authenticated_views(
+            self.synthetic, self.public, semantic_requirement,
+            authentication=gate._PIPELINE_CONTEXT,
+        )
+
+    def external_evaluate(self) -> dict:
+        synthetic = self.write("synthetic-external.json", self.synthetic)
+        public = self.write("public-external.json", self.public)
+        return gate.evaluate(synthetic, public)
 
     @staticmethod
     def candidate_state(document: dict, slot: str, candidate: str,
@@ -231,8 +237,10 @@ class AggregateFixture(unittest.TestCase):
             "--public-v2-view", str(public), "--output", str(output),
         ]
         run = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
-        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(run.returncode, 3, run.stderr)
         self.assertEqual(json.loads(run.stdout), json.loads(output.read_text(encoding="utf-8")))
+        self.assertEqual(json.loads(run.stdout)["decision"]["status"],
+                         "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS")
         second = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
         self.assertEqual(second.returncode, 2)
         self.assertIn("output already exists", second.stderr)
@@ -266,6 +274,35 @@ class AggregateFixture(unittest.TestCase):
             hashlib.sha256(public.read_bytes()).hexdigest(),
         )
 
+    def test_FORGED_ADAPTER_HASH_ACCEPTED_is_blocked(self) -> None:
+        self.synthetic["verification"]["adapter_sha256"] = "f" * 64
+        result = self.external_evaluate()
+        self.assertEqual(result["status"], "HOLD_CAMPAIGN_RECOMMENDATION")
+        self.assertEqual(result["authentication"]["status"],
+                         "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS")
+        self.assertEqual(result["gates"]["normalized_views_separately_verified"],
+                         "HOLD_UNAUTHENTICATED")
+        self.assertIsNone(result["decision"]["campaign_recommendation"])
+
+    def test_FORGED_SYNTHETIC_PASS_VIEW_ACCEPTED_is_blocked(self) -> None:
+        self.synthetic["verification"]["adapter_sha256"] = \
+            "153c2038f6773eef28ff8bb50675164da7f265d3e8beb8d034c570311ad70895"
+        self.public["verification"]["adapter_sha256"] = \
+            "dae1de32a83457ac21ff3d84178cb6248fa1c24bdde41b656c11bbf983212e82"
+        self.assertEqual(self.synthetic["candidates"]["A2"]["gate_status"], "PASS")
+        self.assertEqual(self.synthetic["candidates"]["A3"]["gate_status"], "PASS")
+        result = self.external_evaluate()
+        self.assertEqual(result["decision"]["status"],
+                         "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS")
+        self.assertIsNone(result["decision"]["campaign_recommendation"])
+        self.assertFalse(result["authentication"]["in_process_native_adapters"])
+
+    def test_in_memory_recommendation_requires_pipeline_context(self) -> None:
+        with self.assertRaisesRegex(gate.AggregateGateError, "pipeline context"):
+            gate.evaluate_authenticated_views(
+                self.synthetic, self.public, authentication=object(),
+            )
+
     def test_result_schema_hard_codes_nonrelease_boundary(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
         claims = schema["properties"]["claims"]["properties"]
@@ -276,6 +313,17 @@ class AggregateFixture(unittest.TestCase):
         self.assertEqual(decision["final_selection_status"]["const"], "HOLD")
         self.assertEqual(decision["final_release_status"]["const"], "HOLD")
         self.assertIs(decision["release_authority"]["const"], False)
+
+    def test_stable_normalized_input_contract_is_byte_pinned(self) -> None:
+        gate.validate_view_contract()
+        payload = gate.VIEW_CONTRACT.read_bytes()
+        self.assertEqual(len(payload), gate.VIEW_CONTRACT_SIZE_BYTES)
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), gate.VIEW_CONTRACT_SHA256)
+        schema = json.loads(payload)
+        self.assertEqual(schema["$id"], gate.VIEW_SCHEMA)
+        claims = schema["properties"]["claims"]["properties"]
+        for name in ("official", "physical", "power", "release"):
+            self.assertIs(claims[name]["const"], False)
 
 
 if __name__ == "__main__":

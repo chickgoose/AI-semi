@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred_single_edge_native_pipeline_result_v1",
+  "title": "REDRED native-adapter campaign pipeline result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "policy_attestation",
+    "adapter_execution",
+    "upstream_raw_hashes",
+    "full_metrics",
+    "common_views",
+    "synthetic_policy_promotion",
+    "aggregation_accounting",
+    "aggregate_result",
+    "campaign_recommendation",
+    "claims",
+    "seal"
+  ],
+  "properties": {
+    "schema": {"const": "redred_single_edge_native_pipeline_result_v1"},
+    "status": {"const": "PASS_SCOPED_NATIVE_CAMPAIGN_PIPELINE"},
+    "policy_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes", "policy_id", "authority"],
+      "properties": {
+        "path": {"const": "benchmarks/redred_single_edge_campaign/team_canonical_policy.json"},
+        "sha256": {"const": "cc83d17cbf0f405e930fb46d45602c4466c446687c8abc11ad819c28f050e505"},
+        "size_bytes": {"const": 2590},
+        "policy_id": {"const": "redred-team-full50-canonical-2026-08-19"},
+        "authority": {"const": "TEAM_DEFINED_CAMPAIGN_POLICY_ONLY"}
+      }
+    },
+    "adapter_execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["synthetic_v2", "public_v2"],
+      "properties": {
+        "synthetic_v2": {"$ref": "#/$defs/adapterExecution"},
+        "public_v2": {"$ref": "#/$defs/adapterExecution"}
+      }
+    },
+    "upstream_raw_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["synthetic_v2", "public_v2"],
+      "properties": {
+        "synthetic_v2": {"type": "object", "minProperties": 1},
+        "public_v2": {"type": "object", "minProperties": 1}
+      }
+    },
+    "full_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["synthetic_v2", "public_v2"],
+      "properties": {
+        "synthetic_v2": {"type": "object", "minProperties": 1},
+        "public_v2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["a2", "a3"],
+          "properties": {
+            "a2": {"type": "object", "minProperties": 1},
+            "a3": {"type": "object", "minProperties": 1}
+          }
+        }
+      }
+    },
+    "common_views": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["synthetic_v2_before_policy", "synthetic_v2_attested", "public_v2"],
+      "properties": {
+        "synthetic_v2_before_policy": {"type": "object"},
+        "synthetic_v2_attested": {"type": "object"},
+        "public_v2": {"type": "object"}
+      }
+    },
+    "synthetic_policy_promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status", "changed_json_pointers", "before_sha256", "after_sha256",
+        "other_fields_changed"
+      ],
+      "properties": {
+        "status": {"const": "PASS_EXACT_AUTHORIZED_PROMOTIONS"},
+        "changed_json_pointers": {
+          "const": [
+            "/shared_gates/canonical_campaign_policy",
+            "/candidates/A2",
+            "/candidates/A3"
+          ]
+        },
+        "before_sha256": {"$ref": "#/$defs/sha256"},
+        "after_sha256": {"$ref": "#/$defs/sha256"},
+        "other_fields_changed": {"const": false}
+      }
+    },
+    "aggregation_accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "synthetic_public_pooling", "public_family_id",
+        "public_independent_sample_count", "public_retiming_labels",
+        "public_retimings_counted_as_independent_samples", "pooled_totals_emitted"
+      ],
+      "properties": {
+        "synthetic_public_pooling": {"const": "FORBIDDEN"},
+        "public_family_id": {"const": "uzh-shapes-rotation-public-projected-v2"},
+        "public_independent_sample_count": {"const": 1},
+        "public_retiming_labels": {"const": ["1x", "64x", "256x"]},
+        "public_retimings_counted_as_independent_samples": {"const": false},
+        "pooled_totals_emitted": {"const": false}
+      }
+    },
+    "aggregate_result": {"type": "object", "minProperties": 1},
+    "campaign_recommendation": {"const": "A2"},
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["final_selection", "official", "physical", "power", "release"],
+      "properties": {
+        "final_selection": {"const": "HOLD"},
+        "official": {"const": false},
+        "physical": {"const": false},
+        "power": {"const": false},
+        "release": {"const": false}
+      }
+    },
+    "seal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "semantic_sha256"],
+      "properties": {
+        "algorithm": {"const": "SHA256_CANONICAL_JSON_EXCLUDING_SEAL"},
+        "semantic_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "adapterExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter_called", "code", "native_schema", "native_status", "native_report_sha256"],
+      "properties": {
+        "adapter_called": {"const": true},
+        "code": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256", "size_bytes"],
+          "properties": {
+            "path": {"type": "string", "minLength": 1},
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "size_bytes": {"type": "integer", "minimum": 1}
+          }
+        },
+        "native_schema": {"type": "string", "minLength": 1},
+        "native_status": {"type": "string", "minLength": 1},
+        "native_report_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

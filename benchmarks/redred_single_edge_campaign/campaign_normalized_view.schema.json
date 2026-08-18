@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred_single_edge_campaign_normalized_view_v1",
+  "title": "Stable normalized input view for the REDRED aggregate gate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slot",
+    "verification",
+    "classification",
+    "campaign_units",
+    "shared_gates",
+    "candidates",
+    "claims"
+  ],
+  "properties": {
+    "schema": {"const": "redred_single_edge_campaign_normalized_view_v1"},
+    "slot": {"enum": ["synthetic_v2", "public_v2"]},
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "separately_verified",
+        "adapter_id",
+        "adapter_sha256",
+        "source_result_sha256",
+        "source_publication_sha256"
+      ],
+      "properties": {
+        "status": {"const": "PASS"},
+        "separately_verified": {"const": true},
+        "adapter_id": {"$ref": "#/$defs/token"},
+        "adapter_sha256": {"$ref": "#/$defs/sha256"},
+        "source_result_sha256": {"$ref": "#/$defs/sha256"},
+        "source_publication_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_status",
+        "source_class",
+        "canonical_redred_traffic",
+        "official_contest_traffic",
+        "p6_evidence_used"
+      ],
+      "properties": {
+        "evidence_status": {"enum": ["PASS", "PUBLIC_PROJECTED_EXTENSION"]},
+        "source_class": {"enum": ["TEAM_DEFINED_SYNTHETIC", "PUBLIC_PROJECTED_EXTENSION"]},
+        "canonical_redred_traffic": {"type": "boolean"},
+        "official_contest_traffic": {"const": false},
+        "p6_evidence_used": {"const": false}
+      }
+    },
+    "campaign_units": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family_id",
+        "unit_kind",
+        "independent_sample_count",
+        "retiming_labels",
+        "retimings_are_independent_samples",
+        "pooling_with_other_slots_permitted"
+      ],
+      "properties": {
+        "family_id": {"$ref": "#/$defs/token"},
+        "unit_kind": {"enum": ["SYNTHETIC_TRACE_CAMPAIGN", "PUBLIC_DATASET_RETIMING_FAMILY"]},
+        "independent_sample_count": {"type": "integer", "minimum": 1},
+        "retiming_labels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/token"}
+        },
+        "retimings_are_independent_samples": {"const": false},
+        "pooling_with_other_slots_permitted": {"const": false}
+      }
+    },
+    "shared_gates": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/token"},
+      "additionalProperties": {"enum": ["PASS", "FAIL", "HOLD"]}
+    },
+    "candidates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["A2", "A3"],
+      "properties": {
+        "A2": {
+          "allOf": [
+            {"$ref": "#/$defs/candidate"},
+            {"properties": {
+              "role": {"const": "PRIMARY"},
+              "semantic_class": {"const": "AGGREGATE_WEIGHTED_PERFORMANCE"}
+            }}
+          ]
+        },
+        "A3": {
+          "allOf": [
+            {"$ref": "#/$defs/candidate"},
+            {"properties": {
+              "role": {"const": "SEMANTIC_FALLBACK"},
+              "semantic_class": {"const": "EXACT_SCALAR_PREFIX"}
+            }}
+          ]
+        }
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["official", "physical", "power", "release"],
+      "properties": {
+        "official": {"const": false},
+        "physical": {"const": false},
+        "power": {"const": false},
+        "release": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"slot": {"const": "synthetic_v2"}}},
+      "then": {
+        "properties": {
+          "classification": {"properties": {
+            "evidence_status": {"const": "PASS"},
+            "source_class": {"const": "TEAM_DEFINED_SYNTHETIC"},
+            "canonical_redred_traffic": {"const": true}
+          }},
+          "campaign_units": {"properties": {
+            "family_id": {"const": "team-full50-family"},
+            "unit_kind": {"const": "SYNTHETIC_TRACE_CAMPAIGN"},
+            "independent_sample_count": {"const": 50},
+            "retiming_labels": {"const": []}
+          }}
+        }
+      },
+      "else": {
+        "properties": {
+          "classification": {"properties": {
+            "evidence_status": {"const": "PUBLIC_PROJECTED_EXTENSION"},
+            "source_class": {"const": "PUBLIC_PROJECTED_EXTENSION"},
+            "canonical_redred_traffic": {"const": false}
+          }},
+          "campaign_units": {"properties": {
+            "family_id": {"const": "uzh-shapes-rotation-public-projected-v2"},
+            "unit_kind": {"const": "PUBLIC_DATASET_RETIMING_FAMILY"},
+            "independent_sample_count": {"const": 1},
+            "retiming_labels": {"const": ["1x", "64x", "256x"]}
+          }}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"},
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "semantic_class", "gate_status", "failure_scope", "reason_codes"],
+      "properties": {
+        "role": {"type": "string"},
+        "semantic_class": {"type": "string"},
+        "gate_status": {"enum": ["PASS", "FAIL", "HOLD"]},
+        "failure_scope": {"enum": ["NONE", "CANDIDATE_SPECIFIC", "UNRESOLVED"]},
+        "reason_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/token"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"gate_status": {"const": "PASS"}}},
+          "then": {"properties": {"failure_scope": {"const": "NONE"}, "reason_codes": {"const": []}}}
+        },
+        {
+          "if": {"properties": {"gate_status": {"const": "FAIL"}}},
+          "then": {"properties": {"failure_scope": {"const": "CANDIDATE_SPECIFIC"}, "reason_codes": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"gate_status": {"const": "HOLD"}}},
+          "then": {"properties": {"failure_scope": {"const": "UNRESOLVED"}, "reason_codes": {"minItems": 1}}}
+        }
+      ]
+    }
+  }
+}
