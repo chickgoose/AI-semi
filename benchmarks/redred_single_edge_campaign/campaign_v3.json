@@ -7,7 +7,7 @@
   },
   "sealed_tuple_contract": {
     "path": "benchmarks/redred_single_edge_campaign/sealed_tuple.schema.json",
-    "sha256": "859ca3006b0d5367e60555cd2a10d218e096490484ae5f80012105cee19c8289"
+    "sha256": "b66d4a051b3efddcf9d26dd132639a7d6815171d59b5a12c431297eef403a1d1"
   },
   "sealed_producers": {
     "synthetic_v2": {

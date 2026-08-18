@@ -205,15 +205,30 @@ class TupleFixture:
         bundle = bundle_stream.getvalue()
         result_data = members["result/result.json"]
         result = sealed.load_json_bytes(result_data, "fixture result")
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        tree = subprocess.check_output(
+            ["git", "rev-parse", f"{commit}^{{tree}}"], cwd=ROOT, text=True,
+        ).strip()
+
+        def inventory(paths):
+            return [{
+                "path": path,
+                "blob_sha256": subprocess.check_output(
+                    ["git", "rev-parse", f"{commit}:{path}"], cwd=ROOT, text=True,
+                ).strip(),
+            } for path in paths]
+
         producer = {
-            "commit": "1" * 40, "tree": "2" * 40,
+            "commit": commit, "tree": tree,
             "verifier_sha256": "3" * 64, "schema_sha256": "4" * 64,
             "runner_sha256": "5" * 64, "testbench_sha256": "6" * 64,
             "tool_pins_sha256": "7" * 64,
+            "inventory": inventory(["benchmarks/redred_single_edge_campaign/campaign.py"]),
         }
         rtl = {
-            "source_commit": "8" * 40, "source_tree": "9" * 40,
-            "integration_commit": "a" * 40, "integration_tree": "b" * 40,
+            "source_commit": commit, "source_tree": tree,
+            "integration_commit": commit, "integration_tree": tree,
+            "inventory": inventory(["benchmarks/redred_single_edge_campaign/campaign.py"]),
         }
         publication = {
             "schema": "redred_single_edge_synthetic_publication_v2",
@@ -293,6 +308,26 @@ class CampaignV3Tests(unittest.TestCase):
             with self.assertRaisesRegex(campaign.CampaignV3Error, "binding is unavailable"):
                 campaign.evaluate(
                     MANIFEST, ROOT, synthetic_publication=dummy, synthetic_bundle=dummy,
+                )
+
+    def test_public_slot_rejects_synthetic_binding_and_p6_relabel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = TupleFixture(Path(directory))
+            manifest = sealed.load_json_bytes(MANIFEST.read_bytes(), "manifest")
+            row = copy.deepcopy(manifest["sealed_producers"]["public_v2"])
+            row["state"] = "BOUND"
+            row["binding"] = fixture.binding
+            with self.assertRaisesRegex(campaign.CampaignV3Error, "binding identity differs"):
+                campaign.validate_producer("public_v2", row)
+            row = copy.deepcopy(manifest["sealed_producers"]["synthetic_v2"])
+            row["state"] = "BOUND"
+            row["binding"] = copy.deepcopy(fixture.binding)
+            row["binding"]["p6_evidence_used"] = True
+            with self.assertRaisesRegex(campaign.CampaignV3Error, "binding identity differs"):
+                campaign.validate_producer("synthetic_v2", row)
+            with self.assertRaisesRegex(sealed.SealedTupleError, "classification/schema differs"):
+                sealed.validate_tuple(
+                    fixture.publication_path, fixture.bundle_path, fixture.binding, "public_v2",
                 )
 
     def test_manifest_duplicate_key_and_policy_relabel_fail(self):
@@ -490,6 +525,35 @@ class SealedTupleTests(unittest.TestCase):
         link.symlink_to(self.fixture.publication_path)
         with self.assertRaisesRegex(sealed.SealedTupleError, "symlink"):
             sealed.validate_tuple(link, self.fixture.bundle_path, self.fixture.binding, "synthetic_v2")
+
+    def test_tuple_wide_source_replacement_is_rejected_after_semantics(self):
+        original = sealed.stable_file
+        original_bytes = self.fixture.publication_path.read_bytes()
+
+        def replacing(path, label):
+            snapshot = original(path, label)
+            if label == "synthetic_v2 publication":
+                path.write_bytes(original_bytes + b"replacement")
+            return snapshot
+
+        sealed.stable_file = replacing
+        try:
+            with self.assertRaisesRegex(sealed.SealedTupleError, "changed after validation"):
+                sealed.validate_tuple(
+                    self.fixture.publication_path, self.fixture.bundle_path,
+                    self.fixture.binding, "synthetic_v2",
+                )
+        finally:
+            sealed.stable_file = original
+
+    def test_fake_producer_and_rtl_objects_are_rejected(self):
+        binding = copy.deepcopy(self.fixture.binding)
+        binding["producer"]["commit"] = "1" * 40
+        binding["producer"]["tree"] = "2" * 40
+        with self.assertRaisesRegex(sealed.SealedTupleError, "provenance is not resolvable|commit/tree"):
+            sealed.validate_tuple(
+                self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
+            )
 
 
 if __name__ == "__main__":

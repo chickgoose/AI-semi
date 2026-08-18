@@ -15,11 +15,11 @@ from typing import Any
 PACKAGE = Path(__file__).resolve().parent
 PROJECT = PACKAGE.parents[1]
 DEFAULT_MANIFEST = PACKAGE / "campaign_v3.json"
-DEFAULT_MANIFEST_SHA256 = "6e99e568702d2ff59d17af5ca0d84922cb3631fdd19d07eeb12a603cfd392a15"
+DEFAULT_MANIFEST_SHA256 = "23549532ee0220680c5d970da96333d09ffe240996ef8c09f33887e0ffd99127"
 LEGACY_PATH = "benchmarks/redred_single_edge_campaign/campaign.json"
 LEGACY_SHA256 = "316f9bee92255616dfaa80b74a6cf0868c01c3f5e9798177124aae7bc2035fba"
 CONTRACT_PATH = "benchmarks/redred_single_edge_campaign/sealed_tuple.schema.json"
-CONTRACT_SHA256 = "859ca3006b0d5367e60555cd2a10d218e096490484ae5f80012105cee19c8289"
+CONTRACT_SHA256 = "b66d4a051b3efddcf9d26dd132639a7d6815171d59b5a12c431297eef403a1d1"
 PRODUCER_KEYS = {
     "state", "publication_schema", "evidence_class", "status", "source_class",
     "canonical_redred_traffic", "official_contest_traffic", "p6_evidence_used",
@@ -81,7 +81,11 @@ def local_ref(root: Path, value: Any, expected_path: str, expected_sha: str, lab
         cursor /= part
         if cursor.is_symlink():
             raise CampaignV3Error(f"{label} traverses a symlink")
-    if not path.is_file() or sealed.digest(path.read_bytes()) != expected_sha:
+    try:
+        _, data, _ = sealed.stable_file(path, label)
+    except sealed.SealedTupleError as error:
+        raise CampaignV3Error(str(error)) from error
+    if sealed.digest(data) != expected_sha:
         raise CampaignV3Error(f"{label} bytes differ")
     return path
 
@@ -111,6 +115,13 @@ def validate_producer(name: str, value: Any) -> dict[str, Any]:
         raise CampaignV3Error(f"sealed_producers.{name} has an unbound placeholder")
     if state == "BOUND":
         binding = row["binding"]
+        for key in (
+            "publication_schema", "evidence_class", "status", "source_class",
+            "canonical_redred_traffic", "official_contest_traffic", "p6_evidence_used",
+            "release_status", "selection_status",
+        ):
+            if key not in binding or not sealed.strict_equal(binding[key], row[key]):
+                raise CampaignV3Error(f"sealed_producers.{name} binding identity differs")
         flattened = {
             "publication_sha256", "publication_size_bytes", "producer.commit",
             "producer.tree", "producer.verifier_sha256", "producer.schema_sha256",
@@ -128,7 +139,7 @@ def validate_producer(name: str, value: Any) -> dict[str, Any]:
 
 
 def validate_manifest(path: Path, root: Path) -> dict[str, Any]:
-    _, manifest_data = sealed.stable_file(path, "campaign v3 manifest")
+    _, manifest_data, _ = sealed.stable_file(path, "campaign v3 manifest")
     if sealed.digest(manifest_data) != DEFAULT_MANIFEST_SHA256:
         raise CampaignV3Error("campaign v3 manifest binding differs")
     manifest = exact(sealed.load_json_bytes(manifest_data, "campaign v3 manifest"), {
