@@ -1,7 +1,8 @@
 {
   "schema": "redred-single-edge-source-binding-v1",
-  "source_set_id": "a2-a3-single-edge-4ce4836",
-  "repository_commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
+  "source_set_id": "a2-a3-single-edge-hardened-6fc5e16",
+  "repository_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+  "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
   "files": [
     {
       "path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
@@ -9,7 +10,7 @@
     },
     {
       "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
-      "sha256": "9061deb14e46e0d050bdf3fae450ee8a94c234f94e74f69e1dc8be84722e55ac"
+      "sha256": "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057"
     },
     {
       "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
@@ -17,11 +18,15 @@
     },
     {
       "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",
-      "sha256": "3bac4faa2e249e0326a8eba4e3b010437e16c33b5dff236bd621acdb27c5bb07"
+      "sha256": "61daf3a31f29106d3f6383936d92131a31401fd86d71e0bee5ee53a3ab5b485d"
+    },
+    {
+      "path": "rtl/technology/single_edge/w2_single_edge_error_latch.sv",
+      "sha256": "02729b04c8326bd898a465a5343eb34b40a7c60c3667f6d0bb16eb3fcdb83260"
     },
     {
       "path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
-      "sha256": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493"
+      "sha256": "e00ac30015e826cef7d017b0a72066e405bce3e84a4ee454e99fb34c68e2642c"
     },
     {
       "path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
@@ -29,7 +34,7 @@
     },
     {
       "path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv",
-      "sha256": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4"
+      "sha256": "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127"
     }
   ],
   "designs": {
@@ -45,6 +50,10 @@
       "drain_output": "drain_idle_o",
       "scope_drain_port": "drain_idle_o",
       "rx_pending_port": "retire_valid_o",
+      "clean_drain_error": "protocol_error_o",
+      "scope_error_port": "protocol_error_o",
+      "top_drain_require_one": ["scheduler_idle", "endpoint_idle"],
+      "top_drain_require_zero": ["buffer_valid_q", "scheduler_count", "protocol_error_o"],
       "channels": [
         {"tx_port": "link_valid_o", "rx_port": "link_valid_i"},
         {"tx_port": "link_addr0_o", "rx_port": "link_addr0_i"},
@@ -63,6 +72,10 @@
       "drain_output": "drain_idle_o",
       "scope_drain_port": "drain_idle_o",
       "rx_pending_port": "retire_valid_o",
+      "clean_drain_error": "protocol_error_o",
+      "scope_error_port": "protocol_error_o",
+      "top_drain_require_one": ["endpoint_idle"],
+      "top_drain_require_zero": ["source_pending_i", "scheduler_count", "protocol_error_o"],
       "channels": [
         {"tx_port": "link_valid_o", "rx_port": "link_valid_i"},
         {"tx_port": "link_addr0_o", "rx_port": "link_addr0_i"},
