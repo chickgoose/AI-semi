@@ -1,0 +1,58 @@
+{
+  "schema": "redred_single_edge_campaign_manifest_v1",
+  "campaign_id": "redred-a2-a3-single-edge-full50-v1",
+  "dataset": {
+    "id": "full50",
+    "display_name": "team-defined synthetic full50",
+    "source_class": "TEAM_DEFINED_SYNTHETIC",
+    "organizer_official": false,
+    "manifest": {
+      "path": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+      "sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
+    },
+    "trace_registry": {
+      "path": "scripts/common_suite_official.py",
+      "sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33"
+    }
+  },
+  "measurement": {
+    "cycle_semantics": "common_TB_one_entry_occurrence_latch_before_indexed_accept_edge_nonblocking_clear",
+    "generated": "every occurrence in the immutable input trace",
+    "source_overrun": "an occurrence while that source's one-entry pending latch is occupied",
+    "accepted": "an event observed at the actual atomic scheduler commit boundary",
+    "retired": "an accepted event observed exactly once at the actual single-edge receiver retirement boundary",
+    "occurrence_to_accept": "accept_cycle-occurrence_cycle for every accepted event",
+    "accept_to_retire": "retire_cycle-accept_cycle for every retired event",
+    "hard_conservation": [
+      "generated=source_overrun+accepted",
+      "accepted=retired"
+    ]
+  },
+  "candidates": [
+    {
+      "id": "A2",
+      "semantic_role": "PRIMARY",
+      "endpoint_id": "A2_SINGLE_EDGE_COMPLETE_ENDPOINT"
+    },
+    {
+      "id": "A3",
+      "semantic_role": "EXACT_PREFIX_FALLBACK",
+      "endpoint_id": "A3_SINGLE_EDGE_COMPLETE_ENDPOINT"
+    }
+  ],
+  "producer": {
+    "id": "a23_full_single_edge_replay",
+    "path": "tests/a23_full_single_edge_replay",
+    "evidence_class": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1",
+    "rtl_source_commit": "4ce4836fab1309d3468db8e660d2da9af371f784"
+  },
+  "interchange_schema": {
+    "path": "benchmarks/redred_single_edge_campaign/replay_receipt.schema.json",
+    "sha256": "ed1a9d94182cfce60553fddb987791f9af1cbf23ac037b480c2b0c1a3575ec66"
+  },
+  "forbidden_evidence": {
+    "p6_results": "FORBIDDEN",
+    "parallel_results": "FORBIDDEN",
+    "full50_as_organizer_official": "FORBIDDEN"
+  }
+}
