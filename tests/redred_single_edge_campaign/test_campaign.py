@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+"""Fail-closed tests for the hardened REDRED single-edge campaign wrapper."""
+
 from __future__ import annotations
 
 import copy
@@ -12,453 +15,366 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKAGE = ROOT / "benchmarks/redred_single_edge_campaign"
-TOOL = PACKAGE / "campaign.py"
-MANIFEST = PACKAGE / "campaign.json"
-SCHEMA = PACKAGE / "replay_receipt.schema.json"
-FULL50_MANIFEST = ROOT / "benchmarks/clean_slate_aer/manifest.neutrality-n16.json"
-REGISTRY = ROOT / "scripts/common_suite_official.py"
-GENERATOR = ROOT / "benchmarks/clean_slate_aer/generate_trace.py"
+PACKAGE = ROOT / "benchmarks" / "redred_single_edge_campaign"
+CAMPAIGN_PATH = PACKAGE / "campaign.py"
+MANIFEST_PATH = PACKAGE / "campaign.json"
+SCHEMA_PATH = PACKAGE / "replay_receipt.schema.json"
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec and spec.loader
+def load_campaign():
+    spec = importlib.util.spec_from_file_location("redred_single_edge_campaign", CAMPAIGN_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load campaign module")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-campaign = load_module("redred_single_edge_campaign", TOOL)
-generator = load_module("redred_single_edge_generator", GENERATOR)
-registry = load_module("redred_single_edge_registry", REGISTRY)
+campaign = load_campaign()
 
 
-def digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def artifact(root: Path, path: Path) -> dict:
-    return {
-        "path": path.relative_to(root).as_posix(),
-        "sha256": digest(path),
-        "size_bytes": path.stat().st_size,
-    }
-
-
-def write_bytes(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
-
-
-def write_json(path: Path, value: object) -> None:
-    write_bytes(path, campaign.canonical(value))
-
-
-class Fixture:
-    def __init__(self, base: Path):
-        self.base = base
-        self.root = base / "artifacts"
-        self.root.mkdir()
-        manifest_copy = self.root / "inputs/full50.manifest.json"
-        registry_copy = self.root / "inputs/full50.trace_registry.py"
-        write_bytes(manifest_copy, FULL50_MANIFEST.read_bytes())
-        write_bytes(registry_copy, REGISTRY.read_bytes())
-        generated = self.root / "inputs/traces"
-        metadata = generator.generate_manifest(FULL50_MANIFEST, generated)
-        windows = {
-            row["name"]: row["stim_cycles"]
-            for row in json.loads(FULL50_MANIFEST.read_text())["runs"]
-        }
-        common_files = {}
-        for name, payload in (
-            ("tool", b"fixture-single-edge-simulator-binary\n"),
-            ("testbench", b"module a23_full_single_edge_fixture_tb; endmodule\n"),
-            ("runner", b"#!/bin/sh\n# independent single-edge fixture runner\n"),
-        ):
-            path = self.root / f"common/{name}.artifact"
-            write_bytes(path, payload)
-            common_files[name] = artifact(self.root, path)
-        common = {
-            "cycle_semantics": campaign.EXPECTED_CYCLE_SEMANTICS,
-            "tool": common_files["tool"], "tool_version": "fixture-1.0",
-            "testbench": common_files["testbench"], "runner": common_files["runner"],
-        }
-        dataset_runs = []
-        trace_events: dict[str, list[dict]] = {}
-        for row in metadata:
-            name = row["run"]["name"]
-            trace = generated / row["trace_file"]
-            prepared = self.root / f"inputs/prepared/{name}.prepared"
-            write_bytes(prepared, f"prepared-single-edge-input:{name}\n".encode())
-            trace_events[name] = [json.loads(line) for line in trace.read_text().splitlines()]
-            dataset_runs.append({
-                "name": name, "trace_sha256": row["trace_sha256"],
-                "fixed_window_cycles": windows[name], "window_start_cycle": 0,
-                "window_end_cycle_exclusive": windows[name],
-                "trace": artifact(self.root, trace),
-                "prepared_input": artifact(self.root, prepared),
-            })
-        candidates = {}
-        for candidate, internal_latency in (("A2", 2), ("A3", 1)):
-            inventory_sources = []
-            for logical_path in campaign.EXPECTED_RTL_SOURCES[candidate]:
-                rtl_source = self.root / f"candidates/{candidate}/rtl_snapshot/{logical_path}"
-                rtl_bytes = subprocess.run(
-                    ["git", "-C", str(ROOT), "show",
-                     f"{campaign.EXPECTED_RTL_COMMIT}:{logical_path}"],
-                    stdout=subprocess.PIPE, check=True,
-                ).stdout
-                write_bytes(rtl_source, rtl_bytes)
-                inventory_sources.append({
-                    "logical_path": logical_path,
-                    "artifact": artifact(self.root, rtl_source),
-                })
-            inventory_path = self.root / f"candidates/{candidate}/rtl_inventory.json"
-            write_json(inventory_path, {
-                "schema": "redred_single_edge_rtl_inventory_v1",
-                "candidate_id": candidate, "interface": "single_edge",
-                "sources": inventory_sources,
-            })
-            candidate_runs = []
-            for binding in dataset_runs:
-                name = binding["name"]
-                accepted_order = 0
-                occurrence_latencies = []
-                internal_latencies = []
-                events = []
-                fixed_retired = 0
-                overruns = 0
-                for source_event in trace_events[name]:
-                    event_id = source_event["tb_only_event_id"]
-                    source = source_event["logical_source"]
-                    occurrence = source_event["occurrence_cycle"]
-                    if event_id % 17 == 0:
-                        overruns += 1
-                        events.append({
-                            "tb_only_event_id": event_id, "logical_source": source,
-                            "occurrence_cycle": occurrence, "accept_cycle": None,
-                            "retire_cycle": None, "retired_logical_source": None,
-                            "accept_order": None, "retire_order": None,
-                            "event_state": "source_overrun",
-                        })
-                    else:
-                        accept_cycle = occurrence + 1
-                        retire_cycle = accept_cycle + internal_latency
-                        occurrence_latencies.append(1)
-                        internal_latencies.append(internal_latency)
-                        if retire_cycle < binding["window_end_cycle_exclusive"]:
-                            fixed_retired += 1
-                        events.append({
-                            "tb_only_event_id": event_id, "logical_source": source,
-                            "occurrence_cycle": occurrence, "accept_cycle": accept_cycle,
-                            "retire_cycle": retire_cycle, "retired_logical_source": source,
-                            "accept_order": accepted_order, "retire_order": accepted_order,
-                            "event_state": "retired",
-                        })
-                        accepted_order += 1
-                case = self.root / f"candidates/{candidate}/runs/{name}"
-                events_path = case / "events.jsonl"
-                write_bytes(
-                    events_path,
-                    b"".join(
-                        (json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n").encode()
-                        for row in events
-                    ),
-                )
-                summary_path = case / "summary.json"
-                write_json(summary_path, {
-                    "schema": "a23_full_single_edge_run_summary_v1",
-                    "candidate_id": candidate, "trace": name,
-                    "generated": len(events), "source_overrun": overruns,
-                    "accepted": accepted_order, "retired": accepted_order,
-                    "fixed_window_retired": fixed_retired,
-                    "fixed_window_cycles": binding["fixed_window_cycles"],
-                    "occurrence_to_accept": campaign.latency_summary(occurrence_latencies),
-                    "accept_to_retire": campaign.latency_summary(internal_latencies),
-                    "hard_errors": {key: 0 for key in campaign.EXPECTED_HARD_ERRORS},
-                })
-                log_path = case / "simulator.log"
-                write_bytes(
-                    log_path,
-                    f"SINGLE_EDGE_REPLAY_PASS candidate={candidate} trace={name}\n".encode(),
-                )
-                candidate_runs.append({
-                    "name": name, "trace_sha256": binding["trace_sha256"],
-                    "prepared_input_sha256": binding["prepared_input"]["sha256"],
-                    "fixed_window_cycles": binding["fixed_window_cycles"],
-                    "window_start_cycle": binding["window_start_cycle"],
-                    "window_end_cycle_exclusive": binding["window_end_cycle_exclusive"],
-                    "events": artifact(self.root, events_path),
-                    "summary": artifact(self.root, summary_path),
-                    "simulator_log": artifact(self.root, log_path),
-                })
-            candidates[candidate] = {
-                "candidate_id": candidate,
-                "semantic_role": campaign.EXPECTED_ROLES[candidate],
-                "endpoint_id": campaign.EXPECTED_ENDPOINTS[candidate],
-                "common_binding_sha256": campaign.object_sha256(common),
-                "rtl_inventory": artifact(self.root, inventory_path),
-                "runs": candidate_runs,
-            }
-        self.receipt = {
-            "schema": campaign.EXPECTED_RECEIPT_SCHEMA, "status": "PASS",
-            "evidence_class": campaign.EXPECTED_EVIDENCE_CLASS,
-            "campaign_id": campaign.EXPECTED_CAMPAIGN_ID,
-            "producer": {
-                "id": campaign.EXPECTED_PRODUCER_ID,
-                "path": campaign.EXPECTED_PRODUCER_PATH,
-                "evidence_class": campaign.EXPECTED_EVIDENCE_CLASS,
-                "rtl_source_commit": campaign.EXPECTED_RTL_COMMIT,
-            },
-            "interface": {
-                "id": "single_edge", "clock_edge": "posedge_only",
-                "transport": "one_retirement_per_rising_edge",
-                "p6_used": False, "parallel_used": False,
-                "boundary": "synchronous_source_admission_through_synchronous_retirement",
-                "acceptance_observation": "actual_atomic_scheduler_commit",
-                "retirement_observation": "actual_single_edge_receiver_retire_valid_and_address",
-            },
-            "dataset": {
-                "id": "full50", "display_name": "team-defined synthetic full50",
-                "source_class": "TEAM_DEFINED_SYNTHETIC", "organizer_official": False,
-                "run_count": 50, "manifest": artifact(self.root, manifest_copy),
-                "trace_registry": artifact(self.root, registry_copy), "runs": dataset_runs,
-            },
-            "common_binding": common,
-            "evidence_lineage": {
-                "replay_kind": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL",
-                "independent_execution": True,
-                "borrowed_p6_results": False, "borrowed_parallel_results": False,
-                "source_result_paths": [],
-            },
-            "candidates": candidates,
-        }
-        self.receipt_path = self.base / "receipt.json"
-        self.write_receipt()
-
-    def write_receipt(self) -> None:
-        write_json(self.receipt_path, self.receipt)
-
-    def evaluate(self) -> dict:
-        self.write_receipt()
-        return campaign.evaluate(
-            MANIFEST, ROOT, SCHEMA, digest(SCHEMA), self.receipt_path,
-            digest(self.receipt_path), self.root,
-        )
-
-
-class SingleEdgeCampaignTest(unittest.TestCase):
+class CampaignTests(unittest.TestCase):
     @classmethod
-    def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory(prefix="redred-single-edge-campaign.")
-        cls.fixture = Fixture(Path(cls.temporary.name))
+    def setUpClass(cls):
+        cls.manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        raw = subprocess.run(
+            [
+                "git", "-C", str(ROOT), "show",
+                f"{campaign.PUBLICATION_COMMIT}:{campaign.RESULT_PATH}",
+            ],
+            check=True, stdout=subprocess.PIPE,
+        ).stdout
+        cls.result_raw = raw
+        cls.result = json.loads(raw)
+        cls.context = campaign.validate_manifest(copy.deepcopy(cls.manifest), ROOT)
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls.temporary.cleanup()
+    def evaluate(self, manifest=None):
+        if manifest is None:
+            return campaign.evaluate(MANIFEST_PATH, ROOT)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "campaign.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            return campaign.evaluate(path, ROOT)
 
-    def setUp(self) -> None:
-        self.saved_receipt = copy.deepcopy(self.fixture.receipt)
+    def assert_manifest_rejected(self, mutate, pattern=None):
+        manifest = copy.deepcopy(self.manifest)
+        mutate(manifest)
+        with self.assertRaisesRegex(campaign.CampaignError, pattern or "."):
+            self.evaluate(manifest)
 
-    def tearDown(self) -> None:
-        self.fixture.receipt = self.saved_receipt
+    def assert_result_rejected(self, mutate, pattern=None):
+        result = copy.deepcopy(self.result)
+        mutate(result)
+        with self.assertRaisesRegex(campaign.CampaignError, pattern or "."):
+            campaign.validate_result_semantics(
+                result, self.context["registry"], self.context["windows"], ROOT,
+            )
 
-    def test_committed_state_is_hold_without_replay_inputs(self) -> None:
-        report = campaign.evaluate(MANIFEST, ROOT, None, None, None, None, None)
+    def test_default_exact_hold_pass_split(self):
+        report = self.evaluate()
         self.assertEqual(report["status"], "HOLD")
-        self.assertEqual(report["single_edge_digital_gate"], "HOLD_NO_ACTUAL_REPLAY_ARTIFACTS")
-        self.assertFalse(report["dataset"]["organizer_official"])
-        self.assertEqual(report["dataset"]["display_name"], "team-defined synthetic full50")
-        self.assertEqual(report["evidence_lineage"], {
-            "p6_results": "FORBIDDEN", "parallel_results": "FORBIDDEN",
+        self.assertEqual(report["gates"], {
+            "committed_hardened_receipt": "PASS",
+            "canonical_synthetic_receipt_semantics": "PASS",
+            "retained_replay_artifacts": "HOLD",
+            "canonical_single_edge_campaign": "HOLD",
+            "public_projected_extension": "HOLD",
+            "system_release": "HOLD",
         })
-
-    def test_cli_hold_exit_and_allow_hold_do_not_change_status(self) -> None:
-        command = ["python3", str(TOOL), "evaluate"]
-        held = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
-        allowed = subprocess.run(command + ["--allow-hold"], cwd=ROOT, text=True,
-                                 capture_output=True, check=False)
-        self.assertEqual(held.returncode, 3)
-        self.assertEqual(allowed.returncode, 0)
-        self.assertEqual(json.loads(held.stdout)["status"], "HOLD")
-        self.assertEqual(json.loads(allowed.stdout)["status"], "HOLD")
-
-    def test_partial_explicit_input_tuple_fails_closed(self) -> None:
-        with self.assertRaisesRegex(campaign.CampaignError, "must be supplied together"):
-            campaign.evaluate(MANIFEST, ROOT, SCHEMA, digest(SCHEMA), None, None, None)
-
-    def test_exact_producer_format_fixture_recomputes_counts_and_both_latency_classes(self) -> None:
-        report = self.fixture.evaluate()
-        self.assertEqual(report["status"], "EVIDENCE_COMPLETE")
-        self.assertEqual(report["single_edge_digital_gate"], "GO")
-        self.assertEqual(report["system_release"], "HOLD_OUTSIDE_DIGITAL_CAMPAIGN_SCOPE")
-        self.assertGreater(report["verified_artifact_count"], 250)
-        a2 = report["candidates"]["A2"]
-        a3 = report["candidates"]["A3"]
-        self.assertEqual(a2["totals"]["generated"], a3["totals"]["generated"])
         self.assertEqual(
-            a2["totals"]["generated"],
-            a2["totals"]["source_overrun"] + a2["totals"]["accepted"],
+            report["retained_artifact_validation"]["status"],
+            "HOLD_MISSING_RETAINED_ARTIFACTS",
         )
-        self.assertEqual(a2["totals"]["accepted"], a2["totals"]["retired"])
-        self.assertEqual(a2["occurrence_to_accept"]["mean"], 1.0)
-        self.assertEqual(a2["accept_to_retire"]["mean"], 2.0)
-        self.assertEqual(a3["accept_to_retire"]["mean"], 1.0)
-        self.assertEqual(a2["common_binding_sha256"], a3["common_binding_sha256"])
 
-    def test_schema_and_receipt_hashes_are_caller_immutable(self) -> None:
-        with self.assertRaisesRegex(campaign.CampaignError, "schema SHA-256 mismatch"):
-            campaign.evaluate(
-                MANIFEST, ROOT, SCHEMA, "0" * 64, self.fixture.receipt_path,
-                digest(self.fixture.receipt_path), self.fixture.root,
-            )
-        with self.assertRaisesRegex(campaign.CampaignError, "receipt SHA-256 mismatch"):
-            campaign.evaluate(
-                MANIFEST, ROOT, SCHEMA, digest(SCHEMA), self.fixture.receipt_path,
-                "0" * 64, self.fixture.root,
-            )
+    def test_committed_result_raw_and_semantic_hashes(self):
+        self.assertEqual(hashlib.sha256(self.result_raw).hexdigest(), campaign.RESULT_SHA256)
+        self.assertEqual(campaign.semantic_sha256(self.result), campaign.RESULT_SEMANTIC_SHA256)
+        report = self.evaluate()["receipt_validation"]
+        self.assertEqual(report["sha256"], campaign.RESULT_SHA256)
+        self.assertEqual(report["semantic_sha256"], campaign.RESULT_SEMANTIC_SHA256)
+        self.assertEqual(report["trust"], "COMMITTED_RECEIPT_CONSISTENT")
 
-    def test_unknown_field_bool_counter_and_candidate_expansion_fail(self) -> None:
-        cases = [
-            (lambda d: d.update({"unknown": 1}), "replay receipt keys differ"),
-            (lambda d: d.__setitem__("evidence_class", "TEST_ONLY_FIXTURE"),
-             "evidence_class differs"),
-            (lambda d: d["producer"].__setitem__("rtl_source_commit", "0" * 40),
-             "exact A23 producer/RTL commit"),
-            (lambda d: d["dataset"].__setitem__("run_count", True), "bool is forbidden"),
-            (lambda d: d["candidates"].update({"A4": copy.deepcopy(d["candidates"]["A3"])}),
-             "exactly ordered A2,A3"),
-        ]
-        for mutate, pattern in cases:
-            self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-            mutate(self.fixture.receipt)
-            with self.subTest(pattern=pattern), self.assertRaisesRegex(campaign.CampaignError, pattern):
-                self.fixture.evaluate()
-
-    def test_full50_cannot_be_relabelled_as_official_or_supplied(self) -> None:
-        for key, value in (("organizer_official", True), ("source_class", "ORGANIZER_SUPPLIED")):
-            self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-            self.fixture.receipt["dataset"][key] = value
-            with self.subTest(key=key), self.assertRaisesRegex(
-                    campaign.CampaignError, "relabeled.*official"):
-                self.fixture.evaluate()
-
-    def test_p6_and_parallel_borrowing_are_fatal(self) -> None:
-        cases = [
-            (lambda d: d["interface"].__setitem__("p6_used", True), "single-edge boundary"),
-            (lambda d: d["interface"].__setitem__("parallel_used", True), "single-edge boundary"),
-            (lambda d: d["evidence_lineage"].__setitem__("borrowed_p6_results", True),
-             "borrows or aliases"),
-            (lambda d: d["evidence_lineage"].__setitem__("source_result_paths", [
-                "tests/a23_full_p6_replay/result.json"]), "borrows or aliases"),
-        ]
-        for mutate, pattern in cases:
-            self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-            mutate(self.fixture.receipt)
-            with self.subTest(pattern=pattern), self.assertRaisesRegex(campaign.CampaignError, pattern):
-                self.fixture.evaluate()
-
-    def test_a2_a3_trace_prepared_window_and_common_tool_must_match(self) -> None:
-        cases = [
-            ("trace_sha256", "0" * 64, "common A2/A3 trace/window binding"),
-            ("prepared_input_sha256", "0" * 64, "common A2/A3 trace/window binding"),
-            ("fixed_window_cycles", 511, "common A2/A3 trace/window binding"),
-        ]
-        for key, value, pattern in cases:
-            self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-            self.fixture.receipt["candidates"]["A2"]["runs"][0][key] = value
-            with self.subTest(key=key), self.assertRaisesRegex(campaign.CampaignError, pattern):
-                self.fixture.evaluate()
-        self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-        self.fixture.receipt["candidates"]["A2"]["common_binding_sha256"] = "0" * 64
-        with self.assertRaisesRegex(campaign.CampaignError, "common tool-TB binding differs"):
-            self.fixture.evaluate()
-
-    def test_missing_symlinked_and_tampered_artifacts_fail_closed(self) -> None:
-        run = self.fixture.receipt["candidates"]["A2"]["runs"][0]
-        path = self.fixture.root / run["simulator_log"]["path"]
-        original = path.read_bytes()
-        try:
-            path.write_bytes(b"tampered\n")
-            with self.assertRaisesRegex(campaign.CampaignError, "size mismatch|SHA-256 mismatch"):
-                self.fixture.evaluate()
-        finally:
-            path.write_bytes(original)
-        self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-        self.fixture.receipt["candidates"]["A2"]["runs"][0]["events"]["path"] = "absent/events.jsonl"
-        with self.assertRaisesRegex(campaign.CampaignError, "escapes or is absent"):
-            self.fixture.evaluate()
-        self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-        link = self.fixture.root / "linked-case"
-        link.symlink_to(path.parent, target_is_directory=True)
-        try:
-            linked_ref = copy.deepcopy(
-                self.fixture.receipt["candidates"]["A2"]["runs"][0]["simulator_log"]
-            )
-            linked_ref["path"] = "linked-case/simulator.log"
-            self.fixture.receipt["candidates"]["A2"]["runs"][0]["simulator_log"] = linked_ref
-            with self.assertRaisesRegex(campaign.CampaignError, "traverses a symlink"):
-                self.fixture.evaluate()
-        finally:
-            link.unlink()
-
-    def test_event_state_identity_order_and_latency_tampering_fail(self) -> None:
-        run = self.fixture.receipt["candidates"]["A2"]["runs"][0]
-        events_path = self.fixture.root / run["events"]["path"]
-        original = events_path.read_bytes()
-        rows = [json.loads(line) for line in original.decode().splitlines()]
-        retired = next(row for row in rows if row["event_state"] == "retired")
-        retired["retire_order"] += 1
-        write_bytes(
-            events_path,
-            b"".join((json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n").encode()
-                     for row in rows),
+    def test_hardened_source_and_integration_are_exact(self):
+        report = self.evaluate()["receipt_validation"]["provenance"]
+        self.assertEqual(report["source_commit"], campaign.SOURCE_COMMIT)
+        self.assertEqual(report["integration_commit"], campaign.INTEGRATION_COMMIT)
+        self.assertEqual(campaign.git_tree(ROOT, campaign.SOURCE_COMMIT, "source"), campaign.SOURCE_TREE)
+        self.assertEqual(
+            campaign.git_tree(ROOT, campaign.INTEGRATION_COMMIT, "integration"),
+            campaign.INTEGRATION_TREE,
         )
-        run["events"] = artifact(self.fixture.root, events_path)
-        try:
-            with self.assertRaisesRegex(campaign.CampaignError, "identity, order, or cycles differ"):
-                self.fixture.evaluate()
-        finally:
-            events_path.write_bytes(original)
+        self.assertNotIn("4ce4836", json.dumps(self.manifest))
 
-    def test_summary_conservation_latency_and_hard_errors_are_recomputed(self) -> None:
-        base_run = self.fixture.receipt["candidates"]["A2"]["runs"][0]
-        summary_path = self.fixture.root / base_run["summary"]["path"]
-        original = summary_path.read_bytes()
-        cases = [
-            (lambda d: d.__setitem__("accepted", d["accepted"] - 1), "summary accepted differs"),
-            (lambda d: d["occurrence_to_accept"].__setitem__("mean", 99.0),
-             "differs from recomputed event latency"),
-            (lambda d: d["hard_errors"].__setitem__("phantom", 1), "hard error phantom is nonzero"),
-        ]
-        for mutate, pattern in cases:
-            self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-            summary = json.loads(original)
-            mutate(summary)
-            write_json(summary_path, summary)
-            self.fixture.receipt["candidates"]["A2"]["runs"][0]["summary"] = artifact(
-                self.fixture.root, summary_path
-            )
-            with self.subTest(pattern=pattern), self.assertRaisesRegex(campaign.CampaignError, pattern):
-                self.fixture.evaluate()
-        summary_path.write_bytes(original)
+    def test_receipt_reports_accounting_and_both_latencies(self):
+        owners = self.evaluate()["datasets"]["canonical_synthetic_full50"]["candidates"]
+        self.assertEqual(owners["a2"]["totals"], campaign.EXPECTED_TOTALS["a2"])
+        self.assertEqual(owners["a3"]["totals"], campaign.EXPECTED_TOTALS["a3"])
+        self.assertEqual(owners["a2"]["occurrence_to_accept"]["mean"], 0.234819)
+        self.assertEqual(owners["a3"]["occurrence_to_accept"]["mean"], 1.225202)
+        self.assertEqual(owners["a2"]["accept_to_retire"]["mean"], 3.0)
+        self.assertEqual(owners["a3"]["accept_to_retire"]["mean"], 2.0)
+        for owner in ("a2", "a3"):
+            totals = owners[owner]["totals"]
+            self.assertEqual(totals["generated"], totals["source_overrun"] + totals["accepted"])
+            self.assertEqual(totals["accepted"], totals["retired"])
 
-    def test_rtl_inventory_rejects_p6_or_parallel_source_lineage(self) -> None:
-        self.fixture.receipt = copy.deepcopy(self.saved_receipt)
-        reference = self.fixture.receipt["candidates"]["A2"]["rtl_inventory"]
-        path = self.fixture.root / reference["path"]
-        original = path.read_bytes()
-        inventory = json.loads(original)
-        inventory["sources"][0]["logical_path"] = "rtl/a2_p6_parallel_top.sv"
-        write_json(path, inventory)
-        self.fixture.receipt["candidates"]["A2"]["rtl_inventory"] = artifact(self.fixture.root, path)
-        try:
-            with self.assertRaisesRegex(campaign.CampaignError, "forbidden lineage"):
-                self.fixture.evaluate()
-        finally:
-            path.write_bytes(original)
+    def test_receipt_claim_is_not_promoted_to_artifact_replay(self):
+        report = self.evaluate()
+        self.assertEqual(report["claim_boundary"]["producer_claim"]["single_edge_digital_RTL"], "GO")
+        self.assertFalse(report["claim_boundary"]["campaign_accepts_receipt_claim_as_artifact_replay"])
+        self.assertFalse(report["claim_boundary"]["new_evidence_inferred"])
+        self.assertEqual(report["gates"]["canonical_single_edge_campaign"], "HOLD")
+
+    def test_full50_and_public_extension_remain_distinct(self):
+        report = self.evaluate()
+        full50 = report["datasets"]["canonical_synthetic_full50"]
+        public = report["datasets"]["public_projected_extension"]
+        self.assertEqual(full50["source_class"], "TEAM_DEFINED_SYNTHETIC")
+        self.assertTrue(full50["canonical_redred_traffic"])
+        self.assertFalse(full50["official_contest_traffic"])
+        self.assertEqual(public["source_class"], "PUBLIC_PROJECTED_EXTENSION")
+        self.assertFalse(public["canonical_redred_traffic"])
+        self.assertFalse(public["official_contest_traffic"])
+        self.assertEqual(report["aggregation_policy"]["full50_public_pooling"], "FORBIDDEN")
+
+    def test_public_occurrences_and_scenario_relationship_are_retained(self):
+        public = self.evaluate()["datasets"]["public_projected_extension"]
+        self.assertEqual(public["unique_source_occurrences"], 1100)
+        self.assertEqual(
+            public["scenario_relation"],
+            "TIMING_VARIANTS_OF_ONE_SOURCE_WINDOW_NOT_INDEPENDENT_SAMPLES",
+        )
+        self.assertEqual([row["id"] for row in public["scenarios"]], ["1x", "64x", "256x"])
+        self.assertEqual(
+            [row["same_source_cycle_collision_extras"] for row in public["scenarios"]],
+            [81, 81, 133],
+        )
+        self.assertIn("identical projected traces", public["remaining_dependency"])
+
+    def test_cli_hold_exit_codes(self):
+        base = [sys.executable, str(CAMPAIGN_PATH), "evaluate"]
+        held = subprocess.run(base, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        allowed = subprocess.run(base + ["--allow-hold"], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(held.returncode, 3, held.stderr.decode())
+        self.assertEqual(allowed.returncode, 0, allowed.stderr.decode())
+        self.assertEqual(json.loads(held.stdout)["status"], "HOLD")
+
+    def test_partial_explicit_artifact_tuple_fails_closed(self):
+        with self.assertRaisesRegex(campaign.CampaignError, "supplied together"):
+            campaign.evaluate(MANIFEST_PATH, ROOT, replay_schema=SCHEMA_PATH)
+
+    def test_empty_retained_artifact_index_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = {
+                "schema": "redred_single_edge_retained_artifact_index_v1",
+                "evidence_class": campaign.EVIDENCE_CLASS,
+                "replay_result_sha256": campaign.RESULT_SHA256,
+                "replay_result_semantic_sha256": campaign.RESULT_SEMANTIC_SHA256,
+                "artifacts": [],
+            }
+            index_path = root / "index.json"
+            index_path.write_text(json.dumps(index), encoding="utf-8")
+            with self.assertRaisesRegex(campaign.CampaignError, "must contain artifacts"):
+                campaign.evaluate(
+                    MANIFEST_PATH, ROOT, SCHEMA_PATH, campaign.file_sha256(SCHEMA_PATH),
+                    index_path, campaign.file_sha256(index_path), root,
+                )
+
+    def test_wrong_result_binding_in_artifact_index_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = {
+                "schema": "redred_single_edge_retained_artifact_index_v1",
+                "evidence_class": campaign.EVIDENCE_CLASS,
+                "replay_result_sha256": "0" * 64,
+                "replay_result_semantic_sha256": campaign.RESULT_SEMANTIC_SHA256,
+                "artifacts": [{"path": "x", "sha256": "0" * 64, "size_bytes": 1}],
+            }
+            index_path = root / "index.json"
+            index_path.write_text(json.dumps(index), encoding="utf-8")
+            with self.assertRaisesRegex(campaign.CampaignError, "not bound"):
+                campaign.evaluate(
+                    MANIFEST_PATH, ROOT, SCHEMA_PATH, campaign.file_sha256(SCHEMA_PATH),
+                    index_path, campaign.file_sha256(index_path), root,
+                )
+
+    def test_wrong_explicit_schema_hash_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            index_path = root / "index.json"
+            index_path.write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(campaign.CampaignError, "schema bytes/hash differ"):
+                campaign.evaluate(
+                    MANIFEST_PATH, ROOT, SCHEMA_PATH, "0" * 64,
+                    index_path, campaign.file_sha256(index_path), root,
+                )
+
+    def test_old_rtl_source_commit_is_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["producer"].__setitem__(
+                "source_commit", "4ce4836fab1309d3468db8e660d2da9af371f784"
+            ),
+            "producer provenance",
+        )
+
+    def test_wrong_integration_commit_is_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["producer"].__setitem__("integration_commit", "0" * 40),
+            "producer provenance",
+        )
+
+    def test_nonproducer_evidence_class_is_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["producer"].__setitem__("evidence_class", "GENERIC_RESULT_V1"),
+            "producer provenance",
+        )
+
+    def test_result_hash_or_semantic_hash_substitution_is_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["committed_replay_result"].__setitem__("sha256", "0" * 64),
+            "result identity/hash",
+        )
+        self.assert_manifest_rejected(
+            lambda row: row["committed_replay_result"].__setitem__("semantic_sha256", "0" * 64),
+            "result identity/hash",
+        )
+
+    def test_full50_official_or_source_relabel_is_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["canonical_synthetic_full50"].__setitem__(
+                "official_contest_traffic", True
+            ),
+            "official contest traffic",
+        )
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["canonical_synthetic_full50"].__setitem__(
+                "source_class", "OFFICIAL"
+            ),
+            "classification",
+        )
+
+    def test_public_extension_relabel_is_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["public_projected_extension"].__setitem__(
+                "canonical_redred_traffic", True
+            ),
+            "relabeled",
+        )
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["public_projected_extension"].__setitem__(
+                "official_contest_traffic", True
+            ),
+            "relabeled",
+        )
+
+    def test_uncommitted_public_receipt_claim_is_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["public_projected_extension"].__setitem__(
+                "actual_replay_receipt", {"status": "PASS"}
+            ),
+            "uncommitted projection/replay evidence",
+        )
+
+    def test_public_count_scenario_order_and_hash_mutations_are_rejected(self):
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["public_projected_extension"].__setitem__(
+                "unique_source_occurrences", 3300
+            ),
+            "occurrence/scenario semantics",
+        )
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["public_projected_extension"]["scenarios"].reverse(),
+            "roster/order",
+        )
+        self.assert_manifest_rejected(
+            lambda row: row["datasets"]["public_projected_extension"]["scenarios"][0].__setitem__(
+                "trace_sha256", "0" * 64
+            ),
+            "scenario differs",
+        )
+
+    def test_unknown_result_field_is_rejected(self):
+        self.assert_result_rejected(lambda row: row.__setitem__("future_claim", True), "keys differ")
+
+    def test_boolean_counter_and_conservation_mutation_are_rejected(self):
+        self.assert_result_rejected(
+            lambda row: row["execution_accounting"].__setitem__("owners", True),
+            "bool is forbidden",
+        )
+        self.assert_result_rejected(
+            lambda row: row["owners"]["a2"]["full50"]["runs"][
+                next(iter(row["owners"]["a2"]["full50"]["runs"]))
+            ].__setitem__("accepted", 0),
+            r"generated=source_overrun\+accepted",
+        )
+
+    def test_a2_a3_trace_or_window_drift_is_rejected(self):
+        def mutate_trace(row):
+            name = next(iter(row["owners"]["a3"]["full50"]["runs"]))
+            row["owners"]["a3"]["full50"]["runs"][name]["trace_sha256"] = "0" * 64
+
+        def mutate_window(row):
+            name = next(iter(row["owners"]["a2"]["full50"]["runs"]))
+            row["owners"]["a2"]["full50"]["runs"][name]["fixed_window_cycles"] += 1
+
+        def mutate_prepared(row):
+            name = next(iter(row["owners"]["a3"]["full50"]["runs"]))
+            row["owners"]["a3"]["full50"]["runs"][name]["prepared_trace_sha256"] = "0" * 64
+
+        self.assert_result_rejected(mutate_trace, "trace SHA")
+        self.assert_result_rejected(mutate_window, "fixed window")
+        self.assert_result_rejected(mutate_prepared, "prepared full50 input differs")
+
+    def test_malformed_nested_provenance_fails_closed(self):
+        self.assert_result_rejected(
+            lambda row: row["provenance"].__setitem__("verified_files", []),
+            "verified_files differ",
+        )
+        self.assert_result_rejected(
+            lambda row: row["mutations"][0]["source_identity"].__setitem__(
+                "mutant_sha256", "0" * 64
+            ),
+            "source rewrite identity differs",
+        )
+
+    def test_qualification_expansion_is_rejected(self):
+        self.assert_result_rejected(
+            lambda row: row["qualification"].__setitem__("physical", "GO"),
+            "qualification boundary",
+        )
+
+    def test_failed_or_extra_mutant_is_rejected(self):
+        self.assert_result_rejected(
+            lambda row: row["mutations"][0].__setitem__("killed", False),
+            "not the expected killed",
+        )
+        self.assert_result_rejected(
+            lambda row: row["mutations"].append(copy.deepcopy(row["mutations"][0])),
+            "mutation count",
+        )
+
+    def test_owner_expansion_is_rejected(self):
+        self.assert_result_rejected(
+            lambda row: row["owners"].__setitem__("p6", copy.deepcopy(row["owners"]["a2"])),
+            "exactly ordered a2,a3",
+        )
+
+    def test_schema_is_exact_result_bound_artifact_index(self):
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(schema["$id"], "redred_single_edge_retained_artifact_index_v1")
+        self.assertEqual(
+            schema["properties"]["evidence_class"]["const"], campaign.EVIDENCE_CLASS,
+        )
+        self.assertEqual(
+            schema["properties"]["replay_result_sha256"]["const"], campaign.RESULT_SHA256,
+        )
+        self.assertEqual(
+            schema["properties"]["replay_result_semantic_sha256"]["const"],
+            campaign.RESULT_SEMANTIC_SHA256,
+        )
+        self.assertEqual(campaign.file_sha256(SCHEMA_PATH), "72b7842d3856a6e38d8f9e9983110d1cdb88129c7ed9e7cadacbfa0c6a06461d")
 
 
 if __name__ == "__main__":
