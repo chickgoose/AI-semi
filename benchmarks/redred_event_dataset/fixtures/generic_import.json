@@ -16,7 +16,7 @@
     }
   },
   "source": {
-    "raw_sha256": "6fa65f955452115474b96cc968285ab5b207d353ac94b563f7b4492ce3e62a4d"
+    "snapshot_sha256": "6fa65f955452115474b96cc968285ab5b207d353ac94b563f7b4492ce3e62a4d"
   },
   "sensor": {
     "width": 4,
