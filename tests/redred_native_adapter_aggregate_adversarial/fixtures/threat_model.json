@@ -1,0 +1,51 @@
+{
+  "schema": "redred-native-adapter-aggregate-threat-model-v1",
+  "scope": "independent native-schema adapter plus aggregate-integration adversarial qualification",
+  "interface_state_at_authoring": "HOLD_SCHEMA_INCOMPATIBLE_UNBOUND",
+  "authority_limit": "TEST_SCAFFOLD_ONLY_NOT_EVIDENCE_SELECTION_OR_RELEASE_AUTHORITY",
+  "assets": [
+    "producer-native publication bytes",
+    "closed archive bytes and member roster",
+    "Git commit-tree-blob provenance",
+    "event identity and acceptance-retirement order",
+    "synthetic_v2 and public_v2 slot identity",
+    "HOLD selection and release gates"
+  ],
+  "trust_boundaries": [
+    "untrusted JSON bytes to strict native adapter",
+    "untrusted path or archive metadata to captured bytes",
+    "claimed Git object IDs to reachable typed objects",
+    "slot-specific normalized evidence to aggregate report",
+    "bounded PASS claims to selection and release policy"
+  ],
+  "required_invariants": [
+    "JSON object keys are unique and scalar types compare exactly",
+    "paths are canonical contained POSIX paths without links or aliases",
+    "publication and bundle are distinct stable one-link regular files",
+    "archive expansion has member, per-member, total, and compressed-byte limits",
+    "Git commits, trees, and blobs are reachable and relationship-bound",
+    "event IDs and accept-retire ordinals are complete ordered permutations",
+    "generated equals source_overrun plus accepted and accepted equals retired",
+    "public projected evidence remains noncanonical and nonofficial",
+    "synthetic_v2 and public_v2 cannot be swapped or pooled",
+    "adapter or aggregate PASS cannot select a candidate or promote system release"
+  ],
+  "cases": [
+    {"id": "duplicate_json_keys", "category": "duplicate_json_keys", "expected": "REJECT"},
+    {"id": "bool_integer_alias", "category": "type_confusion", "expected": "REJECT"},
+    {"id": "relative_escape", "category": "traversal", "expected": "REJECT"},
+    {"id": "input_symlink", "category": "symlink", "expected": "REJECT"},
+    {"id": "input_hardlink", "category": "hardlink", "expected": "REJECT"},
+    {"id": "post_read_replacement", "category": "race", "expected": "REJECT"},
+    {"id": "oversized_member", "category": "tar_bomb", "expected": "REJECT"},
+    {"id": "duplicate_or_link_member", "category": "tar_alias", "expected": "REJECT"},
+    {"id": "wrong_git_object_type", "category": "git_substitution", "expected": "REJECT"},
+    {"id": "missing_git_object", "category": "git_unreachability", "expected": "REJECT"},
+    {"id": "accept_order_swap", "category": "semantic_order_mutation", "expected": "REJECT"},
+    {"id": "counter_conservation_drift", "category": "semantic_conservation_mutation", "expected": "REJECT"},
+    {"id": "public_to_official", "category": "public_official_relabel", "expected": "REJECT"},
+    {"id": "synthetic_public_swap", "category": "cross_slot_swap", "expected": "REJECT"},
+    {"id": "adapter_selects_a2", "category": "false_selection_promotion", "expected": "REJECT"},
+    {"id": "aggregate_releases_system", "category": "false_release_promotion", "expected": "REJECT"}
+  ]
+}
