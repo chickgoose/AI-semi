@@ -77,9 +77,16 @@ output is written.
 ## Provenance and transport precondition
 
 Each of the three primary inputs is read exactly once as bytes. SHA-256 is
-computed over those exact bytes before decoding, and the output records the
-three hashes. Manifest/content digests must be lowercase, nonzero SHA-256
-values.
+computed over those exact bytes before decoding, and the output records those
+independently computed identities as `events_input_sha256`,
+`intrinsics_input_sha256`, and `poses_input_sha256`.
+
+In contrast, embedded `provenance.content_sha256` values and the retired-event
+`provenance.manifest_sha256` are source-supplied assertions. This demo checks
+only that they are lowercase, nonzero SHA-256-shaped values; it does not define
+their hash scope or recompute them. The event assertions are copied to
+`source_content_sha256` and `manifest_sha256` for disclosure, never substituted
+for the independently computed input-byte identities.
 
 The integrated deliverable supports exactly one evidence class:
 

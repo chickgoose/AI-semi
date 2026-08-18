@@ -451,6 +451,35 @@ class InterfaceTests(unittest.TestCase):
                 summary["provenance"][provenance_key], hashlib.sha256(original(path)).hexdigest()
             )
 
+    def test_embedded_digest_assertions_are_not_input_byte_identities(self) -> None:
+        events = read_jsonl(FIXTURES / "retired_events.jsonl")
+        poses = read_jsonl(FIXTURES / "poses.jsonl")
+        intrinsics = json.loads((FIXTURES / "intrinsics.json").read_text(encoding="utf-8"))
+        events[0]["provenance"]["content_sha256"] = "1" * 64
+        events[0]["provenance"]["manifest_sha256"] = "2" * 64
+        poses[0]["provenance"]["content_sha256"] = "3" * 64
+        intrinsics["provenance"]["content_sha256"] = "4" * 64
+
+        with tempfile.TemporaryDirectory() as directory:
+            summary, _, _ = self.run_fixture(
+                directory,
+                event_records=events,
+                pose_records=poses,
+                intrinsics=intrinsics,
+            )
+            base = Path(directory)
+            actual = {
+                "events_input_sha256": hashlib.sha256((base / "events.jsonl").read_bytes()).hexdigest(),
+                "intrinsics_input_sha256": hashlib.sha256((base / "intrinsics.json").read_bytes()).hexdigest(),
+                "poses_input_sha256": hashlib.sha256((base / "poses.jsonl").read_bytes()).hexdigest(),
+            }
+
+        self.assertEqual(summary["provenance"]["source_content_sha256"], "1" * 64)
+        self.assertEqual(summary["provenance"]["manifest_sha256"], "2" * 64)
+        for key, digest in actual.items():
+            self.assertEqual(summary["provenance"][key], digest)
+            self.assertNotIn(digest, {"1" * 64, "2" * 64, "3" * 64, "4" * 64})
+
 
 class CliTests(unittest.TestCase):
     def command(self, directory: str) -> list[str]:
