@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred_single_edge_synthetic_native_view_v1",
+  "title": "Verified lossless view of the producer-native synthetic v2 tuple",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "campaign_input_slot",
+    "adapter_mode",
+    "native_verification",
+    "native_artifacts",
+    "native_documents",
+    "normalized",
+    "normalized_sha256",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema": {"const": "redred_single_edge_synthetic_native_view_v1"},
+    "status": {"const": "PASS_NATIVE_VERIFIED"},
+    "campaign_input_slot": {"const": "synthetic_v2"},
+    "adapter_mode": {"const": "LOSSLESS_REFERENCE_VIEW_NO_RELABEL_NO_REPACK"},
+    "native_verification": {"type": "object"},
+    "native_artifacts": {"type": "object"},
+    "native_documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publication",
+        "v2_result",
+        "primary_result",
+        "reproduction_result",
+        "export_manifest"
+      ],
+      "properties": {
+        "publication": {"type": "object"},
+        "v2_result": {"type": "object"},
+        "primary_result": {"type": "object"},
+        "reproduction_result": {"type": "object"},
+        "export_manifest": {"type": "object"}
+      }
+    },
+    "normalized": {"type": "object"},
+    "normalized_sha256": {"$ref": "#/$defs/sha256"},
+    "claim_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_schema_preserved",
+        "native_paths_preserved",
+        "archive_repacked",
+        "traffic_relabeled",
+        "official_contest_claimed",
+        "physical_claimed",
+        "power_claimed",
+        "selection_claimed",
+        "release_claimed",
+        "canonical_campaign_status"
+      ],
+      "properties": {
+        "native_schema_preserved": {"const": true},
+        "native_paths_preserved": {"const": true},
+        "archive_repacked": {"const": false},
+        "traffic_relabeled": {"const": false},
+        "official_contest_claimed": {"const": false},
+        "physical_claimed": {"const": false},
+        "power_claimed": {"const": false},
+        "selection_claimed": {"const": false},
+        "release_claimed": {"const": false},
+        "canonical_campaign_status": {
+          "const": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
