@@ -1,0 +1,3 @@
+rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv
+-f rtl/technology/single_edge/filelists/generic.f
+rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv

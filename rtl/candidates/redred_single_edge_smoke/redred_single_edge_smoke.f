@@ -1,0 +1,8 @@
+rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv
+rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv
+rtl/technology/single_edge/w2_single_edge_pair_tx.sv
+rtl/technology/single_edge/w2_single_edge_pair_rx.sv
+rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv
+rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv
+rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv
+rtl/candidates/redred_single_edge_smoke/redred_single_edge_smoke_tb.sv
