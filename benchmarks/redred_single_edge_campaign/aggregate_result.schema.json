@@ -9,6 +9,7 @@
     "status",
     "campaign_id",
     "semantic_requirement",
+    "authentication",
     "input_views",
     "aggregation",
     "candidate_policy",
@@ -29,6 +30,32 @@
     "campaign_id": {"const": "redred-a2-a3-single-edge-campaign-native-v1"},
     "semantic_requirement": {
       "enum": ["AGGREGATE_WEIGHTED", "EXACT_SCALAR_PREFIX"]
+    },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "in_process_native_adapters", "external_view_authority"],
+      "properties": {
+        "status": {
+          "enum": [
+            "PASS_HASH_PINNED_IN_PROCESS_NATIVE_ADAPTERS",
+            "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS"
+          ]
+        },
+        "in_process_native_adapters": {"type": "boolean"},
+        "external_view_authority": {"const": false}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {"const": "PASS_HASH_PINNED_IN_PROCESS_NATIVE_ADAPTERS"}
+            }
+          },
+          "then": {"properties": {"in_process_native_adapters": {"const": true}}},
+          "else": {"properties": {"in_process_native_adapters": {"const": false}}}
+        }
+      ]
     },
     "input_views": {
       "type": "object",
@@ -120,7 +147,9 @@
         "final_release"
       ],
       "properties": {
-        "normalized_views_separately_verified": {"const": "PASS"},
+        "normalized_views_separately_verified": {
+          "enum": ["PASS", "HOLD_UNAUTHENTICATED"]
+        },
         "shared_campaign_gates": {"enum": ["PASS", "HOLD"]},
         "A2_candidate": {"$ref": "#/$defs/gateStatus"},
         "A3_candidate": {"$ref": "#/$defs/gateStatus"},
@@ -151,7 +180,8 @@
             "A3_FALLBACK",
             "HOLD_SHARED_GATE",
             "HOLD_A3_NOT_QUALIFIED",
-            "HOLD_NO_QUALIFIED_CAMPAIGN_RECOMMENDATION"
+            "HOLD_NO_QUALIFIED_CAMPAIGN_RECOMMENDATION",
+            "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS"
           ]
         },
         "campaign_recommendation": {"enum": ["A2", "A3", null]},
@@ -256,7 +286,8 @@
                 "enum": [
                   "HOLD_SHARED_GATE",
                   "HOLD_A3_NOT_QUALIFIED",
-                  "HOLD_NO_QUALIFIED_CAMPAIGN_RECOMMENDATION"
+                  "HOLD_NO_QUALIFIED_CAMPAIGN_RECOMMENDATION",
+                  "HOLD_UNAUTHENTICATED_EXTERNAL_VIEWS"
                 ]
               }
             }
