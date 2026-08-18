@@ -15,7 +15,7 @@
   },
   "commit_provenance": {
     "integration_commit": "775ec4ba081c611cac88d4d75b05a1da3c68a543",
-    "execution_source_commit": "30e9f741b07119258bcecebf16d9e5c95553912a",
+    "execution_source_commit": "9092247aa07459bc67da66495dc643003957f42a",
     "p6_evidence_used": false,
     "publication_commit_contract": {
       "binding_layer": "PUBLICATION_RECORD_ONLY",
@@ -59,8 +59,8 @@
   ],
   "files": {
     "tests/a23_public_projected_v2/README.md": "3cf454a58a08585cf6e89a0e279d5df1a4faaf3711fc9faabbf7a1adb7ea3ea6",
-    "tests/a23_public_projected_v2/run.py": "dc6c9dc59e200b1f1b240764a94dd02adbbe2f94002c58331b9f2f8ca6e92c60",
+    "tests/a23_public_projected_v2/run.py": "bc0de21a47ec5465ae8a96e4e9d2d10764fe2f99452ee8a846dc1f360a7bc756",
     "tests/a23_public_projected_v2/run_all.sh": "a2246383c1d5405bd927036cb07ba58acfedd637faf3bbd54f4ea185c9a1ef4a",
-    "tests/a23_public_projected_v2/test_contract.py": "8615cc16287c2fd793ab02272fb7eed1fd8e6d56871969d9973143b7ac6f7297"
+    "tests/a23_public_projected_v2/test_contract.py": "834c9b1c6ed03d5d5221908525c8da29fcf86f1a3febf498669ef482bc07f735"
   }
 }
