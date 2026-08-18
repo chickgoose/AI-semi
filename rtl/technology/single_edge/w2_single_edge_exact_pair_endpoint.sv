@@ -11,6 +11,8 @@
 // rst_i is synchronous and active high.  It clears TX, RX, retire, and sticky
 // error state on its sampled rising edge.  Therefore reset aborts any in-flight
 // accepted record; a lossless system must wait for drain_idle_o before reset.
+// No hidden history bit attempts to diagnose an early reset after reset has
+// cleared state: qualification is responsible for rejecting reset-before-drain.
 module w2_single_edge_exact_pair_endpoint (
   input  logic       clk_i,
   input  logic       rst_i,
@@ -62,5 +64,8 @@ module w2_single_edge_exact_pair_endpoint (
   );
 
   assign protocol_error_o = tx_protocol_error || rx_protocol_error;
-  assign drain_idle_o = !link_valid_o && (retire_valid_o == 2'b00);
+  // Drain is deliberately a clean drain.  Sticky protocol failure keeps the
+  // endpoint out of the drained state until a sampled reset clears the error.
+  assign drain_idle_o = !protocol_error_o && !link_valid_o &&
+                        (retire_valid_o == 2'b00);
 endmodule
