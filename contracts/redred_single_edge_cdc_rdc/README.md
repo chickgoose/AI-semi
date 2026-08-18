@@ -46,31 +46,51 @@ has this exact shape (no extra keys):
   ],
   "designs": {
     "a2": {
-      "top": "a2_single_edge_top",
+      "top": "a2_batched_iwrr_single_edge_top",
       "primary_clock": "clk_i",
-      "reset": "rst_ni",
-      "reset_active_low": true,
+      "reset": "rst_i",
+      "reset_active_low": false,
+      "synchronous_inputs": ["link_enable_i", "source_pending_i"],
       "transfer_scope": "endpoint",
       "tx_instance": "tx",
       "rx_instance": "rx",
       "drain_output": "drain_idle_o",
       "scope_drain_port": "drain_idle_o",
       "rx_pending_port": "retire_valid_o",
+      "clean_drain_error": "protocol_error_o",
+      "scope_error_port": "protocol_error_o",
+      "top_drain_require_one": ["scheduler_idle", "endpoint_idle"],
+      "top_drain_require_zero": [
+        "buffer_valid_q", "scheduler_count", "protocol_error_o"
+      ],
       "channels": [
-        {"tx_port": "event_valid_o", "rx_port": "event_valid_i"},
-        {"tx_port": "event_data_o", "rx_port": "event_data_i"}
+        {"tx_port": "link_valid_o", "rx_port": "link_valid_i"},
+        {"tx_port": "link_addr0_o", "rx_port": "link_addr0_i"},
+        {"tx_port": "link_addr1_o", "rx_port": "link_addr1_i"}
       ]
     },
     "a3": {
-      "top": "a3_single_edge_top",
+      "top": "a3_exact_scalar_prefix_k2_single_edge_top",
       "primary_clock": "clk_i",
-      "reset": "rst_ni",
-      "reset_active_low": true,
+      "reset": "rst_i",
+      "reset_active_low": false,
+      "synchronous_inputs": ["link_enable_i", "source_pending_i"],
+      "transfer_scope": "endpoint",
       "tx_instance": "tx",
       "rx_instance": "rx",
+      "drain_output": "drain_idle_o",
+      "scope_drain_port": "drain_idle_o",
+      "rx_pending_port": "retire_valid_o",
+      "clean_drain_error": "protocol_error_o",
+      "scope_error_port": "protocol_error_o",
+      "top_drain_require_one": ["endpoint_idle"],
+      "top_drain_require_zero": [
+        "source_pending_i", "scheduler_count", "protocol_error_o"
+      ],
       "channels": [
-        {"tx_port": "event_valid_o", "rx_port": "event_valid_i"},
-        {"tx_port": "event_data_o", "rx_port": "event_data_i"}
+        {"tx_port": "link_valid_o", "rx_port": "link_valid_i"},
+        {"tx_port": "link_addr0_o", "rx_port": "link_addr0_i"},
+        {"tx_port": "link_addr1_o", "rx_port": "link_addr1_i"}
       ]
     }
   }
