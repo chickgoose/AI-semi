@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify REDRED policy structure and dependency honesty, never evidence PASS."""
+"""Verify REDRED policy and pinned bounded claims, never emit evidence/release PASS."""
 
 from __future__ import annotations
 
@@ -150,6 +150,24 @@ def git_blob(commit: Any, repo_path: Any, path: str) -> bytes:
     if result.returncode:
         raise PolicyError(f"{path} Git object is unavailable")
     return result.stdout
+
+
+def parse_json_object(payload: bytes, path: str) -> Mapping[str, Any]:
+    try:
+        value = json.loads(payload, object_pairs_hook=_duplicate_safe_object)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PolicyError(f"{path} is not valid duplicate-safe JSON") from exc
+    if not isinstance(value, dict):
+        raise PolicyError(f"{path} JSON root must be an object")
+    return value
+
+
+def verify_git_artifact(row: Any, path: str) -> bytes:
+    item = exact_object(row, path, {"commit", "path", "sha256"})
+    payload = git_blob(item["commit"], item["path"], path)
+    if digest(payload) != validate_sha(item["sha256"], f"{path}.sha256"):
+        raise PolicyError(f"{path} digest mismatch")
+    return payload
 
 
 EXPECTED_GOAL = {
@@ -332,12 +350,16 @@ EXPECTED_INTERFACES = {
     },
     "PARALLEL_FALLBACK": {
         "role": "LEGALITY_FALLBACK",
-        "competition_release_status": "HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER",
+        "competition_release_status": "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION",
         "transfer_mode": "SINGLE_EDGE_PARALLEL",
-        "integrated_digital_evidence": "MISSING",
-        "post_route_evidence": "MISSING",
-        "vectorless_power_evidence": "MISSING",
-        "hold_id": "H_PARALLEL_INTEGRATION",
+        "integrated_digital_evidence": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
+        "source_cdc_rdc": "PASS_SYNCHRONOUS_INPUT_SCOPE",
+        "source_structure_pdk_legality": "PASS_SOURCE_ONLY",
+        "mapped_pdk_legality": "HOLD",
+        "organizer_pdk_legality": "HOLD",
+        "post_route_evidence": "HOLD_NO_REAL_PNR_OR_POST_ROUTE_TIMING",
+        "vectorless_power_evidence": "HOLD_NO_REAL_MAPPED_VECTORLESS_POWER",
+        "hold_id": "H_PARALLEL_REAL_EVIDENCE",
         "may_borrow_p6_physical_evidence": False,
         "disallowed_borrowed_dependencies": [
             "INHERITED_6P5_STANDARD_CELL_REFERENCE",
@@ -375,6 +397,311 @@ def verify_goal_boundary_candidates(document: Mapping[str, Any]) -> None:
     expect(document["endpoint_boundary"], EXPECTED_ENDPOINT, "endpoint_boundary")
     expect(document["candidate_semantics"], EXPECTED_CANDIDATES, "candidate_semantics")
     expect(document["interfaces"], EXPECTED_INTERFACES, "interfaces")
+
+
+def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
+    evidence = exact_object(
+        document["bounded_current_evidence"],
+        "bounded_current_evidence",
+        {
+            "policy",
+            "single_edge_actual_rtl_synthetic",
+            "public_uzh_projected_actual_rtl",
+            "single_edge_source_cdc_rdc",
+            "single_edge_source_structure_pdk",
+            "single_edge_physical",
+            "single_edge_vectorless",
+            "known_motion_supplied_rotation_synthetic_demo",
+        },
+    )
+    expect(
+        evidence["policy"],
+        {
+            "git_objects_rehashed": True,
+            "selected_claim_fields_checked": True,
+            "campaigns_reexecuted_by_policy_verifier": False,
+            "policy_pass_is_evidence_pass": False,
+            "policy_pass_is_release_pass": False,
+        },
+        "bounded_current_evidence.policy",
+    )
+
+    synthetic = exact_object(
+        evidence["single_edge_actual_rtl_synthetic"],
+        "bounded_current_evidence.single_edge_actual_rtl_synthetic",
+        {
+            "status", "claim_scope", "release_status", "selection_status",
+            "source_commit", "integrated_rtl_commit", "publication_commit",
+            "p6_evidence_used", "dataset_scope", "artifacts",
+            "execution_accounting", "full50_aggregate",
+        },
+    )
+    expect(
+        {key: synthetic[key] for key in (
+            "status", "claim_scope", "release_status", "selection_status",
+            "source_commit", "integrated_rtl_commit", "publication_commit",
+            "p6_evidence_used", "dataset_scope",
+        )},
+        {
+            "status": "PASS",
+            "claim_scope": "HARDENED_SINGLE_EDGE_ACTUAL_RTL_SYNTHETIC_SEMANTICS",
+            "release_status": "HOLD",
+            "selection_status": "HOLD",
+            "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+            "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+            "publication_commit": "72491e45a35e6883bd4ee65d5c30409c108ab190",
+            "p6_evidence_used": False,
+            "dataset_scope": "TEAM_SYNTHETIC_FULL50_NONOFFICIAL",
+        },
+        "single-edge synthetic claim boundary",
+    )
+    expect(
+        synthetic["execution_accounting"],
+        {
+            "full50_actual_rtl_executions": 100,
+            "reset_actual_rtl_executions": 2,
+            "mutation_activation_actual_rtl_executions": 2,
+            "mutation_actual_rtl_executions": 8,
+            "receipt_only_executions": 0,
+        },
+        "single-edge synthetic execution accounting",
+    )
+    expected_totals = {
+        "A2": {"generated": 106416, "source_overrun": 2370, "accepted": 104046, "retired": 104046},
+        "A3": {"generated": 106416, "source_overrun": 12771, "accepted": 93645, "retired": 93645},
+    }
+    expect(synthetic["full50_aggregate"], expected_totals, "single-edge synthetic aggregate")
+    synthetic_artifacts = exact_object(synthetic["artifacts"], "single-edge synthetic artifacts", {"result", "pins"})
+    result = parse_json_object(
+        verify_git_artifact(synthetic_artifacts["result"], "single-edge synthetic result"),
+        "single-edge synthetic result",
+    )
+    pins = parse_json_object(
+        verify_git_artifact(synthetic_artifacts["pins"], "single-edge synthetic pins"),
+        "single-edge synthetic pins",
+    )
+    expect(result.get("schema"), "a23_full_single_edge_replay_result_v1", "single-edge result schema")
+    expect(result.get("status"), "PASS", "single-edge result status")
+    expect(result.get("qualification"), {"CDC_RDC": "HOLD", "physical": "HOLD", "power": "HOLD", "single_edge_digital_RTL": "GO"}, "single-edge result qualification")
+    actual_execution = result.get("execution_accounting", {})
+    for contract_key, result_key in {
+        "full50_actual_rtl_executions": "full50_actual_RTL_executions",
+        "reset_actual_rtl_executions": "reset_actual_RTL_executions",
+        "mutation_activation_actual_rtl_executions": "mutation_activation_actual_RTL_executions",
+        "mutation_actual_rtl_executions": "mutation_actual_RTL_executions",
+        "receipt_only_executions": "receipt_only_executions",
+    }.items():
+        expect(actual_execution.get(result_key), synthetic["execution_accounting"][contract_key], f"single-edge result {result_key}")
+    for owner, contract_owner in (("a2", "A2"), ("a3", "A3")):
+        totals = result.get("owners", {}).get(owner, {}).get("full50", {}).get("aggregate", {}).get("totals")
+        expect(
+            {key: totals.get(key) for key in ("generated", "source_overrun", "accepted", "retired")} if isinstance(totals, dict) else totals,
+            expected_totals[contract_owner],
+            f"single-edge result {owner} aggregate",
+        )
+    expect(pins.get("integration_state"), "LOCKED_ACTUAL_SINGLE_EDGE_RTL", "single-edge pins integration state")
+    expect(
+        pins.get("rtl_provenance", {}).get("source_commit"), synthetic["source_commit"],
+        "single-edge pins source commit",
+    )
+    expect(
+        pins.get("rtl_provenance", {}).get("integration_commit"), synthetic["integrated_rtl_commit"],
+        "single-edge pins integration commit",
+    )
+
+    public = exact_object(
+        evidence["public_uzh_projected_actual_rtl"],
+        "bounded_current_evidence.public_uzh_projected_actual_rtl",
+        {
+            "status", "claim_scope", "release_status", "selection_status",
+            "canonical_redred_traffic", "official_redred_traffic", "p6_evidence_used",
+            "publication_commit", "artifacts", "dataset_accounting",
+        },
+    )
+    expect(
+        {key: public[key] for key in (
+            "status", "claim_scope", "release_status", "selection_status",
+            "canonical_redred_traffic", "official_redred_traffic", "p6_evidence_used",
+            "publication_commit",
+        )},
+        {
+            "status": "PASS",
+            "claim_scope": "PUBLIC_UZH_PROJECTED_EXTENSION_ACTUAL_SINGLE_EDGE_RTL",
+            "release_status": "HOLD",
+            "selection_status": "HOLD",
+            "canonical_redred_traffic": False,
+            "official_redred_traffic": False,
+            "p6_evidence_used": False,
+            "publication_commit": "f30fec14572d9efb58a98d8f61dd22604a91446b",
+        },
+        "public projected claim boundary",
+    )
+    expect(
+        public["dataset_accounting"],
+        {
+            "unique_projected_window_events": 1100,
+            "retiming_scenarios": ["1x", "64x", "256x"],
+            "retimings_are_independent_unique_samples": False,
+            "projected_actual_rtl_executions": 6,
+            "receipt_only_executions": 0,
+        },
+        "public projected dataset accounting",
+    )
+    public_artifacts = exact_object(public["artifacts"], "public projected artifacts", {"publication", "result", "pins", "export_bundle"})
+    publication = parse_json_object(verify_git_artifact(public_artifacts["publication"], "public projected publication"), "public projected publication")
+    public_result = parse_json_object(verify_git_artifact(public_artifacts["result"], "public projected result"), "public projected result")
+    public_pins = parse_json_object(verify_git_artifact(public_artifacts["pins"], "public projected pins"), "public projected pins")
+    export_payload = verify_git_artifact(public_artifacts["export_bundle"], "public projected export bundle")
+    for name, row in (("publication", publication), ("result", public_result), ("pins", public_pins)):
+        expect(row.get("release_status"), "HOLD", f"public projected {name} release")
+        expect(row.get("selection_status"), "HOLD", f"public projected {name} selection")
+        expect(row.get("canonical_redred_traffic"), False, f"public projected {name} canonical status")
+        expect(row.get("official_redred_traffic"), False, f"public projected {name} official status")
+        expect(row.get("p6_evidence_used"), False, f"public projected {name} P6 status")
+    expect(publication.get("result_sha256"), public_artifacts["result"]["sha256"], "public publication result binding")
+    expect(publication.get("export_bundle_sha256"), digest(export_payload), "public publication export binding")
+    expect(public_result.get("evidence_class"), "PUBLIC_DATASET_PROJECTED_ACTUAL_SINGLE_EDGE_RTL", "public result evidence class")
+    expect(public_result.get("execution_accounting", {}).get("projected_actual_RTL_executions"), 6, "public result executions")
+    expect(public_result.get("execution_accounting", {}).get("receipt_only_executions"), 0, "public result receipt-only executions")
+    expect(public_pins.get("identity_accounting"), {"unique_projected_window_events": 1100, "scenario_retimings": 3, "pooled_3300_unique_events": False}, "public pins identity accounting")
+
+    cdc = exact_object(
+        evidence["single_edge_source_cdc_rdc"],
+        "bounded_current_evidence.single_edge_source_cdc_rdc",
+        {
+            "status", "claim_scope", "external_input_scope", "reset_scope",
+            "source_commit", "integrated_rtl_commit", "publication_commit",
+            "mapped_cdc_rdc_status", "final_selected_interface_status", "artifacts",
+        },
+    )
+    expect(
+        {key: cdc[key] for key in cdc if key != "artifacts"},
+        {
+            "status": "PASS",
+            "claim_scope": "SOURCE_AND_ELABORATED_SINGLE_POSEDGE_CLOCK_STRUCTURE",
+            "external_input_scope": "BOUND_SYNCHRONOUS_TO_PRIMARY_CLOCK_ASSUMPTION",
+            "reset_scope": "SYNCHRONOUS_ASSERT_SYNCHRONOUS_DEASSERT_DRAIN_BEFORE_ASSERT",
+            "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+            "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+            "publication_commit": "9d1dced49d3fceabf812d2ba2275c8d4c02eef13",
+            "mapped_cdc_rdc_status": "HOLD",
+            "final_selected_interface_status": "HOLD",
+        },
+        "source CDC/RDC claim boundary",
+    )
+    cdc_artifacts = exact_object(cdc["artifacts"], "source CDC/RDC artifacts", {"contract", "source_binding", "verifier"})
+    cdc_contract = parse_json_object(verify_git_artifact(cdc_artifacts["contract"], "source CDC/RDC contract"), "source CDC/RDC contract")
+    verify_git_artifact(cdc_artifacts["source_binding"], "source CDC/RDC binding")
+    verify_git_artifact(cdc_artifacts["verifier"], "source CDC/RDC verifier")
+    expect(cdc_contract.get("a2_source_set", {}).get("repository_commit"), cdc["source_commit"], "CDC source commit")
+    expect(cdc_contract.get("a2_source_set", {}).get("integration_commit"), cdc["integrated_rtl_commit"], "CDC integration commit")
+    expect(cdc_contract.get("policy", {}).get("external_input_domain"), cdc["external_input_scope"], "CDC synchronous-input scope")
+    expect(cdc_contract.get("policy", {}).get("reset"), cdc["reset_scope"], "CDC reset scope")
+
+    pdk = exact_object(
+        evidence["single_edge_source_structure_pdk"],
+        "bounded_current_evidence.single_edge_source_structure_pdk",
+        {
+            "status", "claim_scope", "source_commit", "integrated_rtl_commit",
+            "publication_commit", "mapped_legality_status",
+            "organizer_legality_status", "release_status", "artifacts",
+        },
+    )
+    expect(
+        {key: pdk[key] for key in pdk if key != "artifacts"},
+        {
+            "status": "PASS",
+            "claim_scope": "RTL_SOURCE_STRUCTURE_ONLY_NOT_MAPPED_NOT_ORGANIZER_APPROVAL",
+            "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+            "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+            "publication_commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+            "mapped_legality_status": "HOLD",
+            "organizer_legality_status": "HOLD",
+            "release_status": "HOLD",
+        },
+        "source PDK claim boundary",
+    )
+    pdk_artifacts = exact_object(pdk["artifacts"], "source PDK artifacts", {"matrix", "verifier"})
+    matrix = parse_json_object(verify_git_artifact(pdk_artifacts["matrix"], "source PDK matrix"), "source PDK matrix")
+    verify_git_artifact(pdk_artifacts["verifier"], "source PDK verifier")
+    audited = matrix.get("audited_rtl", {})
+    expect(audited.get("source_commit"), pdk["source_commit"], "PDK source commit")
+    expect(audited.get("integrated_commit"), pdk["integrated_rtl_commit"], "PDK integration commit")
+    expect(audited.get("source_structure_status"), "PASS", "PDK source structure status")
+    expect(audited.get("mapped_structure_status"), "HOLD", "PDK mapped structure status")
+    expect(audited.get("organizer_approval_status"), "HOLD", "PDK organizer status")
+
+    physical = exact_object(
+        evidence["single_edge_physical"],
+        "bounded_current_evidence.single_edge_physical",
+        {"status", "claim_scope", "real_pnr_status", "post_route_timing_status", "constraint_authority_status", "contract"},
+    )
+    expect(
+        {key: physical[key] for key in physical if key != "contract"},
+        {
+            "status": "HOLD",
+            "claim_scope": "SOURCE_BOUND_STATIC_FLOW_SCAFFOLD_ONLY",
+            "real_pnr_status": "HOLD",
+            "post_route_timing_status": "HOLD",
+            "constraint_authority_status": "HOLD_UNCONFIRMED_TEAM_PLACEHOLDER",
+        },
+        "single-edge physical claim boundary",
+    )
+    physical_contract = parse_json_object(verify_git_artifact(physical["contract"], "single-edge physical contract"), "single-edge physical contract")
+    expect(physical_contract.get("status"), "STATIC_READY_CANDIDATE_PHYSICAL_HOLD", "physical contract status")
+    expect(physical_contract.get("constraints", {}).get("authority_status"), "UNCONFIRMED_TEAM_PLACEHOLDER", "physical constraint authority")
+    expect(physical_contract.get("qualification", {}).get("candidate_physical_go_possible"), False, "physical GO eligibility")
+
+    vectorless = exact_object(
+        evidence["single_edge_vectorless"],
+        "bounded_current_evidence.single_edge_vectorless",
+        {"status", "claim_scope", "real_mapped_vectorless_status", "release_comparison_eligible", "publication_commit", "artifacts"},
+    )
+    expect(
+        {key: vectorless[key] for key in vectorless if key != "artifacts"},
+        {
+            "status": "HOLD",
+            "claim_scope": "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER",
+            "real_mapped_vectorless_status": "HOLD",
+            "release_comparison_eligible": False,
+            "publication_commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+        },
+        "single-edge vectorless claim boundary",
+    )
+    vectorless_artifacts = exact_object(vectorless["artifacts"], "single-edge vectorless artifacts", {"contract", "source_manifests"})
+    vectorless_contract = parse_json_object(verify_git_artifact(vectorless_artifacts["contract"], "single-edge vectorless contract"), "single-edge vectorless contract")
+    verify_git_artifact(vectorless_artifacts["source_manifests"], "single-edge vectorless source manifests")
+    expect(vectorless_contract.get("status"), "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER", "vectorless contract status")
+    expect(vectorless_contract.get("constraint_authority", {}).get("comparison_ready_eligible"), False, "vectorless comparison eligibility")
+
+    motion = exact_object(
+        evidence["known_motion_supplied_rotation_synthetic_demo"],
+        "bounded_current_evidence.known_motion_supplied_rotation_synthetic_demo",
+        {
+            "status", "claim_scope", "evidence_class", "inside_endpoint_ppa",
+            "canonical_coordinate_status", "coordinate_rtl_status", "release_status",
+            "publication_commit", "artifacts",
+        },
+    )
+    expect(
+        {key: motion[key] for key in motion if key != "artifacts"},
+        {
+            "status": "PASS",
+            "claim_scope": "KNOWN_MOTION_SUPPLIED_ROTATION_SYNTHETIC_DEMO_ONLY",
+            "evidence_class": "SYNTHETIC_DEMO",
+            "inside_endpoint_ppa": False,
+            "canonical_coordinate_status": "HOLD",
+            "coordinate_rtl_status": "HOLD",
+            "release_status": "HOLD",
+            "publication_commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256",
+        },
+        "known-motion claim boundary",
+    )
+    motion_artifacts = motion["artifacts"]
+    if not isinstance(motion_artifacts, list) or len(motion_artifacts) != 6:
+        raise PolicyError("known-motion artifacts must bind exactly six Git objects")
+    for index, row in enumerate(motion_artifacts):
+        verify_git_artifact(row, f"known-motion artifact[{index}]")
 
 
 def load_trace_registry(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -760,11 +1087,14 @@ def verify_physical_evidence(document: Mapping[str, Any]) -> None:
                 "competition_legality": "HOLD",
             },
             "PARALLEL_FALLBACK": {
-                "integrated_digital": "MISSING",
-                "standard_cell_post_route": "MISSING",
-                "vectorless_power": "MISSING",
+                "integrated_digital": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
+                "source_cdc_rdc": "PASS_SYNCHRONOUS_INPUT_SCOPE",
+                "source_structure_pdk_legality": "PASS_SOURCE_ONLY",
+                "mapped_pdk_legality": "HOLD",
+                "standard_cell_post_route": "HOLD_NO_REAL_PNR_OR_POST_ROUTE_TIMING",
+                "vectorless_power": "HOLD_NO_REAL_MAPPED_VECTORLESS_POWER",
                 "real_pad_package_channel": "UNPROVEN",
-                "competition_legality": "NOT_YET_EVALUATED",
+                "competition_legality": "HOLD_MAPPED_AND_ORGANIZER_AUTHORITY",
             },
         },
         "physical_power_evidence.per_interface",
@@ -835,24 +1165,48 @@ EXPECTED_NODES = {
     "P6_PAD_PHY": {"kind": "EVIDENCE", "state": "HOLD"},
     "P6_VECTORLESS_POWER": {"kind": "EVIDENCE", "state": "HOLD"},
     "P6_RELEASE": {"kind": "DECISION", "state": "HOLD"},
+    "PARALLEL_SYNTHETIC_DIGITAL": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
+    "PARALLEL_PUBLIC_PROJECTED_DIGITAL": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
+    "PARALLEL_SOURCE_CDC_RDC": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
+    "PARALLEL_SOURCE_STRUCTURE_PDK": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
+    "PARALLEL_MAPPED_PDK": {"kind": "EVIDENCE", "state": "HOLD"},
+    "PARALLEL_ORGANIZER_PDK": {"kind": "EXTERNAL_AUTHORITY", "state": "HOLD"},
+    "PARALLEL_REAL_PNR_POST_ROUTE": {"kind": "EVIDENCE", "state": "HOLD"},
+    "PARALLEL_REAL_VECTORLESS_POWER": {"kind": "EVIDENCE", "state": "HOLD"},
     "PARALLEL_COMPLETE_EVIDENCE": {"kind": "EVIDENCE", "state": "HOLD"},
     "PARALLEL_RELEASE": {"kind": "DECISION", "state": "HOLD"},
     "SELECTED_INTERFACE_RELEASE": {"kind": "DECISION", "state": "HOLD"},
     "FINAL_CDC_RDC": {"kind": "EVIDENCE", "state": "HOLD"},
+    "FINAL_A2_A3_SELECTION": {"kind": "DECISION", "state": "HOLD"},
     "PDK_ENDPOINT_IO": {"kind": "EVIDENCE", "state": "HOLD"},
     "TEAM_CANONICAL_RELEASE": {"kind": "DECISION", "state": "HOLD"},
     "OFFICIAL_DATA": {"kind": "EXTERNAL_INPUT", "state": "HOLD"},
     "OFFICIAL_DATA_CLAIMS": {"kind": "DECISION", "state": "HOLD"},
     "COORDINATE_NUMERIC_CONTRACT": {"kind": "EXTERNAL_INPUT", "state": "HOLD"},
     "COORDINATE_RTL": {"kind": "DECISION", "state": "HOLD"},
+    "KNOWN_MOTION_SYNTHETIC_DEMO": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
 }
 
 
 EXPECTED_REQUIREMENTS = [
     {"target": "P6_RELEASE", "operator": "ALL", "sources": ["P6_STANDARD_CELL", "P6_LEGALITY", "P6_PAD_PHY", "P6_VECTORLESS_POWER"]},
+    {
+        "target": "PARALLEL_COMPLETE_EVIDENCE",
+        "operator": "ALL",
+        "sources": [
+            "PARALLEL_SYNTHETIC_DIGITAL",
+            "PARALLEL_PUBLIC_PROJECTED_DIGITAL",
+            "PARALLEL_SOURCE_CDC_RDC",
+            "PARALLEL_SOURCE_STRUCTURE_PDK",
+            "PARALLEL_MAPPED_PDK",
+            "PARALLEL_ORGANIZER_PDK",
+            "PARALLEL_REAL_PNR_POST_ROUTE",
+            "PARALLEL_REAL_VECTORLESS_POWER",
+        ],
+    },
     {"target": "PARALLEL_RELEASE", "operator": "ALL", "sources": ["PARALLEL_COMPLETE_EVIDENCE"]},
     {"target": "SELECTED_INTERFACE_RELEASE", "operator": "ONE", "sources": ["P6_RELEASE", "PARALLEL_RELEASE"]},
-    {"target": "TEAM_CANONICAL_RELEASE", "operator": "ALL", "sources": ["POLICY", "CANONICAL_DIGITAL", "SELECTED_INTERFACE_RELEASE", "FINAL_CDC_RDC", "PDK_ENDPOINT_IO"]},
+    {"target": "TEAM_CANONICAL_RELEASE", "operator": "ALL", "sources": ["POLICY", "CANONICAL_DIGITAL", "SELECTED_INTERFACE_RELEASE", "FINAL_CDC_RDC", "FINAL_A2_A3_SELECTION", "PDK_ENDPOINT_IO"]},
     {"target": "OFFICIAL_DATA_CLAIMS", "operator": "ALL", "sources": ["OFFICIAL_DATA", "TEAM_CANONICAL_RELEASE"]},
     {"target": "COORDINATE_RTL", "operator": "ALL", "sources": ["COORDINATE_NUMERIC_CONTRACT"]},
 ]
@@ -871,9 +1225,10 @@ EXPECTED_HOLDS = {
     "H_P6_MULTI_EDGE_LEGALITY": {"status": "HOLD", "blocks": ["P6_LEGALITY", "P6_RELEASE"], "blocks_core_development": False},
     "H_P6_REAL_PAD_PHY": {"status": "HOLD", "blocks": ["P6_PAD_PHY", "P6_RELEASE"], "blocks_core_development": False},
     "H_P6_VECTORLESS_POWER": {"status": "HOLD", "blocks": ["P6_VECTORLESS_POWER", "P6_RELEASE"], "blocks_core_development": False},
-    "H_PARALLEL_INTEGRATION": {"status": "HOLD", "blocks": ["PARALLEL_COMPLETE_EVIDENCE", "PARALLEL_RELEASE"], "blocks_core_development": False},
+    "H_PARALLEL_REAL_EVIDENCE": {"status": "HOLD", "blocks": ["PARALLEL_MAPPED_PDK", "PARALLEL_ORGANIZER_PDK", "PARALLEL_REAL_PNR_POST_ROUTE", "PARALLEL_REAL_VECTORLESS_POWER", "PARALLEL_COMPLETE_EVIDENCE", "PARALLEL_RELEASE"], "blocks_core_development": False},
     "H_INHERITED_6P5_ARCHIVE_UNAVAILABLE": {"status": "HOLD", "blocks": ["P6_STANDARD_CELL_FINAL_RELEASE_USE"], "blocks_core_development": False},
     "H_FINAL_CDC_RDC": {"status": "HOLD", "blocks": ["FINAL_CDC_RDC", "TEAM_CANONICAL_RELEASE"], "blocks_core_development": False},
+    "H_FINAL_A2_A3_SELECTION": {"status": "HOLD", "blocks": ["FINAL_A2_A3_SELECTION", "TEAM_CANONICAL_RELEASE"], "blocks_core_development": False},
     "H_PDK_ENDPOINT_IO_RULES": {"status": "HOLD", "blocks": ["PDK_ENDPOINT_IO", "TEAM_CANONICAL_RELEASE"], "blocks_core_development": False},
     "H_REAL_PAD_PHY": {"status": "HOLD", "blocks": ["REAL_PAD_PHY_CLAIMS"], "blocks_core_development": False},
     "H_OFFICIAL_DATASET": {"status": "HOLD", "blocks": ["OFFICIAL_DATA", "OFFICIAL_DATA_CLAIMS"], "blocks_core_development": False},
@@ -960,6 +1315,7 @@ def verify_document(document: Mapping[str, Any]) -> None:
             "endpoint_boundary",
             "candidate_semantics",
             "interfaces",
+            "bounded_current_evidence",
             "canonical_digital_dependency",
             "cycle_semantics",
             "physical_power_evidence",
@@ -984,6 +1340,7 @@ def verify_document(document: Mapping[str, Any]) -> None:
         "verifier_claim",
     )
     verify_goal_boundary_candidates(root)
+    verify_bounded_current_evidence(root)
     verify_canonical_dependency(root)
     verify_cycle_semantics(root)
     verify_physical_evidence(root)

@@ -25,6 +25,14 @@ policy = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(policy)
 
 
+def requirement(document: dict[str, Any], target: str) -> dict[str, Any]:
+    return next(
+        item
+        for item in document["release_dependency_graph"]["requirements"]
+        if item["target"] == target
+    )
+
+
 class PolicyContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -83,6 +91,18 @@ class PolicyContractTest(unittest.TestCase):
             lambda doc: doc["canonical_digital_dependency"].update(
                 {"unverified_results": {}}
             ),
+            "keys mismatch",
+        )
+        self.assert_invalid(
+            lambda doc: doc["bounded_current_evidence"].update(
+                {"unbounded_release_claim": {"status": "PASS"}}
+            ),
+            "keys mismatch",
+        )
+        self.assert_invalid(
+            lambda doc: doc["bounded_current_evidence"][
+                "single_edge_actual_rtl_synthetic"
+            ]["artifacts"]["result"].update({"mutable_alias": "latest"}),
             "keys mismatch",
         )
 
@@ -441,9 +461,9 @@ class PolicyContractTest(unittest.TestCase):
             "nodes",
         )
         self.assert_invalid(
-            lambda doc: doc["release_dependency_graph"]["requirements"][3][
-                "sources"
-            ].remove("FINAL_CDC_RDC"),
+            lambda doc: requirement(doc, "TEAM_CANONICAL_RELEASE")["sources"].remove(
+                "FINAL_CDC_RDC"
+            ),
             "requirements",
         )
         self.assert_invalid(
@@ -465,9 +485,9 @@ class PolicyContractTest(unittest.TestCase):
             "external_data_and_coordinate_policy",
         )
         self.assert_invalid(
-            lambda doc: doc["release_dependency_graph"]["requirements"][3][
-                "sources"
-            ].append("OFFICIAL_DATA"),
+            lambda doc: requirement(doc, "TEAM_CANONICAL_RELEASE")["sources"].append(
+                "OFFICIAL_DATA"
+            ),
             "requirements",
         )
 
@@ -485,9 +505,9 @@ class PolicyContractTest(unittest.TestCase):
             "endpoint_boundary",
         )
         self.assert_invalid(
-            lambda doc: doc["release_dependency_graph"]["requirements"][3][
-                "sources"
-            ].append("COORDINATE_NUMERIC_CONTRACT"),
+            lambda doc: requirement(doc, "TEAM_CANONICAL_RELEASE")["sources"].append(
+                "COORDINATE_NUMERIC_CONTRACT"
+            ),
             "requirements",
         )
 
@@ -505,9 +525,9 @@ class PolicyContractTest(unittest.TestCase):
             "external_data_and_coordinate_policy",
         )
         self.assert_invalid(
-            lambda doc: doc["release_dependency_graph"]["requirements"][3][
-                "sources"
-            ].remove("PDK_ENDPOINT_IO"),
+            lambda doc: requirement(doc, "TEAM_CANONICAL_RELEASE")["sources"].remove(
+                "PDK_ENDPOINT_IO"
+            ),
             "requirements",
         )
         self.assert_invalid(
@@ -519,16 +539,139 @@ class PolicyContractTest(unittest.TestCase):
 
     def test_selected_interface_cannot_borrow_p6_evidence(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["release_dependency_graph"]["requirements"][1][
-                "sources"
-            ].append("P6_STANDARD_CELL"),
+            lambda doc: requirement(doc, "PARALLEL_RELEASE")["sources"].append(
+                "P6_STANDARD_CELL"
+            ),
             "requirements",
         )
         self.assert_invalid(
-            lambda doc: doc["release_dependency_graph"]["requirements"][1][
-                "sources"
-            ].append("P6_VECTORLESS_POWER"),
+            lambda doc: requirement(doc, "PARALLEL_RELEASE")["sources"].append(
+                "P6_VECTORLESS_POWER"
+            ),
             "requirements",
+        )
+
+    def test_bounded_single_edge_actual_rtl_claim_is_exact_and_live_bound(self) -> None:
+        evidence = lambda doc: doc["bounded_current_evidence"][
+            "single_edge_actual_rtl_synthetic"
+        ]
+        mutations = [
+            lambda doc: evidence(doc).update({"claim_scope": "CANONICAL_RELEASE_EVIDENCE"}),
+            lambda doc: evidence(doc).update({"release_status": "GO"}),
+            lambda doc: evidence(doc).update({"selection_status": "A2"}),
+            lambda doc: evidence(doc).update({"p6_evidence_used": True}),
+            lambda doc: evidence(doc).update({"source_commit": "4ce4836fab1309d3468db8e660d2da9af371f784"}),
+            lambda doc: evidence(doc)["full50_aggregate"]["A2"].update({"source_overrun": 0}),
+            lambda doc: evidence(doc)["artifacts"]["result"].update({"sha256": "0" * 64}),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
+    def test_public_projection_cannot_pool_retimings_or_claim_release(self) -> None:
+        evidence = lambda doc: doc["bounded_current_evidence"][
+            "public_uzh_projected_actual_rtl"
+        ]
+        mutations = [
+            lambda doc: evidence(doc).update({"canonical_redred_traffic": True}),
+            lambda doc: evidence(doc).update({"official_redred_traffic": True}),
+            lambda doc: evidence(doc).update({"p6_evidence_used": True}),
+            lambda doc: evidence(doc).update({"release_status": "GO"}),
+            lambda doc: evidence(doc).update({"selection_status": "A3"}),
+            lambda doc: evidence(doc)["dataset_accounting"].update(
+                {
+                    "unique_projected_window_events": 3300,
+                    "retimings_are_independent_unique_samples": True,
+                }
+            ),
+            lambda doc: evidence(doc)["artifacts"]["publication"].update(
+                {"sha256": "f" * 64}
+            ),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
+    def test_source_cdc_rdc_pass_stays_synchronous_input_and_source_scoped(self) -> None:
+        evidence = lambda doc: doc["bounded_current_evidence"][
+            "single_edge_source_cdc_rdc"
+        ]
+        mutations = [
+            lambda doc: evidence(doc).update({"external_input_scope": "ASYNCHRONOUS_INPUTS_PROVEN"}),
+            lambda doc: evidence(doc).update({"mapped_cdc_rdc_status": "PASS"}),
+            lambda doc: evidence(doc).update({"final_selected_interface_status": "PASS"}),
+            lambda doc: evidence(doc).update({"integrated_rtl_commit": "4ce4836fab1309d3468db8e660d2da9af371f784"}),
+            lambda doc: evidence(doc)["artifacts"]["source_binding"].update(
+                {"sha256": "0" * 64}
+            ),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
+    def test_source_pdk_pass_cannot_promote_mapped_or_organizer_legality(self) -> None:
+        evidence = lambda doc: doc["bounded_current_evidence"][
+            "single_edge_source_structure_pdk"
+        ]
+        mutations = [
+            lambda doc: evidence(doc).update({"claim_scope": "MAPPED_AND_ORGANIZER_APPROVED"}),
+            lambda doc: evidence(doc).update({"mapped_legality_status": "PASS"}),
+            lambda doc: evidence(doc).update({"organizer_legality_status": "PASS"}),
+            lambda doc: evidence(doc).update({"release_status": "GO"}),
+            lambda doc: evidence(doc)["artifacts"]["matrix"].update({"sha256": "0" * 64}),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
+    def test_real_physical_and_vectorless_rows_remain_hold(self) -> None:
+        physical = lambda doc: doc["bounded_current_evidence"]["single_edge_physical"]
+        vectorless = lambda doc: doc["bounded_current_evidence"]["single_edge_vectorless"]
+        mutations = [
+            lambda doc: physical(doc).update({"status": "PASS", "real_pnr_status": "PASS"}),
+            lambda doc: physical(doc).update({"post_route_timing_status": "PASS"}),
+            lambda doc: physical(doc).update({"constraint_authority_status": "ORGANIZER_APPROVED"}),
+            lambda doc: vectorless(doc).update({"status": "PASS", "real_mapped_vectorless_status": "PASS"}),
+            lambda doc: vectorless(doc).update({"release_comparison_eligible": True}),
+            lambda doc: vectorless(doc)["artifacts"]["contract"].update({"sha256": "0" * 64}),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
+    def test_known_motion_pass_is_synthetic_rotation_only_and_outside_ppa(self) -> None:
+        evidence = lambda doc: doc["bounded_current_evidence"][
+            "known_motion_supplied_rotation_synthetic_demo"
+        ]
+        mutations = [
+            lambda doc: evidence(doc).update({"claim_scope": "MOTION_ESTIMATION"}),
+            lambda doc: evidence(doc).update({"evidence_class": "CANONICAL_COMMON_SUITE"}),
+            lambda doc: evidence(doc).update({"inside_endpoint_ppa": True}),
+            lambda doc: evidence(doc).update({"canonical_coordinate_status": "PASS"}),
+            lambda doc: evidence(doc).update({"coordinate_rtl_status": "PASS"}),
+            lambda doc: evidence(doc).update({"release_status": "GO"}),
+            lambda doc: evidence(doc)["artifacts"][1].update({"sha256": "0" * 64}),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
+    def test_final_a2_a3_selection_is_an_explicit_team_release_hold(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["nodes"][
+                "FINAL_A2_A3_SELECTION"
+            ].update({"state": "PASS"}),
+            "nodes",
+        )
+        self.assert_invalid(
+            lambda doc: requirement(doc, "TEAM_CANONICAL_RELEASE")["sources"].remove(
+                "FINAL_A2_A3_SELECTION"
+            ),
+            "requirements",
+        )
+        self.assert_invalid(
+            lambda doc: doc["scoped_holds"].pop("H_FINAL_A2_A3_SELECTION"),
+            "scoped_holds",
         )
 
     def test_relative_tmp_latest_and_absolute_paths_are_rejected(self) -> None:
