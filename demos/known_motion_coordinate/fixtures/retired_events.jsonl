@@ -1,0 +1,6 @@
+{"schema":"redred.aer.retired_event_stream/v1","record_type":"header","camera_id":"synthetic-camera-0","intrinsics_id":"synthetic-pinhole-64x48-v1","pose_stream_id":"synthetic-known-motion-v1","coordinate_frame":"world_reference_image","transport_accounting":{"generated":6,"accepted":5,"retired":5,"source_overrun":1},"provenance":{"run_id":"synthetic-run-001","candidate_id":"fixture-retired-stream","workload_id":"known-motion-four-pose-demo","manifest_sha256":"0000000000000000000000000000000000000000000000000000000000000000"}}
+{"schema":"redred.aer.retired_event/v1","record_type":"event","event_id":"identity-center","timestamp_ns":100,"pose_id":"identity","x":31.5,"y":23.5,"polarity":1}
+{"schema":"redred.aer.retired_event/v1","record_type":"event","event_id":"pan-zoh","timestamp_ns":1500,"x":31.5,"y":23.5,"polarity":1}
+{"schema":"redred.aer.retired_event/v1","record_type":"event","event_id":"tilt-explicit","timestamp_ns":2200,"pose_id":"tilt-up-matrix","x":31.5,"y":23.5,"polarity":0}
+{"schema":"redred.aer.retired_event/v1","record_type":"event","event_id":"roll-zoh","timestamp_ns":3200,"x":45.0,"y":23.5,"polarity":-1}
+{"schema":"redred.aer.retired_event/v1","record_type":"event","event_id":"pan-out-of-fov","timestamp_ns":1800,"pose_id":"pan-right","x":63.0,"y":23.5,"polarity":1}
