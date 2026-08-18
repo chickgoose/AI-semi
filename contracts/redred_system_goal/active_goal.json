@@ -1,0 +1,390 @@
+{
+  "schema_version": 1,
+  "contract_id": "redred-system-goal-2026-08-18",
+  "contract_status": "ACTIVE_WITH_SCOPED_HOLDS",
+  "goal": {
+    "statement": "Deliver a physically credible AER endpoint that preserves the selected scheduling semantics from source admission through retirement, with reproducible correctness, throughput, provenance, and release evidence.",
+    "success_condition": "A2 or its A3 semantic fallback passes the canonical digital, interface, post-route, and vectorless-power gates at the complete endpoint boundary without treating coordinate transformation as core AER functionality."
+  },
+  "scope": {
+    "mandatory": [
+      {
+        "id": "endpoint_correctness",
+        "deliverable": "Hard-correct source_pending/accept-through-retire endpoint"
+      },
+      {
+        "id": "a2_primary",
+        "deliverable": "A2 weighted-aggregate K2 primary candidate"
+      },
+      {
+        "id": "a3_fallback",
+        "deliverable": "A3 exact scalar-prefix K2 semantic fallback"
+      },
+      {
+        "id": "interface_contingency",
+        "deliverable": "P6 approval gate plus maintained single-edge parallel fallback"
+      },
+      {
+        "id": "canonical_evidence",
+        "deliverable": "One candidate-neutral trace/provenance contract and comparable receipts"
+      },
+      {
+        "id": "physical_release_evidence",
+        "deliverable": "Same-boundary post-route and vectorless-power release evidence"
+      }
+    ],
+    "stretch": [
+      {
+        "id": "coordinate_demo",
+        "deliverable": "Scenario-driven post-retire coordinate-stabilization demonstration"
+      },
+      {
+        "id": "coordinate_rtl",
+        "deliverable": "Synthesizable fixed-point coordinate transform after numeric I/O rules are official"
+      },
+      {
+        "id": "motion_estimation",
+        "deliverable": "Estimation of motion parameters instead of supplied parameters"
+      }
+    ],
+    "excluded": [
+      "SLAM",
+      "depth recovery",
+      "unknown-motion estimation in the mandatory release",
+      "candidate-specific testbench storage or arbitration",
+      "unsupported vendor primitives"
+    ]
+  },
+  "endpoint_boundary": {
+    "name": "complete_source_admission_to_retirement_endpoint",
+    "starts_at": {
+      "request_signal": "source_pending",
+      "accept_signal": "source_accept",
+      "acceptance_rule": "source_pending && source_accept sampled at the defined synchronous acceptance edge"
+    },
+    "ends_at": {
+      "retire_signal": "retire_valid",
+      "retirement_rule": "retire_valid and retired address lanes sampled by the synchronous consumer"
+    },
+    "includes": [
+      "scheduler and all policy state",
+      "admission control",
+      "charged elastic buffering",
+      "selected link launch and control",
+      "transmitter",
+      "physical link signals",
+      "receiver",
+      "retirement observation",
+      "drain and error logic"
+    ],
+    "excludes": [
+      "event generation before source_pending",
+      "testbench-only queues",
+      "coordinate transformation",
+      "motion-parameter estimation",
+      "visualization"
+    ],
+    "all_functional_state_is_charged": true,
+    "same_boundary_required_for_candidate_comparison": true
+  },
+  "candidate_policy": {
+    "primary": {
+      "id": "A2",
+      "architecture": "batched_IWRR_K2",
+      "semantic_class": "long_term_weighted_aggregate",
+      "weights": [1, 5, 5, 1],
+      "preserves_exact_scalar_prefix": false,
+      "claim_limit": "Preserves the long-term aggregate service ratio; it does not preserve every scalar Fovea prefix."
+    },
+    "semantic_fallback": {
+      "id": "A3",
+      "architecture": "two_microstep_exact_scalar_prefix_K2",
+      "semantic_class": "exact_scalar_prefix",
+      "weights": [1, 5, 5, 1],
+      "preserves_exact_scalar_prefix": true,
+      "activation_rule": "Use A3 when exact scalar-prefix preservation is mandatory or when A2 fails a mandatory release gate."
+    },
+    "link_policy": {
+      "preferred": "P6",
+      "p6_description": "Six-wire phase-related link capable of retiring up to two events per link cell",
+      "approval_recorded": false,
+      "approval_status": "HOLD_PENDING_WRITTEN_ORGANIZER_AND_PDK_APPROVAL",
+      "approval_requires": [
+        "written organizer approval for the phase-related multi-edge transfer",
+        "implementation using only constructs and cells available in the educational 45 nm flow"
+      ],
+      "selected_until_approved": "single_edge_parallel_fallback",
+      "parallel_fallback": {
+        "id": "single_edge_parallel_fallback",
+        "must_be_maintained": true,
+        "uses_unsupported_primitives": false,
+        "same_endpoint_boundary": true,
+        "selection_rule": "If either approval requirement is absent or denied, release the parallel fallback and do not claim P6 results as the approved implementation."
+      }
+    }
+  },
+  "correctness": {
+    "equations": [
+      {
+        "lhs": "generated",
+        "operator": "=",
+        "rhs_terms": ["source_overrun", "accepted"],
+        "applies_to": "every completed run"
+      },
+      {
+        "lhs": "accepted",
+        "operator": "=",
+        "rhs_terms": ["delivered"],
+        "applies_to": "every hard-correct drained run"
+      }
+    ],
+    "counter_rules": {
+      "all_nonnegative_integers": true,
+      "accepted_definition": "event committed by source_pending/source_accept at the synchronous acceptance edge",
+      "delivered_definition": "event observed at retire in global acceptance order",
+      "source_overrun_definition": "new occurrence while the same source already has an outstanding pending event"
+    },
+    "failure_taxonomy": {
+      "hard_correctness_failures": [
+        "phantom",
+        "duplicate",
+        "corrupt",
+        "reorder",
+        "accepted_missing",
+        "partial_pair_retirement",
+        "illegal_or_x_output",
+        "drain_timeout",
+        "reset_escape",
+        "protocol_error"
+      ],
+      "capacity_outcomes_not_hard_failures": [
+        "source_overrun"
+      ],
+      "tool_exit_zero_is_sufficient": false,
+      "unsupported_function_is_a_pass": false,
+      "unsupported_function_status": "SKIP_UNSUPPORTED"
+    }
+  },
+  "canonical_evidence": {
+    "candidate_neutral": true,
+    "single_canonical_head_to_head_receipt_required": true,
+    "trace_suites": [
+      {
+        "id": "full50",
+        "trace_count": 50,
+        "role": "canonical_full_suite"
+      },
+      {
+        "id": "capacity22",
+        "trace_count": 22,
+        "role": "exact_subset_of_full50"
+      }
+    ],
+    "subset_rule": {
+      "subset": "capacity22",
+      "superset": "full50",
+      "relationship": "exact_trace_subset",
+      "counts_as_independent_additional_samples": false
+    },
+    "comparison_requirements": [
+      "identical frozen demand traces",
+      "identical source pending-latch semantics",
+      "identical acceptance and retirement observation rules",
+      "identical reset, measurement-window, and drain policy",
+      "candidate-native RTL and actual selected link",
+      "no testbench-added FIFO, retry, arbitration, serializer, or storage"
+    ],
+    "required_provenance": [
+      "contract_digest_sha256",
+      "trace_manifest_digest_sha256",
+      "per_trace_digest_sha256",
+      "testbench_digest_sha256",
+      "interface_digest_sha256",
+      "assertion_digest_sha256",
+      "candidate_rtl_digests_sha256",
+      "integrated_top_digest_sha256",
+      "link_rtl_digests_sha256",
+      "repository_commit",
+      "tool_names_and_versions",
+      "exact_commands",
+      "run_start_and_end_utc",
+      "result_digest_sha256"
+    ],
+    "artifact_path_policy": "repository_relative_or_content_addressed_immutable_location",
+    "mutable_temporary_paths_allowed_in_contract_or_receipt": false
+  },
+  "coordinate_demo": {
+    "scope_class": "STRETCH",
+    "placement": "after_retire_external_model",
+    "input_stream": "delivered_events_only",
+    "initial_motion_parameters": "supplied_time_indexed_pose",
+    "initial_camera_model": "calibrated_pinhole_pure_rotation",
+    "unknown_motion_estimation_in_scope": false,
+    "may_change_core_rtl_or_canonical_aer_trace": false,
+    "may_block_core_aer_release": false,
+    "out_of_fov_is_transport_loss": false,
+    "separate_metrics": [
+      "geometric_reprojection_error",
+      "valid_transformed_events",
+      "out_of_fov_events",
+      "event_accumulation_sharpness"
+    ],
+    "numeric_interface_contract_required_before_rtl": true
+  },
+  "release_gates": {
+    "canonical_digital": {
+      "mandatory": true,
+      "gate_result": "HOLD",
+      "current_evidence": "HOLD_NO_SINGLE_CANONICAL_HEAD_TO_HEAD_RECEIPT",
+      "pass_requires": "All candidates pass the same canonical actual-RTL trace campaign with complete provenance and the correctness equations."
+    },
+    "interface_approval": {
+      "mandatory": true,
+      "gate_result": "HOLD_P6_USE_FALLBACK",
+      "current_evidence": "HOLD_NO_WRITTEN_P6_APPROVAL",
+      "pass_requires": "Either P6 has both recorded approvals or the maintained parallel fallback is selected and qualified."
+    },
+    "post_route": {
+      "mandatory": true,
+      "gate_result": "PASS_AT_PINNED_6P5NS_REFERENCE_BOUNDARY",
+      "qualified_operating_point_ns": 6.5,
+      "checks_required_zero_violation": [
+        "setup",
+        "hold",
+        "recovery",
+        "removal",
+        "clock_gating",
+        "pulse_width",
+        "half_cycle",
+        "DRC",
+        "antenna",
+        "regular_connectivity",
+        "power_ground_connectivity",
+        "placement"
+      ],
+      "same_boundary_same_flow_same_pvt_and_load_required": true,
+      "fresh_run_required_if_rtl_boundary_constraints_or_interface_change": true,
+      "first_fail_bracket_available": false,
+      "exact_fmax_claim_allowed": false
+    },
+    "vectorless_power": {
+      "mandatory": true,
+      "gate_result": "HOLD",
+      "required_mode": "vectorless",
+      "current_evidence": "HOLD_NO_QUALIFIED_SAME_BOUNDARY_ENDPOINT_VECTORLESS_RECEIPT",
+      "same_netlist_boundary_flow_pvt_and_load_required": true,
+      "activity_annotated_or_propagated_diagnostic_satisfies_gate": false,
+      "ranking_requires_equal_power_method": true
+    }
+  },
+  "holds": {
+    "official_dataset": {
+      "status": "HOLD",
+      "reason": "The organizer dataset, representation, scenarios, and immutable manifest are not yet available.",
+      "blocks": [
+        "official_dataset_performance_claims",
+        "final_workload_generalization"
+      ],
+      "blocks_core_aer_implementation": false,
+      "clear_requires": [
+        "dataset bytes and usage terms",
+        "official representation and scenario definitions",
+        "immutable manifest and per-file digests",
+        "documented mapping into the canonical source model"
+      ]
+    },
+    "numeric_io_rules": {
+      "status": "HOLD",
+      "reason": "Official numeric and handshake rules for coordinate input, motion parameters, and transformed output are missing.",
+      "blocks": [
+        "coordinate_transform_rtl",
+        "numeric_compliance_claims"
+      ],
+      "blocks_core_aer_implementation": false,
+      "clear_requires": [
+        "coordinate widths and signedness",
+        "fixed-point scaling",
+        "rounding and saturation rules",
+        "coordinate range and out-of-frame rule",
+        "timestamp and pose synchronization rule",
+        "ready-valid or equivalent handshake",
+        "I/O loading and timing constraints"
+      ]
+    },
+    "p6_approval": {
+      "status": "HOLD",
+      "reason": "Written organizer and educational-PDK approval for the phase-related P6 transfer is not recorded.",
+      "blocks": [
+        "p6_primary_link_release"
+      ],
+      "blocks_core_aer_implementation": false,
+      "clear_requires": [
+        "written organizer approval",
+        "confirmed implementability without unavailable vendor-specific primitives"
+      ]
+    },
+    "canonical_head_to_head": {
+      "status": "HOLD",
+      "reason": "Existing useful evidence is not one canonical complete-boundary head-to-head receipt.",
+      "blocks": [
+        "final_digital_comparison_release"
+      ],
+      "blocks_core_aer_implementation": false,
+      "clear_requires": [
+        "one candidate-neutral execution campaign",
+        "all required provenance fields",
+        "hard-correct results for every released candidate"
+      ]
+    },
+    "endpoint_vectorless_receipt": {
+      "status": "HOLD",
+      "reason": "The complete endpoint lacks a qualified same-method vectorless-power release receipt.",
+      "blocks": [
+        "final_power_release"
+      ],
+      "blocks_core_aer_implementation": false,
+      "clear_requires": [
+        "same-boundary vectorless reports",
+        "same flow, PVT, clocks, I/O loads, and power settings",
+        "raw reports, commands, tool versions, and digests"
+      ]
+    }
+  },
+  "release_decisions": {
+    "core_aer_implementation": {
+      "decision": "GO",
+      "blockers": []
+    },
+    "p6_primary_link": {
+      "decision": "HOLD",
+      "blockers": ["p6_approval"]
+    },
+    "parallel_fallback": {
+      "decision": "GO",
+      "blockers": []
+    },
+    "coordinate_scenario_model": {
+      "decision": "GO_STRETCH_ONLY",
+      "blockers": []
+    },
+    "coordinate_transform_rtl": {
+      "decision": "HOLD",
+      "blockers": ["numeric_io_rules"]
+    },
+    "final_system_release": {
+      "decision": "HOLD",
+      "blockers": [
+        "official_dataset",
+        "canonical_head_to_head",
+        "endpoint_vectorless_receipt"
+      ]
+    }
+  },
+  "security_and_portability": {
+    "passwords_allowed": false,
+    "license_payloads_allowed": false,
+    "pdk_payloads_allowed": false,
+    "mutable_tmp_paths_allowed": false,
+    "evidence_references_must_be_repository_relative_or_content_addressed": true
+  }
+}
