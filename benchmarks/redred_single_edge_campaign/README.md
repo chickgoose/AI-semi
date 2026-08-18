@@ -10,7 +10,8 @@ deliberately split:
 | canonical synthetic receipt semantics | `PASS` |
 | retained replay artifacts | `HOLD` |
 | canonical single-edge campaign | `HOLD` |
-| UZH public projected extension | `HOLD` |
+| UZH public projected producer-native extension | `PASS` (noncanonical scope) |
+| campaign-v3 public tuple binding | `HOLD_SCHEMA_INCOMPATIBLE_UNBOUND` |
 | system release | `HOLD` |
 
 The raw published result is pinned at SHA-256
@@ -31,16 +32,17 @@ does not change that provenance.
 
 The UZH Shapes projection is a separate `PUBLIC_PROJECTED_EXTENSION`. Its
 1x/64x/256x traces are timing variants of one source window containing exactly
-1,100 source occurrences; they are not three independent samples. The
-projection specification and expected trace hashes are committed, but no
-retained projection receipt or actual A2/A3 replay receipt is committed. It
-therefore remains `HOLD_PUBLIC_PROJECTED_EXTENSION_UNREPLAYED` and is never
-pooled with full50.
+1,100 source occurrences; they are not three independent samples. A reviewed
+producer-native v2 result, reproduction, closed export, and publication are
+committed under `tests/a23_public_projected_v2`. That package passes only its
+noncanonical, nonofficial scope and is never pooled with full50.
 
-The public dependency is a retained projection package followed by actual A2
-and A3 replay on each identical projected trace, with the same fixed window,
-prepared input, tool, and replay boundary for both candidates. This wrapper
-does not depend on uncommitted public replay work.
+The public dependency is no longer missing execution evidence. It remains
+unbound here because the producer-native publication, manifest, result, member
+paths, and CSV schemas are not the campaign-v3 generic sealed-tuple schemas.
+Relabeling or lossy repacking is forbidden; a reviewed native-schema adapter or
+slot-specific consumer is required before `public_v2.state` can become
+`BOUND`.
 
 ## What the committed receipt establishes
 
