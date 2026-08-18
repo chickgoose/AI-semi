@@ -1,9 +1,9 @@
 # REDRED A2/A3 single-edge endpoint architecture contract
 
 Date: 2026-08-19
-Normative RTL: commit `7286913f9f1dc771bde13fa51124b0d31aedd068`
+Normative RTL: commit `6fc5e167918fa4c54786c9a3abb5f60ecd8b991b`
 
-This document describes the RTL bytes in commit `7286913` only. The two
+This document describes the hardened RTL bytes in commit `6fc5e16` only. The two
 complete tops are:
 
 - `a2_batched_iwrr_single_edge_top`
@@ -12,8 +12,10 @@ complete tops are:
 Both begin at the synchronous 16-source pending/accept boundary and end at an
 always-ready synchronous two-lane retirement boundary. Both instantiate the
 same `w2_single_edge_exact_pair_endpoint`, comprising a registered TX and a
-registered RX clocked only by rising edges of the same `clk_i`. There is no
-DDR behavior, falling-edge state, forwarded or generated clock, clock gate,
+registered RX clocked only by rising edges of the same `clk_i`. Each top also
+instantiates `w2_single_edge_error_latch` so owner-shape, policy-microstep, and
+transport errors have one top-level immediate-and-sticky indication. There is
+no DDR behavior, falling-edge state, forwarded or generated clock, clock gate,
 or vendor primitive in the new transport RTL.
 
 ## Atomic record and 9-wire encoding
@@ -50,8 +52,10 @@ Therefore the table is a bijection between the 257 semantic records and the
 `link_valid=0` with nonzero address payload and are illegal. Nine is the
 information-theoretic minimum width because `ceil(log2(257)) = 9`.
 
-On a singleton, the TX ignores `input_addr1_i` and emits a second copy of
-`input_addr0_i`. The RX converts that equality code back to
+The canonical scheduler-side singleton input is count one, address 0 equal to
+the singleton identity, and address 1 equal to zero. A nonzero unused address 1
+is a protocol error and cannot commit. For a canonical singleton, the TX emits
+a second copy of `input_addr0_i`. The RX converts that equality code back to
 `retire_valid_o=2'b01`, `retire_addr0_o=a`, and a zeroed
 `retire_addr1_o`. A distinct pair converts to `retire_valid_o=2'b11` with
 both addresses in their original order.
@@ -143,9 +147,29 @@ Consequently, lowering `link_enable_i` does not by itself guarantee complete
 top-level drain. To quiesce losslessly, keep the link enabled until the
 complete top asserts `drain_idle_o`, then disable it.
 
+## Normative RTL and filelists
+
+The hardened technology filelist
+`rtl/technology/single_edge/filelists/generic.f` contains, in order:
+
+```text
+rtl/technology/single_edge/w2_single_edge_error_latch.sv
+rtl/technology/single_edge/w2_single_edge_pair_tx.sv
+rtl/technology/single_edge/w2_single_edge_pair_rx.sv
+rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv
+```
+
+The A2 candidate filelist adds the committed A2 owner before that technology
+filelist and `a2_batched_iwrr_single_edge_top.sv` after it. The A3 candidate
+filelist does the same with the committed A3 owner and
+`a3_exact_scalar_prefix_k2_single_edge_top.sv`. The focused smoke filelist is
+explicit: both owners, all four technology modules, both complete tops, and
+`redred_single_edge_smoke_tb.sv`. No P6, DDR, technology-library model, or
+full50 replay source is present in these single-edge filelists.
+
 ## Exact RTL state-bit inventory
 
-These counts are source-level sequential bits in commit `7286913`, before any
+These counts are source-level sequential bits in commit `6fc5e16`, before any
 synthesis optimization. Combinational wires and the externally owned
 `source_pending_i` storage are not counted.
 
@@ -161,7 +185,11 @@ synthesis optimization. Combinational wires and the externally owned
 | RX sticky protocol error | 1 |
 | **Total** | **21** |
 
-### A2 complete top: 54 bits
+The separately listed `w2_single_edge_error_latch` is instantiated by each
+complete wrapper, not by `w2_single_edge_exact_pair_endpoint`, so its one bit
+is accounted below rather than in this 21-bit subtotal.
+
+### A2 complete top: 55 bits
 
 | State | Bits |
 |---|---:|
@@ -171,12 +199,13 @@ synthesis optimization. Combinational wires and the externally owned
 | A2 held ordered addresses | 8 |
 | A2 charged buffer valid/count/addresses | 11 |
 | Common single-edge transport | 21 |
-| **Total** | **54** |
+| Top-level sticky error latch | 1 |
+| **Total** | **55** |
 
 The A2 owner subtotal is 22 bits and the wrapper-owned charged buffer is
 `1 + 2 + 4 + 4 = 11` bits.
 
-### A3 complete top: 55 bits
+### A3 complete top: 56 bits
 
 | State | Bits |
 |---|---:|
@@ -184,7 +213,8 @@ The A2 owner subtotal is 22 bits and the wrapper-owned charged buffer is
 | A3 held bundle post-center/post-peripheral/post-column/post-round states | 12 |
 | A3 registered grant count and two ordered addresses | 10 |
 | Common single-edge transport | 21 |
-| **Total** | **55** |
+| Top-level sticky error latch | 1 |
+| **Total** | **56** |
 
 The A3 owner subtotal is 34 bits. Its registered owner offer is already
 charged owner state, so the A3 wrapper adds no extra pre-TX buffer.
@@ -197,9 +227,9 @@ transport. State changes only when reset is sampled at a rising edge.
 On a sampled reset edge:
 
 - A2 resets its policy/hold state, clears its 11-bit bundle buffer, and clears
-  TX, RX, retire, and sticky transport errors.
+  TX, RX, retire, sticky transport errors, and its top-level sticky error.
 - A3 resets its canonical policy and registered offer state and clears TX, RX,
-  retire, and sticky transport errors.
+  retire, sticky transport errors, and its top-level sticky error.
 - no new source or endpoint commit occurs because ready is suppressed while
   `rst_i=1`.
 
@@ -207,35 +237,38 @@ Reset is an abort, not a drain. Any event already accepted into the A2 buffer,
 TX stage, or RX/retire stage is discarded. A3 has no accepted pre-TX buffer,
 but accepted TX/RX work is likewise discarded. Therefore
 `accepted == retired` is guaranteed across reset only when the environment
-waits for complete-top `drain_idle_o=1` before asserting reset. The environment
-must also clear or reset its external pending latches; this RTL does not own
-them.
+waits for clean complete-top `drain_idle_o=1` before asserting reset. The
+environment must also clear or reset its external pending latches; this RTL
+does not own them. Reset clears sticky history, so the RTL intentionally has no
+post-reset bit that remembers an early reset. Qualification, not hidden RTL
+state, must reject any reset sampled before clean drain.
 
-The reusable endpoint declares drain solely when TX link valid is zero and RX
-retire valid is zero. The complete tops strengthen that condition:
+The reusable endpoint declares clean drain exactly when its aggregate
+`protocol_error_o` is zero, TX link valid is zero, and RX retire valid is zero.
+The complete tops strengthen that condition:
 
 - A2 additionally requires owner `scheduler_idle`, no buffered record, and
   zero current scheduler count. A2 `scheduler_idle` includes zero external
-  pending bits and no held offer.
+  pending bits and no held offer, and the top-level protocol error must be zero.
 - A3 additionally requires zero external pending bits and zero registered
-  owner grant count.
+  owner grant count, and the top-level protocol error must be zero.
 
-Sticky `protocol_error_o` is not part of either drain equation, so a drained
-endpoint may still report an earlier error. After a sampled reset edge, drain
-is true only if the external `source_pending_i` bitmap is also zero.
+A sticky error therefore prevents `drain_idle_o` from asserting until a
+sampled reset clears the error. After that reset edge, drain is true only if
+the external `source_pending_i` bitmap is also zero.
 
 ## Protocol errors
 
 The common TX recognizes these scheduler-side shape errors:
 
 - count zero with either input address nonzero;
+- count one with nonzero unused input address 1;
 - count two with equal addresses;
 - count three.
 
-Such an input receives no endpoint-ready/commit. Count one is legal for every
-`input_addr0_i`; its unused `input_addr1_i` is deliberately ignored. TX error
-is visible immediately from the combinational shape check and becomes sticky
-after a non-reset sampling edge.
+Such an input receives no endpoint-ready/commit. A count-one input is legal
+only with `input_addr1_i=0`. TX error is visible immediately from the
+combinational shape check and becomes sticky after a non-reset sampling edge.
 
 The RX recognizes exactly one wire-side malformed class: link valid zero with
 either address nonzero. It emits no retirement for that cell and sets a sticky
@@ -250,13 +283,17 @@ The complete tops OR transport errors with owner-boundary checks:
 - A3 checks count three, an equal-address count-two offer, and committed policy
   microstep disagreement.
 
-Transport TX/RX errors are sticky until reset. The wrapper-only owner checks
-and microstep comparison are combinational indications. In particular, A2's
-scheduler-shape indication is diagnostic and is not in its scheduler-ready
-equation; the implementation assumes the committed A2 owner is legal. A
-bitmap-only A2 owner fault is not repaired by the transport. Thus
-`protocol_error_o` is neither a CRC nor a universal recovery/fail-closed
-guarantee.
+Transport TX/RX errors are sticky until reset. Every complete-top error source
+is ORed into `protocol_error_event`, which drives
+`w2_single_edge_error_latch`; the top output is immediate in the detection
+cycle and remains asserted until reset. This includes scheduler-shape and
+committed policy-microstep disagreement as well as endpoint errors.
+
+A2's scheduler-shape indication remains diagnostic and is not in its
+scheduler-ready equation; the implementation assumes the committed A2 owner
+is legal. A bitmap-only A2 owner fault is reported and remembered but is not
+repaired by the transport. Thus `protocol_error_o` is neither a CRC nor a
+universal recovery/fail-closed guarantee.
 
 ## Endpoint PPA boundary and pins
 
@@ -266,7 +303,8 @@ The charged complete-endpoint PPA boundary includes:
 - A2's 11-bit charged bundle buffer when A2 is measured;
 - single-edge TX encode/register/error logic;
 - single-edge RX register/decode/error logic;
-- accept, retire, protocol-error, and drain control logic.
+- the wrapper's one-bit sticky error latch;
+- accept, retire, protocol-error, and clean-drain control logic.
 
 The external event generator, external per-source pending latches, retire
 consumer, testbench/scoreboard, coordinate processing, pads, package, channel,
@@ -309,9 +347,43 @@ unaccepted owner offer, and (4) disable after TX launch. It must verify that
 case 2 waits for re-enable, case 3 does not count as accepted, and case 4 still
 retires.
 
+## Focused RTL smoke evidence
+
+The colocated `redred_single_edge_smoke_tb` in commit `6fc5e16` is deliberately
+focused and does not duplicate the canonical full50 replay suite. It covers:
+
+- all 257 legal wire states: the single legal idle state and all 256
+  valid-address combinations, checking equality-to-singleton and
+  inequality-to-ordered-pair decoding;
+- malformed count three, malformed count-zero/nonzero-address idle, an
+  equal-address count-two input, and a count-one input with nonzero unused
+  address 1;
+- immediate error visibility, sticky error retention, suppression of clean
+  drain while errored, and synchronous reset clearing;
+- 64 uninterrupted alternating singleton/pair records, representing 96
+  accepted and retired events checked in exact queue order;
+- all 16 A2 source identities through initial disable, an occupied charged
+  buffer, re-enable, repeated `link_enable_i` toggle patterns, simultaneous
+  consume/refill, eventual clean drain, and exact conservation;
+- seven directed A3 identities, including a stable registered owner offer and
+  zero acceptance while disabled, followed by ordered retirement and clean
+  drain;
+- the same `w2_single_edge_error_latch` instantiated by both wrappers,
+  including immediate assertion, sticky retention, and reset clearing.
+
+On the verified Verilator run, the bench terminated with:
+
+```text
+REDRED_SINGLE_EDGE_SMOKE_PASS legal_wire=257 raw_records=64 raw_events=96 A2=16 A3=7
+```
+
+This is directed smoke evidence, not an exhaustive mutation result or a
+canonical traffic receipt. The mutation checklist above and full50 qualification
+remain separate gates.
+
 ## Explicit nonclaims and remaining HOLDs
 
-Commit `7286913` and its focused smoke test establish a synthesizable
+Commit `6fc5e16` and its focused smoke test establish a hardened synthesizable
 single-edge RTL implementation and directed functional evidence only. They do
 not establish:
 
@@ -335,5 +407,5 @@ not establish:
 
 The 9-wire cardinality result is a functional coding-width fact. It is not a
 minimum-area, minimum-power, minimum-pad, or physically qualified interface
-claim. The 54/55 state-bit inventories are RTL accounting facts, not mapped
+claim. The 55/56 state-bit inventories are RTL accounting facts, not mapped
 flop, gate-equivalent, or post-route area results.
