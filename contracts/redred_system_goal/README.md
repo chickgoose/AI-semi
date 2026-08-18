@@ -98,8 +98,8 @@ The source-structure PDK matrix is pinned at
 Those PASS rows do not promote mapped or organizer legality.
 
 The physical HOLD contract is pinned at
-`e933a89181ec1e279ff0d1d1f24a562e6bf49da7`, SHA-256
-`db2918c2707bca06ecce050e2ca67bd9934b3d6c5476efac41251bfa1b618c0a`.
+`597fdf68cd5b0ff9b08c3d5304c2a1b63cb8e46a`, SHA-256
+`c6a955e1da7effffead63212e65285e3510fe26c5fbe2b6fe7bfca48f432fc81`.
 The vectorless HOLD contract and source manifest are pinned at
 `c68af0e73bb06bb99eb838c684dbffb2a8dd4995`, with SHA-256 values
 `b6aed31406fc8dee4566e1905313aced6998cf0be621817101f694221ef2e328`

@@ -346,9 +346,9 @@
       "post_route_timing_status": "HOLD",
       "constraint_authority_status": "HOLD_UNCONFIRMED_TEAM_PLACEHOLDER",
       "contract": {
-        "commit": "e933a89181ec1e279ff0d1d1f24a562e6bf49da7",
+        "commit": "597fdf68cd5b0ff9b08c3d5304c2a1b63cb8e46a",
         "path": "physical/k2_single_edge_endpoint/contract.json",
-        "sha256": "db2918c2707bca06ecce050e2ca67bd9934b3d6c5476efac41251bfa1b618c0a"
+        "sha256": "c6a955e1da7effffead63212e65285e3510fe26c5fbe2b6fe7bfca48f432fc81"
       }
     },
     "single_edge_vectorless": {
