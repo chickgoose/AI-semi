@@ -1,0 +1,15 @@
+{
+  "canonical_redred_traffic": false,
+  "export_bundle_sha256": "7eb025d9ba6de3dcd538311e75b11b55c51439ba9fc8fbf747213af1577053e0",
+  "export_entry_count": 73,
+  "export_manifest_sha256": "a7092f0f7c45f7bff895d55d2ec0c58b67f1f9d44d21efb029e3b85a5b23c987",
+  "official_redred_traffic": false,
+  "p6_evidence_used": false,
+  "package_commit": "4202f146cd4f47870f4aa817c4a7b74c4090e896",
+  "pooled_3300_unique_events": false,
+  "release_status": "HOLD",
+  "result_sha256": "c6172d39d476c1db0733b1952613e9f17d2b0849e8b398b33ee66bb6e24d30da",
+  "schema": "a23_public_projected_extension_publication_v1",
+  "selection_status": "HOLD",
+  "status": "PUBLIC_PROJECTED_EXTENSION"
+}
