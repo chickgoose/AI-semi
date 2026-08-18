@@ -81,7 +81,7 @@ EXPECTED_REPOSITORY_EVIDENCE = {
         "INHERITED_P6_R1_STANDARD_CELL_RESULT_NOT_FALLBACK_EVIDENCE",
     ),
     "contracts/redred_system_goal/active_goal.json": (
-        "275abf421177fbdb8d067e7fd660f4d94e99fc5f5b3801db50bd1a8b23cdad94",
+        "b67307b8f7dd8c643a580ac13f99623188fd9852f4c1d763cd648004a0eef8ff",
         "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
     ),
 }

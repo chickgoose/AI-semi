@@ -16,7 +16,7 @@
   },
   "policy_binding": {
     "path": "contracts/redred_system_goal/active_goal.json",
-    "sha256": "275abf421177fbdb8d067e7fd660f4d94e99fc5f5b3801db50bd1a8b23cdad94",
+    "sha256": "b67307b8f7dd8c643a580ac13f99623188fd9852f4c1d763cd648004a0eef8ff",
     "required_disallowed_dependencies": [
       "INHERITED_6P5_STANDARD_CELL_REFERENCE",
       "P6_VECTORLESS_POWER",

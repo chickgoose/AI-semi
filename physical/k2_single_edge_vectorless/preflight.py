@@ -292,7 +292,7 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
     if (policy_doc.get("goal_policy", {}).get("selected_release_interface") is not None or
             policy_doc.get("goal_policy", {}).get("selected_release_interface_status") != "HOLD" or
             fallback.get("competition_release_status") !=
-            "HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER" or
+            "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION" or
             fallback.get("transfer_mode") != "SINGLE_EDGE_PARALLEL" or
             fallback.get("may_borrow_p6_physical_evidence") is not False or
             fallback.get("disallowed_borrowed_dependencies") != required_disallowed or
