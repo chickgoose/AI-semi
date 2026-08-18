@@ -79,13 +79,26 @@ and hold Liberty, mapped netlist/SDF, log, reports, command receipt, and
 environment receipt. Bytes, sizes, unique contained paths, regular-file type,
 and single-link state are rechecked.
 
+The receipt template has that exact accepted nested schema, but its producer
+fields are null and its status is `HOLD_TEMPLATE_NOT_DIAGNOSTIC_ARTIFACTS`;
+template bytes can never qualify as a completed attempt. Paths used by the
+Genus argv/Tcl source list are restricted to whitespace-free Tcl-list-safe
+absolute paths. Command-produced report, netlist, mapped-SDC, and SDF roles
+must use the exact `work/<top>...` paths emitted by the pinned driver.
+
 Structural validation requires the exact complete top port set, at least one
 cell instance, no behavioral process, and an observable continuous or
 conventional standard-cell output driver for every top output. Exact duplicate
 signal drivers fail. The mapped SDF must be one balanced Genus DELAYFILE with
 the exact top, a timescale, and populated CELL/CELLTYPE/INSTANCE/DELAY
 structure. Check-design must contain one native `-all` summary with zero
-unresolved references, black boxes, and errors. These remain bounded structural
+unresolved references, black boxes, and errors. Netlist instance, SDF cell, and
+area-report cell counts must agree.
+Contradictory nonzero Cadence error/fatal counts or textual diagnostics fail
+even when a zero summary and normal-exit marker are also present. Forbidden
+activity directives fail in mapped-SDC comments as well as active commands.
+The attempt-root directory identity is checked throughout artifact validation
+to reject concurrent root replacement. These remain bounded structural
 consistency diagnostics, not formal equivalence, complete bit-level logical or
 physical connectivity proof, DRC, antenna, placement, routing, extraction, or
 signoff.

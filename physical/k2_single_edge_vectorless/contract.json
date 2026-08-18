@@ -225,7 +225,7 @@
     },
     "diagnostic_receipt": {
       "path": "physical/k2_single_edge_vectorless/diagnostic-receipt.template.json",
-      "sha256": "58952d4cd31c9332f725211d508722ece5b1f6befb9245367b0d6080241a563f"
+      "sha256": "d896e3deaf0a33a4ae128f78f6fcf0597a03812432eac40df9d43e781388ca13"
     }
   }
 }

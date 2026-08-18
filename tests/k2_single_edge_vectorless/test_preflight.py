@@ -278,13 +278,20 @@ class ContractTest(unittest.TestCase):
         self.assertNotIn("create_generated_clock", sdc)
 
     def test_template_is_explicit_diagnostic_hold(self) -> None:
+        contract, _ = contract_and_sources()
         template = json.loads((ROOT /
             "physical/k2_single_edge_vectorless/diagnostic-receipt.template.json").read_text())
-        self.assertEqual(template["maximum_status"], flow.HOLD_STATUS)
-        self.assertFalse(template["candidate_go"])
-        self.assertFalse(template["comparison_ready"])
+        self.assertEqual(set(template), flow.DIAGNOSTIC_RECEIPT_KEYS)
+        self.assertEqual(template["schema"],
+                         contract["diagnostic_provenance"]["accepted_receipt_schema"])
+        self.assertEqual(template["status"], "HOLD_TEMPLATE_NOT_DIAGNOSTIC_ARTIFACTS")
+        self.assertEqual(set(template["execution"]), flow.EXECUTION_KEYS)
+        self.assertTrue(all(value is None for value in template["execution"].values()))
+        self.assertIsNone(template["artifacts"])
+        self.assertIsNone(template["complete_artifact_ledger_sha256"])
+        self.assertNotIn("candidate_go", template)
+        self.assertNotIn("comparison_ready", template)
         self.assertNotIn("producer_attestation", template)
-        self.assertIn("NO_FRESHNESS_OR_REPLAY_PROTECTION", template["limitations"])
 
 
 class HoldConstructionTest(unittest.TestCase):
@@ -410,6 +417,9 @@ class PowerParserTest(unittest.TestCase):
             valid.replace(b"Sequential Element Activity: 0.200000",
                           b"Sequential Element Activity: 0.100000"),
             valid + b"SET_SWITCHING_ACTIVITY x\n",
+            valid + b"Info=1, Warn=0, Error=10, Fatal=0\n",
+            valid + b"10 error(s)\n",
+            valid + b"**ERROR (PWR-1): contradictory report\n",
         )
         for mutation in mutations:
             with self.assertRaises(flow.EvidenceError):
@@ -460,6 +470,8 @@ class StructuralDiagnosticTest(unittest.TestCase):
                 b"set_load 0.010 [all_outputs]\nset_load 0.010 [all_outputs]\n",
             ),
             b"\n".join(reversed(mapped_sdc().splitlines())) + b"\n",
+            mapped_sdc() + b"# read_saif run.saif\n",
+            mapped_sdc() + b"# set_switching_activity [get_cells *]\n",
         )
         for mutation in mutations:
             with self.assertRaises(flow.EvidenceError):
@@ -483,6 +495,9 @@ class StructuralDiagnosticTest(unittest.TestCase):
                     payload.replace(self.TOP.encode(), b"wrong_top"),
                     payload + native_header(self.TOP).encode(),
                     payload + b"Error: caller supplied failure\n",
+                    payload + b"10 error(s)\n",
+                    payload + b"Info=2, Warn=0, Error=1, Fatal=0\n",
+                    payload + b"**FATAL (TST-1): caller supplied failure\n",
                 ):
                     with self.assertRaises(flow.EvidenceError):
                         validator(mutation, self.TOP)
@@ -579,9 +594,25 @@ class StructuralDiagnosticTest(unittest.TestCase):
                 good.replace(b"DIAGNOSTIC_COMPLETE", b"PRODUCER_PASS"),
                 good.replace(b"Normal exit.\n", b""),
                 good.replace(b"Error=0", b"Error=1"),
-                good + b"read_saif run.saif\n"):
+                good + b"read_saif run.saif\n",
+                good + b"Info=1, Warn=0, Error=10, Fatal=0\n",
+                good + b"10 error(s)\n",
+                good + b"**ERROR (ABC-1): failure\n",
+                good + b"fatal failure\n",
+                good + b"Normal exit.\n"):
             with self.assertRaises(flow.EvidenceError):
                 flow.validate_genus_diagnostic_log(mutation, self.TOP, contract)
+
+    def test_netlist_sdf_and_area_inventory_counts_must_agree(self) -> None:
+        self.assertEqual(flow.validate_inventory_consistency(
+            {"structural_instance_count": 42}, {"cell_count": 42},
+            {"cell_count": 42}), 42)
+        for netlist, sdf, area in ((41, 42, 42), (42, 41, 42), (42, 42, 41)):
+            with self.subTest(netlist=netlist, sdf=sdf, area=area), \
+                    self.assertRaisesRegex(flow.EvidenceError, "inventory counts disagree"):
+                flow.validate_inventory_consistency(
+                    {"structural_instance_count": netlist}, {"cell_count": sdf},
+                    {"cell_count": area})
 
 
 class FilesystemAndSchemaTest(unittest.TestCase):
@@ -637,6 +668,101 @@ class FilesystemAndSchemaTest(unittest.TestCase):
             with self.assertRaises(flow.EvidenceError):
                 flow._artifact_rows(attempt, receipt, "a2_single_edge", mini_sources,
                                     mini_contract)
+
+    def test_exact_genus_output_paths_are_role_bound(self) -> None:
+        top = "a2_batched_iwrr_single_edge_top"
+        expected = flow._expected_genus_output_paths(top)
+        self.assertEqual(expected["report_power"], f"work/{top}_gpower.rpt")
+        self.assertEqual(expected["mapped_netlist"], f"work/{top}_netlist.v")
+        mini_contract = {
+            "artifact_policy": {"fixed_roles": ["mapped_sdc"]},
+            "candidates": {"a2_single_edge": {"top": top}},
+        }
+        mini_sources = {"candidates": {"a2_single_edge": {
+            "sources": [], "filelists": []}}}
+        with tempfile.TemporaryDirectory() as temporary:
+            attempt = Path(temporary)
+            wrong = attempt / "caller-selected.sdc"
+            wrong.write_bytes(mapped_sdc())
+            artifacts = {"mapped_sdc": {
+                "path": wrong.name, "sha256": flow.sha256(wrong.read_bytes()),
+                "size_bytes": wrong.stat().st_size,
+            }}
+            receipt = {"artifacts": artifacts,
+                       "complete_artifact_ledger_sha256":
+                           flow.sha256(flow.canonical(artifacts))}
+            with self.assertRaisesRegex(flow.EvidenceError,
+                                        "exact Genus output path"):
+                flow._artifact_rows(attempt, receipt, "a2_single_edge",
+                                    mini_sources, mini_contract)
+
+    def test_tcl_source_paths_reject_whitespace_and_metacharacters(self) -> None:
+        self.assertEqual(flow._tcl_safe_absolute_path(
+            Path("/tmp/safe-path/source_00.sv"), "safe"),
+            "/tmp/safe-path/source_00.sv")
+        for unsafe in ("/tmp/space path/source.sv", "/tmp/a;exec/source.sv",
+                       "/tmp/a{brace}/source.sv", "/tmp/a$env/source.sv",
+                       "/tmp/a/../source.sv"):
+            with self.subTest(path=unsafe), self.assertRaises(flow.EvidenceError):
+                flow._tcl_safe_absolute_path(Path(unsafe), "unsafe")
+
+    def test_stable_read_rejects_preopen_file_replacement(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "target.bin"
+            backup = root / "original.bin"
+            target.write_bytes(b"same bytes\n")
+            real_open = os.open
+            swapped = False
+
+            def racing_open(path, flags, *args, **kwargs):
+                nonlocal swapped
+                if Path(path) == target and not swapped:
+                    swapped = True
+                    target.rename(backup)
+                    target.write_bytes(b"same bytes\n")
+                return real_open(path, flags, *args, **kwargs)
+
+            with mock.patch.object(flow.os, "open", side_effect=racing_open), \
+                    self.assertRaisesRegex(flow.EvidenceError, "changed while being read"):
+                flow.stable_read(target, "raced file")
+
+    def test_artifact_reader_rejects_attempt_root_replacement(self) -> None:
+        mini_contract = {"artifact_policy": {"fixed_roles": ["a", "b"]}}
+        mini_sources = {"candidates": {"a2_single_edge": {
+            "sources": [], "filelists": []}}}
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            attempt = parent / "attempt"
+            attempt.mkdir()
+            for name in ("a", "b"):
+                (attempt / name).write_bytes(name.encode())
+            artifacts = {name: {
+                "path": name, "sha256": flow.sha256(name.encode()),
+                "size_bytes": 1,
+            } for name in ("a", "b")}
+            receipt = {"artifacts": artifacts,
+                       "complete_artifact_ledger_sha256":
+                           flow.sha256(flow.canonical(artifacts))}
+            original_read = flow.read_beneath
+            swapped = False
+
+            def swap_after_first(root, relative, label):
+                nonlocal swapped
+                payload = original_read(root, relative, label)
+                if not swapped:
+                    swapped = True
+                    root.rename(parent / "old-attempt")
+                    root.mkdir()
+                    for name in ("a", "b"):
+                        (root / name).write_bytes(name.encode())
+                return payload
+
+            with mock.patch.object(flow, "read_beneath", side_effect=swap_after_first), \
+                    self.assertRaisesRegex(flow.EvidenceError,
+                                            "attempt root changed during validation"):
+                flow._artifact_rows(attempt, receipt, "a2_single_edge",
+                                    mini_sources, mini_contract)
 
     def test_duplicate_json_nonfinite_and_caller_go_fail(self) -> None:
         with self.assertRaises(flow.EvidenceError):

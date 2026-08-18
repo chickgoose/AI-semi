@@ -28,6 +28,7 @@ CONTRACT_PATH = HERE / "contract.json"
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:+-]{0,127}")
 UTC_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z")
+TCL_SAFE_PATH_RE = re.compile(r"/[A-Za-z0-9_./:+-]+")
 HOLD_STATUS = "HOLD_PLACEHOLDER_IO_AND_NO_CONTROLLED_PRODUCER"
 EXPECTED_INPUTS = ["clk_i", "rst_i", "link_enable_i", "source_pending_i[15:0]"]
 EXPECTED_OUTPUTS = [
@@ -36,6 +37,23 @@ EXPECTED_OUTPUTS = [
     "link_addr1_o[3:0]", "retire_valid_o[1:0]", "retire_addr0_o[3:0]",
     "retire_addr1_o[3:0]", "protocol_error_o", "drain_idle_o",
 ]
+FORBIDDEN_ACTIVITY_TOKENS = {
+    "read_vcd", "read_saif", "read_tcf", "read_activity",
+    "read_activity_file", "set_switching_activity",
+    "set_default_switching_activity", "set_power_activity", "set_activity",
+    "lp_toggle_rate", "lp_static_probability", "toggle_rate",
+    "static_probability", ".vcd", ".saif", ".tcf",
+}
+DIAGNOSTIC_RECEIPT_KEYS = {
+    "schema", "status", "evidence_class", "candidate", "architecture",
+    "interface", "boundary", "lineage", "top", "capture", "operating_point",
+    "activity_policy", "tool", "execution", "artifacts",
+    "complete_artifact_ledger_sha256",
+}
+EXECUTION_KEYS = {
+    "argv", "cwd", "exit_code", "semantic_environment",
+    "semantic_environment_sha256",
+}
 
 
 class EvidenceError(ValueError):
@@ -86,6 +104,31 @@ def stable_read(path: Path, label: str, *, single_link: bool = True) -> bytes:
             _identity(after_read) == _identity(after)):
         raise EvidenceError(f"{label} changed while being read")
     return b"".join(chunks)
+
+
+def _directory_identity(path: Path, label: str) -> tuple[int, ...]:
+    try:
+        row = path.lstat()
+    except OSError as error:
+        raise EvidenceError(f"cannot inspect {label}: {path}: {error}") from error
+    if stat.S_ISLNK(row.st_mode) or not stat.S_ISDIR(row.st_mode):
+        raise EvidenceError(f"{label} is not a non-symlink directory")
+    return _identity(row)
+
+
+def _require_directory_identity(path: Path, expected: tuple[int, ...],
+                                label: str) -> None:
+    if _directory_identity(path, label) != expected:
+        raise EvidenceError(f"{label} changed during validation")
+
+
+def _tcl_safe_absolute_path(path: Path, label: str) -> str:
+    text = str(path)
+    if (not path.is_absolute() or Path(os.path.normpath(text)) != path or
+            TCL_SAFE_PATH_RE.fullmatch(text) is None):
+        raise EvidenceError(
+            f"{label} must be an absolute Tcl-list-safe path without whitespace or metacharacters")
+    return text
 
 
 def parse_json(payload: bytes, label: str) -> dict[str, Any]:
@@ -231,6 +274,40 @@ def reject_activity(payload: bytes, label: str,
     for token in forbidden_tokens:
         if token.lower() in lowered:
             raise EvidenceError(f"{label} contains forbidden activity token {token}")
+
+
+def reject_cadence_diagnostics(text: str, label: str, *,
+                               require_terminal_summary: bool = False) -> None:
+    """Reject contradictory Cadence error/fatal diagnostics.
+
+    Cadence outputs use several forms (``Error=3``, ``3 error(s)``, and
+    ``**ERROR (CODE):``).  A zero summary must never mask another nonzero or
+    textual error/fatal diagnostic elsewhere in the same artifact.
+    """
+    summaries = re.findall(
+        r"(?i)\bInfo=(\d+),\s*Warn=(\d+),\s*Error=(\d+),\s*Fatal=(\d+)\b",
+        text)
+    if require_terminal_summary:
+        if len(summaries) != 1 or summaries[0][2:] != ("0", "0"):
+            raise EvidenceError(
+                f"{label} requires exactly one zero-error/zero-fatal summary")
+    elif any(int(error_count) or int(fatal_count)
+             for _, _, error_count, fatal_count in summaries):
+        raise EvidenceError(f"{label} contains a nonzero Cadence summary")
+
+    count_patterns = (
+        r"(?i)\b(?:errors?|fatals?)(?:\(s\))?\s*[:=]\s*(\d+)\b",
+        r"(?i)\b(\d+)\s+(?:errors?|fatals?)(?:\(s\))?\b",
+    )
+    for pattern in count_patterns:
+        if any(int(value) != 0 for value in re.findall(pattern, text)):
+            raise EvidenceError(f"{label} contains a nonzero error/fatal count")
+
+    for line in text.splitlines():
+        if re.match(r"(?i)^\s*(?:\*\*\s*)?(?:errors?|fatals?)\b", line):
+            if re.fullmatch(
+                    r"(?i)\s*(?:errors?|fatals?)\s*[:=]\s*0\s*", line) is None:
+                raise EvidenceError(f"{label} contains an error/fatal diagnostic")
 
 
 def load_contract(root: Path = ROOT) -> tuple[dict[str, Any], bytes]:
@@ -447,15 +524,7 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
             activity["waveform_formats_allowed"] != [] or
             activity["per_object_activity_allowed"] is not False):
         raise EvidenceError("default-vectorless activity policy changed")
-    required_forbidden = {
-        "read_vcd", "read_saif", "read_tcf", "read_activity",
-        "read_activity_file",
-        "set_switching_activity", "set_default_switching_activity",
-        "set_power_activity", "set_activity", "lp_toggle_rate",
-        "lp_static_probability", "toggle_rate", "static_probability",
-        ".vcd", ".saif", ".tcf",
-    }
-    if set(activity["forbidden_tokens"]) != required_forbidden:
+    if set(activity["forbidden_tokens"]) != FORBIDDEN_ACTIVITY_TOKENS:
         raise EvidenceError("forbidden activity token policy changed")
 
     tool = exact_keys(contract["tool"], {
@@ -551,17 +620,36 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
             re.search(r"(?i)\b(?:create_generated_clock|false_path|multicycle|p6|negedge|falling)\b",
                       sdc_text)):
         raise EvidenceError("single-edge SDC contains borrowed/multi-edge exception")
-    template_doc = parse_json(payloads["diagnostic_receipt"], "receipt template")
-    if (template_doc.get("schema") !=
-            "k2_single_edge_vectorless_diagnostic_receipt_template_v2" or
-            template_doc.get("status") != "HOLD_TEMPLATE_NOT_DIAGNOSTIC_ARTIFACTS" or
-            template_doc.get("candidate_go") is not False or
-            template_doc.get("comparison_ready") is not False or
-            template_doc.get("maximum_status") != HOLD_STATUS or
-            any(template_doc.get(field) is not None for field in (
-                "mapped_netlist_sha256", "materialized_sdc_sha256",
-                "genus_log_sha256", "exact_executed_argv", "genus_exit_code",
-                "complete_artifact_ledger_sha256"))):
+    template_doc = exact_keys(
+        parse_json(payloads["diagnostic_receipt"], "receipt template"),
+        DIAGNOSTIC_RECEIPT_KEYS, "receipt template")
+    template_execution = exact_keys(
+        template_doc["execution"], EXECUTION_KEYS, "receipt template execution")
+    exact_keys(template_doc["lineage"],
+               {"synthetic", "inherited", "p6", "borrowed_dependency_ids"},
+               "receipt template lineage")
+    exact_keys(template_doc["capture"], {
+        "origin", "capture_id", "claimed_host_fingerprint_sha256",
+        "started_utc", "finished_utc",
+    }, "receipt template capture")
+    if (template_doc["schema"] != provenance["accepted_receipt_schema"] or
+            template_doc["status"] != "HOLD_TEMPLATE_NOT_DIAGNOSTIC_ARTIFACTS" or
+            template_doc["evidence_class"] != contract["evidence_class"] or
+            template_doc["interface"] != "SINGLE_EDGE_PARALLEL" or
+            template_doc["lineage"] != {
+                "synthetic": False, "inherited": False, "p6": False,
+                "borrowed_dependency_ids": [],
+            } or
+            template_doc["capture"] != {
+                "origin": provenance["accepted_origin"], "capture_id": None,
+                "claimed_host_fingerprint_sha256": None,
+                "started_utc": None, "finished_utc": None,
+            } or
+            any(template_doc[field] is not None for field in (
+                "candidate", "architecture", "boundary", "top", "operating_point",
+                "activity_policy", "tool", "artifacts",
+                "complete_artifact_ledger_sha256")) or
+            any(value is not None for value in template_execution.values())):
         raise EvidenceError("receipt template must remain diagnostic-only HOLD")
     return source_doc
 
@@ -663,6 +751,7 @@ def parse_power_report(payload: bytes, top: str,
                        activity: dict[str, Any]) -> dict[str, float]:
     reject_activity(payload, "power report", activity["forbidden_tokens"])
     text = payload.decode("utf-8")
+    reject_cadence_diagnostics(text, "power report")
 
     def one(pattern: str, label: str) -> str:
         values = re.findall(pattern, text, re.MULTILINE)
@@ -717,14 +806,12 @@ def validate_genus_diagnostic_log(payload: bytes, top: str,
                                   contract: dict[str, Any]) -> None:
     reject_activity(payload, "Genus log", contract["activity_policy"]["forbidden_tokens"])
     text = payload.decode("utf-8")
-    if (f"Version: {contract['tool']['version']}" not in text or
-            f"K2_SINGLE_EDGE_VECTORLESS_DIAGNOSTIC_COMPLETE top={top}" not in text or
-            "Normal exit." not in text or
-            re.search(r"Info=\d+, Warn=\d+, Error=0, Fatal=0", text) is None):
+    reject_cadence_diagnostics(text, "Genus log", require_terminal_summary=True)
+    if (text.count(f"Version: {contract['tool']['version']}") != 1 or
+            text.count(f"K2_SINGLE_EDGE_VECTORLESS_DIAGNOSTIC_COMPLETE top={top}") != 1 or
+            text.count("Normal exit.") != 1):
         raise EvidenceError(
             "Genus log lacks version/diagnostic-completion/zero-error/normal-exit context")
-    if re.search(r"(?mi)^\s*(?:\*\*)?(?:Error|Fatal)\s*[:\[]", text):
-        raise EvidenceError("Genus log contains an error/fatal diagnostic")
 
 
 def validate_structural_netlist(payload: bytes, top: str) -> dict[str, int]:
@@ -783,7 +870,10 @@ def validate_structural_netlist(payload: bytes, top: str) -> dict[str, int]:
     }
 
 
-def validate_mapped_sdc(payload: bytes) -> None:
+def validate_mapped_sdc(payload: bytes,
+                        forbidden_tokens: list[str] | None = None) -> None:
+    reject_activity(payload, "mapped SDC",
+                    forbidden_tokens or sorted(FORBIDDEN_ACTIVITY_TOKENS))
     text = payload.decode("utf-8", errors="strict")
     if re.search(
             r"(?i)\b(?:create_generated_clock|set_false_path|set_multicycle_path|"
@@ -825,8 +915,7 @@ def _native_report(payload: bytes, top: str, label: str) -> str:
     contexts = re.findall(r"(?m)^\s*(?:Module|Design):\s*/?(\S+)\s*$", text)
     if contexts != [top]:
         raise EvidenceError(f"{label} requires exactly one expected design context")
-    if re.search(r"(?mi)^\s*(?:\*\*)?(?:Error|Fatal)\s*[:\[]", text):
-        raise EvidenceError(f"{label} contains an error/fatal diagnostic")
+    reject_cadence_diagnostics(text, label)
     return text
 
 
@@ -1000,9 +1089,42 @@ def validate_mapped_sdf(payload: bytes, top: str) -> dict[str, int]:
     return {"cell_count": cell_count}
 
 
+def validate_inventory_consistency(netlist_diagnostic: dict[str, int],
+                                   sdf_diagnostic: dict[str, int],
+                                   area_diagnostic: dict[str, float | int]) -> int:
+    counts = {
+        "mapped netlist": integer(netlist_diagnostic.get("structural_instance_count"),
+                                  "mapped netlist instance count", minimum=1),
+        "mapped SDF": integer(sdf_diagnostic.get("cell_count"),
+                              "mapped SDF cell count", minimum=1),
+        "area report": integer(area_diagnostic.get("cell_count"),
+                               "area report cell count", minimum=1),
+    }
+    if len(set(counts.values())) != 1:
+        detail = ", ".join(f"{label}={value}" for label, value in counts.items())
+        raise EvidenceError(f"mapped inventory counts disagree: {detail}")
+    return next(iter(counts.values()))
+
+
+def _expected_genus_output_paths(top: str) -> dict[str, str]:
+    return {
+        "report_check_design": f"work/{top}_check_design.rpt",
+        "report_area": f"work/{top}_area.rpt",
+        "report_timing": f"work/{top}_gtiming.rpt",
+        "report_power": f"work/{top}_gpower.rpt",
+        "report_qor": f"work/{top}_qor.rpt",
+        "report_timing_intent": f"work/{top}_timing_intent.rpt",
+        "report_clocks": f"work/{top}_clocks.rpt",
+        "mapped_netlist": f"work/{top}_netlist.v",
+        "mapped_sdc": f"work/{top}_mapped.sdc",
+        "mapped_sdf": f"work/{top}.sdf",
+    }
+
+
 def _artifact_rows(attempt: Path, receipt: dict[str, Any], candidate: str,
                    source_pins: dict[str, Any], contract: dict[str, Any]
                    ) -> tuple[dict[str, bytes], dict[str, Any]]:
+    attempt_identity = _directory_identity(attempt, f"{candidate} attempt root")
     artifacts = receipt["artifacts"]
     if not isinstance(artifacts, dict):
         raise EvidenceError(f"{candidate} artifacts must be an object")
@@ -1018,10 +1140,17 @@ def _artifact_rows(attempt: Path, receipt: dict[str, Any], candidate: str,
         raise EvidenceError(f"{candidate} complete artifact ledger SHA mismatch")
     payloads: dict[str, bytes] = {}
     paths: set[str] = set()
+    top = contract.get("candidates", {}).get(candidate, {}).get("top")
+    expected_output_paths = _expected_genus_output_paths(top) if top else {}
     for role in sorted(artifacts):
+        _require_directory_identity(attempt, attempt_identity,
+                                    f"{candidate} attempt root")
         row = exact_keys(artifacts[role], {"path", "sha256", "size_bytes"},
                          f"{candidate}.artifacts.{role}")
         path = string(row["path"], f"{candidate}.{role}.path")
+        if role in expected_output_paths and path != expected_output_paths[role]:
+            raise EvidenceError(
+                f"{candidate} {role} path is not the exact Genus output path")
         if path in paths:
             raise EvidenceError(f"{candidate} artifact path reused: {path}")
         paths.add(path)
@@ -1032,6 +1161,8 @@ def _artifact_rows(attempt: Path, receipt: dict[str, Any], candidate: str,
         if not payload:
             raise EvidenceError(f"{candidate} {role} is empty")
         payloads[role] = payload
+    _require_directory_identity(attempt, attempt_identity,
+                                f"{candidate} attempt root")
     return payloads, artifacts
 
 
@@ -1049,14 +1180,13 @@ def _utc(value: Any, label: str) -> datetime:
 def validate_diagnostic_attempt(attempt: Path, candidate: str, expected_top: str,
                                 source_pins: dict[str, Any], contract: dict[str, Any]
                                 ) -> dict[str, Any]:
+    attempt_identity = _directory_identity(attempt, f"{candidate} attempt root")
     receipt, receipt_payload = read_json(attempt / "diagnostic-receipt.json",
                                          f"{candidate} diagnostic receipt")
-    exact_keys(receipt, {
-        "schema", "status", "evidence_class", "candidate", "architecture",
-        "interface", "boundary", "lineage", "top", "capture",
-        "operating_point", "activity_policy", "tool", "execution", "artifacts",
-        "complete_artifact_ledger_sha256",
-    }, f"{candidate} diagnostic receipt")
+    _require_directory_identity(attempt, attempt_identity,
+                                f"{candidate} attempt root")
+    exact_keys(receipt, DIAGNOSTIC_RECEIPT_KEYS,
+               f"{candidate} diagnostic receipt")
     schema = receipt.get("schema")
     if schema != contract["diagnostic_provenance"]["accepted_receipt_schema"]:
         text = str(schema).lower()
@@ -1159,7 +1289,8 @@ def validate_diagnostic_attempt(attempt: Path, candidate: str, expected_top: str
 
     netlist_diagnostic = validate_structural_netlist(
         payloads["mapped_netlist"], expected_top)
-    validate_mapped_sdc(payloads["mapped_sdc"])
+    validate_mapped_sdc(payloads["mapped_sdc"],
+                        contract["activity_policy"]["forbidden_tokens"])
     sdf_diagnostic = validate_mapped_sdf(payloads["mapped_sdf"], expected_top)
     validate_genus_diagnostic_log(payloads["genus_log"], expected_top, contract)
     power = parse_power_report(payloads["report_power"], expected_top,
@@ -1179,7 +1310,10 @@ def validate_diagnostic_attempt(attempt: Path, candidate: str, expected_top: str
     if not math.isclose(qor_diagnostic["wns_ps"], timing_diagnostic["minimum_slack_ps"],
                         abs_tol=0.51):
         raise EvidenceError(f"{candidate} timing/QoR WNS context mismatch")
+    inventory_count = validate_inventory_consistency(
+        netlist_diagnostic, sdf_diagnostic, area_diagnostic)
     netlist_diagnostic.update({
+        "cross_checked_cell_count": inventory_count,
         "sdf_cell_count": sdf_diagnostic["cell_count"],
         "native_report_count": 7,
         "area_cell_count": area_diagnostic["cell_count"],
@@ -1189,18 +1323,18 @@ def validate_diagnostic_attempt(attempt: Path, candidate: str, expected_top: str
         "check_design_error_count": sum(check_design_diagnostic.values()),
     })
 
-    execution = exact_keys(receipt["execution"], {
-        "argv", "cwd", "exit_code", "semantic_environment",
-        "semantic_environment_sha256",
-    }, f"{candidate} execution")
+    execution = exact_keys(receipt["execution"], EXECUTION_KEYS,
+                           f"{candidate} execution")
     if integer(execution["exit_code"], f"{candidate} exit_code") != 0:
         raise EvidenceError(f"{candidate} Genus exit code is not zero")
     cwd = Path(string(execution["cwd"], f"{candidate} cwd"))
     if not cwd.is_absolute() or cwd != attempt:
         raise EvidenceError(f"{candidate} cwd is not the in-place server attempt")
     driver_path = attempt / artifacts["driver_tcl"]["path"]
+    driver_text = _tcl_safe_absolute_path(driver_path,
+                                          f"{candidate} driver path")
     expected_argv = [contract["tool"]["requested_path"], "-batch", "-files",
-                     str(driver_path)]
+                     driver_text]
     if execution["argv"] != expected_argv:
         raise EvidenceError(f"{candidate} exact executed argv mismatch")
     environment = execution["semantic_environment"]
@@ -1209,14 +1343,24 @@ def validate_diagnostic_attempt(attempt: Path, candidate: str, expected_top: str
         raise EvidenceError(f"{candidate} semantic environment keys/order mismatch")
     if execution["semantic_environment_sha256"] != sha256(canonical(environment)):
         raise EvidenceError(f"{candidate} semantic environment SHA mismatch")
-    source_paths = [str(attempt / artifacts[f"source_{index:02d}"]["path"])
-                    for index in range(len(pins["sources"]))]
+    source_paths = [_tcl_safe_absolute_path(
+        attempt / artifacts[f"source_{index:02d}"]["path"],
+        f"{candidate} source_{index:02d} path")
+        for index in range(len(pins["sources"]))]
+    library_path = _tcl_safe_absolute_path(
+        attempt / artifacts["setup_liberty"]["path"],
+        f"{candidate} setup Liberty path")
+    sdc_path = _tcl_safe_absolute_path(
+        attempt / artifacts["materialized_sdc"]["path"],
+        f"{candidate} materialized SDC path")
+    output_path = _tcl_safe_absolute_path(attempt / "work",
+                                         f"{candidate} output path")
     expected_environment = {
         "K2_SE_TOP": expected_top,
         "K2_SE_SOURCES_SV": " ".join(source_paths),
-        "K2_SE_LIBRARY": str(attempt / artifacts["setup_liberty"]["path"]),
-        "K2_SE_SDC": str(attempt / artifacts["materialized_sdc"]["path"]),
-        "K2_SE_OUTPUT": str(attempt / "work"),
+        "K2_SE_LIBRARY": library_path,
+        "K2_SE_SDC": sdc_path,
+        "K2_SE_OUTPUT": output_path,
         "K2_SE_ACTIVITY_MODE": "GENUS_DEFAULT_VECTORLESS",
         "LC_ALL": "C",
     }
@@ -1240,6 +1384,9 @@ def validate_diagnostic_attempt(attempt: Path, candidate: str, expected_top: str
     }
     if environment_receipt != expected_environment_receipt:
         raise EvidenceError(f"{candidate} diagnostic environment receipt mismatch")
+
+    _require_directory_identity(attempt, attempt_identity,
+                                f"{candidate} attempt root")
 
     return {
         "candidate": candidate, "top": expected_top, "receipt": receipt,
