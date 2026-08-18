@@ -18,12 +18,15 @@ Their missing same-campaign evidence is reported as `HOLD`.
 
 ## Provenance classes
 
-Every dataset is exactly one of `synthetic`, `supplied`, or `public`.
-Synthetic suites must match the frozen registry and committed manifest bytes.
-A supplied dataset needs a `redred_dataset_provenance_v1` receipt containing
-its provider, delivery identifier, license, archive hash, adapter hash, and
-trace-manifest hash. A public dataset instead needs its source URL, version,
-retrieval date, license, and the same content/adapter/trace identities.
+Dataset IDs and classes are hard-bound: `full50` and `capacity22` are
+synthetic, `organizer_supplied` is supplied, and `public_dataset` is public.
+They cannot be renamed or relabeled. Synthetic suites must match the frozen
+registry and committed manifest bytes. A supplied dataset needs a
+`redred_dataset_provenance_v2` receipt containing its provider, delivery
+identifier, license, and `{path, sha256}` references for content, adapter, and
+trace manifest. A public receipt uses source URL, version, retrieval date, and
+license with the same three byte references. All referenced bytes must be
+locally accessible, nonsymlink files with matching hashes.
 
 The organizer-supplied and public entries are intentionally unpopulated in
 `campaign.json`. Validation therefore emits `HOLD`; it never substitutes the
@@ -43,8 +46,37 @@ Compared candidates must use the identical measurement-definition hash,
 ordered run names, source trace SHA, prepared trace SHA, generated-event count,
 and fixed-window cycle count. Aggregate totals are recomputed from per-run
 evidence. Capacity22 must be a zero-execution view of the exact 22 full50
-runs, and any aggregation group attempting to pool full50 with capacity22 is
-rejected.
+runs, inherits those runs' full50 windows even if a candidate's separate
+full50 pointer is absent, and cannot be pooled with full50.
+
+The actual-P6 envelope check is strict. It verifies the exact result schema,
+boundary declarations, immutable package commit and pins, every locally pinned
+file and tool, execution accounting, all three reset rows, qualification
+boundary, and all 15 killed actual-RTL mutations with their exact diagnostics.
+Unknown fields, missing fields, Boolean counters, and contradictory values are
+fatal.
+
+## Trust levels
+
+The committed replay result has summary hashes but not committed event and
+summary CSV bytes. Without those artifacts, its evidence is reported only as
+`RECEIPT_CONSISTENT`, with `event_evidence=NOT_REPLAYED` and an explicit
+statement that no independent event replay occurred. It is never described as
+event-level validation.
+
+If an untouched replay work directory is available, pass its directory that
+directly contains `artifacts/`:
+
+```sh
+python3 benchmarks/redred_canonical_campaign/campaign.py validate \
+  --verify-run-root /path/to/replay/work --allow-hold
+```
+
+The validator then requires every A2/A3 full50 and reset event/summary file,
+checks its receipt hash, recomputes event identity/order, conservation,
+throughput, per-run latencies, and full50/capacity22 aggregate latencies, and
+marks only the event-evidence class as `ARTIFACT_RECOMPUTED`. The receipt
+envelope remains `RECEIPT_CONSISTENT`, and overall release remains `HOLD`.
 
 ## Non-EDA use
 
@@ -58,10 +90,10 @@ python3 benchmarks/redred_canonical_campaign/campaign.py dry-run --allow-hold
 `validate` checks the pinned existing evidence. `dry-run` performs the same
 checks and additionally emits the exact pinned actual-P6 runner plan with
 placeholders for a new work directory, output receipt, and pinned Verilator.
-Neither mode executes that plan. Exit status is 0 for `PASS`, 3 for an honest
-`HOLD`, and 2 for malformed, inconsistent, missing-but-claimed, or hash-mismatched
-evidence. `--allow-hold` changes only a valid HOLD's exit code to 0; the emitted
-status remains `HOLD`.
+Neither mode executes that plan. Exit status is 3 for an honest `HOLD` and 2
+for malformed, inconsistent, missing-but-claimed, or hash-mismatched evidence.
+`--allow-hold` changes only a valid HOLD's exit code to 0; the emitted status
+remains `HOLD`.
 
 Run the focused tests with:
 
