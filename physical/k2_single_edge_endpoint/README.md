@@ -166,7 +166,10 @@ equivalence.
 Native diagnostic parsing follows emitted Cadence forms rather than
 fixture-only summaries. Innovus timing requires sequential `Path N: MET` rows
 and one `Slack Time` per path, checked against machine WNS at the report's
-printed precision. `check_timing` requires the exact Innovus generator,
+printed precision; foreign path classes, any `VIOLATED`/no-slack text, and
+unpaired or malformed slack rows reject. Tool logs and reports also reject
+nonzero forms such as `Error=10` and `10 errors`, plus fatal prose even when a
+clean footer remains. `check_timing` requires the exact Innovus generator,
 design, and command header, the clean `ideal_clock_waveform` inventory, and
 the exact `se_primary_clk`/`se_setup_view` ideal-clock row. Missing-constraint,
 unconstrained, detail, unknown-warning, and contradictory forms reject. DRC,
