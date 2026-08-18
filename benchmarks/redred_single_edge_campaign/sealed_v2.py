@@ -12,6 +12,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import subprocess
 import tarfile
 from typing import Any
 
@@ -45,6 +46,22 @@ RUN_METRIC_KEYS = {
 
 class SealedTupleError(RuntimeError):
     """A tuple is unsafe, incomplete, ambiguous, or semantically false."""
+
+
+SLOT_IDENTITIES = {
+    "synthetic_v2": {
+        "publication_schema": "redred_single_edge_synthetic_publication_v2",
+        "evidence_class": "REDRED_SINGLE_EDGE_SYNTHETIC_ACTUAL_RTL_SEALED_V2",
+        "status": "PASS", "source_class": "TEAM_DEFINED_SYNTHETIC",
+        "canonical_redred_traffic": True,
+    },
+    "public_v2": {
+        "publication_schema": "redred_single_edge_public_projected_publication_v2",
+        "evidence_class": "REDRED_SINGLE_EDGE_PUBLIC_PROJECTED_ACTUAL_RTL_SEALED_V2",
+        "status": "PUBLIC_PROJECTED_EXTENSION", "source_class": "PUBLIC_PROJECTED_EXTENSION",
+        "canonical_redred_traffic": False,
+    },
+}
 
 
 def exact(value: Any, keys: set[str], label: str) -> dict[str, Any]:
@@ -105,6 +122,12 @@ def sha(value: Any, label: str) -> str:
     return value
 
 
+def git_oid(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value):
+        raise SealedTupleError(f"{label} must be a Git object ID")
+    return value
+
+
 def uint(value: Any, label: str, *, positive: bool = False) -> int:
     floor = 1 if positive else 0
     if type(value) is not int or value < floor:
@@ -122,7 +145,12 @@ def safe_relative(value: Any, label: str) -> str:
     return value
 
 
-def stable_file(path: Path, label: str) -> tuple[Path, bytes]:
+def _file_identity(path: Path) -> tuple[int, int, int, int, int]:
+    value = path.stat()
+    return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+
+
+def stable_file(path: Path, label: str) -> tuple[Path, bytes, tuple[int, int, int, int, int]]:
     if ".." in path.parts:
         raise SealedTupleError(f"{label} aliases through '..'")
     absolute = path if path.is_absolute() else Path.cwd() / path
@@ -161,7 +189,17 @@ def stable_file(path: Path, label: str) -> tuple[Path, bytes]:
     fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
     if any(getattr(opened, field) != getattr(after, field) for field in fields):
         raise SealedTupleError(f"{label} changed while read")
-    return resolved, b"".join(chunks)
+    return resolved, b"".join(chunks), (
+        before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns,
+    )
+
+
+def recheck_file(resolved: Path, identity: tuple[int, int, int, int, int], label: str) -> None:
+    try:
+        if not resolved.is_file() or resolved.is_symlink() or _file_identity(resolved) != identity:
+            raise SealedTupleError(f"{label} changed after validation")
+    except OSError as error:
+        raise SealedTupleError(f"{label} changed after validation") from error
 
 
 def archive_members(bundle: bytes) -> dict[str, bytes]:
@@ -387,10 +425,11 @@ def validate_tuple(
     }, f"{kind} binding")
     producer = exact(binding["producer"], {
         "commit", "tree", "verifier_sha256", "schema_sha256", "runner_sha256",
-        "testbench_sha256", "tool_pins_sha256",
+        "testbench_sha256", "tool_pins_sha256", "inventory",
     }, f"{kind} producer binding")
     rtl = exact(binding["rtl"], {
         "source_commit", "source_tree", "integration_commit", "integration_tree",
+        "inventory",
     }, f"{kind} RTL binding")
     for key in ("commit", "tree"):
         if not isinstance(producer[key], str) or not re.fullmatch(r"[0-9a-f]{40}", producer[key]):
@@ -398,8 +437,51 @@ def validate_tuple(
     for key in ("verifier_sha256", "schema_sha256", "runner_sha256", "testbench_sha256", "tool_pins_sha256"):
         sha(producer[key], f"{kind} producer.{key}")
     for key, value in rtl.items():
-        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value):
+        if key != "inventory" and (not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value)):
             raise SealedTupleError(f"{kind} rtl.{key} must be a Git object ID")
+    if kind not in SLOT_IDENTITIES:
+        raise SealedTupleError(f"unknown sealed tuple slot: {kind}")
+    slot = SLOT_IDENTITIES[kind]
+    for key, expected in slot.items():
+        if not strict_equal(binding[key], expected):
+            raise SealedTupleError(f"{kind} binding classification/schema differs")
+    for key in ("official_contest_traffic", "p6_evidence_used"):
+        if type(binding[key]) is not bool or binding[key] is not False:
+            raise SealedTupleError(f"{kind} binding disallows {key}")
+    if binding["release_status"] != "HOLD" or binding["selection_status"] != "HOLD":
+        raise SealedTupleError(f"{kind} binding release/selection differs")
+
+    repo_root = Path(__file__).resolve().parents[2]
+
+    def git_output(*arguments: str) -> str:
+        try:
+            return subprocess.check_output(
+                ["git", "-C", str(repo_root), *arguments],
+                stderr=subprocess.DEVNULL, text=True,
+            ).strip()
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise SealedTupleError(f"{kind} producer provenance is not resolvable") from error
+
+    def verify_git_pair(commit: str, tree: str, label: str, inventory: Any) -> None:
+        if git_output("cat-file", "-t", commit) != "commit" \
+                or git_output("cat-file", "-t", tree) != "tree" \
+                or git_output("rev-parse", f"{commit}^{{tree}}") != tree:
+            raise SealedTupleError(f"{kind} {label} commit/tree relationship differs")
+        if not isinstance(inventory, list) or not inventory or len(inventory) != len({
+            row.get("path") for row in inventory if isinstance(row, dict)
+        }):
+            raise SealedTupleError(f"{kind} {label} inventory is malformed")
+        for row in inventory:
+            row = exact(row, {"path", "blob_sha256"}, f"{kind} {label} inventory row")
+            path = safe_relative(row["path"], f"{kind} {label} inventory path")
+            blob = git_oid(row["blob_sha256"], f"{kind} {label} inventory blob")
+            if git_output("rev-parse", f"{commit}:{path}") != blob \
+                    or git_output("cat-file", "-t", blob) != "blob":
+                raise SealedTupleError(f"{kind} {label} inventory bytes differ: {path}")
+
+    verify_git_pair(producer["commit"], producer["tree"], "producer", producer["inventory"])
+    verify_git_pair(rtl["source_commit"], rtl["source_tree"], "RTL source", rtl["inventory"])
+    verify_git_pair(rtl["integration_commit"], rtl["integration_tree"], "RTL integration", rtl["inventory"])
     def roster(value: Any, label: str) -> tuple[str, ...]:
         if not isinstance(value, list) or not value or len(value) != len(set(value)):
             raise SealedTupleError(f"{kind} {label} roster is malformed")
@@ -424,8 +506,10 @@ def validate_tuple(
     diagnostics = exact(binding["diagnostics"], set(mutation_names), f"{kind} diagnostics")
     if any(not isinstance(value, str) or not value or "\n" in value for value in diagnostics.values()):
         raise SealedTupleError(f"{kind} mutation diagnostics are malformed")
-    publication_resolved, publication_data = stable_file(publication_path, f"{kind} publication")
-    bundle_resolved, bundle_data = stable_file(bundle_path, f"{kind} bundle")
+    publication_resolved, publication_data, publication_identity = stable_file(
+        publication_path, f"{kind} publication",
+    )
+    bundle_resolved, bundle_data, bundle_identity = stable_file(bundle_path, f"{kind} bundle")
     if publication_resolved == bundle_resolved or publication_resolved.samefile(bundle_resolved):
         raise SealedTupleError(f"{kind} publication and bundle are aliases")
     if len(publication_data) != uint(binding["publication_size_bytes"], "publication size", positive=True) \
@@ -595,6 +679,8 @@ def validate_tuple(
         text = members[path].decode("utf-8", errors="strict")
         if diagnostics[mutation] not in text or PASS_SENTINEL in text:
             raise SealedTupleError(f"{kind} mutation log semantics differ: {owner}/{mutation}")
+    recheck_file(publication_resolved, publication_identity, f"{kind} publication")
+    recheck_file(bundle_resolved, bundle_identity, f"{kind} bundle")
     return {
         "status": "PASS", "evidence_class": binding["evidence_class"],
         "source_class": binding["source_class"], "owners": computed_owners,

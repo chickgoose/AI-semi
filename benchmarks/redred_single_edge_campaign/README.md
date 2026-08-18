@@ -126,7 +126,9 @@ publication_sha256, publication_size_bytes
 producer.commit, producer.tree
 producer.verifier_sha256, producer.schema_sha256, producer.runner_sha256
 producer.testbench_sha256, producer.tool_pins_sha256
+producer.inventory: [{path, blob_sha256}] for every producer-commit blob
 rtl.source_commit, rtl.source_tree, rtl.integration_commit, rtl.integration_tree
+rtl.inventory: [{path, blob_sha256}] for every source/integration blob
 bundle_sha256, bundle_size_bytes
 manifest_schema, manifest_member, manifest_sha256, entry_count
 result_schema, result_member, result_sha256, result_semantic_sha256,
