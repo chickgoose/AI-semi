@@ -32,8 +32,16 @@
     "owners": {
       "type": "object", "required": ["a2", "a3"], "additionalProperties": false,
       "properties": {
-        "a2": {"$ref": "#/$defs/owner"},
-        "a3": {"$ref": "#/$defs/owner"}
+        "a2": {"const": {
+          "1x": {"generated": 1100, "source_overrun": 81, "accepted": 1019, "retired": 1019, "fixed_window_retired": 1018, "fixed_window_cycles": 153693, "fixed_window_events_per_cycle": 0.006623594},
+          "64x": {"generated": 1100, "source_overrun": 81, "accepted": 1019, "retired": 1019, "fixed_window_retired": 1016, "fixed_window_cycles": 2402, "fixed_window_events_per_cycle": 0.422980849},
+          "256x": {"generated": 1100, "source_overrun": 194, "accepted": 906, "retired": 906, "fixed_window_retired": 899, "fixed_window_cycles": 601, "fixed_window_events_per_cycle": 1.495840266}
+        }},
+        "a3": {"const": {
+          "1x": {"generated": 1100, "source_overrun": 81, "accepted": 1019, "retired": 1019, "fixed_window_retired": 1018, "fixed_window_cycles": 153693, "fixed_window_events_per_cycle": 0.006623594},
+          "64x": {"generated": 1100, "source_overrun": 87, "accepted": 1013, "retired": 1013, "fixed_window_retired": 1010, "fixed_window_cycles": 2402, "fixed_window_events_per_cycle": 0.420482931},
+          "256x": {"generated": 1100, "source_overrun": 283, "accepted": 817, "retired": 817, "fixed_window_retired": 811, "fixed_window_cycles": 601, "fixed_window_events_per_cycle": 1.349417637}
+        }}
       }
     },
     "claim_boundary": {"$ref": "#/$defs/claimBoundary"}
@@ -56,26 +64,18 @@
       "type": "object", "additionalProperties": false,
       "required": ["publication", "archive", "manifest", "result", "reproduction"],
       "properties": {
-        "publication": {"$ref": "#/$defs/sizedArtifact"},
-        "archive": {"$ref": "#/$defs/sizedArtifact"},
+        "publication": {"const": {"sha256": "7cd68ab241ba1f824ed1e7b85bbdca85bf15b832743ba108877640b520ec4c23", "size_bytes": 1921}},
+        "archive": {"const": {"sha256": "d14721e8b4fef9d616af2bee92f4db80754707d545c60ef2b2616b9f14f6ccf2", "size_bytes": 261507}},
         "manifest": {
           "type": "object", "additionalProperties": false,
           "required": ["sha256", "member"],
           "properties": {
-            "sha256": {"$ref": "#/$defs/sha256"},
+            "sha256": {"const": "b24b521d5d31ae4fe39f09df230dd7e399b14e1695fe8aa23e803a8736f72cca"},
             "member": {"const": "MANIFEST.json"}
           }
         },
-        "result": {"$ref": "#/$defs/sizedArtifact"},
-        "reproduction": {"$ref": "#/$defs/sizedArtifact"}
-      }
-    },
-    "sizedArtifact": {
-      "type": "object", "additionalProperties": false,
-      "required": ["sha256", "size_bytes"],
-      "properties": {
-        "sha256": {"$ref": "#/$defs/sha256"},
-        "size_bytes": {"type": "integer", "minimum": 1}
+        "result": {"const": {"sha256": "815c752f4852790d4db5c3c935cc2edc5821fee9a36f2e83c35d3ec8b73c5c12", "size_bytes": 35288}},
+        "reproduction": {"const": {"sha256": "24da3a81fa34a5b3b4fd847fe9d49f937cdb45bf6dc64343adcc903476269482", "size_bytes": 35288}}
       }
     },
     "inventory": {
@@ -118,9 +118,9 @@
       "type": "object", "additionalProperties": false,
       "required": ["definition_sha256", "primary_sha256", "reproduction_sha256", "matched"],
       "properties": {
-        "definition_sha256": {"$ref": "#/$defs/sha256"},
-        "primary_sha256": {"$ref": "#/$defs/sha256"},
-        "reproduction_sha256": {"$ref": "#/$defs/sha256"},
+        "definition_sha256": {"const": "2d9f0585d127e9f18429ace8ac6d70218b2ac2377092d453d4e04cfa53f161c2"},
+        "primary_sha256": {"const": "7491680311effb422b868fddd783d0ec6eb9f3aece54907260e52198fc26d157"},
+        "reproduction_sha256": {"const": "7491680311effb422b868fddd783d0ec6eb9f3aece54907260e52198fc26d157"},
         "matched": {"const": true}
       }
     },
@@ -128,35 +128,13 @@
       "type": "object", "additionalProperties": false,
       "required": ["integration_commit", "execution_source_commit", "execution_commit", "payload_commit", "reviewed_publication_commit", "payload_commit_meaning", "self_referential_commit_claim"],
       "properties": {
-        "integration_commit": {"$ref": "#/$defs/commit"},
-        "execution_source_commit": {"$ref": "#/$defs/commit"},
-        "execution_commit": {"$ref": "#/$defs/commit"},
-        "payload_commit": {"$ref": "#/$defs/commit"},
-        "reviewed_publication_commit": {"$ref": "#/$defs/commit"},
+        "integration_commit": {"const": "775ec4ba081c611cac88d4d75b05a1da3c68a543"},
+        "execution_source_commit": {"const": "9092247aa07459bc67da66495dc643003957f42a"},
+        "execution_commit": {"const": "429dbcb80cb14b04d185353d7a2f92c36238701b"},
+        "payload_commit": {"const": "d4c247503af5bb322b92604bb342bc0ebf9e045e"},
+        "reviewed_publication_commit": {"const": "999e9401178cc5210bc863629cfa21d3a0241575"},
         "payload_commit_meaning": {"const": "COMMIT_CONTAINING_RESULT_AND_EXPORT_PAYLOADS"},
         "self_referential_commit_claim": {"const": false}
-      }
-    },
-    "owner": {
-      "type": "object", "additionalProperties": false,
-      "required": ["1x", "64x", "256x"],
-      "properties": {
-        "1x": {"$ref": "#/$defs/scenario"},
-        "64x": {"$ref": "#/$defs/scenario"},
-        "256x": {"$ref": "#/$defs/scenario"}
-      }
-    },
-    "scenario": {
-      "type": "object", "additionalProperties": false,
-      "required": ["generated", "source_overrun", "accepted", "retired", "fixed_window_retired", "fixed_window_cycles", "fixed_window_events_per_cycle"],
-      "properties": {
-        "generated": {"const": 1100},
-        "source_overrun": {"type": "integer", "minimum": 0},
-        "accepted": {"type": "integer", "minimum": 0},
-        "retired": {"type": "integer", "minimum": 0},
-        "fixed_window_retired": {"type": "integer", "minimum": 0},
-        "fixed_window_cycles": {"type": "integer", "minimum": 1},
-        "fixed_window_events_per_cycle": {"type": "number", "minimum": 0}
       }
     },
     "claimBoundary": {
