@@ -250,6 +250,10 @@ def verify_mutation_contract(
     document: dict[str, Any], sources_by_owner: dict[str, list[Path]],
 ) -> None:
     mutations = document.get("mutations", {})
+    anchor_pins = document.get("mutation_anchor_sha256", {})
+    target_pin = anchor_pins.get("target_sha256")
+    if not isinstance(target_pin, str) or re.fullmatch(r"[0-9a-f]{64}", target_pin) is None:
+        raise ReplayUnavailable("mutation target SHA-256 is not locked")
     if set(mutations) != {"a2", "a3"}:
         raise ReplayError("mutation owner roster mismatch")
     for owner in ("a2", "a3"):
@@ -270,10 +274,19 @@ def verify_mutation_contract(
             if spec["old"] == spec["new"]:
                 raise ReplayError(f"mutation is a no-op: {owner}/{name}")
             target_text = (PROJECT / spec["target"]).read_text(encoding="utf-8")
+            if sha256(PROJECT / spec["target"]) != target_pin:
+                raise ReplayUnavailable(f"mutation target SHA-256 mismatch: {owner}/{name}")
             if target_text.count(spec["old"]) != 1:
                 raise ReplayUnavailable(
                     f"literal mutation anchor count is not one: {owner}/{name}"
                 )
+            expected_anchors = anchor_pins.get(name, {})
+            for field in ("old", "new"):
+                actual = hashlib.sha256(spec[field].encode()).hexdigest()
+                if actual != expected_anchors.get(field):
+                    raise ReplayUnavailable(
+                        f"literal mutation anchor SHA-256 mismatch: {owner}/{name}/{field}"
+                    )
 
 
 def verify_rtl_git_provenance(
@@ -284,16 +297,18 @@ def verify_rtl_git_provenance(
         raise ReplayUnavailable("actual RTL Git provenance is not pinned")
     source_commit = provenance.get("source_commit")
     integration_commit = provenance.get("integration_commit")
-    expected_tree = provenance.get("rtl_tree")
+    source_tree = provenance.get("source_tree")
+    integration_tree = provenance.get("integration_tree")
     for label, value in (
         ("source_commit", source_commit), ("integration_commit", integration_commit),
-        ("rtl_tree", expected_tree),
+        ("source_tree", source_tree), ("integration_tree", integration_tree),
     ):
         if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
             raise ReplayUnavailable(f"invalid actual RTL Git pin: {label}")
     trees: dict[str, str] = {}
-    for label, commit in (
-        ("source_commit", source_commit), ("integration_commit", integration_commit),
+    for label, commit, expected_tree in (
+        ("source_commit", source_commit, source_tree),
+        ("integration_commit", integration_commit, integration_tree),
     ):
         process = subprocess.run(
             ["git", "rev-parse", f"{commit}^{{tree}}"], cwd=PROJECT,
@@ -307,19 +322,24 @@ def verify_rtl_git_provenance(
 
     rtl_paths = sorted(path for path in verified_files if path.startswith("rtl/"))
     for path in rtl_paths:
-        process = subprocess.run(
-            ["git", "show", f"{source_commit}:{path}"], cwd=PROJECT,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-        )
-        if process.returncode:
-            raise ReplayUnavailable(f"source commit lacks pinned actual RTL path: {path}")
-        commit_sha = hashlib.sha256(process.stdout).hexdigest()
-        if commit_sha != verified_files[path]:
-            raise ReplayUnavailable(f"working RTL differs from source commit: {path}")
+        for label, commit in (
+            ("source_commit", source_commit),
+            ("integration_commit", integration_commit),
+        ):
+            process = subprocess.run(
+                ["git", "show", f"{commit}:{path}"], cwd=PROJECT,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            if process.returncode:
+                raise ReplayUnavailable(f"{label} lacks pinned actual RTL path: {path}")
+            commit_sha = hashlib.sha256(process.stdout).hexdigest()
+            if commit_sha != verified_files[path]:
+                raise ReplayUnavailable(f"working RTL differs from {label}: {path}")
     return {
         "source_commit": source_commit,
         "integration_commit": integration_commit,
-        "rtl_tree": expected_tree,
+        "source_tree": source_tree,
+        "integration_tree": integration_tree,
         "verified_rtl_paths": rtl_paths,
     }
 
@@ -457,6 +477,7 @@ def parse_single_csv(path: Path) -> dict[str, str]:
             "owner", "trace", "generated", "source_overrun", "accepted",
             "retired", "fixed_window_retired", "fixed_window_cycles",
             "observation_cycles", "count2_commits", "reset_test",
+            "pre_reset_clean_drain",
         }
         if set(reader.fieldnames or ()) != expected:
             raise ReplayError(f"summary schema mismatch: {path}")
@@ -528,6 +549,7 @@ def parse_run(
             "generated", "source_overrun", "accepted", "retired",
             "fixed_window_retired", "fixed_window_cycles",
             "observation_cycles", "count2_commits", "reset_test",
+            "pre_reset_clean_drain",
         )
     }
     if numeric["generated"] != len(events):
@@ -544,6 +566,10 @@ def parse_run(
         raise ReplayError(f"fixed-window count exceeds retirement: {summary_path}")
     if numeric["reset_test"] != int(expected_reset):
         raise ReplayError(f"reset provenance mismatch: {summary_path}")
+    if numeric["pre_reset_clean_drain"] != int(expected_reset):
+        raise ReplayError(
+            f"reset run lacks explicit clean-drain-before-reset proof: {summary_path}"
+        )
     return {
         **numeric,
         "occurrence_to_accept": latency_summary(occurrence_accept),
@@ -723,6 +749,7 @@ def execute_campaign(
         "retirement_scoreboard": "actual_single_edge_retire_prefix_in_global_accept_order",
         "event_identity_scope": "TB_identity_bound_to_observable_logical_source_stream",
         "source_overrun_semantics": "same_source_occurrence_while_one_entry_source_latch_occupied",
+        "reset_qualification": "reset_only_after_external_clean_drain_and_no_protocol_error",
         "conservation": [
             "generated = source_overrun + accepted",
             "after bounded drain: accepted = retired",

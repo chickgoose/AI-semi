@@ -27,8 +27,24 @@ class ContractTest(unittest.TestCase):
                          ("drop", "duplicate", "reorder", "reset_escape"))
         self.assertIn('"full50_actual_RTL_executions": 100', runner)
         self.assertIn('"receipt_only_executions": 0', runner)
+        self.assertIn('"pre_reset_clean_drain"', runner)
+        self.assertIn("A23_SE_RESET_PREDRAIN_FAIL", (
+            PACKAGE / "tb/a23_full_single_edge_replay_tb.sv"
+        ).read_text(encoding="utf-8"))
         self.assertNotIn("EXPECTED_FULL50", runner)
         self.assertNotIn("capacity22", runner.lower())
+        self.assertEqual(
+            self.pins["rtl_provenance"]["source_commit"],
+            "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+        )
+        self.assertEqual(
+            self.pins["rtl_provenance"]["integration_commit"],
+            "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+        )
+        self.assertIn(
+            "rtl/technology/single_edge/w2_single_edge_error_latch.sv",
+            self.pins["files"],
+        )
 
     def test_no_p6_rtl_or_receipt_dependency(self) -> None:
         serialized = json.dumps(self.pins, sort_keys=True).lower()
