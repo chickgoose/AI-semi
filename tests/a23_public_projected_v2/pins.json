@@ -1,0 +1,66 @@
+{
+  "schema": "a23_public_projected_v2_pins_v2",
+  "status": "PUBLIC_PROJECTED_EXTENSION",
+  "release_status": "HOLD",
+  "selection_status": "HOLD",
+  "canonical_redred_traffic": false,
+  "official_redred_traffic": false,
+  "p6_evidence_used": false,
+  "evidence_class": "PUBLIC_DATASET_PROJECTED_ACTUAL_SINGLE_EDGE_RTL",
+  "reset_scope": "CLEAN_DRAIN_ONLY",
+  "identity_accounting": {
+    "unique_projected_window_events": 1100,
+    "scenario_retimings": 3,
+    "pooled_3300_unique_events": false
+  },
+  "commit_provenance": {
+    "integration_commit": "775ec4ba081c611cac88d4d75b05a1da3c68a543",
+    "execution_source_commit": "UNBOUND_UNTIL_IMPLEMENTATION_COMMIT",
+    "p6_evidence_used": false,
+    "publication_commit_contract": {
+      "binding_layer": "PUBLICATION_RECORD_ONLY",
+      "meaning": "COMMIT_CONTAINING_RESULT_AND_EXPORT_PAYLOADS",
+      "self_referential_commit_claim": false
+    }
+  },
+  "export_inventory": {
+    "schema": "a23_public_projected_v2_closed_inventory_v2",
+    "entry_count_excluding_manifest": 80,
+    "extra_entries_allowed": false
+  },
+  "projection_receipt_sha256": "257dadc09916ac8fa47056b77d1ab4fbecbde25e42855d7f3ddbb94ed7246807",
+  "projection_completion_sha256": "f1bb58811a419dbb16bca522b9806176d466a268144502f0fb2342b3d762d230",
+  "hardened_replay_pins_sha256": "0daba2132010272a78b56ec2a1541f30f7cb5d2b0d8562102cb70cf9e098d8e0",
+  "scenarios": [
+    {
+      "id": "1x",
+      "trace_file": "trace_1x.jsonl",
+      "trace_sha256": "c02aa20d8dc6cb2b85a500648e91f320d05f1f7e3b2d6e11d7189550b639ec94",
+      "event_count": 1100,
+      "first_cycle": 0,
+      "last_cycle": 153692
+    },
+    {
+      "id": "64x",
+      "trace_file": "trace_64x.jsonl",
+      "trace_sha256": "b005def64b130bc0e83b73cd9e6e4ab6d0a8f6e83f12b5b008b03642e17dcebb",
+      "event_count": 1100,
+      "first_cycle": 0,
+      "last_cycle": 2401
+    },
+    {
+      "id": "256x",
+      "trace_file": "trace_256x.jsonl",
+      "trace_sha256": "8428936e62b494747e9b75445e2a9b1f40677b92ede9f6569923729237c6f14a",
+      "event_count": 1100,
+      "first_cycle": 0,
+      "last_cycle": 600
+    }
+  ],
+  "files": {
+    "tests/a23_public_projected_v2/README.md": "UNBOUND_UNTIL_IMPLEMENTATION_COMMIT",
+    "tests/a23_public_projected_v2/run.py": "UNBOUND_UNTIL_IMPLEMENTATION_COMMIT",
+    "tests/a23_public_projected_v2/run_all.sh": "UNBOUND_UNTIL_IMPLEMENTATION_COMMIT",
+    "tests/a23_public_projected_v2/test_contract.py": "UNBOUND_UNTIL_IMPLEMENTATION_COMMIT"
+  }
+}
