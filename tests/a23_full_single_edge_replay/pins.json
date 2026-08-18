@@ -1,0 +1,68 @@
+{
+  "schema": "a23_full_single_edge_replay_pins_v1",
+  "integration_state": "HOLD_UNTIL_ACTUAL_RTL_IS_INTEGRATED_AND_LOCKED",
+  "files": {
+    "benchmarks/clean_slate_aer/generate_trace.py": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
+    "benchmarks/clean_slate_aer/prepare_sv_trace.py": "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826",
+    "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
+    "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f": null,
+    "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv": null,
+    "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+    "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f": null,
+    "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv": null,
+    "rtl/technology/single_edge/filelists/generic.f": null,
+    "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv": null,
+    "rtl/technology/single_edge/w2_single_edge_pair_rx.sv": null,
+    "rtl/technology/single_edge/w2_single_edge_pair_tx.sv": null,
+    "scripts/common_suite_official.py": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
+    "tests/a23_full_single_edge_replay/README.md": "6cd9a9d0293780c5982fc8bf5612c507d9e5dc0943b041114d2d19ce4816dccc",
+    "tests/a23_full_single_edge_replay/rtl/a23_a2_single_edge_observer_wrapper.sv": "ba9a28d9bcfece51d45ceb449f4e07e45082ccfc4dbb4efec29dc4641301868b",
+    "tests/a23_full_single_edge_replay/rtl/a23_a3_single_edge_observer_wrapper.sv": "1336ba39641000b22e5ae82deca14125a0410f23740abb90d777a54041c53914",
+    "tests/a23_full_single_edge_replay/run_all.sh": "10221b56084da3752dca82e22d80a2027e4a76b99b5f31da2180616c9ab0c862",
+    "tests/a23_full_single_edge_replay/run_replay.py": "fa3aba7884c41462772b56aceb3dea244591c823ff0346dc02ad8a358279479c",
+    "tests/a23_full_single_edge_replay/tb/a23_full_single_edge_replay_tb.sv": "7d520c7410f71caef94a588ccdce2c977b86673a9ef903ff312b83acec6172f8",
+    "tests/a23_full_single_edge_replay/test_contract.py": "5fabef8a855cabad2392ef726b7e60df10642c587e45d19bced5479fa2950073",
+    "tests/common_suite_receipt/fixtures/manifest.neutrality-n16.json": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
+  },
+  "owners": {
+    "a2": {
+      "define": "A23_SE_OWNER_A2",
+      "scheduler": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
+      "filelist": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
+      "top": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
+      "top_module": "a2_batched_iwrr_single_edge_top",
+      "mutation_target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+      "wrapper": "tests/a23_full_single_edge_replay/rtl/a23_a2_single_edge_observer_wrapper.sv"
+    },
+    "a3": {
+      "define": "A23_SE_OWNER_A3",
+      "scheduler": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+      "filelist": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f",
+      "top": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",
+      "top_module": "a3_exact_scalar_prefix_k2_single_edge_top",
+      "mutation_target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+      "wrapper": "tests/a23_full_single_edge_replay/rtl/a23_a3_single_edge_observer_wrapper.sv"
+    }
+  },
+  "mutations": {
+    "a2": {
+      "drop": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null},
+      "duplicate": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null},
+      "reorder": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null},
+      "reset_escape": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null}
+    },
+    "a3": {
+      "drop": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null},
+      "duplicate": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null},
+      "reorder": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null},
+      "reset_escape": {"target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "old": null, "new": null}
+    }
+  },
+  "tools": {
+    "python": {"path": "/usr/bin/python3.14", "sha256": "b8d8288faefdd300201f43fcf00f6f539a27218eeed3a3dff5ab10b9c4c99700", "version_args": ["--version"], "version": "Python 3.14.4"},
+    "verilator": {"path": "/tmp/a7-toolchain/usr/bin/verilator", "sha256": "672a1ccf3468902f66387049f001b04f254bbcece7d5e816e3861715889bf252", "version_args": ["--version"], "version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"},
+    "verilator_bin": {"path": "/tmp/a7-toolchain/usr/bin/verilator_bin", "sha256": "90fe12f3b2c752b607690cb05a566646398d1e07f38e83f5f7a7f35c20560247", "version_args": ["--version"], "version": "Verilator 5.032 2025-01-01 rev (Debian 5.032-1)"},
+    "make": {"path": "/usr/bin/make", "sha256": "27c9f6d806aee15882b01c2c61848f7aa75caa14bc7b6f608ba422f9e46a7d49", "version_args": ["--version"], "version": "GNU Make 4.4.1"},
+    "cxx": {"path": "/usr/bin/x86_64-linux-gnu-g++-15", "sha256": "e6718f7e0c7d057c3ff77b550c603da9bc4030e3ede3c053705acce1293dbe4d", "version_args": ["--version"], "version": "x86_64-linux-gnu-g++-15 (Ubuntu 15.2.0-16ubuntu1) 15.2.0"}
+  }
+}
