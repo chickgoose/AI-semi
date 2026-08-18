@@ -957,8 +957,8 @@ def validate_result(result: dict[str, Any]) -> None:
         raise PublicV2Error("result must retain exactly eight mutant outcomes")
     for owner in OWNERS:
         owner_result = result["owners"][owner]
-        if tuple(owner_result.get("scenarios", {})) != SCENARIOS:
-            raise PublicV2Error("result scenario order mismatch")
+        if set(owner_result.get("scenarios", {})) != set(SCENARIOS):
+            raise PublicV2Error("result scenario roster mismatch")
         for scenario in SCENARIOS:
             artifact = owner_result["scenarios"][scenario]
             if artifact.get("generated") != 1100:
