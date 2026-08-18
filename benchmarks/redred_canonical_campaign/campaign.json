@@ -1,0 +1,180 @@
+{
+  "schema": "redred_canonical_campaign_manifest_v1",
+  "campaign_id": "team-redred-canonical-digital-v1",
+  "official_registry": {
+    "path": "scripts/common_suite_official.py",
+    "sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33"
+  },
+  "measurement_definitions": [
+    {
+      "id": "redred_common_fixed_window_v1",
+      "cycle_semantics": "common_TB_one_entry_occurrence_latch_before_indexed_accept_edge_nonblocking_clear",
+      "generated": "all source occurrences in the frozen input trace",
+      "source_overrun": "occurrence at a source whose one-entry pending latch is already occupied",
+      "accepted": "event accepted at the candidate's actual commit boundary",
+      "delivered": "event retired from the actual RX/decoder in global accepted order",
+      "hard_correct_conservation": [
+        "generated=source_overrun+accepted",
+        "accepted=delivered"
+      ],
+      "throughput": "fixed_window_retired/fixed_window_cycles",
+      "fixed_window": "the run manifest's declared stim_cycles; drain is excluded",
+      "occurrence_to_accept_latency": "accept_cycle-occurrence_cycle",
+      "accept_to_deliver_latency": "retire_cycle-accept_cycle"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "full50",
+      "source_class": "synthetic",
+      "required_for_release": true,
+      "suite_key": "full50",
+      "manifest": {
+        "path": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+        "sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
+      },
+      "provenance_manifest": null,
+      "subset_of": null
+    },
+    {
+      "id": "capacity22",
+      "source_class": "synthetic",
+      "required_for_release": true,
+      "suite_key": "capacity22",
+      "manifest": {
+        "path": "benchmarks/clean_slate_aer/manifest.multilane-n16.json",
+        "sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62"
+      },
+      "provenance_manifest": null,
+      "subset_of": "full50"
+    },
+    {
+      "id": "organizer_supplied",
+      "source_class": "supplied",
+      "required_for_release": true,
+      "suite_key": null,
+      "manifest": null,
+      "provenance_manifest": null,
+      "subset_of": null
+    },
+    {
+      "id": "public_dataset",
+      "source_class": "public",
+      "required_for_release": true,
+      "suite_key": null,
+      "manifest": null,
+      "provenance_manifest": null,
+      "subset_of": null
+    }
+  ],
+  "providers": [
+    {
+      "id": "actual_a23_p6",
+      "kind": "a23_full_p6_replay_result_v1",
+      "runner": {
+        "path": "tests/a23_full_p6_replay/run_all.sh",
+        "sha256": "0809e6e845dea2587809c2ade31f7703a8f0e16881f7468e92a43c109af84785"
+      },
+      "entrypoint": {
+        "path": "tests/a23_full_p6_replay/run_replay.py",
+        "sha256": "353c1f1cbe11e67e6a1e51e072f78cd9de6e9b1579349f9269430b44e16ae8db"
+      },
+      "result": {
+        "path": "tests/a23_full_p6_replay/result.json",
+        "sha256": "67c6dd0a2decda78edede6d285c81ae580faa7c5a4b949c74c5b19291a8858b2"
+      },
+      "candidate_owner_map": {
+        "a2_p6": "a2",
+        "a3_p6": "a3"
+      },
+      "dry_run_command": [
+        "python3",
+        "tests/a23_full_p6_replay/run_replay.py",
+        "--work-dir",
+        "<new-work-dir>",
+        "--output",
+        "<new-result.json>",
+        "--verilator",
+        "<pinned-verilator>"
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "id": "fovea",
+      "required_for_release": true,
+      "measurement_definition": "redred_common_fixed_window_v1",
+      "evidence": {
+        "full50": null,
+        "capacity22": null,
+        "organizer_supplied": null,
+        "public_dataset": null
+      }
+    },
+    {
+      "id": "cluster2",
+      "required_for_release": true,
+      "measurement_definition": "redred_common_fixed_window_v1",
+      "evidence": {
+        "full50": null,
+        "capacity22": null,
+        "organizer_supplied": null,
+        "public_dataset": null
+      }
+    },
+    {
+      "id": "a2_p6",
+      "required_for_release": true,
+      "measurement_definition": "redred_common_fixed_window_v1",
+      "evidence": {
+        "full50": {"provider": "actual_a23_p6", "owner": "a2"},
+        "capacity22": {"provider": "actual_a23_p6", "owner": "a2"},
+        "organizer_supplied": null,
+        "public_dataset": null
+      }
+    },
+    {
+      "id": "a3_p6",
+      "required_for_release": true,
+      "measurement_definition": "redred_common_fixed_window_v1",
+      "evidence": {
+        "full50": {"provider": "actual_a23_p6", "owner": "a3"},
+        "capacity22": {"provider": "actual_a23_p6", "owner": "a3"},
+        "organizer_supplied": null,
+        "public_dataset": null
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "full50_common",
+      "datasets": ["full50"],
+      "candidates": ["fovea", "cluster2", "a2_p6", "a3_p6"],
+      "measurement_definition": "redred_common_fixed_window_v1"
+    },
+    {
+      "id": "capacity22_subset_view",
+      "datasets": ["capacity22"],
+      "candidates": ["fovea", "cluster2", "a2_p6", "a3_p6"],
+      "measurement_definition": "redred_common_fixed_window_v1"
+    },
+    {
+      "id": "organizer_supplied_common",
+      "datasets": ["organizer_supplied"],
+      "candidates": ["fovea", "cluster2", "a2_p6", "a3_p6"],
+      "measurement_definition": "redred_common_fixed_window_v1"
+    },
+    {
+      "id": "public_dataset_common",
+      "datasets": ["public_dataset"],
+      "candidates": ["fovea", "cluster2", "a2_p6", "a3_p6"],
+      "measurement_definition": "redred_common_fixed_window_v1"
+    }
+  ],
+  "aggregation_groups": [
+    {"id": "full50_only", "datasets": ["full50"]},
+    {"id": "capacity22_subset_only", "datasets": ["capacity22"]},
+    {"id": "organizer_supplied_only", "datasets": ["organizer_supplied"]},
+    {"id": "public_dataset_only", "datasets": ["public_dataset"]}
+  ]
+}
