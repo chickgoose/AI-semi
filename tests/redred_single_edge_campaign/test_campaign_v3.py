@@ -584,6 +584,18 @@ class SealedTupleTests(unittest.TestCase):
                 self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
             )
         binding = copy.deepcopy(self.fixture.binding)
+        binding["rtl"]["source_inventory"][0]["role"] = "substituted-source-role"
+        with self.assertRaisesRegex(sealed.SealedTupleError, "RTL source role path"):
+            sealed.validate_tuple(
+                self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
+            )
+        binding = copy.deepcopy(self.fixture.binding)
+        binding["rtl"]["integration_inventory"][0]["role"] = "substituted-integration-role"
+        with self.assertRaisesRegex(sealed.SealedTupleError, "RTL integration role path"):
+            sealed.validate_tuple(
+                self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
+            )
+        binding = copy.deepcopy(self.fixture.binding)
         binding["producer"]["inventory"][0]["path"] = "benchmarks/redred_single_edge_campaign/campaign.py"
         with self.assertRaisesRegex(sealed.SealedTupleError, "producer inventory roster"):
             sealed.validate_tuple(
