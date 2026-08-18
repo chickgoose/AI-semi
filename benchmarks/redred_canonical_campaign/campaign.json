@@ -1,5 +1,5 @@
 {
-  "schema": "redred_canonical_campaign_manifest_v1",
+  "schema": "redred_canonical_campaign_manifest_v2",
   "campaign_id": "team-redred-canonical-digital-v1",
   "official_registry": {
     "path": "scripts/common_suite_official.py",
