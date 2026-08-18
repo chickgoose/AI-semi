@@ -74,3 +74,15 @@ REDRED의 새 목표는 다음과 같다.
 3. P6와 single-edge fallback 중 release interface를 확정하고 선택 interface만 새로 complete-boundary P&R/vectorless/CDC 검증한다.
 4. 주최 측 dataset이 오면 기존 full50을 바꾸지 않고 versioned extension campaign으로 추가한다.
 5. known-motion coordinate demo를 system presentation에 연결하고, numeric contract가 정해진 뒤에만 RTL/PPA 편입을 검토한다.
+
+## 2026-08-19 통합 검증 상태
+
+전용 통합 branch `integration/redred-system-goal`에서 다음을 확인했다.
+
+- 새 dataset/coordinate/campaign/vectorless/contract 도구의 집중 회귀 108개가 모두 PASS했다.
+- 고정 actual-P6 재현은 package commit `88b972233de0db6ca73c27ad450c62eb97190e55`에서 PASS했다. 실제 실행 수는 full50 150회, reset 3회, actual-RTL mutation 15회이며 결과 JSON SHA-256은 `5cb973816fc7f2e71edf299cd9ba5c33e883aae390731c0f455d3a004562a8dd`다.
+- A2 full50은 generated 106,416, accepted/retired 104,046, source overrun 2,370, fixed-window 0.896281733 event/cycle, accept-to-retire 3 cycle이다.
+- A3 full50은 generated 106,416, accepted/retired 93,645, source overrun 12,771, fixed-window 0.806670806 event/cycle, accept-to-retire 2 cycle이다.
+- 위 재현이 허용하는 판정은 `digital_RTL=GO`뿐이다. P6 organizer legality, selected-interface physical, CDC/RDC, single-edge fallback, real-server mapped vectorless power는 계속 HOLD다.
+- local captured-byte dataset 변환과 known-pose coordinate 실행은 각각 importer 및 `SYNTHETIC_DEMO` 검증일 뿐 공식 dataset 또는 canonical system evidence가 아니다.
+- 일부 기존 physical/Genus 회귀는 소스 실패가 아니라 `/tmp`의 세 개 golden archive가 없는 상태라 재현 HOLD다.

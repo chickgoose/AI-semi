@@ -429,3 +429,10 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 - known-motion 좌표 변환은 endpoint PPA 밖의 post-retire system demo로 먼저 검증한다.
 
 새 세션의 한 문장 목표는 `docs/NEW_SESSION_START_PROMPT.txt`에 기록했다.
+
+통합 상태:
+
+- 전용 branch `integration/redred-system-goal`에서 신규 집중 회귀 108개와 actual-P6 full50/reset/mutation 재현이 PASS했다.
+- actual-P6 receipt는 `digital_RTL=GO`, `physical=HOLD`, `CDC_RDC=HOLD`다.
+- policy verifier의 PASS는 정책 구조가 내부적으로 일관된다는 뜻이며 evidence/release GO가 아니다.
+- P6 서면 허용, single-edge fallback 독립 검증, 선택 interface의 real-server P&R/vectorless, CDC/RDC, 주최 측 dataset은 후속 gate로 남아 있다.
