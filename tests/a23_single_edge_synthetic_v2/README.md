@@ -22,6 +22,9 @@ retirement ordinals, including lane order within the same cycle. Thus each
 campaign has 212 actual-RTL executions and the two retained campaigns have 424.
 Both executions must record the same package, hardened source/integration,
 tool, trace, prepared-input, and ordinal-semantic identities.
+The consumer derives exact file, RTL, owner, and tool rosters from the pinned
+`pins.json`, recursively closes the RTL filelists, and regenerates all 50 raw
+and prepared traces from the pinned generator/registry/manifest inputs.
 
 The semantic digest removes exactly the 22 concrete build/simulation log-hash
 JSON pointers listed in `synthetic_v2_result.json`. All other fields—including
@@ -42,7 +45,8 @@ scratch.
 
 The archive uses fixed gzip/tar metadata and a closed hash/size inventory.
 Validation rejects symlinks, hardlinks, path escapes, duplicate/missing/extra
-members, unsafe metadata, and hash/size drift, then reopens the archive,
+members, unsafe metadata, hash/size drift, and compressed/member/per-file/total
+expansion-limit violations before unbounded allocation, then reopens the archive,
 materializes both campaigns in fresh directories, and independently recomputes
 replay claims, semantic reproduction, CSV schemas, per-run ordinal PASS logs,
 and retained global-order digests.

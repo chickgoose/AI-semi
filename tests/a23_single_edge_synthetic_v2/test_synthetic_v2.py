@@ -178,6 +178,52 @@ class SyntheticV2Test(unittest.TestCase):
                 else:
                     archive.addfile(member)
 
+    def _safe_members(self, count: int) -> list[tarfile.TarInfo]:
+        members = []
+        for index in range(count):
+            member = tarfile.TarInfo(f"{v2.ARCHIVE_PREFIX}/bounded-{index}")
+            member.mode = 0o444
+            member.uid = member.gid = member.mtime = 0
+            member.uname = member.gname = ""
+            members.append(member)
+        return members
+
+    def test_archive_rejects_compressed_member_count_member_and_total_limits(self) -> None:
+        limits = (v2.MAX_ARCHIVE_COMPRESSED_BYTES, v2.MAX_ARCHIVE_MEMBER_COUNT,
+                  v2.MAX_ARCHIVE_MEMBER_BYTES, v2.MAX_ARCHIVE_EXPANDED_BYTES)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            try:
+                compressed = root / "compressed.tgz"
+                compressed.write_bytes(b"not a tar archive")
+                v2.MAX_ARCHIVE_COMPRESSED_BYTES = compressed.stat().st_size - 1
+                with self.assertRaisesRegex(v2.V2Error, "compressed-size"):
+                    v2.read_archive(compressed)
+                v2.MAX_ARCHIVE_COMPRESSED_BYTES = 1024 * 1024
+
+                count = root / "count.tgz"
+                self._raw_archive(count, self._safe_members(3), b"")
+                v2.MAX_ARCHIVE_MEMBER_COUNT = 2
+                with self.assertRaisesRegex(v2.V2Error, "member-count"):
+                    v2.read_archive(count)
+                v2.MAX_ARCHIVE_MEMBER_COUNT = 10
+
+                member = root / "member.tgz"
+                self._raw_archive(member, self._safe_members(1), b"12345")
+                v2.MAX_ARCHIVE_MEMBER_BYTES = 4
+                with self.assertRaisesRegex(v2.V2Error, "per-member"):
+                    v2.read_archive(member)
+                v2.MAX_ARCHIVE_MEMBER_BYTES = 4
+
+                total = root / "total.tgz"
+                self._raw_archive(total, self._safe_members(3), b"123")
+                v2.MAX_ARCHIVE_EXPANDED_BYTES = 8
+                with self.assertRaisesRegex(v2.V2Error, "expanded-size"):
+                    v2.read_archive(total)
+            finally:
+                (v2.MAX_ARCHIVE_COMPRESSED_BYTES, v2.MAX_ARCHIVE_MEMBER_COUNT,
+                 v2.MAX_ARCHIVE_MEMBER_BYTES, v2.MAX_ARCHIVE_EXPANDED_BYTES) = limits
+
     def test_archive_rejects_path_escape_duplicate_links_and_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -331,6 +377,51 @@ class SyntheticV2Test(unittest.TestCase):
         for changed in cases:
             with self.assertRaisesRegex(v2.V2Error, "fields differ"):
                 v2.verify_result_identity(changed, v2.current_commit())
+
+    def test_base_semantics_reset_activation_and_generator_are_exact(self) -> None:
+        valid = current_base_result()
+        cases = []
+        for key, value in (
+            ("source_overrun_semantics", "P6_POOLING"),
+            ("conservation", ["accepted = invented"]),
+            ("boundary", "P6"),
+            ("reset_qualification", "erase inflight"),
+        ):
+            changed = copy.deepcopy(valid)
+            changed[key] = value
+            cases.append(changed)
+        generator = copy.deepcopy(valid)
+        generator["generator"]["full50_manifest_sha256"] = "0" * 64
+        cases.append(generator)
+        reset_test = copy.deepcopy(valid)
+        reset_test["owners"]["a2"]["reset"]["reset_test"] = 0
+        cases.append(reset_test)
+        clean_drain = copy.deepcopy(valid)
+        clean_drain["owners"]["a3"]["reset"]["pre_reset_clean_drain"] = 0
+        cases.append(clean_drain)
+        activation = copy.deepcopy(valid)
+        activation["owners"]["a2"]["mutation_activation"]["count2_commits"] = 0
+        cases.append(activation)
+        for changed in cases:
+            with self.assertRaises(v2.V2Error):
+                v2.verify_result_identity(changed, v2.current_commit())
+
+    def test_pinned_tool_and_regenerated_trace_identity_reject_substitution(self) -> None:
+        valid = current_base_result()
+        tool = copy.deepcopy(valid)
+        tool["provenance"]["verified_tools"]["python"] = copy.deepcopy(
+            tool["provenance"]["verified_tools"]["make"]
+        )
+        with self.assertRaisesRegex(v2.V2Error, "tool identities"):
+            v2.verify_tools(tool)
+        names = v2.verify_result_identity(valid, v2.current_commit())
+        substituted = copy.deepcopy(valid)
+        first = names[0]
+        for owner in ("a2", "a3"):
+            substituted["owners"][owner]["full50"]["runs"][first][
+                "trace_sha256"] = "0" * 64
+        with self.assertRaisesRegex(v2.V2Error, "canonical trace"):
+            v2.trace_identity(substituted, names)
 
     def test_metadata_rejects_definition_keys_pins_and_counters(self) -> None:
         valid = v2_metadata_fixture()

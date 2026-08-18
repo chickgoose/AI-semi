@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,10 @@ EXPORT_SCHEMA = "a23_single_edge_synthetic_v2_export_manifest_v1"
 PUBLICATION_SCHEMA = "a23_single_edge_synthetic_v2_publication_v1"
 STATUS = "PASS_HARDENED_SYNTHETIC_V2"
 ARCHIVE_PREFIX = "a23-single-edge-synthetic-v2"
+MAX_ARCHIVE_COMPRESSED_BYTES = 32 * 1024 * 1024
+MAX_ARCHIVE_MEMBER_COUNT = 2048
+MAX_ARCHIVE_MEMBER_BYTES = 2 * 1024 * 1024
+MAX_ARCHIVE_EXPANDED_BYTES = 160 * 1024 * 1024
 IMPLEMENTATION_FILES = (
     BASE_PINS_RELATIVE,
     "tests/a23_single_edge_synthetic_v2/README.md",
@@ -247,7 +252,8 @@ def authoritative_roster(package_commit: str) -> tuple[dict[str, str], list[str]
     files = retained.require_object(pins.get("files"), "pinned file roster")
     for path, expected_sha in files.items():
         relative = retained.safe_relative(path, "pinned file path")
-        if relative != path or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None:
+        if (relative != path or not isinstance(expected_sha, str) or
+                re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None):
             raise V2Error("pinned file roster value differs")
         if digest(git_bytes(package_commit, path)) != expected_sha:
             raise V2Error(f"pinned package blob differs: {path}")
@@ -304,15 +310,47 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
         "qualification", "reset_qualification", "retirement_scoreboard", "schema",
         "source_overrun_semantics", "status",
     }, "base result")
+    exact_values = {
+        "acceptance_observation":
+            "actual_endpoint_atomic_source_accept_count_and_ordered_addresses",
+        "boundary": "actual_A2_A3_scheduler_plus_actual_single_edge_endpoint",
+        "conservation": [
+            "generated = source_overrun + accepted",
+            "after bounded drain: accepted = retired",
+        ],
+        "event_identity_scope": "TB_identity_bound_to_observable_logical_source_stream",
+        "reset_qualification":
+            "reset_only_after_external_clean_drain_and_no_protocol_error",
+        "retirement_scoreboard": "actual_single_edge_retire_prefix_in_global_accept_order",
+        "source_overrun_semantics":
+            "same_source_occurrence_while_one_entry_source_latch_occupied",
+    }
+    for key, expected in exact_values.items():
+        if result[key] != expected:
+            raise V2Error(f"base semantic definition differs for {key}")
     require_exact_keys(result["execution_accounting"],
                        set(retained.EXPECTED_EXECUTION_ACCOUNTING),
                        "base execution accounting")
-    require_exact_keys(result["generator"], {
+    if result["execution_accounting"] != retained.EXPECTED_EXECUTION_ACCOUNTING:
+        raise V2Error("base execution accounting values differ")
+    generator = require_exact_keys(result["generator"], {
         "full50_manifest_sha256", "source_commit", "trace_count", "version",
     }, "base generator")
+    if generator != {
+        "full50_manifest_sha256":
+            "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+        "source_commit": "abd6a721b515ded8a9ef76cb96129b7e0af21e2b",
+        "trace_count": 50, "version": "4.0",
+    }:
+        raise V2Error("base generator definition differs")
     require_exact_keys(result["qualification"], {
         "CDC_RDC", "physical", "power", "single_edge_digital_RTL",
     }, "base qualification")
+    if result["qualification"] != {
+        "CDC_RDC": "HOLD", "physical": "HOLD", "power": "HOLD",
+        "single_edge_digital_RTL": "GO",
+    }:
+        raise V2Error("base qualification definition differs")
     provenance = require_exact_keys(result["provenance"], {
         "actual_rtl_git", "package_commit", "pins_path", "pins_sha256",
         "verified_files", "verified_tools",
@@ -371,6 +409,11 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
                                     f"base {owner} {label} accept latency")
             validate_latency_schema(record["occurrence_to_accept"],
                                     f"base {owner} {label} occurrence latency")
+        reset = owner_record["reset"]
+        if reset["reset_test"] != 1 or reset["pre_reset_clean_drain"] != 1:
+            raise V2Error(f"base {owner} reset lacks clean-drain/reset flags")
+        if owner_record["mutation_activation"]["count2_commits"] < 1:
+            raise V2Error(f"base {owner} pair activation lacks count-two commit")
     mutations = result["mutations"]
     if not isinstance(mutations, list) or len(mutations) != 8:
         raise V2Error("base mutation roster differs")
@@ -504,6 +547,69 @@ def trace_identity(result: dict[str, Any], names: list[str]) -> tuple[list[dict[
             "trace_sha256": a2["trace_sha256"],
             "prepared_trace_sha256": a2["prepared_trace_sha256"],
         })
+    claimed_digest = digest(semantic_bytes(rows))
+    regenerated_rows, regenerated_digest = regenerate_trace_identity(result, names)
+    if regenerated_rows != rows or regenerated_digest != claimed_digest:
+        raise V2Error("claimed trace identity differs from canonical regeneration")
+    return rows, claimed_digest
+
+
+def regenerate_trace_identity(
+    result: dict[str, Any], names: list[str],
+) -> tuple[list[dict[str, Any]], str]:
+    commit = result["provenance"]["package_commit"]
+    inputs = {
+        "generate.py": "benchmarks/clean_slate_aer/generate_trace.py",
+        "prepare.py": "benchmarks/clean_slate_aer/prepare_sv_trace.py",
+        "official.py": "scripts/common_suite_official.py",
+        "manifest.json":
+            "tests/common_suite_receipt/fixtures/manifest.neutrality-n16.json",
+    }
+    with tempfile.TemporaryDirectory(prefix="a23-v2-trace-regenerate-") as temporary:
+        work = Path(temporary)
+        for local, relative in inputs.items():
+            (work / local).write_bytes(git_bytes(commit, relative))
+        registry = runpy.run_path(str(work / "official.py"))
+        official_names = tuple(registry["FULL50"])
+        official_hashes = registry["TRACE_SHA256"]
+        if len(names) != 50 or set(names) != set(official_names):
+            raise V2Error("result trace roster differs from pinned full50 registry")
+        python = result["provenance"]["verified_tools"]["python"]["path"]
+        generated = work / "generated"
+        process = subprocess.run(
+            [python, str(work / "generate.py"), "--manifest", str(work / "manifest.json"),
+             "--output-dir", str(generated)],
+            cwd=work, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, check=False,
+        )
+        if process.returncode:
+            raise V2Error("pinned canonical trace regeneration failed")
+        rows: list[dict[str, Any]] = []
+        for name in names:
+            raw = generated / f"{name}.events.jsonl"
+            if file_digest(raw) != official_hashes[name]:
+                raise V2Error(f"pinned registry/raw trace identity differs: {name}")
+            prepared = work / f"prepared/{name}.trace"
+            prepared.parent.mkdir(exist_ok=True)
+            process = subprocess.run(
+                [python, str(work / "prepare.py"), "--trace", str(raw),
+                 "--run-manifest", str(generated / f"{name}.manifest.json"),
+                 "--output", str(prepared), "--addr-width", "4"],
+                cwd=work, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, check=False,
+            )
+            if process.returncode:
+                raise V2Error(f"pinned canonical trace preparation failed: {name}")
+            row = {
+                "name": name,
+                "trace_sha256": file_digest(raw),
+                "prepared_trace_sha256": file_digest(prepared),
+            }
+            claimed = result["owners"]["a2"]["full50"]["runs"][name]
+            if (row["trace_sha256"] != claimed["trace_sha256"] or
+                    row["prepared_trace_sha256"] != claimed["prepared_trace_sha256"]):
+                raise V2Error(f"regenerated canonical trace identity differs: {name}")
+            rows.append(row)
     return rows, digest(semantic_bytes(rows))
 
 
@@ -798,11 +904,27 @@ def write_archive(
 
 
 def read_archive(path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
+    try:
+        compressed_size = path.stat().st_size
+    except OSError as error:
+        raise V2Error(f"cannot stat export: {error}") from error
+    if compressed_size > MAX_ARCHIVE_COMPRESSED_BYTES:
+        raise V2Error("sealed export compressed-size limit exceeded")
     seen: set[str] = set()
     contents: dict[str, bytes] = {}
+    expanded_size = 0
+    member_count = 0
     try:
         with tarfile.open(path, "r:gz") as archive:
             for member in archive:
+                member_count += 1
+                if member_count > MAX_ARCHIVE_MEMBER_COUNT:
+                    raise V2Error("sealed export member-count limit exceeded")
+                if member.size < 0 or member.size > MAX_ARCHIVE_MEMBER_BYTES:
+                    raise V2Error("sealed export per-member size limit exceeded")
+                expanded_size += member.size
+                if expanded_size > MAX_ARCHIVE_EXPANDED_BYTES:
+                    raise V2Error("sealed export expanded-size limit exceeded")
                 name = retained.safe_relative(member.name, "archive member")
                 if name in seen:
                     raise V2Error(f"duplicate archive member: {name}")
@@ -818,9 +940,17 @@ def read_archive(path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
                 extracted = archive.extractfile(member)
                 if extracted is None:
                     raise V2Error(f"archive member cannot be read: {name}")
-                data = extracted.read()
-                if len(data) != member.size:
+                remaining = member.size
+                blocks: list[bytes] = []
+                while remaining:
+                    block = extracted.read(min(1024 * 1024, remaining))
+                    if not block:
+                        raise V2Error(f"archive member size differs: {name}")
+                    blocks.append(block)
+                    remaining -= len(block)
+                if extracted.read(1):
                     raise V2Error(f"archive member size differs: {name}")
+                data = b"".join(blocks)
                 contents[name] = data
     except (tarfile.TarError, OSError) as error:
         raise V2Error(f"cannot reopen export: {error}") from error
