@@ -119,19 +119,29 @@ set failed [catch {
   editTrim -nets [list $::env(SE_VDD) $::env(SE_VSS)]
   extractRC
 
-  setAnalysisMode -checkType setup
-  report_timing -view se_setup_view -check_type setup -max_paths 50 \
-    > "$output/reports/setup_timing.rpt"
-  se_append_report_context "$output/reports/setup_timing.rpt" setup_timing postroute
-  se_timing_summary "$output/reports/setup_timing.machine" se_setup_view setup
-  setAnalysisMode -checkType hold
-  report_timing -view se_hold_view -check_type hold -max_paths 50 \
-    > "$output/reports/hold_timing.rpt"
-  se_append_report_context "$output/reports/hold_timing.rpt" hold_timing postroute
-  se_timing_summary "$output/reports/hold_timing.machine" se_hold_view hold
+  # Preserve all independently safe post-route diagnostics even when either
+  # timing view is not closed.  The stage still exits nonzero after collection.
+  set diagnostic_failures {}
+  set setup_failed [catch {
+    setAnalysisMode -checkType setup
+    report_timing -view se_setup_view -check_type setup -max_paths 50 \
+      > "$output/reports/setup_timing.rpt"
+    se_append_report_context "$output/reports/setup_timing.rpt" setup_timing postroute
+    se_timing_summary "$output/reports/setup_timing.machine" se_setup_view setup
+  } setup_error]
+  if {$setup_failed} { lappend diagnostic_failures "setup: $setup_error" }
+  set hold_failed [catch {
+    setAnalysisMode -checkType hold
+    report_timing -view se_hold_view -check_type hold -max_paths 50 \
+      > "$output/reports/hold_timing.rpt"
+    se_append_report_context "$output/reports/hold_timing.rpt" hold_timing postroute
+    se_timing_summary "$output/reports/hold_timing.machine" se_hold_view hold
+  } hold_error]
+  if {$hold_failed} { lappend diagnostic_failures "hold: $hold_error" }
   setAnalysisMode -checkType setup
 
   report_area > "$output/reports/area.rpt"
+  se_append_report_context "$output/reports/area.rpt" area postroute
   report_power > "$output/reports/power_vectorless_screening.rpt"
   reportRoute > "$output/reports/route.rpt"
   redirect -file "$output/reports/check_timing.rpt" {check_timing -verbose}
@@ -157,6 +167,9 @@ set failed [catch {
   puts $db_manifest "entry=saveDesign-mmmc2"
   puts $db_manifest "producer_authentication=UNAUTHENTICATED_LOCAL_SELF_HASH"
   close $db_manifest
+  if {[llength $diagnostic_failures] != 0} {
+    error "timing diagnostics failed after complete safe report collection: [join $diagnostic_failures {; }]"
+  }
   set marker [open "$output/status/COMMANDS_COMPLETE" {WRONLY CREAT EXCL}]
   puts $marker "K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top=$top"
   close $marker

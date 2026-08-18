@@ -146,10 +146,11 @@ WNS, zero TNS/violations, positive routed area, native zero DRC/antenna/
 connectivity evidence, no nonzero missing-clock/I/O/load or unconstrained-path
 counts, one mapped primary clock, exact tops, and clean version-bound logs.
 The Innovus template appends one exact version/top/kind/context marker to each
-setup, hold, `check_timing`, DRC, antenna, signal-connectivity, and
-PG-connectivity report. Qualification strips comments before interpreting any
-report tokens and rejects missing, duplicate, foreign, fatal, incomplete, or
-contradictory report context.
+setup, hold, area, `check_timing`, DRC, antenna, signal-connectivity, and
+PG-connectivity report. Qualification validates native commented identity
+headers separately, strips comments before interpreting diagnostic claims,
+and rejects missing, duplicate, foreign, fatal, incomplete, or contradictory
+report context.
 
 The mapped SDC parser accepts exactly eight commands: one named primary clock
 with the 6.5 ns period and `{0.0 3.25}` rising/falling waveform, uncertainty,
@@ -161,6 +162,21 @@ and routed netlists must expose exactly the contract port order, directions,
 and widths, with no extras, plus cell connections touching at least one boundary
 input and at least one boundary output. This is structural screening, not
 equivalence.
+
+Native diagnostic parsing follows emitted Cadence forms rather than
+fixture-only summaries. Innovus timing requires sequential `Path N: MET` rows
+and one `Slack Time` per path, checked against machine WNS at the report's
+printed precision. `check_timing` requires the exact Innovus generator,
+design, and command header, the clean `ideal_clock_waveform` inventory, and
+the exact `se_primary_clk`/`se_setup_view` ideal-clock row. Missing-constraint,
+unconstrained, detail, unknown-warning, and contradictory forms reject. DRC,
+antenna, and connectivity bind the native header plus appended context marker
+and accept the clean native sentinel without inventing an extra zero-count
+line; an explicit total, when present, must be uniquely zero. Genus reports
+require their exact generator version and top, with native timing and area
+structures. The Innovus driver catches setup and hold closure failures
+separately, collects the remaining independently safe post-route reports, and
+then exits nonzero without writing `COMMANDS_COMPLETE`.
 
 ```sh
 python3 physical/k2_single_edge_endpoint/flow.py qualify --design a2 \
@@ -190,6 +206,21 @@ closure. Filesystem reads reject lexical source/artifact symlinks, hardlinks,
 ancestor symlinks, and pre-open identity swaps, but this portable Python flow
 does not provide a kernel-enforced immutable attempt filesystem. These limits
 are reasons for the unconditional unauthenticated HOLD.
+
+After both rows independently produce diagnostic HOLD receipts, an optional
+cohort binder requires them to name the exact same environment-snapshot hash:
+
+```sh
+python3 physical/k2_single_edge_endpoint/flow.py bind-cohort \
+  --a2-qualification /absolute/server/attempt-a2/qualification.json \
+  --a3-qualification /absolute/server/attempt-a3/qualification.json \
+  --output /absolute/server/k2-single-edge-cohort.json
+```
+
+This binds only caller-self-sealed diagnostic bytes. It emits
+`freshness_verified=false`, `comparison_ready=false`, and
+`candidate_physical_go=false`; a controlled runner, trusted freshness source,
+and producer-held authentication remain external blockers.
 
 Run the adversarial local regression with:
 
