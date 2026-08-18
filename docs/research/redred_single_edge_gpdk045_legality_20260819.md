@@ -2,7 +2,7 @@
 
 Audit date: 2026-08-19
 
-Audit base: `93d2c7d3f691d2eac4edc02466f1d0706a854538`
+Audited RTL commit: `4ce4836fab1309d3468db8e660d2da9af371f784`
 
 Machine matrix: `tests/redred_single_edge_pdk_legality/legality_matrix.json`
 
@@ -12,12 +12,14 @@ Machine matrix: `tests/redred_single_edge_pdk_legality/legality_matrix.json`
 fallback, but it does not support calling that fallback competition-legal or
 release-ready.
 
-Three independent boundaries remain open:
+The integrated source RTL is now present and its immutable filelist closure
+passes the source-only structural checks described below. Three independent
+release boundaries remain open:
 
 1. no organizer-authored written rule or immutable transcript is tracked;
 2. the exact GPDK045/GSCLIB045/GIOLIB045 payload bytes are not in this checkout;
-3. no integrated single-edge fallback RTL, mapped inventory, canonical digital
-   receipt, P&R receipt, or mapped vectorless-power receipt exists here.
+3. no fallback mapped inventory, canonical digital receipt, P&R receipt, or
+   mapped vectorless-power receipt exists here.
 
 The tracked policy already states `PARALLEL_FALLBACK =
 HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER` and forbids borrowing P6 physical/power
@@ -46,6 +48,33 @@ a careful secondary interpretation, not organizer-primary written approval.
 
 ## What is actually evidenced
 
+### Integrated RTL source structure
+
+The audit target is the immutable Git object
+`4ce4836fab1309d3468db8e660d2da9af371f784`. The verifier reads the two release
+root filelists from that object, recursively expands the shared generic
+filelist, and requires the exact three-filelist/seven-source path and SHA-256
+inventory recorded in the matrix. A missing, added, P6-substituted, escaped,
+symlink-mode, non-regular, or hash-different committed object fails closed.
+
+After removing comments and string literals, all six sequential event controls
+in that closure are rising-edge events on the declared `clk`/`clk_i` clock.
+The source closure contains no falling-edge event, derived/gated event
+expression, forwarded clock output/assignment, ODDR, IDDR, known technology
+cell, vendor primitive, UDP primitive, or `always_latch` construct. This result
+is recorded as:
+
+```text
+source_structure_status = PASS
+mapped_structure_status = HOLD
+organizer_approval_status = HOLD
+claim_limit = RTL_SOURCE_ONLY_NOT_MAPPED_NOT_ORGANIZER_APPROVAL
+```
+
+This PASS is necessary source evidence only. It does not prove what Genus maps,
+does not validate a clock report or SDC, does not establish real-library cell
+legality, and has no path to organizer approval or release GO by itself.
+
 ### PDK and library identities
 
 | Item | Repository evidence | Local payload? | Competition meaning |
@@ -58,12 +87,14 @@ a careful secondary interpretation, not organizer-primary written approval.
 | Macro LEF | `lef/gsclib045_macro.lef`, SHA `7bb39c7a...52b2` | No | Exact identity is recorded, contents unavailable locally. |
 | Extraction tech | `qrc/qx/gpdk045.tch`, SHA `a089c567...bd5` | No | One shared typical QRC was used for setup and hold; no distinct best/worst RC evidence exists. |
 
-The only `.lib`, `.lef`, and `.tch` files in the checkout with these basenames
-are tiny files under `tests/k2_w2_genus/fixtures/`. Their hashes differ from all
-real-artifact hashes, their setup Liberty is only 2,305 bytes, their QRC fixture
-is one comment line, and they intentionally model a very small cell subset.
-They are parser/flow test doubles, not GPDK045 legality evidence. The Git object
-inventory likewise contains only those fixture paths, not the real payloads.
+The strict verifier independently walks the checkout for every expected real
+artifact basename. The only matching `.lib`, `.lef`, and `.tch` files are the
+four explicitly declared files under `tests/k2_w2_genus/fixtures/`; unexpected
+or symlinked matches fail. Their live hashes must equal the fixture hashes and
+must differ from every pinned real-artifact hash. The verifier also checks that
+each pinned absolute server path is absent on this host rather than trusting
+the JSON `present_in_checkout` assertion. These files are parser/flow test
+doubles, not GPDK045 legality evidence.
 
 The referenced historical archives and result root were also absent at audit
 time:
@@ -110,12 +141,12 @@ their absence from a new fallback does not prove the fallback is approved.
 | Hold corner | fast Liberty, process 1.0, 1.1 V, 0 C | `REPOSITORY_RECORD`; exact external payload absent; operating-condition name and organizer selection unproven. |
 | RC | same `gpdk045.tch` for setup and hold | `REPOSITORY_RECORD`; disclosed typical-only limitation, not multi-corner signoff. |
 
-For a single-edge fallback, none of the above clock values can be silently
-inherited. The fallback must declare whether `ref_clk_i` and `sample_clk_i`
-remain, which edge admits input, which edge launches/receives the parallel
-transfer, whether `link_clk_o` exists, and whether any clock is forwarded,
-generated, divided, gated, or phase-related. Its SDC must constrain the exact
-declared clocks and all data/reset paths. The organizer must separately pin or
+The audited fallback source declares one shared functional clock (`clk_i` at
+the complete tops and link, `clk` inside the unchanged schedulers), with
+rising-edge state only and no `sample_clk_i` or `link_clk_o` in the release
+filelist closure. None of the inherited numeric clock values can be silently
+applied to it. A fallback-specific SDC and mapped clock report must still bind
+the exact clock and all data/reset paths. The organizer must separately pin or
 accept the numeric period, waveform, uncertainty, drive/transition, min/max
 I/O/reset delays, and output load.
 
@@ -147,7 +178,10 @@ It is useful design guidance, but it is not sufficient to flip G01 to GO.
 
 The authoritative matrix is
 `tests/redred_single_edge_pdk_legality/legality_matrix.json`; its verifier
-enforces an `ALL` expression:
+uses duplicate-key rejection and exact keys at every structured boundary. It
+rejects path traversal and symlinks, binds repository evidence authority, reads
+the audited RTL directly from regular Git blobs, expands actual committed
+filelists, scans the entire source closure, and enforces an `ALL` expression:
 
 ```text
 SINGLE_EDGE_RELEASE_GO = G01 && G02 && G03 && G04 && G05
@@ -160,7 +194,7 @@ SINGLE_EDGE_RELEASE_GO = G01 && G02 && G03 && G04 && G05
 | G02 real PDK bytes | HOLD | Exact live SHA matches plus retained strict `PROVEN_SERVER_ENV` receipt. |
 | G03 official library/corner | HOLD | Organizer-selected setup, hold, RC, and power views/conditions. |
 | G04 mapped cell legality | HOLD | Fallback mapped inventory; every cell verified in real slow/fast Liberty and macro LEF. |
-| G05 single-edge structure | HOLD | RTL/netlist/clock reports prove exactly the declared active-edge transfer and no undeclared edge/clock primitive. |
+| G05 single-edge structure | HOLD (`RTL source PASS`; mapped/clock-report HOLD) | The pinned RTL closure is source-clean; mapped netlist and clock reports must independently prove the same declared active edge and absence of undeclared edge/clock primitives. |
 | G06 canonical digital | HOLD | Fallback-specific complete-endpoint exact-once/conservation/order/reset/drain receipt. |
 | G07 official clock/I/O/load | HOLD | Organizer-pinned/accepted numeric clock, uncertainty, drive/transition, delays, reset, and load. |
 | G08 post-route | HOLD | Fallback-specific P&R/timing/DRC/antenna/connectivity receipt at the chosen conditions. |
@@ -180,6 +214,13 @@ Run the local verifier with:
 ```bash
 bash tests/redred_single_edge_pdk_legality/run_all.sh
 ```
+
+The runner also executes mutation tests for duplicate/unknown keys, audit
+commit and source/hash substitution, P6 filelist borrowing, source-PASS
+promotion, repository/external/fixture identity changes, traversal/symlinks,
+undeclared PDK-like checkout files, filelist cycles/options, opposite-edge
+state, derived/gated/forwarded clocks, ODDR/IDDR/technology/vendor primitives,
+UDP primitives, and latches.
 
 ## Precise missing artifacts and live verification
 
@@ -210,10 +251,11 @@ requires a separate retained inventory containing its archive SHA, selected
 pad Liberty/LEF/model hashes, pad names/pins/supplies/sites, and the organizer
 rule that says whether those pads are required or allowed.
 
-After a fallback exists, retain at minimum these additional immutable artifacts:
+Before release, retain at minimum these additional immutable artifacts:
 
 1. organizer rule/reply bytes and SHA;
-2. fallback interface/clock/width manifest plus RTL/filelist/SDC SHAs;
+2. fallback interface/clock/width manifest and SDC SHA, bound to the pinned
+   RTL/filelist inventory already recorded here;
 3. canonical digital receipt and per-event results;
 4. mapped netlist, mapping log, complete cell inventory, and real Liberty/LEF
    cross-check receipt;
