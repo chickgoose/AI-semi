@@ -1,6 +1,6 @@
 {
-  "schema": "redred.known_motion.intrinsics/v1",
-  "intrinsics_id": "synthetic-pinhole-64x48-v1",
+  "schema": "redred.known_motion.intrinsics/v2",
+  "intrinsics_id": "synthetic-pinhole-64x48-v2",
   "camera_id": "synthetic-camera-0",
   "width": 64,
   "height": 48,
@@ -8,8 +8,41 @@
   "fy": 40.0,
   "cx": 31.5,
   "cy": 23.5,
+  "convention": {
+    "convention_id": "redred.camera.xyz-rdf.active-w2s.rrtp.deg.pinhole-row-major/v1",
+    "camera_axes": {
+      "x": "+right",
+      "y": "+down",
+      "z": "+forward",
+      "handedness": "right_handed"
+    },
+    "pixel_axes": {
+      "x": "+right",
+      "y": "+down",
+      "origin": "top_left_pixel_center_0_0"
+    },
+    "rotation": {
+      "type": "active",
+      "direction": "world_to_sensor",
+      "matrix_storage": "row_major",
+      "euler_order": "R_roll@R_tilt@R_pan",
+      "pan_axis": "+Y",
+      "tilt_axis": "+X",
+      "roll_axis": "+Z",
+      "angle_unit": "degrees",
+      "internal_trig_angle_unit": "radians",
+      "degrees_to_radians": "radians=degrees*pi/180"
+    },
+    "projection": {
+      "model": "pinhole",
+      "intrinsic_equation": "pixel=K*(ray/ray_z)",
+      "extrinsic_equation": "ray_sensor=R_world_to_sensor@ray_world",
+      "input_ray": "K_inverse@[x,y,1]"
+    }
+  },
   "provenance": {
-    "source_id": "redred-known-motion-synthetic-fixture-v1",
-    "created_by": "REDRED coordinate demo"
+    "source_id": "redred-known-motion-synthetic-fixture-v2",
+    "created_by": "REDRED coordinate demo",
+    "content_sha256": "6bd40ea459e57a3a59f00467a0b089804c0c5259d60c42f3317674eebd8f6aaa"
   }
 }
