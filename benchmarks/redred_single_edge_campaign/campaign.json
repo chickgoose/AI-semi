@@ -82,7 +82,7 @@
   },
   "retained_artifact_schema": {
     "path": "benchmarks/redred_single_edge_campaign/replay_receipt.schema.json",
-    "sha256": "72b7842d3856a6e38d8f9e9983110d1cdb88129c7ed9e7cadacbfa0c6a06461d"
+    "sha256": "cb8b0e91c7a4f25191bbaff33692de440169d63cc97c8ed8a06ac9512c4500f4"
   },
   "policies": {
     "require_retained_artifacts_for_campaign_pass": true,

@@ -64,13 +64,15 @@ claim and stay `HOLD`.
 
 ## Why the campaign still holds
 
-The committed result binds full50 event and summary hashes, auxiliary logs,
-and mutation logs, but it does not bind the full50 simulator logs. The actual
-run artifacts are not committed here. Missing, partial, extra, symlinked,
-size-mismatched, or hash-mismatched retained artifacts fail closed. A new index
-cannot retroactively extend the semantics of the old receipt, so even complete
-receipt-bound artifacts cannot lift the campaign gate without a producer
-receipt that also hashes the full50 simulator logs.
+The committed result binds full50 prepared-input, event, and summary hashes,
+auxiliary logs, and mutation logs, but it does not bind the full50 simulator
+logs. The actual run artifacts are not committed here. A retained index must
+name separate A2 and A3 prepared files for every full50 run; the wrapper hashes
+their bytes and compares the two retained copies independently. Missing,
+partial, extra, aliased, symlinked, size-mismatched, or hash-mismatched retained
+artifacts fail closed. A new index cannot retroactively extend the semantics of
+the old receipt, so even complete receipt-bound artifacts cannot lift the
+campaign gate without the full50 logs and a producer-compatible sealed bundle.
 
 The optional explicit input is therefore a retained-artifact index, not a
 replacement result. It must conform to the pinned
@@ -80,7 +82,7 @@ as one complete tuple:
 ```sh
 python3 benchmarks/redred_single_edge_campaign/campaign.py evaluate \
   --replay-schema benchmarks/redred_single_edge_campaign/replay_receipt.schema.json \
-  --replay-schema-sha256 72b7842d3856a6e38d8f9e9983110d1cdb88129c7ed9e7cadacbfa0c6a06461d \
+  --replay-schema-sha256 cb8b0e91c7a4f25191bbaff33692de440169d63cc97c8ed8a06ac9512c4500f4 \
   --replay-receipt /path/to/retained-artifact-index.json \
   --replay-receipt-sha256 <lowercase-64-hex-index-sha256> \
   --artifact-root /path/to/retained-artifact-root

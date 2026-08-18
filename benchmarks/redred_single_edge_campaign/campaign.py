@@ -9,6 +9,7 @@ import importlib.util
 import json
 import math
 from pathlib import Path, PurePosixPath
+import stat
 import subprocess
 import sys
 from types import ModuleType
@@ -35,7 +36,7 @@ FULL50_MANIFEST_SHA256 = "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3
 TRACE_REGISTRY_PATH = "scripts/common_suite_official.py"
 TRACE_REGISTRY_SHA256 = "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33"
 RETAINED_SCHEMA_PATH = "benchmarks/redred_single_edge_campaign/replay_receipt.schema.json"
-RETAINED_SCHEMA_SHA256 = "72b7842d3856a6e38d8f9e9983110d1cdb88129c7ed9e7cadacbfa0c6a06461d"
+RETAINED_SCHEMA_SHA256 = "cb8b0e91c7a4f25191bbaff33692de440169d63cc97c8ed8a06ac9512c4500f4"
 EXPECTED_CANDIDATES = ("a2", "a3")
 EXPECTED_MUTATIONS = ("drop", "duplicate", "reorder", "reset_escape")
 EXPECTED_DIAGNOSTICS = {
@@ -178,8 +179,22 @@ def finite_number(value: Any, label: str) -> float:
 
 
 def load_json_bytes(value: bytes, label: str) -> dict[str, Any]:
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        document: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in document:
+                raise CampaignError(f"{label} contains duplicate JSON key: {key}")
+            document[key] = item
+        return document
+
+    def reject_nonstandard_constant(value: str) -> None:
+        raise CampaignError(f"{label} contains non-standard JSON constant: {value}")
+
     try:
-        document = json.loads(value.decode("utf-8"))
+        document = json.loads(
+            value.decode("utf-8"), object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_nonstandard_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise CampaignError(f"cannot decode {label}: {error}") from error
     if not isinstance(document, dict):
@@ -236,6 +251,41 @@ def checked_local_ref(root: Path, value: Any, label: str) -> dict[str, str]:
     if actual != expected:
         raise CampaignError(f"{label} SHA-256 mismatch")
     return {"path": raw_path, "sha256": actual}
+
+
+def resolve_cli_input(path: Path, label: str, *, directory: bool) -> Path:
+    """Reject aliases and every symlink component before canonicalization."""
+    if ".." in path.parts:
+        raise CampaignError(f"{label} path aliases through '..'")
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    cursor = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise CampaignError(f"{label} path traverses a symlink")
+    try:
+        resolved = absolute.resolve(strict=True)
+    except OSError as error:
+        raise CampaignError(f"{label} is missing") from error
+    if directory:
+        if not resolved.is_dir():
+            raise CampaignError(f"{label} is not a directory")
+    elif not resolved.is_file():
+        raise CampaignError(f"{label} is not a regular file")
+    return resolved
+
+
+def resolve_explicit_inputs(
+    schema_path: Path, index_path: Path, artifact_root: Path,
+) -> tuple[Path, Path, Path]:
+    schema = resolve_cli_input(schema_path, "retained schema", directory=False)
+    index = resolve_cli_input(index_path, "retained artifact index", directory=False)
+    root = resolve_cli_input(artifact_root, "artifact root", directory=True)
+    if schema == index or schema.samefile(index):
+        raise CampaignError("retained schema and artifact index are path aliases")
+    if schema.is_relative_to(root) or index.is_relative_to(root):
+        raise CampaignError("retained schema/index must be outside the artifact root")
+    return schema, index, root
 
 
 def load_registry(path: Path) -> ModuleType:
@@ -703,6 +753,9 @@ def validate_manifest(manifest: dict[str, Any], root: Path) -> dict[str, Any]:
     schema_ref = checked_local_ref(root, manifest["retained_artifact_schema"], "retained artifact schema")
     if schema_ref != {"path": RETAINED_SCHEMA_PATH, "sha256": RETAINED_SCHEMA_SHA256}:
         raise CampaignError("retained artifact schema identity differs")
+    schema_document = load_json(root / schema_ref["path"], "retained artifact schema")
+    if schema_document.get("$id") != "redred_single_edge_retained_artifact_index_v2":
+        raise CampaignError("retained artifact schema document identity differs")
     policies = exact(manifest["policies"], {
         "require_retained_artifacts_for_campaign_pass", "full50_public_pooling",
         "public_extension_blocks_canonical", "receipt_claim_is_not_artifact_replay",
@@ -751,6 +804,91 @@ def explicit_input_state(values: Iterable[Any]) -> str:
     return "ALL"
 
 
+def read_bound_artifact(
+    artifact_root: Path, value: Any, label: str,
+    seen_paths: set[Path], seen_inodes: set[tuple[int, int]],
+    *, keep_bytes: bool,
+) -> tuple[dict[str, Any], bytes | None]:
+    artifact = exact(value, {"path", "sha256", "size_bytes"}, label)
+    raw_path = nonempty(artifact["path"], f"{label}.path")
+    relative_path = PurePosixPath(raw_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts or \
+            relative_path.as_posix() != raw_path:
+        raise CampaignError(f"{label} path is unsafe or aliases another spelling")
+    path = artifact_root.joinpath(*relative_path.parts)
+    cursor = artifact_root
+    for part in relative_path.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise CampaignError(f"{label} traverses a symlink")
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(artifact_root)
+        before = resolved.stat()
+    except (OSError, ValueError) as error:
+        raise CampaignError(f"{label} is missing or escapes artifact root") from error
+    if not stat.S_ISREG(before.st_mode):
+        raise CampaignError(f"{label} is not a regular file")
+    identity = (before.st_dev, before.st_ino)
+    if resolved in seen_paths or identity in seen_inodes:
+        raise CampaignError(f"{label} is a duplicate path or file alias")
+    expected_sha = sha_string(artifact["sha256"], f"{label}.sha256")
+    expected_size = counter(artifact["size_bytes"], f"{label}.size_bytes", positive=True)
+    try:
+        content = resolved.read_bytes() if keep_bytes else None
+        actual_sha = bytes_sha256(content) if content is not None else file_sha256(resolved)
+        after = resolved.stat()
+    except OSError as error:
+        raise CampaignError(f"cannot read {label}") from error
+    stable_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if any(getattr(before, field) != getattr(after, field) for field in stable_fields):
+        raise CampaignError(f"{label} changed while it was inspected")
+    if before.st_size != expected_size or actual_sha != expected_sha:
+        raise CampaignError(f"{label} bytes/size differ")
+    seen_paths.add(resolved)
+    seen_inodes.add(identity)
+    return {
+        "path": raw_path, "sha256": actual_sha, "size_bytes": before.st_size,
+    }, content
+
+
+def validate_prepared_inputs(
+    value: Any, artifact_root: Path, result: dict[str, Any], registry: ModuleType,
+    seen_paths: set[Path], seen_inodes: set[tuple[int, int]],
+) -> dict[str, Any]:
+    owners = exact(value, set(EXPECTED_CANDIDATES), "prepared_inputs")
+    retained: dict[str, dict[str, tuple[dict[str, Any], bytes]]] = {}
+    for owner in EXPECTED_CANDIDATES:
+        owner_inputs = owners[owner]
+        if not isinstance(owner_inputs, dict) or set(owner_inputs) != set(registry.FULL50):
+            raise CampaignError(f"prepared_inputs.{owner} roster differs from full50")
+        retained[owner] = {}
+        for name in registry.FULL50:
+            metadata, content = read_bound_artifact(
+                artifact_root, owner_inputs[name], f"prepared_inputs.{owner}.{name}",
+                seen_paths, seen_inodes, keep_bytes=True,
+            )
+            assert content is not None
+            expected_sha = result["owners"][owner]["full50"]["runs"][name]["prepared_trace_sha256"]
+            if metadata["sha256"] != expected_sha:
+                raise CampaignError(
+                    f"prepared_inputs.{owner}.{name} differs from the committed run digest"
+                )
+            retained[owner][name] = (metadata, content)
+    for name in registry.FULL50:
+        a2_metadata, a2_content = retained["a2"][name]
+        a3_metadata, a3_content = retained["a3"][name]
+        if a2_metadata["sha256"] != a3_metadata["sha256"] or a2_content != a3_content:
+            raise CampaignError(f"retained A2/A3 prepared input bytes differ: {name}")
+    return {
+        "run_count": len(EXPECTED_CANDIDATES) * len(registry.FULL50),
+        "unique_trace_count": len({
+            retained["a2"][name][0]["sha256"] for name in registry.FULL50
+        }),
+        "cross_owner_bytes_equal": True,
+    }
+
+
 def validate_explicit_artifact_claim(
     schema_path: Path, schema_sha: str, index_path: Path, index_sha: str,
     artifact_root: Path, context: dict[str, Any], result: dict[str, Any],
@@ -759,6 +897,9 @@ def validate_explicit_artifact_claim(
         raise CampaignError("explicit retained artifact schema bytes/hash differ")
     if file_sha256(schema_path) != context["schema_ref"]["sha256"]:
         raise CampaignError("explicit retained artifact schema is not the pinned schema")
+    schema = load_json(schema_path, "retained artifact schema")
+    if schema.get("$id") != "redred_single_edge_retained_artifact_index_v2":
+        raise CampaignError("explicit retained artifact schema identity differs")
     if index_path.is_symlink() or not index_path.is_file() or file_sha256(index_path) != sha_string(index_sha, "artifact index SHA"):
         raise CampaignError("explicit retained artifact index bytes/hash differ")
     if artifact_root.is_symlink() or not artifact_root.is_dir():
@@ -766,9 +907,9 @@ def validate_explicit_artifact_claim(
     index = load_json(index_path, "retained artifact index")
     exact(index, {
         "schema", "evidence_class", "replay_result_sha256",
-        "replay_result_semantic_sha256", "artifacts",
+        "replay_result_semantic_sha256", "prepared_inputs", "artifacts",
     }, "retained artifact index")
-    if index["schema"] != "redred_single_edge_retained_artifact_index_v1" or \
+    if index["schema"] != "redred_single_edge_retained_artifact_index_v2" or \
             index["evidence_class"] != EVIDENCE_CLASS or \
             index["replay_result_sha256"] != RESULT_SHA256 or \
             index["replay_result_semantic_sha256"] != RESULT_SEMANTIC_SHA256:
@@ -786,42 +927,34 @@ def validate_explicit_artifact_claim(
             )
     for mutation in result["mutations"]:
         expected_hashes.update((mutation["build_log_sha256"], mutation["simulation_log_sha256"]))
+    seen_paths: set[Path] = set()
+    seen_inodes: set[tuple[int, int]] = set()
     artifacts = index["artifacts"]
     if not isinstance(artifacts, list) or not artifacts:
         raise CampaignError("retained artifact index must contain artifacts")
+    prepared_summary = validate_prepared_inputs(
+        index["prepared_inputs"], artifact_root, result, context["registry"],
+        seen_paths, seen_inodes,
+    )
     observed: set[str] = set()
-    root = artifact_root.resolve()
+    root = artifact_root
     for position, artifact in enumerate(artifacts):
-        artifact = exact(artifact, {"path", "sha256", "size_bytes"}, f"artifact[{position}]")
-        raw_path = nonempty(artifact["path"], f"artifact[{position}].path")
-        relative_path = PurePosixPath(raw_path)
-        if relative_path.is_absolute() or ".." in relative_path.parts:
-            raise CampaignError(f"artifact[{position}] path escapes artifact root")
-        path = root.joinpath(*relative_path.parts)
-        cursor = root
-        for part in relative_path.parts:
-            cursor = cursor / part
-            if cursor.is_symlink():
-                raise CampaignError(f"artifact[{position}] traverses a symlink")
-        try:
-            resolved = path.resolve(strict=True)
-            resolved.relative_to(root)
-        except (OSError, ValueError) as error:
-            raise CampaignError(f"artifact[{position}] is missing or escapes artifact root") from error
-        expected_sha = sha_string(artifact["sha256"], f"artifact[{position}].sha256")
-        expected_size = counter(artifact["size_bytes"], f"artifact[{position}].size_bytes", positive=True)
+        metadata, _ = read_bound_artifact(
+            root, artifact, f"artifact[{position}]", seen_paths, seen_inodes,
+            keep_bytes=False,
+        )
+        expected_sha = metadata["sha256"]
         if expected_sha not in expected_hashes or expected_sha in observed:
             raise CampaignError(f"artifact[{position}] is extra, duplicate, or not receipt-bound")
-        if resolved.stat().st_size != expected_size or file_sha256(resolved) != expected_sha:
-            raise CampaignError(f"artifact[{position}] bytes/size differ")
         observed.add(expected_sha)
     if observed != expected_hashes:
         raise CampaignError("retained artifact index is incomplete for receipt-bound hashes")
     return {
         "status": "PASS_RECEIPT_BOUND_HASHES_ONLY",
         "verified_hash_count": len(observed),
-        "campaign_gate": "HOLD_FULL50_SIMULATION_LOGS_NOT_HASHED_BY_COMMITTED_RECEIPT",
-        "reason": "the committed receipt omits full50 simulation-log hashes; new index claims cannot extend old receipt semantics",
+        "prepared_inputs": prepared_summary,
+        "campaign_gate": "HOLD_FULL50_LOGS_AND_PRODUCER_SEALED_BUNDLE_ABSENT",
+        "reason": "full50 simulation logs are not receipt-bound and no producer-compatible sealed bundle is retained",
     }
 
 
@@ -841,6 +974,9 @@ def evaluate(
         assert replay_schema is not None and replay_schema_sha256 is not None
         assert replay_receipt is not None and replay_receipt_sha256 is not None
         assert artifact_root is not None
+        replay_schema, replay_receipt, artifact_root = resolve_explicit_inputs(
+            replay_schema, replay_receipt, artifact_root,
+        )
         artifact_status = validate_explicit_artifact_claim(
             replay_schema, replay_schema_sha256, replay_receipt,
             replay_receipt_sha256, artifact_root, context, result,
@@ -887,7 +1023,7 @@ def evaluate(
             "new_evidence_inferred": False,
         },
         "remaining_dependencies": [
-            "retained receipt-bound replay artifacts; committed receipt does not hash full50 simulation logs",
+            "retained prepared inputs and receipt-bound replay artifacts; full50 logs and a producer-compatible sealed bundle remain absent",
             "retained UZH projection package and actual A2/A3 replay on identical projected traces",
             "physical, power, and CDC/RDC gates remain outside this receipt",
         ],
@@ -912,11 +1048,11 @@ def main() -> int:
     try:
         report = evaluate(
             args.manifest.resolve(), args.repo_root.resolve(),
-            args.replay_schema.resolve() if args.replay_schema else None,
+            args.replay_schema if args.replay_schema else None,
             args.replay_schema_sha256,
-            args.replay_receipt.resolve() if args.replay_receipt else None,
+            args.replay_receipt if args.replay_receipt else None,
             args.replay_receipt_sha256,
-            args.artifact_root.resolve() if args.artifact_root else None,
+            args.artifact_root if args.artifact_root else None,
         )
         payload = canonical(report)
         if args.output:

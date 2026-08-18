@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "redred_single_edge_retained_artifact_index_v1",
+  "$id": "redred_single_edge_retained_artifact_index_v2",
   "title": "Retained artifacts bound to the committed hardened A2/A3 replay result",
   "type": "object",
   "additionalProperties": false,
@@ -9,11 +9,12 @@
     "evidence_class",
     "replay_result_sha256",
     "replay_result_semantic_sha256",
+    "prepared_inputs",
     "artifacts"
   ],
   "properties": {
     "schema": {
-      "const": "redred_single_edge_retained_artifact_index_v1"
+      "const": "redred_single_edge_retained_artifact_index_v2"
     },
     "evidence_class": {
       "const": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1"
@@ -23,6 +24,25 @@
     },
     "replay_result_semantic_sha256": {
       "const": "9fd365edc6b5b57db8a99de32bde95117f08a6ada547abd6a0c44a8149cad56f"
+    },
+    "prepared_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["a2", "a3"],
+      "properties": {
+        "a2": {
+          "type": "object",
+          "minProperties": 50,
+          "maxProperties": 50,
+          "additionalProperties": {"$ref": "#/$defs/artifact"}
+        },
+        "a3": {
+          "type": "object",
+          "minProperties": 50,
+          "maxProperties": 50,
+          "additionalProperties": {"$ref": "#/$defs/artifact"}
+        }
+      }
     },
     "artifacts": {
       "type": "array",
