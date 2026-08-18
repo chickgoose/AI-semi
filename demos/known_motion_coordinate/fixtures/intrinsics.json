@@ -1,0 +1,15 @@
+{
+  "schema": "redred.known_motion.intrinsics/v1",
+  "intrinsics_id": "synthetic-pinhole-64x48-v1",
+  "camera_id": "synthetic-camera-0",
+  "width": 64,
+  "height": 48,
+  "fx": 40.0,
+  "fy": 40.0,
+  "cx": 31.5,
+  "cy": 23.5,
+  "provenance": {
+    "source_id": "redred-known-motion-synthetic-fixture-v1",
+    "created_by": "REDRED coordinate demo"
+  }
+}
