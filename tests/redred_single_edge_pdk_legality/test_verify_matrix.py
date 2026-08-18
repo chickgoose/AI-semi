@@ -56,6 +56,8 @@ class MatrixMutationTest(unittest.TestCase):
             lambda value: value["gates"][0].update({"unknown": True}),
             lambda value: value["audited_rtl"]["expanded_sources"][0].update(
                 {"unknown": True}),
+            lambda value: value["audited_rtl"]["expected_posedge_by_source"][0].update(
+                {"unknown": True}),
             lambda value: value["expected_external_artifacts"][0].update(
                 {"unknown": True}),
         )
@@ -65,19 +67,56 @@ class MatrixMutationTest(unittest.TestCase):
 
     def test_audit_commit_filelists_sources_and_hashes_are_immutable(self) -> None:
         cases = (
-            lambda value: value.update({"audit_base_commit": "0" * 40}),
-            lambda value: value["audited_rtl"].update({"commit": "0" * 40}),
+            lambda value: value.update({"audit_source_commit": "0" * 40}),
+            lambda value: value.update({"audit_integrated_commit": "0" * 40}),
+            lambda value: value["audited_rtl"].update({"source_commit": "0" * 40}),
+            lambda value: value["audited_rtl"].update({"integrated_commit": "0" * 40}),
             lambda value: value["audited_rtl"]["root_filelists"].__setitem__(
                 0, "rtl/technology/physical_staging/filelists/a2_generic.f"),
             lambda value: value["audited_rtl"]["filelists"][0].update(
                 {"sha256": "0" * 64}),
+            lambda value: value["audited_rtl"]["filelists"].reverse(),
             lambda value: value["audited_rtl"]["expanded_sources"].pop(),
+            lambda value: value["audited_rtl"]["expanded_sources"].reverse(),
             lambda value: value["audited_rtl"]["expanded_sources"][0].update(
                 {"path": "rtl/technology/p6/w2_p6_pair_tx_tech.sv"}),
         )
         for mutation in cases:
             with self.subTest(mutation=mutation):
-                self.reject(mutation, "audit target|filelist|source identity")
+                self.reject(mutation, "audit target|filelist|source identity|source inventory")
+
+    def test_superseded_baseline_cannot_regain_source_pass_authority(self) -> None:
+        cases = (
+            lambda value: value.update(
+                {"audit_source_commit": verify.SUPERSEDED_BASELINE_COMMIT}),
+            lambda value: value.update(
+                {"audit_integrated_commit": verify.SUPERSEDED_BASELINE_COMMIT}),
+            lambda value: value["audited_rtl"].update(
+                {"source_commit": verify.SUPERSEDED_BASELINE_COMMIT}),
+            lambda value: value["audited_rtl"].update(
+                {"integrated_commit": verify.SUPERSEDED_BASELINE_COMMIT}),
+            lambda value: value["audited_rtl"].update(
+                {"supersedes_commit": verify.HARDENED_SOURCE_COMMIT}),
+        )
+        for mutation in cases:
+            with self.subTest(mutation=mutation):
+                self.reject(mutation, "audit target|superseded baseline")
+
+    def test_exact_per_source_posedge_inventory_is_immutable(self) -> None:
+        cases = (
+            lambda value: value["audited_rtl"].update(
+                {"expected_posedge_event_count": 6}),
+            lambda value: value["audited_rtl"]["expected_posedge_by_source"][1][
+                "clocks"
+            ].clear(),
+            lambda value: value["audited_rtl"]["expected_posedge_by_source"].pop(),
+            lambda value: value["audited_rtl"]["expected_posedge_by_source"].reverse(),
+            lambda value: value["audited_rtl"]["expected_posedge_by_source"][0].update(
+                {"path": "rtl/technology/p6/w2_p6_pair_tx_tech.sv"}),
+        )
+        for mutation in cases:
+            with self.subTest(mutation=mutation):
+                self.reject(mutation, "posedge inventory|posedge total")
 
     def test_source_pass_cannot_promote_mapped_organizer_or_g05(self) -> None:
         cases = (
@@ -163,7 +202,7 @@ class StructuralMutationTest(unittest.TestCase):
           always_ff @(posedge clk_i) $display("IDDR vendor primitive");
         endmodule
         '''
-        self.assertEqual(verify.scan_source("clean.sv", source), 1)
+        self.assertEqual(verify.scan_source("clean.sv", source), ["clk_i"])
 
 
 class FilelistMutationTest(unittest.TestCase):

@@ -15,32 +15,49 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 MATRIX_PATH = Path(__file__).with_name("legality_matrix.json")
-AUDITED_RTL_COMMIT = "4ce4836fab1309d3468db8e660d2da9af371f784"
+HARDENED_SOURCE_COMMIT = "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
+AUDITED_INTEGRATED_COMMIT = "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"
+SUPERSEDED_BASELINE_COMMIT = "4ce4836fab1309d3468db8e660d2da9af371f784"
 ROOT_FILELISTS = (
     "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
     "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f",
 )
 EXPECTED_FILELISTS = {
     ROOT_FILELISTS[0]: "55d6c15e33147a3362dedfddccb0ff022e47401eeb0d8388a8dd30e5d9ca1e76",
-    ROOT_FILELISTS[1]: "1fcf350a51ae32008ba207b5e1406d71e4a3083ffc52193e379f65eb1b623fee",
     "rtl/technology/single_edge/filelists/generic.f":
-        "8c538fc9147c96237f5367fa25da91e2f787ee67d09ca6738f5fcf7e9f19ddf8",
+        "8445fd6785966a09d6c8dc9b1cdef14787de7494bd0c7824fd524a08df176c2e",
+    ROOT_FILELISTS[1]: "1fcf350a51ae32008ba207b5e1406d71e4a3083ffc52193e379f65eb1b623fee",
 }
 EXPECTED_SOURCES = {
     "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv":
         "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
+    "rtl/technology/single_edge/w2_single_edge_error_latch.sv":
+        "02729b04c8326bd898a465a5343eb34b40a7c60c3667f6d0bb16eb3fcdb83260",
     "rtl/technology/single_edge/w2_single_edge_pair_tx.sv":
-        "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493",
+        "e00ac30015e826cef7d017b0a72066e405bce3e84a4ee454e99fb34c68e2642c",
     "rtl/technology/single_edge/w2_single_edge_pair_rx.sv":
         "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5",
     "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv":
-        "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4",
+        "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127",
     "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv":
-        "9061deb14e46e0d050bdf3fae450ee8a94c234f94e74f69e1dc8be84722e55ac",
+        "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057",
     "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv":
         "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
     "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv":
-        "3bac4faa2e249e0326a8eba4e3b010437e16c33b5dff236bd621acdb27c5bb07",
+        "61daf3a31f29106d3f6383936d92131a31401fd86d71e0bee5ee53a3ab5b485d",
+}
+EXPECTED_POSEDGE_BY_SOURCE = {
+    "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv": ["clk"],
+    "rtl/technology/single_edge/w2_single_edge_error_latch.sv": ["clk_i"],
+    "rtl/technology/single_edge/w2_single_edge_pair_tx.sv": ["clk_i"],
+    "rtl/technology/single_edge/w2_single_edge_pair_rx.sv": ["clk_i"],
+    "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv": [],
+    "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv":
+        ["clk_i"],
+    "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv":
+        ["clk", "clk"],
+    "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv":
+        [],
 }
 EXPECTED_REPOSITORY_EVIDENCE = {
     "docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md": (
@@ -123,7 +140,8 @@ FORBIDDEN_TOKENS = (
 )
 ALLOWED_EVENT_CLOCKS = {"clk", "clk_i"}
 TOP_KEYS = {
-    "schema", "audit_date", "audit_base_commit", "decision", "decision_rule",
+    "schema", "audit_date", "audit_source_commit", "audit_integrated_commit",
+    "decision", "decision_rule",
     "repository_evidence", "expected_external_artifacts", "local_test_doubles",
     "recorded_real_cell_contracts", "team_profiles_not_organizer_rules",
     "audited_rtl", "gates",
@@ -314,7 +332,7 @@ def strip_comments_and_strings(text: str) -> str:
     return "".join(result)
 
 
-def scan_source(path: str, payload: bytes) -> int:
+def scan_source(path: str, payload: bytes) -> list[str]:
     try:
         clean = strip_comments_and_strings(payload.decode("utf-8"))
     except UnicodeDecodeError as error:
@@ -338,20 +356,28 @@ def scan_source(path: str, payload: bytes) -> int:
                 f"undeclared, gated, or generated event clock '{edge} {signal}' in {path}")
     require("&" not in " ".join(expression for _, expression in events),
             f"gated event expression in {path}")
-    return len(events)
+    return [expression.strip() for _, expression in events]
 
 
 def validate_rtl(matrix: dict[str, Any]) -> None:
     rtl = exact_keys(matrix["audited_rtl"], {
-        "commit", "commit_role", "source_structure_status", "mapped_structure_status",
+        "source_commit", "integrated_commit", "supersedes_commit", "commit_role",
+        "source_structure_status", "mapped_structure_status",
         "organizer_approval_status", "claim_limit", "root_filelists", "filelists",
-        "expanded_sources", "allowed_event_clocks", "forbidden_tokens",
-        "expected_posedge_event_count",
+        "expanded_sources", "expected_posedge_by_source", "allowed_event_clocks",
+        "forbidden_tokens", "expected_posedge_event_count",
     }, "audited_rtl")
-    require(matrix["audit_base_commit"] == AUDITED_RTL_COMMIT and
-            rtl["commit"] == AUDITED_RTL_COMMIT,
-            "audit target is not the integrated single-edge RTL commit")
-    require(rtl["commit_role"] == "IMMUTABLE_SOURCE_LEVEL_AUDIT_TARGET",
+    require(matrix["audit_source_commit"] == HARDENED_SOURCE_COMMIT and
+            rtl["source_commit"] == HARDENED_SOURCE_COMMIT and
+            matrix["audit_integrated_commit"] == AUDITED_INTEGRATED_COMMIT and
+            rtl["integrated_commit"] == AUDITED_INTEGRATED_COMMIT and
+            rtl["supersedes_commit"] == SUPERSEDED_BASELINE_COMMIT,
+            "audit target is not the hardened source and integrated RTL authority")
+    require(HARDENED_SOURCE_COMMIT != SUPERSEDED_BASELINE_COMMIT and
+            AUDITED_INTEGRATED_COMMIT != SUPERSEDED_BASELINE_COMMIT,
+            "superseded baseline cannot be a source-structure PASS authority")
+    require(rtl["commit_role"] ==
+            "HARDENED_SOURCE_PROVENANCE_AND_INTEGRATED_AUDIT_TARGET",
             "RTL commit role changed")
     require(rtl["source_structure_status"] == "PASS" and
             rtl["mapped_structure_status"] == "HOLD" and
@@ -362,7 +388,7 @@ def validate_rtl(matrix: dict[str, Any]) -> None:
     require(rtl["allowed_event_clocks"] == sorted(ALLOWED_EVENT_CLOCKS),
             "allowed event clocks changed")
     require(rtl["forbidden_tokens"] == list(FORBIDDEN_TOKENS), "forbidden token set changed")
-    require(rtl["expected_posedge_event_count"] == 6, "posedge inventory changed")
+    require(rtl["expected_posedge_event_count"] == 7, "posedge inventory changed")
 
     filelist_rows = rtl["filelists"]
     source_rows = rtl["expanded_sources"]
@@ -378,18 +404,56 @@ def validate_rtl(matrix: dict[str, Any]) -> None:
     require(len(declared_sources) == len(source_rows), "duplicate declared source")
     require(declared_filelists == EXPECTED_FILELISTS, "filelist identity inventory changed")
     require(declared_sources == EXPECTED_SOURCES, "expanded source identity inventory changed")
+    require([row["path"] for row in filelist_rows] == list(EXPECTED_FILELISTS),
+            "filelist inventory order changed")
+    require([row["path"] for row in source_rows] == list(EXPECTED_SOURCES),
+            "expanded source inventory order changed")
 
-    read = lambda path: committed_blob(AUDITED_RTL_COMMIT, path)
-    expanded_filelists, expanded_sources = expand_filelists(ROOT_FILELISTS, read)
-    require(set(expanded_filelists) == set(EXPECTED_FILELISTS),
-            "actual committed filelist expansion differs")
-    require(set(expanded_sources) == set(EXPECTED_SOURCES),
-            "actual committed source expansion differs")
-    for path, expected in {**EXPECTED_FILELISTS, **EXPECTED_SOURCES}.items():
-        require(sha256_bytes(read(path)) == expected, f"committed RTL hash differs: {path}")
-    event_count = sum(scan_source(path, read(path)) for path in expanded_sources)
-    require(event_count == rtl["expected_posedge_event_count"],
-            "posedge event-control inventory differs")
+    event_rows = rtl["expected_posedge_by_source"]
+    require(isinstance(event_rows, list), "expected_posedge_by_source must be an array")
+    declared_events: dict[str, list[str]] = {}
+    for index, row in enumerate(event_rows):
+        exact_keys(row, {"path", "clocks"},
+                   f"audited_rtl.expected_posedge_by_source[{index}]")
+        path = relative_path(row["path"],
+                             f"audited_rtl.expected_posedge_by_source[{index}].path")
+        clocks = row["clocks"]
+        require(isinstance(clocks, list) and
+                all(isinstance(clock, str) for clock in clocks),
+                f"audited_rtl.expected_posedge_by_source[{index}].clocks is malformed")
+        require(path not in declared_events, f"duplicate posedge source: {path}")
+        declared_events[path] = clocks
+    require(declared_events == EXPECTED_POSEDGE_BY_SOURCE,
+            "per-source posedge inventory changed")
+    require([row["path"] for row in event_rows] == list(EXPECTED_POSEDGE_BY_SOURCE),
+            "per-source posedge inventory order changed")
+    require(set(declared_events) == set(declared_sources),
+            "posedge inventory does not cover the exact source closure")
+    require(sum(len(clocks) for clocks in declared_events.values()) ==
+            rtl["expected_posedge_event_count"],
+            "declared posedge total differs")
+
+    for commit, role in (
+        (HARDENED_SOURCE_COMMIT, "hardened source"),
+        (AUDITED_INTEGRATED_COMMIT, "integrated source"),
+    ):
+        read = lambda path, commit=commit: committed_blob(commit, path)
+        expanded_filelists, expanded_sources = expand_filelists(ROOT_FILELISTS, read)
+        require(expanded_filelists == list(EXPECTED_FILELISTS),
+                f"actual {role} filelist expansion differs")
+        require(expanded_sources == list(EXPECTED_SOURCES),
+                f"actual {role} source expansion differs")
+        for path, expected in {**EXPECTED_FILELISTS, **EXPECTED_SOURCES}.items():
+            require(sha256_bytes(read(path)) == expected,
+                    f"{role} RTL hash differs: {path}")
+        observed_events = {
+            path: scan_source(path, read(path)) for path in expanded_sources
+        }
+        require(observed_events == EXPECTED_POSEDGE_BY_SOURCE,
+                f"{role} per-source posedge inventory differs")
+        require(sum(len(clocks) for clocks in observed_events.values()) ==
+                rtl["expected_posedge_event_count"],
+                f"{role} posedge event-control total differs")
 
 
 def validate_repository_evidence(matrix: dict[str, Any], root: Path) -> None:
@@ -470,7 +534,7 @@ def validate_external_and_fixtures(matrix: dict[str, Any], root: Path) -> None:
 
 def validate_policy_shape(matrix: dict[str, Any]) -> None:
     exact_keys(matrix, TOP_KEYS, "matrix")
-    require(matrix["schema"] == "redred_single_edge_gpdk045_legality_matrix_v1",
+    require(matrix["schema"] == "redred_single_edge_gpdk045_legality_matrix_v2",
             "schema mismatch")
     require(matrix["audit_date"] == "2026-08-19", "audit date changed")
     rule = exact_keys(matrix["decision_rule"], {
