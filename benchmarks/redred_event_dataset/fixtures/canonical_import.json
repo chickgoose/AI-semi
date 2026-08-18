@@ -1,0 +1,22 @@
+{
+  "schema": "redred-event-import-v1",
+  "dataset_label": "synthetic-canonical-jsonl-fixture",
+  "source": {
+    "sha256": "c9c137aba3254c83639223f411c37acdf412bd836b2ec3baba0945730c9bad49"
+  },
+  "sensor": {
+    "width": 3,
+    "height": 2
+  },
+  "input": {
+    "format": "canonical_jsonl",
+    "time_unit": "us",
+    "polarity_encoding": "minus_plus_one"
+  },
+  "cycle_mapping": {
+    "period_ns": "1000",
+    "origin": "first_event",
+    "deadline_slack_cycles": 4
+  },
+  "bounds_policy": "reject"
+}
