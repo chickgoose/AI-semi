@@ -12,8 +12,10 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
+import stat
 import subprocess
 import sys
 import tarfile
@@ -37,6 +39,7 @@ RESULT_SHA256 = "815c752f4852790d4db5c3c935cc2edc5821fee9a36f2e83c35d3ec8b73c5c1
 REPRODUCTION_SHA256 = "24da3a81fa34a5b3b4fd847fe9d49f937cdb45bf6dc64343adcc903476269482"
 MANIFEST_SHA256 = "b24b521d5d31ae4fe39f09df230dd7e399b14e1695fe8aa23e803a8736f72cca"
 SEMANTIC_SHA256 = "7491680311effb422b868fddd783d0ec6eb9f3aece54907260e52198fc26d157"
+SEMANTIC_DEFINITION_SHA256 = "2d9f0585d127e9f18429ace8ac6d70218b2ac2377092d453d4e04cfa53f161c2"
 PAYLOAD_COMMIT = "d4c247503af5bb322b92604bb342bc0ebf9e045e"
 REVIEWED_PUBLICATION_COMMIT = "999e9401178cc5210bc863629cfa21d3a0241575"
 EXECUTION_COMMIT = "429dbcb80cb14b04d185353d7a2f92c36238701b"
@@ -60,6 +63,102 @@ REPORT_KEYS = {
 NORMALIZED_VIEW_KEYS = {
     "schema", "slot", "verification", "classification", "campaign_units",
     "shared_gates", "candidates", "claims",
+}
+EXPECTED_NATIVE_SCHEMAS = {
+    "publication": "a23_public_projected_v2_publication_v2",
+    "archive_manifest": "a23_public_projected_v2_export_manifest_v2",
+    "closed_inventory": "a23_public_projected_v2_closed_inventory_v2",
+    "result": "a23_public_projected_v2_result_v2",
+    "ordinal": "a23_accept_retire_sequence_ordinals_v2",
+}
+EXPECTED_RAW_ARTIFACTS = {
+    "publication": {"sha256": PUBLICATION_SHA256, "size_bytes": PUBLICATION_SIZE_BYTES},
+    "archive": {"sha256": ARCHIVE_SHA256, "size_bytes": ARCHIVE_SIZE_BYTES},
+    "manifest": {"sha256": MANIFEST_SHA256, "member": "MANIFEST.json"},
+    "result": {"sha256": RESULT_SHA256, "size_bytes": RESULT_SIZE_BYTES},
+    "reproduction": {
+        "sha256": REPRODUCTION_SHA256, "size_bytes": REPRODUCTION_SIZE_BYTES,
+    },
+}
+EXPECTED_CLOSED_INVENTORY = {
+    "schema": "a23_public_projected_v2_closed_inventory_v2",
+    "entry_count_excluding_manifest": 80,
+    "archive_member_count_including_manifest": 81,
+    "extra_entries_allowed": False,
+    "ordered": True,
+}
+EXPECTED_IDENTITY_ACCOUNTING = {
+    "pooled_3300_unique_events": False,
+    "scenario_retimings": ["1x", "64x", "256x"],
+    "unique_projected_window_events": 1100,
+}
+EXPECTED_ORDINAL_VALIDATION = {
+    "schema": "a23_accept_retire_sequence_ordinals_v2",
+    "accept_and_retire_exact_contiguous": True,
+    "same_cycle_order_reconstructable": True,
+    "accepted_counts": {
+        "a2": {"1x": 1019, "64x": 1019, "256x": 906},
+        "a3": {"1x": 1019, "64x": 1013, "256x": 817},
+    },
+}
+EXPECTED_SEMANTIC_VALIDATION = {
+    "definition_sha256": SEMANTIC_DEFINITION_SHA256,
+    "primary_sha256": SEMANTIC_SHA256,
+    "reproduction_sha256": SEMANTIC_SHA256,
+    "matched": True,
+}
+EXPECTED_GIT_PROVENANCE = {
+    "integration_commit": INTEGRATION_COMMIT,
+    "execution_source_commit": EXECUTION_SOURCE_COMMIT,
+    "execution_commit": EXECUTION_COMMIT,
+    "payload_commit": PAYLOAD_COMMIT,
+    "reviewed_publication_commit": REVIEWED_PUBLICATION_COMMIT,
+    "payload_commit_meaning": "COMMIT_CONTAINING_RESULT_AND_EXPORT_PAYLOADS",
+    "self_referential_commit_claim": False,
+}
+EXPECTED_OWNER_METRICS = {
+    "a2": {
+        "1x": {
+            "generated": 1100, "source_overrun": 81, "accepted": 1019,
+            "retired": 1019, "fixed_window_retired": 1018,
+            "fixed_window_cycles": 153693, "fixed_window_events_per_cycle": 0.006623594,
+        },
+        "64x": {
+            "generated": 1100, "source_overrun": 81, "accepted": 1019,
+            "retired": 1019, "fixed_window_retired": 1016,
+            "fixed_window_cycles": 2402, "fixed_window_events_per_cycle": 0.422980849,
+        },
+        "256x": {
+            "generated": 1100, "source_overrun": 194, "accepted": 906,
+            "retired": 906, "fixed_window_retired": 899,
+            "fixed_window_cycles": 601, "fixed_window_events_per_cycle": 1.495840266,
+        },
+    },
+    "a3": {
+        "1x": {
+            "generated": 1100, "source_overrun": 81, "accepted": 1019,
+            "retired": 1019, "fixed_window_retired": 1018,
+            "fixed_window_cycles": 153693, "fixed_window_events_per_cycle": 0.006623594,
+        },
+        "64x": {
+            "generated": 1100, "source_overrun": 87, "accepted": 1013,
+            "retired": 1013, "fixed_window_retired": 1010,
+            "fixed_window_cycles": 2402, "fixed_window_events_per_cycle": 0.420482931,
+        },
+        "256x": {
+            "generated": 1100, "source_overrun": 283, "accepted": 817,
+            "retired": 817, "fixed_window_retired": 811,
+            "fixed_window_cycles": 601, "fixed_window_events_per_cycle": 1.349417637,
+        },
+    },
+}
+EXPECTED_CLAIM_BOUNDARY = {
+    "canonical_campaign_promoted": False,
+    "official_contest_evidence_claimed": False,
+    "synthetic_public_pooling": "FORBIDDEN",
+    "archive_extracted_or_repacked": False,
+    "producer_schema_relabelled": False,
+    "system_release": "HOLD",
 }
 
 
@@ -95,6 +194,21 @@ def exact(value: Any, keys: set[str], label: str) -> dict[str, Any]:
             f"extra={sorted(set(value)-keys)}"
         )
     return value
+
+
+def strict_equal(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(
+            strict_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            strict_equal(left_item, right_item)
+            for left_item, right_item in zip(left, right)
+        )
+    return left == right
 
 
 def require_exact_bytes(payload: bytes, size: int, digest: str, label: str) -> None:
@@ -230,25 +344,73 @@ def verify_git_provenance(
 
 def validate_report(report: dict[str, Any]) -> None:
     exact(report, REPORT_KEYS, "normalized adapter report")
-    if report["schema"] != "redred_public_projected_v2_native_adapter_v1" \
-            or report["status"] != "PASS":
-        raise PublicV2NativeAdapterError("normalized adapter identity differs")
-    if report["adapter_mode"] != "READ_ONLY_NATIVE_SCHEMA_NO_RELABEL_NO_REPACK" \
-            or report["source_class"] != "PUBLIC_PROJECTED_EXTENSION" \
-            or report["canonical_redred_traffic"] is not False \
-            or report["official_redred_traffic"] is not False \
-            or report["p6_evidence_used"] is not False \
-            or report["release_status"] != "HOLD" \
-            or report["selection_status"] != "HOLD":
-        raise PublicV2NativeAdapterError("normalized report expands or relabels evidence")
-    if report["closed_inventory"] != {
-        "schema": "a23_public_projected_v2_closed_inventory_v2",
-        "entry_count_excluding_manifest": 80,
-        "archive_member_count_including_manifest": 81,
-        "extra_entries_allowed": False,
-        "ordered": True,
-    }:
-        raise PublicV2NativeAdapterError("normalized inventory differs")
+    expected_scalars = {
+        "schema": "redred_public_projected_v2_native_adapter_v1",
+        "status": "PASS",
+        "adapter_mode": "READ_ONLY_NATIVE_SCHEMA_NO_RELABEL_NO_REPACK",
+        "source_class": "PUBLIC_PROJECTED_EXTENSION",
+        "evidence_class": "PUBLIC_DATASET_PROJECTED_ACTUAL_SINGLE_EDGE_RTL",
+        "canonical_redred_traffic": False,
+        "official_redred_traffic": False,
+        "p6_evidence_used": False,
+        "release_status": "HOLD",
+        "selection_status": "HOLD",
+    }
+    for key, expected in expected_scalars.items():
+        if not strict_equal(report[key], expected):
+            raise PublicV2NativeAdapterError(f"normalized report {key} differs")
+    expected_nested = {
+        "native_schemas": EXPECTED_NATIVE_SCHEMAS,
+        "raw_artifacts": EXPECTED_RAW_ARTIFACTS,
+        "closed_inventory": EXPECTED_CLOSED_INVENTORY,
+        "identity_accounting": EXPECTED_IDENTITY_ACCOUNTING,
+        "ordinal_validation": EXPECTED_ORDINAL_VALIDATION,
+        "semantic_validation": EXPECTED_SEMANTIC_VALIDATION,
+        "git_provenance": EXPECTED_GIT_PROVENANCE,
+        "owners": EXPECTED_OWNER_METRICS,
+        "claim_boundary": EXPECTED_CLAIM_BOUNDARY,
+    }
+    for key, expected in expected_nested.items():
+        if not strict_equal(report[key], expected):
+            raise PublicV2NativeAdapterError(
+                f"normalized report {key} schema/constants differ"
+            )
+
+
+def exclusive_write(path: Path, payload: bytes) -> None:
+    """Create one new regular output through an exclusive no-follow descriptor."""
+    if ".." in path.parts:
+        raise PublicV2NativeAdapterError("output path aliases through '..'")
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    cursor = Path(absolute.anchor)
+    for part in absolute.parts[1:-1]:
+        cursor /= part
+        if cursor.is_symlink():
+            raise PublicV2NativeAdapterError("output path traverses a symlink")
+    flags = (
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    descriptor = os.open(absolute, flags, 0o644)
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1:
+            raise PublicV2NativeAdapterError("output is not one new regular file")
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            if written <= 0:
+                raise PublicV2NativeAdapterError("output write made no progress")
+            remaining = remaining[written:]
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    current = absolute.lstat()
+    identity_fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size")
+    if absolute.is_symlink() or any(
+        getattr(after, field) != getattr(current, field) for field in identity_fields
+    ) or current.st_size != len(payload):
+        raise PublicV2NativeAdapterError("output changed during creation")
 
 
 def normalized_view(report: dict[str, Any]) -> dict[str, Any]:
@@ -453,9 +615,7 @@ def main() -> int:
         document = normalized_view(report) if arguments.normalized_view_only else report
         payload = (json.dumps(document, sort_keys=True, indent=2) + "\n").encode("ascii")
         if arguments.output:
-            if arguments.output.exists() or arguments.output.is_symlink():
-                raise PublicV2NativeAdapterError("output already exists")
-            arguments.output.write_bytes(payload)
+            exclusive_write(arguments.output, payload)
         sys.stdout.buffer.write(payload)
         return 0
     except (PublicV2NativeAdapterError, OSError, ValueError, subprocess.SubprocessError) as error:

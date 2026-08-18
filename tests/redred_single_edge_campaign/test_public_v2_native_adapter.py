@@ -162,13 +162,53 @@ class PublicV2NativeAdapterTests(unittest.TestCase):
             report = copy.deepcopy(self.report)
             report.update(mutation)
             with self.assertRaisesRegex(
-                adapter.PublicV2NativeAdapterError, "expands or relabels",
+                adapter.PublicV2NativeAdapterError, "differs",
             ):
                 adapter.validate_report(report)
         report = copy.deepcopy(self.report)
         report["translated_bundle"] = "forbidden"
         with self.assertRaisesRegex(adapter.PublicV2NativeAdapterError, "keys differ"):
             adapter.validate_report(report)
+
+    def test_reported_security_attacks_cannot_produce_normalized_pass(self) -> None:
+        attacks = (
+            ("evidence_class", lambda report: report.__setitem__(
+                "evidence_class", "CANONICAL_REDRED_TRAFFIC",
+            )),
+            ("raw_artifacts", lambda report: report["raw_artifacts"]["result"].__setitem__(
+                "sha256", "0" * 64,
+            )),
+            ("git_provenance", lambda report: report["git_provenance"].__setitem__(
+                "payload_commit", "0" * 40,
+            )),
+        )
+        for label, mutate in attacks:
+            report = copy.deepcopy(self.report)
+            mutate(report)
+            with self.assertRaisesRegex(
+                adapter.PublicV2NativeAdapterError, label,
+                msg=label,
+            ):
+                adapter.normalized_view(report)
+
+    def test_unknown_nested_fields_and_owner_metric_drift_fail_runtime(self) -> None:
+        attacks = (
+            ("raw_artifacts", ("raw_artifacts", "result"), "unknown"),
+            ("git_provenance", ("git_provenance",), "unknown"),
+            ("owners", ("owners", "a2", "1x"), "unknown"),
+        )
+        for label, path, field in attacks:
+            report = copy.deepcopy(self.report)
+            cursor = report
+            for component in path:
+                cursor = cursor[component]
+            cursor[field] = "forbidden"
+            with self.assertRaisesRegex(adapter.PublicV2NativeAdapterError, label):
+                adapter.normalized_view(report)
+        report = copy.deepcopy(self.report)
+        report["owners"]["a3"]["256x"]["accepted"] += 1
+        with self.assertRaisesRegex(adapter.PublicV2NativeAdapterError, "owners"):
+            adapter.normalized_view(report)
 
     def test_primary_reproduction_semantics_and_git_chain_are_exact(self) -> None:
         semantic = self.report["semantic_validation"]
@@ -204,6 +244,36 @@ class PublicV2NativeAdapterTests(unittest.TestCase):
         self.assertEqual(report["status"], "PASS")
         self.assertNotIn("synthetic_v2", process.stdout)
         self.assertNotIn("redred_single_edge_synthetic_publication_v2", process.stdout)
+
+    def test_cli_output_creation_is_exclusive_and_no_follow(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="public-v2-native-output-") as temporary:
+            root = Path(temporary)
+            output = root / "report.json"
+            command = [sys.executable, str(PROGRAM), "evaluate", "--output", str(output)]
+            first = subprocess.run(
+                command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, check=False,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(json.loads(output.read_text(encoding="ascii"))["status"], "PASS")
+            second = subprocess.run(
+                command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, check=False,
+            )
+            self.assertEqual(second.returncode, 2, second.stdout)
+            self.assertIn("REDRED_PUBLIC_V2_NATIVE_ADAPTER_FAIL", second.stderr)
+
+            target = root / "target"
+            target.write_text("preserve", encoding="ascii")
+            link = root / "link.json"
+            link.symlink_to(target)
+            linked = subprocess.run(
+                [sys.executable, str(PROGRAM), "evaluate", "--output", str(link)],
+                cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, check=False,
+            )
+            self.assertEqual(linked.returncode, 2, linked.stdout)
+            self.assertEqual(target.read_text(encoding="ascii"), "preserve")
 
     def test_normalized_public_view_is_accepted_by_aggregate_gate(self) -> None:
         gate = load_aggregate_gate()
