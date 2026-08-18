@@ -1,5 +1,5 @@
 {
-  "schema": "k2_endpoint_vectorless_contract_v1",
+  "schema": "k2_endpoint_vectorless_contract_v2",
   "status": "READY_FOR_SERVER_EXECUTION",
   "evidence_class": "GENUS_MAPPED_COMPLETE_ENDPOINT_VECTORLESS",
   "candidate_order": ["fovea_a7", "a2_p6", "a3_p6"],
@@ -9,11 +9,9 @@
   "input_delay_min_ns": 0.1,
   "input_delay_max_ns": 0.5,
   "output_load_pf": 0.01,
-  "vectorless_assumptions": {
-    "ref_clk_i": {"toggle_rate_per_period": 2.0, "static_probability": 0.5},
-    "sample_clk_i": {"toggle_rate_per_period": 2.0, "static_probability": 0.5},
-    "source_pending_i": {"toggle_rate_per_period": 0.2, "static_probability": 0.5},
-    "rst_n": {"toggle_rate_per_period": 0.0, "static_probability": 1.0}
+  "genus_default_vectorless": {
+    "primary_input_activity": 0.2,
+    "sequential_element_activity": 0.2
   },
   "activity_policy": {
     "waveform_import_allowed": false,
