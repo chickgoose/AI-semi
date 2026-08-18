@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import shutil
 import tarfile
 import tempfile
 import unittest
@@ -36,6 +37,73 @@ def semantic_fixture() -> dict:
             "semantic": owner,
         }
     return {"owners": owners, "mutations": mutations, "package": "fixed"}
+
+
+def v2_metadata_fixture() -> dict:
+    rows = [{} for _ in range(100)]
+    return {
+        "schema": v2.V2_RESULT_SCHEMA,
+        "status": v2.STATUS,
+        "evidence_class": "TEAM_DEFINED_SYNTHETIC_FULL50_ACTUAL_SINGLE_EDGE_RTL_V2",
+        "dataset": {
+            "id": "full50", "source_class": "TEAM_DEFINED_SYNTHETIC",
+            "organizer_official": False, "trace_count": 50,
+            "shared_prepared_trace_count": 50,
+            "per_campaign_actual_full50_executions": 100,
+            "combined_actual_full50_executions": 200,
+            "trace_identities": [{} for _ in range(50)],
+        },
+        "execution_accounting": v2.v2_execution_accounting(),
+        "identities": {
+            "package_commit": "1" * 40, "package_tree": "2" * 40,
+            "package_input_identity_sha256": "3" * 64,
+            "source_commit": v2.EXPECTED_SOURCE_COMMIT,
+            "source_tree": v2.EXPECTED_SOURCE_TREE,
+            "integration_commit": v2.EXPECTED_INTEGRATION_COMMIT,
+            "integration_tree": v2.EXPECTED_INTEGRATION_TREE,
+            "tool_identity_sha256": "4" * 64,
+            "trace_identity_sha256": "5" * 64,
+            "pins_sha256": v2.EXPECTED_PINS_SHA256,
+        },
+        "primary": {},
+        "semantic_reproduction": {
+            "definition": v2.semantic_definition(),
+            "semantic_digest_sha256": "6" * 64,
+            "ordinal_semantic_digest_sha256": "7" * 64,
+            "primary_legacy_result_sha256": "8" * 64,
+            "reproduction_legacy_result_sha256": "9" * 64,
+            "reproduction_legacy_result_size_bytes": 1,
+            "observed_difference_json_pointers": [], "retention": {},
+            "reproduction_full50_runs": copy.deepcopy(rows),
+        },
+        "sequence_evidence": {
+            "primary_full50_runs": rows,
+            "event_row_order": "x", "execution_time_global_retire_order": "x",
+            "primary_ordinal_observation_actual_RTL_executions": 100,
+            "reproduction_ordinal_observation_actual_RTL_executions": 100,
+            "within_same_cycle_global_order_reconstructable_from_ordinal_sidecars": True,
+            "ordinal_definition": "x",
+            "ordinal_semantic_projection_exclusion": [
+                "/each_row/ordinal_simulation_log_sha256"
+            ],
+        },
+        "qualification": {
+            "hardened_synthetic_single_edge_RTL": "PASS",
+            "canonical_campaign": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
+            "physical": "HOLD", "power": "HOLD", "CDC_RDC": "HOLD",
+        },
+    }
+
+
+def publication_fixture() -> dict:
+    value = {key: "x" for key in v2.PUBLICATION_KEYS}
+    value.update({
+        "schema": v2.PUBLICATION_SCHEMA, "status": v2.STATUS,
+        "pins_sha256": v2.EXPECTED_PINS_SHA256,
+        "physical_status": "HOLD",
+        "canonical_campaign_status": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
+    })
+    return value
 
 
 class SyntheticV2Test(unittest.TestCase):
@@ -204,6 +272,78 @@ class SyntheticV2Test(unittest.TestCase):
             v2.validate_publication_inventory_counter(
                 valid_manifest, {"export_inventory_entry_count": 999}
             )
+
+    def test_result_identity_rejects_nonexistent_package_commit(self) -> None:
+        result = v2.load_json(v2.BASE_PACKAGE / "result.json", "committed base result")
+        result["provenance"]["package_commit"] = "0" * 40
+        with self.assertRaisesRegex(v2.V2Error, "Git command failed"):
+            v2.verify_result_identity(result, "0" * 40)
+
+    def test_metadata_rejects_definition_keys_pins_and_counters(self) -> None:
+        valid = v2_metadata_fixture()
+        v2.validate_v2_metadata(valid)
+        for label, mutation in (
+            ("definition", lambda value: value["semantic_reproduction"][
+                "definition"].update({"serialization": "drift"})),
+            ("keys", lambda value: value.update({"extra": 1})),
+            ("counter", lambda value: value["dataset"].update({
+                "combined_actual_full50_executions": 999
+            })),
+        ):
+            changed = copy.deepcopy(valid)
+            mutation(changed)
+            with self.assertRaises(v2.V2Error, msg=label):
+                v2.validate_v2_metadata(changed)
+        publication = publication_fixture()
+        v2.validate_publication_metadata(publication)
+        publication["pins_sha256"] = "0" * 64
+        with self.assertRaisesRegex(v2.V2Error, "pins"):
+            v2.validate_publication_metadata(publication)
+        publication = publication_fixture()
+        publication["extra"] = "drift"
+        with self.assertRaisesRegex(v2.V2Error, "fields"):
+            v2.validate_publication_metadata(publication)
+
+    def test_ordinal_csv_schema_and_pass_log_fail_closed(self) -> None:
+        event_header = ",".join(v2.EVENT_CSV_FIELDS)
+        ordinal_header = ",".join(v2.ORDINAL_CSV_FIELDS)
+        event_row = "a2,case,0,3,1,2,4,65,retired"
+        ordinal_row = "a2,case,0,3,1,2,0,4,0,retired"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            event = root / "events.csv"
+            ordinal = root / "ordinals.csv"
+            simulation = root / "simulation.log"
+            event.write_text(event_header + "\n" + event_row + "\n", encoding="utf-8")
+            ordinal.write_text(ordinal_header + "\n" + ordinal_row + "\n",
+                               encoding="utf-8")
+            sentinel = (
+                "A23_SYNTHETIC_V2_ORDINAL_PASS owner=a2 trace=case "
+                "generated=1 accepted=1 retired=1\n"
+            )
+            simulation.write_text(sentinel, encoding="utf-8")
+            record = v2.sequence_record(event, ordinal, simulation, "a2", "case")
+            self.assertEqual(record["accepted_ordinal_count"], 1)
+            ordinal.write_text(ordinal_header + ",extra\n" + ordinal_row + ",x\n",
+                               encoding="utf-8")
+            with self.assertRaisesRegex(v2.V2Error, "schema"):
+                v2.sequence_record(event, ordinal, simulation, "a2", "case")
+            ordinal.write_text(ordinal_header + "\n" + ordinal_row + "\n",
+                               encoding="utf-8")
+            simulation.write_text("arbitrary log\n", encoding="utf-8")
+            with self.assertRaisesRegex(v2.V2Error, "PASS log"):
+                v2.sequence_record(event, ordinal, simulation, "a2", "case")
+
+    def test_reproduction_cannot_exclude_empty_ordinal_evidence(self) -> None:
+        result = v2.load_json(v2.BASE_PACKAGE / "result.json", "committed base result")
+        names = sorted(result["owners"]["a2"]["full50"]["runs"])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copyfile(v2.BASE_PACKAGE / "result.json", root / "result.json")
+            (root / "campaign.log").write_text("arbitrary\n", encoding="utf-8")
+            (root / "ordinal_campaign.log").write_text("", encoding="utf-8")
+            with self.assertRaisesRegex(v2.V2Error, "missing"):
+                v2.retained_payload(root, result, names, "reproduction")
 
     def test_ordinal_contract_has_explicit_global_fields(self) -> None:
         tb = (HERE / "a23_synthetic_v2_ordinal_tb.sv").read_text(encoding="utf-8")
