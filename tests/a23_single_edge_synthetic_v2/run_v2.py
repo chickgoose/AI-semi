@@ -1055,20 +1055,18 @@ def read_archive(path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         raise V2Error("sealed export manifest fields differ")
     if manifest.get("archive_prefix") != ARCHIVE_PREFIX:
         raise V2Error("sealed export prefix differs")
-    if manifest.get("safe_metadata") != {
+    require_typed_equal(manifest.get("safe_metadata"), {
         "regular_files_only": True,
         "mode": "0444",
         "uid": 0, "gid": 0, "uname": "", "gname": "", "mtime": 0,
         "gzip_mtime": 0,
-    }:
-        raise V2Error("sealed export metadata contract differs")
-    if manifest.get("closure") != {
+    }, "sealed export metadata contract")
+    require_typed_equal(manifest.get("closure"), {
         "manifest_is_the_only_non_inventory_member": True,
         "symlinks": "FORBIDDEN", "hardlinks": "FORBIDDEN",
         "path_escapes": "FORBIDDEN", "duplicate_paths": "FORBIDDEN",
         "missing_or_extra_entries": "FORBIDDEN",
-    }:
-        raise V2Error("sealed export closure contract differs")
+    }, "sealed export closure contract")
     expected: dict[str, dict[str, Any]] = {}
     rows = manifest.get("inventory")
     if not isinstance(rows, list):
@@ -1164,6 +1162,13 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         require_int(dataset[key], f"v2 dataset/{key}")
     if type(dataset["organizer_official"]) is not bool:
         raise V2Error("v2 dataset organizer flag is not an exact boolean")
+    require_typed_equal({
+        "id": dataset["id"], "source_class": dataset["source_class"],
+        "organizer_official": dataset["organizer_official"],
+    }, {
+        "id": "full50", "source_class": "TEAM_DEFINED_SYNTHETIC",
+        "organizer_official": False,
+    }, "v2 dataset classification")
     if (dataset["id"] != "full50" or
             dataset["source_class"] != "TEAM_DEFINED_SYNTHETIC" or
             dataset["organizer_official"] is not False or
@@ -1183,6 +1188,26 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         "tool_identity_sha256", "trace_identity_sha256", "pins_sha256",
     }:
         raise V2Error("v2 identity fields differ")
+    require_typed_equal({key: identities[key] for key in (
+        "source_commit", "source_tree", "integration_commit", "integration_tree",
+        "pins_sha256",
+    )}, {
+        "source_commit": EXPECTED_SOURCE_COMMIT,
+        "source_tree": EXPECTED_SOURCE_TREE,
+        "integration_commit": EXPECTED_INTEGRATION_COMMIT,
+        "integration_tree": EXPECTED_INTEGRATION_TREE,
+        "pins_sha256": EXPECTED_PINS_SHA256,
+    }, "v2 pinned identities")
+    for key in ("package_commit", "package_tree", "source_commit", "source_tree",
+                "integration_commit", "integration_tree"):
+        if type(identities[key]) is not str or re.fullmatch(
+                r"[0-9a-f]{40}", identities[key]) is None:
+            raise V2Error(f"v2 identity/{key} is not a full Git identity")
+    for key in ("package_input_identity_sha256", "tool_identity_sha256",
+                "trace_identity_sha256", "pins_sha256"):
+        if type(identities[key]) is not str or re.fullmatch(
+                r"[0-9a-f]{64}", identities[key]) is None:
+            raise V2Error(f"v2 identity/{key} is not a SHA-256 identity")
     primary = require_exact_keys(v2_result.get("primary"), {
         "legacy_result_sha256", "legacy_result_size_bytes",
     }, "v2 primary")
@@ -1200,8 +1225,8 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         "reproduction_full50_runs",
     }:
         raise V2Error("v2 semantic reproduction fields differ")
-    if reproduction.get("definition") != semantic_definition():
-        raise V2Error("v2 semantic reproduction definition differs")
+    require_typed_equal(reproduction.get("definition"), semantic_definition(),
+                        "v2 semantic reproduction definition")
     if (not isinstance(reproduction["reproduction_legacy_result_size_bytes"], int) or
             isinstance(reproduction["reproduction_legacy_result_size_bytes"], bool) or
             reproduction["reproduction_legacy_result_size_bytes"] < 0):
@@ -1249,28 +1274,52 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         raise V2Error("v2 sequence evidence counter/definition differs")
     ordinal_semantic_projection(sequence["primary_full50_runs"])
     ordinal_semantic_projection(reproduction["reproduction_full50_runs"])
-    if v2_result.get("qualification") != {
+    require_typed_equal(v2_result.get("qualification"), {
         "hardened_synthetic_single_edge_RTL": "PASS",
         "canonical_campaign": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
         "physical": "HOLD", "power": "HOLD", "CDC_RDC": "HOLD",
-    }:
-        raise V2Error("v2 qualification fields differ")
+    }, "v2 qualification")
 
 
 def validate_publication_metadata(publication: dict[str, Any]) -> None:
     if set(publication) != PUBLICATION_KEYS:
         raise V2Error("publication fields differ")
-    if publication.get("schema") != PUBLICATION_SCHEMA or publication.get("status") != STATUS:
-        raise V2Error("publication schema/status differs")
-    if publication.get("pins_sha256") != EXPECTED_PINS_SHA256:
-        raise V2Error("publication pins identity differs")
+    require_typed_equal({
+        "schema": publication.get("schema"), "status": publication.get("status"),
+        "source_commit": publication.get("source_commit"),
+        "source_tree": publication.get("source_tree"),
+        "integration_commit": publication.get("integration_commit"),
+        "integration_tree": publication.get("integration_tree"),
+        "pins_sha256": publication.get("pins_sha256"),
+        "physical_status": publication.get("physical_status"),
+        "canonical_campaign_status": publication.get("canonical_campaign_status"),
+    }, {
+        "schema": PUBLICATION_SCHEMA, "status": STATUS,
+        "source_commit": EXPECTED_SOURCE_COMMIT, "source_tree": EXPECTED_SOURCE_TREE,
+        "integration_commit": EXPECTED_INTEGRATION_COMMIT,
+        "integration_tree": EXPECTED_INTEGRATION_TREE,
+        "pins_sha256": EXPECTED_PINS_SHA256, "physical_status": "HOLD",
+        "canonical_campaign_status": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
+    }, "publication fixed tuple")
+    for key in ("package_commit", "package_tree", "source_commit", "source_tree",
+                "integration_commit", "integration_tree"):
+        if type(publication[key]) is not str or re.fullmatch(
+                r"[0-9a-f]{40}", publication[key]) is None:
+            raise V2Error(f"publication/{key} is not a full Git identity")
+    for key in (
+        "package_input_identity_sha256", "tool_identity_sha256",
+        "trace_identity_sha256", "pins_sha256", "semantic_digest_sha256",
+        "ordinal_semantic_digest_sha256", "primary_legacy_result_sha256",
+        "reproduction_legacy_result_sha256", "v2_result_sha256", "export_sha256",
+        "export_manifest_sha256",
+    ):
+        if type(publication[key]) is not str or re.fullmatch(
+                r"[0-9a-f]{64}", publication[key]) is None:
+            raise V2Error(f"publication/{key} is not a SHA-256 identity")
     for key in ("primary_legacy_result_size_bytes",
                 "reproduction_legacy_result_size_bytes", "v2_result_size_bytes",
                 "export_size_bytes", "export_inventory_entry_count"):
         require_int(publication.get(key), f"publication/{key}")
-    if publication.get("physical_status") != "HOLD" or publication.get(
-            "canonical_campaign_status") != "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT":
-        raise V2Error("publication qualification status differs")
 
 
 def archived_package_identity(
@@ -1446,6 +1495,13 @@ def validate_reopened(
                 publication["ordinal_semantic_digest_sha256"] != primary_ordinal):
             raise V2Error("published ordinal semantic digest differs")
     identity = v2_result["identities"]
+    embedded_rtl = primary_result["provenance"]["actual_rtl_git"]
+    reproduction_rtl = reproduction_result["provenance"]["actual_rtl_git"]
+    for key in ("source_commit", "source_tree", "integration_commit",
+                "integration_tree"):
+        if (identity[key] != embedded_rtl[key] or
+                identity[key] != reproduction_rtl[key]):
+            raise V2Error(f"v2 identity differs from embedded RTL tuple for {key}")
     if v2_result["dataset"]["trace_identities"] != traces:
         raise V2Error("v2 trace identities differ")
     independently_recomputed = {

@@ -111,8 +111,16 @@ def v2_metadata_fixture() -> dict:
 
 def publication_fixture() -> dict:
     value = {key: "x" for key in v2.PUBLICATION_KEYS}
+    for key in value:
+        if key.endswith("sha256"):
+            value[key] = "a" * 64
     value.update({
         "schema": v2.PUBLICATION_SCHEMA, "status": v2.STATUS,
+        "package_commit": "1" * 40, "package_tree": "2" * 40,
+        "source_commit": v2.EXPECTED_SOURCE_COMMIT,
+        "source_tree": v2.EXPECTED_SOURCE_TREE,
+        "integration_commit": v2.EXPECTED_INTEGRATION_COMMIT,
+        "integration_tree": v2.EXPECTED_INTEGRATION_TREE,
         "pins_sha256": v2.EXPECTED_PINS_SHA256,
         "physical_status": "HOLD",
         "canonical_campaign_status": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
@@ -349,6 +357,37 @@ class SyntheticV2Test(unittest.TestCase):
                 valid_manifest, {"export_inventory_entry_count": 999}
             )
 
+    def test_archive_safe_metadata_is_type_strict(self) -> None:
+        payload = {"payload/a": b"alpha"}
+        rows = v2.inventory(payload, {"payload/a": "test"})
+        base = {
+            "schema": v2.EXPORT_SCHEMA, "status": v2.STATUS,
+            "archive_prefix": v2.ARCHIVE_PREFIX,
+            "safe_metadata": {
+                "regular_files_only": True, "mode": "0444", "uid": 0, "gid": 0,
+                "uname": "", "gname": "", "mtime": 0, "gzip_mtime": 0,
+            },
+            "closure": {
+                "manifest_is_the_only_non_inventory_member": True,
+                "symlinks": "FORBIDDEN", "hardlinks": "FORBIDDEN",
+                "path_escapes": "FORBIDDEN", "duplicate_paths": "FORBIDDEN",
+                "missing_or_extra_entries": "FORBIDDEN",
+            },
+            "inventory": rows, "inventory_entry_count": 1,
+            "inventory_size_bytes": 5,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mutations = [(key, False) for key in ("uid", "gid", "mtime", "gzip_mtime")]
+            mutations.append(("regular_files_only", 1))
+            for index, (key, value) in enumerate(mutations):
+                manifest = copy.deepcopy(base)
+                manifest["safe_metadata"][key] = value
+                archive = root / f"metadata-{index}.tgz"
+                v2.write_archive(archive, manifest, payload)
+                with self.assertRaisesRegex(v2.V2Error, "metadata contract"):
+                    v2.read_archive(archive)
+
     def test_result_identity_rejects_nonexistent_package_commit(self) -> None:
         result = v2.load_json(v2.BASE_PACKAGE / "result.json", "committed base result")
         result["provenance"]["package_commit"] = "0" * 40
@@ -526,6 +565,16 @@ class SyntheticV2Test(unittest.TestCase):
         publication["extra"] = "drift"
         with self.assertRaisesRegex(v2.V2Error, "fields"):
             v2.validate_publication_metadata(publication)
+        for key, value in (("source_commit", True), ("source_tree", False),
+                           ("integration_commit", True), ("integration_tree", False)):
+            changed = copy.deepcopy(valid)
+            changed["identities"][key] = value
+            with self.assertRaises(v2.V2Error):
+                v2.validate_v2_metadata(changed)
+            changed_publication = publication_fixture()
+            changed_publication[key] = value
+            with self.assertRaises(v2.V2Error):
+                v2.validate_publication_metadata(changed_publication)
         for path in (("primary", "retention"),
                      ("semantic_reproduction", "retention")):
             changed = copy.deepcopy(valid)
