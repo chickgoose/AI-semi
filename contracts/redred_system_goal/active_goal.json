@@ -1,390 +1,802 @@
 {
-  "schema_version": 1,
-  "contract_id": "redred-system-goal-2026-08-18",
-  "contract_status": "ACTIVE_WITH_SCOPED_HOLDS",
-  "goal": {
-    "statement": "Deliver a physically credible AER endpoint that preserves the selected scheduling semantics from source admission through retirement, with reproducible correctness, throughput, provenance, and release evidence.",
-    "success_condition": "A2 or its A3 semantic fallback passes the canonical digital, interface, post-route, and vectorless-power gates at the complete endpoint boundary without treating coordinate transformation as core AER functionality."
+  "schema_version": 2,
+  "document_kind": "REDRED_POLICY_AND_RELEASE_DEPENDENCY_CONTRACT",
+  "contract_id": "redred-system-goal-v2-2026-08-19",
+  "contract_status": "ACTIVE_POLICY_WITH_SCOPED_RELEASE_HOLDS",
+  "verifier_claim": {
+    "pass_status": "POLICY_INTERNALLY_VALID",
+    "evidence_qualified": false,
+    "release_qualified": false,
+    "result_authority": "POLICY_ONLY"
   },
-  "scope": {
-    "mandatory": [
-      {
-        "id": "endpoint_correctness",
-        "deliverable": "Hard-correct source_pending/accept-through-retire endpoint"
-      },
-      {
-        "id": "a2_primary",
-        "deliverable": "A2 weighted-aggregate K2 primary candidate"
-      },
-      {
-        "id": "a3_fallback",
-        "deliverable": "A3 exact scalar-prefix K2 semantic fallback"
-      },
-      {
-        "id": "interface_contingency",
-        "deliverable": "P6 approval gate plus maintained single-edge parallel fallback"
-      },
-      {
-        "id": "canonical_evidence",
-        "deliverable": "One candidate-neutral trace/provenance contract and comparable receipts"
-      },
-      {
-        "id": "physical_release_evidence",
-        "deliverable": "Same-boundary post-route and vectorless-power release evidence"
-      }
+  "goal_policy": {
+    "primary_candidate": "A2",
+    "semantic_fallback": "A3",
+    "selected_release_interface": null,
+    "selected_release_interface_status": "HOLD",
+    "score_threshold_defined": false,
+    "mandatory_scope": [
+      "COMPLETE_ENDPOINT_CORRECTNESS",
+      "CANONICAL_DIGITAL_EVIDENCE",
+      "SELECTED_INTERFACE_DIGITAL_PHYSICAL_POWER",
+      "POST_ROUTE_STANDARD_CELL_REFERENCE",
+      "FINAL_CDC_RDC",
+      "PDK_ENDPOINT_IO_RULES"
     ],
-    "stretch": [
-      {
-        "id": "coordinate_demo",
-        "deliverable": "Scenario-driven post-retire coordinate-stabilization demonstration"
-      },
-      {
-        "id": "coordinate_rtl",
-        "deliverable": "Synthesizable fixed-point coordinate transform after numeric I/O rules are official"
-      },
-      {
-        "id": "motion_estimation",
-        "deliverable": "Estimation of motion parameters instead of supplied parameters"
-      }
+    "stretch_scope": [
+      "COORDINATE_SCENARIO_MODEL",
+      "COORDINATE_TRANSFORM_RTL",
+      "MOTION_ESTIMATION"
     ],
-    "excluded": [
-      "SLAM",
-      "depth recovery",
-      "unknown-motion estimation in the mandatory release",
-      "candidate-specific testbench storage or arbitration",
-      "unsupported vendor primitives"
+    "research_only_noncandidates": [
+      "A4"
     ]
   },
   "endpoint_boundary": {
-    "name": "complete_source_admission_to_retirement_endpoint",
-    "starts_at": {
-      "request_signal": "source_pending",
-      "accept_signal": "source_accept",
-      "acceptance_rule": "source_pending && source_accept sampled at the defined synchronous acceptance edge"
+    "boundary_id": "SOURCE_PENDING_ACCEPT_THROUGH_RETIRE",
+    "request": {
+      "signal": "source_pending",
+      "state_model": "ONE_ENTRY_PENDING_LATCH_PER_SOURCE"
     },
-    "ends_at": {
-      "retire_signal": "retire_valid",
-      "retirement_rule": "retire_valid and retired address lanes sampled by the synchronous consumer"
+    "acceptance": {
+      "signal": "source_accept",
+      "sample_edge": "ACTIVE_SYNCHRONOUS_EDGE",
+      "condition": "PENDING_PRE_EDGE_AND_ACCEPT_PRE_EDGE"
     },
-    "includes": [
-      "scheduler and all policy state",
-      "admission control",
-      "charged elastic buffering",
-      "selected link launch and control",
-      "transmitter",
-      "physical link signals",
-      "receiver",
-      "retirement observation",
-      "drain and error logic"
+    "retirement": {
+      "valid_signal": "retire_valid",
+      "sample_edge": "SYNCHRONOUS_CONSUMER_EDGE",
+      "delivered_alias": "retired"
+    },
+    "included_components": [
+      "SCHEDULER_POLICY_STATE",
+      "ADMISSION_CONTROL",
+      "ELASTIC_BUFFERING",
+      "LINK_LAUNCH_CONTROL",
+      "LINK_TX",
+      "STANDARD_CELL_LINK_WIRES",
+      "LINK_RX",
+      "RETIRE_OBSERVER",
+      "DRAIN_ERROR_LOGIC"
     ],
-    "excludes": [
-      "event generation before source_pending",
-      "testbench-only queues",
-      "coordinate transformation",
-      "motion-parameter estimation",
-      "visualization"
+    "excluded_components": [
+      "EVENT_GENERATION_BEFORE_PENDING",
+      "TESTBENCH_STORAGE_ARBITRATION_RETRY",
+      "PAD_CELLS",
+      "PACKAGE",
+      "CHANNEL",
+      "COORDINATE_TRANSFORM",
+      "MOTION_ESTIMATION",
+      "VISUALIZATION"
     ],
-    "all_functional_state_is_charged": true,
-    "same_boundary_required_for_candidate_comparison": true
-  },
-  "candidate_policy": {
-    "primary": {
-      "id": "A2",
-      "architecture": "batched_IWRR_K2",
-      "semantic_class": "long_term_weighted_aggregate",
-      "weights": [1, 5, 5, 1],
-      "preserves_exact_scalar_prefix": false,
-      "claim_limit": "Preserves the long-term aggregate service ratio; it does not preserve every scalar Fovea prefix."
-    },
-    "semantic_fallback": {
-      "id": "A3",
-      "architecture": "two_microstep_exact_scalar_prefix_K2",
-      "semantic_class": "exact_scalar_prefix",
-      "weights": [1, 5, 5, 1],
-      "preserves_exact_scalar_prefix": true,
-      "activation_rule": "Use A3 when exact scalar-prefix preservation is mandatory or when A2 fails a mandatory release gate."
-    },
-    "link_policy": {
-      "preferred": "P6",
-      "p6_description": "Six-wire phase-related link capable of retiring up to two events per link cell",
-      "approval_recorded": false,
-      "approval_status": "HOLD_PENDING_WRITTEN_ORGANIZER_AND_PDK_APPROVAL",
-      "approval_requires": [
-        "written organizer approval for the phase-related multi-edge transfer",
-        "implementation using only constructs and cells available in the educational 45 nm flow"
+    "all_functional_state_charged": true,
+    "coordinate_inside_endpoint_ppa": false,
+    "top_port_scope": {
+      "kind": "STANDARD_CELL_LOGIC_PORTS",
+      "input_roles": [
+        "REF_CLOCK",
+        "SAMPLE_CLOCK",
+        "RESET_N",
+        "SOURCE_PENDING_16"
       ],
-      "selected_until_approved": "single_edge_parallel_fallback",
-      "parallel_fallback": {
-        "id": "single_edge_parallel_fallback",
-        "must_be_maintained": true,
-        "uses_unsupported_primitives": false,
-        "same_endpoint_boundary": true,
-        "selection_rule": "If either approval requirement is absent or denied, release the parallel fallback and do not claim P6 results as the approved implementation."
-      }
+      "output_roles": [
+        "SOURCE_ACCEPT_16",
+        "FORWARDED_LINK_CLOCK",
+        "LINK_DATA",
+        "RETIRE_VALID_2",
+        "RETIRE_ADDRESS_2X4",
+        "DRAIN_IDLE",
+        "PROTOCOL_ERROR"
+      ],
+      "pads_included": false,
+      "package_included": false,
+      "channel_included": false
     }
   },
-  "correctness": {
+  "candidate_semantics": {
+    "A2": {
+      "role": "PRIMARY",
+      "architecture": "BATCHED_IWRR_K2",
+      "semantic_class": "PERSISTENT_ALL_FOUR_ROWS_WEIGHTED_OPPORTUNITY",
+      "row_weights": [1, 5, 5, 1],
+      "persistent_rows": [0, 1, 2, 3],
+      "calendar_period_opportunities": 12,
+      "calendar_phase_persistent": true,
+      "empty_slot_behavior": "SPARSE_FALLBACK_TO_ELIGIBLE_ROW",
+      "service_debt_model": "NONE",
+      "debt_catch_up": false,
+      "exact_scalar_prefix": false,
+      "future_trace_equivalence": false
+    },
+    "A3": {
+      "role": "SEMANTIC_FALLBACK",
+      "architecture": "TWO_STEP_SCALAR_SELECTOR_K2",
+      "semantic_class": "EXACT_TWO_SELECTION_PREFIX_OF_HELD_PENDING_SNAPSHOT",
+      "row_weights": [1, 5, 5, 1],
+      "microsteps": 2,
+      "snapshot_held_across_microsteps": true,
+      "future_arrivals_visible_to_held_snapshot": false,
+      "future_trace_equivalence": false,
+      "activation_triggers": [
+        "EXACT_PREFIX_REQUIRED",
+        "A2_SPECIFIC_GATE_FAILURE_INDEPENDENTLY_PASSED_BY_A3"
+      ],
+      "forbidden_activation_triggers": [
+        "SHARED_INTERFACE_FAILURE",
+        "SHARED_EVIDENCE_FAILURE",
+        "SHARED_CDC_RDC_FAILURE",
+        "SHARED_PDK_IO_FAILURE"
+      ]
+    },
+    "A4": {
+      "role": "RESEARCH_ONLY",
+      "release_candidate": false,
+      "ranking_eligible": false
+    }
+  },
+  "interfaces": {
+    "selection": {
+      "decision": "HOLD",
+      "selected": null,
+      "selection_rule": "ONE_INTERFACE_WITH_OWN_COMPLETE_DIGITAL_PNR_POWER_AND_LEGALITY",
+      "cross_interface_evidence_borrowing": false
+    },
+    "P6": {
+      "role": "PREFERRED_IF_LEGAL_AND_QUALIFIED",
+      "competition_release_status": "HOLD",
+      "cell_transfer": {
+        "cell_bits": 10,
+        "data_wires": 5,
+        "forwarded_clock_wires": 1,
+        "physical_wires_total": 6,
+        "low_half": {
+          "clock_level": "LOW",
+          "launch_edge": "RISING",
+          "payload": "CELL_BITS_4_TO_0"
+        },
+        "high_half": {
+          "clock_level": "HIGH",
+          "launch_edge": "FALLING",
+          "payload": "CELL_BITS_9_TO_5"
+        },
+        "receiver_commit_edge": "FALLING",
+        "multi_edge_transfer": true
+      },
+      "forwarded_clock_exception": {
+        "intentional": true,
+        "signal": "link_clk_o",
+        "allowed_unconstrained_endpoint_count": 1,
+        "data_endpoint_exceptions_allowed": 0,
+        "scope": "STANDARD_CELL_TOP_OUTPUT_ONLY"
+      },
+      "standard_cell_reference": {
+        "status": "PASS_WITH_CLAIM_LIMIT",
+        "period_ns": 6.5,
+        "claim_limit": "STANDARD_CELL_LOGIC_PORTS_ONLY_NO_PAD_PACKAGE_CHANNEL",
+        "evidence_dependency": "INHERITED_6P5_STANDARD_CELL_REFERENCE"
+      },
+      "competition_multi_edge_legality": {
+        "status": "HOLD",
+        "hold_id": "H_P6_MULTI_EDGE_LEGALITY"
+      },
+      "real_pad_package_channel": {
+        "status": "UNPROVEN",
+        "hold_id": "H_P6_REAL_PAD_PHY"
+      },
+      "vectorless_power": {
+        "status": "HOLD",
+        "hold_id": "H_P6_VECTORLESS_POWER"
+      }
+    },
+    "PARALLEL_FALLBACK": {
+      "role": "LEGALITY_FALLBACK",
+      "competition_release_status": "HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER",
+      "transfer_mode": "SINGLE_EDGE_PARALLEL",
+      "integrated_digital_evidence": "MISSING",
+      "post_route_evidence": "MISSING",
+      "vectorless_power_evidence": "MISSING",
+      "hold_id": "H_PARALLEL_INTEGRATION",
+      "may_borrow_p6_physical_evidence": false,
+      "disallowed_borrowed_dependencies": [
+        "INHERITED_6P5_STANDARD_CELL_REFERENCE",
+        "P6_VECTORLESS_POWER",
+        "P6_PAD_PACKAGE_CHANNEL"
+      ]
+    }
+  },
+  "canonical_digital_dependency": {
+    "dependency_id": "TEAM_REDRED_CANONICAL_DIGITAL_CAMPAIGN_V2",
+    "status": "HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY",
+    "hold_id": "H_CANONICAL_DIGITAL",
+    "policy_verifier_validates_results": false,
+    "policy_verifier_executes_campaign": false,
+    "external_campaign_contract_reference": {
+      "commit": "020d8614ae7a4f8ce020fdf370ee83d4cb3d1f02",
+      "path": "benchmarks/redred_canonical_campaign/campaign.json",
+      "sha256": "cfab35f7947fcc3997e596454b1dadf27634640ad82f9adebc38a26162939e65",
+      "reference_is_execution_evidence": false
+    },
+    "trace_registry": {
+      "path": "scripts/common_suite_official.py",
+      "sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
+      "source_commit": "abd6a721b515ded8a9ef76cb96129b7e0af21e2b",
+      "generator_version": "4.0"
+    },
+    "harness_bindings": [
+      {
+        "role": "TESTBENCH",
+        "path": "tb/clean/aer_clean_tb.sv",
+        "sha256": "27d9437a5179b0cb909d02edee1ac2f82ea6d20aeab9cfb64997b458192102a2"
+      },
+      {
+        "role": "INTERFACE",
+        "path": "tb/clean/aer_bench_if.sv",
+        "sha256": "fbca24e710e74c988592d79aa40a15fed3464a7a37147922cfbd23966535e163"
+      },
+      {
+        "role": "ASSERTIONS",
+        "path": "tb/clean/aer_clean_assertions.sv",
+        "sha256": "ab3bca49bb660ece4c353b145ac21a81b8ed91c607657e196473e74f0cbefc3f"
+      }
+    ],
+    "suites": {
+      "full50": {
+        "manifest_path": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+        "manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+        "member_count": 50,
+        "members": [
+          "core_sparse_identity",
+          "core_sparse_rotate180",
+          "core_simultaneous_identity",
+          "pairwise_contention_identity",
+          "pairwise_contention_affine",
+          "uniform_l0p125_s2001",
+          "uniform_l0p125_s2002",
+          "uniform_l0p125_s2003",
+          "uniform_l0p50_s2001",
+          "uniform_l0p50_s2002",
+          "uniform_l0p50_s2003",
+          "uniform_l0p90_s2001",
+          "uniform_l0p90_s2002",
+          "uniform_l0p90_s2003",
+          "uniform_l1p00_s2001",
+          "uniform_l1p00_s2002",
+          "uniform_l1p00_s2003",
+          "uniform_l1p25_s2001",
+          "uniform_l1p25_s2002",
+          "uniform_l1p25_s2003",
+          "uniform_l1p50_s2001",
+          "uniform_l1p50_s2002",
+          "uniform_l1p50_s2003",
+          "uniform_l2p00_s2001",
+          "uniform_l2p00_s2002",
+          "uniform_l2p00_s2003",
+          "shape_b1",
+          "shape_b4",
+          "shape_b16",
+          "spatial_local",
+          "spatial_dispersed",
+          "spatial_local_mirror",
+          "moving_hotspot_single_s3301",
+          "moving_hotspot_single_s3302",
+          "moving_hotspot_multi_disperse_s3301",
+          "moving_hotspot_multi_row_s3301",
+          "moving_hotspot_multi_column_s3301",
+          "rotating_victim_identity",
+          "rotating_victim_affine",
+          "phase_transition_s3501",
+          "phase_transition_s3502",
+          "elephant_mouse_identity",
+          "elephant_mouse_affine",
+          "global_fanin_identity",
+          "retrigger_identity",
+          "retrigger_affine",
+          "timing_pair_s3901",
+          "timing_pair_s3902",
+          "mixed_phase_always_ready_identity",
+          "mixed_phase_always_ready_bit_reverse"
+        ],
+        "execution_accounting": {
+          "required_member_executions_per_candidate": 50,
+          "independent_runs_contributed_to_union": 50
+        }
+      },
+      "capacity22": {
+        "manifest_path": "benchmarks/clean_slate_aer/manifest.multilane-n16.json",
+        "manifest_sha256": "99a8bbd329eeb8d232209263a5624d197c701fcbc0aff76ba44241a87be98c62",
+        "member_count": 22,
+        "members": [
+          "core_simultaneous_identity",
+          "pairwise_contention_identity",
+          "pairwise_contention_affine",
+          "uniform_l1p00_s2001",
+          "uniform_l1p00_s2002",
+          "uniform_l1p00_s2003",
+          "uniform_l1p25_s2001",
+          "uniform_l1p25_s2002",
+          "uniform_l1p25_s2003",
+          "uniform_l1p50_s2001",
+          "uniform_l1p50_s2002",
+          "uniform_l1p50_s2003",
+          "uniform_l2p00_s2001",
+          "uniform_l2p00_s2002",
+          "uniform_l2p00_s2003",
+          "shape_b4",
+          "shape_b16",
+          "global_fanin_identity",
+          "phase_transition_s3501",
+          "phase_transition_s3502",
+          "mixed_phase_always_ready_identity",
+          "mixed_phase_always_ready_bit_reverse"
+        ],
+        "membership_relation": {
+          "relation": "EXACT_SUBSET",
+          "superset": "full50",
+          "independent_additional_samples": false
+        },
+        "execution_accounting": {
+          "required_member_rows_per_candidate": 22,
+          "additional_independent_runs": 0,
+          "independent_runs_contributed_to_union": 0
+        }
+      }
+    },
+    "release_candidate_set": [
+      "FOVEA",
+      "CLUSTER2",
+      "A2",
+      "A3"
+    ],
+    "required_external_receipt_fields": [
+      "CAMPAIGN_SCHEMA_AND_STATUS",
+      "CANDIDATE_ID_AND_RTL_DIGESTS",
+      "SELECTED_INTERFACE_AND_LINK_RTL_DIGESTS",
+      "TRACE_NAME_AND_TRACE_SHA256",
+      "MANIFEST_AND_MEMBERSHIP_DIGESTS",
+      "TOOL_IDENTITY",
+      "EXACT_COMMAND",
+      "START_END_UTC",
+      "PER_TRACE_RAW_COUNTERS",
+      "PER_EVENT_LEDGER",
+      "RESET_AND_DRAIN_RESULT",
+      "EXECUTION_COUNTS",
+      "RESULT_DIGEST"
+    ],
+    "results_embedded_in_policy": false
+  },
+  "cycle_semantics": {
+    "cycle_index_domain": "NONNEGATIVE_INTEGER",
+    "source_model": {
+      "source_count": 16,
+      "pending_depth_per_source": 1,
+      "occurrence_identity_unique": true,
+      "source_withdrawal_allowed": false,
+      "pending_clear_phase": "POST_ACCEPT_NONBLOCKING_UPDATE"
+    },
+    "reset_model": {
+      "reset_signal": "rst_n",
+      "assertion": "ACTIVE_LOW",
+      "pending_cleared": true,
+      "endpoint_state_cleared": true,
+      "retire_during_reset_allowed": false,
+      "post_reset_drain_required": true
+    },
+    "counter_definitions": {
+      "generated": "COUNT_ALL_SOURCE_OCCURRENCES",
+      "source_overrun": "COUNT_OCCURRENCE_WHILE_SAME_SOURCE_PENDING_OCCUPIED",
+      "accepted": "COUNT_UNIQUE_EVENTS_AT_SYNCHRONOUS_PENDING_AND_ACCEPT_COMMIT",
+      "retired": "COUNT_UNIQUE_EVENTS_AT_SYNCHRONOUS_RETIRE",
+      "delivered": "ALIAS_OF_RETIRED"
+    },
     "equations": [
       {
+        "scope": "EACH_COMPLETED_TRACE",
         "lhs": "generated",
-        "operator": "=",
-        "rhs_terms": ["source_overrun", "accepted"],
-        "applies_to": "every completed run"
+        "operator": "EQUALS_SUM",
+        "rhs": [
+          "source_overrun",
+          "accepted"
+        ]
       },
       {
+        "scope": "EACH_HARD_CORRECT_DRAINED_TRACE",
         "lhs": "accepted",
-        "operator": "=",
-        "rhs_terms": ["delivered"],
-        "applies_to": "every hard-correct drained run"
-      }
-    ],
-    "counter_rules": {
-      "all_nonnegative_integers": true,
-      "accepted_definition": "event committed by source_pending/source_accept at the synchronous acceptance edge",
-      "delivered_definition": "event observed at retire in global acceptance order",
-      "source_overrun_definition": "new occurrence while the same source already has an outstanding pending event"
-    },
-    "failure_taxonomy": {
-      "hard_correctness_failures": [
-        "phantom",
-        "duplicate",
-        "corrupt",
-        "reorder",
-        "accepted_missing",
-        "partial_pair_retirement",
-        "illegal_or_x_output",
-        "drain_timeout",
-        "reset_escape",
-        "protocol_error"
-      ],
-      "capacity_outcomes_not_hard_failures": [
-        "source_overrun"
-      ],
-      "tool_exit_zero_is_sufficient": false,
-      "unsupported_function_is_a_pass": false,
-      "unsupported_function_status": "SKIP_UNSUPPORTED"
-    }
-  },
-  "canonical_evidence": {
-    "candidate_neutral": true,
-    "single_canonical_head_to_head_receipt_required": true,
-    "trace_suites": [
-      {
-        "id": "full50",
-        "trace_count": 50,
-        "role": "canonical_full_suite"
+        "operator": "EQUALS",
+        "rhs": [
+          "retired"
+        ]
       },
       {
-        "id": "capacity22",
-        "trace_count": 22,
-        "role": "exact_subset_of_full50"
+        "scope": "EACH_TRACE",
+        "lhs": "delivered",
+        "operator": "EQUALS",
+        "rhs": [
+          "retired"
+        ]
       }
     ],
-    "subset_rule": {
-      "subset": "capacity22",
-      "superset": "full50",
-      "relationship": "exact_trace_subset",
-      "counts_as_independent_additional_samples": false
-    },
-    "comparison_requirements": [
-      "identical frozen demand traces",
-      "identical source pending-latch semantics",
-      "identical acceptance and retirement observation rules",
-      "identical reset, measurement-window, and drain policy",
-      "candidate-native RTL and actual selected link",
-      "no testbench-added FIFO, retry, arbitration, serializer, or storage"
+    "hard_error_counters_required_zero": [
+      "PHANTOM",
+      "DUPLICATE",
+      "CORRUPT",
+      "REORDER",
+      "ACCEPTED_MISSING",
+      "PARTIAL_PAIR_RETIREMENT",
+      "ILLEGAL_OR_X_OUTPUT",
+      "DRAIN_TIMEOUT",
+      "RESET_ESCAPE",
+      "PROTOCOL_ERROR"
     ],
-    "required_provenance": [
-      "contract_digest_sha256",
-      "trace_manifest_digest_sha256",
-      "per_trace_digest_sha256",
-      "testbench_digest_sha256",
-      "interface_digest_sha256",
-      "assertion_digest_sha256",
-      "candidate_rtl_digests_sha256",
-      "integrated_top_digest_sha256",
-      "link_rtl_digests_sha256",
-      "repository_commit",
-      "tool_names_and_versions",
-      "exact_commands",
-      "run_start_and_end_utc",
-      "result_digest_sha256"
+    "capacity_outcomes_not_hard_errors": [
+      "SOURCE_OVERRUN"
     ],
-    "artifact_path_policy": "repository_relative_or_content_addressed_immutable_location",
-    "mutable_temporary_paths_allowed_in_contract_or_receipt": false
-  },
-  "coordinate_demo": {
-    "scope_class": "STRETCH",
-    "placement": "after_retire_external_model",
-    "input_stream": "delivered_events_only",
-    "initial_motion_parameters": "supplied_time_indexed_pose",
-    "initial_camera_model": "calibrated_pinhole_pure_rotation",
-    "unknown_motion_estimation_in_scope": false,
-    "may_change_core_rtl_or_canonical_aer_trace": false,
-    "may_block_core_aer_release": false,
-    "out_of_fov_is_transport_loss": false,
-    "separate_metrics": [
-      "geometric_reprojection_error",
-      "valid_transformed_events",
-      "out_of_fov_events",
-      "event_accumulation_sharpness"
+    "per_event_receipt_fields": [
+      "EVENT_ID",
+      "SOURCE_ID",
+      "ADDRESS",
+      "TRACE_NAME",
+      "TRACE_SHA256",
+      "OCCURRENCE_CYCLE",
+      "ACCEPT_CYCLE_OR_NULL",
+      "RETIRE_CYCLE_OR_NULL",
+      "DISPOSITION"
     ],
-    "numeric_interface_contract_required_before_rtl": true
-  },
-  "release_gates": {
-    "canonical_digital": {
-      "mandatory": true,
-      "gate_result": "HOLD",
-      "current_evidence": "HOLD_NO_SINGLE_CANONICAL_HEAD_TO_HEAD_RECEIPT",
-      "pass_requires": "All candidates pass the same canonical actual-RTL trace campaign with complete provenance and the correctness equations."
-    },
-    "interface_approval": {
-      "mandatory": true,
-      "gate_result": "HOLD_P6_USE_FALLBACK",
-      "current_evidence": "HOLD_NO_WRITTEN_P6_APPROVAL",
-      "pass_requires": "Either P6 has both recorded approvals or the maintained parallel fallback is selected and qualified."
-    },
-    "post_route": {
-      "mandatory": true,
-      "gate_result": "PASS_AT_PINNED_6P5NS_REFERENCE_BOUNDARY",
-      "qualified_operating_point_ns": 6.5,
-      "checks_required_zero_violation": [
-        "setup",
-        "hold",
-        "recovery",
-        "removal",
-        "clock_gating",
-        "pulse_width",
-        "half_cycle",
-        "DRC",
-        "antenna",
-        "regular_connectivity",
-        "power_ground_connectivity",
-        "placement"
+    "identity_rule": "ACCEPTED_EVENT_ID_RETIRES_EXACTLY_ONCE",
+    "ordering_rule": "GLOBAL_ACCEPTANCE_ORDER",
+    "raw_reporting": {
+      "per_trace_counters_required": true,
+      "suite_aggregate_counters_required": true,
+      "loss_fields": [
+        "GENERATED",
+        "SOURCE_OVERRUN",
+        "ACCEPTED",
+        "RETIRED",
+        "OVERRUN_FRACTION"
       ],
-      "same_boundary_same_flow_same_pvt_and_load_required": true,
-      "fresh_run_required_if_rtl_boundary_constraints_or_interface_change": true,
-      "first_fail_bracket_available": false,
-      "exact_fmax_claim_allowed": false
-    },
-    "vectorless_power": {
-      "mandatory": true,
-      "gate_result": "HOLD",
-      "required_mode": "vectorless",
-      "current_evidence": "HOLD_NO_QUALIFIED_SAME_BOUNDARY_ENDPOINT_VECTORLESS_RECEIPT",
-      "same_netlist_boundary_flow_pvt_and_load_required": true,
-      "activity_annotated_or_propagated_diagnostic_satisfies_gate": false,
-      "ranking_requires_equal_power_method": true
+      "throughput_fields": [
+        "FIXED_WINDOW_CYCLES",
+        "FIXED_WINDOW_RETIRED",
+        "FIXED_WINDOW_EVENTS_PER_CYCLE"
+      ],
+      "latency_fields": [
+        "OCCURRENCE_TO_ACCEPT_RAW_SAMPLES",
+        "ACCEPT_TO_RETIRE_RAW_SAMPLES",
+        "MINIMUM",
+        "MAXIMUM",
+        "MEAN",
+        "P50",
+        "P95",
+        "P99"
+      ],
+      "invented_score_threshold_allowed": false
     }
   },
-  "holds": {
+  "physical_power_evidence": {
+    "inherited_6p5_standard_cell_reference": {
+      "dependency_id": "INHERITED_6P5_STANDARD_CELL_REFERENCE",
+      "evidence_class": "INHERITED_ASSERTION",
+      "status": "PASS_WITH_CLAIM_LIMIT",
+      "period_ns": 6.5,
+      "cohort": [
+        "FOVEA_A7_R1_COMPLETE_ENDPOINT",
+        "A2_P6_COMPLETE_ENDPOINT",
+        "A3_P6_COMPLETE_ENDPOINT"
+      ],
+      "io_bits_by_composition": {
+        "FOVEA_A7_R1_COMPLETE_ENDPOINT": 50,
+        "A2_P6_COMPLETE_ENDPOINT": 53,
+        "A3_P6_COMPLETE_ENDPOINT": 53
+      },
+      "boundary": "STANDARD_CELL_COMPLETE_ENDPOINT_TOP_PORTS",
+      "source_commit": "b5888526ae8edfab04b768ca5c7b00a920bcad19",
+      "verifier_commit": "bc61c470d75dee6adb236ca6761f32e77a250cb0",
+      "document_git_object": {
+        "commit": "61de7fdbd3b3160d3ce91dcb3ce0a1cc5fc4d078",
+        "path": "docs/k2_endpoint_physical_results_20260814.txt",
+        "sha256": "113d2ad1ffe3b52f59067e948868875f6ce509ad14970f73876418db176050b1",
+        "present_in_current_checkout": false
+      },
+      "evidence_archive": {
+        "sha256": "5112c2a447725532f628d5eb4dba9df0f7bd36e52040261a0582128fe3a63645",
+        "bytes_available_to_policy_verifier": false,
+        "policy_verifier_validates_archive": false
+      },
+      "forwarded_clock_exception": {
+        "signal": "link_clk_o",
+        "intentional": true,
+        "allowed_count": 1,
+        "data_endpoint_exception_count": 0
+      },
+      "final_release_eligible": false,
+      "hold_id": "H_INHERITED_6P5_ARCHIVE_UNAVAILABLE"
+    },
+    "per_interface": {
+      "P6": {
+        "standard_cell_post_route": "PASS_WITH_CLAIM_LIMIT",
+        "vectorless_power": "HOLD_NO_QUALIFIED_COMPLETE_ENDPOINT_RECEIPT",
+        "real_pad_package_channel": "UNPROVEN",
+        "competition_legality": "HOLD"
+      },
+      "PARALLEL_FALLBACK": {
+        "integrated_digital": "MISSING",
+        "standard_cell_post_route": "MISSING",
+        "vectorless_power": "MISSING",
+        "real_pad_package_channel": "UNPROVEN",
+        "competition_legality": "NOT_YET_EVALUATED"
+      }
+    },
+    "core_only_reference": {
+      "boundary": "CORE_ONLY",
+      "candidates": [
+        "FOVEA_CORE",
+        "CLUSTER2_CORE"
+      ],
+      "status": "SEPARATE_REFERENCE_ONLY",
+      "final_endpoint_ranking_eligible": false,
+      "may_be_combined_with_complete_endpoint_cohort": false
+    }
+  },
+  "external_data_and_coordinate_policy": {
     "official_dataset": {
       "status": "HOLD",
-      "reason": "The organizer dataset, representation, scenarios, and immutable manifest are not yet available.",
+      "hold_id": "H_OFFICIAL_DATASET",
       "blocks": [
-        "official_dataset_performance_claims",
-        "final_workload_generalization"
+        "OFFICIAL_DATASET_CLAIMS",
+        "OFFICIAL_DATA_GENERALIZATION_CLAIMS"
       ],
-      "blocks_core_aer_implementation": false,
-      "clear_requires": [
-        "dataset bytes and usage terms",
-        "official representation and scenario definitions",
-        "immutable manifest and per-file digests",
-        "documented mapping into the canonical source model"
-      ]
+      "blocks_team_canonical_release": false,
+      "arrival_policy": "VERSIONED_EXTENSION_ONLY",
+      "may_modify_full50_or_capacity22": false
     },
-    "numeric_io_rules": {
+    "team_coordinate_numeric_contract": {
       "status": "HOLD",
-      "reason": "Official numeric and handshake rules for coordinate input, motion parameters, and transformed output are missing.",
+      "hold_id": "H_TEAM_COORDINATE_NUMERIC_CONTRACT",
       "blocks": [
-        "coordinate_transform_rtl",
-        "numeric_compliance_claims"
+        "COORDINATE_TRANSFORM_RTL",
+        "COORDINATE_NUMERIC_COMPLIANCE_CLAIMS"
       ],
-      "blocks_core_aer_implementation": false,
-      "clear_requires": [
-        "coordinate widths and signedness",
-        "fixed-point scaling",
-        "rounding and saturation rules",
-        "coordinate range and out-of-frame rule",
-        "timestamp and pose synchronization rule",
-        "ready-valid or equivalent handshake",
-        "I/O loading and timing constraints"
-      ]
+      "blocks_core_endpoint_release": false
     },
-    "p6_approval": {
-      "status": "HOLD",
-      "reason": "Written organizer and educational-PDK approval for the phase-related P6 transfer is not recorded.",
-      "blocks": [
-        "p6_primary_link_release"
-      ],
-      "blocks_core_aer_implementation": false,
-      "clear_requires": [
-        "written organizer approval",
-        "confirmed implementability without unavailable vendor-specific primitives"
-      ]
+    "coordinate_demo": {
+      "scope": "STRETCH",
+      "placement": "AFTER_RETIRE_EXTERNAL_MODEL",
+      "input": "DELIVERED_EVENTS_ONLY",
+      "motion_parameters": "SUPPLIED_TIME_INDEXED_POSE",
+      "inside_endpoint_ppa": false,
+      "may_change_canonical_traces": false,
+      "out_of_fov_is_transport_loss": false
     },
-    "canonical_head_to_head": {
+    "pdk_endpoint_io_rules": {
       "status": "HOLD",
-      "reason": "Existing useful evidence is not one canonical complete-boundary head-to-head receipt.",
-      "blocks": [
-        "final_digital_comparison_release"
+      "hold_id": "H_PDK_ENDPOINT_IO_RULES",
+      "required_pins": [
+        "PDK_INPUT_DELAY_MIN_MAX",
+        "PDK_OUTPUT_DELAY_MIN_MAX",
+        "PDK_INPUT_TRANSITION_OR_DRIVE_CELL",
+        "PDK_OUTPUT_LOAD",
+        "CLOCK_UNCERTAINTY",
+        "RESET_DELAY"
       ],
-      "blocks_core_aer_implementation": false,
-      "clear_requires": [
-        "one candidate-neutral execution campaign",
-        "all required provenance fields",
-        "hard-correct results for every released candidate"
-      ]
+      "inherited_6p5_values_are_final_competition_rules": false
     },
-    "endpoint_vectorless_receipt": {
-      "status": "HOLD",
-      "reason": "The complete endpoint lacks a qualified same-method vectorless-power release receipt.",
-      "blocks": [
-        "final_power_release"
-      ],
-      "blocks_core_aer_implementation": false,
-      "clear_requires": [
-        "same-boundary vectorless reports",
-        "same flow, PVT, clocks, I/O loads, and power settings",
-        "raw reports, commands, tool versions, and digests"
+    "real_pad_phy": {
+      "status": "UNPROVEN",
+      "hold_id": "H_REAL_PAD_PHY",
+      "required_scope": [
+        "PAD_CELLS",
+        "PACKAGE",
+        "CHANNEL",
+        "SIGNAL_INTEGRITY",
+        "CLOCK_QUALITY"
       ]
     }
   },
-  "release_decisions": {
-    "core_aer_implementation": {
-      "decision": "GO",
-      "blockers": []
+  "release_dependency_graph": {
+    "nodes": {
+      "POLICY": {
+        "kind": "POLICY",
+        "state": "INTERNAL_VALIDITY_CHECKED"
+      },
+      "CANONICAL_DIGITAL": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "P6_STANDARD_CELL": {
+        "kind": "EVIDENCE",
+        "state": "PASS_WITH_CLAIM_LIMIT"
+      },
+      "P6_LEGALITY": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "P6_PAD_PHY": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "P6_VECTORLESS_POWER": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "P6_RELEASE": {
+        "kind": "DECISION",
+        "state": "HOLD"
+      },
+      "PARALLEL_COMPLETE_EVIDENCE": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "PARALLEL_RELEASE": {
+        "kind": "DECISION",
+        "state": "HOLD"
+      },
+      "SELECTED_INTERFACE_RELEASE": {
+        "kind": "DECISION",
+        "state": "HOLD"
+      },
+      "FINAL_CDC_RDC": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "PDK_ENDPOINT_IO": {
+        "kind": "EVIDENCE",
+        "state": "HOLD"
+      },
+      "TEAM_CANONICAL_RELEASE": {
+        "kind": "DECISION",
+        "state": "HOLD"
+      },
+      "OFFICIAL_DATA": {
+        "kind": "EXTERNAL_INPUT",
+        "state": "HOLD"
+      },
+      "OFFICIAL_DATA_CLAIMS": {
+        "kind": "DECISION",
+        "state": "HOLD"
+      },
+      "COORDINATE_NUMERIC_CONTRACT": {
+        "kind": "EXTERNAL_INPUT",
+        "state": "HOLD"
+      },
+      "COORDINATE_RTL": {
+        "kind": "DECISION",
+        "state": "HOLD"
+      }
     },
-    "p6_primary_link": {
-      "decision": "HOLD",
-      "blockers": ["p6_approval"]
+    "requirements": [
+      {
+        "target": "P6_RELEASE",
+        "operator": "ALL",
+        "sources": [
+          "P6_STANDARD_CELL",
+          "P6_LEGALITY",
+          "P6_PAD_PHY",
+          "P6_VECTORLESS_POWER"
+        ]
+      },
+      {
+        "target": "PARALLEL_RELEASE",
+        "operator": "ALL",
+        "sources": [
+          "PARALLEL_COMPLETE_EVIDENCE"
+        ]
+      },
+      {
+        "target": "SELECTED_INTERFACE_RELEASE",
+        "operator": "ONE",
+        "sources": [
+          "P6_RELEASE",
+          "PARALLEL_RELEASE"
+        ]
+      },
+      {
+        "target": "TEAM_CANONICAL_RELEASE",
+        "operator": "ALL",
+        "sources": [
+          "POLICY",
+          "CANONICAL_DIGITAL",
+          "SELECTED_INTERFACE_RELEASE",
+          "FINAL_CDC_RDC",
+          "PDK_ENDPOINT_IO"
+        ]
+      },
+      {
+        "target": "OFFICIAL_DATA_CLAIMS",
+        "operator": "ALL",
+        "sources": [
+          "OFFICIAL_DATA",
+          "TEAM_CANONICAL_RELEASE"
+        ]
+      },
+      {
+        "target": "COORDINATE_RTL",
+        "operator": "ALL",
+        "sources": [
+          "COORDINATE_NUMERIC_CONTRACT"
+        ]
+      }
+    ],
+    "forbidden_requirements": [
+      {
+        "target": "TEAM_CANONICAL_RELEASE",
+        "source": "OFFICIAL_DATA"
+      },
+      {
+        "target": "PARALLEL_RELEASE",
+        "source": "P6_STANDARD_CELL"
+      },
+      {
+        "target": "PARALLEL_RELEASE",
+        "source": "P6_VECTORLESS_POWER"
+      },
+      {
+        "target": "TEAM_CANONICAL_RELEASE",
+        "source": "COORDINATE_NUMERIC_CONTRACT"
+      }
+    ]
+  },
+  "scoped_holds": {
+    "H_CANONICAL_DIGITAL": {
+      "status": "HOLD",
+      "blocks": ["CANONICAL_DIGITAL", "TEAM_CANONICAL_RELEASE"],
+      "blocks_core_development": false
     },
-    "parallel_fallback": {
-      "decision": "GO",
-      "blockers": []
+    "H_P6_MULTI_EDGE_LEGALITY": {
+      "status": "HOLD",
+      "blocks": ["P6_LEGALITY", "P6_RELEASE"],
+      "blocks_core_development": false
     },
-    "coordinate_scenario_model": {
-      "decision": "GO_STRETCH_ONLY",
-      "blockers": []
+    "H_P6_REAL_PAD_PHY": {
+      "status": "HOLD",
+      "blocks": ["P6_PAD_PHY", "P6_RELEASE"],
+      "blocks_core_development": false
     },
-    "coordinate_transform_rtl": {
-      "decision": "HOLD",
-      "blockers": ["numeric_io_rules"]
+    "H_P6_VECTORLESS_POWER": {
+      "status": "HOLD",
+      "blocks": ["P6_VECTORLESS_POWER", "P6_RELEASE"],
+      "blocks_core_development": false
     },
-    "final_system_release": {
-      "decision": "HOLD",
-      "blockers": [
-        "official_dataset",
-        "canonical_head_to_head",
-        "endpoint_vectorless_receipt"
-      ]
+    "H_PARALLEL_INTEGRATION": {
+      "status": "HOLD",
+      "blocks": ["PARALLEL_COMPLETE_EVIDENCE", "PARALLEL_RELEASE"],
+      "blocks_core_development": false
+    },
+    "H_INHERITED_6P5_ARCHIVE_UNAVAILABLE": {
+      "status": "HOLD",
+      "blocks": ["P6_STANDARD_CELL_FINAL_RELEASE_USE"],
+      "blocks_core_development": false
+    },
+    "H_FINAL_CDC_RDC": {
+      "status": "HOLD",
+      "blocks": ["FINAL_CDC_RDC", "TEAM_CANONICAL_RELEASE"],
+      "blocks_core_development": false
+    },
+    "H_PDK_ENDPOINT_IO_RULES": {
+      "status": "HOLD",
+      "blocks": ["PDK_ENDPOINT_IO", "TEAM_CANONICAL_RELEASE"],
+      "blocks_core_development": false
+    },
+    "H_REAL_PAD_PHY": {
+      "status": "HOLD",
+      "blocks": ["REAL_PAD_PHY_CLAIMS"],
+      "blocks_core_development": false
+    },
+    "H_OFFICIAL_DATASET": {
+      "status": "HOLD",
+      "blocks": ["OFFICIAL_DATA", "OFFICIAL_DATA_CLAIMS"],
+      "blocks_core_development": false
+    },
+    "H_TEAM_COORDINATE_NUMERIC_CONTRACT": {
+      "status": "HOLD",
+      "blocks": ["COORDINATE_NUMERIC_CONTRACT", "COORDINATE_RTL"],
+      "blocks_core_development": false
     }
   },
   "security_and_portability": {
     "passwords_allowed": false,
     "license_payloads_allowed": false,
     "pdk_payloads_allowed": false,
-    "mutable_tmp_paths_allowed": false,
-    "evidence_references_must_be_repository_relative_or_content_addressed": true
+    "absolute_or_mutable_paths_allowed": false,
+    "forbidden_relative_path_components": ["tmp", "latest"],
+    "artifact_references": "REPOSITORY_RELATIVE_OR_GIT_OBJECT_WITH_SHA256"
   }
 }

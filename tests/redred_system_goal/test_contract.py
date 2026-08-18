@@ -1,239 +1,550 @@
 #!/usr/bin/env python3
-"""Regression and fail-closed mutation tests for the active-goal contract."""
+"""Adversarial tests for the REDRED policy/dependency contract."""
 
 from __future__ import annotations
 
 import copy
 import importlib.util
 import json
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-from pathlib import Path
-from types import ModuleType
 from typing import Any, Callable
 
 
 sys.dont_write_bytecode = True
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = REPO_ROOT / "contracts" / "redred_system_goal" / "active_goal.json"
-VERIFIER = REPO_ROOT / "contracts" / "redred_system_goal" / "verify_contract.py"
-
-
-def _load_verifier() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("redred_goal_verifier", VERIFIER)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load verifier module")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+ROOT = Path(__file__).resolve().parents[2]
+CONTRACT = ROOT / "contracts/redred_system_goal/active_goal.json"
+VERIFIER = ROOT / "contracts/redred_system_goal/verify_contract.py"
+SPEC = importlib.util.spec_from_file_location("redred_policy", VERIFIER)
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("cannot load REDRED policy verifier")
+policy = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(policy)
 
 
-VERIFY = _load_verifier()
-
-
-class ActiveGoalContractTests(unittest.TestCase):
+class PolicyContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.good = VERIFY.load_contract(CONTRACT)
+        cls.good = policy.load_contract(CONTRACT)
 
     def assert_invalid(
         self,
-        mutate: Callable[[dict[str, Any]], None],
-        message_fragment: str | None = None,
+        mutation: Callable[[dict[str, Any]], None],
+        fragment: str | None = None,
     ) -> None:
         document = copy.deepcopy(self.good)
-        mutate(document)
-        with self.assertRaises(VERIFY.ContractError) as caught:
-            VERIFY.verify_document(document)
-        if message_fragment is not None:
-            self.assertIn(message_fragment, str(caught.exception))
+        mutation(document)
+        with self.assertRaises(policy.PolicyError) as caught:
+            policy.verify_document(document)
+        if fragment is not None:
+            self.assertIn(fragment, str(caught.exception))
 
-    def test_committed_contract_passes(self) -> None:
-        VERIFY.verify_document(copy.deepcopy(self.good))
+    def test_committed_policy_is_internally_valid(self) -> None:
+        policy.verify_document(copy.deepcopy(self.good))
 
-    def test_cli_passes(self) -> None:
+    def test_cli_pass_is_policy_only(self) -> None:
         result = subprocess.run(
             [sys.executable, str(VERIFIER), str(CONTRACT)],
-            cwd=REPO_ROOT,
+            cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("REDRED_SYSTEM_GOAL_CONTRACT_PASS", result.stdout)
-
-    def test_missing_root_field_fails_closed(self) -> None:
-        self.assert_invalid(lambda doc: doc.pop("holds"), "missing=['holds']")
-
-    def test_unknown_root_field_fails_closed(self) -> None:
-        self.assert_invalid(lambda doc: doc.update({"implicit_default": True}), "unknown=['implicit_default']")
+        self.assertIn("POLICY_INTERNALLY_VALID", result.stdout)
+        self.assertIn("evidence_qualified=false", result.stdout)
+        self.assertIn("release_qualified=false", result.stdout)
+        self.assertNotIn("EVIDENCE_PASS", result.stdout)
+        self.assertNotIn("RELEASE_PASS", result.stdout)
 
     def test_duplicate_json_key_is_rejected(self) -> None:
-        text = CONTRACT.read_text(encoding="utf-8")
-        duplicate = text.replace(
-            '  "schema_version": 1,',
-            '  "schema_version": 1,\n  "schema_version": 1,',
+        payload = CONTRACT.read_text(encoding="utf-8").replace(
+            '  "schema_version": 2,',
+            '  "schema_version": 2,\n  "schema_version": 2,',
             1,
         )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "duplicate.json"
-            path.write_text(duplicate, encoding="utf-8")
-            with self.assertRaises(VERIFY.ContractError) as caught:
-                VERIFY.load_contract(path)
-        self.assertIn("duplicate JSON key", str(caught.exception))
+            path.write_text(payload, encoding="utf-8")
+            with self.assertRaisesRegex(policy.PolicyError, "duplicate JSON key"):
+                policy.load_contract(path)
 
-    def test_a2_cannot_claim_exact_prefix(self) -> None:
+    def test_exact_keys_reject_missing_and_unknown_fields(self) -> None:
+        self.assert_invalid(lambda doc: doc.pop("scoped_holds"), "keys mismatch")
         self.assert_invalid(
-            lambda doc: doc["candidate_policy"]["primary"].update(
-                {"preserves_exact_scalar_prefix": True}
+            lambda doc: doc["interfaces"]["selection"].update({"implicit_go": True}),
+            "interfaces",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"].update(
+                {"unverified_results": {}}
             ),
-            "primary.preserves_exact_scalar_prefix",
+            "keys mismatch",
         )
 
-    def test_a3_must_remain_exact_prefix_fallback(self) -> None:
+    def test_policy_pass_cannot_claim_evidence_or_release(self) -> None:
+        for field in ("evidence_qualified", "release_qualified"):
+            with self.subTest(field=field):
+                self.assert_invalid(
+                    lambda doc, field=field: doc["verifier_claim"].update(
+                        {field: True}
+                    ),
+                    "verifier_claim",
+                )
         self.assert_invalid(
-            lambda doc: doc["candidate_policy"]["semantic_fallback"].update(
-                {"semantic_class": "long_term_weighted_aggregate"}
+            lambda doc: doc["verifier_claim"].update(
+                {"result_authority": "EVIDENCE_AND_RELEASE"}
             ),
-            "semantic_fallback.semantic_class",
+            "verifier_claim",
         )
 
-    def test_p6_cannot_be_selected_without_approval(self) -> None:
+    def test_release_interface_remains_unselected_hold(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["candidate_policy"]["link_policy"].update(
-                {"selected_until_approved": "P6"}
+            lambda doc: doc["interfaces"]["selection"].update(
+                {"selected": "P6", "decision": "GO"}
             ),
-            "selected_until_approved",
+            "interfaces",
         )
-
-    def test_parallel_fallback_is_mandatory(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["candidate_policy"]["link_policy"]["parallel_fallback"].update(
-                {"must_be_maintained": False}
+            lambda doc: doc["goal_policy"].update(
+                {
+                    "selected_release_interface": "PARALLEL_FALLBACK",
+                    "selected_release_interface_status": "GO",
+                }
             ),
-            "must_be_maintained",
+            "goal_policy",
         )
 
-    def test_endpoint_must_end_at_retire(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["endpoint_boundary"]["ends_at"].update(
-                {"retire_signal": "tx_valid"}
+    def test_a2_semantics_reject_reviewed_mutations(self) -> None:
+        mutations = [
+            lambda doc: doc["candidate_semantics"]["A2"].update(
+                {"persistent_rows": [1, 2]}
             ),
-            "ends_at.retire_signal",
-        )
-
-    def test_conservation_equation_cannot_be_weakened(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["correctness"]["equations"][1].update(
-                {"rhs_terms": ["delivered", "dropped"]}
+            lambda doc: doc["candidate_semantics"]["A2"].update(
+                {"calendar_phase_persistent": False}
             ),
-            "correctness.equations",
-        )
-
-    def test_hard_failure_cannot_be_removed(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["correctness"]["failure_taxonomy"]["hard_correctness_failures"].remove(
-                "reorder"
+            lambda doc: doc["candidate_semantics"]["A2"].update(
+                {"empty_slot_behavior": "ACCUMULATE_DEBT"}
             ),
-            "missing=['reorder']",
-        )
-
-    def test_source_overrun_cannot_be_reclassified_as_hard_failure(self) -> None:
-        def mutate(doc: dict[str, Any]) -> None:
-            doc["correctness"]["failure_taxonomy"]["hard_correctness_failures"].append(
-                "source_overrun"
-            )
-
-        self.assert_invalid(mutate, "unknown=['source_overrun']")
-
-    def test_capacity22_cannot_be_counted_as_independent(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["canonical_evidence"]["subset_rule"].update(
-                {"counts_as_independent_additional_samples": True}
+            lambda doc: doc["candidate_semantics"]["A2"].update(
+                {"service_debt_model": "WEIGHTED_DEBT", "debt_catch_up": True}
             ),
-            "counts_as_independent_additional_samples",
-        )
-
-    def test_required_provenance_cannot_be_omitted(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["canonical_evidence"]["required_provenance"].remove(
-                "trace_manifest_digest_sha256"
+            lambda doc: doc["candidate_semantics"]["A2"].update(
+                {"exact_scalar_prefix": True}
             ),
-            "missing=['trace_manifest_digest_sha256']",
-        )
-
-    def test_coordinate_demo_cannot_block_core_release(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["coordinate_demo"].update(
-                {"may_block_core_aer_release": True}
+            lambda doc: doc["candidate_semantics"]["A2"].update(
+                {"future_trace_equivalence": True}
             ),
-            "may_block_core_aer_release",
-        )
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation, "candidate_semantics")
 
-    def test_coordinate_demo_cannot_enter_endpoint_boundary(self) -> None:
-        def mutate(doc: dict[str, Any]) -> None:
-            doc["endpoint_boundary"]["excludes"].remove("coordinate transformation")
-            doc["endpoint_boundary"]["includes"].append("coordinate transformation")
-
-        self.assert_invalid(mutate, "endpoint_boundary.includes")
-
-    def test_post_route_reference_cannot_be_called_exact_fmax(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["release_gates"]["post_route"].update(
-                {"exact_fmax_claim_allowed": True}
+    def test_a3_snapshot_scope_and_activation_are_bounded(self) -> None:
+        mutations = [
+            lambda doc: doc["candidate_semantics"]["A3"].update(
+                {"microsteps": 3}
             ),
-            "exact_fmax_claim_allowed",
-        )
-
-    def test_vectorless_gate_rejects_activity_diagnostic_substitution(self) -> None:
-        self.assert_invalid(
-            lambda doc: doc["release_gates"]["vectorless_power"].update(
-                {"activity_annotated_or_propagated_diagnostic_satisfies_gate": True}
+            lambda doc: doc["candidate_semantics"]["A3"].update(
+                {"snapshot_held_across_microsteps": False}
             ),
-            "activity_annotated_or_propagated_diagnostic_satisfies_gate",
+            lambda doc: doc["candidate_semantics"]["A3"].update(
+                {"future_arrivals_visible_to_held_snapshot": True}
+            ),
+            lambda doc: doc["candidate_semantics"]["A3"].update(
+                {"future_trace_equivalence": True}
+            ),
+            lambda doc: doc["candidate_semantics"]["A3"][
+                "activation_triggers"
+            ].append("SHARED_INTERFACE_FAILURE"),
+            lambda doc: doc["candidate_semantics"]["A3"][
+                "activation_triggers"
+            ].remove("A2_SPECIFIC_GATE_FAILURE_INDEPENDENTLY_PASSED_BY_A3"),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation, "candidate_semantics")
+
+    def test_a4_is_research_only_and_not_a_candidate(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["candidate_semantics"]["A4"].update(
+                {"release_candidate": True, "ranking_eligible": True}
+            ),
+            "candidate_semantics",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"][
+                "release_candidate_set"
+            ].append("A4"),
+            "release_candidate_set",
+        )
+        self.assert_invalid(
+            lambda doc: doc["goal_policy"].update({"primary_candidate": "A4"}),
+            "goal_policy",
         )
 
-    def test_official_dataset_hold_is_required(self) -> None:
+    def test_p6_exact_transfer_rejects_link_leakage(self) -> None:
+        mutations = [
+            lambda doc: doc["interfaces"]["P6"]["cell_transfer"].update(
+                {"cell_bits": 8}
+            ),
+            lambda doc: doc["interfaces"]["P6"]["cell_transfer"].update(
+                {"data_wires": 6, "physical_wires_total": 7}
+            ),
+            lambda doc: doc["interfaces"]["P6"]["cell_transfer"][
+                "low_half"
+            ].update({"launch_edge": "FALLING"}),
+            lambda doc: doc["interfaces"]["P6"]["cell_transfer"][
+                "high_half"
+            ].update({"launch_edge": "RISING"}),
+            lambda doc: doc["interfaces"]["P6"]["cell_transfer"].update(
+                {"receiver_commit_edge": "RISING"}
+            ),
+            lambda doc: doc["interfaces"]["P6"]["cell_transfer"][
+                "high_half"
+            ].update({"payload": "CELL_BITS_8_TO_5"}),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation, "interfaces")
+
+    def test_forwarded_clock_exception_is_exact_and_data_safe(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["holds"].pop("official_dataset"),
-            "missing=['official_dataset']",
+            lambda doc: doc["interfaces"]["P6"][
+                "forwarded_clock_exception"
+            ].update({"intentional": False}),
+            "interfaces",
+        )
+        self.assert_invalid(
+            lambda doc: doc["interfaces"]["P6"][
+                "forwarded_clock_exception"
+            ].update({"allowed_unconstrained_endpoint_count": 2}),
+            "interfaces",
+        )
+        self.assert_invalid(
+            lambda doc: doc["interfaces"]["P6"][
+                "forwarded_clock_exception"
+            ].update({"data_endpoint_exceptions_allowed": 1}),
+            "interfaces",
         )
 
-    def test_numeric_io_hold_is_required(self) -> None:
+    def test_p6_legality_pad_and_power_cannot_be_promoted(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["holds"]["numeric_io_rules"].update(
+            lambda doc: doc["interfaces"]["P6"][
+                "competition_multi_edge_legality"
+            ].update({"status": "PASS"}),
+            "interfaces",
+        )
+        self.assert_invalid(
+            lambda doc: doc["interfaces"]["P6"][
+                "real_pad_package_channel"
+            ].update({"status": "PROVEN"}),
+            "interfaces",
+        )
+        self.assert_invalid(
+            lambda doc: doc["interfaces"]["P6"]["vectorless_power"].update(
                 {"status": "PASS"}
             ),
-            "numeric_io_rules.status",
+            "interfaces",
         )
 
-    def test_hold_decision_must_name_active_blocker(self) -> None:
+    def test_parallel_fallback_never_borrows_p6_or_claims_go(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["release_decisions"]["coordinate_transform_rtl"].update(
-                {"blockers": []}
+            lambda doc: doc["interfaces"]["PARALLEL_FALLBACK"].update(
+                {"competition_release_status": "GO"}
             ),
-            "coordinate_transform_rtl.blockers",
+            "interfaces",
+        )
+        self.assert_invalid(
+            lambda doc: doc["interfaces"]["PARALLEL_FALLBACK"].update(
+                {"may_borrow_p6_physical_evidence": True}
+            ),
+            "interfaces",
+        )
+        self.assert_invalid(
+            lambda doc: doc["physical_power_evidence"]["per_interface"][
+                "PARALLEL_FALLBACK"
+            ].update({"standard_cell_post_route": "PASS_WITH_CLAIM_LIMIT"}),
+            "per_interface",
         )
 
-    def test_mutable_temporary_evidence_path_is_rejected(self) -> None:
-        mutable_path = "/" + "tmp" + "/latest"
+    def test_canonical_dependency_cannot_be_promoted_by_policy(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["goal"].update(
-                {"statement": f"Use {mutable_path} as the evidence source."}
+            lambda doc: doc["canonical_digital_dependency"].update(
+                {"status": "PASS", "policy_verifier_validates_results": True}
             ),
-            "mutable temporary path forbidden",
+            "canonical_digital_dependency",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"].update(
+                {"results_embedded_in_policy": True}
+            ),
+            "canonical_digital_dependency",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"][
+                "external_campaign_contract_reference"
+            ].update({"reference_is_execution_evidence": True}),
+            "external campaign reference evidence status",
         )
 
-    def test_security_policy_cannot_allow_sensitive_payloads(self) -> None:
+    def test_trace_and_harness_digests_are_live_bound(self) -> None:
         self.assert_invalid(
-            lambda doc: doc["security_and_portability"].update(
-                {"pdk_payloads_allowed": True}
+            lambda doc: doc["canonical_digital_dependency"]["trace_registry"].update(
+                {"sha256": "0" * 64}
             ),
-            "pdk_payloads_allowed",
+            "digest mismatch",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"]["harness_bindings"][0].update(
+                {"sha256": "0" * 64}
+            ),
+            "digest mismatch",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"]["suites"]["full50"].update(
+                {"manifest_sha256": "0" * 64}
+            ),
+            "manifest digest mismatch",
+        )
+
+    def test_capacity22_exact_subset_dependency_and_accounting(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"]["suites"][
+                "capacity22"
+            ]["members"].append("core_sparse_identity"),
+            "structured membership mismatch",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"]["suites"][
+                "capacity22"
+            ]["membership_relation"].update(
+                {"relation": "INDEPENDENT_SUITE", "independent_additional_samples": True}
+            ),
+            "membership_relation",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"]["suites"][
+                "capacity22"
+            ]["execution_accounting"].update(
+                {"additional_independent_runs": 22, "independent_runs_contributed_to_union": 22}
+            ),
+            "execution_accounting",
+        )
+
+    def test_external_receipt_requires_event_identity_and_execution_accounting(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"][
+                "required_external_receipt_fields"
+            ].remove("PER_EVENT_LEDGER"),
+            "required_external_receipt_fields",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"][
+                "required_external_receipt_fields"
+            ].remove("EXECUTION_COUNTS"),
+            "required_external_receipt_fields",
+        )
+
+    def test_cycle_equations_pending_reset_and_errors_are_exact(self) -> None:
+        mutations = [
+            lambda doc: doc["cycle_semantics"]["equations"][0].update(
+                {"rhs": ["accepted"]}
+            ),
+            lambda doc: doc["cycle_semantics"]["source_model"].update(
+                {"source_withdrawal_allowed": True}
+            ),
+            lambda doc: doc["cycle_semantics"]["source_model"].update(
+                {"pending_clear_phase": "PRE_EDGE"}
+            ),
+            lambda doc: doc["cycle_semantics"]["reset_model"].update(
+                {"retire_during_reset_allowed": True}
+            ),
+            lambda doc: doc["cycle_semantics"][
+                "hard_error_counters_required_zero"
+            ].remove("REORDER"),
+            lambda doc: doc["cycle_semantics"]["per_event_receipt_fields"].remove(
+                "RETIRE_CYCLE_OR_NULL"
+            ),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
+    def test_no_invented_score_threshold(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["goal_policy"].update({"score_threshold_defined": True}),
+            "goal_policy",
+        )
+        self.assert_invalid(
+            lambda doc: doc["cycle_semantics"]["raw_reporting"].update(
+                {"invented_score_threshold_allowed": True}
+            ),
+            "raw_reporting",
+        )
+
+    def test_inherited_6p5_claim_limit_and_archive_hold_are_enforced(self) -> None:
+        inherited = lambda doc: doc["physical_power_evidence"][
+            "inherited_6p5_standard_cell_reference"
+        ]
+        self.assert_invalid(
+            lambda doc: inherited(doc).update({"evidence_class": "DIRECTLY_VALIDATED"}),
+            "evidence_class",
+        )
+        self.assert_invalid(
+            lambda doc: inherited(doc).update({"final_release_eligible": True}),
+            "final_release_eligible",
+        )
+        self.assert_invalid(
+            lambda doc: inherited(doc)["evidence_archive"].update(
+                {
+                    "bytes_available_to_policy_verifier": True,
+                    "policy_verifier_validates_archive": True,
+                }
+            ),
+            "archive availability",
+        )
+        self.assert_invalid(
+            lambda doc: inherited(doc)["cohort"].append("CLUSTER2_CORE"),
+            "cohort",
+        )
+        self.assert_invalid(
+            lambda doc: inherited(doc)["io_bits_by_composition"].update(
+                {"A2_P6_COMPLETE_ENDPOINT": 50}
+            ),
+            "io_bits_by_composition",
+        )
+
+    def test_core_only_reference_stays_separate_nonranking(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["physical_power_evidence"]["core_only_reference"].update(
+                {"final_endpoint_ranking_eligible": True}
+            ),
+            "core_only_reference",
+        )
+        self.assert_invalid(
+            lambda doc: doc["physical_power_evidence"]["core_only_reference"].update(
+                {"may_be_combined_with_complete_endpoint_cohort": True}
+            ),
+            "core_only_reference",
+        )
+
+    def test_final_cdc_rdc_is_an_explicit_release_hold(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["nodes"][
+                "FINAL_CDC_RDC"
+            ].update({"state": "PASS"}),
+            "nodes",
+        )
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["requirements"][3][
+                "sources"
+            ].remove("FINAL_CDC_RDC"),
+            "requirements",
+        )
+        self.assert_invalid(
+            lambda doc: doc["scoped_holds"].pop("H_FINAL_CDC_RDC"),
+            "scoped_holds",
+        )
+
+    def test_official_dataset_only_blocks_official_claims(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["external_data_and_coordinate_policy"][
+                "official_dataset"
+            ].update({"blocks_team_canonical_release": True}),
+            "external_data_and_coordinate_policy",
+        )
+        self.assert_invalid(
+            lambda doc: doc["external_data_and_coordinate_policy"][
+                "official_dataset"
+            ].update({"may_modify_full50_or_capacity22": True}),
+            "external_data_and_coordinate_policy",
+        )
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["requirements"][3][
+                "sources"
+            ].append("OFFICIAL_DATA"),
+            "requirements",
+        )
+
+    def test_coordinate_numeric_contract_is_scoped_outside_endpoint_ppa(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["external_data_and_coordinate_policy"][
+                "coordinate_demo"
+            ].update({"inside_endpoint_ppa": True}),
+            "external_data_and_coordinate_policy",
+        )
+        self.assert_invalid(
+            lambda doc: doc["endpoint_boundary"].update(
+                {"coordinate_inside_endpoint_ppa": True}
+            ),
+            "endpoint_boundary",
+        )
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["requirements"][3][
+                "sources"
+            ].append("COORDINATE_NUMERIC_CONTRACT"),
+            "requirements",
+        )
+
+    def test_pdk_io_rules_and_real_pad_phy_cannot_be_assumed(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["external_data_and_coordinate_policy"][
+                "pdk_endpoint_io_rules"
+            ].update({"status": "PASS", "inherited_6p5_values_are_final_competition_rules": True}),
+            "external_data_and_coordinate_policy",
+        )
+        self.assert_invalid(
+            lambda doc: doc["external_data_and_coordinate_policy"][
+                "real_pad_phy"
+            ].update({"status": "PROVEN"}),
+            "external_data_and_coordinate_policy",
+        )
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["requirements"][3][
+                "sources"
+            ].remove("PDK_ENDPOINT_IO"),
+            "requirements",
+        )
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["nodes"][
+                "TEAM_CANONICAL_RELEASE"
+            ].update({"state": "RELEASED"}),
+            "nodes",
+        )
+
+    def test_selected_interface_cannot_borrow_p6_evidence(self) -> None:
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["requirements"][1][
+                "sources"
+            ].append("P6_STANDARD_CELL"),
+            "requirements",
+        )
+        self.assert_invalid(
+            lambda doc: doc["release_dependency_graph"]["requirements"][1][
+                "sources"
+            ].append("P6_VECTORLESS_POWER"),
+            "requirements",
+        )
+
+    def test_relative_tmp_latest_and_absolute_paths_are_rejected(self) -> None:
+        mutable = "/".join(["docs", "tmp", "latest", "campaign.json"])
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"][
+                "external_campaign_contract_reference"
+            ].update({"path": mutable}),
+            "forbidden mutable component",
+        )
+        absolute = "/" + "/".join(["var", "cache", "campaign.json"])
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"][
+                "external_campaign_contract_reference"
+            ].update({"path": absolute}),
+            "normalized repository-relative path",
         )
 
 
