@@ -1,5 +1,7 @@
-# REDRED A2/A3 normalized single-edge complete-boundary reference point.
-# It uses one shared active edge and contains no timing exceptions.
+# REDRED A2/A3 single-edge diagnostic screening point.
+# UNCONFIRMED_TEAM_PLACEHOLDER: these I/O/load/clock values have no external
+# release authority and can never authorize candidate GO under this contract.
+# The diagnostic uses one primary positive-edge clock and no timing exceptions.
 create_clock -name single_edge_clk -period 6.500 -waveform {0.000 3.250} [get_ports clk_i]
 set_clock_uncertainty 0.250 [get_clocks single_edge_clk]
 

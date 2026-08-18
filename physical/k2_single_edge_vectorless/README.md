@@ -1,130 +1,119 @@
-# A2/A3 single-edge mapped default-vectorless evidence
+# A2/A3 single-edge mapped vectorless diagnostics
 
-This directory defines the fail-closed power evidence class for the exact
-complete single-edge endpoints introduced by commit
-`4ce4836fab1309d3468db8e660d2da9af371f784`:
+This directory provides a fail-closed, diagnostic-only Genus staging contract
+for the complete A2 and A3 single-edge endpoints. Its maximum decision is
+always:
 
-- `a2_batched_iwrr_single_edge_top`;
-- `a3_exact_scalar_prefix_k2_single_edge_top`.
+```text
+HOLD_PLACEHOLDER_IO_AND_NO_CONTROLLED_PRODUCER
+```
 
-The pinned candidate filelists, generic single-edge filelist, scheduler RTL,
-TX, RX, endpoint, and complete top hashes are in `source-manifests.json`.
-Neither normalized pre-endpoint wrappers nor raw scheduler cores satisfy this
-boundary. P6 files, tops, receipts, dependencies, and inherited 6.5 ns results
-are categorically outside this evidence class.
+Every preflight and successful qualification result has
+`candidate_go=false` and `comparison_ready=false`. There is no keyring, HMAC,
+authenticated-producer, or GO mode.
 
-## What the local preflight proves
+## Exact hardened RTL boundary
+
+`source-manifests.json` binds the byte-identical relevant trees in hardened RTL
+commits `a0a4eb38632245db8ff5937ea5b6c6e3f3839246` and
+`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b`. Both commit objects must contain
+the same pinned bytes. The exact complete tops are:
+
+- `a2_batched_iwrr_single_edge_top`
+- `a3_exact_scalar_prefix_k2_single_edge_top`
+
+Each six-source expansion contains its scheduler, the shared sticky
+`w2_single_edge_error_latch`, TX, RX, endpoint, and complete top. Candidate and
+nested generic filelists must expand to those sources in exact order. The full
+input and output port sets are checked against both the contract and committed
+top declarations. No P6 source or dependency belongs to this diagnostic.
+
+## Constraint authority
+
+The 6.5 ns clock, 0.25 ns uncertainty, I/O delays, input transition, and 0.01 pF
+load are `UNCONFIRMED_TEAM_PLACEHOLDER` screening values. The active REDRED
+policy keeps PDK endpoint-I/O rules on HOLD and says inherited 6.5 ns values are
+not final competition rules. These values are not organizer, board, pad,
+package, signoff, fmax, legality, comparison, or release claims.
+
+`single_edge_strict.sdc` contains exactly one primary positive-edge clock on
+`clk_i`, exact placeholder I/O/load values, no generated clock, and no timing
+exceptions. Qualification also checks that a mapped SDC retains the one clock
+and every exact numeric class and contains no false-path, multicycle, falling-
+edge, generated-clock, or P6 construct.
+
+## Default-vectorless diagnostic command
+
+`genus_default_vectorless.tcl` requires
+`K2_SE_ACTIVITY_MODE=GENUS_DEFAULT_VECTORLESS`, reads the exact expanded source
+snapshots and setup Liberty, elaborates the exact top, reads the exact SDC,
+checks that Genus has exactly one `single_edge_clk`, performs generic/map/opt,
+runs `check_design -all`, and emits mapped netlist/SDC/SDF plus area, timing,
+power, QoR, timing-intent, clock, and check-design reports.
+
+The driver contains no VCD/SAIF/TCF import or switching-activity override. The
+power parser requires one exact Genus tool identifier, one exact top instance,
+one noncontradictory W unit, the exact ordered Category/Leakage/Internal/
+Switching/Total header, one subtotal, native N.A. activity headers, native 0.2
+defaults, finite nonnegative components, and a consistent sum. Values are
+converted from W to mW.
+
+These checks do not establish that Genus was actually run. Cadence startup
+configuration and the full process environment are not controlled by this
+package.
+
+## Diagnostic artifacts and limitations
+
+`k2_single_edge_vectorless_diagnostic_index_v2` locates exactly one A2 and one
+A3 attempt. An attempt uses `diagnostic-receipt.json` with schema
+`k2_single_edge_vectorless_diagnostic_receipt_v2`. Its complete ledger contains
+exact source/filelist snapshots, driver, input/materialized/mapped SDC, setup
+and hold Liberty, mapped netlist/SDF, log, reports, command receipt, and
+environment receipt. Bytes, sizes, unique contained paths, regular-file type,
+and single-link state are rechecked.
+
+Structural validation requires the exact complete top port set, at least one
+cell instance, no behavioral process, and nonempty check-design context without
+an explicit nonzero unresolved/blackbox count. This is only a consistency
+diagnostic. It is not formal equivalence, logical connectivity proof, physical
+connectivity, DRC, antenna, placement, routing, extraction, or signoff.
+
+There is currently:
+
+- no repository-controlled producer runner or signer;
+- no verifier-owned trust anchor;
+- no binding to the live host identity;
+- no freshness window or replay registry;
+- no proof that a receipt's command/environment assertions came from the OS;
+- no defense that distinguishes an authentic byte copy from its original; and
+- no authority to promote the placeholder I/O/load values.
+
+Consequently, copied or replayed bytes are not described as impossible. A
+caller-created keyring is rejected rather than treated as provenance. Rehashed,
+fabricated, or mocked inputs may at most satisfy diagnostic structure; the
+decision remains HOLD.
+
+## Commands
+
+Local static preflight does not invoke Cadence:
 
 ```sh
 python3 physical/k2_single_edge_vectorless/preflight.py preflight \
   --output /tmp/k2-single-edge-vectorless-preflight.json
 ```
 
-Preflight checks the exact commit objects, local contract, system-policy hash,
-Genus and SDC template hashes, source/filelist identities, operating point, and
-anti-activity policy. It never invokes Genus. Its only successful decision is
-`HOLD_NO_PRODUCER_BOUND_SERVER_ARTIFACTS`, with `candidate_go=false`.
-
-The frozen operating point is GPDK045 slow setup/power Liberty at 0.9 V and
-125 C, a 6.5 ns single `clk_i` clock with a 0.0/3.25 ns waveform and 0.25 ns
-uncertainty, 0.1/0.5 ns input and output delays, 0.05 ns input transition, and
-0.01 pF on every output. Both the slow setup/power and fast hold Liberty bytes
-are exact SHA-256 inputs.
-
-## Server attempt layout
-
-`vectorless-evidence.json` is a locator-only index. It must list exactly the
-A2 row and then the A3 row; it contains no caller-provided PASS or artifact
-hashes:
-
-```json
-{
-  "schema": "k2_single_edge_vectorless_evidence_v1",
-  "evidence_class": "GENUS_MAPPED_A2_A3_SINGLE_EDGE_DEFAULT_VECTORLESS",
-  "candidate_order": ["a2_single_edge", "a3_single_edge"],
-  "interface": "SINGLE_EDGE_PARALLEL",
-  "contract_sha256": "<exact committed contract bytes>",
-  "rows": [
-    {
-      "candidate": "a2_single_edge",
-      "top": "a2_batched_iwrr_single_edge_top",
-      "attempt_directory": "a2"
-    },
-    {
-      "candidate": "a3_single_edge",
-      "top": "a3_exact_scalar_prefix_k2_single_edge_top",
-      "attempt_directory": "a3"
-    }
-  ]
-}
-```
-
-Each attempt is immutable and contains `producer-receipt.json`, `bundle/`,
-`logs/`, `reports/`, and `work/`. Every evidence file must be a regular
-single-link file reachable without a symlink. The accepted producer receipt is
-only `k2_single_edge_vectorless_producer_receipt_v1`; the committed receipt
-template has a different schema and is deliberately non-evidence.
-
-The receipt binds all of the following through one complete artifact ledger
-and its authenticated payload:
-
-- producer authority, run ID, server fingerprint, start/end time, and direct
-  this-run lineage;
-- exact commit, candidate, complete top, filelists, and source snapshots;
-- Genus requested and resolved paths, version, and binary SHA;
-- exact absolute executed argv, in-place cwd, exit code zero, controlled
-  semantic environment, and environment hash;
-- executed Tcl, input/materialized/mapped SDC, both Liberty snapshots, mapped
-  netlist, SDF, Genus log, command receipt, and server environment receipt;
-- area, timing, power, QoR, timing-intent, and clock report bytes; and
-- exact corner, clock, I/O delays/transition, load, and default-vectorless
-  activity policy.
-
-The power report must have the native Genus header, exact top and W units, one
-subtotal, and exactly:
-
-```text
-* User-Defined Activity : N.A.
-* Activity File: N.A.
-* Sequential Element Activity: 0.200000
-* Primary Input Activity: 0.200000
-```
-
-VCD, SAIF, TCF, activity imports, switching-activity commands, default activity
-overrides, and per-object activity are forbidden in the driver, environment,
-log, and reports.
-
-## Producer authentication and GO
-
-Hashes alone establish consistency, not provenance. Without an external trust
-anchor, a structurally complete bundle can only produce
-`HOLD_UNAUTHENTICATED_PRODUCER_ARTIFACTS`:
+An externally assembled diagnostic index can be structurally checked, but the
+result remains the exact HOLD above:
 
 ```sh
 python3 physical/k2_single_edge_vectorless/preflight.py qualify \
-  --evidence /absolute/live/server/root/vectorless-evidence.json \
-  --output /absolute/live/server/root/qualification.json
+  --evidence /absolute/diagnostic/root/diagnostic-index.json \
+  --output /absolute/diagnostic/root/qualification.json
 ```
 
-GO additionally requires an owner-only (`0600`) keyring outside the evidence
-root and the keyring's SHA-256 obtained through an out-of-band trusted channel:
+There are intentionally no `--keyring` or `--keyring-sha256` options.
 
-```sh
-python3 physical/k2_single_edge_vectorless/preflight.py qualify \
-  --evidence /absolute/live/server/root/vectorless-evidence.json \
-  --keyring /secure/redred/single-edge-producer-keyring.json \
-  --keyring-sha256 "$TRUSTED_OUT_OF_BAND_KEYRING_SHA256" \
-  --output /absolute/live/server/root/qualification.json
-```
-
-The keyring schema is `k2_single_edge_vectorless_keyring_v1`; each key binds
-an authority ID to `hmac-sha256`, at least 256 secret bits, and producer origin
-`DIRECT_GENUS_SERVER_RUN`. The receipt MAC covers the canonical receipt with
-the attestation field removed. Qualification also requires both attempts to
-remain at their exact recorded absolute server cwd. A copied, relabeled,
-rehashed, synthetic, inherited, or P6 artifact tree cannot be promoted.
-
-Focused regression:
+Run the adversarial regression with:
 
 ```sh
 tests/k2_single_edge_vectorless/run_all.sh

@@ -1,7 +1,7 @@
 {
-  "schema": "k2_single_edge_vectorless_contract_v1",
-  "status": "READY_FOR_PRODUCER_BOUND_SERVER_EXECUTION",
-  "evidence_class": "GENUS_MAPPED_A2_A3_SINGLE_EDGE_DEFAULT_VECTORLESS",
+  "schema": "k2_single_edge_vectorless_contract_v2",
+  "status": "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER",
+  "evidence_class": "GENUS_MAPPED_A2_A3_SINGLE_EDGE_DEFAULT_VECTORLESS_DIAGNOSTIC",
   "decision_policy": {
     "candidate_order": ["a2_single_edge", "a3_single_edge"],
     "exact_cohort_required": true,
@@ -10,7 +10,9 @@
     "synthetic_allowed": false,
     "inherited_allowed": false,
     "p6_allowed": false,
-    "borrowed_dependency_ids_allowed": []
+    "borrowed_dependency_ids_allowed": [],
+    "candidate_go_possible": false,
+    "comparison_ready_possible": false
   },
   "policy_binding": {
     "path": "contracts/redred_system_goal/active_goal.json",
@@ -23,7 +25,16 @@
   },
   "source_pins": {
     "path": "physical/k2_single_edge_vectorless/source-manifests.json",
-    "sha256": "bdd6be1e0cb1527f7de6c1182292e540c9ea0b08648292ac00ba6dd54fbc7bee"
+    "sha256": "7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c"
+  },
+  "constraint_authority": {
+    "status": "UNCONFIRMED_TEAM_PLACEHOLDER",
+    "evidence_class": "TEAM_PLACEHOLDER_SCREENING_ONLY",
+    "external_authority_available": false,
+    "values_are_release_claims": false,
+    "candidate_go_eligible": false,
+    "comparison_ready_eligible": false,
+    "maximum_status": "HOLD_PLACEHOLDER_IO_AND_NO_CONTROLLED_PRODUCER"
   },
   "candidates": {
     "a2_single_edge": {
@@ -99,8 +110,7 @@
       "input_delay_max_ns": 0.5,
       "output_delay_min_ns": 0.1,
       "output_delay_max_ns": 0.5,
-      "input_transition_ns": 0.05,
-      "drive_cell": "BUFX2"
+      "input_transition_ns": 0.05
     },
     "load": {
       "all_outputs_pf": 0.01
@@ -184,6 +194,7 @@
       "report_qor",
       "report_timing_intent",
       "report_clocks",
+      "report_check_design",
       "environment_receipt",
       "command_receipt"
     ],
@@ -192,28 +203,29 @@
     "all_files_regular_single_link": true,
     "complete_ledger_required": true
   },
-  "producer_authority": {
-    "accepted_receipt_schema": "k2_single_edge_vectorless_producer_receipt_v1",
-    "accepted_origin": "DIRECT_GENUS_SERVER_RUN",
-    "attestation_schema": "k2_single_edge_vectorless_attestation_v1",
-    "algorithm": "hmac-sha256",
-    "keyring_schema": "k2_single_edge_vectorless_keyring_v1",
-    "trust_anchor_location": "OUTSIDE_PUBLIC_EVIDENCE_ROOT",
-    "out_of_band_keyring_sha256_required": true,
-    "unauthenticated_result": "HOLD_UNAUTHENTICATED_PRODUCER_ARTIFACTS"
+  "diagnostic_provenance": {
+    "accepted_receipt_schema": "k2_single_edge_vectorless_diagnostic_receipt_v2",
+    "accepted_origin": "UNCONTROLLED_EXTERNAL_CAPTURE",
+    "controlled_runner_available": false,
+    "live_host_binding_available": false,
+    "freshness_or_replay_protection_available": false,
+    "keyring_or_hmac_accepted": false,
+    "structural_validation_implies_equivalence": false,
+    "structural_validation_implies_signoff": false,
+    "maximum_status": "HOLD_PLACEHOLDER_IO_AND_NO_CONTROLLED_PRODUCER"
   },
   "templates": {
     "driver": {
       "path": "physical/k2_single_edge_vectorless/genus_default_vectorless.tcl",
-      "sha256": "caed3a1b730423839a9476f9735c3fb1958be86de501b6ed170500168cf11543"
+      "sha256": "743c3aec1ffc14a1f1dca4ce0f20718a0925e6cb8e501b571b6bb4a14a1b06ee"
     },
     "sdc": {
       "path": "physical/k2_single_edge_vectorless/single_edge_strict.sdc",
-      "sha256": "510e36026b71177c68d5c8980257f3c2a33ad10f46a10be64e1ddd63ec467ee8"
+      "sha256": "39a2ff90d7505a93d4dc1d7906d5d68f74ca626ffc6d35eed5015bd1daed6421"
     },
-    "producer_receipt": {
-      "path": "physical/k2_single_edge_vectorless/producer-receipt.template.json",
-      "sha256": "8dbe9f5a317d2aed669b49b420208ee04d19c925dfe63ff57d10bc394a347df7"
+    "diagnostic_receipt": {
+      "path": "physical/k2_single_edge_vectorless/diagnostic-receipt.template.json",
+      "sha256": "58952d4cd31c9332f725211d508722ece5b1f6befb9245367b0d6080241a563f"
     }
   }
 }
