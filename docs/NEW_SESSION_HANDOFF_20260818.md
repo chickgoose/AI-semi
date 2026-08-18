@@ -3,6 +3,12 @@
 기준 시각: 2026-08-18 KST
 목적: 과거 작업을 자동 재개하기 위한 문서가 아니라, 새 대화가 검증된 핵심 사실과 운영 환경을 잃지 않고 **새 목표부터 다시 시작**하게 하는 로컬 영구 메모리다.
 
+현재 REDRED 목표와 판정의 authority는
+`contracts/redred_system_goal/active_goal.json`이다. 아래 2026-08-18 P6
+복구·측정 절은 역사 자료이며 현재 endpoint, 후보 선택, release interface 또는
+team release authority가 없다. 현재 구현은 single-edge endpoint이고 최종
+A2/A3 선택과 release interface는 모두 HOLD다.
+
 ## 0. 새 세션이 가장 먼저 지킬 것
 
 1. 이 문서를 끝까지 읽고 `AGENTS.md`를 따른다.
@@ -58,7 +64,7 @@ git branch --show-current
 git rev-parse HEAD
 ```
 
-## 2. 보존할 설계 핵심
+## 2. 보존할 역사적 P6 설계 자료 — 현재 선택 아님
 
 ### Fovea
 
@@ -142,10 +148,14 @@ accepted = delivered          # hard-correct run
 - `capacity22`는 full50의 exact 22-trace subset이다. 50+22를 72개의 독립 표본으로 합산하지 않는다.
 - native unit tests, common workload evidence, physical PPA evidence는 서로 별도 증거다.
 
-## 4. 디지털 결과의 현재 기준
+## 4. 역사적 P6 디지털 결과 — superseded/noncurrent
 
 상세 원문: `docs/K2_디지털개발_최종현황_20260813.txt`
-주요 receipt는 `integration/k2-digital-final` 브랜치의 `tests/a23_full_p6_replay/result.json`, `audits/a7_k2_cost_closure/result.json`, `audits/k2_final_selection/result.json`이다. 현재 checkout에 없으면 파일이 사라진 것이 아니라 브랜치가 다른 것이다.
+주요 역사 receipt는 `integration/k2-digital-final` 브랜치의
+`tests/a23_full_p6_replay/result.json`, `audits/a7_k2_cost_closure/result.json`,
+`audits/k2_final_selection/result.json`이다. 이 자료는 재현·복구 대상으로
+보존하지만 현재 single-edge 목표의 후보/interface/release 선택 authority가
+없다. 현재 checkout에 없으면 파일이 사라진 것이 아니라 브랜치가 다른 것이다.
 
 ```bash
 git show integration/k2-digital-final:tests/a23_full_p6_replay/result.json
@@ -165,16 +175,23 @@ A2/A3 actual-P6 replay는 full50 150회, reset/drain 3회, actual-RTL mutant 15�
 
 - Fovea/Cluster2 회수 Xcelium 결과와 A2/A3 actual-P6 replay는 같은 frozen 수요를 사용했지만 하나의 동일 official attempt는 아니다.
 - 따라서 위 표는 설계 판단에 유용하지만 단일 canonical receipt의 완전한 head-to-head로 과장하지 않는다.
-- 디지털 최종 선택은 A2 primary, A3 semantic fallback이다.
+- 당시 P6 digital-only 정책은 A2를 골랐지만 그 선택은 superseded/noncurrent다.
+  현재 정책은 A2 primary/A3 semantic fallback 역할만 정하며 최종 A2/A3
+  선택은 HOLD다.
 
-## 5. 물리 비교 경계
+## 5. 역사적 P6 물리 비교 경계 — 현재 endpoint 증거 아님
 
 모든 다섯 설계를 한 PPA 표에서 순위화하지 않는다.
 
 1. **native core-only cohort**: Fovea core vs Cluster2 core.
 2. **complete-endpoint cohort**: Fovea+A7/R1 vs A2+P6 vs A3+P6.
 
-complete endpoint의 정규화 외부 역할은 ref/sample clocks, reset, 16-source pending/accept, retire lanes/addresses, drain/error다. scheduler debug 출력은 top I/O에서 숨기되 내부 실제 logic/state 비용은 포함한다. Fovea는 K1/3-wire, A2/A3는 K2/6-wire이므로 raw PPA만으로 동등 서비스 승자를 선언하지 않는다.
+이 역사적 P6 cohort의 정규화 외부 역할은 ref/sample clocks, reset,
+16-source pending/accept, retire lanes/addresses, drain/error였다. 이는 현재
+single-edge `clk_i`/synchronous active-high `rst_i`/9-wire link 경계가 아니다.
+Scheduler debug 출력은 top I/O에서 숨기되 내부 실제 logic/state 비용은
+포함한다. Fovea는 K1/3-wire, A2/A3는 K2/6-wire이므로 raw PPA만으로 동등
+서비스 승자를 선언하지 않는다.
 
 ## 6. 실서버 물리 결과
 
@@ -400,15 +417,17 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 
 ## 12. 참고 문서 우선순위
 
-1. `docs/NEW_SESSION_HANDOFF_20260818.md` — 현재 진입점.
-2. `docs/NEW_SESSION_START_PROMPT.txt` — 새 대화에 붙여 넣을 시작문.
-3. `AGENTS.md` — 1+8 운영과 안전 규칙.
-4. `docs/K2_디지털개발_최종현황_20260813.txt` — 디지털 상세.
-5. `docs/k2_endpoint_physical_results_20260814.txt` — clean endpoint physical 결과.
-6. `docs/K2_최종코드_복구방법_20260813.txt` — 디지털 bundle 복구.
-7. `docs/팀원_공용_AER_워크로드_TB_안내.txt` — common TB 의미.
-8. `docs/server-audit-a1.md` — 서버/도구 기록.
-9. `docs/tmux-workflow.md` — tmux 운용 상세.
+1. `contracts/redred_system_goal/active_goal.json` — 현재 목표와 GO/HOLD authority.
+2. `docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md` — 현재 목표 해설과 증거 경계.
+3. `docs/NEW_SESSION_HANDOFF_20260818.md` — 운영 진입점과 역사 복구 기록.
+4. `docs/NEW_SESSION_START_PROMPT.txt` — 새 대화에 붙여 넣을 시작문.
+5. `AGENTS.md` — 1+8 운영과 안전 규칙.
+6. `docs/K2_디지털개발_최종현황_20260813.txt` — 역사적 P6 디지털 상세.
+7. `docs/k2_endpoint_physical_results_20260814.txt` — 역사적 P6/R1 physical 결과.
+8. `docs/K2_최종코드_복구방법_20260813.txt` — 디지털 bundle 복구.
+9. `docs/팀원_공용_AER_워크로드_TB_안내.txt` — common TB 의미.
+10. `docs/server-audit-a1.md` — 서버/도구 기록.
+11. `docs/tmux-workflow.md` — tmux 운용 상세.
 
 `docs/K2_물리검증_실서버_결과_20260813.txt`와 `docs/tmux_all_agents_layout_20260814.txt`는 중간/과거 기록이다. 현재 최종 판정보다 우선하지 않는다.
 
@@ -421,18 +440,34 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 핵심 결정:
 
 - A2는 성능 주후보, A3는 held-pending exact-prefix 의미 fallback이다.
-- 전체 평가 경계는 source admission부터 retire까지의 complete endpoint다.
+- 현재 구현 경계는 하나의 `clk_i` posedge, synchronous active-high `rst_i`,
+  synchronous `link_enable_i`, 16-source pending/accept, 9-wire single-edge link,
+  ordered two-lane retire를 포함하는 complete endpoint다. Reset은 clean
+  drain 뒤에만 assert하는 qualification 범위다.
 - 팀 정의 canonical traffic을 유지하며 주최 측 dataset은 versioned extension이다.
 - timing과 같은 boundary의 mapped vectorless power를 필수 증거로 둔다.
-- P6는 standard-cell 6.5 ns reference 증거와 대회 허용성을 분리하며 서면 허용 전 HOLD다.
-- single-edge fallback, CDC/RDC, real vectorless server receipt도 각각 독립 HOLD다.
+- P6 digital/6.5 ns 자료는 superseded/noncurrent 역사 reference이고 현재 선택
+  authority가 없다. Organizer 서면 허용, mapped legality, pad/package/channel과
+  P6 release는 HOLD다.
+- Single-edge actual-RTL synthetic와 public projected extension은 각 bounded
+  semantics 범위에서 PASS다. Source/elaborated single-posedge CDC/RDC는 외부
+  입력이 primary clock에 synchronous라는 범위에서 PASS다. RTL source-structure
+  PDK 검사는 source-only PASS다.
+- 위 PASS는 canonical campaign, mapped CDC/RDC, mapped/organizer PDK legality,
+  real P&R/post-route timing, mapped vectorless power, interface 선택, 최종
+  A2/A3 선택 또는 team release를 닫지 않는다. 이 gate들은 모두 HOLD다.
 - known-motion 좌표 변환은 endpoint PPA 밖의 post-retire system demo로 먼저 검증한다.
 
 새 세션의 한 문장 목표는 `docs/NEW_SESSION_START_PROMPT.txt`에 기록했다.
 
 통합 상태:
 
-- 전용 branch `integration/redred-system-goal`에서 신규 집중 회귀 108개와 actual-P6 full50/reset/mutation 재현이 PASS했다.
-- actual-P6 receipt는 `digital_RTL=GO`, `physical=HOLD`, `CDC_RDC=HOLD`다.
+- Hardened single-edge actual RTL의 팀 synthetic와 public projected 실행은
+  bounded PASS다. P6 receipt의 `digital_RTL=GO`는 역사적 P6-only 범위이며
+  현재 후보/interface/final selection authority가 아니다.
+- Single-edge source CDC/RDC와 RTL source-structure PDK evidence는 각각
+  synchronous-input/source-only 범위에서 PASS다.
 - policy verifier의 PASS는 정책 구조가 내부적으로 일관된다는 뜻이며 evidence/release GO가 아니다.
-- P6 서면 허용, single-edge fallback 독립 검증, 선택 interface의 real-server P&R/vectorless, CDC/RDC, 주최 측 dataset은 후속 gate로 남아 있다.
+- Canonical digital receipt, 선택 interface, mapped/organizer legality,
+  real-server P&R/post-route timing, mapped vectorless power, final CDC/RDC,
+  최종 A2/A3 선택과 team release는 모두 HOLD다.
