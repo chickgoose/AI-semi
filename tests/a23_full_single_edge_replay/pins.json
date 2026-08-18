@@ -2,31 +2,33 @@
   "schema": "a23_full_single_edge_replay_pins_v1",
   "integration_state": "LOCKED_ACTUAL_SINGLE_EDGE_RTL",
   "rtl_provenance": {
-    "source_commit": "7286913f9f1dc771bde13fa51124b0d31aedd068",
-    "integration_commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
-    "rtl_tree": "c92b8ff4e8ecbfeca4a5526c2dae85570f7f8fee"
+    "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+    "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+    "source_tree": "e6030c7990f602a7fc1c73ac529b008b8e2c4133",
+    "integration_tree": "d0fda8da2c10693b5d7093e0e2d505590722c1ea"
   },
   "files": {
     "benchmarks/clean_slate_aer/generate_trace.py": "59b649a1ec339fb4f2e92dee0f5a7dc7ec7130b05b3a578fea3ba6d7c9f61b50",
     "benchmarks/clean_slate_aer/prepare_sv_trace.py": "245078d3e1f6ed496a0de328f1568cb0a8302397ce9f5544021415f0afad2826",
     "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d",
     "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f": "55d6c15e33147a3362dedfddccb0ff022e47401eeb0d8388a8dd30e5d9ca1e76",
-    "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv": "9061deb14e46e0d050bdf3fae450ee8a94c234f94e74f69e1dc8be84722e55ac",
+    "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv": "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057",
     "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
     "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f": "1fcf350a51ae32008ba207b5e1406d71e4a3083ffc52193e379f65eb1b623fee",
-    "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv": "3bac4faa2e249e0326a8eba4e3b010437e16c33b5dff236bd621acdb27c5bb07",
-    "rtl/technology/single_edge/filelists/generic.f": "8c538fc9147c96237f5367fa25da91e2f787ee67d09ca6738f5fcf7e9f19ddf8",
-    "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4",
+    "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv": "61daf3a31f29106d3f6383936d92131a31401fd86d71e0bee5ee53a3ab5b485d",
+    "rtl/technology/single_edge/filelists/generic.f": "8445fd6785966a09d6c8dc9b1cdef14787de7494bd0c7824fd524a08df176c2e",
+    "rtl/technology/single_edge/w2_single_edge_error_latch.sv": "02729b04c8326bd898a465a5343eb34b40a7c60c3667f6d0bb16eb3fcdb83260",
+    "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv": "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127",
     "rtl/technology/single_edge/w2_single_edge_pair_rx.sv": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5",
-    "rtl/technology/single_edge/w2_single_edge_pair_tx.sv": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493",
+    "rtl/technology/single_edge/w2_single_edge_pair_tx.sv": "e00ac30015e826cef7d017b0a72066e405bce3e84a4ee454e99fb34c68e2642c",
     "scripts/common_suite_official.py": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
-    "tests/a23_full_single_edge_replay/README.md": "746b6741cff23f6a94f22e1068db87a71552fe2ce8ee26404051dacd895f3af0",
+    "tests/a23_full_single_edge_replay/README.md": "7ebb7ec238b98d55689bff81949e9e781d83d66f77d202ad6dba6c0da1c21fc3",
     "tests/a23_full_single_edge_replay/rtl/a23_a2_single_edge_observer_wrapper.sv": "e8437d869e4d65188c0b528fbba33e30df135beefcc68bb5f8ce00417890df43",
     "tests/a23_full_single_edge_replay/rtl/a23_a3_single_edge_observer_wrapper.sv": "5ffbf4ba7338e1473758bba28daebd3d5edf0350132a975753321e3a6d3028f1",
     "tests/a23_full_single_edge_replay/run_all.sh": "10221b56084da3752dca82e22d80a2027e4a76b99b5f31da2180616c9ab0c862",
-    "tests/a23_full_single_edge_replay/run_replay.py": "41defb2058fc9c8c5f569b9419c27a6e416403661ad3c60b95ed24068c0d9b51",
-    "tests/a23_full_single_edge_replay/tb/a23_full_single_edge_replay_tb.sv": "7d520c7410f71caef94a588ccdce2c977b86673a9ef903ff312b83acec6172f8",
-    "tests/a23_full_single_edge_replay/test_contract.py": "5fabef8a855cabad2392ef726b7e60df10642c587e45d19bced5479fa2950073",
+    "tests/a23_full_single_edge_replay/run_replay.py": "737aff463a660d0ed9d265947cafb40609d50d765ea7f5d1b76b924109f8cb9c",
+    "tests/a23_full_single_edge_replay/tb/a23_full_single_edge_replay_tb.sv": "4fe4e0a26fb88a5308efee9f077b9c29de6eeef9bb90698472b7a4a61eb3da40",
+    "tests/a23_full_single_edge_replay/test_contract.py": "e69c82497e99bb294b255b72330d6994e4a9921d6071c14265f5e98d998707a9",
     "tests/common_suite_receipt/fixtures/manifest.neutrality-n16.json": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
   },
   "owners": {
@@ -48,6 +50,13 @@
       "mutation_target": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
       "wrapper": "tests/a23_full_single_edge_replay/rtl/a23_a3_single_edge_observer_wrapper.sv"
     }
+  },
+  "mutation_anchor_sha256": {
+    "target_sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5",
+    "drop": {"old": "254807ea2f20f5f141103c9cb22ef42d1b57922e5d45f8325d6cfa38b2d89a1f", "new": "56443f8a0087883f9c99f6a30cf0957dccacdd822fa9b560552abaf139f8d6a9"},
+    "duplicate": {"old": "3ccf0fa8cfde0e129596a4b3dffb74b33893220ec28b6c73a3c2952e3713c377", "new": "7b97d0034fa8730824aa6d8c228c09850a4832bddc56543d01adaeba518a3a6e"},
+    "reorder": {"old": "be8632ad7accf11b42dd3d0bd8a56a02a27ce89a34471be36a06a6fc4614678c", "new": "d3756f0632c131f5e554e10aa80b0e0c80517a46425ea06a3651408bf79ac42a"},
+    "reset_escape": {"old": "a1d29e0645edd5e1e83bf23a9c03780d901070e9b194927546527e8731fce396", "new": "de740054143ad2a1b3dea4214609a65af7e7138e36d6031b1c8c0a853745f46a"}
   },
   "mutations": {
     "a2": {

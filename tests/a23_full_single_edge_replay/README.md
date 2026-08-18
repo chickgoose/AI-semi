@@ -19,10 +19,12 @@ source expanded from their filelists:
 - `rtl/technology/single_edge/w2_single_edge_pair_tx.sv`
 - `rtl/technology/single_edge/w2_single_edge_pair_rx.sv`
 
-The RTL bytes are additionally checked against source commit
-`7286913f9f1dc771bde13fa51124b0d31aedd068` and its byte-identical integration
-commit `4ce4836fab1309d3468db8e660d2da9af371f784` (tree
-`c92b8ff4e8ecbfeca4a5526c2dae85570f7f8fee`).
+The hardened RTL bytes are additionally checked against source commit
+`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b` and integration commit
+`a0a4eb38632245db8ff5937ea5b6c6e3f3839246`. Their complete repository trees
+are pinned separately, and every replay RTL/filelist byte must match in both
+commits. The hardened filelist includes
+`rtl/technology/single_edge/w2_single_edge_error_latch.sv`.
 
 Until all paths, literal mutation anchors, file SHA-256 values, and tools are
 locked in `pins.json`, preflight exits 3 with
@@ -50,9 +52,11 @@ generated = source_overrun + accepted
 after bounded drain: accepted = retired
 ```
 
-Drain requires endpoint idle, no source pending, and no accepted FIFO residue,
-followed by four quiet cycles. Reset is only asserted after drain, with live
-unrecorded input levels during reset and disjoint pre/post address epochs.
+Drain requires endpoint idle, no protocol error, no source pending, and no
+accepted FIFO residue, followed by four quiet cycles. The reset artifact must
+explicitly report `pre_reset_clean_drain=1` before reset can be asserted; live
+unrecorded input levels during reset and disjoint pre/post epochs then detect
+reset escape. Reset may not erase accepted work or clear an error into PASS.
 
 The four mutations are literal, exact-one-anchor rewrites of the actual
 single-edge endpoint source, never TB or observation-wrapper edits:

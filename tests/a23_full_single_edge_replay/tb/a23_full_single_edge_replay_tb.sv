@@ -47,6 +47,7 @@ module a23_full_single_edge_replay_tb;
   integer fixed_window_retired = 0;
   integer count2_commits = 0;
   integer reset_test = 0;
+  integer pre_reset_clean_drain = 0;
   logic measurement_active = 1'b0;
 
   string owner_name;
@@ -327,11 +328,11 @@ module a23_full_single_edge_replay_tb;
       if (summary_fd == 0)
         fail("A23_SE_OUTPUT_FAIL", "cannot open summary output");
       $fdisplay(summary_fd,
-        "owner,trace,generated,source_overrun,accepted,retired,fixed_window_retired,fixed_window_cycles,observation_cycles,count2_commits,reset_test");
-      $fdisplay(summary_fd, "%s,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
+        "owner,trace,generated,source_overrun,accepted,retired,fixed_window_retired,fixed_window_cycles,observation_cycles,count2_commits,reset_test,pre_reset_clean_drain");
+      $fdisplay(summary_fd, "%s,%s,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d",
         owner_name, trace_name, generated_count, source_overrun_count,
         accepted_count, retired_count, fixed_window_retired, stim_cycles,
-        global_cycle, count2_commits, reset_test);
+        global_cycle, count2_commits, reset_test, pre_reset_clean_drain);
       $fclose(summary_fd);
     end
   endtask
@@ -384,6 +385,17 @@ module a23_full_single_edge_replay_tb;
       offer_record(0, 0, 0, global_cycle + 64);
       offer_record(1, 1, 1, global_cycle + 64);
       wait_drained();
+
+      // Hardened reset qualification is external and fail-closed: reset may
+      // only be sampled after the complete top reports clean drain, all source
+      // latches are empty, the global accepted FIFO is empty, and no sticky
+      // protocol error is visible. Reset is never allowed to erase accepted
+      // work or clear a failure and thereby manufacture a passing drain.
+      if (!(drain_idle && (pending_count() == 0) &&
+            (accepted_head == accepted_tail) && !protocol_error))
+        fail("A23_SE_RESET_PREDRAIN_FAIL",
+             "reset requested without externally proven clean drain");
+      pre_reset_clean_drain = 1;
 
       @(negedge clk);
       source_pending = 16'hffff;
