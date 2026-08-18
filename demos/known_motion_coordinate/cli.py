@@ -27,8 +27,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-pose-age-ns",
         type=int,
-        default=None,
-        help="optional fail-closed maximum age for zero-order-held or explicit poses",
+        required=True,
+        help="mandatory inclusive maximum age for zero-order-held or explicit poses",
     )
     return parser
 
