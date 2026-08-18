@@ -1,81 +1,95 @@
-# REDRED A2/A3 canonical single-edge campaign wrapper
+# REDRED A2/A3 single-edge campaign evidence boundary
 
-This package is the canonical evidence boundary for an **independent** A2/A3
-single-edge full50 replay. It does not contain a replay result and it does not
-reuse P6 or parallel-interface measurements. The committed state is therefore
-`HOLD_NO_ACTUAL_REPLAY_ARTIFACTS`.
+This wrapper validates the published hardened actual-RTL replay receipt without
+turning a receipt into artifacts that were not retained. Its current outcome is
+deliberately split:
 
-`full50` is identified everywhere as the team-defined synthetic suite. It is
-not organizer-supplied or official competition data. The historical filename
-`scripts/common_suite_official.py` is used only as the frozen team trace SHA-256
-registry; the wrapper never changes the dataset's provenance class.
+| Gate | State |
+| --- | --- |
+| committed hardened receipt | `PASS` |
+| canonical synthetic receipt semantics | `PASS` |
+| retained replay artifacts | `HOLD` |
+| canonical single-edge campaign | `HOLD` |
+| UZH public projected extension | `HOLD` |
+| system release | `HOLD` |
 
-## Explicit replay interchange
+The raw published result is pinned at SHA-256
+`e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4`.
+Its sorted compact JSON semantic SHA-256 is
+`9fd365edc6b5b57db8a99de32bde95117f08a6ada547abd6a0c44a8149cad56f`.
+The validator reads those bytes from publication commit
+`72491e45a35e6883bd4ee65d5c30409c108ab190` and closes their provenance to
+hardened source commit `6fc5e167918fa4c54786c9a3abb5f60ecd8b991b`
+and integration commit `a0a4eb38632245db8ff5937ea5b6c6e3f3839246`.
 
-The producer under `tests/a23_full_single_edge_replay` can interoperate without
-being imported or guessed. It must emit a receipt conforming byte-for-byte to
-the pinned [replay receipt schema](replay_receipt.schema.json), retain all
-referenced artifacts below one nonsymlink artifact root, and invoke:
+## Evidence classes do not mix
+
+`full50` is the canonical REDRED campaign traffic, but it is
+`TEAM_DEFINED_SYNTHETIC`. It is never organizer-supplied or official contest
+traffic. The historical registry filename `scripts/common_suite_official.py`
+does not change that provenance.
+
+The UZH Shapes projection is a separate `PUBLIC_PROJECTED_EXTENSION`. Its
+1x/64x/256x traces are timing variants of one source window containing exactly
+1,100 source occurrences; they are not three independent samples. The
+projection specification and expected trace hashes are committed, but no
+retained projection receipt or actual A2/A3 replay receipt is committed. It
+therefore remains `HOLD_PUBLIC_PROJECTED_EXTENSION_UNREPLAYED` and is never
+pooled with full50.
+
+The public dependency is a retained projection package followed by actual A2
+and A3 replay on each identical projected trace, with the same fixed window,
+prepared input, tool, and replay boundary for both candidates. This wrapper
+does not depend on uncommitted public replay work.
+
+## What the committed receipt establishes
+
+The producer evidence class is exactly
+`A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1` from
+`tests/a23_full_single_edge_replay`. The wrapper checks its frozen full50 trace
+roster, package pins, tool identities, hardened RTL bytes in both Git trees,
+100 actual full50 executions, reset and mutation-activation executions, and
+all eight killed literal RTL mutants. It reports generated, source overrun,
+accepted, retired, occurrence-to-accept latency, and accept-to-retire latency
+separately. The hard accounting rules are:
+
+```text
+generated = source_overrun + accepted
+accepted = retired after bounded drain
+```
+
+No P6 or parallel-interface result is imported. The producer's receipt claims
+single-edge digital RTL `GO`; physical, power, and CDC/RDC remain outside that
+claim and stay `HOLD`.
+
+## Why the campaign still holds
+
+The committed result binds full50 event and summary hashes, auxiliary logs,
+and mutation logs, but it does not bind the full50 simulator logs. The actual
+run artifacts are not committed here. Missing, partial, extra, symlinked,
+size-mismatched, or hash-mismatched retained artifacts fail closed. A new index
+cannot retroactively extend the semantics of the old receipt, so even complete
+receipt-bound artifacts cannot lift the campaign gate without a producer
+receipt that also hashes the full50 simulator logs.
+
+The optional explicit input is therefore a retained-artifact index, not a
+replacement result. It must conform to the pinned
+[schema](replay_receipt.schema.json), bind both result hashes, and be supplied
+as one complete tuple:
 
 ```sh
 python3 benchmarks/redred_single_edge_campaign/campaign.py evaluate \
-  --replay-schema tests/a23_full_single_edge_replay/replay_receipt.schema.json \
-  --replay-schema-sha256 <lowercase-64-hex-schema-sha256> \
-  --replay-receipt tests/a23_full_single_edge_replay/result.json \
-  --replay-receipt-sha256 <lowercase-64-hex-receipt-sha256> \
-  --artifact-root /path/to/actual-single-edge-replay-root
+  --replay-schema benchmarks/redred_single_edge_campaign/replay_receipt.schema.json \
+  --replay-schema-sha256 72b7842d3856a6e38d8f9e9983110d1cdb88129c7ed9e7cadacbfa0c6a06461d \
+  --replay-receipt /path/to/retained-artifact-index.json \
+  --replay-receipt-sha256 <lowercase-64-hex-index-sha256> \
+  --artifact-root /path/to/retained-artifact-root
 ```
 
-The schema path/hash, receipt path/hash, and artifact root are all explicit.
-Supplying only part of that tuple is fatal. Supplying none is a valid `HOLD`
-(exit 3, or exit 0 with `--allow-hold`). A claimed receipt with absent,
-symlinked, size-mismatched, or hash-mismatched artifacts is malformed evidence
-and exits 2.
-
-## Required closure
-
-Both candidates must use exactly the ordered 50 frozen trace hashes, identical
-prepared inputs, identical fixed windows, and one immutable common tool,
-testbench, runner, and cycle-semantics binding. Each candidate additionally
-needs a hash-closed single-edge RTL inventory and, for every run, actual event
-JSONL, summary JSON, and simulator log artifacts.
-
-The wrapper recomputes event identity and order against the immutable trace
-bytes. It separately reports:
-
-```text
-generated
-source_overrun
-accepted
-retired
-occurrence_to_accept = accept_cycle - occurrence_cycle
-accept_to_retire      = retire_cycle - accept_cycle
-```
-
-A hard-correct run must satisfy
-`generated = source_overrun + accepted` and `accepted = retired`. Phantom,
-duplicate, corruption, reorder, accepted-missing, partial retirement, illegal
-output, drain timeout, reset escape, and protocol error counters must all be
-zero. `source_overrun` is a capacity loss and is never folded into a hard-error
-counter.
-
-Artifact paths containing historical P6/parallel-result lineage are rejected;
-the receipt must also declare no borrowed P6 or parallel results. A test-only
-receipt class is not accepted. The only accepted producer evidence class is
-`A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1`, rooted at
-`tests/a23_full_single_edge_replay` and bound to single-edge RTL commit
-`4ce4836fab1309d3468db8e660d2da9af371f784`. Each inventoried RTL source is
-checked byte-for-byte against that commit. A complete exact-producer receipt
-can set this package's digital gate to `GO`; system release still remains
-outside this digital campaign's scope.
-
-## Current HOLD and tests
+Supplying only part of the tuple exits 2. The normal absent-artifact state is a
+valid HOLD and exits 3; add `--allow-hold` to make that expected state exit 0.
 
 ```sh
-python3 benchmarks/redred_single_edge_campaign/campaign.py evaluate
+python3 benchmarks/redred_single_edge_campaign/campaign.py evaluate --allow-hold
 tests/redred_single_edge_campaign/run_all.sh
 ```
-
-No actual replay receipt or artifacts are committed here. The first command
-must continue to report `HOLD` until the external replay producer supplies the
-complete immutable input tuple.
