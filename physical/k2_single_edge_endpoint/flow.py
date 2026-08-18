@@ -25,6 +25,10 @@ BAD_LOG = re.compile(
     r"(?mi)^\s*(?:ERROR|FATAL)\s*[:\[]|\*\*(?:ERROR|FATAL):|"
     r"SEG(?:MENTATION)?\s+FAULT|INTERRUPT|K2_SINGLE_EDGE_(?:GENUS|INNOVUS)_FATAL"
 )
+NONZERO_DIAGNOSTIC = re.compile(
+    r"(?i)\b(?:errors?|fatals?)(?:\s+count)?\s*[:=]\s*[1-9][0-9]*\b|"
+    r"\b[1-9][0-9]*\s+(?:errors?|fatals?)(?:\(s\))?(?![A-Za-z0-9_])"
+)
 RTL_SOURCE_COMMIT = "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
 RTL_INTEGRATION_COMMIT = "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"
 RTL_ROWS = {
@@ -93,6 +97,16 @@ class FlowError(RuntimeError):
 
 class MissingEvidence(FlowError):
     pass
+
+
+def has_failure_diagnostic(text: str) -> bool:
+    """Recognize native and prose failure spellings without rejecting zero summaries."""
+    if BAD_LOG.search(text) or NONZERO_DIAGNOSTIC.search(text):
+        return True
+    without_zero_counts = re.sub(
+        r"(?i)\b(?:errors?|fatals?)\s*[:=]\s*0\b|"
+        r"\b0\s+(?:errors?|fatals?)(?:\(s\))?(?![A-Za-z0-9_])", "", text)
+    return re.search(r"(?i)\bfatal\b", without_zero_counts) is not None
 
 
 def canonical(value: Any) -> bytes:
@@ -790,8 +804,8 @@ def strip_comments(text: str) -> str:
 
 def active_text(payload: bytes, label: str) -> str:
     stripped = strip_comments(payload.decode("utf-8"))
-    if not stripped.strip() or BAD_LOG.search(stripped):
-        raise FlowError(f"{label} is empty, comment-only, or contains fatal diagnostics")
+    if not stripped.strip() or has_failure_diagnostic(stripped):
+        raise FlowError(f"{label} is empty, comment-only, or contains failure diagnostics")
     return stripped
 
 
@@ -799,8 +813,8 @@ def report_texts(payload: bytes, label: str) -> tuple[str, str]:
     """Return the untouched native report and its active, non-comment text."""
     raw = payload.decode("utf-8")
     active = strip_comments(raw)
-    if not active.strip() or BAD_LOG.search(raw):
-        raise FlowError(f"{label} is empty, comment-only, or contains fatal diagnostics")
+    if not active.strip() or has_failure_diagnostic(raw):
+        raise FlowError(f"{label} is empty, comment-only, or contains failure diagnostics")
     return raw, active
 
 
@@ -1022,12 +1036,22 @@ def validate_spef(payload: bytes, top: str) -> None:
             raise FlowError("postroute SPEF lacks nonempty exact-design RC structure")
 
 
+def validate_genus_log(text: str, top: str, version: str) -> None:
+    summaries = re.findall(
+        r"(?m)\bError=([0-9]+),\s*Fatal=([0-9]+)\b", text)
+    if has_failure_diagnostic(text) or summaries != [("0", "0")] or \
+            not re.search(rf"(?m)^Version:\s+{re.escape(version)}\s*$", text) or \
+            text.count(f"K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}") != 1 or \
+            not re.search(r"(?m)^Normal exit\.\s*\Z", text):
+        raise FlowError("Genus log lacks one exact zero-error native completion")
+
+
 def validate_innovus_log(text: str, top: str, version: str) -> None:
     error_counts = [int(value) for value in re.findall(
         r"(?<![0-9])([0-9]+)\s+error\(s\)", text, re.IGNORECASE)]
-    if BAD_LOG.search(text) or \
+    if has_failure_diagnostic(text) or \
             not re.search(rf"(?m)^Version:\s+v?{re.escape(version)}", text) or \
-            f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}" not in text or \
+            text.count(f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}") != 1 or \
             error_counts != [0] or \
             not re.search(r'--- Ending "Innovus".*---\s*\Z', text):
         raise FlowError("Innovus log lacks one exact zero-error native completion")
@@ -1067,13 +1091,17 @@ def validate_innovus_timing(payload: bytes, top: str, version: str,
                            f"{check}_timing", "postroute")
     paths = re.findall(
         rf"(?mi)^Path\s+([0-9]+):\s+(MET|VIOLATED)\b.*\b{check}\s+Check\s*$", text)
-    if not paths or [int(index) for index, _ in paths] != list(range(1, len(paths) + 1)) or \
+    all_path_rows = re.findall(r"(?mi)^Path\s+([0-9]+):\s+(MET|VIOLATED)\b.*$", text)
+    if paths != all_path_rows or not paths or \
+            [int(index) for index, _ in paths] != list(range(1, len(paths) + 1)) or \
             any(status != "MET" for _, status in paths):
         raise FlowError(f"native {check} timing report lacks sequential MET paths")
     slack_tokens = re.findall(
         r"(?mi)^\s*=?\s*Slack Time\s+([-+]?[0-9]+\.[0-9]{3})\s*$",
         text)
-    if len(slack_tokens) != len(paths):
+    if len(slack_tokens) != len(paths) or \
+            len(re.findall(r"(?i)\bSlack Time\b", text)) != len(slack_tokens) or \
+            re.search(r"(?i)\bVIOLATED\b|\bno[-_ ]?slack\b", text):
         raise FlowError(f"native {check} timing report lacks one Slack Time per path")
     slacks = [float(value) for value in slack_tokens]
     if any(value < 0 or not math.isfinite(value) for value in slacks):
@@ -1141,17 +1169,22 @@ def validate_genus_diagnostics(artifacts: dict[str, bytes], top: str,
 
     timing = require_genus_header(
         artifacts["genus_timing"], top, version, "genus_timing")
-    paths = re.findall(r"(?m)^Path\s+([0-9]+):\s+(MET|VIOLATED)\b", timing)
+    paths = re.findall(
+        r"(?m)^Path\s+([0-9]+):\s+(MET|VIOLATED)\b.*\bSetup Check\s*$", timing)
+    all_path_rows = re.findall(
+        r"(?m)^Path\s+([0-9]+):\s+(MET|VIOLATED)\b.*$", timing)
     slacks = re.findall(r"(?m)^\s*Slack:=\s*(-?[0-9]+)\s*$", timing)
-    if not paths or len(paths) != len(slacks) or \
+    if paths != all_path_rows or not paths or len(paths) != len(slacks) or \
+            len(re.findall(r"(?m)^\s*Slack:=", timing)) != len(slacks) or \
             [int(index) for index, _ in paths] != list(range(1, len(paths) + 1)) or \
-            any(status != "MET" for _, status in paths) or any(int(value) < 0 for value in slacks):
+            any(status != "MET" for _, status in paths) or any(int(value) < 0 for value in slacks) or \
+            re.search(r"(?i)\bVIOLATED\b|\bno[-_ ]?slack\b", timing):
         raise FlowError("genus_timing lacks sequential native MET/slack paths")
 
 
 def validate_check_design_report(payload: bytes, label: str) -> None:
     raw = payload.decode("utf-8")
-    if BAD_LOG.search(raw) or raw.count("Design check done.") != 1:
+    if has_failure_diagnostic(raw) or raw.count("Design check done.") != 1:
         raise FlowError(f"{label} lacks one clean native completion")
     summaries = re.findall(
         r"(?m)^\*\*\* Message Summary:\s+[0-9]+ warning\(s\),\s+([0-9]+) error\(s\)\s*$",
@@ -1164,7 +1197,7 @@ def validate_check_design_report(payload: bytes, label: str) -> None:
 
 def validate_check_place_report(payload: bytes) -> None:
     raw = payload.decode("utf-8")
-    if BAD_LOG.search(raw) or len(re.findall(
+    if has_failure_diagnostic(raw) or len(re.findall(
             r"(?m)^Begin checking placement\b", raw)) != 1 or \
             len(re.findall(r"(?m)^Finished checkPlace\b", raw)) != 1:
         raise FlowError("check_place lacks one complete native placement check")
@@ -1177,7 +1210,7 @@ def validate_check_place_report(payload: bytes) -> None:
 
 def validate_route_report(payload: bytes) -> None:
     raw = payload.decode("utf-8")
-    if BAD_LOG.search(raw) or len(re.findall(
+    if has_failure_diagnostic(raw) or len(re.findall(
             r"(?m)^#Number of fails = 0\s*$", raw)) != 1 or \
             len(re.findall(r"(?m)^#Total number of fails = 0\s*$", raw)) != 1 or \
             len(re.findall(r"(?m)^#Complete\s+on\s+.+$", raw)) != 1:
@@ -1495,10 +1528,7 @@ def validate_artifacts(root: Path, ledger_path: Path, design: str,
                 raise FlowError(f"ledger differs from {stage} receipt manifest: {role}")
     top = contract["candidates"][design]["top"]
     genus_log = artifacts["genus_log"].decode("utf-8")
-    if BAD_LOG.search(genus_log) or f"Version: {contract['tools']['genus']['version']}" not in genus_log or \
-            f"K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}" not in genus_log or \
-            "Normal exit." not in genus_log or not re.search(r"Error=0,\s*Fatal=0", genus_log):
-        raise FlowError("Genus log lacks native version/clean completion evidence")
+    validate_genus_log(genus_log, top, contract["tools"]["genus"]["version"])
     innovus_log = artifacts["innovus_log"].decode("utf-8")
     validate_innovus_log(innovus_log, top, contract["tools"]["innovus"]["version"])
     if artifacts["genus_commands_complete"].decode("utf-8").strip() != \
