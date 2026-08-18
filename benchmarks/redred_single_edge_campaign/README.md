@@ -158,3 +158,40 @@ occurrences of one source on one edge can never both be accepted. Synthetic and
 public aggregates remain separate. Official, P6, physical, power, selection,
 and release claims remain outside the tuple and stay false/HOLD even after both
 tuple gates validate.
+
+## Campaign-native normalized aggregate gate
+
+`aggregate_gate.py` consumes two separately verified normalized views rather
+than reopening either producer-native archive. The input contract is
+`redred_single_edge_campaign_normalized_view_v1`: one `synthetic_v2` view and
+one `public_v2` view, each with a PASS verification envelope, source result and
+publication hashes, false official/P6/physical/power/release classifications,
+shared gate states, and independent A2/A3 candidate gate states.
+
+The public view must classify all retiming labels as one
+`PUBLIC_DATASET_RETIMING_FAMILY` with `independent_sample_count: 1`.
+Retimings may remain visible as within-family conditions, but the aggregate
+result contains no pooled totals and never treats 1x/64x/256x as three samples.
+Synthetic and public views may not opt into cross-slot pooling.
+
+The decision is deliberately campaign-scoped:
+
+- A2 is recommended when it passes both views and no shared gate is non-PASS.
+- A3 is recommended only when exact-prefix semantics are explicitly requested,
+  or A2 has a candidate-specific `FAIL`, and A3 independently passes both
+  views.
+- An A2 `HOLD`, any A3 non-PASS, or any shared failure produces HOLD. Shared
+  interface, evidence, CDC/RDC, and PDK/I/O failures can never activate A3.
+- `final_selected_candidate` is always null; final selection and release are
+  always HOLD and official, physical, power, release claims are always false.
+
+The output conforms to
+[`aggregate_result.schema.json`](aggregate_result.schema.json). A scoped A2/A3
+campaign recommendation exits 0, a valid HOLD exits 3, `--allow-hold` converts
+that HOLD to exit 0, and malformed/contradictory inputs exit 2.
+
+```sh
+python3 benchmarks/redred_single_edge_campaign/aggregate_gate.py evaluate \
+  --synthetic-v2-view /path/to/verified-synthetic-view.json \
+  --public-v2-view /path/to/verified-public-view.json
+```
