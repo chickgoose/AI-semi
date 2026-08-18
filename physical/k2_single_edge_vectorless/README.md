@@ -38,9 +38,12 @@ package, signoff, fmax, legality, comparison, or release claims.
 
 `single_edge_strict.sdc` contains exactly one primary positive-edge clock on
 `clk_i`, exact placeholder I/O/load values, no generated clock, and no timing
-exceptions. Qualification also checks that a mapped SDC retains the one clock
-and every exact numeric class and contains no false-path, multicycle, falling-
-edge, generated-clock, or P6 construct.
+exceptions. Qualification requires the mapped SDC to contain exactly one of
+each canonical constraint command in order. Values and selectors are exact:
+the clock commands target `single_edge_clk`, input constraints target the
+canonical nonclock-input collection, and output delay/load target
+`[all_outputs]`. Duplicate, reordered, extra, wrong-target, false-path,
+multicycle, falling-edge, generated-clock, and P6 constructs fail closed.
 
 ## Default-vectorless diagnostic command
 
@@ -51,12 +54,16 @@ checks that Genus has exactly one `single_edge_clk`, performs generic/map/opt,
 runs `check_design -all`, and emits mapped netlist/SDC/SDF plus area, timing,
 power, QoR, timing-intent, clock, and check-design reports.
 
-The driver contains no VCD/SAIF/TCF import or switching-activity override. The
-power parser requires one exact Genus tool identifier, one exact top instance,
-one noncontradictory W unit, the exact ordered Category/Leakage/Internal/
-Switching/Total header, one subtotal, native N.A. activity headers, native 0.2
-defaults, finite nonnegative components, and a consistent sum. Values are
-converted from W to mW.
+The driver contains no VCD/SAIF/TCF import or switching-activity override. Each
+area, timing, QoR, timing-intent, clock, and check-design report requires one
+Genus generator header, one exact design context, its native role-specific
+header and complete rows, finite numeric values, and no error/fatal diagnostic.
+Timing paths require beginpoint, endpoint, and consistent header/detail slack;
+the QoR WNS must agree with the timing report. The power parser requires one
+exact Genus tool identifier, one exact top instance, one noncontradictory W
+unit, the exact ordered Category/Leakage/Internal/Switching/Total header, one
+subtotal, native N.A. activity headers, native 0.2 defaults, finite nonnegative
+components, and a consistent sum. Values are converted from W to mW.
 
 These checks do not establish that Genus was actually run. Cadence startup
 configuration and the full process environment are not controlled by this
@@ -73,10 +80,15 @@ environment receipt. Bytes, sizes, unique contained paths, regular-file type,
 and single-link state are rechecked.
 
 Structural validation requires the exact complete top port set, at least one
-cell instance, no behavioral process, and nonempty check-design context without
-an explicit nonzero unresolved/blackbox count. This is only a consistency
-diagnostic. It is not formal equivalence, logical connectivity proof, physical
-connectivity, DRC, antenna, placement, routing, extraction, or signoff.
+cell instance, no behavioral process, and an observable continuous or
+conventional standard-cell output driver for every top output. Exact duplicate
+signal drivers fail. The mapped SDF must be one balanced Genus DELAYFILE with
+the exact top, a timescale, and populated CELL/CELLTYPE/INSTANCE/DELAY
+structure. Check-design must contain one native `-all` summary with zero
+unresolved references, black boxes, and errors. These remain bounded structural
+consistency diagnostics, not formal equivalence, complete bit-level logical or
+physical connectivity proof, DRC, antenna, placement, routing, extraction, or
+signoff.
 
 There is currently:
 
