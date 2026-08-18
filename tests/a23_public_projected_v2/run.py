@@ -64,6 +64,10 @@ class PublicV2Error(RuntimeError):
     """Any contract violation aborts without publishing evidence."""
 
 
+class DuplicateJSONKey(ValueError):
+    """Internal signal for duplicate keys at any JSON object depth."""
+
+
 def canonical(value: Any) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
@@ -148,8 +152,18 @@ def stable_read(
 
 
 def load_json_bytes(payload: bytes, label: str) -> dict[str, Any]:
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise DuplicateJSONKey(key)
+            result[key] = value
+        return result
+
     try:
-        value = json.loads(payload.decode("ascii"))
+        value = json.loads(payload.decode("ascii"), object_pairs_hook=unique_object)
+    except DuplicateJSONKey as error:
+        raise PublicV2Error(f"duplicate JSON key for {label}: {error}") from error
     except (UnicodeError, json.JSONDecodeError) as error:
         raise PublicV2Error(f"invalid JSON for {label}: {error}") from error
     if not isinstance(value, dict):
@@ -869,6 +883,8 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
     if manifest.get("schema") != "a23_public_projected_v2_export_manifest_v2":
         raise PublicV2Error("manifest schema mismatch")
     require_classification(manifest, "manifest")
+    if manifest.get("evidence_class") != "PUBLIC_DATASET_PROJECTED_ACTUAL_SINGLE_EDGE_RTL":
+        raise PublicV2Error("manifest evidence class mismatch")
     if manifest.get("reset_scope") != "CLEAN_DRAIN_ONLY":
         raise PublicV2Error("manifest reset scope mismatch")
     if manifest.get("commit_provenance", {}).get("p6_evidence_used") is not False:
@@ -1007,8 +1023,33 @@ def validate_publication(publication: dict[str, Any]) -> None:
         raise PublicV2Error("publication commit meaning mismatch")
     if publication.get("self_referential_commit_claim") is not False:
         raise PublicV2Error("publication must not claim its own containing commit")
-    if publication.get("semantic_reproduction", {}).get("matched") is not True:
-        raise PublicV2Error("publication lacks semantic reproduction match")
+    semantic_reproduction = publication.get("semantic_reproduction")
+    if not isinstance(semantic_reproduction, dict) or set(semantic_reproduction) != {
+        "definition_sha256", "primary_semantic_sha256",
+        "reproduction_semantic_sha256", "matched",
+    }:
+        raise PublicV2Error("publication semantic reproduction schema mismatch")
+    definition_sha = require_hash(
+        semantic_reproduction.get("definition_sha256"),
+        "publication/semantic_reproduction/definition_sha256",
+    )
+    primary_sha = require_hash(
+        semantic_reproduction.get("primary_semantic_sha256"),
+        "publication/semantic_reproduction/primary_semantic_sha256",
+    )
+    reproduction_sha = require_hash(
+        semantic_reproduction.get("reproduction_semantic_sha256"),
+        "publication/semantic_reproduction/reproduction_semantic_sha256",
+    )
+    if definition_sha != digest_bytes(canonical(SEMANTIC_DEFINITION)):
+        raise PublicV2Error("publication semantic definition digest mismatch")
+    computed_match = primary_sha == reproduction_sha
+    if type(semantic_reproduction.get("matched")) is not bool:
+        raise PublicV2Error("publication semantic matched flag is not Boolean")
+    if semantic_reproduction["matched"] != computed_match or not computed_match:
+        raise PublicV2Error("publication semantic matched flag disagrees with digests")
+    if publication.get("semantic_sha256") != primary_sha:
+        raise PublicV2Error("publication top semantic digest disagrees with reproduced digest")
     if publication.get("export_entry_count_excluding_manifest") != 80:
         raise PublicV2Error("publication inventory count mismatch")
     size = publication.get("export_bundle_size_bytes")
@@ -1213,6 +1254,9 @@ def seal(args: argparse.Namespace) -> int:
     semantic = result["semantic_reproducibility"]["semantic_sha256"]
     if reproduction["semantic_reproducibility"]["semantic_sha256"] != semantic:
         raise PublicV2Error("semantic reproduction digest differs")
+    definition_sha = result["semantic_reproducibility"]["definition_sha256"]
+    if reproduction["semantic_reproducibility"]["definition_sha256"] != definition_sha:
+        raise PublicV2Error("semantic reproduction definition differs")
     manifest = validate_archive_bytes(bundle_payload)
     publication_commit = require_commit(args.publication_commit, "publication_commit")
     result_relative = str(args.committed_result_path)
@@ -1244,7 +1288,7 @@ def seal(args: argparse.Namespace) -> int:
         "semantic_sha256": semantic,
         "reproduction_result_sha256": digest_bytes(reproduction_payload),
         "semantic_reproduction": {
-            "definition_sha256": result["semantic_reproducibility"]["definition_sha256"],
+            "definition_sha256": definition_sha,
             "primary_semantic_sha256": semantic,
             "reproduction_semantic_sha256": semantic,
             "matched": True,

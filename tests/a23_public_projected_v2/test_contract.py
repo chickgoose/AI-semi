@@ -82,6 +82,15 @@ class PublicProjectedV2ContractTest(unittest.TestCase):
             with self.assertRaisesRegex(v2.PublicV2Error, "seven-name inventory"):
                 v2.exact_projection_payloads(root)
 
+    def test_duplicate_json_keys_are_rejected_at_every_depth(self) -> None:
+        mutants = {
+            "root": b'{"p6_evidence_used":false,"p6_evidence_used":true}',
+            "nested": b'{"provenance":{"official":false,"official":true}}',
+        }
+        for label, payload in mutants.items():
+            with self.assertRaisesRegex(v2.PublicV2Error, "duplicate JSON key", msg=label):
+                v2.load_json_bytes(payload, label)
+
     def test_projection_traces_retain_same_1100_identities(self) -> None:
         configured = Path(os.environ.get("REDRED_UZH_PROJECTION_DIR", str(v2.DEFAULT_PROJECTION)))
         if not configured.is_dir():
@@ -127,6 +136,39 @@ class PublicProjectedV2ContractTest(unittest.TestCase):
                 mutant[field] = True
                 with self.assertRaises(v2.PublicV2Error, msg=f"{layer}/{field}"):
                     validator(mutant)
+
+    def test_manifest_evidence_class_relabel_is_rejected(self) -> None:
+        published = self._published()
+        if published is None:
+            self.skipTest("v2 evidence not published yet")
+        _, _, _, archive = published
+        manifest = v2.validate_archive_bytes(archive)
+        for replacement in ("CANONICAL_REDRED", "OFFICIAL_CONTEST_TRAFFIC", "P6_PARALLEL"):
+            mutant = copy.deepcopy(manifest)
+            mutant["evidence_class"] = replacement
+            with self.assertRaisesRegex(v2.PublicV2Error, "evidence class", msg=replacement):
+                v2.validate_manifest(mutant)
+
+    def test_publication_semantic_match_fields_are_recomputed(self) -> None:
+        published = self._published()
+        if published is None:
+            self.skipTest("v2 evidence not published yet")
+        _, publication, _, _ = published
+        mutations = (
+            (("semantic_reproduction", "definition_sha256"), "f" * 64),
+            (("semantic_reproduction", "primary_semantic_sha256"), "0" * 64),
+            (("semantic_reproduction", "reproduction_semantic_sha256"), "1" * 64),
+            (("semantic_sha256",), "2" * 64),
+            (("semantic_reproduction", "matched"), False),
+        )
+        for path, replacement in mutations:
+            mutant = copy.deepcopy(publication)
+            if len(path) == 1:
+                mutant[path[0]] = replacement
+            else:
+                mutant[path[0]][path[1]] = replacement
+            with self.assertRaises(v2.PublicV2Error, msg="/".join(path)):
+                v2.validate_publication(mutant)
 
     def test_all_nested_p6_bindings_are_false_and_mutation_rejected(self) -> None:
         published = self._published()
