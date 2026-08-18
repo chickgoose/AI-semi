@@ -1,0 +1,219 @@
+{
+  "schema": "k2_single_edge_endpoint_physical_contract_v1",
+  "status": "STATIC_READY_CANDIDATE_PHYSICAL_HOLD",
+  "boundary": {
+    "kind": "COMPLETE_SOURCE_ADMISSION_THROUGH_SYNCHRONOUS_RETIREMENT",
+    "included": [
+      "scheduler_policy_and_state",
+      "source_admission",
+      "charged_internal_buffering",
+      "single_edge_link_tx_rx_and_control",
+      "retirement",
+      "drain_and_protocol_error_logic"
+    ],
+    "excluded": [
+      "event_generator",
+      "testbench_scoreboard",
+      "coordinate_transform",
+      "motion_estimation",
+      "pad_package_channel"
+    ],
+    "clock_port": "clk_i",
+    "clocking": "ONE_PRIMARY_POSEDGE_CLOCK_NO_GENERATED_OR_NEGEDGE_CLOCKS",
+    "reset_port": "rst_i",
+    "reset_semantics": "SYNCHRONOUS_ACTIVE_HIGH",
+    "normalized_ports": {
+      "inputs": [
+        {"name": "clk_i", "width": 1},
+        {"name": "rst_i", "width": 1},
+        {"name": "link_enable_i", "width": 1},
+        {"name": "source_pending_i", "width": 16}
+      ],
+      "outputs": [
+        {"name": "source_accept_o", "width": 16},
+        {"name": "accept_count_o", "width": 2},
+        {"name": "accept_addr0_o", "width": 4},
+        {"name": "accept_addr1_o", "width": 4},
+        {"name": "link_valid_o", "width": 1},
+        {"name": "link_addr0_o", "width": 4},
+        {"name": "link_addr1_o", "width": 4},
+        {"name": "retire_valid_o", "width": 2},
+        {"name": "retire_addr0_o", "width": 4},
+        {"name": "retire_addr1_o", "width": 4},
+        {"name": "drain_idle_o", "width": 1},
+        {"name": "protocol_error_o", "width": 1}
+      ]
+    }
+  },
+  "candidate_order": ["a2", "a3"],
+  "rtl_authority": {
+    "commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
+    "subject": "rtl: add A2 A3 single-edge endpoints",
+    "policy": "EXACT_COMMITTED_FILELIST_AND_EXPANDED_SOURCE_BYTES"
+  },
+  "candidates": {
+    "a2": {
+      "top": "a2_batched_iwrr_single_edge_top",
+      "filelist": {
+        "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
+        "sha256": "55d6c15e33147a3362dedfddccb0ff022e47401eeb0d8388a8dd30e5d9ca1e76",
+        "entries": [
+          "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
+          "-f rtl/technology/single_edge/filelists/generic.f",
+          "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv"
+        ]
+      },
+      "expanded_sources": [
+        {"path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"},
+        {"path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv", "sha256": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493"},
+        {"path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"},
+        {"path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "sha256": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4"},
+        {"path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv", "sha256": "9061deb14e46e0d050bdf3fae450ee8a94c234f94e74f69e1dc8be84722e55ac"}
+      ],
+      "scheduler": "A2_BATCHED_IWRR_K2",
+      "release_role": "PRIMARY_PERFORMANCE_CANDIDATE"
+    },
+    "a3": {
+      "top": "a3_exact_scalar_prefix_k2_single_edge_top",
+      "filelist": {
+        "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f",
+        "sha256": "1fcf350a51ae32008ba207b5e1406d71e4a3083ffc52193e379f65eb1b623fee",
+        "entries": [
+          "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+          "-f rtl/technology/single_edge/filelists/generic.f",
+          "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv"
+        ]
+      },
+      "expanded_sources": [
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"},
+        {"path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv", "sha256": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493"},
+        {"path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"},
+        {"path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "sha256": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4"},
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv", "sha256": "3bac4faa2e249e0326a8eba4e3b010437e16c33b5dff236bd621acdb27c5bb07"}
+      ],
+      "scheduler": "A3_EXACT_SCALAR_PREFIX_K2",
+      "release_role": "EXACT_PREFIX_FALLBACK"
+    }
+  },
+  "source_policy": {
+    "nested_generic_filelist": {
+      "path": "rtl/technology/single_edge/filelists/generic.f",
+      "sha256": "8c538fc9147c96237f5367fa25da91e2f787ee67d09ca6738f5fcf7e9f19ddf8",
+      "entries": [
+        "rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
+        "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+        "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv"
+      ]
+    },
+    "repository_relative_regular_files_only": true,
+    "candidate_and_nested_filelists_must_equal_declared_entries_in_order": true,
+    "forbidden_case_insensitive_tokens": ["p6", "a7_p6", "multiclock", "ddr"],
+    "forbidden_source_roots": [
+      "rtl/candidates/a7_p6_exact_pair_endpoint",
+      "rtl/technology/p6",
+      "rtl/technology/physical_staging",
+      "physical/k2_w2_genus",
+      "scripts/ppa/p6_multiclock_mmmc.tcl"
+    ],
+    "reason": "single-edge evidence is independent and must not inherit link RTL, staged netlists, constraints, or receipts from the multi-edge research path"
+  },
+  "constraints": {
+    "sdc": "physical/k2_single_edge_endpoint/constraints/single_edge_placeholder.sdc",
+    "authority_status": "UNCONFIRMED_TEAM_PLACEHOLDER",
+    "evidence_class": "TEAM_PLACEHOLDER_SCREENING_ONLY",
+    "candidate_go_eligible": false,
+    "values": {
+      "SE_CONSTRAINT_CLASS": "TEAM_PLACEHOLDER_SCREENING_ONLY",
+      "SE_PERIOD_NS": "6.5",
+      "SE_CLOCK_UNCERTAINTY_NS": "0.25",
+      "SE_INPUT_DELAY_MIN_NS": "0.10",
+      "SE_INPUT_DELAY_MAX_NS": "0.50",
+      "SE_OUTPUT_DELAY_MIN_NS": "0.10",
+      "SE_OUTPUT_DELAY_MAX_NS": "0.50",
+      "SE_INPUT_TRANSITION_NS": "0.05",
+      "SE_OUTPUT_LOAD_PF": "0.01"
+    },
+    "prohibited_claims": [
+      "organizer_required_operating_point",
+      "pad_or_package_loading",
+      "silicon_signoff",
+      "fmax",
+      "interface_legality"
+    ],
+    "promotion_rule": "A NEW REVIEWED CONTRACT WITH EXTERNAL CONSTRAINT AUTHORITY IS REQUIRED; A RECEIPT OR COMMAND-LINE OVERRIDE CANNOT PROMOTE THESE VALUES"
+  },
+  "technology": {
+    "name": "GPDK045",
+    "pdk_root": "/home/aiasic26911/gsclib045_all_v4.7/gsclib045",
+    "files": {
+      "setup_liberty": {"relative_path": "timing/slow_vdd1v0_basicCells.lib", "sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10", "pvt": [1.0, 0.9, 125.0]},
+      "hold_liberty": {"relative_path": "timing/fast_vdd1v0_basicCells.lib", "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560", "pvt": [1.0, 1.1, 0.0]},
+      "tech_lef": {"relative_path": "lef/gsclib045_tech.lef", "sha256": "0310f32fe4fb5009053dcfe36ece6e8d7a1f8e8d6e58a0b6fdd2109c2c919f70"},
+      "macro_lef": {"relative_path": "lef/gsclib045_macro.lef", "sha256": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2"},
+      "shared_qrc": {"relative_path": "qrc/qx/gpdk045.tch", "sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5", "limitation": "same typical RC technology byte used for setup and hold"}
+    },
+    "physical": {
+      "process_node_nm": "45",
+      "site": "CoreSite",
+      "aspect_ratio": "1.0",
+      "core_utilization": "0.35",
+      "core_margin_um": "10",
+      "vdd_net": "VDD",
+      "vss_net": "VSS",
+      "pin_placement": "TEAM_SCREENING_PLACEHOLDER_ALL_LEFT_METAL3_NO_PAD_CLAIM",
+      "ring": {"horizontal_layer": "Metal6", "vertical_layer": "Metal7", "width_um": "2", "spacing_um": "2", "offset_um": "2"}
+    }
+  },
+  "tools": {
+    "genus": {"entrypoint": "/tools/cadence/DDI231/GENUS231/bin/genus", "resolved_path": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep", "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa", "version": "23.14-s090_1"},
+    "innovus": {"entrypoint": "/tools/cadence/DDI231/INNOVUS231/bin/innovus", "resolved_path": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep", "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa", "version": "23.14-s088_1"}
+  },
+  "flow_templates": {
+    "genus": "physical/k2_single_edge_endpoint/genus_single_edge.tcl",
+    "innovus_mmmc": "physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl",
+    "innovus": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl"
+  },
+  "commands": {
+    "genus_argv_tail": ["-batch", "-files", "physical/k2_single_edge_endpoint/genus_single_edge.tcl"],
+    "innovus_argv_tail": ["-no_gui", "-files", "physical/k2_single_edge_endpoint/innovus_single_edge.tcl"],
+    "environment_policy": "HASH_EXACT_ALLOWLIST_NO_UNRECORDED_SE_OR_CADENCE_OVERRIDES"
+  },
+  "execution_policy": {
+    "explicit_authorization": {
+      "genus": "I_UNDERSTAND_THIS_LAUNCHES_REAL_GENUS",
+      "innovus": "I_UNDERSTAND_THIS_LAUNCHES_REAL_INNOVUS"
+    },
+    "exclusive_no_overwrite_stage_directories": true,
+    "innovus_requires_successful_bound_genus_receipt": true,
+    "local_tests_must_not_invoke_real_tools": true
+  },
+  "artifact_ledger": {
+    "schema": "k2_single_edge_artifact_ledger_v1",
+    "required_roles": [
+      "genus_log", "genus_timing", "genus_area", "genus_check_design", "genus_timing_intent",
+      "mapped_netlist", "mapped_sdc", "mapped_sdf",
+      "innovus_log", "setup_timing", "setup_timing_machine", "hold_timing", "hold_timing_machine",
+      "postroute_area", "check_timing", "check_design_post_route", "route",
+      "drc", "antenna", "connectivity", "pg_connectivity",
+      "postroute_netlist", "postroute_sdf", "postroute_spef", "innovus_database_manifest",
+      "genus_commands_complete", "innovus_commands_complete"
+    ],
+    "each_row_requires": ["role", "path", "sha256", "size_bytes", "producer_command_sha256"],
+    "native_zero_violation_roles": ["drc", "antenna", "connectivity", "pg_connectivity"],
+    "timing_closure_roles": ["setup_timing_machine", "hold_timing_machine"]
+  },
+  "qualification": {
+    "static_preflight_may_pass": true,
+    "real_environment_receipt_required": true,
+    "real_command_receipt_required": true,
+    "real_artifact_ledger_required": true,
+    "all_artifact_bytes_rehashed": true,
+    "clean_native_logs_required": true,
+    "zero_setup_and_hold_violations_required": true,
+    "zero_drc_antenna_and_connectivity_required": true,
+    "no_unconstrained_or_missing_io_load_checks_required": true,
+    "exclusive_no_overwrite_receipts": true,
+    "maximum_decision_under_this_contract": "HOLD_PLACEHOLDER_CONSTRAINT_AUTHORITY",
+    "candidate_physical_go_possible": false
+  }
+}
