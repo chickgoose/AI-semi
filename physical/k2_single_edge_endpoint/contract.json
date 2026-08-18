@@ -177,7 +177,7 @@
   "flow_templates": {
     "genus": {"path": "physical/k2_single_edge_endpoint/genus_single_edge.tcl", "sha256": "305cee38d5d1aec67d9367bb56c2700501a49fea62c0c8ed8c21d30033a4ce79"},
     "innovus_mmmc": {"path": "physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl", "sha256": "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"},
-    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "86ad0a6d94bc11368cf228013d7fd0736d2a4b7dd54b0bffe62be9a17731e61a"}
+    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "d749be4794b5b6c197b8284dbf1858c233860ef3e3d005c1ff4c8d76c7763bbf"}
   },
   "commands": {
     "genus_argv_tail": ["-batch", "-files", "physical/k2_single_edge_endpoint/genus_single_edge.tcl"],
@@ -223,6 +223,8 @@
     "exact_mapped_sdc_command_set_required": true,
     "exact_netlist_boundary_required": true,
     "diagnostic_only_vocabulary_required": true,
+    "cohort_same_environment_snapshot_hash_required": true,
+    "cohort_freshness_authority_available": false,
     "exclusive_no_overwrite_receipts": true,
     "maximum_decision_under_this_contract": "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE",
     "candidate_physical_go_possible": false
