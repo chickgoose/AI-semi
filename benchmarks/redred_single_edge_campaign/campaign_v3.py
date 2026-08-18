@@ -15,11 +15,11 @@ from typing import Any
 PACKAGE = Path(__file__).resolve().parent
 PROJECT = PACKAGE.parents[1]
 DEFAULT_MANIFEST = PACKAGE / "campaign_v3.json"
-DEFAULT_MANIFEST_SHA256 = "23549532ee0220680c5d970da96333d09ffe240996ef8c09f33887e0ffd99127"
+DEFAULT_MANIFEST_SHA256 = "4050e3c4d0207ee281c14d8d130b34a7c3a0c01b0ee97bcc05a86e05cf716307"
 LEGACY_PATH = "benchmarks/redred_single_edge_campaign/campaign.json"
 LEGACY_SHA256 = "316f9bee92255616dfaa80b74a6cf0868c01c3f5e9798177124aae7bc2035fba"
 CONTRACT_PATH = "benchmarks/redred_single_edge_campaign/sealed_tuple.schema.json"
-CONTRACT_SHA256 = "b66d4a051b3efddcf9d26dd132639a7d6815171d59b5a12c431297eef403a1d1"
+CONTRACT_SHA256 = "535eea62c87e611f6f7d892bc9c4b107530dfa82082f2fa4e130dbe57a4723f7"
 PRODUCER_KEYS = {
     "state", "publication_schema", "evidence_class", "status", "source_class",
     "canonical_redred_traffic", "official_contest_traffic", "p6_evidence_used",
@@ -128,6 +128,7 @@ def validate_producer(name: str, value: Any) -> dict[str, Any]:
             "producer.runner_sha256", "producer.testbench_sha256",
             "producer.tool_pins_sha256", "rtl.source_commit", "rtl.source_tree",
             "rtl.integration_commit", "rtl.integration_tree", "bundle_sha256",
+            "producer.inventory", "rtl.source_inventory", "rtl.integration_inventory",
             "bundle_size_bytes", "manifest_schema", "manifest_member",
             "manifest_sha256", "entry_count", "result_schema", "result_member",
             "result_sha256", "result_semantic_sha256", "owners", "traffic_runs",

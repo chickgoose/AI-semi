@@ -62,6 +62,46 @@ SLOT_IDENTITIES = {
         "canonical_redred_traffic": False,
     },
 }
+PRODUCER_ROLE_PATHS = {
+    "synthetic_v2": {
+        "verifier": "tests/a23_full_single_edge_replay/test_contract.py",
+        "schema": "benchmarks/redred_single_edge_campaign/replay_receipt.schema.json",
+        "runner": "tests/a23_full_single_edge_replay/run_replay.py",
+        "testbench": "tests/a23_full_single_edge_replay/tb/a23_full_single_edge_replay_tb.sv",
+        "tool_pins": "tests/a23_full_single_edge_replay/pins.json",
+    },
+    "public_v2": {
+        "verifier": "tests/a23_full_single_edge_replay/test_public_projected_extension.py",
+        "schema": "benchmarks/redred_single_edge_campaign/sealed_tuple.schema.json",
+        "runner": "tests/a23_full_single_edge_replay/run_public_projected_extension.py",
+        "testbench": "tests/a23_full_single_edge_replay/tb/a23_full_single_edge_replay_tb.sv",
+        "tool_pins": "tests/a23_full_single_edge_replay/public_projected_pins.json",
+    },
+}
+RTL_REQUIRED_PATHS = (
+    "benchmarks/clean_slate_aer/generate_trace.py",
+    "benchmarks/clean_slate_aer/prepare_sv_trace.py",
+    "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
+    "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
+    "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
+    "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+    "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f",
+    "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",
+    "rtl/technology/single_edge/filelists/generic.f",
+    "rtl/technology/single_edge/w2_single_edge_error_latch.sv",
+    "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv",
+    "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+    "rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
+    "scripts/common_suite_official.py",
+    "tests/a23_full_single_edge_replay/README.md",
+    "tests/a23_full_single_edge_replay/rtl/a23_a2_single_edge_observer_wrapper.sv",
+    "tests/a23_full_single_edge_replay/rtl/a23_a3_single_edge_observer_wrapper.sv",
+    "tests/a23_full_single_edge_replay/run_all.sh",
+    "tests/a23_full_single_edge_replay/run_replay.py",
+    "tests/a23_full_single_edge_replay/tb/a23_full_single_edge_replay_tb.sv",
+    "tests/a23_full_single_edge_replay/test_contract.py",
+    "tests/common_suite_receipt/fixtures/manifest.neutrality-n16.json",
+)
 
 
 def exact(value: Any, keys: set[str], label: str) -> dict[str, Any]:
@@ -429,7 +469,7 @@ def validate_tuple(
     }, f"{kind} producer binding")
     rtl = exact(binding["rtl"], {
         "source_commit", "source_tree", "integration_commit", "integration_tree",
-        "inventory",
+        "source_inventory", "integration_inventory",
     }, f"{kind} RTL binding")
     for key in ("commit", "tree"):
         if not isinstance(producer[key], str) or not re.fullmatch(r"[0-9a-f]{40}", producer[key]):
@@ -437,7 +477,8 @@ def validate_tuple(
     for key in ("verifier_sha256", "schema_sha256", "runner_sha256", "testbench_sha256", "tool_pins_sha256"):
         sha(producer[key], f"{kind} producer.{key}")
     for key, value in rtl.items():
-        if key != "inventory" and (not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value)):
+        if key not in ("source_inventory", "integration_inventory") \
+                and (not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value)):
             raise SealedTupleError(f"{kind} rtl.{key} must be a Git object ID")
     if kind not in SLOT_IDENTITIES:
         raise SealedTupleError(f"unknown sealed tuple slot: {kind}")
@@ -462,7 +503,8 @@ def validate_tuple(
         except (OSError, subprocess.CalledProcessError) as error:
             raise SealedTupleError(f"{kind} producer provenance is not resolvable") from error
 
-    def verify_git_pair(commit: str, tree: str, label: str, inventory: Any) -> None:
+    def verify_git_pair(commit: str, tree: str, label: str, inventory: Any,
+                        expected_paths: tuple[str, ...] | dict[str, str]) -> None:
         if git_output("cat-file", "-t", commit) != "commit" \
                 or git_output("cat-file", "-t", tree) != "tree" \
                 or git_output("rev-parse", f"{commit}^{{tree}}") != tree:
@@ -471,17 +513,50 @@ def validate_tuple(
             row.get("path") for row in inventory if isinstance(row, dict)
         }):
             raise SealedTupleError(f"{kind} {label} inventory is malformed")
+        expected = set(expected_paths.values()) if isinstance(expected_paths, dict) else set(expected_paths)
+        if {row.get("path") for row in inventory if isinstance(row, dict)} != expected:
+            raise SealedTupleError(f"{kind} {label} inventory roster differs")
+        if isinstance(expected_paths, dict) and {
+            row.get("role") for row in inventory if isinstance(row, dict)
+        } != set(expected_paths):
+            raise SealedTupleError(f"{kind} {label} inventory roles differ")
         for row in inventory:
-            row = exact(row, {"path", "blob_sha256"}, f"{kind} {label} inventory row")
+            row = exact(
+                row, {"role", "path", "blob_sha256"}, f"{kind} {label} inventory row",
+            )
             path = safe_relative(row["path"], f"{kind} {label} inventory path")
             blob = git_oid(row["blob_sha256"], f"{kind} {label} inventory blob")
             if git_output("rev-parse", f"{commit}:{path}") != blob \
                     or git_output("cat-file", "-t", blob) != "blob":
                 raise SealedTupleError(f"{kind} {label} inventory bytes differ: {path}")
+            if isinstance(expected_paths, dict) and expected_paths[row["role"]] != path:
+                raise SealedTupleError(f"{kind} {label} role path differs: {row['role']}")
 
-    verify_git_pair(producer["commit"], producer["tree"], "producer", producer["inventory"])
-    verify_git_pair(rtl["source_commit"], rtl["source_tree"], "RTL source", rtl["inventory"])
-    verify_git_pair(rtl["integration_commit"], rtl["integration_tree"], "RTL integration", rtl["inventory"])
+    def blob_sha256(commit: str, path: str) -> str:
+        try:
+            data = subprocess.check_output(
+                ["git", "-C", str(repo_root), "show", f"{commit}:{path}"],
+                stderr=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise SealedTupleError(f"{kind} producer inventory bytes are not readable") from error
+        return digest(data)
+
+    verify_git_pair(
+        producer["commit"], producer["tree"], "producer", producer["inventory"],
+        PRODUCER_ROLE_PATHS[kind],
+    )
+    for role, path in PRODUCER_ROLE_PATHS[kind].items():
+        if blob_sha256(producer["commit"], path) != producer[f"{role}_sha256"]:
+            raise SealedTupleError(f"{kind} producer {role} SHA differs from inventory bytes")
+    verify_git_pair(
+        rtl["source_commit"], rtl["source_tree"], "RTL source", rtl["source_inventory"],
+        RTL_REQUIRED_PATHS,
+    )
+    verify_git_pair(
+        rtl["integration_commit"], rtl["integration_tree"], "RTL integration",
+        rtl["integration_inventory"], RTL_REQUIRED_PATHS,
+    )
     def roster(value: Any, label: str) -> tuple[str, ...]:
         if not isinstance(value, list) or not value or len(value) != len(set(value)):
             raise SealedTupleError(f"{kind} {label} roster is malformed")

@@ -210,25 +210,34 @@ class TupleFixture:
             ["git", "rev-parse", f"{commit}^{{tree}}"], cwd=ROOT, text=True,
         ).strip()
 
-        def inventory(paths):
+        def inventory(paths, roles=None):
             return [{
+                "role": role,
                 "path": path,
                 "blob_sha256": subprocess.check_output(
                     ["git", "rev-parse", f"{commit}:{path}"], cwd=ROOT, text=True,
                 ).strip(),
-            } for path in paths]
+            } for role, path in (roles.items() if roles is not None else ((path, path) for path in paths))]
+
+        def blob_sha256(path):
+            return hashlib.sha256(subprocess.check_output(
+                ["git", "show", f"{commit}:{path}"], cwd=ROOT,
+            )).hexdigest()
 
         producer = {
             "commit": commit, "tree": tree,
-            "verifier_sha256": "3" * 64, "schema_sha256": "4" * 64,
-            "runner_sha256": "5" * 64, "testbench_sha256": "6" * 64,
-            "tool_pins_sha256": "7" * 64,
-            "inventory": inventory(["benchmarks/redred_single_edge_campaign/campaign.py"]),
+            "verifier_sha256": blob_sha256(sealed.PRODUCER_ROLE_PATHS["synthetic_v2"]["verifier"]),
+            "schema_sha256": blob_sha256(sealed.PRODUCER_ROLE_PATHS["synthetic_v2"]["schema"]),
+            "runner_sha256": blob_sha256(sealed.PRODUCER_ROLE_PATHS["synthetic_v2"]["runner"]),
+            "testbench_sha256": blob_sha256(sealed.PRODUCER_ROLE_PATHS["synthetic_v2"]["testbench"]),
+            "tool_pins_sha256": blob_sha256(sealed.PRODUCER_ROLE_PATHS["synthetic_v2"]["tool_pins"]),
+            "inventory": inventory([], sealed.PRODUCER_ROLE_PATHS["synthetic_v2"]),
         }
         rtl = {
             "source_commit": commit, "source_tree": tree,
             "integration_commit": commit, "integration_tree": tree,
-            "inventory": inventory(["benchmarks/redred_single_edge_campaign/campaign.py"]),
+            "source_inventory": inventory(sealed.RTL_REQUIRED_PATHS),
+            "integration_inventory": inventory(sealed.RTL_REQUIRED_PATHS),
         }
         publication = {
             "schema": "redred_single_edge_synthetic_publication_v2",
@@ -551,6 +560,32 @@ class SealedTupleTests(unittest.TestCase):
         binding["producer"]["commit"] = "1" * 40
         binding["producer"]["tree"] = "2" * 40
         with self.assertRaisesRegex(sealed.SealedTupleError, "provenance is not resolvable|commit/tree"):
+            sealed.validate_tuple(
+                self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
+            )
+
+    def test_named_hash_and_required_inventory_mutations_fail(self):
+        binding = copy.deepcopy(self.fixture.binding)
+        binding["producer"]["verifier_sha256"] = "3" * 64
+        with self.assertRaisesRegex(sealed.SealedTupleError, "producer verifier SHA"):
+            sealed.validate_tuple(
+                self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
+            )
+        binding = copy.deepcopy(self.fixture.binding)
+        binding["producer"]["inventory"] = binding["producer"]["inventory"][1:]
+        with self.assertRaisesRegex(sealed.SealedTupleError, "producer inventory roster"):
+            sealed.validate_tuple(
+                self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
+            )
+        binding = copy.deepcopy(self.fixture.binding)
+        binding["rtl"]["source_inventory"] = binding["rtl"]["source_inventory"][:-1]
+        with self.assertRaisesRegex(sealed.SealedTupleError, "RTL source inventory roster"):
+            sealed.validate_tuple(
+                self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
+            )
+        binding = copy.deepcopy(self.fixture.binding)
+        binding["producer"]["inventory"][0]["path"] = "benchmarks/redred_single_edge_campaign/campaign.py"
+        with self.assertRaisesRegex(sealed.SealedTupleError, "producer inventory roster"):
             sealed.validate_tuple(
                 self.fixture.publication_path, self.fixture.bundle_path, binding, "synthetic_v2",
             )
