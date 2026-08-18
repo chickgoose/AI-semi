@@ -40,7 +40,15 @@ def semantic_fixture() -> dict:
 
 
 def v2_metadata_fixture() -> dict:
-    rows = [{} for _ in range(100)]
+    row = {
+        "owner": "a2", "trace": "case", "event_row_count": 0,
+        "accepted_ordinal_count": 0, "retired_ordinal_count": 0,
+        "event_row_sequence_sha256": "1" * 64,
+        "accept_order_sha256": "2" * 64, "retire_order_sha256": "3" * 64,
+        "ordinal_csv_sha256": "4" * 64,
+        "ordinal_simulation_log_sha256": "5" * 64,
+    }
+    rows = [copy.deepcopy(row) for _ in range(100)]
     return {
         "schema": v2.V2_RESULT_SCHEMA,
         "status": v2.STATUS,
@@ -79,11 +87,16 @@ def v2_metadata_fixture() -> dict:
         },
         "sequence_evidence": {
             "primary_full50_runs": rows,
-            "event_row_order": "x", "execution_time_global_retire_order": "x",
+            "event_row_order": "trace/TB event-id row order retained and hashed",
+            "execution_time_global_retire_order": (
+                "checked by the pinned TB accepted FIFO and bound by each retained PASS log"
+            ),
             "primary_ordinal_observation_actual_RTL_executions": 100,
             "reproduction_ordinal_observation_actual_RTL_executions": 100,
             "within_same_cycle_global_order_reconstructable_from_ordinal_sidecars": True,
-            "ordinal_definition": "x",
+            "ordinal_definition": (
+                "monotonic global ordinal assigned lane0 then lane1 on each observed edge"
+            ),
             "ordinal_semantic_projection_exclusion": [
                 "/each_row/ordinal_simulation_log_sha256"
             ],
@@ -104,6 +117,10 @@ def publication_fixture() -> dict:
         "physical_status": "HOLD",
         "canonical_campaign_status": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
     })
+    for key in ("primary_legacy_result_size_bytes",
+                "reproduction_legacy_result_size_bytes", "v2_result_size_bytes",
+                "export_size_bytes", "export_inventory_entry_count"):
+        value[key] = 1
     return value
 
 
@@ -321,6 +338,12 @@ class SyntheticV2Test(unittest.TestCase):
                 v2.read_archive(archive)
         valid_manifest = {**manifest, "inventory_entry_count": 1,
                           "inventory_size_bytes": 5}
+        with tempfile.TemporaryDirectory() as temporary:
+            boolean_archive = Path(temporary) / "boolean-counter.tgz"
+            v2.write_archive(boolean_archive,
+                             {**valid_manifest, "inventory_entry_count": True}, payload)
+            with self.assertRaisesRegex(v2.V2Error, "exact integer"):
+                v2.read_archive(boolean_archive)
         with self.assertRaisesRegex(v2.V2Error, "publication inventory counter"):
             v2.validate_publication_inventory_counter(
                 valid_manifest, {"export_inventory_entry_count": 999}
@@ -405,6 +428,62 @@ class SyntheticV2Test(unittest.TestCase):
         for changed in cases:
             with self.assertRaises(v2.V2Error):
                 v2.verify_result_identity(changed, v2.current_commit())
+
+    def test_boolean_counter_type_drift_is_rejected_everywhere(self) -> None:
+        valid = current_base_result()
+        cases = []
+        receipt = copy.deepcopy(valid)
+        receipt["execution_accounting"]["receipt_only_executions"] = False
+        cases.append(receipt)
+        reset = copy.deepcopy(valid)
+        reset["owners"]["a2"]["reset"]["reset_test"] = True
+        cases.append(reset)
+        drain = copy.deepcopy(valid)
+        drain["owners"]["a2"]["reset"]["pre_reset_clean_drain"] = True
+        cases.append(drain)
+        activation = copy.deepcopy(valid)
+        activation["owners"]["a2"]["mutation_activation"]["count2_commits"] = True
+        cases.append(activation)
+        run = copy.deepcopy(valid)
+        first = sorted(run["owners"]["a2"]["full50"]["runs"])[0]
+        run["owners"]["a2"]["full50"]["runs"][first]["generated"] = True
+        cases.append(run)
+        aggregate = copy.deepcopy(valid)
+        aggregate["owners"]["a3"]["full50"]["aggregate"]["totals"][
+            "source_overrun"] = False
+        cases.append(aggregate)
+        latency = copy.deepcopy(valid)
+        latency["owners"]["a3"]["reset"]["accept_to_retire"]["count"] = True
+        cases.append(latency)
+        for changed in cases:
+            with self.assertRaises(v2.V2Error):
+                v2.verify_result_identity(changed, v2.current_commit())
+
+        metadata = v2_metadata_fixture()
+        for section, key in (
+            (metadata["dataset"], "trace_count"),
+            (metadata["execution_accounting"]["combined"],
+             "receipt_only_executions"),
+            (metadata["sequence_evidence"],
+             "primary_ordinal_observation_actual_RTL_executions"),
+            (metadata["sequence_evidence"]["primary_full50_runs"][0],
+             "event_row_count"),
+        ):
+            changed = copy.deepcopy(metadata)
+            if section is metadata["dataset"]:
+                changed["dataset"][key] = True
+            elif section is metadata["execution_accounting"]["combined"]:
+                changed["execution_accounting"]["combined"][key] = False
+            elif section is metadata["sequence_evidence"]:
+                changed["sequence_evidence"][key] = True
+            else:
+                changed["sequence_evidence"]["primary_full50_runs"][0][key] = True
+            with self.assertRaises(v2.V2Error):
+                v2.validate_v2_metadata(changed)
+        publication = publication_fixture()
+        publication["export_size_bytes"] = True
+        with self.assertRaises(v2.V2Error):
+            v2.validate_publication_metadata(publication)
 
     def test_pinned_tool_and_regenerated_trace_identity_reject_substitution(self) -> None:
         valid = current_base_result()

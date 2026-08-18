@@ -299,8 +299,48 @@ def require_exact_keys(value: Any, keys: set[str], label: str) -> dict[str, Any]
     return record
 
 
+def require_int(value: Any, label: str, *, minimum: int | None = 0) -> int:
+    if type(value) is not int or (minimum is not None and value < minimum):
+        raise V2Error(f"{label} is not an exact integer")
+    return value
+
+
+def require_float(value: Any, label: str) -> float:
+    if type(value) is not float:
+        raise V2Error(f"{label} is not an exact float")
+    return value
+
+
+def require_string(value: Any, label: str) -> str:
+    if type(value) is not str:
+        raise V2Error(f"{label} is not an exact string")
+    return value
+
+
+def require_typed_equal(actual: Any, expected: Any, label: str) -> None:
+    if type(actual) is not type(expected):
+        raise V2Error(f"{label} scalar type differs")
+    if isinstance(expected, dict):
+        if set(actual) != set(expected):
+            raise V2Error(f"{label} fields differ")
+        for key in expected:
+            require_typed_equal(actual[key], expected[key], f"{label}/{key}")
+    elif isinstance(expected, list):
+        if len(actual) != len(expected):
+            raise V2Error(f"{label} list length differs")
+        for index, (left, right) in enumerate(zip(actual, expected)):
+            require_typed_equal(left, right, f"{label}/{index}")
+    elif actual != expected:
+        raise V2Error(f"{label} value differs")
+
+
 def validate_latency_schema(value: Any, label: str) -> None:
-    require_exact_keys(value, {"count", "max", "mean", "p50", "p95", "p99"}, label)
+    record = require_exact_keys(
+        value, {"count", "max", "mean", "p50", "p95", "p99"}, label
+    )
+    for key in ("count", "max", "p50", "p95", "p99"):
+        require_int(record[key], f"{label}/{key}")
+    require_float(record["mean"], f"{label}/mean")
 
 
 def validate_base_result_schema(result: dict[str, Any]) -> None:
@@ -326,31 +366,29 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
             "same_source_occurrence_while_one_entry_source_latch_occupied",
     }
     for key, expected in exact_values.items():
-        if result[key] != expected:
-            raise V2Error(f"base semantic definition differs for {key}")
+        require_typed_equal(result[key], expected, f"base semantic definition/{key}")
     require_exact_keys(result["execution_accounting"],
                        set(retained.EXPECTED_EXECUTION_ACCOUNTING),
                        "base execution accounting")
-    if result["execution_accounting"] != retained.EXPECTED_EXECUTION_ACCOUNTING:
-        raise V2Error("base execution accounting values differ")
+    require_typed_equal(result["execution_accounting"],
+                        retained.EXPECTED_EXECUTION_ACCOUNTING,
+                        "base execution accounting")
     generator = require_exact_keys(result["generator"], {
         "full50_manifest_sha256", "source_commit", "trace_count", "version",
     }, "base generator")
-    if generator != {
+    require_typed_equal(generator, {
         "full50_manifest_sha256":
             "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
         "source_commit": "abd6a721b515ded8a9ef76cb96129b7e0af21e2b",
         "trace_count": 50, "version": "4.0",
-    }:
-        raise V2Error("base generator definition differs")
+    }, "base generator definition")
     require_exact_keys(result["qualification"], {
         "CDC_RDC", "physical", "power", "single_edge_digital_RTL",
     }, "base qualification")
-    if result["qualification"] != {
+    require_typed_equal(result["qualification"], {
         "CDC_RDC": "HOLD", "physical": "HOLD", "power": "HOLD",
         "single_edge_digital_RTL": "GO",
-    }:
-        raise V2Error("base qualification definition differs")
+    }, "base qualification definition")
     provenance = require_exact_keys(result["provenance"], {
         "actual_rtl_git", "package_commit", "pins_path", "pins_sha256",
         "verified_files", "verified_tools",
@@ -363,8 +401,10 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
         "python", "verilator", "verilator_bin", "make", "cxx",
     }, "base verified tools")
     for role, identity in tools.items():
-        require_exact_keys(identity, {"path", "sha256", "version"},
-                           f"base tool {role}")
+        identity = require_exact_keys(identity, {"path", "sha256", "version"},
+                                      f"base tool {role}")
+        for key in identity:
+            require_string(identity[key], f"base tool {role}/{key}")
     owners = require_exact_keys(result["owners"], {"a2", "a3"}, "base owners")
     run_keys = {
         "accept_to_retire", "accepted", "count2_commits", "events_sha256",
@@ -383,18 +423,26 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
         full50 = require_exact_keys(owner_record["full50"], {
             "actual_execution_count", "aggregate", "runs",
         }, f"base {owner} full50")
+        require_int(full50["actual_execution_count"],
+                    f"base {owner} full50 actual execution count")
         aggregate = require_exact_keys(full50["aggregate"], {
             "accept_to_retire", "actual_execution_count", "fixed_window_events_per_cycle",
             "occurrence_to_accept", "totals",
         }, f"base {owner} aggregate")
+        require_int(aggregate["actual_execution_count"],
+                    f"base {owner} aggregate execution count")
+        require_float(aggregate["fixed_window_events_per_cycle"],
+                      f"base {owner} aggregate rate")
         validate_latency_schema(aggregate["accept_to_retire"],
                                 f"base {owner} aggregate accept latency")
         validate_latency_schema(aggregate["occurrence_to_accept"],
                                 f"base {owner} aggregate occurrence latency")
-        require_exact_keys(aggregate["totals"], {
+        totals = require_exact_keys(aggregate["totals"], {
             "accepted", "count2_commits", "fixed_window_cycles", "fixed_window_retired",
             "generated", "retired", "source_overrun",
         }, f"base {owner} aggregate totals")
+        for key, value in totals.items():
+            require_int(value, f"base {owner} aggregate totals/{key}")
         runs = retained.require_object(full50["runs"], f"base {owner} runs")
         for name, run in runs.items():
             record = require_exact_keys(run, run_keys, f"base {owner} run {name}")
@@ -402,6 +450,16 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
                                     f"base {owner} run {name} accept latency")
             validate_latency_schema(record["occurrence_to_accept"],
                                     f"base {owner} run {name} occurrence latency")
+            for key in ("accepted", "count2_commits", "fixed_window_cycles",
+                        "fixed_window_retired", "generated", "observation_cycles",
+                        "pre_reset_clean_drain", "reset_test", "retired",
+                        "source_overrun"):
+                require_int(record[key], f"base {owner} run {name}/{key}")
+            require_float(record["fixed_window_events_per_cycle"],
+                          f"base {owner} run {name}/fixed window rate")
+            for key in ("events_sha256", "prepared_trace_sha256", "summary_sha256",
+                        "trace_sha256"):
+                require_string(record[key], f"base {owner} run {name}/{key}")
         for label in ("reset", "mutation_activation"):
             record = require_exact_keys(owner_record[label], special_keys,
                                         f"base {owner} {label}")
@@ -409,6 +467,15 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
                                     f"base {owner} {label} accept latency")
             validate_latency_schema(record["occurrence_to_accept"],
                                     f"base {owner} {label} occurrence latency")
+            for key in ("accepted", "count2_commits", "fixed_window_cycles",
+                        "fixed_window_retired", "generated", "observation_cycles",
+                        "pre_reset_clean_drain", "reset_test", "retired",
+                        "source_overrun"):
+                require_int(record[key], f"base {owner} {label}/{key}")
+            require_float(record["fixed_window_events_per_cycle"],
+                          f"base {owner} {label}/fixed window rate")
+            for key in ("events_sha256", "simulation_log_sha256", "summary_sha256"):
+                require_string(record[key], f"base {owner} {label}/{key}")
         reset = owner_record["reset"]
         if reset["reset_test"] != 1 or reset["pre_reset_clean_drain"] != 1:
             raise V2Error(f"base {owner} reset lacks clean-drain/reset flags")
@@ -427,6 +494,20 @@ def validate_base_result_schema(result: dict[str, Any]) -> None:
             "base_sha256", "literal_replacement_count", "mutant_sha256",
             "new_anchor_sha256", "old_anchor_sha256", "target",
         }, f"base mutation {index} source identity")
+        for key in ("actual_endpoint_RTL_source_rewrite", "compiled_successfully",
+                    "executed", "killed"):
+            if type(record[key]) is not bool:
+                raise V2Error(f"base mutation {index}/{key} is not an exact boolean")
+        require_int(record["exit_code"], f"base mutation {index}/exit_code", minimum=None)
+        for key in ("build_log_sha256", "first_diagnostic", "mutation", "owner",
+                    "simulation_log_sha256"):
+            require_string(record[key], f"base mutation {index}/{key}")
+        source_identity = record["source_identity"]
+        require_int(source_identity["literal_replacement_count"],
+                    f"base mutation {index}/literal replacement count")
+        for key in ("base_sha256", "mutant_sha256", "new_anchor_sha256",
+                    "old_anchor_sha256", "target"):
+            require_string(source_identity[key], f"base mutation {index}/source/{key}")
 
 
 def verify_result_identity(result: dict[str, Any], package_commit: str | None = None) -> list[str]:
@@ -726,6 +807,13 @@ def ordinal_semantic_projection(rows: list[dict[str, Any]]) -> list[dict[str, An
             "ordinal_simulation_log_sha256",
         }:
             raise V2Error("sequence evidence row fields differ")
+        for key in ("event_row_count", "accepted_ordinal_count",
+                    "retired_ordinal_count"):
+            require_int(row[key], f"sequence evidence/{key}")
+        for key in ("owner", "trace", "event_row_sequence_sha256",
+                    "accept_order_sha256", "retire_order_sha256",
+                    "ordinal_csv_sha256", "ordinal_simulation_log_sha256"):
+            require_string(row[key], f"sequence evidence/{key}")
         del row["ordinal_simulation_log_sha256"]
     return projected
 
@@ -999,6 +1087,10 @@ def read_archive(path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         if name in expected:
             raise V2Error(f"duplicate inventory path: {name}")
         expected[name] = row
+    require_int(manifest.get("inventory_entry_count"),
+                "sealed export inventory counter")
+    require_int(manifest.get("inventory_size_bytes"),
+                "sealed export inventory byte counter")
     if manifest.get("inventory_entry_count") != len(rows):
         raise V2Error("sealed export inventory counter differs")
     if manifest.get("inventory_size_bytes") != sum(row["size_bytes"] for row in rows):
@@ -1021,6 +1113,8 @@ def validate_publication_inventory_counter(
     manifest: dict[str, Any], publication: dict[str, Any],
 ) -> None:
     actual = len(manifest["inventory"])
+    require_int(publication.get("export_inventory_entry_count"),
+                "publication inventory counter")
     if publication.get("export_inventory_entry_count") != actual:
         raise V2Error("publication inventory counter differs")
 
@@ -1064,6 +1158,12 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         "combined_actual_full50_executions", "trace_identities",
     }:
         raise V2Error("v2 dataset fields differ")
+    for key in ("trace_count", "shared_prepared_trace_count",
+                "per_campaign_actual_full50_executions",
+                "combined_actual_full50_executions"):
+        require_int(dataset[key], f"v2 dataset/{key}")
+    if type(dataset["organizer_official"]) is not bool:
+        raise V2Error("v2 dataset organizer flag is not an exact boolean")
     if (dataset["id"] != "full50" or
             dataset["source_class"] != "TEAM_DEFINED_SYNTHETIC" or
             dataset["organizer_official"] is not False or
@@ -1074,8 +1174,8 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
             not isinstance(dataset["trace_identities"], list) or
             len(dataset["trace_identities"]) != 50):
         raise V2Error("v2 dataset counters differ")
-    if v2_result.get("execution_accounting") != v2_execution_accounting():
-        raise V2Error("v2 execution accounting differs")
+    require_typed_equal(v2_result.get("execution_accounting"),
+                        v2_execution_accounting(), "v2 execution accounting")
     identities = retained.require_object(v2_result.get("identities"), "v2 identities")
     if set(identities) != {
         "package_commit", "package_tree", "package_input_identity_sha256",
@@ -1117,6 +1217,29 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
         "ordinal_definition", "ordinal_semantic_projection_exclusion",
     }:
         raise V2Error("v2 sequence evidence fields differ")
+    require_int(sequence["primary_ordinal_observation_actual_RTL_executions"],
+                "v2 primary ordinal execution count")
+    require_int(sequence["reproduction_ordinal_observation_actual_RTL_executions"],
+                "v2 reproduction ordinal execution count")
+    require_typed_equal({
+        "event_row_order": sequence["event_row_order"],
+        "execution_time_global_retire_order":
+            sequence["execution_time_global_retire_order"],
+        "within_same_cycle_global_order_reconstructable_from_ordinal_sidecars":
+            sequence["within_same_cycle_global_order_reconstructable_from_ordinal_sidecars"],
+        "ordinal_definition": sequence["ordinal_definition"],
+        "ordinal_semantic_projection_exclusion":
+            sequence["ordinal_semantic_projection_exclusion"],
+    }, {
+        "event_row_order": "trace/TB event-id row order retained and hashed",
+        "execution_time_global_retire_order":
+            "checked by the pinned TB accepted FIFO and bound by each retained PASS log",
+        "within_same_cycle_global_order_reconstructable_from_ordinal_sidecars": True,
+        "ordinal_definition":
+            "monotonic global ordinal assigned lane0 then lane1 on each observed edge",
+        "ordinal_semantic_projection_exclusion":
+            ["/each_row/ordinal_simulation_log_sha256"],
+    }, "v2 sequence definition")
     if (len(sequence["primary_full50_runs"]) != 100 or
             len(reproduction["reproduction_full50_runs"]) != 100 or
             sequence["primary_ordinal_observation_actual_RTL_executions"] != 100 or
@@ -1124,6 +1247,8 @@ def validate_v2_metadata(v2_result: dict[str, Any]) -> None:
             sequence["ordinal_semantic_projection_exclusion"] !=
             ["/each_row/ordinal_simulation_log_sha256"]):
         raise V2Error("v2 sequence evidence counter/definition differs")
+    ordinal_semantic_projection(sequence["primary_full50_runs"])
+    ordinal_semantic_projection(reproduction["reproduction_full50_runs"])
     if v2_result.get("qualification") != {
         "hardened_synthetic_single_edge_RTL": "PASS",
         "canonical_campaign": "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT",
@@ -1139,6 +1264,10 @@ def validate_publication_metadata(publication: dict[str, Any]) -> None:
         raise V2Error("publication schema/status differs")
     if publication.get("pins_sha256") != EXPECTED_PINS_SHA256:
         raise V2Error("publication pins identity differs")
+    for key in ("primary_legacy_result_size_bytes",
+                "reproduction_legacy_result_size_bytes", "v2_result_size_bytes",
+                "export_size_bytes", "export_inventory_entry_count"):
+        require_int(publication.get(key), f"publication/{key}")
     if publication.get("physical_status") != "HOLD" or publication.get(
             "canonical_campaign_status") != "HOLD_OUTSIDE_THIS_SYNTHETIC_V2_EXPORT":
         raise V2Error("publication qualification status differs")
