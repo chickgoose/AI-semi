@@ -187,6 +187,21 @@
       "sha256": "993e34e229bf9d1b4810af4b540e4015dbebae60505c8f682641373fbb4fee0f"
     }
   },
+  "lifecycle": {
+    "current_candidate_selection_authority": false,
+    "current_final_a2_a3_decision": "HOLD",
+    "current_goal_authority": false,
+    "current_implemented_endpoint_boundary": "IMPLEMENTED_SINGLE_EDGE_SOURCE_PENDING_ACCEPT_THROUGH_RETIRE",
+    "current_release_interface": null,
+    "current_release_interface_authority": false,
+    "current_release_interface_status": "HOLD",
+    "status": "SUPERSEDED_HISTORICAL_NONCURRENT",
+    "superseded_by": {
+      "contract_id": "redred-system-goal-v2-2026-08-19",
+      "path": "contracts/redred_system_goal/active_goal.json"
+    },
+    "team_release_authority": false
+  },
   "objective_scope": "Fovea_weight_preserving_A2_A3_K2_plus_P6",
   "retained_fallback": {
     "candidate": "a3_exact_scalar_prefix_k2_plus_p6",
@@ -208,5 +223,5 @@
     "tie_break": "capacity22 EPC then full50 accepted then lower mapped cells"
   },
   "selection_reason": "A2 clears every digital hard gate, remains on the same-flow structural Pareto set, and provides more than five percent full50/capacity22 performance benefit while its mapped-cell, state, and wire-proxy penalties remain inside the declared digital cost guard. A2 still pays a 27.906977 percent generic logic-depth penalty versus A3; this receipt does not treat that proxy as physical Fmax.",
-  "status": "DIGITAL_SELECTION_COMPLETE_PHYSICAL_HOLD"
+  "status": "HISTORICAL_DIGITAL_SELECTION_SUPERSEDED_NONCURRENT"
 }

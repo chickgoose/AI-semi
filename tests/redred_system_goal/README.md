@@ -5,6 +5,9 @@ each reviewed boundary. Negative cases cover:
 
 - policy PASS falsely claiming evidence or release qualification;
 - missing and unknown keys at nested levels;
+- replacement of the implemented one-posedge `clk_i`, synchronous active-high
+  `rst_i`, `link_enable_i`, nine-wire single-edge boundary with stale
+  ref/sample-clock, active-low-reset, or forwarded-clock language;
 - selected-interface promotion and cross-interface evidence borrowing;
 - A2 calendar/sparse/no-debt semantics;
 - A3 held-snapshot scope and bounded activation rules;
@@ -12,7 +15,8 @@ each reviewed boundary. Negative cases cover:
 - leakage from the exact P6 10-bit/five-data-wire DDR transfer contract;
 - forwarded-clock exception widening to data endpoints;
 - P6 legality, pad PHY, and vectorless-power promotion;
-- parallel fallback promotion without integrated digital/PNR/power evidence;
+- parallel fallback release promotion from its bounded digital/source evidence
+  without independent mapped PNR/power evidence and final selection;
 - trace, manifest, harness, and inherited-document digest mutation;
 - `capacity22` being treated as independent from `full50`;
 - weakened cycle equations, pending/reset behavior, error counters, event

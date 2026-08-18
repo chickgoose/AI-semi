@@ -24,6 +24,12 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 
 ## 고정 평가 경계
 
+- 현재 구현 경계는 하나의 `clk_i` 상승 에지 도메인, synchronous active-high
+  `rst_i`, synchronous admission backpressure인 `link_enable_i`, 16-source
+  pending/accept, 9-wire `{valid,addr0,addr1}` single-edge link와 ordered
+  two-lane retire다. Generated/gated/forwarded clock은 없다. Reset은 in-flight
+  state를 지우므로 clean `drain_idle_o`를 먼저 확인한 drain-before-reset만
+  qualification 범위다.
 - Endpoint PPA에는 scheduler, source admission, charge되는 buffer, TX/RX,
   retirement, drain/error logic을 모두 포함한다.
 - Event generator, scoreboard, visualization, coordinate transform와 motion
@@ -34,7 +40,9 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
   corruption, reorder, accepted-missing, reset escape와 protocol error는 hard
   correctness failure다.
 - Release 후보는 posedge single shared clock과 일반 standard-cell 구조다.
-  P6/multi-edge 자료는 주최 측과 PDK의 서면 허용 전에는 역사적 연구 비교다.
+  `audits/k2_final_selection/`의 P6/multi-edge A2 선택은 superseded/noncurrent
+  역사적 연구 비교이며 현재 후보/interface/release 선택 authority가 없다.
+  현재 release interface와 최종 A2/A3 선택은 null/HOLD다.
 
 ## 현재 bounded evidence
 
@@ -57,11 +65,9 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 
 ## 현재 HOLD
 
-- Hardened synthetic 실행의 봉인 artifact root가 보존되지 않았다. 보존된
-  `/tmp` root는 이전 `4ce4836` baseline bytes이므로 canonical artifact로
+- Hardened synthetic와 public projected 결과는 bounded actual-RTL PASS지만
+  외부 canonical campaign dependency를 닫지 않으며 release/selection으로
   승격하지 않는다.
-- Public export는 bounded actual-RTL evidence지만 closed-inventory 및
-  machine-readable semantic-reproducibility 규약의 추가 hardening이 필요하다.
 - Organizer-authoritative GPDK045 corner/clock/I/O/load 수치와 mapped cell
   legality가 없다.
 - Hardened single-edge A2/A3의 실제 Genus/Innovus P&R, post-route timing,

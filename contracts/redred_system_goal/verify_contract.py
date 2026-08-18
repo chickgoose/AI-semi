@@ -194,19 +194,34 @@ EXPECTED_GOAL = {
 
 
 EXPECTED_ENDPOINT = {
-    "boundary_id": "SOURCE_PENDING_ACCEPT_THROUGH_RETIRE",
+    "boundary_id": "IMPLEMENTED_SINGLE_EDGE_SOURCE_PENDING_ACCEPT_THROUGH_RETIRE",
+    "active_interface_profile": "PARALLEL_FALLBACK_SINGLE_EDGE_IMPLEMENTED",
+    "clock_reset_contract": {
+        "primary_clock_port": "clk_i",
+        "active_edge": "POSEDGE",
+        "clock_domain_count": 1,
+        "generated_clocks_allowed": False,
+        "gated_clocks_allowed": False,
+        "forwarded_clocks_allowed": False,
+        "reset_port": "rst_i",
+        "reset_polarity": "ACTIVE_HIGH",
+        "reset_assertion": "SYNCHRONOUS",
+        "reset_deassertion": "SYNCHRONOUS",
+        "reset_assertion_precondition": "CLEAN_DRAIN_IDLE_PRE_EDGE",
+    },
     "request": {
-        "signal": "source_pending",
+        "signal": "source_pending_i[15:0]",
         "state_model": "ONE_ENTRY_PENDING_LATCH_PER_SOURCE",
     },
     "acceptance": {
-        "signal": "source_accept",
-        "sample_edge": "ACTIVE_SYNCHRONOUS_EDGE",
+        "signal": "source_accept_o[15:0]",
+        "sample_edge": "PRIMARY_CLOCK_POSEDGE",
         "condition": "PENDING_PRE_EDGE_AND_ACCEPT_PRE_EDGE",
     },
     "retirement": {
-        "valid_signal": "retire_valid",
-        "sample_edge": "SYNCHRONOUS_CONSUMER_EDGE",
+        "valid_signal": "retire_valid_o[1:0]",
+        "address_signals": ["retire_addr0_o[3:0]", "retire_addr1_o[3:0]"],
+        "sample_edge": "PRIMARY_CLOCK_POSEDGE",
         "delivered_alias": "retired",
     },
     "included_components": [
@@ -233,12 +248,18 @@ EXPECTED_ENDPOINT = {
     "all_functional_state_charged": True,
     "coordinate_inside_endpoint_ppa": False,
     "top_port_scope": {
-        "kind": "STANDARD_CELL_LOGIC_PORTS",
-        "input_roles": ["REF_CLOCK", "SAMPLE_CLOCK", "RESET_N", "SOURCE_PENDING_16"],
+        "kind": "IMPLEMENTED_SINGLE_EDGE_STANDARD_CELL_LOGIC_PORTS",
+        "input_roles": [
+            "PRIMARY_CLOCK",
+            "SYNCHRONOUS_ACTIVE_HIGH_RESET",
+            "LINK_ENABLE",
+            "SOURCE_PENDING_16",
+        ],
         "output_roles": [
             "SOURCE_ACCEPT_16",
-            "FORWARDED_LINK_CLOCK",
-            "LINK_DATA",
+            "ACCEPT_COUNT_2",
+            "ACCEPT_ADDRESS_2X4",
+            "SINGLE_EDGE_LINK_CELL_9",
             "RETIRE_VALID_2",
             "RETIRE_ADDRESS_2X4",
             "DRAIN_IDLE",
@@ -926,12 +947,15 @@ def verify_cycle_semantics(document: Mapping[str, Any]) -> None:
     expect(
         cycle["reset_model"],
         {
-            "reset_signal": "rst_n",
-            "assertion": "ACTIVE_LOW",
+            "reset_signal": "rst_i",
+            "assertion": "ACTIVE_HIGH_SYNCHRONOUS",
+            "deassertion": "SYNCHRONOUS",
             "pending_cleared": True,
             "endpoint_state_cleared": True,
             "retire_during_reset_allowed": False,
-            "post_reset_drain_required": True,
+            "drain_before_reset_required": True,
+            "reset_quiet_required": True,
+            "post_reset_recovery_required": True,
         },
         "cycle_semantics.reset_model",
     )

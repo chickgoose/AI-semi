@@ -27,7 +27,19 @@ REDRED의 새 목표는 다음과 같다.
 
 ## 평가 경계와 지표
 
-완전 endpoint의 시작은 synchronous `source_pending && source_accept`이고 끝은 synchronous consumer가 관측한 `retire_valid`와 retired address다. Scheduler 정책 상태, admission, charge되는 buffering, 선택 link의 TX/RX와 control, retirement, drain/error logic은 모두 포함한다. Event 발생기, testbench scoreboard, coordinate transform, motion estimation, visualization은 endpoint PPA에서 제외한다.
+현재 구현된 완전 endpoint는 single-edge parallel 경계다. 시작은 하나의
+`clk_i` 상승 에지에서 샘플되는 `source_pending_i[15:0] &&
+source_accept_o[15:0]`이고, 끝은 같은 상승 에지 도메인의
+`retire_valid_o[1:0]`와 ordered retired address다. `rst_i`는 synchronous
+active-high이며 in-flight state를 지우므로 qualification은 reset을 샘플하기
+전에 clean `drain_idle_o`를 확인해야 한다. `link_enable_i`는 synchronous
+admission backpressure이지 clock gate가 아니다. 구현 link는
+`{link_valid, link_addr0[3:0], link_addr1[3:0]}`의 9-wire single-edge cell이고
+generated/gated/forwarded clock은 없다. Scheduler 정책 상태, admission,
+charge되는 buffering, TX/RX와 control, retirement, drain/error logic은 모두
+포함한다. Event 발생기, testbench scoreboard, coordinate transform, motion
+estimation, visualization은 endpoint PPA에서 제외한다. 이 구현 경계는 release
+interface 선택을 뜻하지 않으며 선택 interface는 여전히 null/HOLD다.
 
 모든 완료 run은 다음을 기록한다.
 
@@ -43,17 +55,23 @@ REDRED의 새 목표는 다음과 같다.
 
 - A2는 persistent all-four-row demand에서 `[1,5,5,1]` weighted opportunity를 제공하는 성능 주후보다. Sparse fallback에는 debt/catch-up이 없고 exact scalar prefix를 보장하지 않는다.
 - A3는 held pending snapshot에 canonical scalar selection 두 단계를 적용하는 exact-prefix 의미 fallback이다. Shared link legality나 공통 증거 실패를 자동으로 해결하는 fallback은 아니다.
-- A4는 actual-P6 회귀에 남아 있는 연구 비교 대상이지 release 후보가 아니다.
-- 고정 Verilator와 고정 RTL/TB/trace로 actual-P6 full50 150회, reset 3회, mutation 15회를 재현했다. Digital RTL은 GO지만 이 receipt 자체의 physical 및 CDC/RDC 상태는 HOLD다.
+- A4는 historical actual-P6 회귀에 남아 있는 연구 비교 대상이지 release 후보가 아니다.
+- `audits/k2_final_selection/`의 A2 선택은 P6 digital-only 역사 자료다. 현재
+  single-edge endpoint 계약이 이를 supersede했으므로 현 후보 선택, interface
+  선택 또는 release authority가 없다. 그 receipt의 재현 가능한 측정값은
+  보존하지만 최종 선택 자료로 사용하지 않는다.
+- Hardened single-edge actual RTL은 팀 synthetic 및 public projected extension의
+  bounded semantics 범위에서 PASS다. 이것은 canonical campaign, mapped
+  physical/vectorless, interface 선택 또는 team release PASS가 아니다.
 - 기존 6.5 ns, 153.846 MHz 결과는 Fovea+A7/R1, A2+P6, A3+P6 standard-cell endpoint의 고정 reference point다. Exact Fmax, real DDR pad/PHY signoff 또는 대회 P6 허용을 뜻하지 않는다.
 
 ## Release gate
 
 1. `CANONICAL_DIGITAL`: 동일 full50 trace와 TB/window/tool로 A2/A3 actual RTL을 실행하고 accepted-event exact-once와 loss conservation을 event 단위로 확인한다.
-2. `INTERFACE`: P6는 주최 측 서면 허용과 PDK cell legality가 모두 있어야 선택할 수 있다. 그 전에는 HOLD이며 single-edge fallback도 독립적인 digital/P&R/power evidence 전까지 HOLD다.
+2. `INTERFACE`: P6는 주최 측 서면 허용과 PDK cell legality가 모두 있어야 선택할 수 있다. 그 전에는 HOLD다. Single-edge는 bounded digital/source evidence만 있으며 독립적인 mapped P&R/power와 최종 선택 전까지 release HOLD다.
 3. `PHYSICAL`: 선택된 동일 endpoint boundary에서 timing, area, DRC, antenna, connectivity를 검증한다. 6.5 ns reference를 Fmax로 부르지 않는다.
 4. `VECTORLESS_POWER`: 동일 complete endpoint, GPDK045/PVT/clock/I/O 조건에서 실제 Genus mapped vectorless artifact를 검증한다. VCD/SAIF activity 결과와 다른 evidence class다.
-5. `CDC_RDC`: phase-related clock/reset 구조의 독립 검증 전까지 final system release를 막는다.
+5. `CDC_RDC`: single-edge source-level one-posedge/synchronous-input 검사는 bounded PASS지만, 선택 interface의 mapped/final CDC/RDC 전까지 final system release를 막는다.
 6. `DATASET_EXTENSION`: 주최 측 또는 공개 dataset은 format, license, source mapping, immutable digest가 갖춰진 뒤 추가한다. 부재가 팀 canonical digital 작업을 막지는 않는다.
 7. `COORDINATE`: supplied pose를 쓰는 strict post-retire demo를 먼저 검증한다. Numeric contract와 RTL/PPA는 별도 후속 gate다.
 
@@ -71,7 +89,7 @@ REDRED의 새 목표는 다음과 같다.
 
 1. A2/A3 canonical actual-RTL campaign과 receipt provenance를 닫는다.
 2. 주최 측에 P6/multi-edge 허용과 정확한 공통 PDK corner/clock/I/O 표를 서면 확인한다.
-3. P6와 single-edge fallback 중 release interface를 확정하고 선택 interface만 새로 complete-boundary P&R/vectorless/CDC 검증한다.
+3. P6의 서면 legality가 생기기 전에는 noncurrent 역사 자료로만 유지한다. Release interface를 확정한 뒤 선택 interface만 complete-boundary P&R/vectorless/CDC 검증한다.
 4. 주최 측 dataset이 오면 기존 full50을 바꾸지 않고 versioned extension campaign으로 추가한다.
 5. known-motion coordinate demo를 system presentation에 연결하고, numeric contract가 정해진 뒤에만 RTL/PPA 편입을 검토한다.
 
@@ -80,9 +98,15 @@ REDRED의 새 목표는 다음과 같다.
 전용 통합 branch `integration/redred-system-goal`에서 다음을 확인했다.
 
 - 새 dataset/coordinate/campaign/vectorless/contract 도구의 집중 회귀 108개가 모두 PASS했다.
-- 고정 actual-P6 재현은 package commit `88b972233de0db6ca73c27ad450c62eb97190e55`에서 PASS했다. 실제 실행 수는 full50 150회, reset 3회, actual-RTL mutation 15회이며 결과 JSON SHA-256은 `5cb973816fc7f2e71edf299cd9ba5c33e883aae390731c0f455d3a004562a8dd`다.
-- A2 full50은 generated 106,416, accepted/retired 104,046, source overrun 2,370, fixed-window 0.896281733 event/cycle, accept-to-retire 3 cycle이다.
-- A3 full50은 generated 106,416, accepted/retired 93,645, source overrun 12,771, fixed-window 0.806670806 event/cycle, accept-to-retire 2 cycle이다.
-- 위 재현이 허용하는 판정은 `digital_RTL=GO`뿐이다. P6 organizer legality, selected-interface physical, CDC/RDC, single-edge fallback, real-server mapped vectorless power는 계속 HOLD다.
+- 고정 actual-P6 재현과 그 A2 선택은 reproducible historical 연구 자료지만
+  현재 single-edge 목표와 최종 선택에 대한 authority는 없다.
+- 현재 single-edge synthetic actual-RTL 100회에서 A2는 generated 106,416,
+  accepted/retired 104,046, source overrun 2,370, fixed-window 0.896281733
+  event/cycle, accept-to-retire 3 cycle이다. A3는 accepted/retired 93,645,
+  source overrun 12,771, 0.806670806 event/cycle, 2 cycle이다.
+- 이 single-edge 결과는 bounded synthetic semantics PASS일 뿐이다. Canonical
+  digital, organizer/mapped legality, real P&R/post-route timing, mapped
+  vectorless power, selected-interface final CDC/RDC, 최종 A2/A3 선택과 team
+  release는 계속 HOLD다.
 - local captured-byte dataset 변환과 known-pose coordinate 실행은 각각 importer 및 `SYNTHETIC_DEMO` 검증일 뿐 공식 dataset 또는 canonical system evidence가 아니다.
 - 일부 기존 physical/Genus 회귀는 소스 실패가 아니라 `/tmp`의 세 개 golden archive가 없는 상태라 재현 HOLD다.

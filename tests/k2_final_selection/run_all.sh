@@ -11,5 +11,8 @@ python3 -B "$repo/audits/k2_final_selection/generate_selection.py" \
   --repo-root "$repo" --output "$out"
 cmp "$out" "$repo/audits/k2_final_selection/result.json"
 grep -q '"selected_key": "a2"' "$out"
+grep -q '"status": "SUPERSEDED_HISTORICAL_NONCURRENT"' "$out"
+grep -q '"current_goal_authority": false' "$out"
+grep -q '"current_release_interface": null' "$out"
 grep -q '"standard_cell_area_fmax_power_energy_routing": "HOLD"' "$out"
-printf 'K2_FINAL_SELECTION_ALL_PASS selected=a2 fallback=a3 physical=HOLD\n'
+printf 'K2_HISTORICAL_SELECTION_ALL_PASS current_authority=NONE release=HOLD\n'

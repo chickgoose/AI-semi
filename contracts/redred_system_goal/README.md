@@ -28,9 +28,19 @@ qualifies its results, Cadence evidence, an interface, or the final system.
   A3 independently passes. Shared interface, evidence, CDC/RDC, and PDK-I/O
   failures cannot activate A3.
 - A4 is research-only, nonranking, and not a release candidate.
-- The charged endpoint begins at synchronous `source_pending`/`source_accept`
-  admission and ends at synchronous retirement. Coordinate processing remains
-  an external post-retire stretch function and is outside endpoint PPA.
+- The implemented charged endpoint is the single-edge parallel boundary. It
+  begins at `source_pending_i[15:0]`/`source_accept_o[15:0]` admission and ends
+  at `retire_valid_o[1:0]` plus the ordered retirement addresses, all sampled
+  on the rising edge of the one primary `clk_i`. `rst_i` is synchronous and
+  active high; qualification must observe clean `drain_idle_o` before sampling
+  reset because reset clears in-flight state. `link_enable_i` is synchronous
+  admission backpressure, not a clock gate. The link cell is the nine-wire
+  `{valid, addr0[3:0], addr1[3:0]}` single-edge encoding. There is no generated,
+  gated, or forwarded clock in this implemented boundary.
+- This implemented interface profile is not a release-interface selection.
+  The selected release interface remains null and **HOLD**. Coordinate
+  processing remains an external post-retire stretch function outside
+  endpoint PPA.
 
 ## Interface state
 
@@ -41,6 +51,12 @@ forwarded clock. Bits 4:0 launch at the rising edge after the low half; bits 9:5
 launch at the falling edge after the high half; the receiver commits at the
 falling edge. The single allowed unconstrained endpoint is the intentional
 standard-cell `link_clk_o` forwarded-clock output; data exceptions are zero.
+
+The receipt under `audits/k2_final_selection/` is a superseded historical P6
+digital-only comparison. Its recorded A2 choice is noncurrent: it is neither
+the active endpoint boundary nor authority for the current candidate, release
+interface, or team-release decision. Those decisions remain HOLD in this
+contract.
 
 The inherited 6.5 ns Fovea+A7/R1, A2+P6, and A3+P6 standard-cell cohort is
 `PASS_WITH_CLAIM_LIMIT`. It covers logic top ports only, not pads, package, or
