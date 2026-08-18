@@ -1,0 +1,39 @@
+{
+  "archive_emitted": false,
+  "expected_result_sha256": "e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4",
+  "hold_reasons": [
+    {
+      "code": "INTEGRATION_COMMIT_MISMATCH",
+      "expected": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+      "observed": "4ce4836fab1309d3468db8e660d2da9af371f784"
+    },
+    {
+      "code": "PINS_SHA256_MISMATCH",
+      "expected": "0daba2132010272a78b56ec2a1541f30f7cb5d2b0d8562102cb70cf9e098d8e0",
+      "observed": "d76217d917e0f8439c6aea6364ab92723af7ce8ef6efd2e2265415c89b4f2a9f"
+    },
+    {
+      "code": "RESULT_SHA256_MISMATCH",
+      "expected": "e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4",
+      "observed": "0df2de9cf0fb9f9811ba988d915f0f9b3dabaf89a0ca053ac4f8fc20a804b03b"
+    },
+    {
+      "code": "SOURCE_COMMIT_MISMATCH",
+      "expected": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+      "observed": "7286913f9f1dc771bde13fa51124b0d31aedd068"
+    }
+  ],
+  "nonclaims": [
+    "no missing byte was regenerated, copied from Git, or inferred",
+    "no hardened synthetic replay export exists",
+    "no canonical campaign or physical qualification is claimed"
+  ],
+  "observed_result_sha256": "0df2de9cf0fb9f9811ba988d915f0f9b3dabaf89a0ca053ac4f8fc20a804b03b",
+  "schema": "a23_single_edge_synthetic_export_status_v1",
+  "source_root": "/tmp/a23-full-single-edge-replay.IdAjj6",
+  "source_scan": {
+    "regular_file_count": 811,
+    "size_bytes": 51562971
+  },
+  "status": "HOLD"
+}
