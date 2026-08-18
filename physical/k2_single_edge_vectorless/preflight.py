@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Fail-closed A2/A3 mapped Genus default-vectorless evidence gate.
+"""Fail-closed A2/A3 mapped Genus default-vectorless diagnostic gate.
 
-The committed templates are configuration and can only produce HOLD.  GO needs
-two complete in-place server attempts plus an HMAC keyring kept outside the
-public evidence tree and pinned by an out-of-band SHA-256 value.
+The current I/O constraints are unconfirmed placeholders and there is no
+controlled producer.  Every supported result is therefore HOLD; structural
+artifact checks never imply producer authentication, equivalence, or signoff.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import hashlib
-import hmac
 import json
 import math
 import os
@@ -29,10 +28,18 @@ CONTRACT_PATH = HERE / "contract.json"
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:+-]{0,127}")
 UTC_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z")
+HOLD_STATUS = "HOLD_PLACEHOLDER_IO_AND_NO_CONTROLLED_PRODUCER"
+EXPECTED_INPUTS = ["clk_i", "rst_i", "link_enable_i", "source_pending_i[15:0]"]
+EXPECTED_OUTPUTS = [
+    "source_accept_o[15:0]", "accept_count_o[1:0]", "accept_addr0_o[3:0]",
+    "accept_addr1_o[3:0]", "link_valid_o", "link_addr0_o[3:0]",
+    "link_addr1_o[3:0]", "retire_valid_o[1:0]", "retire_addr0_o[3:0]",
+    "retire_addr1_o[3:0]", "protocol_error_o", "drain_idle_o",
+]
 
 
 class EvidenceError(ValueError):
-    """The requested proof is incomplete, inconsistent, or unauthenticated."""
+    """The requested diagnostic input is incomplete or inconsistent."""
 
 
 def canonical(value: Any) -> bytes:
@@ -180,11 +187,11 @@ def _forbid_lineage_text(value: str, label: str) -> None:
 
 
 def _committed_payload(root: Path, commit: str, relative: str, label: str) -> bytes:
-    """Read a source identity from the explicitly pinned producer commit.
+    """Read a source identity from an explicitly pinned hardened commit.
 
-    The integration branch may not yet contain that commit when this evidence
-    flow is reviewed, so the immutable Git object is the authority.  If the
-    path is already materialized, its bytes must match the same object.
+    The integration branch may not yet contain that commit when this diagnostic
+    flow is reviewed, so the immutable Git object is the sole source authority.
+    Server attempts must snapshot these bytes rather than compile a checkout.
     """
     try:
         completed = subprocess.run(
@@ -195,12 +202,24 @@ def _committed_payload(root: Path, commit: str, relative: str, label: str) -> by
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
         raise EvidenceError(f"missing pinned commit object for {label}: {detail}")
-    current = root / relative
-    if current.exists():
-        current_payload = stable_read(current, f"materialized {label}", single_link=False)
-        if current_payload != completed.stdout:
-            raise EvidenceError(f"materialized {label} differs from producer commit")
     return completed.stdout
+
+
+def _rtl_ansi_ports(payload: bytes, top: str) -> tuple[list[str], list[str]]:
+    """Extract the deliberately simple ANSI port declarations of a pinned top."""
+    text = payload.decode("utf-8", errors="strict")
+    matches = re.findall(
+        rf"(?ms)^\s*module\s+{re.escape(top)}\s*\((.*?)\)\s*;", text)
+    if len(matches) != 1:
+        raise EvidenceError(f"{top} must have one exact module declaration")
+    ports: dict[str, list[str]] = {"input": [], "output": []}
+    declarations = re.findall(
+        r"(?m)^\s*(input|output)\s+(?:logic|wire|reg)\s*"
+        r"(\[[0-9]+:[0-9]+\])?\s*([A-Za-z_][A-Za-z0-9_$]*)\s*,?\s*$",
+        matches[0])
+    for direction, width, name in declarations:
+        ports[direction].append(name + width)
+    return ports["input"], ports["output"]
 
 
 def reject_activity(payload: bytes, label: str,
@@ -224,20 +243,21 @@ def load_contract(root: Path = ROOT) -> tuple[dict[str, Any], bytes]:
 def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
     exact_keys(contract, {
         "schema", "status", "evidence_class", "decision_policy",
-        "policy_binding", "source_pins", "candidates", "operating_point",
+        "policy_binding", "source_pins", "constraint_authority", "candidates", "operating_point",
         "activity_policy", "tool", "execution_policy", "artifact_policy",
-        "producer_authority", "templates",
+        "diagnostic_provenance", "templates",
     }, "contract")
-    if (contract["schema"] != "k2_single_edge_vectorless_contract_v1" or
-            contract["status"] != "READY_FOR_PRODUCER_BOUND_SERVER_EXECUTION" or
+    if (contract["schema"] != "k2_single_edge_vectorless_contract_v2" or
+            contract["status"] != "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER" or
             contract["evidence_class"] !=
-            "GENUS_MAPPED_A2_A3_SINGLE_EDGE_DEFAULT_VECTORLESS"):
+            "GENUS_MAPPED_A2_A3_SINGLE_EDGE_DEFAULT_VECTORLESS_DIAGNOSTIC"):
         raise EvidenceError("contract identity/status mismatch")
 
     decision = exact_keys(contract["decision_policy"], {
         "candidate_order", "exact_cohort_required", "release_interface",
         "transfer_mode", "synthetic_allowed", "inherited_allowed", "p6_allowed",
-        "borrowed_dependency_ids_allowed",
+        "borrowed_dependency_ids_allowed", "candidate_go_possible",
+        "comparison_ready_possible",
     }, "decision_policy")
     if decision != {
         "candidate_order": ["a2_single_edge", "a3_single_edge"],
@@ -248,6 +268,8 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
         "inherited_allowed": False,
         "p6_allowed": False,
         "borrowed_dependency_ids_allowed": [],
+        "candidate_go_possible": False,
+        "comparison_ready_possible": False,
     }:
         raise EvidenceError("single-edge exact-cohort decision policy changed")
 
@@ -265,11 +287,35 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
         "P6_VECTORLESS_POWER",
         "P6_PAD_PACKAGE_CHANNEL",
     ]
-    if (fallback.get("transfer_mode") != "SINGLE_EDGE_PARALLEL" or
+    io_authority = policy_doc.get("external_data_and_coordinate_policy", {}).get(
+        "pdk_endpoint_io_rules", {})
+    if (policy_doc.get("goal_policy", {}).get("selected_release_interface") is not None or
+            policy_doc.get("goal_policy", {}).get("selected_release_interface_status") != "HOLD" or
+            fallback.get("competition_release_status") !=
+            "HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER" or
+            fallback.get("transfer_mode") != "SINGLE_EDGE_PARALLEL" or
             fallback.get("may_borrow_p6_physical_evidence") is not False or
             fallback.get("disallowed_borrowed_dependencies") != required_disallowed or
-            policy["required_disallowed_dependencies"] != required_disallowed):
-        raise EvidenceError("REDRED single-edge/P6 anti-borrow policy mismatch")
+            policy["required_disallowed_dependencies"] != required_disallowed or
+            io_authority.get("status") != "HOLD" or
+            io_authority.get("inherited_6p5_values_are_final_competition_rules") is not False):
+        raise EvidenceError("REDRED HOLD/I/O-authority/P6 policy mismatch")
+
+    authority = exact_keys(contract["constraint_authority"], {
+        "status", "evidence_class", "external_authority_available",
+        "values_are_release_claims", "candidate_go_eligible",
+        "comparison_ready_eligible", "maximum_status",
+    }, "constraint_authority")
+    if authority != {
+        "status": "UNCONFIRMED_TEAM_PLACEHOLDER",
+        "evidence_class": "TEAM_PLACEHOLDER_SCREENING_ONLY",
+        "external_authority_available": False,
+        "values_are_release_claims": False,
+        "candidate_go_eligible": False,
+        "comparison_ready_eligible": False,
+        "maximum_status": HOLD_STATUS,
+    }:
+        raise EvidenceError("placeholder I/O authority fail-closure changed")
 
     source_identity = exact_keys(contract["source_pins"], {"path", "sha256"},
                                  "source_pins")
@@ -278,10 +324,14 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
     if sha256(source_payload) != digest(source_identity["sha256"],
                                         "source_pins.sha256"):
         raise EvidenceError("source pin manifest SHA mismatch")
-    exact_keys(source_doc, {"schema", "producer_commit", "candidates"}, "source pins")
-    producer_commit = source_doc["producer_commit"]
-    if (source_doc["schema"] != "k2_single_edge_vectorless_source_pins_v1" or
-            producer_commit != "4ce4836fab1309d3468db8e660d2da9af371f784"):
+    exact_keys(source_doc, {"schema", "equivalent_hardened_commits", "candidates"},
+               "source pins")
+    hardened_commits = source_doc["equivalent_hardened_commits"]
+    if (source_doc["schema"] != "k2_single_edge_vectorless_source_pins_v2" or
+            hardened_commits != [
+                "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+                "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+            ]):
         raise EvidenceError("source pin schema mismatch")
 
     candidates = contract["candidates"]
@@ -302,8 +352,8 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
                 row["top"] != expected_tops[candidate] or
                 row["boundary"] !=
                 "SOURCE_PENDING_ACCEPT_THROUGH_SINGLE_EDGE_LINK_RETIRE" or
-                not isinstance(row["inputs"], list) or not row["inputs"] or
-                not isinstance(row["outputs"], list) or not row["outputs"]):
+                row["inputs"] != EXPECTED_INPUTS or
+                row["outputs"] != EXPECTED_OUTPUTS):
             raise EvidenceError(f"{candidate} complete-boundary contract mismatch")
         _forbid_lineage_text(row["top"], f"{candidate} top")
         pins = exact_keys(source_doc["candidates"][candidate],
@@ -312,9 +362,11 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
         if pins["architecture"] != row["architecture"] or pins["top"] != row["top"]:
             raise EvidenceError(f"{candidate} source/top pin mismatch")
         if (not isinstance(pins["filelists"], list) or len(pins["filelists"]) != 2 or
-                not isinstance(pins["sources"], list) or len(pins["sources"]) != 5):
+                not isinstance(pins["sources"], list) or len(pins["sources"]) != 6):
             raise EvidenceError(f"{candidate} source closure is incomplete")
         seen: set[str] = set()
+        top_payload: bytes | None = None
+        committed_by_path: dict[str, bytes] = {}
         for kind, identities in (("filelist", pins["filelists"]),
                                  ("source", pins["sources"])):
             for index, source in enumerate(identities):
@@ -327,10 +379,37 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
                 if source_rel in seen:
                     raise EvidenceError(f"duplicate source/filelist in {candidate}")
                 seen.add(source_rel)
-                source_bytes = _committed_payload(
-                    root, producer_commit, source_rel, f"{kind} {source_rel}")
-                if sha256(source_bytes) != digest(source["sha256"], "source SHA"):
+                committed = [
+                    _committed_payload(root, commit, source_rel,
+                                       f"{kind} {source_rel} at {commit}")
+                    for commit in hardened_commits
+                ]
+                if committed[0] != committed[1]:
+                    raise EvidenceError(
+                        f"hardened commits disagree for {kind}: {source_rel}")
+                if sha256(committed[0]) != digest(source["sha256"], "source SHA"):
                     raise EvidenceError(f"committed {kind} SHA mismatch: {source_rel}")
+                committed_by_path[source_rel] = committed[0]
+                if source_rel.endswith(f"/{row['top']}.sv"):
+                    top_payload = committed[0]
+        if top_payload is None or _rtl_ansi_ports(top_payload, row["top"]) != (
+                EXPECTED_INPUTS, EXPECTED_OUTPUTS):
+            raise EvidenceError(f"{candidate} committed top port set mismatch")
+        candidate_filelist = pins["filelists"][0]["path"]
+        generic_filelist = pins["filelists"][1]["path"]
+        candidate_lines = [line.strip() for line in
+                           committed_by_path[candidate_filelist].decode().splitlines()
+                           if line.strip()]
+        generic_lines = [line.strip() for line in
+                         committed_by_path[generic_filelist].decode().splitlines()
+                         if line.strip()]
+        if candidate_lines.count(f"-f {generic_filelist}") != 1:
+            raise EvidenceError(f"{candidate} candidate filelist nesting mismatch")
+        expanded = []
+        for line in candidate_lines:
+            expanded.extend(generic_lines if line == f"-f {generic_filelist}" else [line])
+        if expanded != [identity["path"] for identity in pins["sources"]]:
+            raise EvidenceError(f"{candidate} committed filelist/source expansion mismatch")
 
     expected_operating = {
         "corner": {"pdk": "GPDK045/gsclib045", "process": 1.0,
@@ -341,7 +420,7 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
                   "min_pulse_high_ns": 0.5, "min_pulse_low_ns": 0.5},
         "io": {"input_delay_min_ns": 0.1, "input_delay_max_ns": 0.5,
                "output_delay_min_ns": 0.1, "output_delay_max_ns": 0.5,
-               "input_transition_ns": 0.05, "drive_cell": "BUFX2"},
+               "input_transition_ns": 0.05},
         "load": {"all_outputs_pf": 0.01},
         "libraries": {
             "setup": {"relative_path": "timing/slow_vdd1v0_basicCells.lib",
@@ -409,33 +488,35 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
         "fixed_roles", "source_role_prefix", "filelist_role_prefix",
         "all_files_regular_single_link", "complete_ledger_required",
     }, "artifact_policy")
-    if (len(artifact_policy["fixed_roles"]) != 18 or
-            len(set(artifact_policy["fixed_roles"])) != 18 or
+    if (len(artifact_policy["fixed_roles"]) != 19 or
+            len(set(artifact_policy["fixed_roles"])) != 19 or
             artifact_policy["source_role_prefix"] != "source_" or
             artifact_policy["filelist_role_prefix"] != "filelist_" or
             artifact_policy["all_files_regular_single_link"] is not True or
             artifact_policy["complete_ledger_required"] is not True):
         raise EvidenceError("complete artifact policy changed")
 
-    authority = exact_keys(contract["producer_authority"], {
-        "accepted_receipt_schema", "accepted_origin", "attestation_schema",
-        "algorithm", "keyring_schema", "trust_anchor_location",
-        "out_of_band_keyring_sha256_required", "unauthenticated_result",
-    }, "producer_authority")
-    if authority != {
-        "accepted_receipt_schema": "k2_single_edge_vectorless_producer_receipt_v1",
-        "accepted_origin": "DIRECT_GENUS_SERVER_RUN",
-        "attestation_schema": "k2_single_edge_vectorless_attestation_v1",
-        "algorithm": "hmac-sha256",
-        "keyring_schema": "k2_single_edge_vectorless_keyring_v1",
-        "trust_anchor_location": "OUTSIDE_PUBLIC_EVIDENCE_ROOT",
-        "out_of_band_keyring_sha256_required": True,
-        "unauthenticated_result": "HOLD_UNAUTHENTICATED_PRODUCER_ARTIFACTS",
+    provenance = exact_keys(contract["diagnostic_provenance"], {
+        "accepted_receipt_schema", "accepted_origin", "controlled_runner_available",
+        "live_host_binding_available", "freshness_or_replay_protection_available",
+        "keyring_or_hmac_accepted", "structural_validation_implies_equivalence",
+        "structural_validation_implies_signoff", "maximum_status",
+    }, "diagnostic_provenance")
+    if provenance != {
+        "accepted_receipt_schema": "k2_single_edge_vectorless_diagnostic_receipt_v2",
+        "accepted_origin": "UNCONTROLLED_EXTERNAL_CAPTURE",
+        "controlled_runner_available": False,
+        "live_host_binding_available": False,
+        "freshness_or_replay_protection_available": False,
+        "keyring_or_hmac_accepted": False,
+        "structural_validation_implies_equivalence": False,
+        "structural_validation_implies_signoff": False,
+        "maximum_status": HOLD_STATUS,
     }:
-        raise EvidenceError("producer authority policy changed")
+        raise EvidenceError("diagnostic-only provenance policy changed")
 
     templates = exact_keys(contract["templates"],
-                           {"driver", "sdc", "producer_receipt"}, "templates")
+                           {"driver", "sdc", "diagnostic_receipt"}, "templates")
     payloads: dict[str, bytes] = {}
     for name, identity in templates.items():
         exact_keys(identity, {"path", "sha256"}, f"templates.{name}")
@@ -447,11 +528,15 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
     reject_activity(payloads["driver"], "Genus driver", activity["forbidden_tokens"])
     driver_text = payloads["driver"].decode("utf-8")
     for command in ("syn_generic", "syn_map", "syn_opt", "write_hdl",
-                    "write_sdc", "write_sdf"):
+                    "write_sdc", "write_sdf", "check_design"):
         if len(re.findall(rf"(?m)^\s*{command}\b", driver_text)) != 1:
             raise EvidenceError(f"Genus driver requires exactly one {command}")
     if len(re.findall(r"(?m)^\s*report_power\b", driver_text)) != 1:
         raise EvidenceError("Genus driver requires exactly one report_power")
+    if ("K2_SE_ACTIVITY_MODE" not in driver_text or
+            "GENUS_DEFAULT_VECTORLESS" not in driver_text or
+            "K2_SINGLE_EDGE_VECTORLESS_DIAGNOSTIC_COMPLETE" not in driver_text):
+        raise EvidenceError("Genus driver lacks diagnostic activity/completion guard")
     sdc_text = payloads["sdc"].decode("utf-8")
     for required in ("create_clock -name single_edge_clk -period 6.500",
                      "set_input_delay -clock single_edge_clk -min 0.100",
@@ -461,18 +546,23 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
                      "set_input_transition 0.050", "set_load 0.010"):
         if required not in sdc_text:
             raise EvidenceError(f"strict SDC missing exact constraint: {required}")
-    if re.search(r"(?i)\b(?:false_path|multicycle|p6|negedge|falling)\b", sdc_text):
+    if (sdc_text.count("create_clock ") != 1 or
+            "UNCONFIRMED_TEAM_PLACEHOLDER" not in sdc_text or
+            re.search(r"(?i)\b(?:create_generated_clock|false_path|multicycle|p6|negedge|falling)\b",
+                      sdc_text)):
         raise EvidenceError("single-edge SDC contains borrowed/multi-edge exception")
-    template_doc = parse_json(payloads["producer_receipt"], "receipt template")
+    template_doc = parse_json(payloads["diagnostic_receipt"], "receipt template")
     if (template_doc.get("schema") !=
-            "k2_single_edge_vectorless_producer_receipt_template_v1" or
-            template_doc.get("status") != "HOLD_TEMPLATE_NOT_EXECUTION_EVIDENCE" or
+            "k2_single_edge_vectorless_diagnostic_receipt_template_v2" or
+            template_doc.get("status") != "HOLD_TEMPLATE_NOT_DIAGNOSTIC_ARTIFACTS" or
             template_doc.get("candidate_go") is not False or
+            template_doc.get("comparison_ready") is not False or
+            template_doc.get("maximum_status") != HOLD_STATUS or
             any(template_doc.get(field) is not None for field in (
                 "mapped_netlist_sha256", "materialized_sdc_sha256",
                 "genus_log_sha256", "exact_executed_argv", "genus_exit_code",
-                "complete_artifact_ledger_sha256", "producer_attestation"))):
-        raise EvidenceError("receipt template must remain non-evidence HOLD")
+                "complete_artifact_ledger_sha256"))):
+        raise EvidenceError("receipt template must remain diagnostic-only HOLD")
     return source_doc
 
 
@@ -480,17 +570,19 @@ def preflight(root: Path, output: Path) -> Path:
     contract, contract_payload = load_contract(root)
     source_doc = validate_contract(root, contract)
     result = {
-        "schema": "k2_single_edge_vectorless_preflight_v1",
-        "status": "HOLD_NO_PRODUCER_BOUND_SERVER_ARTIFACTS",
+        "schema": "k2_single_edge_vectorless_preflight_v2",
+        "status": HOLD_STATUS,
         "comparison_ready": False,
         "candidate_go": False,
-        "reason": "templates and local pins are valid; Genus was not invoked and no authenticated server artifacts were supplied",
+        "reason": "I/O/load constraints are unconfirmed placeholders and no controlled producer, live-host binding, or freshness authority exists",
         "evidence_class": contract["evidence_class"],
         "candidate_order": contract["decision_policy"]["candidate_order"],
         "release_interface": "PARALLEL_FALLBACK",
         "transfer_mode": "SINGLE_EDGE_PARALLEL",
         "power_method": "GENUS_MAPPED_DEFAULT_VECTORLESS",
         "activity_annotated": False,
+        "constraint_authority": contract["constraint_authority"]["status"],
+        "controlled_producer_available": False,
         "contract_sha256": sha256(contract_payload),
         "source_pins_sha256": contract["source_pins"]["sha256"],
         "source_tops": {key: row["top"]
@@ -573,11 +665,17 @@ def parse_power_report(payload: bytes, top: str,
     text = payload.decode("utf-8")
 
     def one(pattern: str, label: str) -> str:
-        values = re.findall(pattern, text, re.MULTILINE | re.IGNORECASE)
+        values = re.findall(pattern, text, re.MULTILINE)
         if len(values) != 1:
             raise EvidenceError(f"power report requires exactly one {label}")
         return values[0].strip()
 
+    generated_lines = re.findall(r"(?m)^Generated by:\s*(.*?)\s*$", text)
+    if generated_lines != ["Genus(TM) Synthesis Solution"]:
+        raise EvidenceError("power report tool identifier mismatch")
+    instance = one(r"^Instance:\s+/(\S+)\s*$", "exact Instance identifier")
+    if instance != top:
+        raise EvidenceError("power report top mismatch")
     if one(r"^\s*\*\s*Activity File\s*:\s*(.*?)\s*$", "Activity File header") != "N.A.":
         raise EvidenceError("power report Activity File must be exactly N.A.")
     if one(r"^\s*\*\s*User-Defined Activity\s*:\s*(.*?)\s*$",
@@ -589,14 +687,15 @@ def parse_power_report(payload: bytes, top: str,
                   "Primary Input Activity header")
     if sequential != "0.200000" or primary != "0.200000":
         raise EvidenceError("power report does not show native Genus 0.2 defaults")
-    if "Generated by:           Genus(TM) Synthesis Solution" not in text:
-        raise EvidenceError("power report lacks native Genus header")
-    if f"Instance: /{top}" not in text and f"* Design: {top}" not in text:
-        raise EvidenceError("power report top mismatch")
-    if re.search(r"(?mi)^\s*Power Unit:\s*W\s*$", text) is None:
-        raise EvidenceError("power report unit must be W")
+    unit_lines = re.findall(r"(?m)^\s*Power Unit:\s*(\S+)\s*$", text)
+    if unit_lines != ["W"]:
+        raise EvidenceError("power report requires exactly one noncontradictory W unit")
+    headers = re.findall(
+        r"(?m)^\s*(Category\s+Leakage\s+Internal\s+Switching\s+Total)\s*$", text)
+    if headers != ["Category         Leakage     Internal    Switching        Total"]:
+        raise EvidenceError("power report requires exact native category column order")
     rows = re.findall(
-        r"(?mi)^\s*Subtotal\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+"
+        r"(?m)^\s*Subtotal\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+"
         r"([-+0-9.eE]+)\s+([-+0-9.eE]+)\s*$", text)
     if len(rows) != 1:
         raise EvidenceError("power report must contain exactly one Subtotal row")
@@ -614,16 +713,100 @@ def parse_power_report(payload: bytes, top: str,
             "switching_mw": switching * 1000, "total_mw": total * 1000}
 
 
-def verify_genus_log(payload: bytes, top: str, contract: dict[str, Any]) -> None:
+def validate_genus_diagnostic_log(payload: bytes, top: str,
+                                  contract: dict[str, Any]) -> None:
     reject_activity(payload, "Genus log", contract["activity_policy"]["forbidden_tokens"])
     text = payload.decode("utf-8")
     if (f"Version: {contract['tool']['version']}" not in text or
-            f"K2_SINGLE_EDGE_VECTORLESS_PRODUCER_PASS top={top}" not in text or
+            f"K2_SINGLE_EDGE_VECTORLESS_DIAGNOSTIC_COMPLETE top={top}" not in text or
             "Normal exit." not in text or
             re.search(r"Info=\d+, Warn=\d+, Error=0, Fatal=0", text) is None):
-        raise EvidenceError("Genus log lacks version/PASS/zero-error/normal-exit evidence")
+        raise EvidenceError(
+            "Genus log lacks version/diagnostic-completion/zero-error/normal-exit context")
     if re.search(r"(?mi)^\s*(?:\*\*)?(?:Error|Fatal)\s*[:\[]", text):
         raise EvidenceError("Genus log contains an error/fatal diagnostic")
+
+
+def validate_structural_netlist(payload: bytes, top: str) -> dict[str, int]:
+    text = payload.decode("utf-8", errors="strict")
+    modules = re.findall(r"(?m)^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b", text)
+    if modules != [top] or len(re.findall(r"(?m)^\s*endmodule\b", text)) != 1:
+        raise EvidenceError("mapped netlist requires exactly the expected top module")
+    if re.search(r"(?i)\bp6\b", text):
+        raise EvidenceError("mapped netlist contains P6 lineage")
+    if re.search(r"(?mi)^\s*(?:always|initial)\b", text):
+        raise EvidenceError("mapped netlist is behavioral, not mapped")
+
+    declared: dict[str, set[str]] = {"input": set(), "output": set()}
+    for direction, width, names in re.findall(
+            r"(?ms)\b(input|output)\b\s+(?:(?:wire|reg|logic)\s+)?"
+            r"(\[[^\]]+\])?\s*([^;]+);", text):
+        normalized_width = re.sub(r"\s+", "", width)
+        for raw_name in names.split(","):
+            name = raw_name.strip().split("=")[0].strip()
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", name):
+                declared[direction].add(name + normalized_width)
+    if declared["input"] != set(EXPECTED_INPUTS) or \
+            declared["output"] != set(EXPECTED_OUTPUTS):
+        raise EvidenceError("mapped netlist complete-boundary port set mismatch")
+
+    keywords = {"module", "input", "output", "inout", "wire", "reg", "logic",
+                "assign", "always", "initial", "if", "for", "case", "function"}
+    instances = [match.group(1) for match in re.finditer(
+        r"(?m)^\s*([A-Za-z_][A-Za-z0-9_$]*)\s+"
+        r"(?:#\s*\([^;]*?\)\s*)?[A-Za-z_\\][^\s(]*\s*\(", text)
+        if match.group(1).lower() not in keywords]
+    if not instances:
+        raise EvidenceError("mapped netlist has no structural cell instances")
+    return {"structural_instance_count": len(instances)}
+
+
+def validate_mapped_sdc(payload: bytes) -> None:
+    text = payload.decode("utf-8", errors="strict")
+    if len(re.findall(r"(?m)^\s*create_clock\b", text)) != 1:
+        raise EvidenceError("mapped SDC requires exactly one primary clock")
+    if re.search(
+            r"(?i)\b(?:create_generated_clock|set_false_path|set_multicycle_path|"
+            r"negedge|falling|p6)\b", text):
+        raise EvidenceError("mapped SDC contains a timing exception or multi-edge lineage")
+    clock = re.findall(
+        r"(?m)^\s*create_clock\s+-name\s+single_edge_clk\s+-period\s+6\.500\s+"
+        r"-waveform\s+\{0\.000\s+3\.250\}\s+\[get_ports\s+\{?clk_i\}?\]\s*$",
+        text)
+    if len(clock) != 1:
+        raise EvidenceError("mapped SDC primary clock name/port/period/waveform mismatch")
+
+    requirements = (
+        ("set_clock_uncertainty", None, "0.250"),
+        ("set_input_delay", "-min", "0.100"),
+        ("set_input_delay", "-max", "0.500"),
+        ("set_output_delay", "-min", "0.100"),
+        ("set_output_delay", "-max", "0.500"),
+        ("set_input_transition", None, "0.050"),
+        ("set_load", None, "0.010"),
+        ("set_min_pulse_width", "-high", "0.500"),
+        ("set_min_pulse_width", "-low", "0.500"),
+    )
+    for command, option, value in requirements:
+        lines = re.findall(rf"(?m)^\s*{command}\b[^\n]*$", text)
+        if option is not None:
+            lines = [line for line in lines if re.search(
+                rf"(?:^|\s){re.escape(option)}(?:\s|$)", line)]
+        if not lines or any(re.search(
+                rf"(?:^|\s){re.escape(value)}(?:\s|$)", line) is None
+                for line in lines):
+            label = f"{command} {option or ''}".strip()
+            raise EvidenceError(f"mapped SDC missing or contradicting exact {label} value")
+
+
+def validate_check_design_diagnostic(payload: bytes, top: str) -> None:
+    text = payload.decode("utf-8", errors="strict")
+    if len(payload) < 32 or re.search(r"(?i)check[_ ]design", text) is None or top not in text:
+        raise EvidenceError("check-design diagnostic lacks native command/top context")
+    if re.search(r"(?mi)^\s*(?:Error|Fatal)\s*[:\[]", text) or re.search(
+            r"(?i)\b(?:unresolved|blackbox)(?:\s+\w+){0,3}\s*[:=]\s*[1-9][0-9]*\b",
+            text):
+        raise EvidenceError("check-design diagnostic reports unresolved connectivity")
 
 
 def _artifact_rows(attempt: Path, receipt: dict[str, Any], candidate: str,
@@ -672,26 +855,26 @@ def _utc(value: Any, label: str) -> datetime:
     return parsed
 
 
-def verify_attempt(attempt: Path, candidate: str, expected_top: str,
-                   source_pins: dict[str, Any], contract: dict[str, Any]
-                   ) -> dict[str, Any]:
-    receipt, receipt_payload = read_json(attempt / "producer-receipt.json",
-                                         f"{candidate} producer receipt")
+def validate_diagnostic_attempt(attempt: Path, candidate: str, expected_top: str,
+                                source_pins: dict[str, Any], contract: dict[str, Any]
+                                ) -> dict[str, Any]:
+    receipt, receipt_payload = read_json(attempt / "diagnostic-receipt.json",
+                                         f"{candidate} diagnostic receipt")
     exact_keys(receipt, {
         "schema", "status", "evidence_class", "candidate", "architecture",
-        "interface", "boundary", "lineage", "top", "producer",
+        "interface", "boundary", "lineage", "top", "capture",
         "operating_point", "activity_policy", "tool", "execution", "artifacts",
-        "complete_artifact_ledger_sha256", "attestation",
-    }, f"{candidate} producer receipt")
+        "complete_artifact_ledger_sha256",
+    }, f"{candidate} diagnostic receipt")
     schema = receipt.get("schema")
-    if schema != contract["producer_authority"]["accepted_receipt_schema"]:
+    if schema != contract["diagnostic_provenance"]["accepted_receipt_schema"]:
         text = str(schema).lower()
         if any(token in text for token in ("p6", "endpoint_vectorless", "k2_w2_genus",
                                            "template", "synthetic", "inherited")):
             raise EvidenceError(f"{candidate} legacy/P6/synthetic receipt schema rejected")
-        raise EvidenceError(f"{candidate} unsupported producer receipt schema")
+        raise EvidenceError(f"{candidate} unsupported diagnostic receipt schema")
     expected = contract["candidates"][candidate]
-    if (receipt["status"] != "PRODUCER_COMPLETE" or
+    if (receipt["status"] != "DIAGNOSTIC_COMPLETE_UNVERIFIED" or
             receipt["evidence_class"] != contract["evidence_class"] or
             receipt["candidate"] != candidate or
             receipt["architecture"] != expected["architecture"] or
@@ -724,18 +907,18 @@ def verify_attempt(attempt: Path, candidate: str, expected_top: str,
     if sha256(tool_payload) != contract["tool"]["sha256"]:
         raise EvidenceError(f"{candidate} live Genus binary SHA mismatch")
 
-    producer = exact_keys(receipt["producer"], {
-        "origin", "authority_id", "run_id", "host_fingerprint_sha256",
+    capture = exact_keys(receipt["capture"], {
+        "origin", "capture_id", "claimed_host_fingerprint_sha256",
         "started_utc", "finished_utc",
-    }, f"{candidate} producer")
-    if producer["origin"] != contract["producer_authority"]["accepted_origin"]:
-        raise EvidenceError(f"{candidate} is not a direct server producer")
-    string(producer["authority_id"], f"{candidate} authority_id", ID_RE)
-    string(producer["run_id"], f"{candidate} run_id", ID_RE)
-    digest(producer["host_fingerprint_sha256"], f"{candidate} host fingerprint")
-    if _utc(producer["finished_utc"], "finished_utc") <= _utc(
-            producer["started_utc"], "started_utc"):
-        raise EvidenceError(f"{candidate} producer timestamps are not increasing")
+    }, f"{candidate} diagnostic capture")
+    if capture["origin"] != contract["diagnostic_provenance"]["accepted_origin"]:
+        raise EvidenceError(f"{candidate} capture must remain explicitly uncontrolled")
+    string(capture["capture_id"], f"{candidate} capture_id", ID_RE)
+    digest(capture["claimed_host_fingerprint_sha256"],
+           f"{candidate} claimed host fingerprint")
+    if _utc(capture["finished_utc"], "finished_utc") <= _utc(
+            capture["started_utc"], "started_utc"):
+        raise EvidenceError(f"{candidate} diagnostic timestamps are not increasing")
 
     payloads, artifacts = _artifact_rows(
         attempt, receipt, candidate, source_pins, contract)
@@ -743,11 +926,13 @@ def verify_attempt(attempt: Path, candidate: str, expected_top: str,
     source_manifest = parse_json(payloads["source_manifest"],
                                  f"{candidate} source manifest")
     exact_keys(source_manifest, {
-        "schema", "producer_commit", "candidate", "top", "filelists", "sources",
+        "schema", "equivalent_hardened_commits", "candidate", "top",
+        "filelists", "sources",
     },
                f"{candidate} source manifest")
-    if (source_manifest["schema"] != "k2_single_edge_source_snapshot_v1" or
-            source_manifest["producer_commit"] != source_pins["producer_commit"] or
+    if (source_manifest["schema"] != "k2_single_edge_source_snapshot_v2" or
+            source_manifest["equivalent_hardened_commits"] !=
+            source_pins["equivalent_hardened_commits"] or
             source_manifest["candidate"] != candidate or
             source_manifest["top"] != expected_top or
             not isinstance(source_manifest["filelists"], list) or
@@ -781,22 +966,15 @@ def verify_attempt(attempt: Path, candidate: str, expected_top: str,
     if sha256(payloads["hold_liberty"]) != contract["operating_point"]["libraries"]["hold"]["sha256"]:
         raise EvidenceError(f"{candidate} hold Liberty mismatch")
 
-    netlist_text = payloads["mapped_netlist"].decode("utf-8", errors="strict")
-    if re.search(rf"(?m)^\s*module\s+{re.escape(expected_top)}\b", netlist_text) is None:
-        raise EvidenceError(f"{candidate} mapped netlist lacks exact top")
-    if re.search(r"(?i)\bp6\b", netlist_text):
-        raise EvidenceError(f"{candidate} mapped netlist contains P6 lineage")
-    if re.search(r"(?mi)^\s*(?:always|initial)\b", netlist_text):
-        raise EvidenceError(f"{candidate} netlist is behavioral, not mapped")
-    mapped_sdc_text = payloads["mapped_sdc"].decode("utf-8", errors="strict")
-    if ("single_edge_clk" not in mapped_sdc_text or "6.500" not in mapped_sdc_text or
-            re.search(r"(?i)\b(?:p6|negedge|falling)\b", mapped_sdc_text)):
-        raise EvidenceError(f"{candidate} mapped SDC lost single-edge clock binding")
+    netlist_diagnostic = validate_structural_netlist(
+        payloads["mapped_netlist"], expected_top)
+    validate_mapped_sdc(payloads["mapped_sdc"])
     if expected_top not in payloads["mapped_sdf"].decode("utf-8", errors="strict"):
         raise EvidenceError(f"{candidate} mapped SDF top mismatch")
-    verify_genus_log(payloads["genus_log"], expected_top, contract)
+    validate_genus_diagnostic_log(payloads["genus_log"], expected_top, contract)
     power = parse_power_report(payloads["report_power"], expected_top,
                                contract["activity_policy"])
+    validate_check_design_diagnostic(payloads["report_check_design"], expected_top)
     for role in ("report_area", "report_timing", "report_qor",
                  "report_timing_intent", "report_clocks"):
         reject_activity(payloads[role], f"{candidate} {role}",
@@ -841,92 +1019,36 @@ def verify_attempt(attempt: Path, candidate: str, expected_top: str,
     command = parse_json(payloads["command_receipt"], f"{candidate} command receipt")
     expected_command = {"schema": "k2_single_edge_command_receipt_v1", **execution}
     if command != expected_command:
-        raise EvidenceError(f"{candidate} producer command receipt mismatch")
+        raise EvidenceError(f"{candidate} diagnostic command receipt mismatch")
     environment_receipt = parse_json(payloads["environment_receipt"],
                                      f"{candidate} environment receipt")
     expected_environment_receipt = {
-        "schema": "k2_single_edge_server_environment_v1",
-        "producer": producer,
+        "schema": "k2_single_edge_diagnostic_environment_v2",
+        "capture": capture,
         "tool": contract["tool"],
         "operating_point": contract["operating_point"],
         "activity_policy": contract["activity_policy"],
     }
     if environment_receipt != expected_environment_receipt:
-        raise EvidenceError(f"{candidate} producer environment receipt mismatch")
+        raise EvidenceError(f"{candidate} diagnostic environment receipt mismatch")
 
-    attestation = exact_keys(receipt["attestation"], {
-        "schema", "key_id", "algorithm", "payload_sha256", "mac_sha256",
-    }, f"{candidate} attestation")
-    unsigned = dict(receipt)
-    del unsigned["attestation"]
-    if (attestation["schema"] != contract["producer_authority"]["attestation_schema"] or
-            attestation["algorithm"] != "hmac-sha256" or
-            attestation["key_id"] != producer["authority_id"] or
-            attestation["payload_sha256"] != sha256(canonical(unsigned))):
-        raise EvidenceError(f"{candidate} producer attestation binding mismatch")
-    digest(attestation["mac_sha256"], f"{candidate} attestation MAC")
     return {
         "candidate": candidate, "top": expected_top, "receipt": receipt,
         "receipt_sha256": sha256(receipt_payload), "power": power,
-        "authority_id": producer["authority_id"],
-        "host_fingerprint_sha256": producer["host_fingerprint_sha256"],
-        "run_id": producer["run_id"],
+        "capture_id": capture["capture_id"],
+        "claimed_host_fingerprint_sha256":
+            capture["claimed_host_fingerprint_sha256"],
         "artifact_ledger_sha256": receipt["complete_artifact_ledger_sha256"],
+        "structural_diagnostic": netlist_diagnostic,
     }
-
-
-def _load_keyring(keyring_path: Path, expected_sha: str, evidence_root: Path,
-                  contract: dict[str, Any]) -> tuple[dict[str, bytes], str]:
-    expected_sha = digest(expected_sha, "out-of-band keyring SHA256")
-    keyring_resolved = keyring_path.resolve(strict=True)
-    root = evidence_root.resolve(strict=True)
-    if keyring_resolved == root or root in keyring_resolved.parents:
-        raise EvidenceError("producer keyring must remain outside evidence root")
-    info = keyring_resolved.lstat()
-    if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077:
-        raise EvidenceError("producer keyring must be owner-owned mode 0600")
-    keyring, payload = read_json(keyring_resolved, "producer keyring")
-    if sha256(payload) != expected_sha:
-        raise EvidenceError("producer keyring does not match out-of-band SHA256")
-    exact_keys(keyring, {"schema", "keys"}, "producer keyring")
-    if (keyring["schema"] != contract["producer_authority"]["keyring_schema"] or
-            not isinstance(keyring["keys"], dict) or not keyring["keys"]):
-        raise EvidenceError("producer keyring schema/keys mismatch")
-    keys: dict[str, bytes] = {}
-    for key_id, row in keyring["keys"].items():
-        string(key_id, "keyring key_id", ID_RE)
-        exact_keys(row, {"algorithm", "secret_hex", "producer_origin"},
-                   f"keyring.{key_id}")
-        if (row["algorithm"] != "hmac-sha256" or
-                row["producer_origin"] != "DIRECT_GENUS_SERVER_RUN"):
-            raise EvidenceError(f"keyring.{key_id} authority mismatch")
-        secret_hex = string(row["secret_hex"], f"keyring.{key_id}.secret_hex")
-        try:
-            secret = bytes.fromhex(secret_hex)
-        except ValueError as error:
-            raise EvidenceError(f"keyring.{key_id} secret is not hex") from error
-        if len(secret) < 32:
-            raise EvidenceError(f"keyring.{key_id} secret must contain >=256 bits")
-        keys[key_id] = secret
-    return keys, expected_sha
-
-
-def _authenticate(row: dict[str, Any], keys: dict[str, bytes]) -> None:
-    receipt = row["receipt"]
-    attestation = receipt["attestation"]
-    key_id = attestation["key_id"]
-    if key_id not in keys:
-        raise EvidenceError(f"producer authority key not trusted: {key_id}")
-    unsigned = dict(receipt)
-    del unsigned["attestation"]
-    actual = hmac.new(keys[key_id], canonical(unsigned), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(actual, attestation["mac_sha256"]):
-        raise EvidenceError(f"producer attestation MAC mismatch: {row['candidate']}")
 
 
 def qualify(evidence_path: Path, output: Path, root: Path = ROOT,
             keyring_path: Path | None = None,
             expected_keyring_sha256: str | None = None) -> Path:
+    if keyring_path is not None or expected_keyring_sha256 is not None:
+        raise EvidenceError(
+            "caller keyrings/HMAC are unsupported without a controlled producer")
     contract, contract_payload = load_contract(root)
     source_pins = validate_contract(root, contract)
     evidence, evidence_payload = read_json(evidence_path, "evidence index")
@@ -934,7 +1056,7 @@ def qualify(evidence_path: Path, output: Path, root: Path = ROOT,
         "schema", "evidence_class", "candidate_order", "interface",
         "contract_sha256", "rows",
     }, "evidence index")
-    if evidence["schema"] != "k2_single_edge_vectorless_evidence_v1":
+    if evidence["schema"] != "k2_single_edge_vectorless_diagnostic_index_v2":
         raise EvidenceError("legacy/P6/synthetic evidence index schema rejected")
     order = contract["decision_policy"]["candidate_order"]
     if (evidence["evidence_class"] != contract["evidence_class"] or
@@ -945,7 +1067,7 @@ def qualify(evidence_path: Path, output: Path, root: Path = ROOT,
     if not isinstance(evidence["rows"], list) or len(evidence["rows"]) != 2:
         raise EvidenceError("evidence index requires exact A2/A3 two-row cohort")
     evidence_root = evidence_path.resolve(strict=True).parent
-    verified: list[dict[str, Any]] = []
+    diagnostics: list[dict[str, Any]] = []
     attempt_paths: set[Path] = set()
     for index, candidate in enumerate(order):
         row = exact_keys(evidence["rows"][index],
@@ -959,18 +1081,24 @@ def qualify(evidence_path: Path, output: Path, root: Path = ROOT,
         if attempt in attempt_paths:
             raise EvidenceError("A2/A3 attempts must be distinct")
         attempt_paths.add(attempt)
-        verified.append(verify_attempt(attempt, candidate, expected_top,
-                                       source_pins, contract))
-    if len({row["authority_id"] for row in verified}) != 1:
-        raise EvidenceError("A2/A3 producer authority differs")
-    if len({row["host_fingerprint_sha256"] for row in verified}) != 1:
-        raise EvidenceError("A2/A3 server host binding differs")
-    if len({row["run_id"] for row in verified}) != 2:
-        raise EvidenceError("A2/A3 producer run IDs must be distinct")
+        diagnostics.append(validate_diagnostic_attempt(
+            attempt, candidate, expected_top, source_pins, contract))
+    if len({row["claimed_host_fingerprint_sha256"] for row in diagnostics}) != 1:
+        raise EvidenceError("A2/A3 claimed diagnostic host differs")
+    if len({row["capture_id"] for row in diagnostics}) != 2:
+        raise EvidenceError("A2/A3 diagnostic capture IDs must be distinct")
 
-    if (keyring_path is None) != (expected_keyring_sha256 is None):
-        raise EvidenceError("keyring path and out-of-band SHA256 are both required")
-    common = {
+    result = {
+        "schema": "k2_single_edge_vectorless_qualification_v2",
+        "status": HOLD_STATUS,
+        "comparison_ready": False,
+        "candidate_go": False,
+        "reason": "artifact structure is diagnostic-only; placeholder I/O authority and absence of a controlled producer/live-host/freshness binding prohibit GO",
+        "controlled_producer_available": False,
+        "live_host_bound": False,
+        "freshness_or_replay_protected": False,
+        "structural_diagnostics_complete": True,
+        "constraint_authority": contract["constraint_authority"]["status"],
         "evidence_class": contract["evidence_class"],
         "candidate_order": order,
         "release_interface": "PARALLEL_FALLBACK",
@@ -979,36 +1107,11 @@ def qualify(evidence_path: Path, output: Path, root: Path = ROOT,
         "activity_annotated": False,
         "contract_sha256": sha256(contract_payload),
         "evidence_index_sha256": sha256(evidence_payload),
-        "verified_rows": [{key: row[key] for key in (
-            "candidate", "top", "receipt_sha256", "artifact_ledger_sha256", "power")}
-                          for row in verified],
+        "diagnostic_rows": [{key: row[key] for key in (
+            "candidate", "top", "receipt_sha256", "artifact_ledger_sha256",
+            "power", "structural_diagnostic")}
+                            for row in diagnostics],
     }
-    if keyring_path is None:
-        result = {
-            "schema": "k2_single_edge_vectorless_qualification_v1",
-            "status": contract["producer_authority"]["unauthenticated_result"],
-            "comparison_ready": False,
-            "candidate_go": False,
-            "reason": "artifact consistency passed, but no out-of-band producer trust anchor was supplied",
-            "producer_authenticated": False,
-            "trusted_keyring_sha256": None,
-            **common,
-        }
-    else:
-        keys, keyring_sha = _load_keyring(keyring_path, expected_keyring_sha256,
-                                          evidence_root, contract)
-        for row in verified:
-            _authenticate(row, keys)
-        result = {
-            "schema": "k2_single_edge_vectorless_qualification_v1",
-            "status": "GO_PRODUCER_BOUND_A2_A3_SINGLE_EDGE_VECTORLESS",
-            "comparison_ready": True,
-            "candidate_go": True,
-            "reason": "both exact single-edge endpoints and every canonical artifact are producer-authenticated",
-            "producer_authenticated": True,
-            "trusted_keyring_sha256": keyring_sha,
-            **common,
-        }
     write_exclusive(output, result)
     return output
 
@@ -1023,8 +1126,6 @@ def main(argv: list[str] | None = None) -> int:
     gate.add_argument("--repo-root", type=Path, default=ROOT)
     gate.add_argument("--evidence", type=Path, required=True)
     gate.add_argument("--output", type=Path, required=True)
-    gate.add_argument("--keyring", type=Path)
-    gate.add_argument("--keyring-sha256")
     args = parser.parse_args(argv)
     try:
         root = args.repo_root.resolve(strict=True)
@@ -1034,12 +1135,13 @@ def main(argv: list[str] | None = None) -> int:
             path = preflight(root, args.output)
             print(f"K2_SINGLE_EDGE_VECTORLESS_HOLD receipt={path}")
         else:
-            path = qualify(args.evidence, args.output, root, args.keyring,
-                           args.keyring_sha256)
+            path = qualify(args.evidence, args.output, root)
             result = parse_json(stable_read(path, "qualification output"),
                                 "qualification output")
-            marker = "GO" if result["candidate_go"] else "HOLD"
-            print(f"K2_SINGLE_EDGE_VECTORLESS_{marker} receipt={path}")
+            if (result["status"] != HOLD_STATUS or result["candidate_go"] is not False or
+                    result["comparison_ready"] is not False):
+                raise EvidenceError("internal qualification decision escaped HOLD")
+            print(f"K2_SINGLE_EDGE_VECTORLESS_HOLD receipt={path}")
     except (EvidenceError, OSError, KeyError, TypeError, ValueError) as error:
         print(f"K2_SINGLE_EDGE_VECTORLESS_FAIL {error}", file=sys.stderr)
         return 2
