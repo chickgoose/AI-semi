@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the fail-closed A2/A3 K2+P6 digital selection receipt."""
+"""Generate the fail-closed superseded A2/A3 K2+P6 history receipt."""
 
 from __future__ import annotations
 
@@ -288,8 +288,25 @@ def generate(root: Path) -> dict[str, Any]:
 
     return {
         "schema": "k2_final_digital_selection_v1",
-        "status": "DIGITAL_SELECTION_COMPLETE_PHYSICAL_HOLD",
+        "status": "HISTORICAL_DIGITAL_SELECTION_SUPERSEDED_NONCURRENT",
         "objective_scope": "Fovea_weight_preserving_A2_A3_K2_plus_P6",
+        "lifecycle": {
+            "status": "SUPERSEDED_HISTORICAL_NONCURRENT",
+            "current_goal_authority": False,
+            "current_candidate_selection_authority": False,
+            "current_release_interface_authority": False,
+            "team_release_authority": False,
+            "superseded_by": {
+                "path": "contracts/redred_system_goal/active_goal.json",
+                "contract_id": "redred-system-goal-v2-2026-08-19",
+            },
+            "current_implemented_endpoint_boundary": (
+                "IMPLEMENTED_SINGLE_EDGE_SOURCE_PENDING_ACCEPT_THROUGH_RETIRE"
+            ),
+            "current_release_interface": None,
+            "current_release_interface_status": "HOLD",
+            "current_final_a2_a3_decision": "HOLD",
+        },
         "inputs": {
             "actual_p6_replay": {
                 "path": str(REPLAY_PATH), "sha256": sha256(replay_path),
@@ -374,7 +391,10 @@ def main() -> int:
     args = parser.parse_args()
     result = generate(args.repo_root.resolve())
     write_exclusive(args.output, canonical(result))
-    print("K2_FINAL_SELECTION_PASS selected=a2 fallback=a3 physical=HOLD")
+    print(
+        "K2_HISTORICAL_SELECTION_PASS historical_selected=a2 "
+        "current_authority=NONE release=HOLD"
+    )
     return 0
 
 

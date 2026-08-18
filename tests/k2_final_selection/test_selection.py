@@ -33,11 +33,40 @@ class FinalSelectionTests(unittest.TestCase):
         committed = json.loads(
             (ROOT / "audits/k2_final_selection/result.json").read_text())
         self.assertEqual(generated, committed)
+        self.assertEqual(
+            generated["status"],
+            "HISTORICAL_DIGITAL_SELECTION_SUPERSEDED_NONCURRENT",
+        )
         self.assertEqual(generated["selected_key"], "a2")
         self.assertEqual(generated["retained_fallback"]["candidate"],
                          "a3_exact_scalar_prefix_k2_plus_p6")
         self.assertEqual(generated["claim_boundary"]
                          ["standard_cell_area_fmax_power_energy_routing"], "HOLD")
+
+    def test_historical_selection_has_no_current_authority(self):
+        generated = self.module.generate(ROOT)
+        lifecycle = generated["lifecycle"]
+        goal = json.loads(
+            (ROOT / "contracts/redred_system_goal/active_goal.json").read_text())
+        self.assertEqual(lifecycle["status"],
+                         "SUPERSEDED_HISTORICAL_NONCURRENT")
+        for key in (
+                "current_goal_authority",
+                "current_candidate_selection_authority",
+                "current_release_interface_authority",
+                "team_release_authority"):
+            self.assertIs(lifecycle[key], False)
+        self.assertEqual(lifecycle["superseded_by"]["path"],
+                         "contracts/redred_system_goal/active_goal.json")
+        self.assertEqual(lifecycle["superseded_by"]["contract_id"],
+                         goal["contract_id"])
+        self.assertEqual(
+            lifecycle["current_implemented_endpoint_boundary"],
+            goal["endpoint_boundary"]["boundary_id"],
+        )
+        self.assertIsNone(lifecycle["current_release_interface"])
+        self.assertEqual(lifecycle["current_release_interface_status"], "HOLD")
+        self.assertEqual(lifecycle["current_final_a2_a3_decision"], "HOLD")
 
     def test_actual_rtl_mutation_gate_is_fail_closed(self):
         document = copy.deepcopy(self.replay)

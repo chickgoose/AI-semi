@@ -395,6 +395,40 @@ class PolicyContractTest(unittest.TestCase):
             with self.subTest(index=index):
                 self.assert_invalid(mutation)
 
+    def test_active_endpoint_is_single_edge_posedge_active_high(self) -> None:
+        mutations = [
+            lambda doc: doc["endpoint_boundary"].update(
+                {"boundary_id": "SOURCE_PENDING_ACCEPT_THROUGH_RETIRE"}
+            ),
+            lambda doc: doc["endpoint_boundary"]["clock_reset_contract"].update(
+                {"primary_clock_port": "ref_clk_i"}
+            ),
+            lambda doc: doc["endpoint_boundary"]["clock_reset_contract"].update(
+                {"active_edge": "NEGEDGE"}
+            ),
+            lambda doc: doc["endpoint_boundary"]["clock_reset_contract"].update(
+                {"clock_domain_count": 2}
+            ),
+            lambda doc: doc["endpoint_boundary"]["clock_reset_contract"].update(
+                {"forwarded_clocks_allowed": True}
+            ),
+            lambda doc: doc["endpoint_boundary"]["clock_reset_contract"].update(
+                {"reset_polarity": "ACTIVE_LOW"}
+            ),
+            lambda doc: doc["endpoint_boundary"]["top_port_scope"][
+                "input_roles"
+            ].remove("LINK_ENABLE"),
+            lambda doc: doc["cycle_semantics"]["reset_model"].update(
+                {"reset_signal": "rst_n"}
+            ),
+            lambda doc: doc["cycle_semantics"]["reset_model"].update(
+                {"drain_before_reset_required": False}
+            ),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
     def test_no_invented_score_threshold(self) -> None:
         self.assert_invalid(
             lambda doc: doc["goal_policy"].update({"score_threshold_defined": True}),
