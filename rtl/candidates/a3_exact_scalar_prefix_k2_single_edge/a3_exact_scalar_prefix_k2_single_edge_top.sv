@@ -30,6 +30,7 @@ module a3_exact_scalar_prefix_k2_single_edge_top (
   logic endpoint_error;
   logic endpoint_idle;
   logic scheduler_shape_error;
+  logic protocol_error_event;
 
   assign scheduler_shape_error = (scheduler_count == 2'd3) ||
                                  ((scheduler_count == 2'd2) &&
@@ -78,9 +79,20 @@ module a3_exact_scalar_prefix_k2_single_edge_top (
   assign accept_addr0_o = endpoint_commit ? scheduler_addr0 : 4'd0;
   assign accept_addr1_o = (endpoint_commit && (scheduler_count == 2'd2)) ?
                           scheduler_addr1 : 4'd0;
-  assign protocol_error_o = endpoint_error || scheduler_shape_error ||
-                            (endpoint_commit &&
-                             (endpoint_microsteps != scheduler_count));
+  assign protocol_error_event = endpoint_error || scheduler_shape_error ||
+                                (endpoint_commit &&
+                                 (endpoint_microsteps != scheduler_count));
+
+  // Reset clears this diagnostic history.  Qualification must reject any
+  // reset sampled before clean drain; there is no hidden reset-violation bit.
+  w2_single_edge_error_latch sticky_error (
+    .clk_i,
+    .rst_i,
+    .error_event_i(protocol_error_event),
+    .protocol_error_o
+  );
+
   assign drain_idle_o = (source_pending_i == 16'd0) &&
-                        (scheduler_count == 2'd0) && endpoint_idle;
+                        (scheduler_count == 2'd0) && endpoint_idle &&
+                        !protocol_error_o;
 endmodule

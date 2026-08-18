@@ -37,6 +37,7 @@ module a2_batched_iwrr_single_edge_top (
   logic endpoint_error;
   logic endpoint_idle;
   logic scheduler_shape_error;
+  logic protocol_error_event;
   logic [15:0] expected_bitmap;
 
   always_comb begin
@@ -111,9 +112,20 @@ module a2_batched_iwrr_single_edge_top (
   assign accept_addr1_o = (scheduler_commit && (scheduler_count == 2'd2)) ?
                           scheduler_addr1 : 4'd0;
   assign source_accept_o = scheduler_commit ? scheduler_bitmap : 16'd0;
-  assign protocol_error_o = endpoint_error || scheduler_shape_error ||
-                            (endpoint_commit &&
-                             (endpoint_microsteps != buffer_count_q));
+  assign protocol_error_event = endpoint_error || scheduler_shape_error ||
+                                (endpoint_commit &&
+                                 (endpoint_microsteps != buffer_count_q));
+
+  // Wrapper-detected owner/microstep faults are sticky just like transport
+  // faults.  Reset intentionally clears the history; external qualification,
+  // not hidden RTL state, must reject reset sampled before clean drain.
+  w2_single_edge_error_latch sticky_error (
+    .clk_i,
+    .rst_i,
+    .error_event_i(protocol_error_event),
+    .protocol_error_o
+  );
+
   assign drain_idle_o = scheduler_idle && !buffer_valid_q && endpoint_idle &&
-                        (scheduler_count == 2'd0);
+                        (scheduler_count == 2'd0) && !protocol_error_o;
 endmodule
