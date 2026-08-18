@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred_single_edge_retained_artifact_index_v1",
+  "title": "Retained artifacts bound to the committed hardened A2/A3 replay result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "evidence_class",
+    "replay_result_sha256",
+    "replay_result_semantic_sha256",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "redred_single_edge_retained_artifact_index_v1"
+    },
+    "evidence_class": {
+      "const": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1"
+    },
+    "replay_result_sha256": {
+      "const": "e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4"
+    },
+    "replay_result_semantic_sha256": {
+      "const": "9fd365edc6b5b57db8a99de32bde95117f08a6ada547abd6a0c44a8149cad56f"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size_bytes"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

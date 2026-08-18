@@ -1,0 +1,93 @@
+{
+  "schema": "redred_single_edge_campaign_manifest_v2",
+  "campaign_id": "redred-a2-a3-single-edge-campaign-v2",
+  "datasets": {
+    "canonical_synthetic_full50": {
+      "id": "full50",
+      "source_class": "TEAM_DEFINED_SYNTHETIC",
+      "canonical_redred_traffic": true,
+      "official_contest_traffic": false,
+      "manifest": {
+        "path": "benchmarks/clean_slate_aer/manifest.neutrality-n16.json",
+        "sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9"
+      },
+      "trace_registry": {
+        "path": "scripts/common_suite_official.py",
+        "sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33"
+      }
+    },
+    "public_projected_extension": {
+      "id": "uzh_shapes_rotation_41p321_41p322",
+      "source_class": "PUBLIC_PROJECTED_EXTENSION",
+      "canonical_redred_traffic": false,
+      "official_contest_traffic": false,
+      "projection_commit": "a2ca2a492eeb6760f2d9aeca1c34445df245b304",
+      "projection_tree": "500d100332b2e33c73a8eef4012a66f26d25d9e5",
+      "projection_spec": {
+        "path": "benchmarks/redred_uzh_shapes_projection/projection_spec.json",
+        "sha256": "5c5d63eb86897247908df1bc9bcca3eb31dd12db4f8a34653f7727abaaecbd03"
+      },
+      "projection_implementation": {
+        "path": "benchmarks/redred_uzh_shapes_projection/project.py",
+        "sha256": "15fc4521e4812abfa53fd8690076f3446e5f4544bc7d2e2780232a79bc2e1e3f"
+      },
+      "projection_test": {
+        "path": "tests/redred_uzh_shapes_projection/test_projection.py",
+        "sha256": "9fc90b51f4b45a6951d69ce5bb161d4fa414247cafc790bf908b2384d066c30c"
+      },
+      "unique_source_occurrences": 1100,
+      "scenario_relation": "TIMING_VARIANTS_OF_ONE_SOURCE_WINDOW_NOT_INDEPENDENT_SAMPLES",
+      "scenarios": [
+        {
+          "id": "1x",
+          "trace_sha256": "c02aa20d8dc6cb2b85a500648e91f320d05f1f7e3b2d6e11d7189550b639ec94",
+          "last_cycle": 153692,
+          "fixed_window_cycles": 153693,
+          "same_source_cycle_collision_extras": 81
+        },
+        {
+          "id": "64x",
+          "trace_sha256": "b005def64b130bc0e83b73cd9e6e4ab6d0a8f6e83f12b5b008b03642e17dcebb",
+          "last_cycle": 2401,
+          "fixed_window_cycles": 2402,
+          "same_source_cycle_collision_extras": 81
+        },
+        {
+          "id": "256x",
+          "trace_sha256": "8428936e62b494747e9b75445e2a9b1f40677b92ede9f6569923729237c6f14a",
+          "last_cycle": 600,
+          "fixed_window_cycles": 601,
+          "same_source_cycle_collision_extras": 133
+        }
+      ],
+      "retained_projection_receipt": null,
+      "actual_replay_receipt": null
+    }
+  },
+  "producer": {
+    "id": "a23_full_single_edge_replay",
+    "path": "tests/a23_full_single_edge_replay",
+    "evidence_class": "A23_FULL_SINGLE_EDGE_REPLAY_ACTUAL_RTL_V1",
+    "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+    "source_tree": "e6030c7990f602a7fc1c73ac529b008b8e2c4133",
+    "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+    "integration_tree": "d0fda8da2c10693b5d7093e0e2d505590722c1ea",
+    "package_commit": "ce711a4c553c5fb6cc4b2c8afc45509c4b4bf993"
+  },
+  "committed_replay_result": {
+    "publication_commit": "72491e45a35e6883bd4ee65d5c30409c108ab190",
+    "path": "tests/a23_full_single_edge_replay/result.json",
+    "sha256": "e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4",
+    "semantic_sha256": "9fd365edc6b5b57db8a99de32bde95117f08a6ada547abd6a0c44a8149cad56f"
+  },
+  "retained_artifact_schema": {
+    "path": "benchmarks/redred_single_edge_campaign/replay_receipt.schema.json",
+    "sha256": "72b7842d3856a6e38d8f9e9983110d1cdb88129c7ed9e7cadacbfa0c6a06461d"
+  },
+  "policies": {
+    "require_retained_artifacts_for_campaign_pass": true,
+    "full50_public_pooling": "FORBIDDEN",
+    "public_extension_blocks_canonical": false,
+    "receipt_claim_is_not_artifact_replay": true
+  }
+}
