@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred_public_projected_v2_native_adapter_v1",
+  "title": "Lossless campaign view of the public-projected-v2 native tuple",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "adapter_mode", "source_class", "evidence_class",
+    "canonical_redred_traffic", "official_redred_traffic", "p6_evidence_used",
+    "release_status", "selection_status", "native_schemas", "raw_artifacts",
+    "closed_inventory", "identity_accounting", "ordinal_validation",
+    "semantic_validation", "git_provenance", "owners", "claim_boundary"
+  ],
+  "properties": {
+    "schema": {"const": "redred_public_projected_v2_native_adapter_v1"},
+    "status": {"const": "PASS"},
+    "adapter_mode": {"const": "READ_ONLY_NATIVE_SCHEMA_NO_RELABEL_NO_REPACK"},
+    "source_class": {"const": "PUBLIC_PROJECTED_EXTENSION"},
+    "evidence_class": {"const": "PUBLIC_DATASET_PROJECTED_ACTUAL_SINGLE_EDGE_RTL"},
+    "canonical_redred_traffic": {"const": false},
+    "official_redred_traffic": {"const": false},
+    "p6_evidence_used": {"const": false},
+    "release_status": {"const": "HOLD"},
+    "selection_status": {"const": "HOLD"},
+    "native_schemas": {"$ref": "#/$defs/nativeSchemas"},
+    "raw_artifacts": {"$ref": "#/$defs/rawArtifacts"},
+    "closed_inventory": {"$ref": "#/$defs/inventory"},
+    "identity_accounting": {"$ref": "#/$defs/identity"},
+    "ordinal_validation": {"$ref": "#/$defs/ordinals"},
+    "semantic_validation": {"$ref": "#/$defs/semantics"},
+    "git_provenance": {"$ref": "#/$defs/gitProvenance"},
+    "owners": {
+      "type": "object", "required": ["a2", "a3"], "additionalProperties": false,
+      "properties": {
+        "a2": {"$ref": "#/$defs/owner"},
+        "a3": {"$ref": "#/$defs/owner"}
+      }
+    },
+    "claim_boundary": {"$ref": "#/$defs/claimBoundary"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "nativeSchemas": {
+      "type": "object", "additionalProperties": false,
+      "required": ["publication", "archive_manifest", "closed_inventory", "result", "ordinal"],
+      "properties": {
+        "publication": {"const": "a23_public_projected_v2_publication_v2"},
+        "archive_manifest": {"const": "a23_public_projected_v2_export_manifest_v2"},
+        "closed_inventory": {"const": "a23_public_projected_v2_closed_inventory_v2"},
+        "result": {"const": "a23_public_projected_v2_result_v2"},
+        "ordinal": {"const": "a23_accept_retire_sequence_ordinals_v2"}
+      }
+    },
+    "rawArtifacts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["publication", "archive", "manifest", "result", "reproduction"],
+      "properties": {
+        "publication": {"$ref": "#/$defs/sizedArtifact"},
+        "archive": {"$ref": "#/$defs/sizedArtifact"},
+        "manifest": {
+          "type": "object", "additionalProperties": false,
+          "required": ["sha256", "member"],
+          "properties": {
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "member": {"const": "MANIFEST.json"}
+          }
+        },
+        "result": {"$ref": "#/$defs/sizedArtifact"},
+        "reproduction": {"$ref": "#/$defs/sizedArtifact"}
+      }
+    },
+    "sizedArtifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sha256", "size_bytes"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "inventory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "entry_count_excluding_manifest", "archive_member_count_including_manifest", "extra_entries_allowed", "ordered"],
+      "properties": {
+        "schema": {"const": "a23_public_projected_v2_closed_inventory_v2"},
+        "entry_count_excluding_manifest": {"const": 80},
+        "archive_member_count_including_manifest": {"const": 81},
+        "extra_entries_allowed": {"const": false},
+        "ordered": {"const": true}
+      }
+    },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["unique_projected_window_events", "scenario_retimings", "pooled_3300_unique_events"],
+      "properties": {
+        "unique_projected_window_events": {"const": 1100},
+        "scenario_retimings": {"const": ["1x", "64x", "256x"]},
+        "pooled_3300_unique_events": {"const": false}
+      }
+    },
+    "ordinals": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "accept_and_retire_exact_contiguous", "same_cycle_order_reconstructable", "accepted_counts"],
+      "properties": {
+        "schema": {"const": "a23_accept_retire_sequence_ordinals_v2"},
+        "accept_and_retire_exact_contiguous": {"const": true},
+        "same_cycle_order_reconstructable": {"const": true},
+        "accepted_counts": {
+          "type": "object", "additionalProperties": false, "required": ["a2", "a3"],
+          "properties": {
+            "a2": {"const": {"1x": 1019, "64x": 1019, "256x": 906}},
+            "a3": {"const": {"1x": 1019, "64x": 1013, "256x": 817}}
+          }
+        }
+      }
+    },
+    "semantics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["definition_sha256", "primary_sha256", "reproduction_sha256", "matched"],
+      "properties": {
+        "definition_sha256": {"$ref": "#/$defs/sha256"},
+        "primary_sha256": {"$ref": "#/$defs/sha256"},
+        "reproduction_sha256": {"$ref": "#/$defs/sha256"},
+        "matched": {"const": true}
+      }
+    },
+    "gitProvenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["integration_commit", "execution_source_commit", "execution_commit", "payload_commit", "reviewed_publication_commit", "payload_commit_meaning", "self_referential_commit_claim"],
+      "properties": {
+        "integration_commit": {"$ref": "#/$defs/commit"},
+        "execution_source_commit": {"$ref": "#/$defs/commit"},
+        "execution_commit": {"$ref": "#/$defs/commit"},
+        "payload_commit": {"$ref": "#/$defs/commit"},
+        "reviewed_publication_commit": {"$ref": "#/$defs/commit"},
+        "payload_commit_meaning": {"const": "COMMIT_CONTAINING_RESULT_AND_EXPORT_PAYLOADS"},
+        "self_referential_commit_claim": {"const": false}
+      }
+    },
+    "owner": {
+      "type": "object", "additionalProperties": false,
+      "required": ["1x", "64x", "256x"],
+      "properties": {
+        "1x": {"$ref": "#/$defs/scenario"},
+        "64x": {"$ref": "#/$defs/scenario"},
+        "256x": {"$ref": "#/$defs/scenario"}
+      }
+    },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["generated", "source_overrun", "accepted", "retired", "fixed_window_retired", "fixed_window_cycles", "fixed_window_events_per_cycle"],
+      "properties": {
+        "generated": {"const": 1100},
+        "source_overrun": {"type": "integer", "minimum": 0},
+        "accepted": {"type": "integer", "minimum": 0},
+        "retired": {"type": "integer", "minimum": 0},
+        "fixed_window_retired": {"type": "integer", "minimum": 0},
+        "fixed_window_cycles": {"type": "integer", "minimum": 1},
+        "fixed_window_events_per_cycle": {"type": "number", "minimum": 0}
+      }
+    },
+    "claimBoundary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["canonical_campaign_promoted", "official_contest_evidence_claimed", "synthetic_public_pooling", "archive_extracted_or_repacked", "producer_schema_relabelled", "system_release"],
+      "properties": {
+        "canonical_campaign_promoted": {"const": false},
+        "official_contest_evidence_claimed": {"const": false},
+        "synthetic_public_pooling": {"const": "FORBIDDEN"},
+        "archive_extracted_or_repacked": {"const": false},
+        "producer_schema_relabelled": {"const": false},
+        "system_release": {"const": "HOLD"}
+      }
+    }
+  }
+}
