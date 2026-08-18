@@ -1,0 +1,42 @@
+{
+  "canonical_redred_traffic": false,
+  "commit_provenance": {
+    "execution_commit": "429dbcb80cb14b04d185353d7a2f92c36238701b",
+    "execution_source_commit": "9092247aa07459bc67da66495dc643003957f42a",
+    "integration_commit": "775ec4ba081c611cac88d4d75b05a1da3c68a543",
+    "p6_evidence_used": false,
+    "publication_commit": "d4c247503af5bb322b92604bb342bc0ebf9e045e"
+  },
+  "evidence_class": "PUBLIC_DATASET_PROJECTED_ACTUAL_SINGLE_EDGE_RTL",
+  "export_bundle_sha256": "d14721e8b4fef9d616af2bee92f4db80754707d545c60ef2b2616b9f14f6ccf2",
+  "export_bundle_size_bytes": 261507,
+  "export_entry_count_excluding_manifest": 80,
+  "export_manifest_sha256": "b24b521d5d31ae4fe39f09df230dd7e399b14e1695fe8aa23e803a8736f72cca",
+  "identity_accounting": {
+    "pooled_3300_unique_events": false,
+    "scenario_retimings": [
+      "1x",
+      "64x",
+      "256x"
+    ],
+    "unique_projected_window_events": 1100
+  },
+  "official_redred_traffic": false,
+  "p6_evidence_used": false,
+  "publication_commit_meaning": "COMMIT_CONTAINING_RESULT_AND_EXPORT_PAYLOADS",
+  "release_status": "HOLD",
+  "reproduction_result_sha256": "24da3a81fa34a5b3b4fd847fe9d49f937cdb45bf6dc64343adcc903476269482",
+  "reset_scope": "CLEAN_DRAIN_ONLY",
+  "result_sha256": "815c752f4852790d4db5c3c935cc2edc5821fee9a36f2e83c35d3ec8b73c5c12",
+  "schema": "a23_public_projected_v2_publication_v2",
+  "selection_status": "HOLD",
+  "self_referential_commit_claim": false,
+  "semantic_reproduction": {
+    "definition_sha256": "2d9f0585d127e9f18429ace8ac6d70218b2ac2377092d453d4e04cfa53f161c2",
+    "matched": true,
+    "primary_semantic_sha256": "7491680311effb422b868fddd783d0ec6eb9f3aece54907260e52198fc26d157",
+    "reproduction_semantic_sha256": "7491680311effb422b868fddd783d0ec6eb9f3aece54907260e52198fc26d157"
+  },
+  "semantic_sha256": "7491680311effb422b868fddd783d0ec6eb9f3aece54907260e52198fc26d157",
+  "status": "PUBLIC_PROJECTED_EXTENSION"
+}
