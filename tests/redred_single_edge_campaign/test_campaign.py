@@ -37,7 +37,7 @@ campaign = load_campaign()
 class CampaignTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        cls.manifest = campaign.load_json(MANIFEST_PATH, "test campaign manifest")
         raw = subprocess.run(
             [
                 "git", "-C", str(ROOT), "show",
@@ -46,7 +46,7 @@ class CampaignTests(unittest.TestCase):
             check=True, stdout=subprocess.PIPE,
         ).stdout
         cls.result_raw = raw
-        cls.result = json.loads(raw)
+        cls.result = campaign.load_json_bytes(raw, "test committed result")
         cls.context = campaign.validate_manifest(copy.deepcopy(cls.manifest), ROOT)
 
     def evaluate(self, manifest=None):
@@ -70,6 +70,28 @@ class CampaignTests(unittest.TestCase):
             campaign.validate_result_semantics(
                 result, self.context["registry"], self.context["windows"], ROOT,
             )
+
+    def make_prepared_inputs(self, root):
+        artifact_root = root / "artifacts"
+        artifact_root.mkdir()
+        result = copy.deepcopy(self.result)
+        prepared = {"a2": {}, "a3": {}}
+        for position, name in enumerate(self.context["registry"].FULL50):
+            content = f"prepared-input-{position}-{name}\n".encode("ascii")
+            digest = hashlib.sha256(content).hexdigest()
+            for owner in ("a2", "a3"):
+                relative = Path("prepared") / owner / f"{name}.trace"
+                path = artifact_root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+                prepared[owner][name] = {
+                    "path": relative.as_posix(), "sha256": digest,
+                    "size_bytes": len(content),
+                }
+                result["owners"][owner]["full50"]["runs"][name][
+                    "prepared_trace_sha256"
+                ] = digest
+        return artifact_root, prepared, result
 
     def test_default_exact_hold_pass_split(self):
         report = self.evaluate()
@@ -164,14 +186,133 @@ class CampaignTests(unittest.TestCase):
         with self.assertRaisesRegex(campaign.CampaignError, "supplied together"):
             campaign.evaluate(MANIFEST_PATH, ROOT, replay_schema=SCHEMA_PATH)
 
+    def test_duplicate_json_keys_fail_closed_for_every_document_class(self):
+        documents = {
+            "campaign manifest": b'{"schema":"first","schema":"second"}',
+            "retained artifact schema": b'{"$id":"first","$id":"second"}',
+            "committed replay result": b'{"status":"PASS","status":"HOLD"}',
+            "retained artifact index": b'{"artifacts":[],"artifacts":[]}',
+        }
+        for label, payload in documents.items():
+            with self.subTest(label=label):
+                with self.assertRaisesRegex(campaign.CampaignError, "duplicate JSON key"):
+                    campaign.load_json_bytes(payload, label)
+
+    def test_cli_rejects_schema_index_and_root_symlinks_before_resolve(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            artifact_root = base / "artifacts"
+            artifact_root.mkdir()
+            index = base / "index.json"
+            index.write_text("{}", encoding="utf-8")
+            schema_link = base / "schema-link.json"
+            schema_link.symlink_to(SCHEMA_PATH)
+            index_link = base / "index-link.json"
+            index_link.symlink_to(index)
+            root_link = base / "root-link"
+            root_link.symlink_to(artifact_root, target_is_directory=True)
+            cases = (
+                (schema_link, index, artifact_root, "retained schema path traverses a symlink"),
+                (SCHEMA_PATH, index_link, artifact_root, "retained artifact index path traverses a symlink"),
+                (SCHEMA_PATH, index, root_link, "artifact root path traverses a symlink"),
+            )
+            for schema, receipt, root, diagnostic in cases:
+                with self.subTest(diagnostic=diagnostic):
+                    process = subprocess.run([
+                        sys.executable, str(CAMPAIGN_PATH), "evaluate",
+                        "--replay-schema", str(schema),
+                        "--replay-schema-sha256", campaign.RETAINED_SCHEMA_SHA256,
+                        "--replay-receipt", str(receipt),
+                        "--replay-receipt-sha256", campaign.file_sha256(index),
+                        "--artifact-root", str(root),
+                    ], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    self.assertEqual(process.returncode, 2)
+                    self.assertIn(diagnostic, process.stderr)
+
+    def test_explicit_metadata_path_aliases_and_nesting_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            artifact_root = base / "artifacts"
+            artifact_root.mkdir()
+            with self.assertRaisesRegex(campaign.CampaignError, "path aliases"):
+                campaign.evaluate(
+                    MANIFEST_PATH, ROOT, SCHEMA_PATH, campaign.RETAINED_SCHEMA_SHA256,
+                    SCHEMA_PATH, campaign.RETAINED_SCHEMA_SHA256, artifact_root,
+                )
+            hardlink = base / "schema-hardlink.json"
+            hardlink.hardlink_to(SCHEMA_PATH)
+            with self.assertRaisesRegex(campaign.CampaignError, "path aliases"):
+                campaign.evaluate(
+                    MANIFEST_PATH, ROOT, SCHEMA_PATH, campaign.RETAINED_SCHEMA_SHA256,
+                    hardlink, campaign.RETAINED_SCHEMA_SHA256, artifact_root,
+                )
+            nested_index = artifact_root / "index.json"
+            nested_index.write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(campaign.CampaignError, "outside the artifact root"):
+                campaign.evaluate(
+                    MANIFEST_PATH, ROOT, SCHEMA_PATH, campaign.RETAINED_SCHEMA_SHA256,
+                    nested_index, campaign.file_sha256(nested_index), artifact_root,
+                )
+
+    def test_retained_prepared_inputs_are_bound_and_compared_as_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_root, prepared, result = self.make_prepared_inputs(Path(directory))
+            summary = campaign.validate_prepared_inputs(
+                prepared, artifact_root, result, self.context["registry"], set(), set(),
+            )
+            self.assertEqual(summary, {
+                "run_count": 100, "unique_trace_count": 50,
+                "cross_owner_bytes_equal": True,
+            })
+
+    def test_retained_prepared_missing_alias_and_byte_drift_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_root, prepared, result = self.make_prepared_inputs(Path(directory))
+            name = self.context["registry"].FULL50[0]
+
+            missing = copy.deepcopy(prepared)
+            del missing["a3"][name]
+            with self.assertRaisesRegex(campaign.CampaignError, "roster differs"):
+                campaign.validate_prepared_inputs(
+                    missing, artifact_root, result, self.context["registry"], set(), set(),
+                )
+
+            aliased = copy.deepcopy(prepared)
+            aliased["a3"][name] = copy.deepcopy(aliased["a2"][name])
+            with self.assertRaisesRegex(campaign.CampaignError, "duplicate path or file alias"):
+                campaign.validate_prepared_inputs(
+                    aliased, artifact_root, result, self.context["registry"], set(), set(),
+                )
+
+            drifted = copy.deepcopy(prepared)
+            drifted_result = copy.deepcopy(result)
+            drift_path = artifact_root / drifted["a3"][name]["path"]
+            drift_bytes = b"different-retained-prepared-input\n"
+            drift_path.write_bytes(drift_bytes)
+            drift_sha = hashlib.sha256(drift_bytes).hexdigest()
+            drifted["a3"][name].update({
+                "sha256": drift_sha, "size_bytes": len(drift_bytes),
+            })
+            drifted_result["owners"]["a3"]["full50"]["runs"][name][
+                "prepared_trace_sha256"
+            ] = drift_sha
+            with self.assertRaisesRegex(campaign.CampaignError, "retained A2/A3 prepared input bytes differ"):
+                campaign.validate_prepared_inputs(
+                    drifted, artifact_root, drifted_result,
+                    self.context["registry"], set(), set(),
+                )
+
     def test_empty_retained_artifact_index_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            artifact_root = root / "artifacts"
+            artifact_root.mkdir()
             index = {
-                "schema": "redred_single_edge_retained_artifact_index_v1",
+                "schema": "redred_single_edge_retained_artifact_index_v2",
                 "evidence_class": campaign.EVIDENCE_CLASS,
                 "replay_result_sha256": campaign.RESULT_SHA256,
                 "replay_result_semantic_sha256": campaign.RESULT_SEMANTIC_SHA256,
+                "prepared_inputs": {"a2": {}, "a3": {}},
                 "artifacts": [],
             }
             index_path = root / "index.json"
@@ -179,17 +320,20 @@ class CampaignTests(unittest.TestCase):
             with self.assertRaisesRegex(campaign.CampaignError, "must contain artifacts"):
                 campaign.evaluate(
                     MANIFEST_PATH, ROOT, SCHEMA_PATH, campaign.file_sha256(SCHEMA_PATH),
-                    index_path, campaign.file_sha256(index_path), root,
+                    index_path, campaign.file_sha256(index_path), artifact_root,
                 )
 
     def test_wrong_result_binding_in_artifact_index_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            artifact_root = root / "artifacts"
+            artifact_root.mkdir()
             index = {
-                "schema": "redred_single_edge_retained_artifact_index_v1",
+                "schema": "redred_single_edge_retained_artifact_index_v2",
                 "evidence_class": campaign.EVIDENCE_CLASS,
                 "replay_result_sha256": "0" * 64,
                 "replay_result_semantic_sha256": campaign.RESULT_SEMANTIC_SHA256,
+                "prepared_inputs": {"a2": {}, "a3": {}},
                 "artifacts": [{"path": "x", "sha256": "0" * 64, "size_bytes": 1}],
             }
             index_path = root / "index.json"
@@ -197,18 +341,20 @@ class CampaignTests(unittest.TestCase):
             with self.assertRaisesRegex(campaign.CampaignError, "not bound"):
                 campaign.evaluate(
                     MANIFEST_PATH, ROOT, SCHEMA_PATH, campaign.file_sha256(SCHEMA_PATH),
-                    index_path, campaign.file_sha256(index_path), root,
+                    index_path, campaign.file_sha256(index_path), artifact_root,
                 )
 
     def test_wrong_explicit_schema_hash_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            artifact_root = root / "artifacts"
+            artifact_root.mkdir()
             index_path = root / "index.json"
             index_path.write_text("{}", encoding="utf-8")
             with self.assertRaisesRegex(campaign.CampaignError, "schema bytes/hash differ"):
                 campaign.evaluate(
                     MANIFEST_PATH, ROOT, SCHEMA_PATH, "0" * 64,
-                    index_path, campaign.file_sha256(index_path), root,
+                    index_path, campaign.file_sha256(index_path), artifact_root,
                 )
 
     def test_old_rtl_source_commit_is_rejected(self):
@@ -362,8 +508,8 @@ class CampaignTests(unittest.TestCase):
         )
 
     def test_schema_is_exact_result_bound_artifact_index(self):
-        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(schema["$id"], "redred_single_edge_retained_artifact_index_v1")
+        schema = campaign.load_json(SCHEMA_PATH, "test retained schema")
+        self.assertEqual(schema["$id"], "redred_single_edge_retained_artifact_index_v2")
         self.assertEqual(
             schema["properties"]["evidence_class"]["const"], campaign.EVIDENCE_CLASS,
         )
@@ -374,7 +520,8 @@ class CampaignTests(unittest.TestCase):
             schema["properties"]["replay_result_semantic_sha256"]["const"],
             campaign.RESULT_SEMANTIC_SHA256,
         )
-        self.assertEqual(campaign.file_sha256(SCHEMA_PATH), "72b7842d3856a6e38d8f9e9983110d1cdb88129c7ed9e7cadacbfa0c6a06461d")
+        self.assertIn("prepared_inputs", schema["required"])
+        self.assertEqual(campaign.file_sha256(SCHEMA_PATH), "cb8b0e91c7a4f25191bbaff33692de440169d63cc97c8ed8a06ac9512c4500f4")
 
 
 if __name__ == "__main__":
