@@ -1,63 +1,76 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/redred-event-import-receipt-v1.schema.json",
-  "title": "REDRED event import receipt",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["schema", "status", "dataset_label", "source", "spec_sha256", "trace"],
-  "properties": {
-    "schema": {"const": "redred-event-import-receipt-v1"},
-    "status": {"enum": ["PASS", "HOLD"]},
-    "reason": {"type": "string", "minLength": 1},
-    "dataset_label": {"type": "string", "minLength": 1},
-    "source": {"$ref": "#/$defs/source"},
-    "spec_sha256": {"$ref": "#/$defs/sha256"},
-    "input_contract": {"$ref": "#/$defs/inputContract"},
-    "ordering": {"$ref": "#/$defs/ordering"},
-    "cycle_mapping": {"$ref": "#/$defs/cycleMapping"},
-    "conservation": {"const": "input_event_records == events_emitted + events_dropped"},
-    "counts": {"$ref": "#/$defs/counts"},
-    "trace": {"oneOf": [{"$ref": "#/$defs/trace"}, {"type": "null"}]}
-  },
+  "$id": "https://example.invalid/redred-event-import-receipt-v2.schema.json",
+  "title": "REDRED exclusive event import receipt v2",
   "oneOf": [
-    {
-      "properties": {"status": {"const": "PASS"}, "trace": {"$ref": "#/$defs/trace"}},
-      "required": ["input_contract", "ordering", "cycle_mapping", "conservation", "counts"],
-      "not": {"required": ["reason"]}
-    },
-    {
-      "properties": {"status": {"const": "HOLD"}, "trace": {"type": "null"}},
-      "required": ["reason"]
-    }
+    {"$ref": "#/$defs/pass"},
+    {"$ref": "#/$defs/hold"}
   ],
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "source": {
+    "exactDecimal": {
+      "type": "string",
+      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?(?:0|[1-9][0-9]*))?$"
+    },
+    "hashPair": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["file", "sha256"],
+      "required": ["raw_sha256", "semantic_sha256"],
       "properties": {
-        "file": {"type": "string", "minLength": 1},
-        "sha256": {"$ref": "#/$defs/sha256"}
+        "raw_sha256": {"$ref": "#/$defs/sha256"},
+        "semantic_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "dataset", "release", "version", "original_artifact", "provenance", "license"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "dataset": {"type": "string", "minLength": 1},
+        "release": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "original_artifact": {"type": "string", "minLength": 1},
+        "provenance": {
+          "oneOf": [
+            {
+              "type": "object", "additionalProperties": false, "required": ["uri"],
+              "properties": {"uri": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$"}}
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["acquisition_id"],
+              "properties": {"acquisition_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,255}$"}}
+            }
+          ]
+        },
+        "license": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["spdx_id", "text_sha256", "redistribution"],
+          "properties": {
+            "spdx_id": {"type": "string", "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9.\\-]*|LicenseRef-[A-Za-z0-9.\\-]+)$"},
+            "text_sha256": {"$ref": "#/$defs/sha256"},
+            "redistribution": {"enum": ["permitted", "prohibited", "unknown"]}
+          }
+        }
       }
     },
     "inputContract": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["format", "time_unit", "polarity_encoding", "sensor", "bounds_policy"],
+      "required": ["format", "time_unit", "polarity_encoding", "sensor", "address_width", "bounds_policy"],
       "properties": {
         "format": {"enum": ["canonical_jsonl", "generic_delimited"]},
         "time_unit": {"enum": ["s", "ms", "us", "ns"]},
         "polarity_encoding": {"enum": ["minus_plus_one", "zero_one"]},
         "sensor": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["width", "height"],
+          "type": "object", "additionalProperties": false, "required": ["width", "height"],
           "properties": {
             "width": {"type": "integer", "minimum": 1},
             "height": {"type": "integer", "minimum": 1}
           }
         },
+        "address_width": {"type": "integer", "minimum": 1},
         "bounds_policy": {"enum": ["reject", "clip"]}
       }
     },
@@ -72,7 +85,7 @@
           "items": false
         },
         "timestamp_tie_policy": {"const": "preserve_source_record_order"},
-        "cycle_quantization": {"const": "floor"}
+        "cycle_quantization": {"const": "floor_exact_fraction"}
       }
     },
     "cycleMapping": {
@@ -80,9 +93,9 @@
       "additionalProperties": false,
       "required": ["period_ns", "origin", "origin_timestamp", "deadline_slack_cycles"],
       "properties": {
-        "period_ns": {"type": "string", "minLength": 1},
+        "period_ns": {"$ref": "#/$defs/exactDecimal"},
         "origin": {"const": "first_event"},
-        "origin_timestamp": {"type": "string", "minLength": 1},
+        "origin_timestamp": {"$ref": "#/$defs/exactDecimal"},
         "deadline_slack_cycles": {"type": "integer", "minimum": 0}
       }
     },
@@ -116,10 +129,10 @@
     "trace": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["file", "sha256", "event_count", "event_schema", "identity_mode", "required_relation"],
+      "required": ["file", "raw_sha256", "event_count", "event_schema", "identity_mode", "required_relation"],
       "properties": {
-        "file": {"type": "string", "minLength": 1},
-        "sha256": {"$ref": "#/$defs/sha256"},
+        "file": {"const": "events.jsonl"},
+        "raw_sha256": {"$ref": "#/$defs/sha256"},
         "event_count": {"type": "integer", "minimum": 1},
         "event_schema": {
           "type": "array",
@@ -133,6 +146,53 @@
         },
         "identity_mode": {"const": "address_only"},
         "required_relation": {"const": "logical_source == y * sensor.width + x"}
+      }
+    },
+    "pass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "status", "dataset", "source", "specification", "input_contract", "ordering", "cycle_mapping", "conservation", "counts", "trace"],
+      "properties": {
+        "schema": {"const": "redred-event-import-receipt-v2"},
+        "status": {"const": "PASS"},
+        "dataset": {"$ref": "#/$defs/dataset"},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "raw_sha256", "semantic_sha256"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "raw_sha256": {"$ref": "#/$defs/sha256"},
+            "semantic_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "specification": {"$ref": "#/$defs/hashPair"},
+        "input_contract": {"$ref": "#/$defs/inputContract"},
+        "ordering": {"$ref": "#/$defs/ordering"},
+        "cycle_mapping": {"$ref": "#/$defs/cycleMapping"},
+        "conservation": {"const": "input_event_records == events_emitted + events_dropped"},
+        "counts": {"$ref": "#/$defs/counts"},
+        "trace": {"$ref": "#/$defs/trace"}
+      }
+    },
+    "hold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "status", "reason", "source", "specification"],
+      "properties": {
+        "schema": {"const": "redred-event-import-receipt-v2"},
+        "status": {"const": "HOLD"},
+        "reason": {"type": "string", "minLength": 1},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "raw_sha256"],
+          "properties": {
+            "file": {"type": "string", "minLength": 1},
+            "raw_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "specification": {"$ref": "#/$defs/hashPair"}
       }
     }
   }

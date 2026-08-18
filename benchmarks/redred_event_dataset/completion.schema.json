@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/redred-event-import-completion-v2.schema.json",
+  "title": "REDRED exclusive event import completion sentinel v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "receipt_sha256", "trace_sha256"],
+  "properties": {
+    "schema": {"const": "redred-event-import-completion-v2"},
+    "status": {"enum": ["PASS", "HOLD"]},
+    "receipt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "trace_sha256": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        {"type": "null"}
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS"}}},
+      "then": {"properties": {"trace_sha256": {"type": "string"}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "HOLD"}}},
+      "then": {"properties": {"trace_sha256": {"type": "null"}}}
+    }
+  ]
+}

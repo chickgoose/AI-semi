@@ -1,67 +1,65 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/redred-event-import-v1.schema.json",
-  "title": "REDRED dataset-neutral event import specification",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schema",
-    "dataset_label",
-    "source",
-    "sensor",
-    "input",
-    "cycle_mapping",
-    "bounds_policy"
+  "$id": "https://example.invalid/redred-event-import-v2.schema.json",
+  "title": "REDRED dataset-neutral event import specification v2",
+  "oneOf": [
+    {"$ref": "#/$defs/supported"},
+    {"$ref": "#/$defs/samsungHold"}
   ],
-  "properties": {
-    "schema": {"const": "redred-event-import-v1"},
-    "dataset_label": {"type": "string", "minLength": 1},
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "exactDecimal": {
+      "type": "string",
+      "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?(?:0|[1-9][0-9]*))?$"
+    },
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sha256"],
-      "properties": {
-        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
-      }
+      "required": ["raw_sha256"],
+      "properties": {"raw_sha256": {"$ref": "#/$defs/sha256"}}
     },
-    "sensor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["width", "height"],
-      "properties": {
-        "width": {"type": "integer", "minimum": 1},
-        "height": {"type": "integer", "minimum": 1}
-      }
-    },
-    "input": {"oneOf": [
-      {"$ref": "#/$defs/canonicalInput"},
-      {"$ref": "#/$defs/delimitedInput"},
-      {"$ref": "#/$defs/samsungHoldInput"}
-    ]},
-    "cycle_mapping": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["period_ns", "origin", "deadline_slack_cycles"],
-      "properties": {
-        "period_ns": {"$ref": "#/$defs/exactDecimal"},
-        "origin": {"const": "first_event"},
-        "deadline_slack_cycles": {"type": "integer", "minimum": 0}
-      }
-    },
-    "bounds_policy": {"enum": ["reject", "clip"]}
-  },
-  "$defs": {
-    "exactDecimal": {
+    "provenance": {
       "oneOf": [
-        {"type": "integer"},
-        {"type": "string", "pattern": "^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?$"}
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["uri"],
+          "properties": {"uri": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["acquisition_id"],
+          "properties": {
+            "acquisition_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,255}$"
+            }
+          }
+        }
       ]
     },
-    "commonInputProperties": {
+    "dataset": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "dataset", "release", "version", "original_artifact", "provenance", "license"],
       "properties": {
-        "time_unit": {"enum": ["s", "ms", "us", "ns"]},
-        "polarity_encoding": {"enum": ["minus_plus_one", "zero_one"]}
+        "provider": {"type": "string", "minLength": 1},
+        "dataset": {"type": "string", "minLength": 1},
+        "release": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "original_artifact": {"type": "string", "minLength": 1},
+        "provenance": {"$ref": "#/$defs/provenance"},
+        "license": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["spdx_id", "text_sha256", "redistribution"],
+          "properties": {
+            "spdx_id": {"type": "string", "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9.\\-]*|LicenseRef-[A-Za-z0-9.\\-]+)$"},
+            "text_sha256": {"$ref": "#/$defs/sha256"},
+            "redistribution": {"enum": ["permitted", "prohibited", "unknown"]}
+          }
+        }
       }
     },
     "canonicalInput": {
@@ -77,25 +75,12 @@
     "delimitedInput": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "format",
-        "time_unit",
-        "polarity_encoding",
-        "delimiter",
-        "header",
-        "comment_prefix",
-        "columns"
-      ],
+      "required": ["format", "time_unit", "polarity_encoding", "delimiter", "header", "comment_prefix", "columns"],
       "properties": {
         "format": {"const": "generic_delimited"},
         "time_unit": {"enum": ["s", "ms", "us", "ns"]},
         "polarity_encoding": {"enum": ["minus_plus_one", "zero_one"]},
-        "delimiter": {
-          "oneOf": [
-            {"const": "whitespace"},
-            {"type": "string", "minLength": 1, "maxLength": 1}
-          ]
-        },
+        "delimiter": {"oneOf": [{"const": "whitespace"}, {"type": "string", "minLength": 1, "maxLength": 1}]},
         "header": {"type": "boolean"},
         "comment_prefix": {"type": ["string", "null"], "minLength": 1},
         "columns": {
@@ -111,14 +96,53 @@
         }
       }
     },
-    "samsungHoldInput": {
+    "supported": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["format"],
+      "required": ["schema", "dataset", "source", "sensor", "address_width", "input", "cycle_mapping", "bounds_policy"],
       "properties": {
-        "format": {"const": "samsung_official"}
+        "schema": {"const": "redred-event-import-v2"},
+        "dataset": {"$ref": "#/$defs/dataset"},
+        "source": {"$ref": "#/$defs/source"},
+        "sensor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": {"type": "integer", "minimum": 1},
+            "height": {"type": "integer", "minimum": 1}
+          }
+        },
+        "address_width": {"type": "integer", "minimum": 1},
+        "input": {"oneOf": [{"$ref": "#/$defs/canonicalInput"}, {"$ref": "#/$defs/delimitedInput"}]},
+        "cycle_mapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["period_ns", "origin", "deadline_slack_cycles"],
+          "properties": {
+            "period_ns": {"$ref": "#/$defs/exactDecimal"},
+            "origin": {"const": "first_event"},
+            "deadline_slack_cycles": {"type": "integer", "minimum": 0}
+          }
+        },
+        "bounds_policy": {"enum": ["reject", "clip"]}
+      }
+    },
+    "samsungHold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "source", "input"],
+      "properties": {
+        "schema": {"const": "redred-event-import-v2"},
+        "source": {"$ref": "#/$defs/source"},
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format"],
+          "properties": {"format": {"const": "samsung_official"}}
+        }
       },
-      "description": "Reserved identifier. The importer emits HOLD and does not parse this format."
+      "description": "Reserved HOLD shape; no Samsung record or metadata assumptions are encoded."
     }
   }
 }

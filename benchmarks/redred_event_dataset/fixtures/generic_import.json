@@ -1,13 +1,28 @@
 {
-  "schema": "redred-event-import-v1",
-  "dataset_label": "synthetic-generic-csv-fixture",
+  "schema": "redred-event-import-v2",
+  "dataset": {
+    "provider": "REDRED test fixtures",
+    "dataset": "synthetic-event-import",
+    "release": "generic-csv",
+    "version": "1",
+    "original_artifact": "generic_events.csv",
+    "provenance": {
+      "acquisition_id": "redred-fixture-generic-v1"
+    },
+    "license": {
+      "spdx_id": "CC0-1.0",
+      "text_sha256": "ed0743c87f04776de0f233a3f4b5f07862ed163b0c8f3b6b0e382f41f5995ec0",
+      "redistribution": "permitted"
+    }
+  },
   "source": {
-    "sha256": "6fa65f955452115474b96cc968285ab5b207d353ac94b563f7b4492ce3e62a4d"
+    "raw_sha256": "6fa65f955452115474b96cc968285ab5b207d353ac94b563f7b4492ce3e62a4d"
   },
   "sensor": {
     "width": 4,
     "height": 3
   },
+  "address_width": 4,
   "input": {
     "format": "generic_delimited",
     "time_unit": "us",
