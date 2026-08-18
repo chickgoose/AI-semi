@@ -71,8 +71,8 @@ class PolicyContractTest(unittest.TestCase):
 
     def test_duplicate_json_key_is_rejected(self) -> None:
         payload = CONTRACT.read_text(encoding="utf-8").replace(
-            '  "schema_version": 2,',
-            '  "schema_version": 2,\n  "schema_version": 2,',
+            '  "schema_version": 3,',
+            '  "schema_version": 3,\n  "schema_version": 3,',
             1,
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -122,7 +122,7 @@ class PolicyContractTest(unittest.TestCase):
             "verifier_claim",
         )
 
-    def test_release_interface_remains_unselected_hold(self) -> None:
+    def test_only_single_edge_interface_is_selected_but_release_held(self) -> None:
         self.assert_invalid(
             lambda doc: doc["interfaces"]["selection"].update(
                 {"selected": "P6", "decision": "GO"}
@@ -292,10 +292,10 @@ class PolicyContractTest(unittest.TestCase):
             "per_interface",
         )
 
-    def test_canonical_dependency_cannot_be_promoted_by_policy(self) -> None:
+    def test_native_canonical_dependency_cannot_expand_scope_or_be_substituted(self) -> None:
         self.assert_invalid(
             lambda doc: doc["canonical_digital_dependency"].update(
-                {"status": "PASS", "policy_verifier_validates_results": True}
+                {"status": "PASS_RELEASE", "release_status": "GO"}
             ),
             "canonical_digital_dependency",
         )
@@ -307,9 +307,15 @@ class PolicyContractTest(unittest.TestCase):
         )
         self.assert_invalid(
             lambda doc: doc["canonical_digital_dependency"][
-                "external_campaign_contract_reference"
-            ].update({"reference_is_execution_evidence": True}),
-            "external campaign reference evidence status",
+                "native_pipeline_publication"
+            ].update({"reference_is_execution_evidence": False}),
+            "native campaign publication evidence status",
+        )
+        self.assert_invalid(
+            lambda doc: doc["canonical_digital_dependency"][
+                "native_pipeline_publication"
+            ].update({"sha256": "0" * 64}),
+            "publication digest mismatch",
         )
 
     def test_trace_and_harness_digests_are_live_bound(self) -> None:
@@ -356,18 +362,18 @@ class PolicyContractTest(unittest.TestCase):
             "execution_accounting",
         )
 
-    def test_external_receipt_requires_event_identity_and_execution_accounting(self) -> None:
+    def test_native_receipt_qualification_fields_are_exact(self) -> None:
         self.assert_invalid(
             lambda doc: doc["canonical_digital_dependency"][
-                "required_external_receipt_fields"
-            ].remove("PER_EVENT_LEDGER"),
-            "required_external_receipt_fields",
+                "qualified_evidence_fields"
+            ].remove("EXACT_ONCE_AND_ORDERED_ORDINALS"),
+            "qualified_evidence_fields",
         )
         self.assert_invalid(
             lambda doc: doc["canonical_digital_dependency"][
-                "required_external_receipt_fields"
-            ].remove("EXECUTION_COUNTS"),
-            "required_external_receipt_fields",
+                "qualified_evidence_fields"
+            ].remove("FULL50_METRICS_AND_EXECUTION_ACCOUNTING"),
+            "qualified_evidence_fields",
         )
 
     def test_cycle_equations_pending_reset_and_errors_are_exact(self) -> None:
@@ -685,6 +691,10 @@ class PolicyContractTest(unittest.TestCase):
             lambda doc: evidence(doc).update({"coordinate_rtl_status": "PASS"}),
             lambda doc: evidence(doc).update({"release_status": "GO"}),
             lambda doc: evidence(doc)["artifacts"][1].update({"sha256": "0" * 64}),
+            lambda doc: evidence(doc)["artifacts"].pop(2),
+            lambda doc: evidence(doc)["artifacts"].__setitem__(
+                3, copy.deepcopy(evidence(doc)["artifacts"][0])
+            ),
         ]
         for index, mutation in enumerate(mutations):
             with self.subTest(index=index):
@@ -712,16 +722,16 @@ class PolicyContractTest(unittest.TestCase):
         mutable = "/".join(["docs", "tmp", "latest", "campaign.json"])
         self.assert_invalid(
             lambda doc: doc["canonical_digital_dependency"][
-                "external_campaign_contract_reference"
+                "native_pipeline_publication"
             ].update({"path": mutable}),
-            "forbidden mutable component",
+            "publication path",
         )
         absolute = "/" + "/".join(["var", "cache", "campaign.json"])
         self.assert_invalid(
             lambda doc: doc["canonical_digital_dependency"][
-                "external_campaign_contract_reference"
+                "native_pipeline_publication"
             ].update({"path": absolute}),
-            "normalized repository-relative path",
+            "publication path",
         )
 
 

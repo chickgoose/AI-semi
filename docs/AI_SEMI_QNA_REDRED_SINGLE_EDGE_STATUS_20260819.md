@@ -42,7 +42,8 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 - Release 후보는 posedge single shared clock과 일반 standard-cell 구조다.
   `audits/k2_final_selection/`의 P6/multi-edge A2 선택은 superseded/noncurrent
   역사적 연구 비교이며 현재 후보/interface/release 선택 authority가 없다.
-  현재 release interface와 최종 A2/A3 선택은 null/HOLD다.
+  Single-edge parallel 구현만 release-eligible interface로 선택했지만 release와
+  최종 A2/A3 선택은 HOLD다.
 
 ## 현재 bounded evidence
 

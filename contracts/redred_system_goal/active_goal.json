@@ -1,7 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "document_kind": "REDRED_POLICY_AND_RELEASE_DEPENDENCY_CONTRACT",
-  "contract_id": "redred-system-goal-v2-2026-08-19",
+  "contract_id": "redred-system-goal-v3-2026-08-19",
   "contract_status": "ACTIVE_POLICY_WITH_SCOPED_RELEASE_HOLDS",
   "verifier_claim": {
     "pass_status": "POLICY_INTERNALLY_VALID",
@@ -12,8 +12,8 @@
   "goal_policy": {
     "primary_candidate": "A2",
     "semantic_fallback": "A3",
-    "selected_release_interface": null,
-    "selected_release_interface_status": "HOLD",
+    "selected_release_interface": "PARALLEL_FALLBACK",
+    "selected_release_interface_status": "IMPLEMENTED_RELEASE_HELD",
     "score_threshold_defined": false,
     "mandatory_scope": [
       "COMPLETE_ENDPOINT_CORRECTNESS",
@@ -152,14 +152,14 @@
   },
   "interfaces": {
     "selection": {
-      "decision": "HOLD",
-      "selected": null,
-      "selection_rule": "ONE_INTERFACE_WITH_OWN_COMPLETE_DIGITAL_PNR_POWER_AND_LEGALITY",
+      "decision": "SINGLE_EDGE_SELECTED_RELEASE_HELD",
+      "selected": "PARALLEL_FALLBACK",
+      "selection_rule": "ONLY_IMPLEMENTED_SINGLE_EDGE_INTERFACE_IS_RELEASE_ELIGIBLE",
       "cross_interface_evidence_borrowing": false
     },
     "P6": {
-      "role": "PREFERRED_IF_LEGAL_AND_QUALIFIED",
-      "competition_release_status": "HOLD",
+      "role": "HISTORICAL_RESEARCH_REFERENCE_ONLY",
+      "competition_release_status": "SUPERSEDED_NONCURRENT",
       "cell_transfer": {
         "cell_bits": 10,
         "data_wires": 5,
@@ -205,7 +205,7 @@
       }
     },
     "PARALLEL_FALLBACK": {
-      "role": "LEGALITY_FALLBACK",
+      "role": "ONLY_RELEASE_ELIGIBLE_IMPLEMENTED_INTERFACE",
       "competition_release_status": "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION",
       "transfer_mode": "SINGLE_EDGE_PARALLEL",
       "integrated_digital_evidence": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
@@ -362,9 +362,9 @@
       "post_route_timing_status": "HOLD",
       "constraint_authority_status": "HOLD_UNCONFIRMED_TEAM_PLACEHOLDER",
       "contract": {
-        "commit": "597fdf68cd5b0ff9b08c3d5304c2a1b63cb8e46a",
+        "commit": "15593a72d68867641196992dd31bd00ef5dacaac",
         "path": "physical/k2_single_edge_endpoint/contract.json",
-        "sha256": "c6a955e1da7effffead63212e65285e3510fe26c5fbe2b6fe7bfca48f432fc81"
+        "sha256": "6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544"
       }
     },
     "single_edge_vectorless": {
@@ -397,6 +397,8 @@
       "publication_commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256",
       "artifacts": [
         {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/README.md", "sha256": "60348b88e6a52c6bc2fb661ff41cea125b7a57df0bc20fc2176afacfead39756"},
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/__init__.py", "sha256": "ff393644bd217b0907d8e59f5aa791435191b1e99453c148f1f057046e8dbcae"},
+        {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/cli.py", "sha256": "a938196339af7545ae615343104d8af6a3f0dfe40852b2e60bcf24050de49d04"},
         {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/model.py", "sha256": "11ab64067e626a3d4717f830d8633e905b38d1353fcd3e1ca94038cdbf6f0b4c"},
         {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/fixtures/intrinsics.json", "sha256": "917ad7ef66870cab5aa49096fbc79778a7c308521892ca6edae4baeca01f5a35"},
         {"commit": "78eb019c56f2aab4b844c0fe925a5f2252fca256", "path": "demos/known_motion_coordinate/fixtures/poses.jsonl", "sha256": "c5001da1a131aaf5373b5d26b6065b54acc1763ebb4600236697bce7f359dd98"},
@@ -406,17 +408,18 @@
     }
   },
   "canonical_digital_dependency": {
-    "dependency_id": "TEAM_REDRED_CANONICAL_DIGITAL_CAMPAIGN_V2",
-    "status": "HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY",
-    "hold_id": "H_CANONICAL_DIGITAL",
-    "policy_verifier_validates_results": false,
+    "dependency_id": "TEAM_REDRED_CANONICAL_DIGITAL_CAMPAIGN_V3",
+    "status": "PASS_SCOPED_NATIVE_CAMPAIGN",
+    "release_status": "HOLD_PHYSICAL_POWER_PDK_CDC_AND_FINAL_SELECTION",
+    "policy_verifier_validates_results": true,
     "policy_verifier_executes_campaign": false,
-    "external_campaign_contract_reference": {
-      "commit": "020d8614ae7a4f8ce020fdf370ee83d4cb3d1f02",
-      "path": "benchmarks/redred_canonical_campaign/campaign.json",
-      "sha256": "cfab35f7947fcc3997e596454b1dadf27634640ad82f9adebc38a26162939e65",
-      "reference_is_execution_evidence": false
+    "native_pipeline_publication": {
+      "commit": "ccc6064a2f28f0d0476ff4cb08b25a028cb47392",
+      "path": "benchmarks/redred_single_edge_campaign/native_pipeline_publication.json",
+      "sha256": "89a8439fc3c5796293b56f2dcc96f2bb2141d1d2d1041bff8ca84a09e581c93c",
+      "reference_is_execution_evidence": true
     },
+    "generic_campaign_v3_status": "HOLD_SCHEMA_INCOMPATIBLE_UNBOUND_SUPERSEDED_BY_NATIVE_SUCCESSOR",
     "trace_registry": {
       "path": "scripts/common_suite_official.py",
       "sha256": "7e1ec861ed901f4501e07104d3f34ae3992cbb6c392d52143a91968dd7f78e33",
@@ -543,25 +546,20 @@
       }
     },
     "release_candidate_set": [
-      "FOVEA",
-      "CLUSTER2",
       "A2",
       "A3"
     ],
-    "required_external_receipt_fields": [
-      "CAMPAIGN_SCHEMA_AND_STATUS",
-      "CANDIDATE_ID_AND_RTL_DIGESTS",
-      "SELECTED_INTERFACE_AND_LINK_RTL_DIGESTS",
-      "TRACE_NAME_AND_TRACE_SHA256",
-      "MANIFEST_AND_MEMBERSHIP_DIGESTS",
-      "TOOL_IDENTITY",
-      "EXACT_COMMAND",
-      "START_END_UTC",
-      "PER_TRACE_RAW_COUNTERS",
-      "PER_EVENT_LEDGER",
-      "RESET_AND_DRAIN_RESULT",
-      "EXECUTION_COUNTS",
-      "RESULT_DIGEST"
+    "qualified_evidence_fields": [
+      "CAMPAIGN_STATUS_AND_SCOPE",
+      "PRODUCER_NATIVE_RESULT_PUBLICATION_ARCHIVE_HASHES",
+      "ADAPTER_CODE_AND_SCHEMA_GIT_OBJECTS",
+      "TEAM_CANONICAL_POLICY",
+      "FULL50_METRICS_AND_EXECUTION_ACCOUNTING",
+      "PUBLIC_RETIMING_FAMILY_ACCOUNTING",
+      "EXACT_ONCE_AND_ORDERED_ORDINALS",
+      "AGGREGATE_DECISION",
+      "NONRELEASE_CLAIM_BOUNDARY",
+      "RESULT_RAW_AND_SEMANTIC_DIGESTS"
     ],
     "results_embedded_in_policy": false
   },
@@ -806,27 +804,7 @@
       },
       "CANONICAL_DIGITAL": {
         "kind": "EVIDENCE",
-        "state": "HOLD"
-      },
-      "P6_STANDARD_CELL": {
-        "kind": "EVIDENCE",
-        "state": "PASS_WITH_CLAIM_LIMIT"
-      },
-      "P6_LEGALITY": {
-        "kind": "EVIDENCE",
-        "state": "HOLD"
-      },
-      "P6_PAD_PHY": {
-        "kind": "EVIDENCE",
-        "state": "HOLD"
-      },
-      "P6_VECTORLESS_POWER": {
-        "kind": "EVIDENCE",
-        "state": "HOLD"
-      },
-      "P6_RELEASE": {
-        "kind": "DECISION",
-        "state": "HOLD"
+        "state": "PASS"
       },
       "PARALLEL_SYNTHETIC_DIGITAL": {
         "kind": "BOUNDED_EVIDENCE",
@@ -911,16 +889,6 @@
     },
     "requirements": [
       {
-        "target": "P6_RELEASE",
-        "operator": "ALL",
-        "sources": [
-          "P6_STANDARD_CELL",
-          "P6_LEGALITY",
-          "P6_PAD_PHY",
-          "P6_VECTORLESS_POWER"
-        ]
-      },
-      {
         "target": "PARALLEL_COMPLETE_EVIDENCE",
         "operator": "ALL",
         "sources": [
@@ -943,9 +911,8 @@
       },
       {
         "target": "SELECTED_INTERFACE_RELEASE",
-        "operator": "ONE",
+        "operator": "ALL",
         "sources": [
-          "P6_RELEASE",
           "PARALLEL_RELEASE"
         ]
       },
@@ -997,26 +964,6 @@
     ]
   },
   "scoped_holds": {
-    "H_CANONICAL_DIGITAL": {
-      "status": "HOLD",
-      "blocks": ["CANONICAL_DIGITAL", "TEAM_CANONICAL_RELEASE"],
-      "blocks_core_development": false
-    },
-    "H_P6_MULTI_EDGE_LEGALITY": {
-      "status": "HOLD",
-      "blocks": ["P6_LEGALITY", "P6_RELEASE"],
-      "blocks_core_development": false
-    },
-    "H_P6_REAL_PAD_PHY": {
-      "status": "HOLD",
-      "blocks": ["P6_PAD_PHY", "P6_RELEASE"],
-      "blocks_core_development": false
-    },
-    "H_P6_VECTORLESS_POWER": {
-      "status": "HOLD",
-      "blocks": ["P6_VECTORLESS_POWER", "P6_RELEASE"],
-      "blocks_core_development": false
-    },
     "H_PARALLEL_REAL_EVIDENCE": {
       "status": "HOLD",
       "blocks": [
@@ -1027,11 +974,6 @@
         "PARALLEL_COMPLETE_EVIDENCE",
         "PARALLEL_RELEASE"
       ],
-      "blocks_core_development": false
-    },
-    "H_INHERITED_6P5_ARCHIVE_UNAVAILABLE": {
-      "status": "HOLD",
-      "blocks": ["P6_STANDARD_CELL_FINAL_RELEASE_USE"],
       "blocks_core_development": false
     },
     "H_FINAL_CDC_RDC": {

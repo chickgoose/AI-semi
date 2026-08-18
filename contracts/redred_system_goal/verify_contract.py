@@ -152,6 +152,25 @@ def git_blob(commit: Any, repo_path: Any, path: str) -> bytes:
     return result.stdout
 
 
+def git_text(arguments: list[str], path: str) -> str:
+    result = subprocess.run(
+        ["git", *arguments], cwd=ROOT, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, check=False,
+    )
+    if result.returncode:
+        raise PolicyError(f"{path} Git object query failed")
+    try:
+        return result.stdout.decode("ascii").strip()
+    except UnicodeDecodeError as exc:
+        raise PolicyError(f"{path} Git object query is not ASCII") from exc
+
+
+def compact_canonical(value: Any) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode("utf-8")
+
+
 def parse_json_object(payload: bytes, path: str) -> Mapping[str, Any]:
     try:
         value = json.loads(payload, object_pairs_hook=_duplicate_safe_object)
@@ -173,8 +192,8 @@ def verify_git_artifact(row: Any, path: str) -> bytes:
 EXPECTED_GOAL = {
     "primary_candidate": "A2",
     "semantic_fallback": "A3",
-    "selected_release_interface": None,
-    "selected_release_interface_status": "HOLD",
+    "selected_release_interface": "PARALLEL_FALLBACK",
+    "selected_release_interface_status": "IMPLEMENTED_RELEASE_HELD",
     "score_threshold_defined": False,
     "mandatory_scope": [
         "COMPLETE_ENDPOINT_CORRECTNESS",
@@ -317,14 +336,14 @@ EXPECTED_CANDIDATES = {
 
 EXPECTED_INTERFACES = {
     "selection": {
-        "decision": "HOLD",
-        "selected": None,
-        "selection_rule": "ONE_INTERFACE_WITH_OWN_COMPLETE_DIGITAL_PNR_POWER_AND_LEGALITY",
+        "decision": "SINGLE_EDGE_SELECTED_RELEASE_HELD",
+        "selected": "PARALLEL_FALLBACK",
+        "selection_rule": "ONLY_IMPLEMENTED_SINGLE_EDGE_INTERFACE_IS_RELEASE_ELIGIBLE",
         "cross_interface_evidence_borrowing": False,
     },
     "P6": {
-        "role": "PREFERRED_IF_LEGAL_AND_QUALIFIED",
-        "competition_release_status": "HOLD",
+        "role": "HISTORICAL_RESEARCH_REFERENCE_ONLY",
+        "competition_release_status": "SUPERSEDED_NONCURRENT",
         "cell_transfer": {
             "cell_bits": 10,
             "data_wires": 5,
@@ -370,7 +389,7 @@ EXPECTED_INTERFACES = {
         },
     },
     "PARALLEL_FALLBACK": {
-        "role": "LEGALITY_FALLBACK",
+        "role": "ONLY_RELEASE_ELIGIBLE_IMPLEMENTED_INTERFACE",
         "competition_release_status": "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION",
         "transfer_mode": "SINGLE_EDGE_PARALLEL",
         "integrated_digital_evidence": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
@@ -669,6 +688,12 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
         "single-edge physical claim boundary",
     )
     physical_contract = parse_json_object(verify_git_artifact(physical["contract"], "single-edge physical contract"), "single-edge physical contract")
+    expect(physical["contract"]["commit"],
+           "15593a72d68867641196992dd31bd00ef5dacaac",
+           "single-edge physical contract commit")
+    expect(physical["contract"]["sha256"],
+           "6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544",
+           "single-edge physical contract digest")
     expect(physical_contract.get("status"), "STATIC_READY_CANDIDATE_PHYSICAL_HOLD", "physical contract status")
     expect(physical_contract.get("constraints", {}).get("authority_status"), "UNCONFIRMED_TEAM_PLACEHOLDER", "physical constraint authority")
     expect(physical_contract.get("qualification", {}).get("candidate_physical_go_possible"), False, "physical GO eligibility")
@@ -719,9 +744,25 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
         "known-motion claim boundary",
     )
     motion_artifacts = motion["artifacts"]
-    if not isinstance(motion_artifacts, list) or len(motion_artifacts) != 6:
-        raise PolicyError("known-motion artifacts must bind exactly six Git objects")
+    expected_motion_paths = [
+        "demos/known_motion_coordinate/README.md",
+        "demos/known_motion_coordinate/__init__.py",
+        "demos/known_motion_coordinate/cli.py",
+        "demos/known_motion_coordinate/model.py",
+        "demos/known_motion_coordinate/fixtures/intrinsics.json",
+        "demos/known_motion_coordinate/fixtures/poses.jsonl",
+        "demos/known_motion_coordinate/fixtures/retired_events.jsonl",
+        "tests/known_motion_coordinate/test_coordinate.py",
+    ]
+    if not isinstance(motion_artifacts, list) or len(motion_artifacts) != 8:
+        raise PolicyError("known-motion artifacts must bind exact eight-object executable closure")
+    paths = [row.get("path") if isinstance(row, dict) else None for row in motion_artifacts]
+    expect(paths, expected_motion_paths, "known-motion artifact paths")
+    if len(set(paths)) != len(paths):
+        raise PolicyError("known-motion artifact paths contain duplicates")
     for index, row in enumerate(motion_artifacts):
+        expect(row.get("commit"), motion["publication_commit"],
+               f"known-motion artifact[{index}] publication commit")
         verify_git_artifact(row, f"known-motion artifact[{index}]")
 
 
@@ -830,48 +871,151 @@ def verify_canonical_dependency(document: Mapping[str, Any]) -> None:
         {
             "dependency_id",
             "status",
-            "hold_id",
+            "release_status",
             "policy_verifier_validates_results",
             "policy_verifier_executes_campaign",
-            "external_campaign_contract_reference",
+            "native_pipeline_publication",
+            "generic_campaign_v3_status",
             "trace_registry",
             "harness_bindings",
             "suites",
             "release_candidate_set",
-            "required_external_receipt_fields",
+            "qualified_evidence_fields",
             "results_embedded_in_policy",
         },
     )
     expected_scalars = {
-        "dependency_id": "TEAM_REDRED_CANONICAL_DIGITAL_CAMPAIGN_V2",
-        "status": "HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY",
-        "hold_id": "H_CANONICAL_DIGITAL",
-        "policy_verifier_validates_results": False,
+        "dependency_id": "TEAM_REDRED_CANONICAL_DIGITAL_CAMPAIGN_V3",
+        "status": "PASS_SCOPED_NATIVE_CAMPAIGN",
+        "release_status": "HOLD_PHYSICAL_POWER_PDK_CDC_AND_FINAL_SELECTION",
+        "policy_verifier_validates_results": True,
         "policy_verifier_executes_campaign": False,
+        "generic_campaign_v3_status":
+            "HOLD_SCHEMA_INCOMPATIBLE_UNBOUND_SUPERSEDED_BY_NATIVE_SUCCESSOR",
         "results_embedded_in_policy": False,
     }
     for key, value in expected_scalars.items():
         expect(dependency[key], value, f"canonical_digital_dependency.{key}")
 
     campaign_reference = exact_object(
-        dependency["external_campaign_contract_reference"],
-        "canonical_digital_dependency.external_campaign_contract_reference",
+        dependency["native_pipeline_publication"],
+        "canonical_digital_dependency.native_pipeline_publication",
         {"commit", "path", "sha256", "reference_is_execution_evidence"},
     )
     expect(
         campaign_reference["reference_is_execution_evidence"],
-        False,
-        "external campaign reference evidence status",
+        True,
+        "native campaign publication evidence status",
     )
+    expect(campaign_reference["commit"],
+           "ccc6064a2f28f0d0476ff4cb08b25a028cb47392",
+           "native campaign publication commit")
+    expect(campaign_reference["path"],
+           "benchmarks/redred_single_edge_campaign/native_pipeline_publication.json",
+           "native campaign publication path")
     blob = git_blob(
         campaign_reference["commit"],
         campaign_reference["path"],
-        "external campaign contract reference",
+        "native campaign publication",
     )
     if digest(blob) != validate_sha(
-        campaign_reference["sha256"], "external campaign reference.sha256"
+        campaign_reference["sha256"], "native campaign publication.sha256"
     ):
-        raise PolicyError("external campaign contract reference digest mismatch")
+        raise PolicyError("native campaign publication digest mismatch")
+    publication = parse_json_object(blob, "native campaign publication")
+    expect(publication.get("schema"),
+           "redred_single_edge_native_pipeline_publication_v1",
+           "native campaign publication schema")
+    expect(publication.get("status"), "PASS_SCOPED_NATIVE_CAMPAIGN_PIPELINE",
+           "native campaign publication status")
+    expect(publication.get("noncircular_provenance"), True,
+           "native campaign noncircular provenance")
+    expect(publication.get("campaign_decision"), {
+        "aggregate_status": "A2_PRIMARY", "campaign_recommendation": "A2",
+        "final_selected_candidate": None, "final_selection_status": "HOLD",
+        "release_status": "HOLD",
+    }, "native campaign decision boundary")
+    expect(publication.get("claim_boundary"), {
+        "final_selection": "HOLD", "official": False, "physical": False,
+        "power": False, "release": False,
+    }, "native campaign claim boundary")
+
+    code = exact_object(publication.get("code"), "native campaign code",
+                        {"commit", "tree", "inventory"})
+    payload = exact_object(publication.get("payload"), "native campaign payload",
+                           {"commit", "tree", "result"})
+    for label, row in (("code", code), ("payload", payload)):
+        if not isinstance(row["commit"], str) or not COMMIT_RE.fullmatch(row["commit"]):
+            raise PolicyError(f"native campaign {label} commit is invalid")
+        expect(git_text(["rev-parse", f'{row["commit"]}^{{tree}}'],
+                        f"native campaign {label} tree"), row["tree"],
+               f"native campaign {label} tree")
+        absent = subprocess.run(
+            ["git", "cat-file", "-e",
+             f'{row["commit"]}:{campaign_reference["path"]}'], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if absent.returncode == 0:
+            raise PolicyError(f"native campaign publication is circular through {label}")
+
+    inventory = code["inventory"]
+    if not isinstance(inventory, list) or len(inventory) != 10:
+        raise PolicyError("native campaign code inventory must contain ten artifacts")
+    inventory_paths: list[str] = []
+    for index, item in enumerate(inventory):
+        row = exact_object(item, f"native campaign inventory[{index}]",
+                           {"path", "sha256", "size_bytes", "git_blob_oid"})
+        path = validate_repo_path(row["path"],
+                                  f"native campaign inventory[{index}].path",
+                                  must_exist=False)
+        del path
+        item_blob = git_blob(code["commit"], row["path"],
+                             f"native campaign inventory[{index}]")
+        if type(row["size_bytes"]) is not int or row["size_bytes"] != len(item_blob):
+            raise PolicyError("native campaign inventory byte size mismatch")
+        if digest(item_blob) != validate_sha(
+                row["sha256"], f"native campaign inventory[{index}].sha256"):
+            raise PolicyError("native campaign inventory digest mismatch")
+        expect(git_text(["rev-parse", f'{code["commit"]}:{row["path"]}'],
+                        f"native campaign inventory[{index}] object"),
+               row["git_blob_oid"], f"native campaign inventory[{index}] object")
+        inventory_paths.append(row["path"])
+    if len(set(inventory_paths)) != len(inventory_paths):
+        raise PolicyError("native campaign inventory paths contain duplicates")
+
+    result_record = exact_object(payload["result"], "native campaign result record",
+                                 {"path", "sha256", "semantic_sha256",
+                                  "size_bytes", "git_blob_oid"})
+    result_blob = git_blob(payload["commit"], result_record["path"],
+                           "native campaign result")
+    if type(result_record["size_bytes"]) is not int or \
+            len(result_blob) != result_record["size_bytes"] or \
+            digest(result_blob) != validate_sha(result_record["sha256"],
+                                                 "native campaign result.sha256"):
+        raise PolicyError("native campaign result raw identity mismatch")
+    expect(git_text(["rev-parse", f'{payload["commit"]}:{result_record["path"]}'],
+                    "native campaign result object"), result_record["git_blob_oid"],
+           "native campaign result object")
+    result = parse_json_object(result_blob, "native campaign result")
+    expect(result.get("schema"), "redred_single_edge_native_pipeline_result_v1",
+           "native campaign result schema")
+    expect(result.get("status"), "PASS_SCOPED_NATIVE_CAMPAIGN_PIPELINE",
+           "native campaign result status")
+    expect(result.get("campaign_recommendation"), "A2",
+           "native campaign recommendation")
+    expect(result.get("claims"), {
+        "final_selection": "HOLD", "official": False, "physical": False,
+        "power": False, "release": False,
+    }, "native campaign result claims")
+    unsigned_result = dict(result)
+    seal = exact_object(unsigned_result.pop("seal", None), "native campaign seal",
+                        {"algorithm", "semantic_sha256"})
+    expect(seal["algorithm"], "SHA256_CANONICAL_JSON_EXCLUDING_SEAL",
+           "native campaign seal algorithm")
+    semantic = digest(compact_canonical(unsigned_result))
+    expect(seal["semantic_sha256"], semantic, "native campaign semantic seal")
+    expect(result_record["semantic_sha256"], semantic,
+           "native campaign published semantic seal")
 
     registry = load_trace_registry(dependency["trace_registry"])
     harness = dependency["harness_bindings"]
@@ -892,25 +1036,22 @@ def verify_canonical_dependency(document: Mapping[str, Any]) -> None:
     if set(registry["traces"]) != set(registry["full50"]):
         raise PolicyError("trace SHA registry does not exactly cover full50")
 
-    expect(dependency["release_candidate_set"], ["FOVEA", "CLUSTER2", "A2", "A3"], "release_candidate_set")
+    expect(dependency["release_candidate_set"], ["A2", "A3"], "release_candidate_set")
     expect(
-        dependency["required_external_receipt_fields"],
+        dependency["qualified_evidence_fields"],
         [
-            "CAMPAIGN_SCHEMA_AND_STATUS",
-            "CANDIDATE_ID_AND_RTL_DIGESTS",
-            "SELECTED_INTERFACE_AND_LINK_RTL_DIGESTS",
-            "TRACE_NAME_AND_TRACE_SHA256",
-            "MANIFEST_AND_MEMBERSHIP_DIGESTS",
-            "TOOL_IDENTITY",
-            "EXACT_COMMAND",
-            "START_END_UTC",
-            "PER_TRACE_RAW_COUNTERS",
-            "PER_EVENT_LEDGER",
-            "RESET_AND_DRAIN_RESULT",
-            "EXECUTION_COUNTS",
-            "RESULT_DIGEST",
+            "CAMPAIGN_STATUS_AND_SCOPE",
+            "PRODUCER_NATIVE_RESULT_PUBLICATION_ARCHIVE_HASHES",
+            "ADAPTER_CODE_AND_SCHEMA_GIT_OBJECTS",
+            "TEAM_CANONICAL_POLICY",
+            "FULL50_METRICS_AND_EXECUTION_ACCOUNTING",
+            "PUBLIC_RETIMING_FAMILY_ACCOUNTING",
+            "EXACT_ONCE_AND_ORDERED_ORDINALS",
+            "AGGREGATE_DECISION",
+            "NONRELEASE_CLAIM_BOUNDARY",
+            "RESULT_RAW_AND_SEMANTIC_DIGESTS",
         ],
-        "required_external_receipt_fields",
+        "qualified_evidence_fields",
     )
 
 
@@ -1183,12 +1324,7 @@ EXPECTED_EXTERNAL_POLICY = {
 
 EXPECTED_NODES = {
     "POLICY": {"kind": "POLICY", "state": "INTERNAL_VALIDITY_CHECKED"},
-    "CANONICAL_DIGITAL": {"kind": "EVIDENCE", "state": "HOLD"},
-    "P6_STANDARD_CELL": {"kind": "EVIDENCE", "state": "PASS_WITH_CLAIM_LIMIT"},
-    "P6_LEGALITY": {"kind": "EVIDENCE", "state": "HOLD"},
-    "P6_PAD_PHY": {"kind": "EVIDENCE", "state": "HOLD"},
-    "P6_VECTORLESS_POWER": {"kind": "EVIDENCE", "state": "HOLD"},
-    "P6_RELEASE": {"kind": "DECISION", "state": "HOLD"},
+    "CANONICAL_DIGITAL": {"kind": "EVIDENCE", "state": "PASS"},
     "PARALLEL_SYNTHETIC_DIGITAL": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
     "PARALLEL_PUBLIC_PROJECTED_DIGITAL": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
     "PARALLEL_SOURCE_CDC_RDC": {"kind": "BOUNDED_EVIDENCE", "state": "PASS"},
@@ -1213,7 +1349,6 @@ EXPECTED_NODES = {
 
 
 EXPECTED_REQUIREMENTS = [
-    {"target": "P6_RELEASE", "operator": "ALL", "sources": ["P6_STANDARD_CELL", "P6_LEGALITY", "P6_PAD_PHY", "P6_VECTORLESS_POWER"]},
     {
         "target": "PARALLEL_COMPLETE_EVIDENCE",
         "operator": "ALL",
@@ -1229,7 +1364,7 @@ EXPECTED_REQUIREMENTS = [
         ],
     },
     {"target": "PARALLEL_RELEASE", "operator": "ALL", "sources": ["PARALLEL_COMPLETE_EVIDENCE"]},
-    {"target": "SELECTED_INTERFACE_RELEASE", "operator": "ONE", "sources": ["P6_RELEASE", "PARALLEL_RELEASE"]},
+    {"target": "SELECTED_INTERFACE_RELEASE", "operator": "ALL", "sources": ["PARALLEL_RELEASE"]},
     {"target": "TEAM_CANONICAL_RELEASE", "operator": "ALL", "sources": ["POLICY", "CANONICAL_DIGITAL", "SELECTED_INTERFACE_RELEASE", "FINAL_CDC_RDC", "FINAL_A2_A3_SELECTION", "PDK_ENDPOINT_IO"]},
     {"target": "OFFICIAL_DATA_CLAIMS", "operator": "ALL", "sources": ["OFFICIAL_DATA", "TEAM_CANONICAL_RELEASE"]},
     {"target": "COORDINATE_RTL", "operator": "ALL", "sources": ["COORDINATE_NUMERIC_CONTRACT"]},
@@ -1245,12 +1380,7 @@ EXPECTED_FORBIDDEN_REQUIREMENTS = [
 
 
 EXPECTED_HOLDS = {
-    "H_CANONICAL_DIGITAL": {"status": "HOLD", "blocks": ["CANONICAL_DIGITAL", "TEAM_CANONICAL_RELEASE"], "blocks_core_development": False},
-    "H_P6_MULTI_EDGE_LEGALITY": {"status": "HOLD", "blocks": ["P6_LEGALITY", "P6_RELEASE"], "blocks_core_development": False},
-    "H_P6_REAL_PAD_PHY": {"status": "HOLD", "blocks": ["P6_PAD_PHY", "P6_RELEASE"], "blocks_core_development": False},
-    "H_P6_VECTORLESS_POWER": {"status": "HOLD", "blocks": ["P6_VECTORLESS_POWER", "P6_RELEASE"], "blocks_core_development": False},
     "H_PARALLEL_REAL_EVIDENCE": {"status": "HOLD", "blocks": ["PARALLEL_MAPPED_PDK", "PARALLEL_ORGANIZER_PDK", "PARALLEL_REAL_PNR_POST_ROUTE", "PARALLEL_REAL_VECTORLESS_POWER", "PARALLEL_COMPLETE_EVIDENCE", "PARALLEL_RELEASE"], "blocks_core_development": False},
-    "H_INHERITED_6P5_ARCHIVE_UNAVAILABLE": {"status": "HOLD", "blocks": ["P6_STANDARD_CELL_FINAL_RELEASE_USE"], "blocks_core_development": False},
     "H_FINAL_CDC_RDC": {"status": "HOLD", "blocks": ["FINAL_CDC_RDC", "TEAM_CANONICAL_RELEASE"], "blocks_core_development": False},
     "H_FINAL_A2_A3_SELECTION": {"status": "HOLD", "blocks": ["FINAL_A2_A3_SELECTION", "TEAM_CANONICAL_RELEASE"], "blocks_core_development": False},
     "H_PDK_ENDPOINT_IO_RULES": {"status": "HOLD", "blocks": ["PDK_ENDPOINT_IO", "TEAM_CANONICAL_RELEASE"], "blocks_core_development": False},
@@ -1349,9 +1479,9 @@ def verify_document(document: Mapping[str, Any]) -> None:
             "security_and_portability",
         },
     )
-    expect(root["schema_version"], 2, "schema_version")
+    expect(root["schema_version"], 3, "schema_version")
     expect(root["document_kind"], "REDRED_POLICY_AND_RELEASE_DEPENDENCY_CONTRACT", "document_kind")
-    expect(root["contract_id"], "redred-system-goal-v2-2026-08-19", "contract_id")
+    expect(root["contract_id"], "redred-system-goal-v3-2026-08-19", "contract_id")
     expect(root["contract_status"], "ACTIVE_POLICY_WITH_SCOPED_RELEASE_HOLDS", "contract_status")
     expect(
         root["verifier_claim"],

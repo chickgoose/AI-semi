@@ -38,8 +38,9 @@ admission backpressure이지 clock gate가 아니다. 구현 link는
 generated/gated/forwarded clock은 없다. Scheduler 정책 상태, admission,
 charge되는 buffering, TX/RX와 control, retirement, drain/error logic은 모두
 포함한다. Event 발생기, testbench scoreboard, coordinate transform, motion
-estimation, visualization은 endpoint PPA에서 제외한다. 이 구현 경계는 release
-interface 선택을 뜻하지 않으며 선택 interface는 여전히 null/HOLD다.
+estimation, visualization은 endpoint PPA에서 제외한다. 이 single-edge 구현
+경계만 현재 release-eligible interface로 선택했지만, interface release와 최종
+A2/A3 선택은 mapped physical·power·PDK/I/O·CDC/RDC가 닫힐 때까지 HOLD다.
 
 모든 완료 run은 다음을 기록한다.
 

@@ -6,8 +6,9 @@
 현재 REDRED 목표와 판정의 authority는
 `contracts/redred_system_goal/active_goal.json`이다. 아래 2026-08-18 P6
 복구·측정 절은 역사 자료이며 현재 endpoint, 후보 선택, release interface 또는
-team release authority가 없다. 현재 구현은 single-edge endpoint이고 최종
-A2/A3 선택과 release interface는 모두 HOLD다.
+team release authority가 없다. 현재 구현은 single-edge endpoint이며 이것만
+release-eligible interface로 선택됐다. Interface release와 최종 A2/A3 선택은
+모두 HOLD다.
 
 ## 0. 새 세션이 가장 먼저 지킬 것
 
@@ -447,15 +448,17 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 - 팀 정의 canonical traffic을 유지하며 주최 측 dataset은 versioned extension이다.
 - timing과 같은 boundary의 mapped vectorless power를 필수 증거로 둔다.
 - P6 digital/6.5 ns 자료는 superseded/noncurrent 역사 reference이고 현재 선택
-  authority가 없다. Organizer 서면 허용, mapped legality, pad/package/channel과
-  P6 release는 HOLD다.
+  authority가 없다. Single-edge parallel 구현만 release-eligible interface다.
 - Single-edge actual-RTL synthetic와 public projected extension은 각 bounded
   semantics 범위에서 PASS다. Source/elaborated single-posedge CDC/RDC는 외부
   입력이 primary clock에 synchronous라는 범위에서 PASS다. RTL source-structure
   PDK 검사는 source-only PASS다.
-- 위 PASS는 canonical campaign, mapped CDC/RDC, mapped/organizer PDK legality,
-  real P&R/post-route timing, mapped vectorless power, interface 선택, 최종
-  A2/A3 선택 또는 team release를 닫지 않는다. 이 gate들은 모두 HOLD다.
+- Producer-native synthetic/public adapter와 aggregate pipeline은 team-canonical
+  campaign 범위의 `A2_PRIMARY` 추천을 닫았다. Generic campaign-v3는 schema
+  incompatible UNBOUND 상태지만 successor native pipeline의 별도 prerequisite가
+  아니다. 이 PASS는 mapped CDC/RDC, mapped/organizer PDK legality, real
+  P&R/post-route timing, mapped vectorless power, 최종 A2/A3 선택 또는 team
+  release를 닫지 않는다.
 - known-motion 좌표 변환은 endpoint PPA 밖의 post-retire system demo로 먼저 검증한다.
 
 새 세션의 한 문장 목표는 `docs/NEW_SESSION_START_PROMPT.txt`에 기록했다.
@@ -463,11 +466,13 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 통합 상태:
 
 - Hardened single-edge actual RTL의 팀 synthetic와 public projected 실행은
-  bounded PASS다. P6 receipt의 `digital_RTL=GO`는 역사적 P6-only 범위이며
+  bounded PASS이며 native aggregate는 campaign-scoped A2 추천을 봉인했다.
+  P6 receipt의 `digital_RTL=GO`는 역사적 P6-only 범위이며
   현재 후보/interface/final selection authority가 아니다.
 - Single-edge source CDC/RDC와 RTL source-structure PDK evidence는 각각
   synchronous-input/source-only 범위에서 PASS다.
-- policy verifier의 PASS는 정책 구조가 내부적으로 일관된다는 뜻이며 evidence/release GO가 아니다.
-- Canonical digital receipt, 선택 interface, mapped/organizer legality,
-  real-server P&R/post-route timing, mapped vectorless power, final CDC/RDC,
-  최종 A2/A3 선택과 team release는 모두 HOLD다.
+- policy verifier는 native publication/result/seal과 정책 구조를 검증하지만
+  physical/final release GO authority는 아니다.
+- Single-edge interface는 선택됐지만 mapped/organizer legality, real-server
+  P&R/post-route timing, mapped vectorless power, final CDC/RDC, 최종 A2/A3 선택과
+  team release는 모두 HOLD다.

@@ -1,6 +1,6 @@
 # REDRED policy and release-dependency contract
 
-`active_goal.json` version 2 separates four things that must not be collapsed:
+`active_goal.json` version 3 separates four things that must not be collapsed:
 
 1. team goal and architecture policy;
 2. external canonical-digital evidence;
@@ -14,8 +14,9 @@ POLICY_INTERNALLY_VALID evidence_qualified=false release_qualified=false
 ```
 
 It validates structure, pinned local/Git-object identities, trace membership,
-and dependency consistency. It neither runs the canonical campaign nor
-qualifies its results, Cadence evidence, an interface, or the final system.
+the published native campaign result and semantic seal, and dependency
+consistency. It does not rerun the campaign and does not qualify Cadence
+evidence, physical release, final candidate selection, or the final system.
 
 ## Current architecture policy
 
@@ -37,16 +38,19 @@ qualifies its results, Cadence evidence, an interface, or the final system.
   admission backpressure, not a clock gate. The link cell is the nine-wire
   `{valid, addr0[3:0], addr1[3:0]}` single-edge encoding. There is no generated,
   gated, or forwarded clock in this implemented boundary.
-- This implemented interface profile is not a release-interface selection.
-  The selected release interface remains null and **HOLD**. Coordinate
-  processing remains an external post-retire stretch function outside
-  endpoint PPA.
+- The implemented single-edge parallel profile is now the only release-eligible
+  interface. Selecting that implementation does not release it: mapped
+  physical, power, PDK/I/O, final CDC/RDC, and final A2/A3 selection remain
+  **HOLD**. Coordinate processing remains an external post-retire stretch
+  function outside endpoint PPA.
 
 ## Interface state
 
-No release interface is selected; selection is **HOLD**.
+The single-edge parallel interface is selected as the implementation boundary,
+but its release is **HOLD**.
 
-P6 is structurally defined as one 10-bit cell over five DDR data wires plus one
+P6 is retained only as a historical research reference. It is structurally
+defined as one 10-bit cell over five DDR data wires plus one
 forwarded clock. Bits 4:0 launch at the rising edge after the low half; bits 9:5
 launch at the falling edge after the high half; the receiver commits at the
 falling edge. The single allowed unconstrained endpoint is the intentional
@@ -63,7 +67,7 @@ The inherited 6.5 ns Fovea+A7/R1, A2+P6, and A3+P6 standard-cell cohort is
 channel. Competition multi-edge legality, real pad/package/channel behavior,
 and qualified complete-endpoint vectorless power remain separate P6 HOLDs.
 
-The single-edge parallel fallback now has bounded digital and source-structure
+The single-edge parallel endpoint now has bounded digital and source-structure
 evidence. Its competition release remains
 `HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION`: it cannot borrow P6
 physical, power, pad/package/channel, or inherited 6.5 ns evidence.
@@ -76,6 +80,7 @@ the team result.
 
 | Evidence class | Status | Exact claim boundary | Remaining HOLD |
 | --- | --- | --- | --- |
+| Native canonical/public campaign pipeline | PASS | Hash-pinned producer-native full50 plus one unpooled public retiming family; campaign recommendation `A2` | Physical, power, PDK/I/O, final CDC/RDC, final selection and release |
 | Hardened single-edge actual RTL | PASS | Synthetic `full50` semantics, exact accepted-event retirement, overrun accounting, reset and activated mutations | Canonical campaign, physical, power, release and selection |
 | Public UZH projected actual RTL extension | PASS | Noncanonical/nonofficial projected-extension behavior on A2/A3 single-edge actual RTL | Official/canonical status, release and selection |
 | Single-edge CDC/RDC | PASS | Source/elaborated, one posedge domain, with inputs assumed synchronous to the primary clock | Mapped CDC/RDC and final selected-interface CDC/RDC |
@@ -114,8 +119,8 @@ The source-structure PDK matrix is pinned at
 Those PASS rows do not promote mapped or organizer legality.
 
 The physical HOLD contract is pinned at
-`597fdf68cd5b0ff9b08c3d5304c2a1b63cb8e46a`, SHA-256
-`c6a955e1da7effffead63212e65285e3510fe26c5fbe2b6fe7bfca48f432fc81`.
+`15593a72d68867641196992dd31bd00ef5dacaac`, SHA-256
+`6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544`.
 The vectorless HOLD contract and source manifest are pinned at
 `c68af0e73bb06bb99eb838c684dbffb2a8dd4995`, with SHA-256 values
 `b6aed31406fc8dee4566e1905313aced6998cf0be621817101f694221ef2e328`
@@ -124,15 +129,21 @@ Neither is real physical or vectorless evidence.
 
 The known-motion package is pinned at
 `78eb019c56f2aab4b844c0fe925a5f2252fca256`. It consumes already-retired
-events and supplied rotations, and remains outside endpoint PPA. The exact six
-package/test Git-object hashes are recorded in `active_goal.json`.
+events and supplied rotations, and remains outside endpoint PPA. The exact
+eight-object executable closure—including package initialization and CLI—is
+recorded in `active_goal.json`.
 
 ## Evidence bindings
 
-The canonical digital campaign remains an external dependency. The bounded
-single-edge results above do not satisfy or replace it. This policy binds
-the official trace registry, both frozen manifests, exact suite membership,
-clean TB/interface/assertion bytes, and required receipt fields. `capacity22`
+The team canonical digital campaign is satisfied at scoped native-pipeline
+level. The policy pins publication commit
+`ccc6064a2f28f0d0476ff4cb08b25a028cb47392`, rehashes all ten code/schema/policy
+Git objects and the result blob, checks its canonical semantic seal, and
+requires the nonrelease claim boundary. Generic `campaign_v3.py` remains
+schema-incompatible and UNBOUND; it is a superseded generic consumer, not a
+second prerequisite and not a source for relabeling or repacking producer
+artifacts. This policy also binds the trace registry, both frozen manifests,
+exact suite membership, and clean TB/interface/assertion bytes. `capacity22`
 is an exact subset view of `full50`: it contributes zero additional independent
 runs, so 50+22 must never be presented as 72 samples.
 
@@ -154,10 +165,11 @@ be combined with the complete-endpoint cohort.
 
 ## Remaining release boundaries
 
-Team canonical release remains HOLD on canonical digital evidence, an interface
-with its own complete digital/PNR/power/legal evidence, final selected-interface
-CDC/RDC, the final A2-versus-A3 decision, and competition PDK endpoint I/O rules.
-No release interface is selected. Organizer data is not one of those blockers:
+Team canonical release remains HOLD on complete single-edge
+digital/PNR/power/legal evidence, final selected-interface CDC/RDC, the final
+A2-versus-A3 decision, and competition PDK endpoint I/O rules. The single-edge
+interface is selected as the only release-eligible implementation, but it is
+not released. Organizer data is not one of those blockers:
 its absence blocks only organizer-data and generalization claims. Dataset
 arrival creates a versioned extension and cannot mutate `full50` or
 `capacity22`.
