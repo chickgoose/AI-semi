@@ -15,4 +15,17 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 짧게 요약하되, 과거 작업을 시작하지 말고 내가 이번 새 세션에서 제시하는 목표를
 기준으로 계획을 세워.
 
-이번 새 목표: 교육용 GPDK045 범위 안에서 A2를 주후보·A3를 exact-prefix fallback으로 한 16-source complete AER endpoint를 구현하고, 동일한 팀 정의 traffic에서 accepted-event exact-once·source overrun·throughput·latency와 complete-boundary post-route timing·area·mapped vectorless power를 입증하되, P6는 서면 허용 전 HOLD하고 single-edge fallback을 별도 검증하며, known-motion world↔sensor 변환은 endpoint PPA 밖의 system demo로 검증한다.
+이번 새 목표: 교육용 GPDK045에서 주최 측이 허용하는 셀·클록 구조만으로
+16-source pending/accept부터 retire까지의 완전한 single-edge AER 디지털
+endpoint를 구성한다. A2를 aggregate-weighted 성능 주후보, A3를 exact
+scalar-prefix 의미 fallback으로 두고, 동일 조건의 팀 canonical synthetic 및
+제공·공개 데이터 campaign에서 accepted-event exact-once, source
+overrun·throughput·latency, complete-boundary post-route timing·area와 mapped
+vectorless power를 입증한다. Known-motion world↔sensor 좌표 변환은 endpoint
+PPA와 분리된 system demo로 검증한다. P6/multi-edge는 superseded/noncurrent
+연구 비교이며 현재 후보·interface·release 선택 근거로 사용하지 않는다.
+
+현재 판정과 증거 경계는
+docs/AI_SEMI_QNA_REDRED_SINGLE_EDGE_STATUS_20260819.md를 기준으로 삼고,
+organizer-authoritative PDK 수치, 실제 Genus/Innovus 결과, campaign-v3 native
+binding이 닫히기 전에는 최종 A2/A3 선택이나 release를 선언하지 않는다.
