@@ -1,0 +1,73 @@
+{
+  "schema": "redred-single-edge-source-binding-v1",
+  "source_set_id": "a2-a3-single-edge-4ce4836",
+  "repository_commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
+  "files": [
+    {
+      "path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
+      "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+    },
+    {
+      "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
+      "sha256": "9061deb14e46e0d050bdf3fae450ee8a94c234f94e74f69e1dc8be84722e55ac"
+    },
+    {
+      "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+      "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+    },
+    {
+      "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",
+      "sha256": "3bac4faa2e249e0326a8eba4e3b010437e16c33b5dff236bd621acdb27c5bb07"
+    },
+    {
+      "path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
+      "sha256": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493"
+    },
+    {
+      "path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+      "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"
+    },
+    {
+      "path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv",
+      "sha256": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4"
+    }
+  ],
+  "designs": {
+    "a2": {
+      "top": "a2_batched_iwrr_single_edge_top",
+      "primary_clock": "clk_i",
+      "reset": "rst_i",
+      "reset_active_low": false,
+      "synchronous_inputs": ["link_enable_i", "source_pending_i"],
+      "transfer_scope": "endpoint",
+      "tx_instance": "tx",
+      "rx_instance": "rx",
+      "drain_output": "drain_idle_o",
+      "scope_drain_port": "drain_idle_o",
+      "rx_pending_port": "retire_valid_o",
+      "channels": [
+        {"tx_port": "link_valid_o", "rx_port": "link_valid_i"},
+        {"tx_port": "link_addr0_o", "rx_port": "link_addr0_i"},
+        {"tx_port": "link_addr1_o", "rx_port": "link_addr1_i"}
+      ]
+    },
+    "a3": {
+      "top": "a3_exact_scalar_prefix_k2_single_edge_top",
+      "primary_clock": "clk_i",
+      "reset": "rst_i",
+      "reset_active_low": false,
+      "synchronous_inputs": ["link_enable_i", "source_pending_i"],
+      "transfer_scope": "endpoint",
+      "tx_instance": "tx",
+      "rx_instance": "rx",
+      "drain_output": "drain_idle_o",
+      "scope_drain_port": "drain_idle_o",
+      "rx_pending_port": "retire_valid_o",
+      "channels": [
+        {"tx_port": "link_valid_o", "rx_port": "link_valid_i"},
+        {"tx_port": "link_addr0_o", "rx_port": "link_addr0_i"},
+        {"tx_port": "link_addr1_o", "rx_port": "link_addr1_i"}
+      ]
+    }
+  }
+}
