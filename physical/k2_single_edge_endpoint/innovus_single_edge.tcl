@@ -139,6 +139,11 @@ set failed [catch {
   write_sdf "$output/netlist/${top}.postroute.sdf"
   rcOut -spef "$output/netlist/${top}.postroute.spef"
   saveDesign -mmmc2 "$output/database/${top}.enc"
+  set db_manifest [open "$output/database/MANIFEST.txt" {WRONLY CREAT EXCL}]
+  puts $db_manifest "design=$top checkpoint=$output/database/${top}.enc"
+  puts $db_manifest "entry=saveDesign-mmmc2"
+  puts $db_manifest "producer_authentication=UNAUTHENTICATED_LOCAL_SELF_HASH"
+  close $db_manifest
   set marker [open "$output/status/COMMANDS_COMPLETE" {WRONLY CREAT EXCL}]
   puts $marker "K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top=$top"
   close $marker
