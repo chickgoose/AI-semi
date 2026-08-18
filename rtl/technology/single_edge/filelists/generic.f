@@ -1,0 +1,3 @@
+rtl/technology/single_edge/w2_single_edge_pair_tx.sv
+rtl/technology/single_edge/w2_single_edge_pair_rx.sv
+rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv
