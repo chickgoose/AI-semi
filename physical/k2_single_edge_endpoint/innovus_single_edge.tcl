@@ -40,6 +40,12 @@ proc se_timing_summary {path view check} {
   }
 }
 
+proc se_append_report_context {path kind context} {
+  set handle [open $path {WRONLY APPEND}]
+  puts $handle "K2_SINGLE_EDGE_REPORT_CONTEXT_V1 tool=Innovus version=23.14-s088_1 top=$::env(SE_TOP) kind=$kind context=$context"
+  close $handle
+}
+
 foreach name {
   SE_TOP SE_MAPPED_NETLIST SE_MAPPED_SDC SE_TECH_LEF SE_MACRO_LEF SE_MMMC
   SE_INNOVUS_OUT SE_SITE SE_PROCESS SE_ASPECT SE_UTIL SE_MARGIN
@@ -116,10 +122,12 @@ set failed [catch {
   setAnalysisMode -checkType setup
   report_timing -view se_setup_view -check_type setup -max_paths 50 \
     > "$output/reports/setup_timing.rpt"
+  se_append_report_context "$output/reports/setup_timing.rpt" setup_timing postroute
   se_timing_summary "$output/reports/setup_timing.machine" se_setup_view setup
   setAnalysisMode -checkType hold
   report_timing -view se_hold_view -check_type hold -max_paths 50 \
     > "$output/reports/hold_timing.rpt"
+  se_append_report_context "$output/reports/hold_timing.rpt" hold_timing postroute
   se_timing_summary "$output/reports/hold_timing.machine" se_hold_view hold
   setAnalysisMode -checkType setup
 
@@ -127,13 +135,18 @@ set failed [catch {
   report_power > "$output/reports/power_vectorless_screening.rpt"
   reportRoute > "$output/reports/route.rpt"
   redirect -file "$output/reports/check_timing.rpt" {check_timing -verbose}
+  se_append_report_context "$output/reports/check_timing.rpt" check_timing postroute
   redirect -file "$output/reports/check_design_post_route.rpt" {checkDesign -all}
   verifyConnectivity -type all -error 1000 -warning 1000 \
     -report "$output/reports/connectivity.rpt"
+  se_append_report_context "$output/reports/connectivity.rpt" connectivity signal_postroute
   verifyConnectivity -type special -error 1000 -warning 1000 \
     -report "$output/reports/pg_connectivity.rpt"
+  se_append_report_context "$output/reports/pg_connectivity.rpt" pg_connectivity pg_postroute
   verify_drc -report "$output/reports/drc.rpt"
+  se_append_report_context "$output/reports/drc.rpt" drc postroute
   verify_process_antenna -report "$output/reports/antenna.rpt"
+  se_append_report_context "$output/reports/antenna.rpt" antenna postroute
 
   saveNetlist "$output/netlist/${top}.postroute.v"
   write_sdf "$output/netlist/${top}.postroute.sdf"

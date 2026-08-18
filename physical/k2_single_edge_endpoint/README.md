@@ -145,6 +145,22 @@ completion markers. Qualification requires positive path counts, nonnegative
 WNS, zero TNS/violations, positive routed area, native zero DRC/antenna/
 connectivity evidence, no nonzero missing-clock/I/O/load or unconstrained-path
 counts, one mapped primary clock, exact tops, and clean version-bound logs.
+The Innovus template appends one exact version/top/kind/context marker to each
+setup, hold, `check_timing`, DRC, antenna, signal-connectivity, and
+PG-connectivity report. Qualification strips comments before interpreting any
+report tokens and rejects missing, duplicate, foreign, fatal, incomplete, or
+contradictory report context.
+
+The mapped SDC parser accepts exactly eight commands: one named primary clock
+with the 6.5 ns period and `{0.0 3.25}` rising/falling waveform, uncertainty,
+min/max input and output delays, input transition, and output load. Collections
+must enumerate exactly `clk_i`, every non-clock input, and every output as
+appropriate. Extra clocks, commands, values, collections, generated clocks,
+or timing exceptions are rejected even when placed after a semicolon. Mapped
+and routed netlists must expose exactly the contract port order, directions,
+and widths, with no extras, plus cell connections touching at least one boundary
+input and at least one boundary output. This is structural screening, not
+equivalence.
 
 ```sh
 python3 physical/k2_single_edge_endpoint/flow.py qualify --design a2 \
@@ -155,14 +171,18 @@ python3 physical/k2_single_edge_endpoint/flow.py qualify --design a2 \
   --output /absolute/server/attempt-a2/qualification.json
 ```
 
-Missing receipts/artifacts and fully consistent self-sealed bundles both
+Missing receipts/artifacts and internally admissible self-sealed bundles both
 produce `HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE`. The package deliberately has
-no GO branch. Its local self-hashes establish consistency, not producer
+no GO branch. Its local self-hashes establish diagnostic byte relationships,
+not producer
 identity: organizer-owned constraints and a producer-held out-of-band
 signature/MAC or equivalent immutable server authority are both absent. The
 qualification output therefore says `producer_authenticated=false`, never
 calls caller-writable fixture data real server evidence, and independently
-retains the placeholder-constraint promotion blocker.
+retains the placeholder-constraint promotion blocker. Successful parser output
+is named `diagnostic_metrics_only`, and the boolean
+`diagnostic_artifact_checks_completed` cannot be interpreted as verification,
+signoff, provenance, equivalence, or candidate GO.
 
 The live tool pin covers the configured Cadence wrapper bytes and version
 output, not the wrapper's complete downstream executable/shared-library

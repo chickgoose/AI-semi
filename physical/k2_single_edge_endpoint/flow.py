@@ -84,7 +84,7 @@ TEMPLATE_IDENTITIES = {
     "innovus_mmmc": ("physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl",
                      "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"),
     "innovus": ("physical/k2_single_edge_endpoint/innovus_single_edge.tcl",
-                "1f2ab6462be6a590fe7135e54e495c2403c6c836dc55a00cd2f4e49cf6272c34")}
+                "86ad0a6d94bc11368cf228013d7fd0736d2a4b7dd54b0bffe62be9a17731e61a")}
 
 
 class FlowError(RuntimeError):
@@ -359,7 +359,11 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
     qualification = contract.get("qualification", {})
     if qualification.get("maximum_decision_under_this_contract") != \
             "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE" or \
-            qualification.get("candidate_physical_go_possible") is not False:
+            qualification.get("candidate_physical_go_possible") is not False or \
+            qualification.get("exact_native_report_context_required") is not True or \
+            qualification.get("exact_mapped_sdc_command_set_required") is not True or \
+            qualification.get("exact_netlist_boundary_required") is not True or \
+            qualification.get("diagnostic_only_vocabulary_required") is not True:
         raise FlowError("contract no longer fails closed on candidate GO")
     if contract.get("execution_policy") != {
             "explicit_authorization": {
@@ -758,33 +762,79 @@ def parse_machine(payload: bytes, view: str, check: str) -> dict[str, Any]:
     return {"path_count": count, "wns": wns, "tns": tns}
 
 
-def require_zero_native(payload: bytes, kind: str) -> None:
-    text = payload.decode("utf-8")
-    patterns = {
-        "drc": (r"No DRC violations were found", r"DRC\s+violations?\s*[:=]\s*0"),
-        "antenna": (r"No Violations Found", r"antenna\s+violations?\s*[:=]\s*0"),
-        "connectivity": (r"Found no problems or warnings\.",
-                         r"connectivity\s+(?:violations?|errors?)\s*[:=]\s*0"),
-    }[kind]
-    if not any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns):
-        raise FlowError(f"{kind} report lacks native zero evidence")
-    counts = re.findall(
-        r"(?:total\s+(?:number\s+of\s+)?)?(?:violations?|viols?|errors?|problems?|warnings?)\s*(?:found|:)?\s*[:=]?\s*([0-9]+)|"
-        r"([0-9]+)\s+(?:violations?|viols?|errors?|problems?|warnings?)",
-        text, re.IGNORECASE)
-    values = [int(left or right) for left, right in counts]
-    if any(value != 0 for value in values):
-        raise FlowError(f"{kind} report contains violations")
+def strip_comments(text: str) -> str:
+    """Remove block and line comments before any evidence token is examined."""
+    without_blocks = re.sub(r"(?s)/\*.*?\*/", "", text)
+    active_lines = []
+    for line in without_blocks.splitlines():
+        cuts = []
+        slash = line.find("//")
+        if slash >= 0:
+            cuts.append(slash)
+        for position, character in enumerate(line):
+            if character == "#" and (not line[:position].strip() or
+                    (position > 0 and line[position - 1].isspace() and
+                     (position + 1 == len(line) or line[position + 1].isspace() or
+                      line[position + 1].isalpha()))):
+                cuts.append(position)
+                break
+        if cuts:
+            line = line[:min(cuts)]
+        if line.lstrip().startswith(";"):
+            continue
+        active_lines.append(line.rstrip())
+    return "\n".join(active_lines)
 
 
 def active_text(payload: bytes, label: str) -> str:
-    text = payload.decode("utf-8")
-    stripped = re.sub(r"(?s)/\*.*?\*/", "", text)
-    stripped = "\n".join(line for line in stripped.splitlines()
-                         if not line.lstrip().startswith(("#", "//", ";")))
-    if not stripped.strip() or BAD_LOG.search(text):
+    stripped = strip_comments(payload.decode("utf-8"))
+    if not stripped.strip() or BAD_LOG.search(stripped):
         raise FlowError(f"{label} is empty, comment-only, or contains fatal diagnostics")
-    return text
+    return stripped
+
+
+def report_context_line(tool: str, version: str, top: str,
+                        kind: str, context: str) -> str:
+    return ("K2_SINGLE_EDGE_REPORT_CONTEXT_V1 "
+            f"tool={tool} version={version} top={top} kind={kind} context={context}")
+
+
+def require_report_context(text: str, tool: str, version: str, top: str,
+                           kind: str, context: str) -> None:
+    expected = report_context_line(tool, version, top, kind, context)
+    markers = [line.strip() for line in text.splitlines()
+               if line.strip().startswith("K2_SINGLE_EDGE_REPORT_CONTEXT_")]
+    if markers != [expected]:
+        raise FlowError(f"{kind} report lacks one exact native tool/top/context binding")
+
+
+def require_zero_native(payload: bytes, kind: str, top: str,
+                        version: str, context: str) -> None:
+    text = active_text(payload, f"{kind} report")
+    require_report_context(text, "Innovus", version, top, kind, context)
+    phrase, count = {
+        "drc": (r"No DRC violations were found", r"Total\s+Violations\s*:\s*0"),
+        "antenna": (r"No Violations Found", r"Total\s+violations\s*:\s*0"),
+        "connectivity": (r"Found no problems or warnings\.", r"Total\s+problems\s*:\s*0"),
+        "pg_connectivity": (r"Found no problems or warnings\.", r"Total\s+problems\s*:\s*0"),
+    }[kind]
+    if len(re.findall(rf"(?mi)^\s*{phrase}\s*$", text)) != 1 or \
+            len(re.findall(rf"(?mi)^\s*{count}\s*$", text)) != 1:
+        raise FlowError(f"{kind} report lacks unique exact native zero evidence")
+    issue_counts = re.findall(
+        r"(?i)(?:violations?|viols?|errors?|problems?|warnings?)[^0-9\n]{0,16}([0-9]+)|"
+        r"([0-9]+)[^0-9\n]{0,8}(?:violations?|viols?|errors?|problems?|warnings?)",
+        text)
+    allowed_issue_lines = (phrase, count)
+    unexpected_issue_lines = [line for line in text.splitlines()
+                              if re.search(r"(?i)\b(?:violations?|viols?|errors?|problems?|warnings?)\b", line)
+                              and not any(re.fullmatch(rf"\s*{pattern}\s*", line, re.I)
+                                          for pattern in allowed_issue_lines)]
+    if unexpected_issue_lines or any(int(left or right) != 0
+                                     for left, right in issue_counts) or re.search(
+            r"(?i)\b(?:aborted|incomplete|failed|not\s+run|not\s+checked|skipped|unknown)\b",
+            text):
+        raise FlowError(f"{kind} report contains contradictory or nonzero evidence")
 
 
 def require_report(payload: bytes, label: str, top: str, tokens: Iterable[str]) -> str:
@@ -794,35 +844,117 @@ def require_report(payload: bytes, label: str, top: str, tokens: Iterable[str]) 
     return text
 
 
-def validate_sdc(text: str) -> None:
-    active = "\n".join(line for line in text.splitlines()
-                       if not line.lstrip().startswith(("#", ";")))
-    forbidden = r"(?mi)^\s*set_(?:false_path|multicycle_path|case_analysis|disable_timing|clock_groups|max_delay|min_delay)\b"
-    exact = ((r"create_clock\b[^\n]*-period\s+6\.5(?:0+)?\b[^\n]*clk_i", 1),
-             (r"set_clock_uncertainty\s+0\.25(?:0+)?\b", 1),
-             (r"set_input_delay\b[^\n]*-min\s+0\.1(?:0+)?\b", 1),
-             (r"set_input_delay\b[^\n]*-max\s+0\.5(?:0+)?\b", 1),
-             (r"set_output_delay\b[^\n]*-min\s+0\.1(?:0+)?\b", 1),
-             (r"set_output_delay\b[^\n]*-max\s+0\.5(?:0+)?\b", 1),
-             (r"set_input_transition\s+0\.05(?:0+)?\b", 1),
-             (r"set_load\s+0\.01(?:0+)?\b", 1))
-    if re.search(forbidden, active) or "create_generated_clock" in active or \
-            any(len(re.findall(pattern, active, re.IGNORECASE)) != count
-                for pattern, count in exact):
+def validate_sdc(text: str, contract: dict[str, Any]) -> None:
+    active = strip_comments(text).replace("\\\n", " ")
+    forbidden = r"(?i)\b(?:set_false_path|set_multicycle_path|set_case_analysis|set_disable_timing|set_clock_groups|set_max_delay|set_min_delay|create_generated_clock)\b"
+    if re.search(forbidden, active):
         raise FlowError("mapped SDC values/exceptions differ from exact placeholder contract")
+    commands = [re.sub(r"\s+", " ", command.strip())
+                for line in active.splitlines() for command in line.split(";")
+                if command.strip()]
+    inputs = [row["name"] for row in contract["boundary"]["normalized_ports"]["inputs"]
+              if row["name"] != contract["boundary"]["clock_port"]]
+    outputs = [row["name"] for row in contract["boundary"]["normalized_ports"]["outputs"]]
+    port_collection = lambda names: (r"\[get_ports\s+\{\s*" +
+                                     r"\s+".join(map(re.escape, names)) + r"\s*\}\]")
+    clock_port = port_collection([contract["boundary"]["clock_port"]])
+    input_ports, output_ports = port_collection(inputs), port_collection(outputs)
+    clock = r"\[get_clocks\s+\{?se_primary_clk\}?\]"
+    exact = (
+        rf"create_clock -name se_primary_clk -period 6\.5(?:0+)? -waveform \{{0(?:\.0+)? 3\.25(?:0+)?\}} {clock_port}",
+        rf"set_clock_uncertainty 0\.25(?:0+)? {clock}",
+        rf"set_input_delay -clock se_primary_clk -min 0\.1(?:0+)? {input_ports}",
+        rf"set_input_delay -clock se_primary_clk -max 0\.5(?:0+)? {input_ports}",
+        rf"set_input_transition 0\.05(?:0+)? {input_ports}",
+        rf"set_output_delay -clock se_primary_clk -min 0\.1(?:0+)? {output_ports}",
+        rf"set_output_delay -clock se_primary_clk -max 0\.5(?:0+)? {output_ports}",
+        rf"set_load 0\.01(?:0+)? {output_ports}",
+    )
+    if len(commands) != len(exact) or any(
+            re.fullmatch(pattern, command) is None
+            for pattern, command in zip(exact, commands)) or \
+            sum(command.startswith("create_clock ") for command in commands) != 1:
+        raise FlowError("mapped SDC commands/cardinality/collections are not exact")
+
+
+def split_verilog_list(raw: str) -> list[str]:
+    result, start, depth = [], 0, 0
+    for index, character in enumerate(raw):
+        if character in "([{":
+            depth += 1
+        elif character in ")]}" and depth:
+            depth -= 1
+        elif character == "," and depth == 0:
+            result.append(raw[start:index].strip())
+            start = index + 1
+    result.append(raw[start:].strip())
+    return [item for item in result if item]
+
+
+def declared_width(raw: str) -> int:
+    match = re.search(r"\[\s*([0-9]+)\s*:\s*([0-9]+)\s*\]", raw)
+    return abs(int(match.group(1)) - int(match.group(2))) + 1 if match else 1
 
 
 def validate_netlist(payload: bytes, top: str, contract: dict[str, Any], role: str) -> None:
     text = active_text(payload, role)
-    match = re.search(rf"(?is)\bmodule\s+{re.escape(top)}\b(.*?)\bendmodule\b", text)
+    modules = re.findall(rf"(?is)\bmodule\s+{re.escape(top)}\b(.*?)\bendmodule\b", text)
+    if len(modules) != 1:
+        raise FlowError(f"{role} does not contain exactly one exact top")
+    match = re.match(r"(?is)\s*(?:#\s*\(.*?\)\s*)?\((.*?)\)\s*;(.*)\Z", modules[0])
     if not match:
-        raise FlowError(f"{role} does not contain the exact top")
-    body = match.group(1)
-    ports = [item["name"] for direction in ("inputs", "outputs")
-             for item in contract["boundary"]["normalized_ports"][direction]]
-    if any(not re.search(rf"\b{re.escape(port)}\b", body) for port in ports) or \
-            not re.search(r"\b[A-Za-z_][A-Za-z0-9_$]*\s+[A-Za-z_][A-Za-z0-9_$]*\s*\(", body):
-        raise FlowError(f"{role} top is empty or lacks its complete structural interface")
+        raise FlowError(f"{role} top header is not structurally parseable")
+    header, body = match.groups()
+    expected_rows = [("input", row) for row in
+                     contract["boundary"]["normalized_ports"]["inputs"]] + \
+                    [("output", row) for row in
+                     contract["boundary"]["normalized_ports"]["outputs"]]
+    expected_names = [row["name"] for _, row in expected_rows]
+    header_names = []
+    ansi_declarations: dict[str, tuple[str, int]] = {}
+    inherited_direction: str | None = None
+    inherited_width = 1
+    for item in split_verilog_list(header):
+        direction_match = re.search(r"\b(input|output|inout)\b", item)
+        if direction_match:
+            inherited_direction = direction_match.group(1)
+            inherited_width = declared_width(item)
+        identifiers = re.findall(r"[A-Za-z_][A-Za-z0-9_$]*", re.sub(r"\[[^]]*\]", "", item))
+        identifiers = [name for name in identifiers if name not in
+                       {"input", "output", "inout", "wire", "logic", "reg", "tri", "signed", "unsigned"}]
+        if not identifiers:
+            raise FlowError(f"{role} contains an unparseable top port")
+        name = identifiers[-1]
+        header_names.append(name)
+        if inherited_direction is not None:
+            ansi_declarations[name] = (inherited_direction, inherited_width)
+    if header_names != expected_names or len(set(header_names)) != len(header_names):
+        raise FlowError(f"{role} top port list is not the exact complete boundary")
+    declarations = dict(ansi_declarations)
+    for declaration in re.finditer(r"(?is)\b(input|output|inout)\b\s+([^;]+);", body):
+        direction, raw = declaration.groups()
+        width = declared_width(raw)
+        cleaned = re.sub(r"\[[^]]*\]", "", raw)
+        cleaned = re.sub(r"\b(?:wire|logic|reg|tri|signed|unsigned)\b", "", cleaned)
+        for item in split_verilog_list(cleaned):
+            names = re.findall(r"[A-Za-z_][A-Za-z0-9_$]*", item.split("=", 1)[0])
+            if len(names) != 1 or names[0] in declarations:
+                raise FlowError(f"{role} has duplicate or unparseable port declarations")
+            declarations[names[0]] = (direction, width)
+    expected_declarations = {row["name"]: (direction, row["width"])
+                             for direction, row in expected_rows}
+    if declarations != expected_declarations:
+        raise FlowError(f"{role} port directions/widths are not exact")
+    declaration_free = re.sub(r"(?is)\b(?:input|output|inout)\b\s+[^;]+;", "", body)
+    instances = re.findall(
+        r"(?ms)^\s*([A-Za-z_][A-Za-z0-9_$]*)\s+([A-Za-z_][A-Za-z0-9_$]*)\s*\((.*?)\)\s*;",
+        declaration_free)
+    connections = "\n".join(instance[2] for instance in instances)
+    input_names = {row["name"] for direction, row in expected_rows if direction == "input"}
+    output_names = {row["name"] for direction, row in expected_rows if direction == "output"}
+    connected = set(re.findall(r"\.\w+\s*\(\s*([A-Za-z_][A-Za-z0-9_$]*)\s*\)", connections))
+    if not instances or not (connected & input_names) or not (connected & output_names):
+        raise FlowError(f"{role} lacks useful boundary-to-cell structural connectivity")
     if contains_forbidden(text, contract["source_policy"]["forbidden_case_insensitive_tokens"]):
         raise FlowError(f"{role} contains forbidden multi-edge material")
 
@@ -854,16 +986,18 @@ def validate_innovus_log(text: str, top: str, version: str) -> None:
         raise FlowError("Innovus log lacks one exact zero-error native completion")
 
 
-def validate_check_timing(text: str) -> None:
+def validate_check_timing(payload: bytes, top: str, version: str) -> None:
+    text = active_text(payload, "check_timing")
+    require_report_context(text, "Innovus", version, top, "check_timing", "postroute")
     blockers = ("no_clock", "no_input_delay", "no_output_delay",
                 "unconstrained", "no_drive", "no_load")
-    if text.count("TIMING CHECK SUMMARY") != 1:
+    if len(re.findall(r"(?m)^\s*TIMING CHECK SUMMARY\s*$", text)) != 1:
         raise FlowError("check_timing lacks one native summary")
-    for blocker in blockers:
-        matches = re.findall(
-            rf"(?i)\b{blocker}\b[^\n]*?(?:[:|=]|count)\s*(?:\|\s*)?([0-9]+)", text)
-        if matches != ["0"]:
-            raise FlowError(f"check_timing missing/duplicate/nonzero {blocker} class")
+    rows = re.findall(r"(?mi)^\s*([a-z_]+)\s*\|\s*count\s*\|\s*([0-9]+)\s*$", text)
+    if rows != [(blocker, "0") for blocker in blockers]:
+        raise FlowError("check_timing missing/duplicate/nonzero or extra blocker classes")
+    if re.search(r"(?i)\b(?:aborted|incomplete|failed|not\s+run|skipped|unknown)\b", text):
+        raise FlowError("check_timing contains contradictory completion evidence")
 
 
 def validate_live_environment(path: Path, contract_sha: str,
@@ -1177,24 +1311,33 @@ def validate_artifacts(root: Path, ledger_path: Path, design: str,
             artifacts["innovus_commands_complete"].decode("utf-8").strip() != \
             f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}":
         raise FlowError("native completion marker content mismatch")
+    innovus_version = contract["tools"]["innovus"]["version"]
     setup = parse_machine(artifacts["setup_timing_machine"], "se_setup_view", "setup")
     hold = parse_machine(artifacts["hold_timing_machine"], "se_hold_view", "hold")
     for role, metrics, check in (("setup_timing", setup, "setup"),
                                  ("hold_timing", hold, "hold")):
         timing = require_report(artifacts[role], role, top, (r"timing", rf"\b{check}\b", r"slack"))
+        require_report_context(timing, "Innovus", innovus_version, top,
+                               f"{check}_timing", "postroute")
         slacks = [float(value) for value in re.findall(
             r"(?i)slack\s*[:=]?\s*(-?[0-9]+(?:\.[0-9]+)?)", timing)]
+        contradiction_counts = re.findall(
+            r"(?i)(?:violations?|violating\s+paths?)[^0-9\n]{0,12}([0-9]+)|"
+            r"([0-9]+)[^0-9\n]{0,8}(?:violations?|violating\s+paths?)", timing)
         if re.search(r"(?i)no\s+(?:timing\s+)?paths?", timing) or not slacks or \
                 any(value < 0 or not math.isfinite(value) for value in slacks) or \
+                any(int(left or right) != 0 for left, right in contradiction_counts) or \
                 not math.isclose(min(slacks), metrics["wns"], rel_tol=0.0, abs_tol=1e-9):
             raise FlowError(f"native {check} timing report is not closed")
-    require_zero_native(artifacts["drc"], "drc")
-    require_zero_native(artifacts["antenna"], "antenna")
-    require_zero_native(artifacts["connectivity"], "connectivity")
-    require_zero_native(artifacts["pg_connectivity"], "connectivity")
-    check_timing = artifacts["check_timing"].decode("utf-8")
-    validate_check_timing(check_timing)
-    validate_sdc(active_text(artifacts["mapped_sdc"], "mapped SDC"))
+    require_zero_native(artifacts["drc"], "drc", top, innovus_version, "postroute")
+    require_zero_native(artifacts["antenna"], "antenna", top, innovus_version,
+                        "postroute")
+    require_zero_native(artifacts["connectivity"], "connectivity", top,
+                        innovus_version, "signal_postroute")
+    require_zero_native(artifacts["pg_connectivity"], "pg_connectivity", top,
+                        innovus_version, "pg_postroute")
+    validate_check_timing(artifacts["check_timing"], top, innovus_version)
+    validate_sdc(active_text(artifacts["mapped_sdc"], "mapped SDC"), contract)
     for role in ("mapped_netlist", "postroute_netlist"):
         validate_netlist(artifacts[role], top, contract, role)
     validate_sdf(artifacts["mapped_sdf"], top, "mapped SDF")
@@ -1231,10 +1374,11 @@ def validate_artifacts(root: Path, ledger_path: Path, design: str,
 
 def hold_receipt(contract_sha: str, design: str, blockers: Iterable[str]) -> dict[str, Any]:
     return seal({
-        "schema": "k2_single_edge_physical_qualification_v2", "design": design,
+        "schema": "k2_single_edge_physical_qualification_v3", "design": design,
         "decision": "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE",
         "contract_sha256": contract_sha,
-        "blockers": list(blockers), "artifact_bundle_consistency_verified": False,
+        "blockers": list(blockers), "diagnostic_artifact_checks_completed": False,
+        "diagnostic_evidence_scope": "CALLER_SELF_SEALED_UNAUTHENTICATED_ONLY",
         "producer_authenticated": False, "candidate_physical_go": False,
     })
 
@@ -1261,13 +1405,14 @@ def qualify(design: str, attempt_root: Path, environment: Path, plan_path: Path,
     ledger_payload, _, metrics = validate_artifacts(
         attempt_root.resolve(), ledger_path, design, contract, plan)
     document = seal({
-        "schema": "k2_single_edge_physical_qualification_v2", "design": design,
+        "schema": "k2_single_edge_physical_qualification_v3", "design": design,
         "decision": "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE",
         "contract_sha256": contract_sha,
         "environment_receipt_sha256": sha256(env_payload),
         "command_plan_sha256": sha256(plan_payload),
         "artifact_ledger_sha256": sha256(ledger_payload),
-        "verified_metrics": metrics, "artifact_bundle_consistency_verified": True,
+        "diagnostic_metrics_only": metrics, "diagnostic_artifact_checks_completed": True,
+        "diagnostic_evidence_scope": "CALLER_SELF_SEALED_UNAUTHENTICATED_ONLY",
         "producer_authenticated": False,
         "constraint_evidence_class": contract["constraints"]["evidence_class"],
         "candidate_physical_go": False,
