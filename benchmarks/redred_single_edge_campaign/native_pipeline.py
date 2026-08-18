@@ -11,10 +11,10 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
+import stat
 import sys
 from types import ModuleType
 from typing import Any
@@ -49,7 +49,7 @@ PINNED_MODULES = {
     },
     "public_v2_native_adapter": {
         "path": "benchmarks/redred_single_edge_campaign/public_v2_native_adapter.py",
-        "sha256": "dae1de32a83457ac21ff3d84178cb6248fa1c24bdde41b656c11bbf983212e82",
+        "sha256": "7b2bbebba1d67a4ab52096fe8f7e8f43e5dfdb1e4d1554f7aa23a1c5f147be32",
     },
 }
 
@@ -58,17 +58,22 @@ class NativePipelineError(RuntimeError):
     """The native evidence, policy attestation, or aggregate is inconsistent."""
 
 
-def load_local_module(name: str, path: Path) -> ModuleType:
-    specification = importlib.util.spec_from_file_location(name, path)
-    if specification is None or specification.loader is None:
-        raise NativePipelineError(f"cannot load pipeline module: {path}")
-    module = importlib.util.module_from_spec(specification)
+def load_local_module(name: str, path: Path, data: bytes) -> ModuleType:
+    """Execute exactly the module bytes captured and hashed below."""
+    module = ModuleType(name)
+    module.__file__ = str(path)
     sys.modules[name] = module
-    specification.loader.exec_module(module)
+    try:
+        exec(compile(data, str(path), "exec"), module.__dict__)
+    except Exception as error:
+        sys.modules.pop(name, None)
+        raise NativePipelineError(f"cannot execute captured pipeline module: {path}") from error
     return module
 
 
-def verify_module_file(name: str, root: Path = PROJECT) -> dict[str, Any]:
+def verify_module_file(
+    name: str, root: Path = PROJECT,
+) -> tuple[dict[str, Any], bytes]:
     pin = PINNED_MODULES[name]
     path = root.joinpath(*Path(pin["path"]).parts)
     cursor = root
@@ -78,29 +83,52 @@ def verify_module_file(name: str, root: Path = PROJECT) -> dict[str, Any]:
             raise NativePipelineError(f"pinned module traverses a symlink: {name}")
     try:
         resolved = path.resolve(strict=True)
-        metadata = resolved.stat()
-        data = resolved.read_bytes()
-        after = resolved.stat()
+        before = resolved.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise NativePipelineError(f"pinned module is not one regular file: {name}")
+        descriptor = os.open(
+            resolved, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
     except OSError as error:
         raise NativePipelineError(f"cannot read pinned module: {name}") from error
-    if not resolved.is_file() or metadata.st_nlink != 1 \
-            or (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns) != \
-            (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) \
+    try:
+        opened = os.fstat(descriptor)
+        blocks: list[bytes] = []
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            blocks.append(block)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+    data = b"".join(blocks)
+    if any(getattr(before, field) != getattr(opened, field)
+           or getattr(opened, field) != getattr(after, field) for field in fields) \
+            or len(data) != after.st_size \
             or hashlib.sha256(data).hexdigest() != pin["sha256"]:
         raise NativePipelineError(f"pinned module bytes differ: {name}")
-    return {"path": pin["path"], "sha256": pin["sha256"], "size_bytes": len(data)}
+    return ({"path": pin["path"], "sha256": pin["sha256"], "size_bytes": len(data)}, data)
 
 
-for _module_name in PINNED_MODULES:
-    verify_module_file(_module_name)
+_MODULE_CAPTURES = {
+    name: verify_module_file(name) for name in PINNED_MODULES
+}
 
 
-aggregate = load_local_module("redred_pipeline_aggregate_gate", PACKAGE / "aggregate_gate.py")
+aggregate = load_local_module(
+    "redred_pipeline_aggregate_gate", PACKAGE / "aggregate_gate.py",
+    _MODULE_CAPTURES["aggregate_gate"][1],
+)
 synthetic_adapter = load_local_module(
     "redred_pipeline_synthetic_adapter", PACKAGE / "synthetic_v2_native_adapter.py",
+    _MODULE_CAPTURES["synthetic_v2_native_adapter"][1],
 )
 public_adapter = load_local_module(
     "redred_pipeline_public_adapter", PACKAGE / "public_v2_native_adapter.py",
+    _MODULE_CAPTURES["public_v2_native_adapter"][1],
 )
 
 
@@ -412,7 +440,9 @@ def evaluate(root: Path = PROJECT) -> dict[str, Any]:
     root = root.resolve(strict=True)
     if not root.is_dir():
         raise NativePipelineError("repository root is not a directory")
-    module_pins = {name: verify_module_file(name, root) for name in PINNED_MODULES}
+    module_pins = {
+        name: verify_module_file(name, root)[0] for name in PINNED_MODULES
+    }
     policy, policy_record, policy_path, policy_identity = load_policy(root)
     synthetic_native, synthetic_common, public_native, public_common = run_native_adapters(root)
     promoted_synthetic, promotion = attest_synthetic_view(synthetic_common, policy)

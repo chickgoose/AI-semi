@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import io
 import json
 import os
@@ -174,14 +173,17 @@ def load_upstream(path: Path = PRODUCER) -> ModuleType:
     payload = path.read_bytes()
     if sha256(payload) != PRODUCER_SHA256:
         raise PublicV2NativeAdapterError("upstream public-v2 validator bytes differ")
-    specification = importlib.util.spec_from_file_location(
-        "redred_public_projected_v2_upstream", path,
-    )
-    if specification is None or specification.loader is None:
-        raise PublicV2NativeAdapterError("cannot load upstream public-v2 validator")
-    module = importlib.util.module_from_spec(specification)
-    sys.modules[specification.name] = module
-    specification.loader.exec_module(module)
+    module_name = "redred_public_projected_v2_upstream"
+    module = ModuleType(module_name)
+    module.__file__ = str(path)
+    sys.modules[module_name] = module
+    try:
+        exec(compile(payload, str(path), "exec"), module.__dict__)
+    except Exception as error:
+        sys.modules.pop(module_name, None)
+        raise PublicV2NativeAdapterError(
+            "cannot execute captured upstream public-v2 validator bytes"
+        ) from error
     return module
 
 
