@@ -81,8 +81,9 @@
           "type": "array", "minItems": 1,
           "items": {
             "type": "object", "additionalProperties": false,
-            "required": ["path", "blob_sha256"],
+            "required": ["role", "path", "blob_sha256"],
             "properties": {
+              "role": {"type": "string", "minLength": 1},
               "path": {"type": "string", "minLength": 1},
               "blob_sha256": {"$ref": "#/$defs/git"}
             }
@@ -93,18 +94,31 @@
     "rtl": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source_commit", "source_tree", "integration_commit", "integration_tree", "inventory"],
+      "required": ["source_commit", "source_tree", "integration_commit", "integration_tree", "source_inventory", "integration_inventory"],
       "properties": {
         "source_commit": {"$ref": "#/$defs/git"},
         "source_tree": {"$ref": "#/$defs/git"},
         "integration_commit": {"$ref": "#/$defs/git"},
         "integration_tree": {"$ref": "#/$defs/git"},
-        "inventory": {
+        "source_inventory": {
           "type": "array", "minItems": 1,
           "items": {
             "type": "object", "additionalProperties": false,
-            "required": ["path", "blob_sha256"],
+            "required": ["role", "path", "blob_sha256"],
             "properties": {
+              "role": {"type": "string", "minLength": 1},
+              "path": {"type": "string", "minLength": 1},
+              "blob_sha256": {"$ref": "#/$defs/git"}
+            }
+          }
+        },
+        "integration_inventory": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["role", "path", "blob_sha256"],
+            "properties": {
+              "role": {"type": "string", "minLength": 1},
               "path": {"type": "string", "minLength": 1},
               "blob_sha256": {"$ref": "#/$defs/git"}
             }

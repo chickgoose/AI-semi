@@ -7,7 +7,7 @@
   },
   "sealed_tuple_contract": {
     "path": "benchmarks/redred_single_edge_campaign/sealed_tuple.schema.json",
-    "sha256": "b66d4a051b3efddcf9d26dd132639a7d6815171d59b5a12c431297eef403a1d1"
+    "sha256": "535eea62c87e611f6f7d892bc9c4b107530dfa82082f2fa4e130dbe57a4723f7"
   },
   "sealed_producers": {
     "synthetic_v2": {
@@ -31,10 +31,13 @@
         "producer.runner_sha256",
         "producer.testbench_sha256",
         "producer.tool_pins_sha256",
+        "producer.inventory",
         "rtl.source_commit",
         "rtl.source_tree",
         "rtl.integration_commit",
         "rtl.integration_tree",
+        "rtl.source_inventory",
+        "rtl.integration_inventory",
         "bundle_sha256",
         "bundle_size_bytes",
         "manifest_schema",
@@ -75,10 +78,13 @@
         "producer.runner_sha256",
         "producer.testbench_sha256",
         "producer.tool_pins_sha256",
+        "producer.inventory",
         "rtl.source_commit",
         "rtl.source_tree",
         "rtl.integration_commit",
         "rtl.integration_tree",
+        "rtl.source_inventory",
+        "rtl.integration_inventory",
         "bundle_sha256",
         "bundle_size_bytes",
         "manifest_schema",
