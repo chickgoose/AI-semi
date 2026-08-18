@@ -1,5 +1,16 @@
 # tmux 작업 환경 및 복구 방법
 
+## 2026-08-18 현재 기본값
+
+새 작업의 표준은 supervisor 1개와 `a2`~`a9` 여덟 worker다. 아래 과거 `dev`/`dev-shell`/`dev-agents` 구성은 살아 있는 기존 세션을 복구할 때만 참고한다. 새 세션은 다음으로 만든다.
+
+```bash
+cd /home/chickgoose/projects/a1
+scripts/bootstrap_codex_team_tmux.sh
+```
+
+새 세션 인수인계와 운영 원칙은 `docs/NEW_SESSION_HANDOFF_20260818.md`가 우선한다. `docs/tmux_all_agents_layout_20260814.txt`의 21-pane 레이아웃은 역사적 기록이며 현재 기본 구성이 아니다.
+
 ## 최종 구성
 
 tmux 그룹 세션 두 개를 사용한다. 그룹 세션은 같은 창과 프로세스를 공유하지만, 각 터미널이 선택하는 창은 독립적이다.
