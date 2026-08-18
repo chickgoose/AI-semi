@@ -1,0 +1,219 @@
+{
+  "schema": "k2_single_edge_vectorless_contract_v1",
+  "status": "READY_FOR_PRODUCER_BOUND_SERVER_EXECUTION",
+  "evidence_class": "GENUS_MAPPED_A2_A3_SINGLE_EDGE_DEFAULT_VECTORLESS",
+  "decision_policy": {
+    "candidate_order": ["a2_single_edge", "a3_single_edge"],
+    "exact_cohort_required": true,
+    "release_interface": "PARALLEL_FALLBACK",
+    "transfer_mode": "SINGLE_EDGE_PARALLEL",
+    "synthetic_allowed": false,
+    "inherited_allowed": false,
+    "p6_allowed": false,
+    "borrowed_dependency_ids_allowed": []
+  },
+  "policy_binding": {
+    "path": "contracts/redred_system_goal/active_goal.json",
+    "sha256": "275abf421177fbdb8d067e7fd660f4d94e99fc5f5b3801db50bd1a8b23cdad94",
+    "required_disallowed_dependencies": [
+      "INHERITED_6P5_STANDARD_CELL_REFERENCE",
+      "P6_VECTORLESS_POWER",
+      "P6_PAD_PACKAGE_CHANNEL"
+    ]
+  },
+  "source_pins": {
+    "path": "physical/k2_single_edge_vectorless/source-manifests.json",
+    "sha256": "bdd6be1e0cb1527f7de6c1182292e540c9ea0b08648292ac00ba6dd54fbc7bee"
+  },
+  "candidates": {
+    "a2_single_edge": {
+      "architecture": "A2",
+      "top": "a2_batched_iwrr_single_edge_top",
+      "boundary": "SOURCE_PENDING_ACCEPT_THROUGH_SINGLE_EDGE_LINK_RETIRE",
+      "inputs": [
+        "clk_i",
+        "rst_i",
+        "link_enable_i",
+        "source_pending_i[15:0]"
+      ],
+      "outputs": [
+        "source_accept_o[15:0]",
+        "accept_count_o[1:0]",
+        "accept_addr0_o[3:0]",
+        "accept_addr1_o[3:0]",
+        "link_valid_o",
+        "link_addr0_o[3:0]",
+        "link_addr1_o[3:0]",
+        "retire_valid_o[1:0]",
+        "retire_addr0_o[3:0]",
+        "retire_addr1_o[3:0]",
+        "protocol_error_o",
+        "drain_idle_o"
+      ]
+    },
+    "a3_single_edge": {
+      "architecture": "A3",
+      "top": "a3_exact_scalar_prefix_k2_single_edge_top",
+      "boundary": "SOURCE_PENDING_ACCEPT_THROUGH_SINGLE_EDGE_LINK_RETIRE",
+      "inputs": [
+        "clk_i",
+        "rst_i",
+        "link_enable_i",
+        "source_pending_i[15:0]"
+      ],
+      "outputs": [
+        "source_accept_o[15:0]",
+        "accept_count_o[1:0]",
+        "accept_addr0_o[3:0]",
+        "accept_addr1_o[3:0]",
+        "link_valid_o",
+        "link_addr0_o[3:0]",
+        "link_addr1_o[3:0]",
+        "retire_valid_o[1:0]",
+        "retire_addr0_o[3:0]",
+        "retire_addr1_o[3:0]",
+        "protocol_error_o",
+        "drain_idle_o"
+      ]
+    }
+  },
+  "operating_point": {
+    "corner": {
+      "pdk": "GPDK045/gsclib045",
+      "process": 1.0,
+      "voltage_v": 0.9,
+      "temperature_c": 125.0,
+      "power_liberty_role": "setup_slow"
+    },
+    "clock": {
+      "port": "clk_i",
+      "name": "single_edge_clk",
+      "period_ns": 6.5,
+      "waveform_ns": [0.0, 3.25],
+      "uncertainty_ns": 0.25,
+      "min_pulse_high_ns": 0.5,
+      "min_pulse_low_ns": 0.5
+    },
+    "io": {
+      "input_delay_min_ns": 0.1,
+      "input_delay_max_ns": 0.5,
+      "output_delay_min_ns": 0.1,
+      "output_delay_max_ns": 0.5,
+      "input_transition_ns": 0.05,
+      "drive_cell": "BUFX2"
+    },
+    "load": {
+      "all_outputs_pf": 0.01
+    },
+    "libraries": {
+      "setup": {
+        "relative_path": "timing/slow_vdd1v0_basicCells.lib",
+        "sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10"
+      },
+      "hold": {
+        "relative_path": "timing/fast_vdd1v0_basicCells.lib",
+        "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560"
+      }
+    }
+  },
+  "activity_policy": {
+    "mode": "GENUS_DEFAULT_VECTORLESS",
+    "activity_annotated": false,
+    "primary_input_activity": 0.2,
+    "sequential_element_activity": 0.2,
+    "required_activity_file_header": "N.A.",
+    "required_user_defined_activity_header": "N.A.",
+    "waveform_formats_allowed": [],
+    "per_object_activity_allowed": false,
+    "forbidden_tokens": [
+      "read_vcd",
+      "read_saif",
+      "read_tcf",
+      "read_activity",
+      "read_activity_file",
+      "set_switching_activity",
+      "set_default_switching_activity",
+      "set_power_activity",
+      "set_activity",
+      "lp_toggle_rate",
+      "lp_static_probability",
+      "toggle_rate",
+      "static_probability",
+      ".vcd",
+      ".saif",
+      ".tcf"
+    ]
+  },
+  "tool": {
+    "name": "Cadence Genus",
+    "version": "23.14-s090_1",
+    "requested_path": "/tools/cadence/DDI231/GENUS231/bin/genus",
+    "resolved_path": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep",
+    "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa"
+  },
+  "execution_policy": {
+    "argv_suffix": ["-batch", "-files"],
+    "semantic_environment_keys": [
+      "K2_SE_TOP",
+      "K2_SE_SOURCES_SV",
+      "K2_SE_LIBRARY",
+      "K2_SE_SDC",
+      "K2_SE_OUTPUT",
+      "K2_SE_ACTIVITY_MODE",
+      "LC_ALL"
+    ],
+    "required_exit_code": 0,
+    "require_absolute_cwd_and_driver": true,
+    "require_in_place_server_root": true
+  },
+  "artifact_policy": {
+    "fixed_roles": [
+      "source_manifest",
+      "driver_tcl",
+      "input_sdc",
+      "materialized_sdc",
+      "mapped_sdc",
+      "setup_liberty",
+      "hold_liberty",
+      "mapped_netlist",
+      "mapped_sdf",
+      "genus_log",
+      "report_area",
+      "report_timing",
+      "report_power",
+      "report_qor",
+      "report_timing_intent",
+      "report_clocks",
+      "environment_receipt",
+      "command_receipt"
+    ],
+    "source_role_prefix": "source_",
+    "filelist_role_prefix": "filelist_",
+    "all_files_regular_single_link": true,
+    "complete_ledger_required": true
+  },
+  "producer_authority": {
+    "accepted_receipt_schema": "k2_single_edge_vectorless_producer_receipt_v1",
+    "accepted_origin": "DIRECT_GENUS_SERVER_RUN",
+    "attestation_schema": "k2_single_edge_vectorless_attestation_v1",
+    "algorithm": "hmac-sha256",
+    "keyring_schema": "k2_single_edge_vectorless_keyring_v1",
+    "trust_anchor_location": "OUTSIDE_PUBLIC_EVIDENCE_ROOT",
+    "out_of_band_keyring_sha256_required": true,
+    "unauthenticated_result": "HOLD_UNAUTHENTICATED_PRODUCER_ARTIFACTS"
+  },
+  "templates": {
+    "driver": {
+      "path": "physical/k2_single_edge_vectorless/genus_default_vectorless.tcl",
+      "sha256": "caed3a1b730423839a9476f9735c3fb1958be86de501b6ed170500168cf11543"
+    },
+    "sdc": {
+      "path": "physical/k2_single_edge_vectorless/single_edge_strict.sdc",
+      "sha256": "510e36026b71177c68d5c8980257f3c2a33ad10f46a10be64e1ddd63ec467ee8"
+    },
+    "producer_receipt": {
+      "path": "physical/k2_single_edge_vectorless/producer-receipt.template.json",
+      "sha256": "8dbe9f5a317d2aed669b49b420208ee04d19c925dfe63ff57d10bc394a347df7"
+    }
+  }
+}

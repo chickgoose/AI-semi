@@ -1,0 +1,78 @@
+{
+  "schema": "k2_single_edge_vectorless_source_pins_v1",
+  "producer_commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
+  "candidates": {
+    "a2_single_edge": {
+      "architecture": "A2",
+      "top": "a2_batched_iwrr_single_edge_top",
+      "filelists": [
+        {
+          "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
+          "sha256": "55d6c15e33147a3362dedfddccb0ff022e47401eeb0d8388a8dd30e5d9ca1e76"
+        },
+        {
+          "path": "rtl/technology/single_edge/filelists/generic.f",
+          "sha256": "8c538fc9147c96237f5367fa25da91e2f787ee67d09ca6738f5fcf7e9f19ddf8"
+        }
+      ],
+      "sources": [
+        {
+          "path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
+          "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+        },
+        {
+          "path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
+          "sha256": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493"
+        },
+        {
+          "path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+          "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"
+        },
+        {
+          "path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv",
+          "sha256": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4"
+        },
+        {
+          "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
+          "sha256": "9061deb14e46e0d050bdf3fae450ee8a94c234f94e74f69e1dc8be84722e55ac"
+        }
+      ]
+    },
+    "a3_single_edge": {
+      "architecture": "A3",
+      "top": "a3_exact_scalar_prefix_k2_single_edge_top",
+      "filelists": [
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f",
+          "sha256": "1fcf350a51ae32008ba207b5e1406d71e4a3083ffc52193e379f65eb1b623fee"
+        },
+        {
+          "path": "rtl/technology/single_edge/filelists/generic.f",
+          "sha256": "8c538fc9147c96237f5367fa25da91e2f787ee67d09ca6738f5fcf7e9f19ddf8"
+        }
+      ],
+      "sources": [
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+          "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+        },
+        {
+          "path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
+          "sha256": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493"
+        },
+        {
+          "path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+          "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"
+        },
+        {
+          "path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv",
+          "sha256": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4"
+        },
+        {
+          "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",
+          "sha256": "3bac4faa2e249e0326a8eba4e3b010437e16c33b5dff236bd621acdb27c5bb07"
+        }
+      ]
+    }
+  }
+}
