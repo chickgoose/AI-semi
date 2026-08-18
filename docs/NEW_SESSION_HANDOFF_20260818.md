@@ -17,7 +17,7 @@
 
 - 주 작업 경로: `/home/chickgoose/projects/a1`
 - 이 문서를 작성할 때 checkout: `integration/a7-k4-physical-candidate`
-- 이 문서를 작성할 때 HEAD: `61de7fdbd3b3160d3ce91dcb3ce0a1cc5fc4d078`
+- handoff 작성 직전 기준 HEAD: `61de7fdbd3b3160d3ce91dcb3ce0a1cc5fc4d078`
 - 사용자 소유로 간주하여 보존할 untracked 경로:
   - `.w2-build-artifacts/`
   - `docs/주최측_QA_문의사항.txt`
@@ -38,6 +38,15 @@
 - Windows 경로: `C:\Users\박준영\AI-semi\AI-semi-k2-digital-final-20260813.bundle`
 - SHA-256: `5a7e71f0c09af9debfc20315bbbe52b7cc94934da49ffc9ff44f3c146e1ff4ae`
 - 상세: `docs/K2_최종코드_복구방법_20260813.txt`
+
+복구 주의:
+
+- shared Git directory는 `/home/chickgoose/projects/AI-semi/.git`이다.
+- 감사 시 등록 worktree는 42개였고 그중 다수가 `/tmp` 삭제로 prunable 상태였다. `/home/chickgoose/projects/a1`~`a9` 영구 worktree는 존재했다.
+- `refs/stash`는 `c7c306d2836a638a496c3389db30451a5f972f85`였다.
+- 현재 문서 브랜치의 local history는 origin보다 크게 앞서 있었다. origin만으로 복구 가능하다고 가정하지 않는다.
+- 위 Windows digital bundle과 아래 6.5 ns evidence archive는 감사 시 이 Linux 로컬 파일시스템에는 없었다.
+- untracked result는 Git bundle에 들어가지 않는다. 별도 archive 전에 `git gc`, `git prune`, `git worktree prune`을 실행하지 않는다.
 
 새 세션은 작업 전에 아래를 먼저 기록한다.
 
@@ -199,14 +208,14 @@ Area report에는 단위가 명시되지 않는다. 해당 Innovus/library 관�
 
 이 전력값은 low/unequal direct coverage와 propagated/default activity를 사용한 **provisional diagnostic**이다. signoff power, full50 평균, 정밀 power ranking이 아니다.
 
-### Complete endpoint timing bracket
+### Complete endpoint timing 관측
 
 - 6.5 ns: 세 후보 모두 clean PASS.
-- 5.7 ns fresh P&R: 세 후보 모두 setup recovery가 닫히지 않아 FAIL.
+- 대화 중 수행한 5.7 ns fresh P&R에서는 세 후보 모두 setup recovery가 닫히지 않아 FAIL로 관측됐다.
   - Fovea setup WNS `-0.0845961 ns`
   - A2 setup WNS `-0.100518 ns`
   - A3 setup WNS `-0.075951 ns`
-- 따라서 현재 증거는 153.846 MHz PASS / 175.439 MHz FAIL bracket이다. exact Fmax라고 하지 않는다.
+- 그러나 이 5.7 ns 결과의 immutable local archive/receipt는 현재 checkout에서 확인되지 않았다. 따라서 새 세션은 6.5 ns를 clean qualified operating point로만 유지하고, 5.7 ns bytes를 회수·검증하기 전에는 정식 Fmax bracket으로 발표하지 않는다.
 
 ### Core-only same-flow reference
 
@@ -299,11 +308,17 @@ scripts/bootstrap_codex_team_tmux.sh
 scripts/bootstrap_codex_team_tmux.sh my-session
 ```
 
+worker Codex까지 대기 상태로 실행하려면 다음을 사용한다.
+
+```bash
+scripts/bootstrap_codex_team_tmux.sh ai-semi --launch-workers
+```
+
 구성:
 
 - window 0 `supervisor`: head Codex/통합/최종 판단.
 - window 1 `agents`: a2–a9, tiled 8 panes.
-- script는 안전하게 shell pane만 만든다. task가 확정되기 전 Codex를 자동 실행하거나 오래된 일을 재개하지 않는다.
+- 기본 script는 안전하게 shell pane만 만들며 각 pane의 cwd를 `/home/chickgoose/projects/a2`~`a9`로 분리한다. `--launch-workers`를 명시하면 각 독립 worktree에서 interactive Codex를 시작하지만, 과거 task는 자동 재개하지 않는다.
 
 점검:
 

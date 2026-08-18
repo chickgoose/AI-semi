@@ -2,7 +2,13 @@
 set -euo pipefail
 
 session=${1:-ai-semi}
+launch_workers=${2:-}
 repo=/home/chickgoose/projects/a1
+
+if [[ "$launch_workers" != "" && "$launch_workers" != "--launch-workers" ]]; then
+  printf 'usage: %s [session] [--launch-workers]\n' "$0" >&2
+  exit 2
+fi
 
 if ! command -v tmux >/dev/null 2>&1; then
   printf 'tmux is not installed\n' >&2
@@ -40,8 +46,16 @@ fi
 
 for i in "${!panes[@]}"; do
   worker=$((i + 2))
+  worktree="/home/chickgoose/projects/a${worker}"
+  if [[ ! -d "$worktree" ]]; then
+    printf 'worker worktree not found: %s\n' "$worktree" >&2
+    exit 2
+  fi
   tmux select-pane -t "${panes[$i]}" -T "a${worker}"
-  tmux send-keys -t "${panes[$i]}" "cd '$repo'" Enter
+  tmux send-keys -t "${panes[$i]}" "cd '$worktree'" Enter
+  if [[ "$launch_workers" == "--launch-workers" ]]; then
+    tmux send-keys -t "${panes[$i]}" codex Enter
+  fi
 done
 
 tmux select-layout -t "$session":agents tiled >/dev/null
@@ -50,5 +64,10 @@ tmux select-window -t "$session":supervisor
 printf 'created tmux team: %s\n' "$session"
 printf '  window 0: supervisor\n'
 printf '  window 1: agents (a2-a9, 8 tiled shells)\n'
+if [[ "$launch_workers" == "--launch-workers" ]]; then
+  printf '  workers: interactive Codex launched in a2-a9 worktrees\n'
+else
+  printf '  workers: shells only; add --launch-workers to start Codex\n'
+fi
 printf 'attach: tmux attach-session -t %s\n' "$session"
 printf 'inspect: tmux list-panes -t %s:agents -F '\''#{pane_index}|#{pane_title}|#{pane_current_command}'\''\n' "$session"
