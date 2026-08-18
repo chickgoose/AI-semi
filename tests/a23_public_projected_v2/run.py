@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tarfile
 from typing import Any, Callable, Iterable
+import zlib
 
 
 PACKAGE = Path(__file__).resolve().parent
@@ -906,7 +907,11 @@ def write_and_reopen_archive(
 
 def validate_archive_bytes(payload: bytes) -> dict[str, Any]:
     try:
-        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+        # Exhaust the complete gzip member first. Tar readers may stop at the
+        # tar end marker without consuming (and therefore checking) gzip CRC,
+        # size, trailer, or trailing bytes.
+        tar_payload = gzip.decompress(payload)
+        with tarfile.open(fileobj=io.BytesIO(tar_payload), mode="r:") as archive:
             members = archive.getmembers()
             expected_names = ("MANIFEST.json", *expected_export_names())
             if tuple(member.name for member in members) != expected_names:
@@ -922,7 +927,7 @@ def validate_archive_bytes(payload: bytes) -> dict[str, Any]:
                 if stream is None:
                     raise PublicV2Error(f"cannot reopen archive member: {member.name}")
                 extracted[member.name] = stream.read()
-    except (tarfile.TarError, OSError) as error:
+    except (tarfile.TarError, OSError, EOFError, zlib.error) as error:
         raise PublicV2Error(f"cannot reopen final archive: {error}") from error
     manifest = load_json_bytes(extracted.pop("MANIFEST.json"), "archive manifest")
     validate_manifest(manifest)
@@ -1006,6 +1011,22 @@ def validate_publication(publication: dict[str, Any]) -> None:
         raise PublicV2Error("publication lacks semantic reproduction match")
     if publication.get("export_entry_count_excluding_manifest") != 80:
         raise PublicV2Error("publication inventory count mismatch")
+    size = publication.get("export_bundle_size_bytes")
+    if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+        raise PublicV2Error("publication export byte size mismatch")
+
+
+def validate_published_archive(payload: bytes, publication: dict[str, Any]) -> dict[str, Any]:
+    """Require exact published raw bytes before parsing gzip/tar semantics."""
+    validate_publication(publication)
+    if len(payload) != publication["export_bundle_size_bytes"]:
+        raise PublicV2Error("published archive raw byte size mismatch")
+    if digest_bytes(payload) != publication["export_bundle_sha256"]:
+        raise PublicV2Error("published archive raw SHA-256 mismatch")
+    manifest = validate_archive_bytes(payload)
+    if digest_bytes(pretty(manifest)) != publication["export_manifest_sha256"]:
+        raise PublicV2Error("published archive manifest SHA-256 mismatch")
+    return manifest
 
 
 def _write_sequence(path: Path, rows: list[dict[str, Any]]) -> str:
@@ -1217,6 +1238,7 @@ def seal(args: argparse.Namespace) -> int:
         "self_referential_commit_claim": False,
         "result_sha256": digest_bytes(result_payload),
         "export_bundle_sha256": digest_bytes(bundle_payload),
+        "export_bundle_size_bytes": len(bundle_payload),
         "export_manifest_sha256": digest_bytes(pretty(manifest)),
         "export_entry_count_excluding_manifest": 80,
         "semantic_sha256": semantic,
@@ -1229,6 +1251,7 @@ def seal(args: argparse.Namespace) -> int:
         },
     }
     validate_publication(publication)
+    validate_published_archive(bundle_payload, publication)
     if args.publication.exists():
         raise PublicV2Error("publication output must not exist")
     args.publication.write_bytes(pretty(publication))

@@ -174,14 +174,36 @@ class PublicProjectedV2ContractTest(unittest.TestCase):
         published = self._published()
         if published is None:
             self.skipTest("v2 evidence not published yet")
-        _, _, _, archive = published
-        with self.assertRaises(v2.PublicV2Error):
-            v2.validate_archive_bytes(archive[:-32])
-        manifest = v2.validate_archive_bytes(archive)
+        _, publication, _, archive = published
+        manifest = v2.validate_published_archive(archive, publication)
+        offset = 1000
+        mutants = {
+            "one_byte_truncation": archive[:-1],
+            "trailing_byte": archive + b"X",
+            "gzip_trailer_crc_flip": archive[:-5] + bytes([archive[-5] ^ 1]) + archive[-4:],
+            "compressed_payload_flip": archive[:offset] + bytes([archive[offset] ^ 1]) + archive[offset + 1:],
+        }
+        for label, mutant_bytes in mutants.items():
+            with self.assertRaises(v2.PublicV2Error, msg=label):
+                v2.validate_published_archive(mutant_bytes, publication)
         mutant = copy.deepcopy(manifest)
         mutant["inventory"]["ordered_names"].append("extra")
         with self.assertRaises(v2.PublicV2Error):
             v2.validate_manifest(mutant)
+
+    def test_publication_archive_size_and_hash_are_mandatory(self) -> None:
+        published = self._published()
+        if published is None:
+            self.skipTest("v2 evidence not published yet")
+        _, publication, _, archive = published
+        for field, replacement in (
+            ("export_bundle_size_bytes", len(archive) + 1),
+            ("export_bundle_sha256", "0" * 64),
+        ):
+            mutant = copy.deepcopy(publication)
+            mutant[field] = replacement
+            with self.assertRaises(v2.PublicV2Error, msg=field):
+                v2.validate_published_archive(archive, mutant)
 
     def test_publication_binds_payload_commit_blobs(self) -> None:
         published = self._published()
