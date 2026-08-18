@@ -35,10 +35,20 @@ class MatrixMutationTest(unittest.TestCase):
 
     def test_committed_matrix_and_git_object_source_closure_pass(self) -> None:
         value = verify.validate()
+        gates = {gate["id"]: gate for gate in value["gates"]}
         self.assertEqual(value["decision"], "HOLD")
         self.assertEqual(value["audited_rtl"]["source_structure_status"], "PASS")
         self.assertEqual(value["audited_rtl"]["mapped_structure_status"], "HOLD")
         self.assertEqual(value["audited_rtl"]["organizer_approval_status"], "HOLD")
+        self.assertEqual(
+            value["current_goal_policy_pin"]["fallback_integrated_digital"],
+            "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
+        )
+        self.assertEqual(gates["G06_FALLBACK_CANONICAL_DIGITAL"]["status"], "HOLD")
+        self.assertNotIn(
+            "integrated fallback digital evidence is missing",
+            gates["G06_FALLBACK_CANONICAL_DIGITAL"]["current_reason"].lower(),
+        )
 
     def test_duplicate_json_keys_are_rejected(self) -> None:
         payload = (HERE / "legality_matrix.json").read_text(encoding="utf-8")
@@ -60,6 +70,10 @@ class MatrixMutationTest(unittest.TestCase):
                 {"unknown": True}),
             lambda value: value["expected_external_artifacts"][0].update(
                 {"unknown": True}),
+            lambda value: value["current_goal_policy_pin"].update({"unknown": True}),
+            lambda value: value["current_goal_policy_pin"][
+                "pinned_legality_publication"
+            ].update({"unknown": True}),
         )
         for mutation in cases:
             with self.subTest(mutation=mutation):
@@ -129,6 +143,38 @@ class MatrixMutationTest(unittest.TestCase):
         for mutation in cases:
             with self.subTest(mutation=mutation):
                 self.reject(mutation, "source PASS escaped|aggregate decision|G05")
+
+    def test_bounded_digital_policy_pass_cannot_promote_g06_or_release(self) -> None:
+        cases = (
+            lambda value: value["current_goal_policy_pin"].update(
+                {"fallback_integrated_digital": "HOLD_MISSING"}),
+            lambda value: value["current_goal_policy_pin"].update(
+                {"result_authority": "EVIDENCE"}),
+            lambda value: value["current_goal_policy_pin"].update(
+                {"evidence_qualified": True}),
+            lambda value: value["current_goal_policy_pin"].update(
+                {"release_qualified": True}),
+            lambda value: value["current_goal_policy_pin"].update(
+                {"canonical_digital_dependency": "GO"}),
+            lambda value: value["current_goal_policy_pin"].update(
+                {"mapped_pdk_legality": "GO"}),
+            lambda value: value["current_goal_policy_pin"].update(
+                {"organizer_pdk_legality": "GO"}),
+            lambda value: value["current_goal_policy_pin"][
+                "pinned_legality_publication"
+            ].update({"sha256": "0" * 64}),
+            lambda value: value["current_goal_policy_pin"].update(
+                {"pin_semantics": "CURRENT_PACKAGE_SELF_HASH"}),
+            lambda value: value["gates"][5].update({"status": "GO"}),
+            lambda value: value["gates"][5].update(
+                {"current_reason": "integrated fallback digital evidence is missing"}),
+        )
+        for mutation in cases:
+            with self.subTest(mutation=mutation):
+                self.reject(
+                    mutation,
+                    "goal policy pin|aggregate decision|G06",
+                )
 
     def test_external_paths_hashes_presence_and_team_authority_are_pinned(self) -> None:
         cases = (

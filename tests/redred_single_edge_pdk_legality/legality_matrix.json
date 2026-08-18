@@ -52,6 +52,29 @@
       "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL"
     }
   ],
+  "current_goal_policy_pin": {
+    "path": "contracts/redred_system_goal/active_goal.json",
+    "sha256": "b67307b8f7dd8c643a580ac13f99623188fd9852f4c1d763cd648004a0eef8ff",
+    "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
+    "verifier_pass_status": "POLICY_INTERNALLY_VALID",
+    "result_authority": "POLICY_ONLY",
+    "evidence_qualified": false,
+    "release_qualified": false,
+    "policy_pass_is_evidence_pass": false,
+    "policy_pass_is_release_pass": false,
+    "fallback_integrated_digital": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
+    "canonical_digital_dependency": "HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY",
+    "canonical_results_embedded_in_policy": false,
+    "mapped_pdk_legality": "HOLD",
+    "organizer_pdk_legality": "HOLD",
+    "fallback_release_status": "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION",
+    "pinned_legality_publication": {
+      "commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+      "path": "tests/redred_single_edge_pdk_legality/legality_matrix.json",
+      "sha256": "6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247"
+    },
+    "pin_semantics": "IMMUTABLE_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH"
+  },
   "expected_external_artifacts": [
     {
       "id": "GSCLIB_ARCHIVE",
@@ -292,7 +315,7 @@
       "id": "G06_FALLBACK_CANONICAL_DIGITAL",
       "status": "HOLD",
       "required_evidence": "fallback-specific complete endpoint canonical receipt proves exact-once retirement, conservation, ordering, reset/drain, and no protocol error",
-      "current_reason": "integrated fallback digital evidence is missing and P6 evidence cannot be borrowed"
+      "current_reason": "the current policy pin records PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED, but its authority is POLICY_ONLY with evidence_qualified=false and release_qualified=false; the canonical dependency is HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY with no canonical results embedded, so G06 remains HOLD and P6 evidence cannot be borrowed"
     },
     {
       "id": "G07_OFFICIAL_CLOCK_IO_LOAD",
