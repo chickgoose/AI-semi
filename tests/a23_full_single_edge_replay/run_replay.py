@@ -103,32 +103,58 @@ def require_integration_paths(document: dict[str, Any]) -> None:
         )
 
 
-def filelist_sources(relative_filelist: str) -> list[Path]:
-    filelist = PROJECT / relative_filelist
+def filelist_sources(relative_filelist: str) -> tuple[list[Path], list[Path]]:
     sources: list[Path] = []
-    for line_number, line in enumerate(
-        filelist.read_text(encoding="utf-8").splitlines(), start=1
-    ):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith(("+", "-")) or any(char.isspace() for char in stripped):
-            raise ReplayError(
-                f"filelist must contain one repository-relative RTL path per line: "
-                f"{relative_filelist}:{line_number}"
-            )
-        candidate = PROJECT / stripped
-        relative(candidate)
-        if not candidate.is_file():
-            raise ReplayUnavailable(
-                f"missing actual RTL filelist member: {relative_filelist} -> {stripped}"
-            )
-        sources.append(candidate)
+    filelists: list[Path] = []
+    active: set[Path] = set()
+
+    def expand(filelist: Path) -> None:
+        resolved_filelist = filelist.resolve()
+        relative(resolved_filelist)
+        if resolved_filelist in active:
+            raise ReplayError(f"recursive actual RTL filelist: {relative(filelist)}")
+        if resolved_filelist in {path.resolve() for path in filelists}:
+            return
+        if not filelist.is_file():
+            raise ReplayUnavailable(f"missing actual RTL filelist: {relative(filelist)}")
+        active.add(resolved_filelist)
+        filelists.append(filelist)
+        for line_number, line in enumerate(
+            filelist.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("-f "):
+                nested = stripped[3:].strip()
+                if not nested or any(char.isspace() for char in nested):
+                    raise ReplayError(
+                        f"invalid nested filelist: {relative(filelist)}:{line_number}"
+                    )
+                expand(PROJECT / nested)
+                continue
+            if stripped.startswith(("+", "-")) or any(
+                char.isspace() for char in stripped
+            ):
+                raise ReplayError(
+                    f"filelist must contain one repository-relative RTL path per line: "
+                    f"{relative(filelist)}:{line_number}"
+                )
+            candidate = PROJECT / stripped
+            relative(candidate)
+            if not candidate.is_file():
+                raise ReplayUnavailable(
+                    f"missing actual RTL filelist member: {relative(filelist)} -> {stripped}"
+                )
+            sources.append(candidate)
+        active.remove(resolved_filelist)
+
+    expand(PROJECT / relative_filelist)
     if not sources:
         raise ReplayError(f"actual RTL filelist is empty: {relative_filelist}")
     if len({path.resolve() for path in sources}) != len(sources):
         raise ReplayError(f"actual RTL filelist contains duplicate sources: {relative_filelist}")
-    return sources
+    return sources, filelists
 
 
 def tool_version(path: Path, args: list[str]) -> str:
@@ -180,6 +206,7 @@ def verify_tools(document: dict[str, Any], verilator: Path) -> dict[str, Any]:
 
 def verify_file_pins(
     document: dict[str, Any], sources_by_owner: dict[str, list[Path]],
+    filelists_by_owner: dict[str, list[Path]],
 ) -> dict[str, str]:
     pinned = document.get("files", {})
     required = {
@@ -193,6 +220,7 @@ def verify_file_pins(
         required.update({config["top"], config["filelist"], config["wrapper"],
                          config["mutation_target"], config["scheduler"]})
         required.update(relative(path) for path in sources_by_owner[owner])
+        required.update(relative(path) for path in filelists_by_owner[owner])
     missing_pins = sorted(required - set(pinned))
     unlocked = sorted(
         path for path in required
@@ -248,6 +276,54 @@ def verify_mutation_contract(
                 )
 
 
+def verify_rtl_git_provenance(
+    document: dict[str, Any], verified_files: dict[str, str],
+) -> dict[str, Any]:
+    provenance = document.get("rtl_provenance")
+    if not isinstance(provenance, dict):
+        raise ReplayUnavailable("actual RTL Git provenance is not pinned")
+    source_commit = provenance.get("source_commit")
+    integration_commit = provenance.get("integration_commit")
+    expected_tree = provenance.get("rtl_tree")
+    for label, value in (
+        ("source_commit", source_commit), ("integration_commit", integration_commit),
+        ("rtl_tree", expected_tree),
+    ):
+        if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+            raise ReplayUnavailable(f"invalid actual RTL Git pin: {label}")
+    trees: dict[str, str] = {}
+    for label, commit in (
+        ("source_commit", source_commit), ("integration_commit", integration_commit),
+    ):
+        process = subprocess.run(
+            ["git", "rev-parse", f"{commit}^{{tree}}"], cwd=PROJECT,
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if process.returncode:
+            raise ReplayUnavailable(f"actual RTL Git object is unavailable: {label}")
+        trees[label] = process.stdout.strip()
+        if trees[label] != expected_tree:
+            raise ReplayUnavailable(f"actual RTL Git tree mismatch: {label}")
+
+    rtl_paths = sorted(path for path in verified_files if path.startswith("rtl/"))
+    for path in rtl_paths:
+        process = subprocess.run(
+            ["git", "show", f"{source_commit}:{path}"], cwd=PROJECT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        if process.returncode:
+            raise ReplayUnavailable(f"source commit lacks pinned actual RTL path: {path}")
+        commit_sha = hashlib.sha256(process.stdout).hexdigest()
+        if commit_sha != verified_files[path]:
+            raise ReplayUnavailable(f"working RTL differs from source commit: {path}")
+    return {
+        "source_commit": source_commit,
+        "integration_commit": integration_commit,
+        "rtl_tree": expected_tree,
+        "verified_rtl_paths": rtl_paths,
+    }
+
+
 def verify_clean_tracked(required_paths: Iterable[str]) -> str:
     selected = sorted(set(required_paths) | {relative(PINS)})
     for path in selected:
@@ -272,17 +348,28 @@ def verify_clean_tracked(required_paths: Iterable[str]) -> str:
 
 def validate_integration(
     document: dict[str, Any], verilator: Path, *, allow_dirty: bool,
-) -> tuple[dict[str, list[Path]], dict[str, str], dict[str, Any], str | None]:
+) -> tuple[
+    dict[str, list[Path]], dict[str, str], dict[str, Any], dict[str, Any], str,
+]:
     require_integration_paths(document)
-    sources = {
+    expanded = {
         owner: filelist_sources(config["filelist"])
         for owner, config in document["owners"].items()
     }
-    verified_files = verify_file_pins(document, sources)
+    sources = {owner: value[0] for owner, value in expanded.items()}
+    filelists = {owner: value[1] for owner, value in expanded.items()}
+    verified_files = verify_file_pins(document, sources, filelists)
     verify_mutation_contract(document, sources)
+    verified_rtl_git = verify_rtl_git_provenance(document, verified_files)
     verified_tools = verify_tools(document, verilator)
-    commit = None if allow_dirty else verify_clean_tracked(verified_files)
-    return sources, verified_files, verified_tools, commit
+    if allow_dirty:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=PROJECT, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+        ).stdout.strip()
+    else:
+        commit = verify_clean_tracked(verified_files)
+    return sources, verified_files, verified_tools, verified_rtl_git, commit
 
 
 def prepare_traces(work: Path) -> dict[str, Path]:
@@ -536,7 +623,7 @@ def first_diagnostic(output: str) -> str | None:
 def execute_campaign(
     work: Path, output: Path, document: dict[str, Any], verilator: Path,
     sources_by_owner: dict[str, list[Path]], verified_files: dict[str, str],
-    verified_tools: dict[str, Any], commit: str,
+    verified_tools: dict[str, Any], verified_rtl_git: dict[str, Any], commit: str,
 ) -> None:
     prepared = prepare_traces(work)
     owners: dict[str, Any] = {}
@@ -659,6 +746,7 @@ def execute_campaign(
             "package_commit": commit,
             "pins_path": relative(PINS), "pins_sha256": sha256(PINS),
             "verified_files": verified_files, "verified_tools": verified_tools,
+            "actual_rtl_git": verified_rtl_git,
         },
         "qualification": {
             "single_edge_digital_RTL": "GO",
@@ -685,7 +773,7 @@ def main() -> int:
         parser.error("--work-dir and --output are required for actual execution")
     try:
         document = load_document()
-        sources, files, tools, commit = validate_integration(
+        sources, files, tools, rtl_git, commit = validate_integration(
             document, args.verilator, allow_dirty=args.allow_dirty,
         )
         if args.preflight:
@@ -698,7 +786,8 @@ def main() -> int:
             raise ReplayError("work-dir and output must not already exist")
         work.mkdir(parents=True)
         execute_campaign(
-            work, output, document, args.verilator, sources, files, tools, commit,
+            work, output, document, args.verilator, sources, files, tools,
+            rtl_git, commit,
         )
         return 0
     except ReplayUnavailable as error:

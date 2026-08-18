@@ -19,6 +19,11 @@ source expanded from their filelists:
 - `rtl/technology/single_edge/w2_single_edge_pair_tx.sv`
 - `rtl/technology/single_edge/w2_single_edge_pair_rx.sv`
 
+The RTL bytes are additionally checked against source commit
+`7286913f9f1dc771bde13fa51124b0d31aedd068` and its byte-identical integration
+commit `4ce4836fab1309d3468db8e660d2da9af371f784` (tree
+`c92b8ff4e8ecbfeca4a5526c2dae85570f7f8fee`).
+
 Until all paths, literal mutation anchors, file SHA-256 values, and tools are
 locked in `pins.json`, preflight exits 3 with
 `A23_FULL_SINGLE_EDGE_HOLD_NOT_RUN`. It emits no result and never converts
