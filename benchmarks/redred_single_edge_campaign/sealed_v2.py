@@ -285,6 +285,8 @@ def validate_run(
     retire_ordinals: list[int] = []
     accept_timeline: list[tuple[int, int]] = []
     retire_timeline: list[tuple[int, int]] = []
+    source_busy_through = [-1] * 16
+    previous_occurrence = -1
     overruns = retired = fixed = 0
     start = parse_int(summary["measurement_start_cycle"], "measurement_start_cycle")
     end = parse_int(summary["measurement_end_cycle"], "measurement_end_cycle")
@@ -304,6 +306,9 @@ def validate_run(
         retire_ordinal = parse_int(event["retire_ordinal"], "retire_ordinal")
         if not 0 <= source < 16 or occurrence < 0 or deadline < occurrence:
             raise SealedTupleError(f"{owner}/{run} event provenance differs")
+        if occurrence < previous_occurrence:
+            raise SealedTupleError(f"{owner}/{run} occurrence order differs")
+        previous_occurrence = occurrence
         if trace is not None:
             expected = trace[expected_id]
             if (source, occurrence, deadline) != (
@@ -314,11 +319,16 @@ def validate_run(
         if event["event_state"] == "source_overrun":
             if (accept, retire, accept_ordinal, retire_ordinal) != (-1, -1, -1, -1):
                 raise SealedTupleError(f"{owner}/{run} overrun carries endpoint identity")
+            if occurrence > source_busy_through[source]:
+                raise SealedTupleError(f"{owner}/{run} source-latch replay differs")
             overruns += 1
         elif event["event_state"] == "retired":
             if not occurrence <= accept <= retire <= observation or accept_ordinal < 0 \
                     or retire_ordinal != accept_ordinal:
                 raise SealedTupleError(f"{owner}/{run} retired timing/order differs")
+            if occurrence <= source_busy_through[source]:
+                raise SealedTupleError(f"{owner}/{run} source-latch replay differs")
+            source_busy_through[source] = accept
             accept_ordinals.append(accept_ordinal)
             retire_ordinals.append(retire_ordinal)
             accept_timeline.append((accept, accept_ordinal))
