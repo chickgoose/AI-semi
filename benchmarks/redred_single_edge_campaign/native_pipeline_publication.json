@@ -1,0 +1,117 @@
+{
+  "campaign_decision": {
+    "aggregate_status": "A2_PRIMARY",
+    "campaign_recommendation": "A2",
+    "final_selected_candidate": null,
+    "final_selection_status": "HOLD",
+    "release_status": "HOLD"
+  },
+  "claim_boundary": {
+    "final_selection": "HOLD",
+    "official": false,
+    "physical": false,
+    "power": false,
+    "release": false
+  },
+  "code": {
+    "commit": "b3db6e03e820ba9158c4b7fd847dc8984f9a859d",
+    "inventory": [
+      {
+        "git_blob_oid": "5b448d2c88b3f6cf903887ff18d5942ecff9854a",
+        "path": "benchmarks/redred_single_edge_campaign/native_pipeline.py",
+        "sha256": "10def53c1be68d542fc4072403d44f95549fcaa669ff5fb34fd1b2731e221d5c",
+        "size_bytes": 23225
+      },
+      {
+        "git_blob_oid": "034219313851ab5efb578834ba598b85312129e2",
+        "path": "benchmarks/redred_single_edge_campaign/aggregate_gate.py",
+        "sha256": "734ed2d09f9a2f02950ccd9ba3af49bf372c803d23e79b83aeea0ecc489dfd26",
+        "size_bytes": 23637
+      },
+      {
+        "git_blob_oid": "c2d1dba2c8eb224c9f6dfaec9b15d791d9adc1fd",
+        "path": "benchmarks/redred_single_edge_campaign/synthetic_v2_native_adapter.py",
+        "sha256": "153c2038f6773eef28ff8bb50675164da7f265d3e8beb8d034c570311ad70895",
+        "size_bytes": 41741
+      },
+      {
+        "git_blob_oid": "e9d7bcddb93b541e6d73c6c64a0bee0e5f2feb0f",
+        "path": "benchmarks/redred_single_edge_campaign/public_v2_native_adapter.py",
+        "sha256": "7b2bbebba1d67a4ab52096fe8f7e8f43e5dfdb1e4d1554f7aa23a1c5f147be32",
+        "size_bytes": 27725
+      },
+      {
+        "git_blob_oid": "6eb249f0353f3d3524b701bc507c4ed036294966",
+        "path": "benchmarks/redred_single_edge_campaign/team_canonical_policy.json",
+        "sha256": "cc83d17cbf0f405e930fb46d45602c4466c446687c8abc11ad819c28f050e505",
+        "size_bytes": 2590
+      },
+      {
+        "git_blob_oid": "0a7376ce7488744a6e7dab1709872869107212b0",
+        "path": "benchmarks/redred_single_edge_campaign/native_pipeline_result.schema.json",
+        "sha256": "ecb530b72b64752abd05b9222b8701b291c77ba35aca1345510f5ea4ec89dbb3",
+        "size_bytes": 5887
+      },
+      {
+        "git_blob_oid": "5d6ef616a0b23c19af5d2c1200ee6a771e1f2838",
+        "path": "benchmarks/redred_single_edge_campaign/aggregate_result.schema.json",
+        "sha256": "7b9c80cb2e4de0522fc7bd261e2729759f08643f0227f16c5af4247c2ea8953b",
+        "size_bytes": 11379
+      },
+      {
+        "git_blob_oid": "a3f63c1c49cfd3c769c05a86d4673ab5db8b19e3",
+        "path": "benchmarks/redred_single_edge_campaign/campaign_normalized_view.schema.json",
+        "sha256": "f0c719659f632c81bcb6bf0c489d9a00cb9801db33f642ee5160cb3f10c37ae3",
+        "size_bytes": 6498
+      },
+      {
+        "git_blob_oid": "d20c9731513fc9b33070aca5daa8760fdb8dc139",
+        "path": "benchmarks/redred_single_edge_campaign/synthetic_v2_native_view.schema.json",
+        "sha256": "a7d32c473534f3f762f9791905b7fd59ada01bf8941b3022b354270b22ffe078",
+        "size_bytes": 2529
+      },
+      {
+        "git_blob_oid": "85701f37731b5f96aae894207e2df14a8535e621",
+        "path": "benchmarks/redred_single_edge_campaign/public_v2_native_adapter.schema.json",
+        "sha256": "e1debbc69a1fab2cdcf4897e2533db0c3e81ee9b6b164eb84a4b8cbf997b8671",
+        "size_bytes": 8635
+      }
+    ],
+    "tree": "8661e77e1b82b5430e8cca2beaa0537a3369aebf"
+  },
+  "noncircular_provenance": true,
+  "payload": {
+    "commit": "653d05258731ff8a01c3b8fa8303ded7af5b1155",
+    "result": {
+      "git_blob_oid": "c4067576bd6aec823bc5930b4c3732d85c4d4e1c",
+      "path": "benchmarks/redred_single_edge_campaign/native_pipeline_result.json",
+      "semantic_sha256": "789703a6fa073a16100e5461e57102628892651a56d8a1db0891f6119be1593c",
+      "sha256": "9ffd32193f493d0b9f8c3fe000ebff45608971e6711271e990aca0dde4be7963",
+      "size_bytes": 1331992
+    },
+    "tree": "a573cd669e8a7bc0988869c4d8c980f69f405d2e"
+  },
+  "policy": {
+    "authority": "TEAM_DEFINED_CAMPAIGN_POLICY_ONLY",
+    "git_blob_oid": "6eb249f0353f3d3524b701bc507c4ed036294966",
+    "path": "benchmarks/redred_single_edge_campaign/team_canonical_policy.json",
+    "policy_id": "redred-team-full50-canonical-2026-08-19",
+    "sha256": "cc83d17cbf0f405e930fb46d45602c4466c446687c8abc11ad819c28f050e505",
+    "size_bytes": 2590
+  },
+  "schema": "redred_single_edge_native_pipeline_publication_v1",
+  "status": "PASS_SCOPED_NATIVE_CAMPAIGN_PIPELINE",
+  "upstream": {
+    "public_v2": {
+      "archive_sha256": "d14721e8b4fef9d616af2bee92f4db80754707d545c60ef2b2616b9f14f6ccf2",
+      "publication_sha256": "7cd68ab241ba1f824ed1e7b85bbdca85bf15b832743ba108877640b520ec4c23",
+      "reproduction_sha256": "24da3a81fa34a5b3b4fd847fe9d49f937cdb45bf6dc64343adcc903476269482",
+      "result_sha256": "815c752f4852790d4db5c3c935cc2edc5821fee9a36f2e83c35d3ec8b73c5c12"
+    },
+    "synthetic_v2": {
+      "archive_sha256": "b3a2a69525880a0510865127d8a30fb8b78c01b5664d885d29ec6f7d37979786",
+      "publication_sha256": "95ddce3980e20321592552bdb64cb2aa1187acbfa3e93e28d2b8697d09fb0931",
+      "result_sha256": "7a4a8a3f0d8238b9c5f3c72c6ae1d2bf026030e7247eddfd62d9c4c2bbf70554"
+    }
+  }
+}

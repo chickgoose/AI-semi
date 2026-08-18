@@ -69,18 +69,27 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
   accept/retire ordinal, raw archive integrity와 non-circular Git provenance를
   독립 검증했다. 최종 14개 fail-closed 회귀가 통과했다. 이 PASS는 여전히
   noncanonical·nonofficial public extension 범위뿐이다.
+- Producer-native schema를 그대로 검증하는 별도 native pipeline이 synthetic
+  full50와 public projected 결과를 hash-pinned adapter로 결합했다. 팀 정책이
+  허용한 synthetic gate 세 곳만 승격했고, public 1×/64×/256×는 독립 표본
+  1개인 동일 retiming family로 유지했다. 봉인 결과는 campaign 범위에서
+  `A2_PRIMARY`이며 raw/semantic SHA-256은 각각
+  `9ffd3219…7963`/`789703a6…593c`다. 전체 campaign 회귀 108개와 별도
+  adversarial 보안 회귀 13개가 통과했다.
 - Source-level single-posedge CDC/RDC와 RTL source-structure PDK 검사는
   bounded PASS다. Supplied-rotation coordinate software demo도 synthetic 범위
   안에서 PASS다.
 
 ## 현재 HOLD
 
-- Hardened synthetic와 public projected 결과는 bounded actual-RTL PASS지만
-  release/selection으로 승격하지 않는다. 두 producer-native v2 schema는
-  현재 generic campaign-v3 sealed-tuple schema와 publication envelope,
-  member path, CSV/result schema가 다르므로 campaign-v3 binding은
-  `HOLD_SCHEMA_INCOMPATIBLE_UNBOUND`다. Relabeling이나 lossy repack은 허용하지
-  않고 reviewed native-schema adapter 또는 slot-specific consumer가 필요하다.
+- Hardened synthetic와 public projected 결과는 bounded actual-RTL PASS이며,
+  별도 native pipeline에서는 팀 canonical/public campaign 범위의 A2 추천까지
+  닫혔다. 다만 이를 release/최종 selection으로 승격하지 않는다. 기존 generic
+  campaign-v3 sealed-tuple 경로는 producer-native publication envelope,
+  member path, CSV/result schema가 다르므로 계속
+  `HOLD_SCHEMA_INCOMPATIBLE_UNBOUND`다. Native pipeline은 별도 버전의
+  slot-specific consumer이며 generic v3 자료를 relabel하거나 lossy repack하지
+  않는다.
 - Organizer-authoritative GPDK045 corner/clock/I/O/load 수치와 mapped cell
   legality가 없다.
 - Hardened single-edge A2/A3의 실제 Genus/Innovus P&R, post-route timing,

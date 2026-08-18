@@ -12,6 +12,7 @@ deliberately split:
 | canonical single-edge campaign | `HOLD` |
 | UZH public projected producer-native extension | `PASS` (noncanonical scope) |
 | campaign-v3 public tuple binding | `HOLD_SCHEMA_INCOMPATIBLE_UNBOUND` |
+| native adapter aggregate campaign recommendation | `A2_PRIMARY` (campaign scope) |
 | system release | `HOLD` |
 
 The raw published result is pinned at SHA-256
@@ -222,6 +223,20 @@ The successful current result is only `A2_PRIMARY` at campaign scope; final
 selection, official evidence, physical, power, and release remain false/HOLD.
 The receipt ends with a canonical-JSON SHA-256 seal covering every non-seal
 field.
+
+The committed result is published through
+[`native_pipeline_publication.json`](native_pipeline_publication.json). The
+publication is noncircular: it pins code commit
+`b3db6e03e820ba9158c4b7fd847dc8984f9a859d` and the later result-payload commit
+`653d05258731ff8a01c3b8fa8303ded7af5b1155`; neither referenced commit contains
+the publication itself. It records exact Git blob IDs, byte sizes, and SHA-256
+values for the pipeline, adapters, aggregate gate, policy, schemas, and result.
+The published result SHA-256 is
+`9ffd32193f493d0b9f8c3fe000ebff45608971e6711271e990aca0dde4be7963` and
+its canonical semantic seal is
+`789703a6fa073a16100e5461e57102628892651a56d8a1db0891f6119be1593c`.
+These attest only the scoped campaign recommendation; final selection,
+official, physical, power, and release claims remain false/HOLD.
 
 ```sh
 python3 benchmarks/redred_single_edge_campaign/native_pipeline.py evaluate \
