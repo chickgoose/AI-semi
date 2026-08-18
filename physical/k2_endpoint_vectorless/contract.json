@@ -1,0 +1,73 @@
+{
+  "schema": "k2_endpoint_vectorless_contract_v1",
+  "status": "READY_FOR_SERVER_EXECUTION",
+  "evidence_class": "GENUS_MAPPED_COMPLETE_ENDPOINT_VECTORLESS",
+  "candidate_order": ["fovea_a7", "a2_p6", "a3_p6"],
+  "comparability_policy": "EXACT_THREE_TECH_STAGED_COMPLETE_ENDPOINTS_SAME_SETTINGS",
+  "timing_cohort": "three_endpoint_6p5ns",
+  "period_ns": 6.5,
+  "input_delay_min_ns": 0.1,
+  "input_delay_max_ns": 0.5,
+  "output_load_pf": 0.01,
+  "vectorless_assumptions": {
+    "ref_clk_i": {"toggle_rate_per_period": 2.0, "static_probability": 0.5},
+    "sample_clk_i": {"toggle_rate_per_period": 2.0, "static_probability": 0.5},
+    "source_pending_i": {"toggle_rate_per_period": 0.2, "static_probability": 0.5},
+    "rst_n": {"toggle_rate_per_period": 0.0, "static_probability": 1.0}
+  },
+  "activity_policy": {
+    "waveform_import_allowed": false,
+    "vcd_allowed": false,
+    "saif_allowed": false,
+    "user_activity_file": null,
+    "claim_boundary": "VECTORLESS_DIAGNOSTIC_NOT_ACTIVITY_ANNOTATED_POWER"
+  },
+  "technology": {
+    "pdk": "GPDK045/gsclib045",
+    "power_liberty_role": "setup_liberty",
+    "power_corner": {"voltage_v": 0.9, "temperature_c": 125.0},
+    "setup_liberty": {
+      "relative_path": "timing/slow_vdd1v0_basicCells.lib",
+      "sha256": "dec616b7b53aa5166eac9660ba83561a4057ee3b7e62f59f3d4bebad495ffe10"
+    },
+    "hold_liberty": {
+      "relative_path": "timing/fast_vdd1v0_basicCells.lib",
+      "sha256": "e63762d156fd929cde2f58b0a5883020d6f16f0a41d3736577d0af6b94191560"
+    },
+    "macro_lef_sha256": "7bb39c7adef5704aa10d886f9cc404b06d4f486219ffb4a6a8bbb31f965d52b2",
+    "shared_typical_qrc_sha256": "a089c567928e3c8653408ebc503cb4e8270732c5f23e6cb23498d51cd6c75bd5"
+  },
+  "tool": {
+    "name": "Cadence Genus",
+    "version": "23.14-s090_1",
+    "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa",
+    "observed_path": "/tools/cadence/DDI231/GENUS231/bin/genus",
+    "resolved_path": "/tools/cadence/DDI231/GENUS231/bin/.cdnWrapperIndep"
+  },
+  "reuse": {
+    "genus_runner": {
+      "path": "physical/k2_w2_genus/run_genus.py",
+      "sha256": "bed40b88f17d498e8d00fdb53a40d1ffbf7a3a346c4aed0248fb8169af5e490c"
+    },
+    "base_driver": {
+      "path": "physical/k2_w2_genus/genus_driver.tcl",
+      "sha256": "c0194eb7ccf8b701b9a3492a58dd9141a812d9aa78f8a7d1933c484b7ec9f7b4"
+    },
+    "candidate_registry": {
+      "path": "physical/k2_w2_genus/designs.json",
+      "sha256": "b34a1724dcaf7d0fa24cbb29b3f78514831fbed97073ee03d4b4000cd742c212"
+    },
+    "timing_registry": {
+      "path": "physical/k2_w2_genus/timing_cohorts.json",
+      "sha256": "4966b7c077f7f8595db22ed373a6843a69e85367d70689219773eec83b90a64e"
+    },
+    "server_environment_contract": {
+      "path": "physical/k2_w2_server_env/contract.json",
+      "sha256": "f24b2c6b4857f7fd6161af7ef0efec5ef6ca31dbbbfda95838dbee9d26462c37"
+    },
+    "staged_manifest": {
+      "path": "rtl/technology/physical_staging/physical_staging_manifest.json",
+      "sha256": "4ffda1982bdc3925723cd22821d06b27a273c9e9e4acc05db6150c9fe84d7d9d"
+    }
+  }
+}
