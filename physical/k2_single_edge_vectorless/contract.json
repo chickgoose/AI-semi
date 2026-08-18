@@ -15,8 +15,9 @@
     "comparison_ready_possible": false
   },
   "policy_binding": {
+    "commit": "95ffa7ec31639542c585ed678961265c31d67be5",
     "path": "contracts/redred_system_goal/active_goal.json",
-    "sha256": "af1db6e51dcb9cddb0175c743487351b486d06a6e32b56c2a69b04a4272ee08f",
+    "sha256": "e673ada9993fba62c4384189c78cb59bdcd5fe6b5fffa9991ec41897747bba48",
     "required_disallowed_dependencies": [
       "INHERITED_6P5_STANDARD_CELL_REFERENCE",
       "P6_VECTORLESS_POWER",

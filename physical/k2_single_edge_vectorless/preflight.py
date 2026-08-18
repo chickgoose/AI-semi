@@ -351,10 +351,13 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
         raise EvidenceError("single-edge exact-cohort decision policy changed")
 
     policy = exact_keys(contract["policy_binding"], {
-        "path", "sha256", "required_disallowed_dependencies",
+        "commit", "path", "sha256", "required_disallowed_dependencies",
     }, "policy_binding")
-    policy_path = _repo_file(root, policy["path"], "policy_binding.path")
-    policy_payload = stable_read(policy_path, "REDRED system policy", single_link=False)
+    _repo_file(root, policy["path"], "policy_binding.path")
+    if policy["commit"] != "95ffa7ec31639542c585ed678961265c31d67be5":
+        raise EvidenceError("REDRED policy commit mismatch")
+    policy_payload = _committed_payload(
+        root, policy["commit"], policy["path"], "REDRED system policy")
     if sha256(policy_payload) != digest(policy["sha256"], "policy_binding.sha256"):
         raise EvidenceError("REDRED policy SHA mismatch")
     policy_doc = parse_json(policy_payload, "REDRED system policy")
@@ -366,8 +369,12 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
     ]
     io_authority = policy_doc.get("external_data_and_coordinate_policy", {}).get(
         "pdk_endpoint_io_rules", {})
-    if (policy_doc.get("goal_policy", {}).get("selected_release_interface") is not None or
-            policy_doc.get("goal_policy", {}).get("selected_release_interface_status") != "HOLD" or
+    if (policy_doc.get("goal_policy", {}).get("selected_release_interface") !=
+            "PARALLEL_FALLBACK" or
+            policy_doc.get("goal_policy", {}).get("selected_release_interface_status") !=
+            "IMPLEMENTED_RELEASE_HELD" or
+            policy_doc.get("canonical_digital_dependency", {}).get("status") !=
+            "PASS_SCOPED_NATIVE_CAMPAIGN" or
             fallback.get("competition_release_status") !=
             "HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION" or
             fallback.get("transfer_mode") != "SINGLE_EDGE_PARALLEL" or

@@ -27,6 +27,11 @@ Each six-source expansion contains its scheduler, the shared sticky
 nested generic filelists must expand to those sources in exact order. The full
 input and output port sets are checked against both the contract and committed
 top declarations. No P6 source or dependency belongs to this diagnostic.
+The policy binding is a noncircular Git snapshot of active-goal v3 commit
+`95ffa7ec31639542c585ed678961265c31d67be5`, not a mutable read of the current
+checkout. It establishes that single-edge is the selected implementation and
+the native canonical campaign is scoped PASS while all mapped power and
+release claims remain HOLD.
 
 ## Constraint authority
 

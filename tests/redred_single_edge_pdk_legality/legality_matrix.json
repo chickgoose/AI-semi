@@ -23,7 +23,7 @@
   "repository_evidence": [
     {
       "path": "docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md",
-      "sha256": "058aa0e4b7e4d73d1e0ca72117ab7911faa2146b0aede567d2069f6af62f088e",
+      "sha256": "13ac39ae4da38aa4c8c477e5ad660e1965e254b93eee5b101a0a16e7453fbbdf",
       "authority": "SECONDARY_INTERPRETATION_OF_USER_PROVIDED_ORAL_TRANSCRIPT"
     },
     {
@@ -45,16 +45,12 @@
       "path": "docs/k2_endpoint_physical_results_20260814.txt",
       "sha256": "113d2ad1ffe3b52f59067e948868875f6ce509ad14970f73876418db176050b1",
       "authority": "INHERITED_P6_R1_STANDARD_CELL_RESULT_NOT_FALLBACK_EVIDENCE"
-    },
-    {
-      "path": "contracts/redred_system_goal/active_goal.json",
-      "sha256": "af1db6e51dcb9cddb0175c743487351b486d06a6e32b56c2a69b04a4272ee08f",
-      "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL"
     }
   ],
   "current_goal_policy_pin": {
+    "commit": "95ffa7ec31639542c585ed678961265c31d67be5",
     "path": "contracts/redred_system_goal/active_goal.json",
-    "sha256": "af1db6e51dcb9cddb0175c743487351b486d06a6e32b56c2a69b04a4272ee08f",
+    "sha256": "e673ada9993fba62c4384189c78cb59bdcd5fe6b5fffa9991ec41897747bba48",
     "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
     "verifier_pass_status": "POLICY_INTERNALLY_VALID",
     "result_authority": "POLICY_ONLY",
@@ -63,7 +59,7 @@
     "policy_pass_is_evidence_pass": false,
     "policy_pass_is_release_pass": false,
     "fallback_integrated_digital": "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
-    "canonical_digital_dependency": "HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY",
+    "canonical_digital_dependency": "PASS_SCOPED_NATIVE_CAMPAIGN",
     "canonical_results_embedded_in_policy": false,
     "mapped_pdk_legality": "HOLD",
     "organizer_pdk_legality": "HOLD",
@@ -73,7 +69,7 @@
       "path": "tests/redred_single_edge_pdk_legality/legality_matrix.json",
       "sha256": "6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247"
     },
-    "pin_semantics": "IMMUTABLE_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH"
+    "pin_semantics": "IMMUTABLE_GIT_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH"
   },
   "expected_external_artifacts": [
     {
@@ -313,9 +309,9 @@
     },
     {
       "id": "G06_FALLBACK_CANONICAL_DIGITAL",
-      "status": "HOLD",
+      "status": "GO",
       "required_evidence": "fallback-specific complete endpoint canonical receipt proves exact-once retirement, conservation, ordering, reset/drain, and no protocol error",
-      "current_reason": "the current policy pin records PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED, but its authority is POLICY_ONLY with evidence_qualified=false and release_qualified=false; the canonical dependency is HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY with no canonical results embedded, so G06 remains HOLD and P6 evidence cannot be borrowed"
+      "current_reason": "the current policy pin validates PASS_SCOPED_NATIVE_CAMPAIGN for A2/A3 and preserves nonrelease claims; this closes only the canonical digital gate, does not qualify mapped PDK legality or release, and P6 evidence cannot be borrowed"
     },
     {
       "id": "G07_OFFICIAL_CLOCK_IO_LOAD",

@@ -20,12 +20,13 @@ release boundaries remain open:
 
 1. no organizer-authored written rule or immutable transcript is tracked;
 2. the exact GPDK045/GSCLIB045/GIOLIB045 payload bytes are not in this checkout;
-3. no fallback mapped inventory, canonical digital receipt, P&R receipt, or
-   mapped vectorless-power receipt exists here.
+3. no fallback mapped inventory, P&R receipt, or mapped vectorless-power
+   receipt exists here.
 
-The tracked policy already states `PARALLEL_FALLBACK =
-HOLD_NO_INTEGRATED_DIGITAL_PNR_POWER` and forbids borrowing P6 physical/power
-evidence. This audit preserves that boundary. In particular, a mapped netlist
+The tracked policy selects the single-edge parallel implementation but keeps
+its release on `HOLD_INCOMPLETE_MAPPED_PHYSICAL_POWER_AND_SELECTION` and
+forbids borrowing P6 physical/power evidence. This audit preserves that
+boundary. In particular, a mapped netlist
 that happens not to contain `DFFNSRX1`, ODDR, IDDR, a clock gate, or a generated
 clock would establish only a structural negative fact. **Absence of a forbidden
 primitive is never organizer approval.** Organizer authority is the independent
@@ -207,7 +208,7 @@ SINGLE_EDGE_RELEASE_GO = G01 && G02 && G03 && G04 && G05
 | G03 official library/corner | HOLD | Organizer-selected setup, hold, RC, and power views/conditions. |
 | G04 mapped cell legality | HOLD | Fallback mapped inventory; every cell verified in real slow/fast Liberty and macro LEF. |
 | G05 single-edge structure | HOLD (`hardened RTL source PASS`; mapped/clock-report HOLD) | The byte-identical `6fc5e16`/`a0a4eb3` RTL closures are source-clean; mapped netlist and clock reports must independently prove the same declared active edge and absence of undeclared edge/clock primitives. The superseded `4ce4836` baseline is not PASS authority. |
-| G06 canonical digital | HOLD (`bounded synthetic/public-projected actual-RTL PASS`; canonical campaign HOLD) | The current goal-policy pin is `POLICY_ONLY`, not evidence- or release-qualified. It records bounded integrated digital PASS, but embeds no canonical results; G06 still requires a fallback-specific complete-endpoint exact-once/conservation/order/reset/drain receipt. |
+| G06 canonical digital | GO (`PASS_SCOPED_NATIVE_CAMPAIGN`) | The current goal-policy pin verifies the native synthetic/public publication, exact-once/order/accounting, semantic seal, and campaign-scoped A2 recommendation. Its nonrelease claim boundary cannot satisfy mapped PDK, P&R, power, CDC/RDC, final selection, or release gates. |
 | G07 official clock/I/O/load | HOLD | Organizer-pinned/accepted numeric clock, uncertainty, drive/transition, delays, reset, and load. |
 | G08 post-route | HOLD | Fallback-specific P&R/timing/DRC/antenna/connectivity receipt at the chosen conditions. |
 | G09 vectorless power | HOLD | Fallback-specific mapped complete-endpoint vectorless receipt at the official profile. |
@@ -273,7 +274,8 @@ Before release, retain at minimum these additional immutable artifacts:
 1. organizer rule/reply bytes and SHA;
 2. fallback interface/clock/width manifest and SDC SHA, bound to the pinned
    RTL/filelist inventory already recorded here;
-3. canonical digital receipt and per-event results;
+3. the already-published native canonical digital receipt and per-event results
+   must remain hash-pinned and unchanged;
 4. mapped netlist, mapping log, complete cell inventory, and real Liberty/LEF
    cross-check receipt;
 5. fallback-specific Genus/Innovus reports and P&R qualification receipt; and

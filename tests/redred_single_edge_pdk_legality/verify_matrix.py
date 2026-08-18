@@ -61,7 +61,7 @@ EXPECTED_POSEDGE_BY_SOURCE = {
 }
 EXPECTED_REPOSITORY_EVIDENCE = {
     "docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md": (
-        "058aa0e4b7e4d73d1e0ca72117ab7911faa2146b0aede567d2069f6af62f088e",
+        "13ac39ae4da38aa4c8c477e5ad660e1965e254b93eee5b101a0a16e7453fbbdf",
         "SECONDARY_INTERPRETATION_OF_USER_PROVIDED_ORAL_TRANSCRIPT",
     ),
     "docs/server-audit-a1.md": (
@@ -80,14 +80,11 @@ EXPECTED_REPOSITORY_EVIDENCE = {
         "113d2ad1ffe3b52f59067e948868875f6ce509ad14970f73876418db176050b1",
         "INHERITED_P6_R1_STANDARD_CELL_RESULT_NOT_FALLBACK_EVIDENCE",
     ),
-    "contracts/redred_system_goal/active_goal.json": (
-        "af1db6e51dcb9cddb0175c743487351b486d06a6e32b56c2a69b04a4272ee08f",
-        "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
-    ),
 }
 EXPECTED_GOAL_POLICY_PIN = {
+    "commit": "95ffa7ec31639542c585ed678961265c31d67be5",
     "path": "contracts/redred_system_goal/active_goal.json",
-    "sha256": "af1db6e51dcb9cddb0175c743487351b486d06a6e32b56c2a69b04a4272ee08f",
+    "sha256": "e673ada9993fba62c4384189c78cb59bdcd5fe6b5fffa9991ec41897747bba48",
     "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
     "verifier_pass_status": "POLICY_INTERNALLY_VALID",
     "result_authority": "POLICY_ONLY",
@@ -98,7 +95,7 @@ EXPECTED_GOAL_POLICY_PIN = {
     "fallback_integrated_digital":
         "PASS_BOUNDED_ACTUAL_RTL_SYNTHETIC_AND_PUBLIC_PROJECTED",
     "canonical_digital_dependency":
-        "HOLD_EXTERNAL_CAMPAIGN_NOT_QUALIFIED_BY_POLICY",
+        "PASS_SCOPED_NATIVE_CAMPAIGN",
     "canonical_results_embedded_in_policy": False,
     "mapped_pdk_legality": "HOLD",
     "organizer_pdk_legality": "HOLD",
@@ -110,7 +107,7 @@ EXPECTED_GOAL_POLICY_PIN = {
         "sha256": "6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247",
     },
     "pin_semantics":
-        "IMMUTABLE_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH",
+        "IMMUTABLE_GIT_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH",
 }
 EXPECTED_EXTERNAL = {
     "GSCLIB_ARCHIVE": (
@@ -195,12 +192,15 @@ def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def load_json_strict(path: Path) -> dict[str, Any]:
+    return load_json_bytes_strict(path.read_bytes(), "matrix")
+
+
+def load_json_bytes_strict(payload: bytes, label: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"),
-                           object_pairs_hook=reject_duplicates)
+        value = json.loads(payload, object_pairs_hook=reject_duplicates)
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise AuditError(f"invalid JSON: {error}") from error
-    require(isinstance(value, dict), "matrix root must be an object")
+        raise AuditError(f"invalid JSON in {label}: {error}") from error
+    require(isinstance(value, dict), f"{label} root must be an object")
     return value
 
 
@@ -504,7 +504,7 @@ def validate_repository_evidence(matrix: dict[str, Any], root: Path) -> None:
 
 def validate_goal_policy_pin(matrix: dict[str, Any], root: Path) -> None:
     pin = exact_keys(matrix["current_goal_policy_pin"], {
-        "path", "sha256", "authority", "verifier_pass_status",
+        "commit", "path", "sha256", "authority", "verifier_pass_status",
         "result_authority", "evidence_qualified", "release_qualified",
         "policy_pass_is_evidence_pass", "policy_pass_is_release_pass",
         "fallback_integrated_digital", "canonical_digital_dependency",
@@ -517,9 +517,12 @@ def validate_goal_policy_pin(matrix: dict[str, Any], root: Path) -> None:
     require(pin == EXPECTED_GOAL_POLICY_PIN, "current goal policy pin changed")
 
     policy_path = relative_path(pin["path"], "current_goal_policy_pin.path")
-    policy_file = local_regular_file(root, policy_path, "current goal policy pin")
-    require(sha256(policy_file) == pin["sha256"], "current goal policy hash mismatch")
-    policy = load_json_strict(policy_file)
+    require(re.fullmatch(r"[0-9a-f]{40}", pin["commit"]) is not None,
+            "current goal policy commit is malformed")
+    policy_payload = committed_blob(pin["commit"], policy_path)
+    require(sha256_bytes(policy_payload) == pin["sha256"],
+            "current goal policy hash mismatch")
+    policy = load_json_bytes_strict(policy_payload, "current goal policy pin")
     verifier = policy["verifier_claim"]
     fallback = policy["interfaces"]["PARALLEL_FALLBACK"]
     bounded_policy = policy["bounded_current_evidence"]["policy"]
@@ -528,8 +531,9 @@ def validate_goal_policy_pin(matrix: dict[str, Any], root: Path) -> None:
         "single_edge_source_structure_pdk"
     ]["artifacts"]["matrix"]
     observed = {
+        "commit": pin["commit"],
         "path": policy_path,
-        "sha256": sha256(policy_file),
+        "sha256": sha256_bytes(policy_payload),
         "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
         "verifier_pass_status": verifier["pass_status"],
         "result_authority": verifier["result_authority"],
@@ -545,7 +549,7 @@ def validate_goal_policy_pin(matrix: dict[str, Any], root: Path) -> None:
         "fallback_release_status": fallback["competition_release_status"],
         "pinned_legality_publication": publication,
         "pin_semantics":
-            "IMMUTABLE_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH",
+            "IMMUTABLE_GIT_POLICY_SNAPSHOT_OF_PRIOR_PUBLISHED_PACKAGE_NOT_CURRENT_PACKAGE_SELF_HASH",
     }
     require(observed == pin, "current goal policy semantics differ from the pinned claims")
 
@@ -647,15 +651,12 @@ def validate_policy_shape(matrix: dict[str, Any]) -> None:
             "G05 does not preserve source-PASS/mapped-HOLD separation")
     g06 = by_id["G06_FALLBACK_CANONICAL_DIGITAL"]
     g06_reason = g06["current_reason"]
-    require(g06["status"] == "HOLD" and
-            EXPECTED_GOAL_POLICY_PIN["fallback_integrated_digital"] in g06_reason and
-            EXPECTED_GOAL_POLICY_PIN["result_authority"] in g06_reason and
+    require(g06["status"] == "GO" and
             EXPECTED_GOAL_POLICY_PIN["canonical_digital_dependency"] in g06_reason and
-            "evidence_qualified=false" in g06_reason and
-            "release_qualified=false" in g06_reason and
-            "no canonical results embedded" in g06_reason and
+            "closes only the canonical digital gate" in g06_reason and
+            "does not qualify mapped PDK legality or release" in g06_reason and
             "P6 evidence cannot be borrowed" in g06_reason,
-            "G06 does not preserve bounded-digital-PASS/canonical-HOLD separation")
+            "G06 does not preserve scoped-canonical-PASS/nonrelease separation")
     require("integrated fallback digital evidence is missing" not in g06_reason.lower(),
             "G06 regressed to the stale integrated-digital claim")
 
