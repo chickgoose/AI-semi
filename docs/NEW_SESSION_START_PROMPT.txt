@@ -15,4 +15,4 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 짧게 요약하되, 과거 작업을 시작하지 말고 내가 이번 새 세션에서 제시하는 목표를
 기준으로 계획을 세워.
 
-이번 새 목표: [여기에 새 목표를 한 문장으로 작성]
+이번 새 목표: 교육용 GPDK045 범위 안에서 A2를 주후보·A3를 exact-prefix fallback으로 한 16-source complete AER endpoint를 구현하고, 동일한 팀 정의 traffic에서 accepted-event exact-once·source overrun·throughput·latency와 complete-boundary post-route timing·area·mapped vectorless power를 입증하되, P6는 서면 허용 전 HOLD하고 single-edge fallback을 별도 검증하며, known-motion world↔sensor 변환은 endpoint PPA 밖의 system demo로 검증한다.

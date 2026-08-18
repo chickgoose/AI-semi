@@ -411,3 +411,21 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 9. `docs/tmux-workflow.md` — tmux 운용 상세.
 
 `docs/K2_물리검증_실서버_결과_20260813.txt`와 `docs/tmux_all_agents_layout_20260814.txt`는 중간/과거 기록이다. 현재 최종 판정보다 우선하지 않는다.
+
+## 13. 2026-08-19 주최 측 Q&A 이후 새 목표
+
+주최 측 Q&A의 사실·권장·팀 자율·미확정 사항과 REDRED release gate는
+`docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md`에 정리했다. 이 절은 앞의
+2026-08-18 복구 기록을 수정하지 않는 후속 결정이다.
+
+핵심 결정:
+
+- A2는 성능 주후보, A3는 held-pending exact-prefix 의미 fallback이다.
+- 전체 평가 경계는 source admission부터 retire까지의 complete endpoint다.
+- 팀 정의 canonical traffic을 유지하며 주최 측 dataset은 versioned extension이다.
+- timing과 같은 boundary의 mapped vectorless power를 필수 증거로 둔다.
+- P6는 standard-cell 6.5 ns reference 증거와 대회 허용성을 분리하며 서면 허용 전 HOLD다.
+- single-edge fallback, CDC/RDC, real vectorless server receipt도 각각 독립 HOLD다.
+- known-motion 좌표 변환은 endpoint PPA 밖의 post-retire system demo로 먼저 검증한다.
+
+새 세션의 한 문장 목표는 `docs/NEW_SESSION_START_PROMPT.txt`에 기록했다.
