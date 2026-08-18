@@ -1,7 +1,7 @@
 {
   "schema": "redred_single_edge_gpdk045_legality_matrix_v1",
   "audit_date": "2026-08-19",
-  "audit_base_commit": "93d2c7d3f691d2eac4edc02466f1d0706a854538",
+  "audit_base_commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
   "decision": "HOLD",
   "decision_rule": {
     "operator": "ALL",
@@ -153,6 +153,69 @@
       "output_load_pf": 0.01
     }
   },
+  "audited_rtl": {
+    "commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
+    "commit_role": "IMMUTABLE_SOURCE_LEVEL_AUDIT_TARGET",
+    "source_structure_status": "PASS",
+    "mapped_structure_status": "HOLD",
+    "organizer_approval_status": "HOLD",
+    "claim_limit": "RTL_SOURCE_ONLY_NOT_MAPPED_NOT_ORGANIZER_APPROVAL",
+    "root_filelists": [
+      "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
+      "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f"
+    ],
+    "filelists": [
+      {
+        "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
+        "sha256": "55d6c15e33147a3362dedfddccb0ff022e47401eeb0d8388a8dd30e5d9ca1e76"
+      },
+      {
+        "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f",
+        "sha256": "1fcf350a51ae32008ba207b5e1406d71e4a3083ffc52193e379f65eb1b623fee"
+      },
+      {
+        "path": "rtl/technology/single_edge/filelists/generic.f",
+        "sha256": "8c538fc9147c96237f5367fa25da91e2f787ee67d09ca6738f5fcf7e9f19ddf8"
+      }
+    ],
+    "expanded_sources": [
+      {
+        "path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
+        "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+      },
+      {
+        "path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv",
+        "sha256": "05d0cb2bc7b84e585d66771f10a447cd14cfc1d8c41cf6a02c5419f6bac60493"
+      },
+      {
+        "path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv",
+        "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"
+      },
+      {
+        "path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv",
+        "sha256": "b4af9db6f4aebdedd150e53dda0fc4737c9c8c4450ecf1ab51a1625685e07ea4"
+      },
+      {
+        "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
+        "sha256": "9061deb14e46e0d050bdf3fae450ee8a94c234f94e74f69e1dc8be84722e55ac"
+      },
+      {
+        "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
+        "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+      },
+      {
+        "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",
+        "sha256": "3bac4faa2e249e0326a8eba4e3b010437e16c33b5dff236bd621acdb27c5bb07"
+      }
+    ],
+    "allowed_event_clocks": ["clk", "clk_i"],
+    "forbidden_tokens": [
+      "ODDR", "IDDR", "TLATNTSCAX2", "DFFNSRX1", "DFFRHQX1", "MX2X1",
+      "BUFX2", "BUFX4", "ICG", "VENDOR", "primitive", "always_latch",
+      "create_generated_clock"
+    ],
+    "expected_posedge_event_count": 6
+  },
   "gates": [
     {
       "id": "G01_ORGANIZER_PRIMARY_RULE",
@@ -182,7 +245,7 @@
       "id": "G05_FALLBACK_SINGLE_EDGE_STRUCTURE",
       "status": "HOLD",
       "required_evidence": "RTL/netlist/clock report proves the selected transfer uses one declared active edge and no undeclared generated, gated, opposite-edge, ODDR, or IDDR transfer",
-      "current_reason": "parallel fallback is only a policy placeholder"
+      "current_reason": "source-level RTL structure passes at pinned commit 4ce4836, but mapped-netlist and clock-report structure plus organizer approval remain HOLD"
     },
     {
       "id": "G06_FALLBACK_CANONICAL_DIGITAL",
