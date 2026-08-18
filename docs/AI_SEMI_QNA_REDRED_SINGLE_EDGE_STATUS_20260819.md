@@ -59,6 +59,16 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
   여섯 실행도 exact conservation을 만족했다. 256×에서 A2는
   906 accepted/194 overrun, A3는 817 accepted/283 overrun이었다. 이는
   `PUBLIC_PROJECTED_EXTENSION`이며 공식 대회 traffic이 아니다.
+- Synthetic v2는 서로 독립적인 두 campaign에서 합계 424개 actual-RTL
+  process(200 full50, 4 reset, 4 activation, 16 mutant, 200 ordinal observer)를
+  실행했다. 1,520개 payload의 12,279,031-byte closed archive를 재개봉하고
+  byte-for-byte 재봉인했으며, 200개 same-cycle order sidecar와 semantic
+  reproduction을 독립 재계산했다. Result/export/publication SHA-256은 각각
+  `7a4a8a3f…70554`, `b3a2a695…79786`, `95ddce39…0931`이다.
+- Public projected v2도 두 번 재현했고, 80-entry closed export, exact
+  accept/retire ordinal, raw archive integrity와 non-circular Git provenance를
+  독립 검증했다. 최종 14개 fail-closed 회귀가 통과했다. 이 PASS는 여전히
+  noncanonical·nonofficial public extension 범위뿐이다.
 - Source-level single-posedge CDC/RDC와 RTL source-structure PDK 검사는
   bounded PASS다. Supplied-rotation coordinate software demo도 synthetic 범위
   안에서 PASS다.
@@ -66,8 +76,11 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 ## 현재 HOLD
 
 - Hardened synthetic와 public projected 결과는 bounded actual-RTL PASS지만
-  외부 canonical campaign dependency를 닫지 않으며 release/selection으로
-  승격하지 않는다.
+  release/selection으로 승격하지 않는다. 두 producer-native v2 schema는
+  현재 generic campaign-v3 sealed-tuple schema와 publication envelope,
+  member path, CSV/result schema가 다르므로 campaign-v3 binding은
+  `HOLD_SCHEMA_INCOMPATIBLE_UNBOUND`다. Relabeling이나 lossy repack은 허용하지
+  않고 reviewed native-schema adapter 또는 slot-specific consumer가 필요하다.
 - Organizer-authoritative GPDK045 corner/clock/I/O/load 수치와 mapped cell
   legality가 없다.
 - Hardened single-edge A2/A3의 실제 Genus/Innovus P&R, post-route timing,
