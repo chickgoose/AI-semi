@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/redred-event-import-receipt-v1.schema.json",
+  "title": "REDRED event import receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "dataset_label", "source", "spec_sha256", "trace"],
+  "properties": {
+    "schema": {"const": "redred-event-import-receipt-v1"},
+    "status": {"enum": ["PASS", "HOLD"]},
+    "reason": {"type": "string", "minLength": 1},
+    "dataset_label": {"type": "string", "minLength": 1},
+    "source": {"$ref": "#/$defs/source"},
+    "spec_sha256": {"$ref": "#/$defs/sha256"},
+    "input_contract": {"$ref": "#/$defs/inputContract"},
+    "ordering": {"$ref": "#/$defs/ordering"},
+    "cycle_mapping": {"$ref": "#/$defs/cycleMapping"},
+    "conservation": {"const": "input_event_records == events_emitted + events_dropped"},
+    "counts": {"$ref": "#/$defs/counts"},
+    "trace": {"oneOf": [{"$ref": "#/$defs/trace"}, {"type": "null"}]}
+  },
+  "oneOf": [
+    {
+      "properties": {"status": {"const": "PASS"}, "trace": {"$ref": "#/$defs/trace"}},
+      "required": ["input_contract", "ordering", "cycle_mapping", "conservation", "counts"],
+      "not": {"required": ["reason"]}
+    },
+    {
+      "properties": {"status": {"const": "HOLD"}, "trace": {"type": "null"}},
+      "required": ["reason"]
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "inputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "time_unit", "polarity_encoding", "sensor", "bounds_policy"],
+      "properties": {
+        "format": {"enum": ["canonical_jsonl", "generic_delimited"]},
+        "time_unit": {"enum": ["s", "ms", "us", "ns"]},
+        "polarity_encoding": {"enum": ["minus_plus_one", "zero_one"]},
+        "sensor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": {"type": "integer", "minimum": 1},
+            "height": {"type": "integer", "minimum": 1}
+          }
+        },
+        "bounds_policy": {"enum": ["reject", "clip"]}
+      }
+    },
+    "ordering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "timestamp_tie_policy", "cycle_quantization"],
+      "properties": {
+        "key": {
+          "type": "array",
+          "prefixItems": [{"const": "timestamp"}, {"const": "source_record_index"}],
+          "items": false
+        },
+        "timestamp_tie_policy": {"const": "preserve_source_record_order"},
+        "cycle_quantization": {"const": "floor"}
+      }
+    },
+    "cycleMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["period_ns", "origin", "origin_timestamp", "deadline_slack_cycles"],
+      "properties": {
+        "period_ns": {"type": "string", "minLength": 1},
+        "origin": {"const": "first_event"},
+        "origin_timestamp": {"type": "string", "minLength": 1},
+        "deadline_slack_cycles": {"type": "integer", "minimum": 0}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_event_records", "blank_lines", "comment_lines", "timestamp_tied_events",
+        "same_cycle_events", "same_source_cycle_retriggers", "out_of_range_events",
+        "x_below_range", "x_above_range", "y_below_range", "y_above_range",
+        "clipped_events", "clipped_coordinates", "events_emitted", "events_dropped"
+      ],
+      "properties": {
+        "input_event_records": {"type": "integer", "minimum": 1},
+        "blank_lines": {"type": "integer", "minimum": 0},
+        "comment_lines": {"type": "integer", "minimum": 0},
+        "timestamp_tied_events": {"type": "integer", "minimum": 0},
+        "same_cycle_events": {"type": "integer", "minimum": 0},
+        "same_source_cycle_retriggers": {"type": "integer", "minimum": 0},
+        "out_of_range_events": {"type": "integer", "minimum": 0},
+        "x_below_range": {"type": "integer", "minimum": 0},
+        "x_above_range": {"type": "integer", "minimum": 0},
+        "y_below_range": {"type": "integer", "minimum": 0},
+        "y_above_range": {"type": "integer", "minimum": 0},
+        "clipped_events": {"type": "integer", "minimum": 0},
+        "clipped_coordinates": {"type": "integer", "minimum": 0},
+        "events_emitted": {"type": "integer", "minimum": 1},
+        "events_dropped": {"const": 0}
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256", "event_count", "event_schema", "identity_mode", "required_relation"],
+      "properties": {
+        "file": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "event_count": {"type": "integer", "minimum": 1},
+        "event_schema": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "occurrence_cycle"}, {"const": "tb_only_event_id"},
+            {"const": "logical_source"}, {"const": "x"}, {"const": "y"},
+            {"const": "polarity"}, {"const": "event_type"},
+            {"const": "relation_id"}, {"const": "relation_role"}, {"const": "deadline"}
+          ],
+          "items": false
+        },
+        "identity_mode": {"const": "address_only"},
+        "required_relation": {"const": "logical_source == y * sensor.width + x"}
+      }
+    }
+  }
+}

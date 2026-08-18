@@ -1,0 +1,31 @@
+{
+  "schema": "redred-event-import-v1",
+  "dataset_label": "synthetic-generic-csv-fixture",
+  "source": {
+    "sha256": "6fa65f955452115474b96cc968285ab5b207d353ac94b563f7b4492ce3e62a4d"
+  },
+  "sensor": {
+    "width": 4,
+    "height": 3
+  },
+  "input": {
+    "format": "generic_delimited",
+    "time_unit": "us",
+    "polarity_encoding": "zero_one",
+    "delimiter": ",",
+    "header": true,
+    "comment_prefix": "#",
+    "columns": {
+      "timestamp": "ts_us",
+      "x": "col",
+      "y": "row",
+      "polarity": "p"
+    }
+  },
+  "cycle_mapping": {
+    "period_ns": "1000000",
+    "origin": "first_event",
+    "deadline_slack_cycles": 8
+  },
+  "bounds_policy": "clip"
+}

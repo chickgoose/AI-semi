@@ -1,0 +1,6 @@
+# Synthetic fixture; not an official dataset.
+ts_us,col,row,p
+2000,1,0,1
+1000,0,0,0
+1000,0,0,1
+2500,4,-1,1
