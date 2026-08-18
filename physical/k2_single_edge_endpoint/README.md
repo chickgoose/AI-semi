@@ -14,12 +14,16 @@ The exact rows are:
 | A2 | `a2_batched_iwrr_single_edge_top` | `rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f` |
 | A3 | `a3_exact_scalar_prefix_k2_single_edge_top` | `rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f` |
 
-These are the exact names and bytes from RTL authority commit
-`4ce4836fab1309d3468db8e660d2da9af371f784`. Each three-entry candidate list
+These are the exact names and bytes from hardened RTL source commit
+`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b` and integration commit
+`a0a4eb38632245db8ff5937ea5b6c6e3f3839246`; their RTL trees are identical.
+Each three-entry candidate list
 contains its native scheduler, the exact nested
 `rtl/technology/single_edge/filelists/generic.f`, and its complete top. The
-nested list expands to the committed TX, RX, and endpoint files, for five
-hash-pinned source files per row. The validator rejects any renamed, changed,
+nested list expands in order to the sticky protocol-error latch, TX, RX, and
+endpoint files, for six hash-pinned source files per row. The latch is part of
+the charged error/drain behavior; reset-before-clean-drain history is not
+claimed. The validator rejects any renamed, changed,
 or reordered list/source as well as multi-edge research RTL, technology
 staging, constraints, netlists, and evidence by path and token.
 
@@ -30,7 +34,8 @@ staging, constraints, netlists, and evidence by path and token.
 model. All non-clock inputs receive min/max input delay and input transition;
 all outputs receive min/max output delay and capacitive load.
 
-The 6.5 ns clock, uncertainty, I/O delays, transition, 0.01 pF load, all-left
+The exact SDC bytes and the 6.5 ns clock, uncertainty, min/max I/O delays,
+transition, 0.01 pF load, all-left
 Metal3 pin placement, and core floorplan are **team screening placeholders**.
 The SDC refuses to load unless the environment explicitly supplies
 `SE_CONSTRAINT_CLASS=TEAM_PLACEHOLDER_SCREENING_ONLY`. More importantly, the
@@ -72,7 +77,7 @@ python3 physical/k2_single_edge_endpoint/flow.py capture-environment \
   --pdk-root /home/aiasic26911/gsclib045_all_v4.7/gsclib045 \
   --genus /tools/cadence/DDI231/GENUS231/bin/genus \
   --innovus /tools/cadence/DDI231/INNOVUS231/bin/innovus \
-  --output /absolute/server/attempt-a2/real-environment.json
+  --output /absolute/server/attempt-a2/LIVE_ENVIRONMENT.json
 ```
 
 The plan resolves each committed Tcl template to an absolute path, records the
@@ -89,12 +94,12 @@ also requires the bound successful Genus receipt:
 ```sh
 python3 physical/k2_single_edge_endpoint/flow.py execute --design a2 \
   --stage genus --plan /absolute/server/attempt-a2/command-plan.json \
-  --environment /absolute/server/attempt-a2/real-environment.json \
+  --environment /absolute/server/attempt-a2/LIVE_ENVIRONMENT.json \
   --authorization I_UNDERSTAND_THIS_LAUNCHES_REAL_GENUS
 
 python3 physical/k2_single_edge_endpoint/flow.py execute --design a2 \
   --stage innovus --plan /absolute/server/attempt-a2/command-plan.json \
-  --environment /absolute/server/attempt-a2/real-environment.json \
+  --environment /absolute/server/attempt-a2/LIVE_ENVIRONMENT.json \
   --authorization I_UNDERSTAND_THIS_LAUNCHES_REAL_INNOVUS
 ```
 
@@ -113,7 +118,7 @@ python3 physical/k2_single_edge_endpoint/flow.py build-ledger --design a2 \
   --output /absolute/server/attempt-a2/artifact-ledger.json
 ```
 
-`artifact-ledger.json` has schema `k2_single_edge_artifact_ledger_v1`, the
+`artifact-ledger.json` has schema `k2_single_edge_artifact_ledger_v2`, the
 design/top, contract and command-plan hashes, a self-hash, and exactly one row
 per required role and exact relative path in `contract.json`. Every row has
 only:
@@ -128,7 +133,12 @@ only:
 }
 ```
 
-The ledger covers Genus timing/area/intent, mapped netlist/SDC/SDF, native tool
+The ledger is derived from both exact, stage-specific execution-receipt
+manifests. Each receipt binds design, top, canonical attempt root, exact stage
+command/environment/log, exit zero, all stage artifacts, and (for Innovus) the
+exact upstream Genus receipt and mapped inputs. Genus roles may not carry the
+Innovus command hash or vice versa. The ledger covers Genus timing/area/intent,
+QoR/power/clocks, mapped netlist/SDC/SDF, native tool
 logs, post-route setup/hold/area, `check_timing`, route, DRC, antenna, signal
 and PG connectivity, post-route netlist/SDF/SPEF/database, and both native
 completion markers. Qualification requires positive path counts, nonnegative
@@ -139,16 +149,27 @@ counts, one mapped primary clock, exact tops, and clean version-bound logs.
 ```sh
 python3 physical/k2_single_edge_endpoint/flow.py qualify --design a2 \
   --attempt-root /absolute/server/attempt-a2 \
-  --environment /absolute/server/attempt-a2/real-environment.json \
+  --environment /absolute/server/attempt-a2/LIVE_ENVIRONMENT.json \
   --plan /absolute/server/attempt-a2/command-plan.json \
   --ledger /absolute/server/attempt-a2/artifact-ledger.json \
   --output /absolute/server/attempt-a2/qualification.json
 ```
 
-Missing real receipts/artifacts produce `HOLD_MISSING_REAL_ARTIFACTS`. A fully
-verified real attempt still produces
-`HOLD_PLACEHOLDER_CONSTRAINT_AUTHORITY`. Therefore candidate physical GO is
-impossible under this contract, including when the static preflight passes.
+Missing receipts/artifacts and fully consistent self-sealed bundles both
+produce `HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE`. The package deliberately has
+no GO branch. Its local self-hashes establish consistency, not producer
+identity: organizer-owned constraints and a producer-held out-of-band
+signature/MAC or equivalent immutable server authority are both absent. The
+qualification output therefore says `producer_authenticated=false`, never
+calls caller-writable fixture data real server evidence, and independently
+retains the placeholder-constraint promotion blocker.
+
+The live tool pin covers the configured Cadence wrapper bytes and version
+output, not the wrapper's complete downstream executable/shared-library
+closure. Filesystem reads reject lexical source/artifact symlinks, hardlinks,
+ancestor symlinks, and pre-open identity swaps, but this portable Python flow
+does not provide a kernel-enforced immutable attempt filesystem. These limits
+are reasons for the unconditional unauthenticated HOLD.
 
 Run the adversarial local regression with:
 
