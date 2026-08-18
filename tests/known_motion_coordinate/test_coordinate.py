@@ -15,7 +15,6 @@ from demos.known_motion_coordinate.model import (
     CANONICAL_COMMON_SUITE,
     InterfaceError,
     Intrinsics,
-    RECEIPT_SCHEMA,
     euler_world_to_sensor,
     transform_files,
     warp_pixel,
@@ -189,13 +188,27 @@ class InterfaceTests(unittest.TestCase):
             self.assertEqual(summary["aer_transport_accounting"]["accepted_missing"], 0)
             records = read_jsonl(output)
             event = records[2]
-            self.assertEqual(event["tb_only_event_id"], 1)
+            self.assertEqual(event["tb_only_event_id"], 20)
+            self.assertEqual(event["retire_sequence_index"], 1)
             self.assertEqual(event["logical_source"], 1)
             self.assertEqual(event["address"], 1)
             self.assertEqual(event["capture_time"]["value"], 1000)
             self.assertEqual(event["retire_time"]["value"], 1200)
             self.assertEqual(event["pose_lookup_time_field"], "capture_time")
             self.assertEqual(event["pose_lookup_timestamp"]["value"], 1000)
+
+    def test_noncontiguous_tb_ids_are_preserved_with_contiguous_retire_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _, output, _ = self.run_fixture(directory)
+            events = read_jsonl(output)[1:]
+            self.assertEqual(
+                [event["tb_only_event_id"] for event in events],
+                [10, 20, 40, 70, 105],
+            )
+            self.assertEqual(
+                [event["retire_sequence_index"] for event in events],
+                [0, 1, 2, 3, 4],
+            )
 
     def test_exact_pose_timestamp_uses_latest_pose_at_or_before(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -207,7 +220,6 @@ class InterfaceTests(unittest.TestCase):
     def test_declared_occurrence_time_not_retire_or_capture_drives_pose(self) -> None:
         events = read_jsonl(FIXTURES / "retired_events.jsonl")
         events[0]["pose_lookup_time"] = "occurrence_time"
-        events[2]["retire_time"]["value"] = 3400
         with tempfile.TemporaryDirectory() as directory:
             _, output, _ = self.run_fixture(
                 directory, event_records=events, maximum_age=1000
@@ -216,7 +228,7 @@ class InterfaceTests(unittest.TestCase):
             self.assertEqual(result["pose_id"], "identity")
             self.assertEqual(result["pose_lookup_timestamp"]["value"], 900)
             self.assertEqual(result["capture_time"]["value"], 1000)
-            self.assertEqual(result["retire_time"]["value"], 3400)
+            self.assertEqual(result["retire_time"]["value"], 1200)
 
     def test_pose_age_limit_is_inclusive_and_one_beyond_fails(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -262,7 +274,7 @@ class InterfaceTests(unittest.TestCase):
                 self.run_fixture(directory, event_records=events)
 
         events = read_jsonl(FIXTURES / "retired_events.jsonl")
-        events[2]["tb_only_event_id"] = 0
+        events[2]["tb_only_event_id"] = 10
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(InterfaceError, "duplicate tb_only_event_id"):
                 self.run_fixture(directory, event_records=events)
@@ -293,6 +305,56 @@ class InterfaceTests(unittest.TestCase):
                     800,
                 )
 
+    def test_swapped_retirement_order_and_address_fail(self) -> None:
+        events = read_jsonl(FIXTURES / "retired_events.jsonl")
+        events[1], events[2] = events[2], events[1]
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(InterfaceError, "retire_sequence_index"):
+                self.run_fixture(directory, event_records=events)
+
+        events = read_jsonl(FIXTURES / "retired_events.jsonl")
+        events[1]["address"], events[2]["address"] = (
+            events[2]["address"],
+            events[1]["address"],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(InterfaceError, "address must equal logical_source"):
+                self.run_fixture(directory, event_records=events)
+
+    def test_changed_domain_epoch_and_header_clock_label_fail(self) -> None:
+        mutations = []
+        events = read_jsonl(FIXTURES / "retired_events.jsonl")
+        events[1]["capture_time"]["clock_domain"] = "unbound_clock"
+        mutations.append(events)
+        events = read_jsonl(FIXTURES / "retired_events.jsonl")
+        events[1]["accept_time"]["epoch"] = "different_epoch"
+        mutations.append(events)
+        for index, events in enumerate(mutations):
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(InterfaceError, "exact absolute timebase"):
+                    self.run_fixture(directory, event_records=events)
+
+        events = read_jsonl(FIXTURES / "retired_events.jsonl")
+        events[0]["clock_domains"]["retire_time"] = "unbound_clock"
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(InterfaceError, "absolute clock domain"):
+                self.run_fixture(directory, event_records=events)
+
+    def test_cross_stage_time_order_mutants_fail(self) -> None:
+        mutations = (
+            ("occurrence_time", 101),
+            ("capture_time", 121),
+            ("accept_time", 201),
+        )
+        for field, value in mutations:
+            events = read_jsonl(FIXTURES / "retired_events.jsonl")
+            events[1][field]["value"] = value
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                with self.assertRaisesRegex(
+                    InterfaceError, "occurrence <= capture <= accept <= retire"
+                ):
+                    self.run_fixture(directory, event_records=events)
+
     def test_matrix_direction_and_machine_convention_mutants_fail(self) -> None:
         poses = read_jsonl(FIXTURES / "poses.jsonl")
         poses[3]["matrix_direction"] = "sensor_to_world"
@@ -319,45 +381,51 @@ class InterfaceTests(unittest.TestCase):
             with self.assertRaisesRegex(InterfaceError, "must be nonzero"):
                 self.run_fixture(directory, event_records=events)
 
-    def test_canonical_class_requires_and_hash_verifies_receipt_sidecar(self) -> None:
+    def test_every_canonical_claim_is_hold_without_reading_sidecar(self) -> None:
+        for receipt_reference in (
+            None,
+            {"path": "untrusted-or-symlinked-sidecar.json", "sha256": "f" * 64},
+        ):
+            events = read_jsonl(FIXTURES / "retired_events.jsonl")
+            events[0]["evidence_class"] = CANONICAL_COMMON_SUITE
+            events[0]["provenance"]["transport_receipt"] = receipt_reference
+            with self.subTest(receipt=receipt_reference), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                target = base / "untrusted-sidecar-target.json"
+                target.write_text('{"untrusted":true}\n', encoding="utf-8")
+                sidecar = base / "untrusted-or-symlinked-sidecar.json"
+                sidecar.symlink_to(target)
+                original_is_symlink = Path.is_symlink
+                original_resolve = Path.resolve
+
+                def reject_sidecar_inspection(path: Path) -> bool:
+                    if path.name == sidecar.name:
+                        raise AssertionError("canonical sidecar was inspected")
+                    return original_is_symlink(path)
+
+                def reject_sidecar_resolution(path: Path, *args, **kwargs) -> Path:
+                    if path.name == sidecar.name:
+                        raise AssertionError("canonical sidecar was resolved")
+                    return original_resolve(path, *args, **kwargs)
+
+                with mock.patch.object(Path, "resolve", reject_sidecar_resolution), \
+                     mock.patch.object(Path, "is_symlink", reject_sidecar_inspection):
+                    with self.assertRaisesRegex(
+                        InterfaceError,
+                        "CANONICAL_COMMON_SUITE is HOLD/unsupported",
+                    ):
+                        self.run_fixture(directory, event_records=events)
+                self.assertFalse((base / "transformed.jsonl").exists())
+                self.assertFalse((base / "summary.json").exists())
+
+    def test_synthetic_claim_with_any_sidecar_is_rejected(self) -> None:
         events = read_jsonl(FIXTURES / "retired_events.jsonl")
-        header = events[0]
-        header["evidence_class"] = CANONICAL_COMMON_SUITE
-        accounting = copy.deepcopy(header["transport_accounting"])
-        receipt = {
-            "schema": RECEIPT_SCHEMA,
-            "evidence_class": CANONICAL_COMMON_SUITE,
-            "run_id": header["provenance"]["run_id"],
-            "candidate_id": header["provenance"]["candidate_id"],
-            "workload_id": header["provenance"]["workload_id"],
-            "manifest_sha256": header["provenance"]["manifest_sha256"],
-            "content_sha256": header["provenance"]["content_sha256"],
-            "transport_accounting": accounting,
+        events[0]["provenance"]["transport_receipt"] = {
+            "path": "fake.json",
+            "sha256": "f" * 64,
         }
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(InterfaceError, "must be an object"):
-                self.run_fixture(directory, event_records=events)
-
-        with tempfile.TemporaryDirectory() as directory:
-            receipt_path = Path(directory) / "common-suite-receipt.json"
-            receipt_path.write_text(json.dumps(receipt) + "\n", encoding="utf-8")
-            header["provenance"]["transport_receipt"] = {
-                "path": receipt_path.name,
-                "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
-            }
-            summary, _, _ = self.run_fixture(directory, event_records=events)
-            self.assertEqual(summary["provenance"]["evidence_class"], CANONICAL_COMMON_SUITE)
-            self.assertEqual(
-                summary["provenance"]["transport_receipt_input_sha256"],
-                header["provenance"]["transport_receipt"]["sha256"],
-            )
-
-            events[0]["provenance"]["transport_receipt"]["sha256"] = "f" * 64
-            with self.assertRaisesRegex(InterfaceError, "sidecar SHA-256 mismatch"):
-                self.run_fixture(directory, event_records=events)
-
-            events[0]["provenance"]["transport_receipt"]["sha256"] = "0" * 64
-            with self.assertRaisesRegex(InterfaceError, "must be nonzero"):
+            with self.assertRaisesRegex(InterfaceError, "rejects transport receipts"):
                 self.run_fixture(directory, event_records=events)
 
     def test_each_primary_input_is_read_once_and_exact_bytes_are_hashed(self) -> None:

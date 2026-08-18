@@ -31,32 +31,41 @@ must declare `angle_unit: degrees`. An in-FOV floating result is quantized with
 `floor(value + 0.5)`. Non-positive ray Z and projections outside
 `[0,width-1] x [0,height-1]` are geometry `out_of_fov`, not transport loss.
 
-## Strict v2 input interface
+## Strict synthetic-only input interface
 
 All objects reject unknown fields and duplicate JSON keys. Pose IDs and pose
-timestamps are unique, and `tb_only_event_id` is unique and contiguous. AER
-events may legitimately share timestamps when lanes operate in parallel; the
-event ID disambiguates them.
+timestamps are unique. Each `tb_only_event_id` is a preserved, unique TB
+identity and may have noncontiguous gaps. The separate required
+`retire_sequence_index` is exactly `0..record_count-1` in JSONL retirement
+order. It never renumbers or replaces the original event ID. AER events may
+legitimately share timestamps when lanes operate in parallel.
 
 The schemas are:
 
 - intrinsics JSON: `redred.known_motion.intrinsics/v2`;
 - pose JSONL: `redred.known_motion.pose_stream/v2` header followed by
   `redred.known_motion.pose/v2` records;
-- retired-event JSONL: `redred.aer.retired_event_stream/v2` header followed by
-  `redred.aer.retired_event/v2` records.
+- retired-event JSONL: `redred.aer.retired_event_stream/v3` header followed by
+  `redred.aer.retired_event/v3` records.
 
 Every retired event carries:
 
-- `tb_only_event_id`, `logical_source`, and `address`;
+- `tb_only_event_id`, `retire_sequence_index`, `logical_source`, and `address`;
 - `occurrence_time` and `capture_time`;
 - `accept_time` and independently preserved `retire_time`;
 - pixel coordinates and polarity.
 
-Each timestamp explicitly contains `value`, `clock_domain`, `epoch`, and
-`unit`. The header selects exactly one of `occurrence_time` or `capture_time`
-as `pose_lookup_time`; accept and retire timestamps never affect pose lookup.
-The selected timestamp must share the pose stream's timebase.
+For `SYNTHETIC_DEMO`, the event header declares one absolute timebase and pins
+the clock-domain label for the pose and every event stage. Every pose,
+occurrence, capture, accept, and retire timestamp must have that identical
+clock domain, epoch, and `ns` unit. Each event must satisfy
+`occurrence <= capture <= accept <= retire`; retire timestamps must also be
+nondecreasing in `retire_sequence_index` order. In the bounded fixture,
+`address` must equal `logical_source`, so an address/order swap fails closed.
+
+The header selects exactly one of `occurrence_time` or `capture_time` as
+`pose_lookup_time`; accept and retire timestamps never affect pose lookup, and
+retire time remains independently preserved in the result.
 
 Pose selection is either an explicit `pose_id` or deterministic zero-order
 hold of the latest pose satisfying `pose_timestamp <= selected_lookup_time`.
@@ -69,18 +78,20 @@ output is written.
 
 Each of the three primary inputs is read exactly once as bytes. SHA-256 is
 computed over those exact bytes before decoding, and the output records the
-three hashes. Manifest/content/receipt digests must be lowercase, nonzero
-SHA-256 values.
+three hashes. Manifest/content digests must be lowercase, nonzero SHA-256
+values.
 
-The event header has one evidence class:
+The integrated deliverable supports exactly one evidence class:
 
-- `SYNTHETIC_DEMO`: no receipt may be claimed. The committed small fixture is
-  only this class and is never canonical evidence.
-- `CANONICAL_COMMON_SUITE`: `provenance.transport_receipt` must contain a path
-  relative to the event stream and the exact SHA-256 of a strict
-  `redred.known_motion.transport_receipt_sidecar/v1` JSON file. The sidecar is
-  read once and must bind run, candidate, workload, manifest/content digests,
-  and transport accounting byte-for-byte.
+- `SYNTHETIC_DEMO`: no receipt or sidecar may be claimed. The committed fixture
+  demonstrates synthetic scenario behavior only and is never canonical
+  coordinate evidence.
+
+`CANONICAL_COMMON_SUITE` is explicitly `HOLD/unsupported` and is rejected
+before any claimed receipt or sidecar can be inspected. A3 canonical
+coordinate join/export is HOLD until a trusted post-retire exporter and
+receipt exist. A sidecar, including a symlinked or changed sidecar, cannot
+promote this demo to canonical evidence.
 
 Transformation has a hard precondition:
 
