@@ -61,7 +61,7 @@ EXPECTED_POSEDGE_BY_SOURCE = {
 }
 EXPECTED_REPOSITORY_EVIDENCE = {
     "docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md": (
-        "cc583300ed93985c9da3a10de9618991094bc7778c591c0b701cd93e69747753",
+        "058aa0e4b7e4d73d1e0ca72117ab7911faa2146b0aede567d2069f6af62f088e",
         "SECONDARY_INTERPRETATION_OF_USER_PROVIDED_ORAL_TRANSCRIPT",
     ),
     "docs/server-audit-a1.md": (
@@ -81,13 +81,13 @@ EXPECTED_REPOSITORY_EVIDENCE = {
         "INHERITED_P6_R1_STANDARD_CELL_RESULT_NOT_FALLBACK_EVIDENCE",
     ),
     "contracts/redred_system_goal/active_goal.json": (
-        "b67307b8f7dd8c643a580ac13f99623188fd9852f4c1d763cd648004a0eef8ff",
+        "af1db6e51dcb9cddb0175c743487351b486d06a6e32b56c2a69b04a4272ee08f",
         "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
     ),
 }
 EXPECTED_GOAL_POLICY_PIN = {
     "path": "contracts/redred_system_goal/active_goal.json",
-    "sha256": "b67307b8f7dd8c643a580ac13f99623188fd9852f4c1d763cd648004a0eef8ff",
+    "sha256": "af1db6e51dcb9cddb0175c743487351b486d06a6e32b56c2a69b04a4272ee08f",
     "authority": "POLICY_CONTRACT_NOT_EXTERNAL_APPROVAL",
     "verifier_pass_status": "POLICY_INTERNALLY_VALID",
     "result_authority": "POLICY_ONLY",
