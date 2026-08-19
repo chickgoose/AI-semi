@@ -1332,6 +1332,14 @@ def validate_sdc(text: str, contract: dict[str, Any],
     commands = [re.sub(r"\s+", " ", command.strip())
                 for line in active.splitlines() for command in line.split(";")
                 if command.strip()]
+    candidate_tops = {row["top"] for row in contract["candidates"].values()}
+    if len(commands) < 4 or commands[:3] != [
+            "set sdc_version 2.0", "set_units -capacitance 1000fF",
+            "set_units -time 1000ps"] or \
+            re.fullmatch(r"current_design ([A-Za-z_][A-Za-z0-9_$]*)",
+                         commands[3]) is None or \
+            commands[3].split()[1] not in ({top} if top is not None else candidate_tops):
+        raise FlowError("mapped SDC first four generated commands/order are not exact")
     boundary = contract["boundary"]["normalized_ports"]
     clock_port = contract["boundary"]["clock_port"]
     input_rows = [row for row in boundary["inputs"] if row["name"] != clock_port]
@@ -1467,8 +1475,7 @@ def validate_sdc(text: str, contract: dict[str, Any],
             auxiliary = command
         elif re.fullmatch(r"current_design [A-Za-z_][A-Za-z0-9_$]*", command):
             design = command.split()[1]
-            allowed_designs = ({top} if top is not None else
-                               {row["top"] for row in contract["candidates"].values()})
+            allowed_designs = {top} if top is not None else candidate_tops
             if design not in allowed_designs:
                 raise FlowError("mapped SDC current_design is not an exact candidate top")
             auxiliary = "current_design"
@@ -1824,8 +1831,16 @@ def validate_innovus_power(payload: bytes, top: str, version: str) -> float:
     raw, text = report_texts(payload, "postroute_power")
     versions = re.findall(r"(?m)^\*\s*Innovus\s+(\S+)\s+\(64bit\).*$", raw)
     designs = re.findall(r"(?m)^\*\s*Design:\s*(\S+)\s*$", raw)
+    design_names = re.findall(r"(?m)^# Design Name:\s*(\S+)\s*$", raw)
+    stages = re.findall(r"(?m)^# Design Stage:\s*(\S+)\s*$", raw)
+    using_views = re.findall(r"(?m)^Using Power View:\s*(\S+)\.\s*$", raw)
+    report_views = re.findall(r"(?m)^\*\s*Power View\s*:\s*(\S+)\s*$", raw)
+    all_view_lines = re.findall(r"(?mi)^.*\bPower View\b.*$", raw)
     units = re.findall(r"(?m)^\*\s*Power Units\s*=\s*(\S+)\s*$", raw)
-    if versions != [version] or designs != [top] or units != ["1mW"] or \
+    if versions != [version] or designs != [top] or design_names != [top] or \
+            stages != ["PostRoute"] or using_views != ["se_setup_view"] or \
+            report_views != ["se_setup_view"] or len(all_view_lines) != 2 or \
+            units != ["1mW"] or \
             re.findall(r"(?m)^\*\s*(report_power.*?)\s*$", raw) != ["report_power"] or \
             len(re.findall(r"(?m)^Total Power\s*$", raw)) != 1:
         raise FlowError("postroute_power lacks exact native tool/top/report identity")
@@ -1863,11 +1878,22 @@ def validate_genus_check_design(payload: bytes, top: str) -> None:
         "Undriven Port(s)", "Undriven Leaf Pin(s)",
         "Undriven hierarchical pin(s)", "Multidriven Port(s)",
         "Multidriven Leaf Pin(s)", "Multidriven hierarchical Pin(s)",
-        "Multidriven unloaded net(s)", "Libcells with no LEF cell",
-        "Physical (LEF) cells with no libcell",
+        "Multidriven unloaded net(s)", "Constant Port(s)", "Constant Leaf Pin(s)",
+        "Preserved leaf instance(s)", "Preserved hierarchical instance(s)",
+        "Feedthrough Modules(s)", "Libcells with no LEF cell",
+        "Physical (LEF) cells with no libcell", "Subdesigns with long module name",
+        "Physical only instance(s)", "Logical only instance(s)",
     }
-    if any(re.findall(rf"(?m)^\s*{re.escape(name)}\s+([0-9]+)\s*$", text) != ["0"]
-           for name in required_zero):
+    special = "Constant hierarchical Pin(s)"
+    sections = re.findall(
+        r"(?ms)^\s*Summary\s*$.*?^\s*Name\s+Total\s*$\n"
+        r"\s*-+\s*$\n(.*?)^\s*Done Checking the design\.\s*$", raw)
+    if len(required_zero) != 23 or len(sections) != 1:
+        raise FlowError("genus_check_design lacks one exact native Summary table")
+    rows = re.findall(r"(?m)^\s*(.+?\S)\s{2,}([0-9]+)\s*$", sections[0])
+    expected_names = required_zero | {special}
+    if len(rows) != len(expected_names) or {name for name, _ in rows} != expected_names or \
+            any(int(value) != 0 for name, value in rows if name != special):
         raise FlowError("genus_check_design contains a nonzero structural defect")
 
 

@@ -1111,17 +1111,26 @@ class EvidenceTests(unittest.TestCase):
             "genus_clocks": "Clock se_primary_clk",
         }
         if role == "genus_check_design":
-            zeros = "\n".join(
-                f"{name} 0" for name in (
-                    "Unresolved References", "Empty Modules", "Unloaded Port(s)",
-                    "Unloaded Sequential Pin(s)", "Unloaded Combinational Pin(s)",
-                    "Assigns", "Undriven Port(s)", "Undriven Leaf Pin(s)",
-                    "Undriven hierarchical pin(s)", "Multidriven Port(s)",
-                    "Multidriven Leaf Pin(s)", "Multidriven hierarchical Pin(s)",
-                    "Multidriven unloaded net(s)", "Libcells with no LEF cell",
-                    "Physical (LEF) cells with no libcell"))
+            names = (
+                "Unresolved References", "Empty Modules", "Unloaded Port(s)",
+                "Unloaded Sequential Pin(s)", "Unloaded Combinational Pin(s)",
+                "Assigns", "Undriven Port(s)", "Undriven Leaf Pin(s)",
+                "Undriven hierarchical pin(s)", "Multidriven Port(s)",
+                "Multidriven Leaf Pin(s)", "Multidriven hierarchical Pin(s)",
+                "Multidriven unloaded net(s)", "Constant Port(s)",
+                "Constant Leaf Pin(s)", "Constant hierarchical Pin(s)",
+                "Preserved leaf instance(s)", "Preserved hierarchical instance(s)",
+                "Feedthrough Modules(s)", "Libcells with no LEF cell",
+                "Physical (LEF) cells with no libcell",
+                "Subdesigns with long module name", "Physical only instance(s)",
+                "Logical only instance(s)")
+            rows = "\n".join(
+                f"{name:<45}{7 if name == 'Constant hierarchical Pin(s)' else 0}"
+                for name in names)
             return (f"Check Design Report (c)\nNo unresolved references in design "
-                    f"'{top}'\nName Total\n{zeros}\nDone Checking the design.\n").encode()
+                    f"'{top}'\nSummary\n-------\nName Total\n"
+                    f"----------------------------------------------\n{rows}\n"
+                    "Done Checking the design.\n").encode()
         if role == "genus_power":
             return (f"Instance: /{top}\nPower Unit: W\n"
                     "PDB Frames: /stim#0/frame#0\n"
@@ -1130,8 +1139,12 @@ class EvidenceTests(unittest.TestCase):
         if role in genus_reports:
             return (genus_header + genus_reports[role] + "\n").encode()
         native = {
-            "postroute_power": (f"* Innovus {version} (64bit) native\n"
-                                f"* Design: {top}\n* Power Units = 1mW\n"
+            "postroute_power": ("Using Power View: se_setup_view.\n"
+                                "# Design Stage: PostRoute\n"
+                                f"# Design Name: {top}\n"
+                                f"* Innovus {version} (64bit) native\n"
+                                f"* Design: {top}\n* Power View : se_setup_view\n"
+                                "* Power Units = 1mW\n"
                                 "* report_power\nTotal Power\n"
                                 "Total Internal Power: 0.001 50.0%\n"
                                 "Total Switching Power: 0.0009 45.0%\n"
@@ -1714,6 +1727,17 @@ class SelfContainedActualShapeTests(unittest.TestCase):
         raw = self.payload(f"genus/netlist/{self.top}.mapped.sdc").decode()
         line = "set_input_transition 0.05 [get_ports rst_i]\n"
         mutations = {
+            "swapped-units-order": raw.replace(
+                "set_units -capacitance 1000fF\nset_units -time 1000ps\n",
+                "set_units -time 1000ps\nset_units -capacitance 1000fF\n", 1),
+            "version-not-first": raw.replace(
+                "set sdc_version 2.0\nset_units -capacitance 1000fF\n",
+                "set_units -capacitance 1000fF\nset sdc_version 2.0\n", 1),
+            "current-design-not-fourth": raw.replace(
+                f"current_design {self.top}\ncreate_clock",
+                f"create_clock", 1).replace(
+                    "set_clock_gating_check -setup 0.0\n",
+                    f"set_clock_gating_check -setup 0.0\ncurrent_design {self.top}\n", 1),
             "missing-bit": raw.replace(line, "", 1),
             "duplicate-bit": raw.replace(line, line + line, 1),
             "wrong-value": raw.replace(line, line.replace("0.05", "0.06"), 1),
@@ -1724,11 +1748,12 @@ class SelfContainedActualShapeTests(unittest.TestCase):
             "semicolon": raw.replace("set_units -time 1000ps\n",
                                      "set_units -time 1000ps;\n", 1),
             "continuation": raw.replace(
-                "set_units -time 1000ps\n", "set_units -time \\\n+1000ps\n", 1),
+                "set_units -time 1000ps\n", "set_units -time \\" + "\n1000ps\n", 1),
             "wrong-current-design": raw.replace(
                 f"current_design {self.top}", "current_design foreign_top", 1),
         }
         for name, mutation in mutations.items():
+            self.assertNotEqual(mutation, raw, name)
             with self.subTest(name=name), self.assertRaisesRegex(flow.FlowError,
                                                                  "mapped SDC"):
                 flow.validate_sdc(mutation, self.contract, self.top)
@@ -1837,8 +1862,46 @@ class SelfContainedActualShapeTests(unittest.TestCase):
             (flow.validate_innovus_power,
              power.replace(self.innovus_version, "23.14-s000_1", 1).encode(),
              (self.top, self.innovus_version)),
+            (flow.validate_innovus_power,
+             power.replace("Using Power View: se_setup_view.",
+                           "Using Power View: se_hold_view.", 1).encode(),
+             (self.top, self.innovus_version)),
+            (flow.validate_innovus_power,
+             power.replace("# Design Stage: PostRoute",
+                           "# Design Stage: PreRoute", 1).encode(),
+             (self.top, self.innovus_version)),
+            (flow.validate_innovus_power,
+             power.replace(f"# Design Name: {self.top}",
+                           "# Design Name: foreign_top", 1).encode(),
+             (self.top, self.innovus_version)),
+            (flow.validate_innovus_power,
+             power.replace(f"# Design Name: {self.top}\n",
+                           f"# Design Name: {self.top}\n# Design Name: {self.top}\n", 1).encode(),
+             (self.top, self.innovus_version)),
+            (flow.validate_innovus_power,
+             power.replace("* Power View : se_setup_view\n",
+                           "* Power View : se_setup_view\n* Power View : se_hold_view\n", 1).encode(),
+             (self.top, self.innovus_version)),
             (flow.validate_genus_check_design,
              check_design.replace("Done Checking the design.", "Checking incomplete.", 1).encode(),
+             (self.top,)),
+            (flow.validate_genus_check_design,
+             check_design.replace(f"{'Assigns':<45}0",
+                                  f"{'Assigns':<45}1", 1).encode(),
+             (self.top,)),
+            (flow.validate_genus_check_design,
+             re.sub(r"(?m)^Logical only instance\(s\)\s+0$",
+                    "Unknown structural class                     0",
+                    check_design, count=1).encode(),
+             (self.top,)),
+            (flow.validate_genus_check_design,
+             re.sub(r"(?m)^Logical only instance\(s\)\s+0\n", "",
+                    check_design, count=1).encode(),
+             (self.top,)),
+            (flow.validate_genus_check_design,
+             check_design.replace(
+                 "Done Checking the design.",
+                 f"{'Logical only instance(s)':<45}0\nDone Checking the design.", 1).encode(),
              (self.top,)),
             (flow.validate_genus_power,
              genus_power.replace("0.000013 100.00%",
