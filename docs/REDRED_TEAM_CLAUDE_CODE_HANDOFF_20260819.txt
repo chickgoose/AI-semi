@@ -1,0 +1,534 @@
+REDRED 현재 설계 및 팀원 Claude Code 공유 문서
+작성 기준일: 2026-08-19
+
+중요: 원격 공유 상태
+====================
+
+저장소 주소:
+  https://github.com/chickgoose/AI-semi.git
+
+현재 통합 브랜치 이름:
+  integration/redred-system-goal
+
+호환성/정책 기준 최소 commit:
+  3a63b56f41900ca4ce76e3b717035d7c2da90d66
+
+이 브랜치는 현재 origin에 게시되지 않았다. 따라서 이 문서를 팀원에게
+전달하더라도 원격 push 전에는 팀원이 해당 브랜치를 fetch할 수 없다.
+이 문서에는 특정 컴퓨터의 /tmp 또는 /home 절대경로를 사용하지 않는다.
+모든 코드 위치는 저장소 root 기준 상대경로다.
+
+원격 게시 후 팀원 checkout 명령:
+
+  git clone https://github.com/chickgoose/AI-semi.git
+  cd AI-semi
+  git fetch origin
+  git switch --track origin/integration/redred-system-goal
+  git status --short --branch
+
+현재 원격 게시가 끝나기 전에는 위 명령의 마지막 switch가 실패하는 것이
+정상이다. 임의의 main 또는 다른 integration branch를 현재 REDRED 결과로
+간주하지 않는다.
+
+
+1. 현재 목표
+============
+
+교육용 GPDK045에서 주최 측이 허용하는 셀과 clock 구조만으로 16-source
+pending/accept부터 retire까지의 완전한 AER digital endpoint를 구현한다.
+
+A2는 aggregate-weighted 성능 primary, A3는 exact scalar-prefix 의미
+fallback으로 둔다. 동일 조건의 팀 canonical synthetic traffic과 제공/공개
+traffic에서 다음을 비교한다.
+
+  - accepted-event exact-once
+  - source overrun
+  - throughput
+  - occurrence-to-accept 및 accept-to-retire latency
+  - post-route timing/area
+  - mapped vectorless power
+
+Known-motion world-to-sensor 좌표 변환은 endpoint PPA 밖의 system demo로
+분리한다. 최종 후보 선정은 digital recommendation만으로 하지 않으며,
+physical, power, PDK, CDC/RDC 및 evidence authority gate가 모두 닫힌 뒤에
+수행한다.
+
+
+2. 현재 한 줄 판정
+==================
+
+A2는 actual-RTL native digital campaign에서 aggregate-weighted primary로
+추천되지만, physical/PDK/power/final CDC/freshness/cohort gate가 없으므로
+현재 final candidate는 NONE이고 selection/release는 HOLD다.
+
+
+3. 핵심 architecture
+====================
+
+현재 active endpoint 경계:
+
+  16-source source_pending_i/source_accept_o
+    -> A2 또는 A3 scheduler
+    -> admission 및 charged buffering
+    -> registered single-edge TX
+    -> 9-wire {link_valid, addr0[3:0], addr1[3:0]}
+    -> registered single-edge RX
+    -> ordered two-lane retirement
+    -> drain/error observation
+
+Clock/reset:
+
+  - primary clock: clk_i
+  - active edge: posedge only
+  - reset: synchronous active-high rst_i
+  - generated/gated/forwarded/negedge clock 없음
+  - DDR/multi-edge/vendor-specific primitive 없음
+
+9-wire cell이 표현하는 semantic record:
+
+  - idle: 1개
+  - singleton: 16개
+  - distinct ordered pair: 16 x 15 = 240개
+  - 총 257개, ceil(log2(257)) = 9
+
+9-wire는 전체 chip I/O 폭이 아니라 endpoint 내부 physical-functional
+event-cell link 폭이다.
+
+Endpoint PPA 포함:
+
+  - scheduler policy/state
+  - admission control
+  - charged buffer
+  - link launch/TX/RX
+  - retirement
+  - drain/error logic
+
+Endpoint PPA 제외:
+
+  - event generation before pending
+  - testbench/scoreboard/retry storage
+  - pads/package/channel
+  - coordinate transform
+  - motion estimation/visualization
+
+
+4. A2와 A3
+===========
+
+A2:
+
+  - persistent interleaved weighted round-robin
+  - row weight [1,5,5,1]
+  - sparse fallback to another eligible row
+  - scheduler opportunity당 최대 2 event accept
+  - aggregate throughput과 source-overrun 감소가 목표
+  - exact scalar-prefix를 보장하지 않음
+  - debt/catch-up semantics가 아님
+
+A3:
+
+  - held pending snapshot에 canonical scalar selector를 두 번 적용
+  - exact two-selection prefix 보장
+  - exact-prefix가 요구될 때의 semantic fallback
+  - 또는 A2-specific named gate가 실패하고 A3가 그 gate를 독립적으로
+    통과한 경우에만 활성화 가능
+  - shared PDK/interface/CDC/evidence failure는 A3 선택 사유가 아님
+
+
+5. 핵심 코드 위치
+==================
+
+권위 정책/상태:
+
+  contracts/redred_system_goal/active_goal.json
+  contracts/redred_system_goal/verify_contract.py
+  docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md
+  docs/AI_SEMI_QNA_REDRED_SINGLE_EDGE_STATUS_20260819.md
+  docs/research/redred_single_edge_endpoint_contract_20260819.md
+
+A2:
+
+  rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv
+  rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv
+  rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f
+
+A3:
+
+  rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv
+  rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv
+  rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f
+
+공통 single-edge link:
+
+  rtl/technology/single_edge/w2_single_edge_error_latch.sv
+  rtl/technology/single_edge/w2_single_edge_pair_tx.sv
+  rtl/technology/single_edge/w2_single_edge_pair_rx.sv
+  rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv
+  rtl/technology/single_edge/filelists/generic.f
+
+Digital campaign:
+
+  benchmarks/redred_single_edge_campaign/native_pipeline.py
+  benchmarks/redred_single_edge_campaign/native_pipeline_result.json
+  benchmarks/redred_single_edge_campaign/native_pipeline_publication.json
+  benchmarks/redred_single_edge_campaign/team_canonical_policy.json
+  tests/redred_single_edge_campaign/
+  tests/a23_full_single_edge_replay/result.json
+
+Physical/server compatibility:
+
+  physical/k2_single_edge_endpoint/contract.json
+  physical/k2_single_edge_endpoint/flow.py
+  physical/k2_single_edge_endpoint/genus_single_edge.tcl
+  physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl
+  physical/k2_single_edge_endpoint/innovus_single_edge.tcl
+  physical/k2_single_edge_endpoint/constraints/single_edge_placeholder.sdc
+  tests/k2_single_edge_endpoint/
+
+Vectorless power:
+
+  physical/k2_single_edge_vectorless/contract.json
+  physical/k2_single_edge_vectorless/preflight.py
+  physical/k2_single_edge_vectorless/genus_default_vectorless.tcl
+  tests/k2_single_edge_vectorless/
+
+PDK/CDC/final selection:
+
+  tests/redred_single_edge_pdk_legality/legality_matrix.json
+  tests/redred_single_edge_pdk_legality/verify_matrix.py
+  contracts/redred_single_edge_cdc_rdc/contract.json
+  contracts/redred_single_edge_cdc_rdc/verify_contract.py
+  contracts/redred_final_selection/contract.json
+  contracts/redred_final_selection/verify_contract.py
+
+Coordinate demo:
+
+  demos/known_motion_coordinate/
+  tests/known_motion_coordinate/
+
+Historical only, current authority 아님:
+
+  audits/k2_final_selection/
+  rtl/technology/p6/
+  P6/DDR/multi-edge 관련 physical 결과
+
+
+6. 혁신성으로 주장 가능한 범위
+===============================
+
+  1) aggregate 성능 A2와 exact semantic A3를 명시적으로 분리했다.
+
+  2) generated = source_overrun + accepted와, clean drain 뒤
+     accepted = retired를 별도로 검증한다. Source overrun은 capacity
+     loss이고 accepted-event 누락/중복/변조/reorder는 correctness 실패다.
+
+  3) scheduler core-only가 아니라 buffer, TX/RX, retire, drain/error까지
+     포함한 complete endpoint를 같은 경계에서 비교한다.
+
+  4) GPDK045 적용 불확실성이 큰 DDR/multi-edge 대신 single-posedge
+     standard-cell 구조를 current release 후보로 고정했다.
+
+  5) 257개 atomic ordered record를 9-wire cell에 표현한다.
+
+  6) digital recommendation, policy eligibility, authenticated final selection,
+     release를 서로 다른 단계로 분리한 fail-closed evidence model을 쓴다.
+
+  7) caller JSON, historical P6 evidence, 임의 scalar score 또는 shared
+     failure로 winner가 생기지 않도록 막는다.
+
+문헌/특허 선행조사가 끝나지 않았으므로 world-first, 최초 알고리즘,
+특허성이 입증됐다는 표현은 사용하지 않는다.
+
+
+7. 사용한 reference
+====================
+
+주최 측 Q&A 해석:
+
+  docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md
+  docs/AI_SEMI_QNA_REDRED_SINGLE_EDGE_STATUS_20260819.md
+
+팀 내부 Fovea/Cluster2/K2 reference:
+
+  docs/Fovea_Cluster2_A7_K2_디지털비교_20260813.txt
+  docs/K2_디지털개발_최종현황_20260813.txt
+
+A2는 Fovea의 [1,5,5,1] aggregate weighting 의도와 Cluster2/K2 처리량
+방향을 참고했다. A3는 scalar-selection exact-prefix 의미 보존용
+reference/fallback이다. 이 자료는 팀 내부 구현 reference이지 외부 논문
+citation이 아니다.
+
+Clean-slate AER 평가 규격:
+
+  docs/verification/aer-clean-benchmark-spec.md
+  docs/verification/clean-slate-aer-rtl-contract.md
+  docs/TEAM_COMMON_WORKLOAD_GUIDE.md
+  benchmarks/clean_slate_aer/README.md
+
+공개 데이터:
+
+  - University of Zurich Event-Camera Dataset
+  - DAVIS240C shapes_rotation
+  - 동일 1,100 event를 1x/64x/256x로 retiming
+  - 세 traffic은 독립 dataset 3개가 아니라 한 retiming family
+  - PUBLIC_PROJECTED_EXTENSION이며 공식 대회 traffic이 아님
+  - 기록된 license: CC-BY-NC-SA-3.0
+
+현재 저장소 문서에는 UZH 공식 landing-page URL/DOI/acquisition chain이
+충분히 고정되지 않았다. 발표 전에 공식 URL과 citation을 보강해야 한다.
+
+Coordinate:
+
+  - standard pinhole projection
+  - supplied time-indexed rotation
+  - retire 이후 synthetic software demo
+  - novel vision/motion-estimation algorithm 주장 없음
+
+
+8. 현재 정량 결과
+==================
+
+팀 정의 synthetic full50 actual RTL aggregate:
+
+                  A2             A3
+  generated       106,416        106,416
+  source_overrun  2,370          12,771
+  accepted        104,046        93,645
+  retired         104,046        93,645
+  throughput      0.896281733     0.806670806 event/cycle
+  accept-retire   3 cycles       2 cycles
+
+현재 workload에서 A2는 A3보다 accepted event가 10,401개 많고
+fixed-window throughput은 약 11.1% 높다. 이는 팀 synthetic campaign
+범위이며 공식 score 또는 physical PPA 결과가 아니다.
+
+Native campaign publication:
+
+  raw result SHA-256:
+    9ffd32193f493d0b9f8c3fe000ebff45608971e6711271e990aca0dde4be7963
+
+  semantic SHA-256:
+    789703a6fa073a16100e5461e57102628892651a56d8a1db0891f6119be1593c
+
+  publication SHA-256:
+    89a8439fc3c5796293b56f2dcc96f2bb2141d1d2d1041bff8ca84a09e581c93c
+
+
+9. Digital-to-server compatibility 정책
+========================================
+
+디지털 simulation PASS만으로 server-ready라고 판정하지 않는다.
+
+필수 단계:
+
+  RTL_FUNCTION_PASS
+    -> LOCAL_RTL_PHYSICAL_COMPATIBILITY_PASS
+    -> SERVER_GENUS_SMOKE_PASS
+    -> SERVER_PNR_READY
+    -> PHYSICAL_EVIDENCE_PASS
+
+이번 호환성 수정에서 적용한 내용:
+
+  - A2/A3 실제 RTL과 endpoint/vectorless contract의 마지막 출력 순서를
+    protocol_error_o, drain_idle_o로 통일
+
+  - actual hash-pinned RTL top의 ordered port name/direction/width를 검사
+
+  - A2/A3 exact filelist와 six-module inventory 검사
+
+  - Genus read_hdl을 정확히 다음 형태로 고정
+      read_hdl -sv -define SYNTHESIS -f <exact filelist>
+
+  - missing/extra/reordered/direction/width port mutation을 회귀로 차단
+
+  - endpoint physical contract와 vectorless contract boundary가 동일한지
+    교차 검사
+
+개발 중 매번 실행할 local compatibility command:
+
+  python3 physical/k2_single_edge_endpoint/flow.py compatibility
+
+예상 출력 prefix:
+
+  K2_SINGLE_EDGE_LOCAL_COMPATIBILITY_PASS
+
+이 PASS는 live Genus/GPDK 또는 timing/P&R/power PASS가 아니다. Receipt에는
+다음이 false로 기록된다.
+
+  live_tools_or_pdk_examined=false
+  server_genus_smoke_executed=false
+  candidate_physical_go_allowed=false
+
+
+10. 현재 PASS와 HOLD
+====================
+
+Scoped PASS:
+
+  - complete endpoint RTL 구현
+  - A2/A3 actual-RTL digital correctness
+  - accepted-event exact-once/conservation/order
+  - team-defined synthetic campaign
+  - nonofficial UZH projected extension
+  - source-level single-clock CDC/RDC
+  - source-structure PDK legality
+  - supplied-motion coordinate software demo
+  - local RTL/physical boundary compatibility
+
+HOLD:
+
+  - organizer-authoritative PDK/cell/clock/I/O/load/corner
+  - live GPDK045 bytes
+  - licensed-server A2/A3 Genus smoke
+  - matched A2/A3 Genus/Innovus P&R
+  - mapped-cell legality
+  - post-route setup/hold/area
+  - DRC/antenna/connectivity/PG
+  - actual mapped vectorless power
+  - final mapped CDC/RDC
+  - controlled producer identity/freshness
+  - authenticated matched cohort
+  - final candidate selection 및 team release
+  - official dataset claim
+  - coordinate numeric RTL
+
+현재 final-selection 출력:
+
+  REDRED_FINAL_SELECTION_HOLD
+  candidate=NONE
+  missing=12
+  selection_authority=false
+  release_authority=false
+
+
+11. 검증 명령
+=============
+
+  python3 contracts/redred_system_goal/verify_contract.py
+  python3 contracts/redred_final_selection/verify_contract.py --json
+  python3 physical/k2_single_edge_endpoint/flow.py compatibility
+  tests/k2_single_edge_endpoint/run_all.sh
+  tests/k2_single_edge_vectorless/run_all.sh
+  tests/redred_single_edge_pdk_legality/run_all.sh
+  tests/redred_single_edge_cdc_rdc/run_all.sh
+  tests/redred_single_edge_campaign/run_all.sh
+  tests/redred_final_selection/run_all.sh
+  python3 -m unittest discover -s tests/known_motion_coordinate -p 'test_*.py'
+
+현재 호환성 변경 후 집중 회귀:
+
+  - endpoint physical/local compatibility: 34/34 PASS
+  - system-goal policy: 36/36 PASS
+  - final-selection: 19/19 PASS, candidate NONE/HOLD
+
+전체 suite 재실행 전에는 기존 전체 회귀 수를 새 호환성 변경의 전체 PASS로
+확대해서 주장하지 않는다.
+
+
+12. 절대 금지할 주장
+====================
+
+  - A2가 최종 선정됐다.
+  - team release가 완료됐다.
+  - timing closure 또는 Fmax를 달성했다.
+  - real P&R/post-route signoff가 완료됐다.
+  - 실제 mapped area/vectorless power가 확보됐다.
+  - organizer PDK/cell/I/O legality가 확인됐다.
+  - final mapped CDC/RDC를 통과했다.
+  - P6/DDR/multi-edge가 현재 release evidence다.
+  - historical P6 physical/power 수치를 single-edge endpoint에 상속한다.
+  - full50 또는 UZH traffic이 공식 대회 dataset이다.
+  - UZH 1x/64x/256x가 독립 dataset 3개다.
+  - coordinate demo가 coordinate RTL 또는 motion estimation evidence다.
+  - policy verifier PASS가 evidence/release PASS다.
+  - local compatibility PASS가 server Genus/P&R PASS다.
+  - self-hash 또는 unsigned Git object가 producer authentication/freshness다.
+  - shared gate failure가 A3 fallback을 활성화한다.
+  - 임의 scalar score/threshold로 winner를 결정한다.
+  - scheduler core-only evidence와 complete-endpoint evidence를 혼합한다.
+
+
+13. 팀원 Claude Code에 붙여넣을 지시문
+=======================================
+
+아래 내용을 팀원 Claude Code에 전달한다.
+
+--- CLAUDE CODE PROMPT START ---
+
+당신은 AI-SEMI 경진대회 팀 REDRED의 현재 통합 설계를 검토한다.
+
+저장소:
+  https://github.com/chickgoose/AI-semi.git
+
+브랜치:
+  integration/redred-system-goal
+
+최소 기준 commit:
+  3a63b56f41900ca4ce76e3b717035d7c2da90d66
+
+먼저 다음을 실행한다.
+
+  git fetch origin
+  git switch --track origin/integration/redred-system-goal
+  git status --short --branch
+  git log -5 --oneline
+
+원격 branch가 없으면 임의 branch로 대체하지 말고
+REMOTE_INTEGRATION_BRANCH_NOT_PUBLISHED라고 보고하고 중단한다.
+
+모든 파일 경로는 repository-relative다. 특정 사용자의 /tmp 또는 /home
+경로를 가정하지 않는다. 명시적인 수정 요청 전에는 read-only로 검토한다.
+
+다음 파일을 우선 읽는다.
+
+  contracts/redred_system_goal/active_goal.json
+  docs/REDRED_TEAM_CLAUDE_CODE_HANDOFF_20260819.txt
+  docs/AI_SEMI_QNA_REDRED_SINGLE_EDGE_STATUS_20260819.md
+  docs/research/redred_single_edge_endpoint_contract_20260819.md
+  physical/k2_single_edge_endpoint/contract.json
+  contracts/redred_final_selection/contract.json
+
+현재 설계는 16-source pending/accept부터 ordered two-lane retire까지의
+complete single-posedge AER endpoint다. A2는 [1,5,5,1] persistent weighted
+opportunity 성능 primary이고 A3는 exact two-selection scalar-prefix semantic
+fallback이다.
+
+현재 digital campaign recommendation은 A2지만 final candidate는 NONE이고
+release는 HOLD다. 이 차이를 유지한다.
+
+다음 local compatibility gate를 실행한다.
+
+  python3 physical/k2_single_edge_endpoint/flow.py compatibility
+  tests/k2_single_edge_endpoint/run_all.sh
+
+이 gate는 exact RTL source/filelist/module inventory, top port order/direction/
+width, physical/vectorless boundary parity, Genus SYNTHESIS define을 검사한다.
+그러나 live Genus/GPDK/P&R/power 증거는 아니다.
+
+보고서는 다음으로 구분한다.
+
+  1. 실제 RTL에서 확인된 사실
+  2. 팀 정책/설계 의도
+  3. scoped PASS
+  4. HOLD 또는 외부 blocker
+  5. 새 코드/계약/서버 호환성 문제
+  6. 다음 실행 우선순위
+
+어떤 경우에도 A2 final selection, release, Fmax, post-route closure, mapped
+area/power, organizer PDK legality 또는 final CDC/RDC를 증거 없이 주장하지
+않는다.
+
+--- CLAUDE CODE PROMPT END ---
+
+
+14. 다음 우선순위
+=================
+
+  1) 호환성 변경 전체 regression 재실행
+  2) 검증된 integration branch를 origin에 게시
+  3) 팀원들이 동일 remote commit에서 local compatibility gate 실행
+  4) licensed server에서 A2/A3 동일 환경 parse/elaborate/check_design smoke
+  5) smoke PASS 뒤 matched Genus/Innovus cohort 실행
+  6) post-route timing/area, mapped vectorless power, final CDC/RDC 수집
+  7) authenticated evidence publication 작성
+  8) 모든 final-selection gate가 닫힌 후 최종 후보 결정
