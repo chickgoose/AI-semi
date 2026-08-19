@@ -681,7 +681,7 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
         {key: physical[key] for key in physical if key != "contract"},
         {
             "status": "HOLD",
-            "claim_scope": "SOURCE_BOUND_STATIC_FLOW_SCAFFOLD_ONLY",
+            "claim_scope": "SOURCE_BOUND_LOCAL_COMPATIBILITY_AND_SERVER_STAGING_SCAFFOLD_ONLY",
             "real_pnr_status": "HOLD",
             "post_route_timing_status": "HOLD",
             "constraint_authority_status": "HOLD_UNCONFIRMED_TEAM_PLACEHOLDER",
@@ -690,10 +690,10 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
     )
     physical_contract = parse_json_object(verify_git_artifact(physical["contract"], "single-edge physical contract"), "single-edge physical contract")
     expect(physical["contract"]["commit"],
-           "15593a72d68867641196992dd31bd00ef5dacaac",
+           "527bf36451229e630c162369732475f5fbd8458c",
            "single-edge physical contract commit")
     expect(physical["contract"]["sha256"],
-           "6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544",
+           "88a0050a61c6d52905d6f0b69e940fcef655727029f180b69ba7cba65ae93704",
            "single-edge physical contract digest")
     expect(physical_contract.get("status"), "STATIC_READY_CANDIDATE_PHYSICAL_HOLD", "physical contract status")
     expect(physical_contract.get("constraints", {}).get("authority_status"), "UNCONFIRMED_TEAM_PLACEHOLDER", "physical constraint authority")
@@ -736,7 +736,7 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
             "status": "HOLD",
             "claim_scope":
                 "CURRENT_SINGLE_EDGE_A2_A3_FINAL_SELECTION_READINESS_ONLY",
-            "publication_commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+            "publication_commit": "3b3a4269344cd4e3f792e59a3364ee906ea1de7d",
             "selected_candidate": None,
             "selection_authority": False,
             "release_authority": False,

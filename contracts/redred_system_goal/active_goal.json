@@ -357,14 +357,14 @@
     },
     "single_edge_physical": {
       "status": "HOLD",
-      "claim_scope": "SOURCE_BOUND_STATIC_FLOW_SCAFFOLD_ONLY",
+      "claim_scope": "SOURCE_BOUND_LOCAL_COMPATIBILITY_AND_SERVER_STAGING_SCAFFOLD_ONLY",
       "real_pnr_status": "HOLD",
       "post_route_timing_status": "HOLD",
       "constraint_authority_status": "HOLD_UNCONFIRMED_TEAM_PLACEHOLDER",
       "contract": {
-        "commit": "15593a72d68867641196992dd31bd00ef5dacaac",
+        "commit": "527bf36451229e630c162369732475f5fbd8458c",
         "path": "physical/k2_single_edge_endpoint/contract.json",
-        "sha256": "6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544"
+        "sha256": "88a0050a61c6d52905d6f0b69e940fcef655727029f180b69ba7cba65ae93704"
       }
     },
     "single_edge_vectorless": {
@@ -389,21 +389,21 @@
     "final_a2_a3_selection_readiness": {
       "status": "HOLD",
       "claim_scope": "CURRENT_SINGLE_EDGE_A2_A3_FINAL_SELECTION_READINESS_ONLY",
-      "publication_commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+      "publication_commit": "3b3a4269344cd4e3f792e59a3364ee906ea1de7d",
       "selected_candidate": null,
       "selection_authority": false,
       "release_authority": false,
       "missing_gate_count": 12,
       "artifacts": {
         "contract": {
-          "commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+          "commit": "3b3a4269344cd4e3f792e59a3364ee906ea1de7d",
           "path": "contracts/redred_final_selection/contract.json",
-          "sha256": "e23262050e8a838719bb70290df88d1757bbd43f5b45895f5b0053bf135d7c20"
+          "sha256": "22325a5b56ddeb1de8fbdf8d5c73cb27eb79a0e2a02a6dbac1f7855066cff230"
         },
         "verifier": {
-          "commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+          "commit": "3b3a4269344cd4e3f792e59a3364ee906ea1de7d",
           "path": "contracts/redred_final_selection/verify_contract.py",
-          "sha256": "94004bf6f3a0fc23da95eb4cee024a134d3a56c2d2b4eea687243eab3c507ef0"
+          "sha256": "482412c544dbdbc307c38661c729ab7473c3936c656441862984735904b0e409"
         }
       }
     },

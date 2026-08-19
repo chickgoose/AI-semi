@@ -119,8 +119,11 @@ The source-structure PDK matrix is pinned at
 Those PASS rows do not promote mapped or organizer legality.
 
 The physical HOLD contract is pinned at
-`15593a72d68867641196992dd31bd00ef5dacaac`, SHA-256
-`6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544`.
+`527bf36451229e630c162369732475f5fbd8458c`, SHA-256
+`88a0050a61c6d52905d6f0b69e940fcef655727029f180b69ba7cba65ae93704`.
+That version adds a source-bound local compatibility gate for exact A2/A3 RTL
+port order, direction, width, module/filelist inventory, and the Genus
+`SYNTHESIS` define. It does not execute live Genus or inspect GPDK045.
 The vectorless HOLD contract and source manifest are pinned at
 `dd1d30cfcb84aa1b760b8026af2807a11d84940b`, with SHA-256 values
 `48759f420246ea102fb5ff0bbfc441d90689fc51f03375c81e3ff9f196e6c7a0`
@@ -128,10 +131,10 @@ and `7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c`.
 Neither is real physical or vectorless evidence.
 
 The executable final-selection readiness gate is pinned at
-`49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1`. Its contract and verifier
+`3b3a4269344cd4e3f792e59a3364ee906ea1de7d`. Its contract and verifier
 SHA-256 values are
-`e23262050e8a838719bb70290df88d1757bbd43f5b45895f5b0053bf135d7c20`
-and `94004bf6f3a0fc23da95eb4cee024a134d3a56c2d2b4eea687243eab3c507ef0`.
+`22325a5b56ddeb1de8fbdf8d5c73cb27eb79a0e2a02a6dbac1f7855066cff230`
+and `482412c544dbdbc307c38661c729ab7473c3936c656441862984735904b0e409`.
 It recomputes `candidate=NONE` with twelve missing gates and has neither final
 selection nor release authority. A future all-gates-PASS policy candidate still
 requires a separate authenticated payload and noncircular publication.
