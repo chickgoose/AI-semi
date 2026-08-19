@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -22,6 +23,46 @@ SPEC.loader.exec_module(flow)
 def write_json(path: Path, document: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(flow.canonical(document))
+
+
+def mapped_sdc_bytes(contract: dict, top: str) -> bytes:
+    boundary = contract["boundary"]["normalized_ports"]
+    clock = contract["boundary"]["clock_port"]
+    def bits(rows):
+        return [row["name"] if row["width"] == 1 else f'{row["name"]}[{index}]'
+                for row in rows for index in
+                ([0] if row["width"] == 1 else range(row["width"] - 1, -1, -1))]
+    def selector(port):
+        return f"{{{port}}}" if "[" in port else port
+    inputs = bits([row for row in boundary["inputs"] if row["name"] != clock])
+    outputs = bits(boundary["outputs"])
+    lines = [
+        "set sdc_version 2.0",
+        "set_units -capacitance 1000fF",
+        "set_units -time 1000ps",
+        f"current_design {top}",
+        f'create_clock -name "se_primary_clk" -period 6.5 '
+        f'-waveform {{0.0 3.25}} [get_ports {clock}]',
+    ]
+    lines += [f"set_load -pin_load 0.01 [get_ports {selector(port)}]"
+              for port in outputs]
+    lines += ["set_clock_gating_check -setup 0.0"]
+    lines += [f"set_input_delay -clock [get_clocks se_primary_clk] -add_delay "
+              f"-min 0.1 [get_ports {selector(port)}]" for port in inputs]
+    lines += [f"set_input_delay -clock [get_clocks se_primary_clk] -add_delay "
+              f"-max 0.5 [get_ports {selector(port)}]" for port in inputs]
+    lines += [f"set_output_delay -clock [get_clocks se_primary_clk] -add_delay "
+              f"-min 0.1 [get_ports {selector(port)}]" for port in outputs]
+    lines += [f"set_output_delay -clock [get_clocks se_primary_clk] -add_delay "
+              f"-max 0.5 [get_ports {selector(port)}]" for port in outputs]
+    lines += ["set_min_pulse_width 0.5 [get_clocks se_primary_clk]"]
+    lines += [f"set_input_transition 0.05 [get_ports {selector(port)}]"
+              for port in inputs]
+    lines += ['set_wire_load_mode "enclosed"',
+              "set_clock_uncertainty -setup 0.25 [get_clocks se_primary_clk]",
+              "set_clock_uncertainty -hold 0.25 [get_clocks se_primary_clk]"]
+    assert len(lines) == 205
+    return ("\n".join(lines) + "\n").encode()
 
 
 class Fixture:
@@ -363,33 +404,24 @@ module simulation_only; endmodule
                 flow.validate_contract()
 
     def test_mapped_sdc_exact_values_and_no_exceptions(self):
-        inputs = "rst_i link_enable_i source_pending_i"
-        outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o protocol_error_o drain_idle_o"
-        good = f"""create_clock -name se_primary_clk -period 6.5 -waveform {{0.0 3.25}} [get_ports {{clk_i}}]
-set_clock_uncertainty 0.25 [get_clocks {{se_primary_clk}}]
-set_min_pulse_width -high 0.50 [get_clocks {{se_primary_clk}}]
-set_min_pulse_width -low 0.50 [get_clocks {{se_primary_clk}}]
-set_input_delay -clock se_primary_clk -min 0.10 [get_ports {{{inputs}}}]
-set_input_delay -clock se_primary_clk -max 0.50 [get_ports {{{inputs}}}]
-set_input_transition 0.05 [get_ports {{{inputs}}}]
-set_output_delay -clock se_primary_clk -min 0.10 [get_ports {{{outputs}}}]
-set_output_delay -clock se_primary_clk -max 0.50 [get_ports {{{outputs}}}]
-set_load 0.01 [get_ports {{{outputs}}}]
-"""
-        flow.validate_sdc(good, self.fixture.contract)
+        top = self.fixture.contract["candidates"]["a2"]["top"]
+        good = mapped_sdc_bytes(self.fixture.contract, top).decode()
+        flow.validate_sdc(good, self.fixture.contract, top)
         bad_sdcs = (
             good.replace("6.5", "7.0", 1),
-            good.replace("set_min_pulse_width -high 0.50", "set_min_pulse_width -high 0.60", 1),
-            good.replace("set_min_pulse_width -low 0.50", "", 1),
+            good.replace("set_min_pulse_width 0.5", "set_min_pulse_width 0.6", 1),
+            good.replace("set_min_pulse_width 0.5 [get_clocks se_primary_clk]\n", "", 1),
             good + "set_false_path -from [all_inputs]\n",
             good.rstrip() + "; set_false_path -from [all_inputs]\n",
             good + "create_clock -period 9.0 [get_ports {rst_i}]\n",
-            good.replace(inputs, "rst_i source_pending_i", 1),
-            good.replace("set_load 0.01", "set_load 0.01; set_load 0.02", 1),
+            good.replace("set_input_transition 0.05 [get_ports rst_i]\n", "", 1),
+            good.replace("set_load -pin_load 0.01 [get_ports protocol_error_o]\n",
+                         "set_load -pin_load 0.01 [get_ports protocol_error_o]\n" * 2, 1),
+            good.replace("set_units -time 1000ps\n", "set_units -time \\\n+1000ps\n", 1),
         )
         for bad in bad_sdcs:
             with self.assertRaisesRegex(flow.FlowError, "mapped SDC"):
-                flow.validate_sdc(bad, self.fixture.contract)
+                flow.validate_sdc(bad, self.fixture.contract, top)
 
     def test_eco_iteration_receipt_status_semantics_are_fail_closed(self):
         _, contract = flow.validate_contract()
@@ -496,8 +528,9 @@ set_load 0.01 [get_ports {{{outputs}}}]
                                      "-warning 1000 -report connectivity.rpt")}
         def header(kind):
             return (f"#  Generated by:      Cadence Innovus {version}\n"
-                    f"#  Design:            {top}\n"
-                    f"#  Command:           {commands[kind]}\n")
+                    f"#  Design:            {top}\n" +
+                    ("" if kind == "antenna" else
+                     f"#  Command:           {commands[kind]}\n"))
         markers = {kind: flow.report_context_line("Innovus", version, top, kind, context)
                    for kind, context in contexts.items()}
         bad = {
@@ -577,7 +610,10 @@ set_load 0.01 [get_ports {{{outputs}}}]
                              "signal_postroute"),
         }
         for kind, (command, body, context) in clean.items():
-            payload = (header(command) + body + flow.report_context_line(
+            native_header = (header(command) if kind != "antenna" else
+                             f"# Generated by: Cadence Innovus {version}\n"
+                             f"# Design: {top}\n")
+            payload = (native_header + body + flow.report_context_line(
                 "Innovus", version, top, kind, context) + "\n").encode()
             flow.require_zero_native(payload, kind, top, version, context)
 
@@ -610,7 +646,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
         innovus_log = (f"Version: v{version}, built Fri Feb 28 12:25:44 PST 2025\n"
                        f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n"
                        "*** Message Summary: 0 warning(s), 0 error(s)\n"
-                       "--- Ending \"Innovus\" (test) ---\n")
+                       "--- Ending \"Innovus\" (totcpu=0:00:01, real=0:00:02, mem=1.0M) ---\n")
         flow.validate_genus_log(genus_log, top, genus_version)
         flow.validate_innovus_log(innovus_log, top, version)
         for diagnostic in ("Error=10", "10 errors", "fatal-text diagnostics",
@@ -713,6 +749,8 @@ set_load 0.01 [get_ports {{{outputs}}}]
             missing_summary = missing_summary.replace(summary, "")
         mutations = {
             "missing-summary": missing_summary,
+            "missing-final-summary": actual_shape.replace(
+                "*** Message Summary: 365 warning(s), 0 error(s)\n", "", 1),
             "nonzero-summary": actual_shape.replace(
                 "29 warning(s), 0 error(s)", "29 warning(s), 1 error(s)", 1),
             "structured-error": actual_shape.replace(
@@ -724,6 +762,12 @@ set_load 0.01 [get_ports {{{outputs}}}]
             "duplicate-marker": actual_shape.replace(
                 f"{marker}\n*** Message Summary: 365",
                 f"{marker}\n{marker}\n*** Message Summary: 365", 1),
+            "indented-duplicate-marker": actual_shape.replace(
+                f"{marker}\n*** Message Summary: 365",
+                f"{marker}\n  {marker}\n*** Message Summary: 365", 1),
+            "brace-hidden-error": actual_shape.replace(
+                'innovus 1> puts "ERROR FATAL ' + marker + '"\n',
+                'innovus 1> if {0} {\n**ERROR: hidden in echoed brace body\n}\n', 1),
             "wrong-marker": actual_shape.replace(
                 f"{marker}\n*** Message Summary: 365",
                 "K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top=wrong_top\n"
@@ -736,9 +780,13 @@ set_load 0.01 [get_ports {{{outputs}}}]
             "different-version": actual_shape.replace(version, "23.14-s089_1", 1),
             "bad-version-suffix": actual_shape.replace(
                 ", built Fri Feb 28 12:25:44 PST 2025", ", foreign suffix", 1),
+            "malformed-build-suffix": actual_shape.replace(
+                ", built Fri Feb 28 12:25:44 PST 2025", ", built garbage", 1),
             "duplicate-ending": actual_shape.replace(
                 f"{marker}\n*** Message Summary: 365",
                 f"{ending}\n{marker}\n*** Message Summary: 365", 1),
+            "fabricated-ending": actual_shape.replace(ending,
+                                                        '--- Ending "Innovus" (test) ---'),
             "ending-not-eof": actual_shape + "post-exit output\n",
         }
         for name, mutation in mutations.items():
@@ -959,19 +1007,7 @@ class EvidenceTests(unittest.TestCase):
             f"{item['name']};" for direction, item in port_rows)
         netlist = (f"module {top}({','.join(ports)});\n{declarations}\n" +
                    "DFFX1 u0 (.D(clk_i), .Q(protocol_error_o));\nendmodule\n").encode()
-        inputs = "rst_i link_enable_i source_pending_i"
-        outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o protocol_error_o drain_idle_o"
-        sdc = f"""create_clock -name se_primary_clk -period 6.5 -waveform {{0.0 3.25}} [get_ports {{clk_i}}]
-set_clock_uncertainty 0.25 [get_clocks {{se_primary_clk}}]
-set_min_pulse_width -high 0.50 [get_clocks {{se_primary_clk}}]
-set_min_pulse_width -low 0.50 [get_clocks {{se_primary_clk}}]
-set_input_delay -clock se_primary_clk -min 0.10 [get_ports {{{inputs}}}]
-set_input_delay -clock se_primary_clk -max 0.50 [get_ports {{{inputs}}}]
-set_input_transition 0.05 [get_ports {{{inputs}}}]
-set_output_delay -clock se_primary_clk -min 0.10 [get_ports {{{outputs}}}]
-set_output_delay -clock se_primary_clk -max 0.50 [get_ports {{{outputs}}}]
-set_load 0.01 [get_ports {{{outputs}}}]
-""".encode()
+        sdc = mapped_sdc_bytes(self.contract, top)
         version = self.contract["tools"]["innovus"]["version"]
         genus_version = self.contract["tools"]["genus"]["version"]
         genus_header = ("Generated by: Genus(TM) Synthesis Solution "
@@ -995,7 +1031,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
         table = {
             **eco_receipts,
             "genus_log": (f"Version: {self.contract['tools']['genus']['version']}\nInfo=1, Error=0, Fatal=0\nK2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}\nNormal exit.\n").encode(),
-            "innovus_log": (f"Version: v{self.contract['tools']['innovus']['version']}, built Fri Feb 28 12:25:44 PST 2025\nK2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n*** Message Summary: 0 warning(s), 0 error(s)\n--- Ending \"Innovus\" (test) ---\n").encode(),
+            "innovus_log": (f"Version: v{self.contract['tools']['innovus']['version']}, built Fri Feb 28 12:25:44 PST 2025\nK2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n*** Message Summary: 0 warning(s), 0 error(s)\n--- Ending \"Innovus\" (totcpu=0:00:01, real=0:00:02, mem=1.0M) ---\n").encode(),
             "setup_timing": (innovus_header(
                 "report_timing -view se_setup_view -check_type setup -max_paths 50") +
                 "Path 1: MET (0.120 ns) Setup Check\n= Slack Time 0.120\n").encode() +
@@ -1019,9 +1055,8 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 f"verify_drc -report {self.root}/innovus/reports/drc.rpt") +
                     "No DRC violations were found\n").encode() +
                    context("drc", "postroute"),
-            "antenna": (innovus_header(
-                f"verify_process_antenna -report {self.root}/innovus/reports/antenna.rpt") +
-                "No Violations Found\n").encode() +
+            "antenna": (f"# Generated by: Cadence Innovus {version}\n"
+                         f"# Design: {top}\nNo Violations Found\n").encode() +
                        context("antenna", "postroute"),
             "connectivity": (innovus_header(
                 "verifyConnectivity -type all -error 1000 -warning 1000 "
@@ -1036,6 +1071,11 @@ set_load 0.01 [get_ports {{{outputs}}}]
             "check_timing": (innovus_header("check_timing -verbose") +
                 "TIMING CHECK SUMMARY\n"
                 "| ideal_clock_waveform | Clock waveform is ideal | 1 |\n"
+                "| no_drive | No drive assertion | 18 |\n"
+                "TIMING CHECK DETAIL\n" + "".join(
+                    f"| {pin} | No drive assertion | se_setup_view |\n"
+                    for pin in (["rst_i", "link_enable_i"] + [
+                        f"source_pending_i[{index}]" for index in range(15, -1, -1)])) +
                 "TIMING CHECK IDEAL CLOCKS\n"
                 "| se_primary_clk | se_setup_view |\n").encode() +
                 context("check_timing", "postroute"),
@@ -1043,8 +1083,8 @@ set_load 0.01 [get_ports {{{outputs}}}]
             "mapped_sdf": f'(DELAYFILE (SDFVERSION "4.0") (DESIGN "{top}") (CELL (CELLTYPE "DFFX1") (INSTANCE u0) (DELAY (ABSOLUTE (IOPATH D Q (0.1)(0.1))))))\n'.encode(),
             "postroute_sdf": f'(DELAYFILE (SDFVERSION "4.0") (DESIGN "{top}") (CELL (CELLTYPE "DFFX1") (INSTANCE u0) (DELAY (ABSOLUTE (IOPATH D Q (0.1)(0.1))))))\n'.encode(),
             "postroute_spef": f'*SPEF "IEEE 1481"\n*DESIGN "{top}"\n*D_NET n1 0.1\n*CONN\n*P clk_i I\n*CAP\n1 n1 0.1\n*RES\n1 n1 clk_i 1.0\n*END\n'.encode(),
-            "postroute_area": (innovus_header("report_area") +
-                               "Type Count Area\nTotal: 42 123.45\n").encode() +
+            "postroute_area": ("Hinst Name Module Name Inst Count Total Area\n"
+                               f"{top} 42 123.45\n").encode() +
                                context("area", "postroute"),
             "genus_commands_complete": f"K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}\n".encode(),
             "innovus_commands_complete": f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n".encode(),
@@ -1056,17 +1096,37 @@ set_load 0.01 [get_ports {{{outputs}}}]
             "genus_timing": "Path 1: MET (120 ps) Setup Check\nSlack:= 120",
             "genus_area": ("Instance Module Cell-Count Cell-Area Net-Area Total-Area\n"
                            f"{top} NA 42 120.0 3.0 123.0"),
-            "genus_check_design": "Check Design summary",
-            "genus_timing_intent": "Check Timing Intent summary",
-            "genus_qor": "Quality of Results Summary\nWNS (ps): 120",
-            "genus_power": "Power summary\nTotal 0.001 W",
+            "genus_timing_intent": "Lint summary\nTotal: 0",
+            "genus_qor": "Timing\nPath Slack 120",
             "genus_clocks": "Clock se_primary_clk",
         }
+        if role == "genus_check_design":
+            zeros = "\n".join(
+                f"{name} 0" for name in (
+                    "Unresolved References", "Empty Modules", "Unloaded Port(s)",
+                    "Unloaded Sequential Pin(s)", "Unloaded Combinational Pin(s)",
+                    "Assigns", "Undriven Port(s)", "Undriven Leaf Pin(s)",
+                    "Undriven hierarchical pin(s)", "Multidriven Port(s)",
+                    "Multidriven Leaf Pin(s)", "Multidriven hierarchical Pin(s)",
+                    "Multidriven unloaded net(s)", "Libcells with no LEF cell",
+                    "Physical (LEF) cells with no libcell"))
+            return (f"Check Design Report (c)\nNo unresolved references in design "
+                    f"'{top}'\nName Total\n{zeros}\nDone Checking the design.\n").encode()
+        if role == "genus_power":
+            return (f"Instance: /{top}\nPower Unit: W\n"
+                    "PDB Frames: /stim#0/frame#0\n"
+                    "Category Leakage Internal Switching Total Row%\n"
+                    "Subtotal 0.000001 0.000010 0.000002 0.000013 100.00%\n").encode()
         if role in genus_reports:
             return (genus_header + genus_reports[role] + "\n").encode()
         native = {
-            "postroute_power": (innovus_header("report_power") +
-                                "Power summary\nTotal 0.001 W\n"),
+            "postroute_power": (f"* Innovus {version} (64bit) native\n"
+                                f"* Design: {top}\n* Power Units = 1mW\n"
+                                "* report_power\nTotal Power\n"
+                                "Total Internal Power: 0.001 50.0%\n"
+                                "Total Switching Power: 0.0009 45.0%\n"
+                                "Total Leakage Power: 0.0001 5.0%\n"
+                                "Total Power: 0.002\n"),
             "check_design_pre_place": ("Design check done.\n"
                                        "*** Message Summary: 3 warning(s), 0 error(s)\n"),
             "check_place": ("Begin checking placement ...\n"
@@ -1273,8 +1333,6 @@ set_load 0.01 [get_ports {{{outputs}}}]
 
     def test_end_to_end_resealed_parser_mutations_never_complete_diagnostics(self):
         paths = flow.expected_artifact_paths(self.top)
-        inputs = "rst_i link_enable_i source_pending_i"
-
         def append(role: str, payload: bytes) -> None:
             with (self.root / paths[role]).open("ab") as handle:
                 handle.write(payload)
@@ -1290,7 +1348,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 "mapped_sdc", b"set_load 0.01 [get_ports {protocol_error_o}]; "
                               b"set_false_path -from [all_inputs]\n"),
             "wrong_input_collection": lambda: replace(
-                "mapped_sdc", inputs.encode(), b"rst_i source_pending_i"),
+                "mapped_sdc", b"set_input_transition 0.05 [get_ports rst_i]\n", b""),
             "fatal_drc": lambda: append("drc", b"FATAL: DRC engine aborted\n"),
             "foreign_drc_context": lambda: replace(
                 "drc", f"top={self.top}".encode(), b"top=foreign_top"),
@@ -1350,16 +1408,13 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 "check_timing", b"check_timing -verbose\n",
                 b"check_timing -verbose caller_fabricated\n"),
             "area_command_suffix": lambda: replace(
-                "postroute_area", b"report_area\n",
-                b"report_area caller_fabricated\n"),
+                "postroute_area", b"Hinst Name",
+                b"# Command: report_area caller_fabricated\nHinst Name"),
             "power_command_suffix": lambda: replace(
-                "postroute_power", b"report_power\n",
-                b"report_power caller_fabricated\n"),
-            "antenna_command_suffix": lambda: replace(
-                "antenna",
-                f"{self.root}/innovus/reports/antenna.rpt\n".encode(),
-                (f"{self.root}/innovus/reports/antenna.rpt "
-                 "caller_fabricated\n").encode()),
+                "postroute_power", b"* report_power\n",
+                b"* report_power caller_fabricated\n"),
+            "antenna_fabricated_command": lambda: append(
+                "antenna", b"# Command: verify_process_antenna -report antenna.rpt\n"),
             "connectivity_command_suffix": lambda: replace(
                 "connectivity",
                 f"{self.root}/innovus/reports/connectivity.rpt\n".encode(),
@@ -1391,7 +1446,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
             "route_failure": lambda: replace(
                 "route", b"#Number of fails = 0", b"#Number of fails = 1"),
             "zero_postroute_area": lambda: replace(
-                "postroute_area", b"Total: 42 123.45", b"Total: 42 0.0"),
+                "postroute_area", b" 42 123.45", b" 42 0.0"),
             "extra_netlist_port": lambda: replace(
                 "mapped_netlist", b");\n", b",uncontracted_debug_o);\n"),
         }
@@ -1488,7 +1543,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
         log = (f"Version: v{self.contract['tools']['innovus']['version']}\n"
                f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={self.top}\n"
                "*** Message Summary: 0 warning(s), 10 error(s)\n"
-               "--- Ending \"Innovus\" (test) ---\n")
+               "--- Ending \"Innovus\" (totcpu=0:00:01, real=0:00:02, mem=1.0M) ---\n")
         with self.assertRaisesRegex(flow.FlowError, "zero-error"):
             flow.validate_innovus_log(log, self.top,
                                       self.contract["tools"]["innovus"]["version"])
@@ -1504,6 +1559,218 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 (header + f"TIMING CHECK SUMMARY\n"
                  f"| no_clock | No clock | 1 |\n{context}\n").encode(),
                 self.top, self.contract["tools"]["innovus"]["version"])
+
+
+class ActualArtifactCompatibilityTests(unittest.TestCase):
+    ROOT = Path("/tmp/a3-c916a21-formal2-copy")
+
+    def setUp(self):
+        self.contract = json.loads(
+            (REPO / "physical/k2_single_edge_endpoint/contract.json").read_text())
+        self.top = self.contract["candidates"]["a3"]["top"]
+        self.innovus_version = self.contract["tools"]["innovus"]["version"]
+        self.genus_version = self.contract["tools"]["genus"]["version"]
+
+    def payload(self, relative: str) -> bytes:
+        return (self.ROOT / relative).read_bytes()
+
+    def genus_artifacts(self) -> dict[str, bytes]:
+        return {role: self.payload(path) for role, path in {
+            "genus_check_design": "genus/reports/check_design.rpt",
+            "genus_timing_intent": "genus/reports/timing_intent.rpt",
+            "genus_qor": "genus/reports/qor.rpt",
+            "genus_power": "genus/reports/power_vectorless_screening.rpt",
+            "genus_clocks": "genus/reports/clocks.rpt",
+            "genus_area": "genus/reports/area.rpt",
+            "genus_timing": "genus/reports/timing.rpt",
+        }.items()}
+
+    @unittest.skipUnless(ROOT.is_dir(), "actual copied formal2 bundle is unavailable")
+    def test_actual_bundle_all_artifact_validators_pass(self):
+        top, iv, gv = self.top, self.innovus_version, self.genus_version
+        flow.validate_genus_log(self.payload("genus/tool.log").decode(), top, gv)
+        flow.validate_innovus_log(self.payload("innovus/tool.log").decode(), top, iv)
+        sdc = flow.validate_sdc(
+            self.payload(f"genus/netlist/{top}.mapped.sdc").decode(),
+            self.contract, top)
+        flow.validate_check_timing(
+            self.payload("innovus/reports/check_timing.rpt"), top, iv, sdc)
+        for check in ("setup", "hold"):
+            metrics = flow.parse_machine(
+                self.payload(f"innovus/reports/{check}_timing.machine"),
+                f"se_{check}_view", check)
+            flow.validate_innovus_timing(
+                self.payload(f"innovus/reports/{check}_timing.rpt"),
+                top, iv, check, metrics)
+        for kind, context in (("drc", "postroute"), ("antenna", "postroute"),
+                              ("connectivity", "signal_postroute"),
+                              ("pg_connectivity", "pg_postroute")):
+            flow.require_zero_native(
+                self.payload(f"innovus/reports/{kind}.rpt"), kind, top, iv, context)
+        flow.validate_netlist(
+            self.payload(f"genus/netlist/{top}.mapped.v"), top, self.contract,
+            "mapped_netlist")
+        flow.validate_netlist(
+            self.payload(f"innovus/netlist/{top}.postroute.v"), top, self.contract,
+            "postroute_netlist")
+        flow.validate_sdf(
+            self.payload(f"genus/netlist/{top}.mapped.sdf"), top, "mapped SDF")
+        flow.validate_sdf(
+            self.payload(f"innovus/netlist/{top}.postroute.sdf"), top, "postroute SDF")
+        flow.validate_spef(self.payload(f"innovus/netlist/{top}.postroute.spef"), top)
+        flow.validate_innovus_area(
+            self.payload("innovus/reports/area.rpt"), top, iv)
+        flow.validate_innovus_power(
+            self.payload("innovus/reports/power_vectorless_screening.rpt"), top, iv)
+        flow.validate_genus_diagnostics(self.genus_artifacts(), top, gv)
+        flow.validate_check_design_report(
+            self.payload("innovus/reports/check_design_pre_place.rpt"),
+            "check_design_pre_place")
+        flow.validate_check_place_report(self.payload("innovus/reports/check_place.rpt"))
+        flow.validate_check_design_report(
+            self.payload("innovus/reports/check_design_post_route.rpt"),
+            "check_design_post_route")
+        flow.validate_route_report(self.payload("innovus/reports/route.rpt"))
+
+    @unittest.skipUnless(ROOT.is_dir(), "actual copied formal2 bundle is unavailable")
+    def test_actual_expanded_sdc_mutations_fail_closed(self):
+        raw = self.payload(f"genus/netlist/{self.top}.mapped.sdc").decode()
+        line = "set_input_transition 0.05 [get_ports rst_i]\n"
+        mutations = {
+            "missing-bit": raw.replace(line, "", 1),
+            "duplicate-bit": raw.replace(line, line + line, 1),
+            "wrong-value": raw.replace(line, line.replace("0.05", "0.06"), 1),
+            "extra-port": raw + "set_load 0.01 [get_ports extra_o]\n",
+            "exception": raw + "set_false_path -from [all_inputs]\n",
+            "duplicate-auxiliary": raw + "set_units -time 1000ps\n",
+            "missing-units": raw.replace("set_units -time 1000ps\n", "", 1),
+            "semicolon": raw.replace("set_units -time 1000ps\n",
+                                     "set_units -time 1000ps;\n", 1),
+            "continuation": raw.replace(
+                "set_units -time 1000ps\n", "set_units -time \\\n+1000ps\n", 1),
+            "wrong-current-design": raw.replace(
+                f"current_design {self.top}", "current_design foreign_top", 1),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(name=name), self.assertRaisesRegex(flow.FlowError,
+                                                                 "mapped SDC"):
+                flow.validate_sdc(mutation, self.contract, self.top)
+
+    @unittest.skipUnless(ROOT.is_dir(), "actual copied formal2 bundle is unavailable")
+    def test_actual_check_timing_inventory_mutations_fail_closed(self):
+        raw = self.payload("innovus/reports/check_timing.rpt")
+        sdc = flow.validate_sdc(
+            self.payload(f"genus/netlist/{self.top}.mapped.sdc").decode(),
+            self.contract, self.top)
+        text = raw.decode()
+        mutations = {
+            "wrong-count": text.replace("|       18 |", "|       17 |", 1),
+            "foreign-pin": text.replace("|        rst_i         |", "|      foreign_i       |", 1),
+            "wrong-view": text.replace(
+                "|        rst_i         | No drive assertion | se_setup_view |",
+                "|        rst_i         | No drive assertion | se_hold_view  |", 1),
+            "missing-detail": re.sub(
+                r"(?m)^.*rst_i.*No drive assertion.*\n", "", text, count=1),
+            "foreign-class": text.replace(
+                "K2_SINGLE_EDGE_REPORT_CONTEXT_V1",
+                "| no_load | Missing output load | 1 |\n"
+                "K2_SINGLE_EDGE_REPORT_CONTEXT_V1", 1),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(name=name), self.assertRaises(flow.FlowError):
+                flow.validate_check_timing(
+                    mutation.encode(), self.top, self.innovus_version, sdc)
+        missing_sdc = dict(sdc)
+        missing_sdc["input_transition"] = frozenset(
+            set(sdc["input_transition"]) - {"rst_i"})
+        with self.assertRaises(flow.FlowError):
+            flow.validate_check_timing(raw, self.top, self.innovus_version, missing_sdc)
+
+    @unittest.skipUnless(ROOT.is_dir(), "actual copied formal2 bundle is unavailable")
+    def test_actual_innovus_timing_class_and_slack_mutations_fail_closed(self):
+        mutations = {
+            "setup": (("Setup Check with Pin", "Hold Check with Pin"),
+                      ("Late External Delay Assertion", "Early External Delay Assertion")),
+            "hold": (("Hold Check with Pin", "Setup Check with Pin"),
+                     ("Early External Delay Assertion", "Late External Delay Assertion")),
+        }
+        for check, class_mutations in mutations.items():
+            raw = self.payload(f"innovus/reports/{check}_timing.rpt").decode()
+            metrics = flow.parse_machine(
+                self.payload(f"innovus/reports/{check}_timing.machine"),
+                f"se_{check}_view", check)
+            candidates = {
+                "foreign-check": raw.replace(*class_mutations[0], 1),
+                "foreign-external": raw.replace(*class_mutations[1], 1),
+                "violated": raw.replace("Path 1: MET", "Path 1: VIOLATED", 1),
+                "nonsequential": raw.replace("Path 2:", "Path 3:", 1),
+                "no-slack": re.sub(
+                    r"(?m)^=?\s*Slack Time\s+[-+0-9.]+\s*$", "", raw, count=1),
+                "negative-slack": re.sub(
+                    r"(?m)^(=?\s*Slack Time\s+)[-+0-9.]+\s*$",
+                    r"\g<1>-0.001", raw, count=1),
+                "wrong-redirection": raw.replace(
+                    f'$output/reports/{check}_timing.rpt',
+                    '$output/reports/foreign_timing.rpt', 1),
+            }
+            for name, mutation in candidates.items():
+                with self.subTest(check=check, name=name), self.assertRaises(flow.FlowError):
+                    flow.validate_innovus_timing(
+                        mutation.encode(), self.top, self.innovus_version, check, metrics)
+
+    @unittest.skipUnless(ROOT.is_dir(), "actual copied formal2 bundle is unavailable")
+    def test_actual_genus_timing_class_and_slack_mutations_fail_closed(self):
+        artifacts = self.genus_artifacts()
+        raw = artifacts["genus_timing"].decode()
+        mutations = {
+            "foreign-check": raw.replace("Setup Check with Pin", "Hold Check with Pin", 1),
+            "foreign-external": raw.replace(
+                "Late External Delay Assertion", "Early External Delay Assertion", 1),
+            "violated": raw.replace("Path 1: MET", "Path 1: VIOLATED", 1),
+            "nonsequential": raw.replace("Path 2:", "Path 3:", 1),
+            "no-slack": re.sub(r"(?m)^\s*Slack:=\s*-?[0-9]+\s*$", "", raw, count=1),
+            "negative-slack": re.sub(
+                r"(?m)^(\s*Slack:=\s*)-?[0-9]+\s*$", r"\g<1>-1", raw, count=1),
+            "wns-order": re.sub(
+                r"(?m)^(\s*Slack:=\s*)[0-9]+\s*$", r"\g<1>999999", raw, count=1),
+        }
+        for name, mutation in mutations.items():
+            changed = dict(artifacts)
+            changed["genus_timing"] = mutation.encode()
+            with self.subTest(name=name), self.assertRaises(flow.FlowError):
+                flow.validate_genus_diagnostics(changed, self.top, self.genus_version)
+
+    @unittest.skipUnless(ROOT.is_dir(), "actual copied formal2 bundle is unavailable")
+    def test_actual_native_identity_and_total_mutations_fail_closed(self):
+        area = self.payload("innovus/reports/area.rpt").decode()
+        power = self.payload("innovus/reports/power_vectorless_screening.rpt").decode()
+        check_design = self.payload("genus/reports/check_design.rpt").decode()
+        genus_power = self.payload("genus/reports/power_vectorless_screening.rpt").decode()
+        cases = (
+            (flow.validate_innovus_area,
+             area.replace(self.top, "foreign_top", 1).encode(),
+             ("foreign_top", self.innovus_version)),
+            (flow.validate_innovus_area,
+             (area + f"{self.top} 1 1.0\n").encode(),
+             (self.top, self.innovus_version)),
+            (flow.validate_innovus_power,
+             power.replace("Total Power:                 0.06759883",
+                           "Total Power:                 9.06759883", 1).encode(),
+             (self.top, self.innovus_version)),
+            (flow.validate_innovus_power,
+             power.replace(self.innovus_version, "23.14-s000_1", 1).encode(),
+             (self.top, self.innovus_version)),
+            (flow.validate_genus_check_design,
+             check_design.replace("Done Checking the design.", "Checking incomplete.", 1).encode(),
+             (self.top,)),
+            (flow.validate_genus_power,
+             genus_power.replace("1.71205e-05 100.00%",
+                                 "9.71205e-05 100.00%", 1).encode(),
+             (self.top,)),
+        )
+        for validator, payload, args in cases:
+            with self.subTest(validator=validator.__name__), self.assertRaises(flow.FlowError):
+                validator(payload, *args)
 
 
 if __name__ == "__main__":
