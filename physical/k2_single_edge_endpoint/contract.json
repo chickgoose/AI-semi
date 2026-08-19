@@ -180,6 +180,7 @@
     "physical": {
       "process_node_nm": "45",
       "site": "CoreSite",
+      "site_normalization": "REPLACE_BUFX2_WITH_BUFX4_AND_DONT_USE_BUFX2",
       "aspect_ratio": "1.0",
       "core_utilization": "0.35",
       "core_margin_um": "10",
@@ -196,7 +197,7 @@
   "flow_templates": {
     "genus": {"path": "physical/k2_single_edge_endpoint/genus_single_edge.tcl", "sha256": "ce2b33325aed2bce0e3b328873c19abffd8075ea61f33ba8cda3a3d0d98083d6"},
     "innovus_mmmc": {"path": "physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl", "sha256": "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"},
-    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "96a3f8a4c524a098b6527aa60898e20e9dbf7d32511a08627795ac0107a2a2be"}
+    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "614a9d5f9daf1e50695be09816a2a8ff3a5c85e0a8ac125ad8acba1fd8220ba3"}
   },
   "commands": {
     "genus_argv_tail": ["-batch", "-files", "physical/k2_single_edge_endpoint/genus_single_edge.tcl"],
@@ -215,12 +216,24 @@
     "nonzero_artifact_evidence_classification": "UNBOUND_NONZERO_EXIT_FILES_NOT_LEDGER_ELIGIBLE",
     "local_tests_must_not_invoke_real_tools": true
   },
+  "bounded_eco": {
+    "schema": "k2_single_edge_eco_iteration_receipt_v1",
+    "monotonic_epsilon_ns": 0.000001,
+    "final_hold_target_slack_ns": 0.005,
+    "phases": [
+      {"role": "eco_hold_pre_setup", "path": "innovus/reports/eco_hold_pre_setup.machine", "phase": "pre_setup_hold", "view": "se_hold_view", "check": "hold", "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true", "max_iterations": 3},
+      {"role": "eco_setup_recovery", "path": "innovus/reports/eco_setup_recovery.machine", "phase": "setup_recovery", "view": "se_setup_view", "check": "setup", "optimizer": "postRoute", "allow_setup_tns_degrade": "NA", "max_iterations": 6},
+      {"role": "eco_hold_final", "path": "innovus/reports/eco_hold_final.machine", "phase": "final_hold_reclosure", "view": "se_hold_view", "check": "hold", "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true", "max_iterations": 3}
+    ],
+    "all_phases_must_close": true,
+    "final_setup_and_hold_remeasured_after_last_eco": true
+  },
   "artifact_ledger": {
     "schema": "k2_single_edge_artifact_ledger_v2",
     "required_roles": [
       "genus_execution_receipt", "genus_log", "genus_timing", "genus_area", "genus_check_design", "genus_timing_intent", "genus_qor", "genus_power", "genus_clocks",
       "mapped_netlist", "mapped_sdc", "mapped_sdf",
-      "innovus_execution_receipt", "innovus_log", "setup_timing", "setup_timing_machine", "hold_timing", "hold_timing_machine",
+      "innovus_execution_receipt", "innovus_log", "eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final", "setup_timing", "setup_timing_machine", "hold_timing", "hold_timing_machine",
       "postroute_area", "postroute_power", "check_timing", "check_design_pre_place", "check_place", "check_design_post_route", "route",
       "drc", "antenna", "connectivity", "pg_connectivity",
       "postroute_netlist", "postroute_sdf", "postroute_spef", "innovus_database_manifest",
@@ -228,7 +241,7 @@
     ],
     "each_row_requires": ["role", "path", "sha256", "size_bytes", "producer_command_sha256"],
     "native_zero_violation_roles": ["drc", "antenna", "connectivity", "pg_connectivity"],
-    "timing_closure_roles": ["setup_timing_machine", "hold_timing_machine"]
+    "timing_closure_roles": ["eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final", "setup_timing_machine", "hold_timing_machine"]
   },
   "qualification": {
     "static_preflight_may_pass": true,
@@ -239,6 +252,9 @@
     "clean_native_logs_required": true,
     "producer_authentication_available": false,
     "zero_setup_and_hold_violations_required": true,
+    "bounded_eco_receipts_required": true,
+    "bounded_eco_all_phases_closed_required": true,
+    "final_timing_must_match_post_eco_state": true,
     "zero_drc_antenna_and_connectivity_required": true,
     "no_unconstrained_or_missing_io_load_checks_required": true,
     "exact_native_report_context_required": true,

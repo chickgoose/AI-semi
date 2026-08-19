@@ -13,7 +13,7 @@ proc se_positive {name} {
   return $value
 }
 
-proc se_timing_summary {path view check} {
+proc se_timing_metrics {view check} {
   set paths [report_timing -collection -view $view -check_type $check \
     -max_paths 1000000]
   set path_count [sizeof_collection $paths]
@@ -26,6 +26,11 @@ proc se_timing_summary {path view check} {
     if {$wns eq "" || $slack < $wns} { set wns $slack }
     if {$slack < 0.0} { incr violations; set tns [expr {$tns + $slack}] }
   }
+  return [list $path_count $violations $wns $tns]
+}
+
+proc se_timing_summary {path view check} {
+  lassign [se_timing_metrics $view $check] path_count violations wns tns
   set handle [open $path {WRONLY CREAT EXCL}]
   puts $handle "schema=k2_single_edge_timing_summary_v1"
   puts $handle "view=$view"
@@ -38,6 +43,68 @@ proc se_timing_summary {path view check} {
   if {$violations != 0 || $wns < 0.0 || $tns != 0.0} {
     error "$check timing is not closed"
   }
+}
+
+proc se_timing_improved {before after} {
+  lassign $before before_paths before_violations before_wns before_tns
+  lassign $after after_paths after_violations after_wns after_tns
+  set epsilon 0.000001
+  return [expr {$after_violations < $before_violations ||
+    ($after_violations == $before_violations &&
+      ($after_wns > $before_wns + $epsilon ||
+       (abs($after_wns - $before_wns) <= $epsilon &&
+        $after_tns > $before_tns + $epsilon)))}]
+}
+
+proc se_write_eco_receipt {path phase view check optimizer allow_setup_degrade \
+                           max_iterations status rows} {
+  set handle [open $path {WRONLY CREAT EXCL}]
+  puts $handle "schema=k2_single_edge_eco_iteration_receipt_v1"
+  puts $handle "phase=$phase"
+  puts $handle "view=$view"
+  puts $handle "check=$check"
+  puts $handle "optimizer=$optimizer"
+  puts $handle "allow_setup_tns_degrade=$allow_setup_degrade"
+  puts $handle "max_iterations=$max_iterations"
+  puts $handle "status=$status"
+  puts $handle "observation_count=[llength $rows]"
+  set index 0
+  foreach metrics $rows {
+    lassign $metrics path_count violation_count wns tns
+    puts $handle "observation_${index}=$path_count,$violation_count,$wns,$tns"
+    incr index
+  }
+  close $handle
+}
+
+proc se_run_eco_phase {path phase view check optimizer allow_setup_degrade \
+                       max_iterations} {
+  set rows [list [se_timing_metrics $view $check]]
+  set status CLOSED
+  for {set iteration 1} {$iteration <= $max_iterations} {incr iteration} {
+    set before [lindex $rows end]
+    if {[lindex $before 1] == 0} { break }
+    if {$optimizer eq "postRoute_hold"} {
+      optDesign -postRoute -hold
+    } elseif {$optimizer eq "postRoute"} {
+      optDesign -postRoute
+    } else {
+      error "unsupported ECO optimizer $optimizer"
+    }
+    extractRC
+    set after [se_timing_metrics $view $check]
+    lappend rows $after
+    if {![se_timing_improved $before $after]} {
+      set status STALLED
+      break
+    }
+  }
+  if {[lindex [lindex $rows end] 1] != 0 && $status eq "CLOSED"} {
+    set status EXHAUSTED
+  }
+  se_write_eco_receipt $path $phase $view $check $optimizer \
+    $allow_setup_degrade $max_iterations $status $rows
+  return $status
 }
 
 proc se_append_report_context {path kind context} {
@@ -149,8 +216,44 @@ set failed [catch {
   routeDesign
   extractRC
   optDesign -postRoute
+  setOptMode -fixHoldAllowSetupTnsDegrade true
   optDesign -postRoute -hold
   extractRC
+
+  # Server-proven bounded sequence: three hold passes, six setup-recovery
+  # passes, then three final hold passes. Each phase stops on closure,
+  # monotonic stall, or exhaustion and emits an exclusive machine receipt.
+  set eco_phase_failures {}
+  setOptMode -fixHoldAllowSetupTnsDegrade true
+  setAnalysisMode -checkType hold
+  set pre_hold_status [se_run_eco_phase \
+    "$output/reports/eco_hold_pre_setup.machine" pre_setup_hold \
+    se_hold_view hold postRoute_hold true 3]
+  if {$pre_hold_status ne "CLOSED"} {
+    lappend eco_phase_failures "pre-setup hold ECO: $pre_hold_status"
+  }
+
+  setAnalysisMode -checkType setup
+  set setup_status [se_run_eco_phase \
+    "$output/reports/eco_setup_recovery.machine" setup_recovery \
+    se_setup_view setup postRoute NA 6]
+  if {$setup_status ne "CLOSED"} {
+    lappend eco_phase_failures "setup recovery ECO: $setup_status"
+  }
+
+  # A 5 ps positive target prevents Innovus from treating sub-picosecond
+  # negative hold residue as already close enough. Final setup is still
+  # independently re-measured and must close after this phase.
+  setOptMode -fixHoldAllowSetupTnsDegrade true
+  setOptMode -opt_hold_target_slack 0.005
+  setAnalysisMode -checkType hold
+  set final_hold_status [se_run_eco_phase \
+    "$output/reports/eco_hold_final.machine" final_hold_reclosure \
+    se_hold_view hold postRoute_hold true 3]
+  if {$final_hold_status ne "CLOSED"} {
+    lappend eco_phase_failures "final hold ECO: $final_hold_status"
+  }
+
   # Check the final optimized placement, including cells inserted by CTS and
   # post-route hold repair, rather than only the pre-CTS placement snapshot.
   foreach instance_site [lsort -unique [get_db insts .base_cell.site.name]] {
@@ -210,6 +313,9 @@ set failed [catch {
   close $db_manifest
   if {[llength $diagnostic_failures] != 0} {
     error "timing diagnostics failed after complete safe report collection: [join $diagnostic_failures {; }]"
+  }
+  if {[llength $eco_phase_failures] != 0} {
+    error "bounded ECO phases failed after complete safe report collection: [join $eco_phase_failures {; }]"
   }
   set marker [open "$output/status/COMMANDS_COMPLETE" {WRONLY CREAT EXCL}]
   puts $marker "K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top=$top"

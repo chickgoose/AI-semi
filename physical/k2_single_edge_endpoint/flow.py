@@ -101,7 +101,7 @@ TEMPLATE_IDENTITIES = {
     "innovus_mmmc": ("physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl",
                      "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"),
     "innovus": ("physical/k2_single_edge_endpoint/innovus_single_edge.tcl",
-                "96a3f8a4c524a098b6527aa60898e20e9dbf7d32511a08627795ac0107a2a2be")}
+                "614a9d5f9daf1e50695be09816a2a8ff3a5c85e0a8ac125ad8acba1fd8220ba3")}
 
 
 class FlowError(RuntimeError):
@@ -395,6 +395,9 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
             qualification.get("exact_mapped_sdc_command_set_required") is not True or \
             qualification.get("exact_netlist_boundary_required") is not True or \
             qualification.get("diagnostic_only_vocabulary_required") is not True or \
+            qualification.get("bounded_eco_receipts_required") is not True or \
+            qualification.get("bounded_eco_all_phases_closed_required") is not True or \
+            qualification.get("final_timing_must_match_post_eco_state") is not True or \
             qualification.get("cohort_same_environment_snapshot_hash_required") is not True or \
             qualification.get("cohort_freshness_authority_available") is not False:
         raise FlowError("contract no longer fails closed on candidate GO")
@@ -413,6 +416,32 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
             "local_tests_must_not_invoke_real_tools": True,
             }:
         raise FlowError("real-tool execution policy mismatch")
+    expected_eco = {
+        "schema": "k2_single_edge_eco_iteration_receipt_v1",
+        "monotonic_epsilon_ns": 0.000001,
+        "final_hold_target_slack_ns": 0.005,
+        "phases": [
+            {"role": "eco_hold_pre_setup",
+             "path": "innovus/reports/eco_hold_pre_setup.machine",
+             "phase": "pre_setup_hold", "view": "se_hold_view", "check": "hold",
+             "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true",
+             "max_iterations": 3},
+            {"role": "eco_setup_recovery",
+             "path": "innovus/reports/eco_setup_recovery.machine",
+             "phase": "setup_recovery", "view": "se_setup_view", "check": "setup",
+             "optimizer": "postRoute", "allow_setup_tns_degrade": "NA",
+             "max_iterations": 6},
+            {"role": "eco_hold_final",
+             "path": "innovus/reports/eco_hold_final.machine",
+             "phase": "final_hold_reclosure", "view": "se_hold_view", "check": "hold",
+             "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true",
+             "max_iterations": 3},
+        ],
+        "all_phases_must_close": True,
+        "final_setup_and_hold_remeasured_after_last_eco": True,
+    }
+    if contract.get("bounded_eco") != expected_eco:
+        raise FlowError("bounded 3/6/3 ECO contract mismatch")
     sdc_payload = stable_read(repo_path(constraints["sdc"]))
     if sha256(sdc_payload) != constraints["sdc_sha256"]:
         raise FlowError("placeholder SDC byte identity mismatch")
@@ -438,6 +467,10 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
     if technology.get("name") != "GPDK045" or set(technology.get("files", {})) != {
             "setup_liberty", "hold_liberty", "tech_lef", "macro_lef", "shared_qrc"}:
         raise FlowError("GPDK045 technology set mismatch")
+    physical = technology.get("physical", {})
+    if physical.get("site") != "CoreSite" or physical.get("site_normalization") != \
+            "REPLACE_BUFX2_WITH_BUFX4_AND_DONT_USE_BUFX2":
+        raise FlowError("GPDK045 endpoint placement-site policy mismatch")
     templates = contract.get("flow_templates", {})
     expected_template_tokens = {
         "genus": ("read_hdl", "elaborate", "read_sdc", "syn_generic", "syn_map",
@@ -446,7 +479,10 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
         "innovus_mmmc": ("create_library_set", "create_rc_corner", "create_analysis_view"),
         "innovus": ("init_design", "floorPlan", "place_opt_design", "checkPlace",
                     "clock_opt_design", "routeDesign", "extractRC", "optDesign -postRoute",
-                    "sroute", "report_area", "report_power", "reportRoute", "check_timing",
+                    "ecoChangeCell", "setDontUse BUFX2", "sroute",
+                    "eco_hold_pre_setup.machine", "eco_setup_recovery.machine",
+                    "eco_hold_final.machine", "setOptMode -opt_hold_target_slack 0.005",
+                    "report_area", "report_power", "reportRoute", "check_timing",
                     "checkDesign -all", "verifyConnectivity", "verify_drc",
                     "verify_process_antenna", "saveNetlist", "write_sdf", "rcOut", "saveDesign")}
     if set(templates) != set(expected_template_tokens):
@@ -471,13 +507,30 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
             if read_hdl_rows != [
                     "read_hdl -sv -define SYNTHESIS -f [file normalize $::env(SE_FILELIST)]"]:
                 raise FlowError("Genus read_hdl synthesis define/filelist command is not exact")
-    roles = contract.get("artifact_ledger", {}).get("required_roles", [])
+        if name == "innovus":
+            ordered = (
+                "eco_hold_pre_setup.machine", "eco_setup_recovery.machine",
+                "eco_hold_final.machine", "set setup_failed [catch",
+                "set hold_failed [catch", "if {[llength $diagnostic_failures] != 0}",
+                "if {[llength $eco_phase_failures] != 0}",
+                "K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE",
+            )
+            positions = [active.index(token) for token in ordered]
+            if positions != sorted(positions) or len(set(positions)) != len(positions):
+                raise FlowError("Innovus 3/6/3 ECO/final timing gate order differs")
+    artifact_ledger = contract.get("artifact_ledger", {})
+    roles = artifact_ledger.get("required_roles", [])
     mandatory = {"genus_execution_receipt", "innovus_execution_receipt",
+                 "eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final",
                  "setup_timing", "hold_timing", "postroute_area", "drc", "antenna",
                  "connectivity", "pg_connectivity", "check_timing",
                  "check_design_pre_place", "check_place"}
     if len(roles) != len(set(roles)) or not mandatory.issubset(roles):
         raise FlowError("physical artifact ledger is incomplete")
+    if artifact_ledger.get("timing_closure_roles") != [
+            "eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final",
+            "setup_timing_machine", "hold_timing_machine"]:
+        raise FlowError("bounded ECO/final timing closure role set differs")
     return payload, contract
 
 
@@ -926,6 +979,67 @@ def parse_machine(payload: bytes, view: str, check: str) -> dict[str, Any]:
             not math.isfinite(wns) or not math.isfinite(tns):
         raise FlowError("setup/hold timing is not closed")
     return {"path_count": count, "wns": wns, "tns": tns}
+
+
+def parse_eco_receipt(payload: bytes, phase: dict[str, Any],
+                      schema: str, epsilon: float) -> dict[str, Any]:
+    rows: dict[str, str] = {}
+    for line in payload.decode("utf-8").splitlines():
+        if line.count("=") != 1:
+            raise FlowError("malformed ECO iteration receipt row")
+        key, value = line.split("=", 1)
+        if key in rows or not value:
+            raise FlowError("duplicate/empty ECO iteration receipt field")
+        rows[key] = value
+    fixed = {"schema", "phase", "view", "check", "optimizer",
+             "allow_setup_tns_degrade", "max_iterations", "status",
+             "observation_count"}
+    try:
+        maximum = int(rows.get("max_iterations", ""))
+        count = int(rows.get("observation_count", ""))
+    except ValueError as error:
+        raise FlowError("ECO iteration receipt count is invalid") from error
+    if maximum != phase["max_iterations"] or count < 1 or count > maximum + 1:
+        raise FlowError(f"{phase['role']} ECO iteration receipt count mismatch")
+    observations = {f"observation_{index}" for index in range(count)}
+    if not fixed.issubset(rows) or set(rows) != fixed | observations or \
+            rows["schema"] != schema or \
+            rows["phase"] != phase["phase"] or rows["view"] != phase["view"] or \
+            rows["check"] != phase["check"] or \
+            rows["optimizer"] != phase["optimizer"] or \
+            rows["allow_setup_tns_degrade"] != phase["allow_setup_tns_degrade"] or \
+            rows["status"] != "CLOSED":
+        raise FlowError(f"{phase['role']} ECO iteration receipt contract mismatch")
+    metrics: list[tuple[int, int, float, float]] = []
+    for index in range(count):
+        tokens = rows[f"observation_{index}"].split(",")
+        if len(tokens) != 4:
+            raise FlowError(f"{phase['role']} ECO observation shape is invalid")
+        try:
+            paths, violations = int(tokens[0]), int(tokens[1])
+            wns, tns = float(tokens[2]), float(tokens[3])
+        except ValueError as error:
+            raise FlowError(f"{phase['role']} ECO observation is nonnumeric") from error
+        if paths <= 0 or violations < 0 or not math.isfinite(wns) or not math.isfinite(tns):
+            raise FlowError(f"{phase['role']} ECO observation is invalid")
+        clean = violations == 0 and wns >= 0.0 and tns == 0.0
+        violating = violations > 0 and wns < 0.0 and tns < 0.0
+        if not (clean or violating) or (index != count - 1 and clean):
+            raise FlowError(f"{phase['role']} ECO observation phase is invalid")
+        metrics.append((paths, violations, wns, tns))
+    for before, after in zip(metrics, metrics[1:]):
+        improved = (after[1] < before[1] or
+                    (after[1] == before[1] and
+                     (after[2] > before[2] + epsilon or
+                      (abs(after[2] - before[2]) <= epsilon and
+                       after[3] > before[3] + epsilon))))
+        if not improved:
+            raise FlowError(f"{phase['role']} ECO observations are not monotonic")
+    final = metrics[-1]
+    if final[1] != 0 or final[2] < 0.0 or final[3] != 0.0:
+        raise FlowError(f"{phase['role']} ECO phase did not close")
+    return {"path_count": final[0], "violation_count": final[1],
+            "wns": final[2], "tns": final[3], "observation_count": count}
 
 
 def strip_comments(text: str) -> str:
@@ -1569,6 +1683,9 @@ def expected_artifact_paths(top: str) -> dict[str, str]:
         "genus_commands_complete": "genus/status/COMMANDS_COMPLETE",
         "innovus_execution_receipt": "innovus/EXECUTION_RECEIPT.json",
         "innovus_log": "innovus/tool.log",
+        "eco_hold_pre_setup": "innovus/reports/eco_hold_pre_setup.machine",
+        "eco_setup_recovery": "innovus/reports/eco_setup_recovery.machine",
+        "eco_hold_final": "innovus/reports/eco_hold_final.machine",
         "setup_timing": "innovus/reports/setup_timing.rpt",
         "setup_timing_machine": "innovus/reports/setup_timing.machine",
         "hold_timing": "innovus/reports/hold_timing.rpt",
@@ -1791,6 +1908,17 @@ def validate_artifacts(root: Path, ledger_path: Path, design: str,
     innovus_version = contract["tools"]["innovus"]["version"]
     setup = parse_machine(artifacts["setup_timing_machine"], "se_setup_view", "setup")
     hold = parse_machine(artifacts["hold_timing_machine"], "se_hold_view", "hold")
+    eco = {}
+    eco_contract = contract["bounded_eco"]
+    for phase in eco_contract["phases"]:
+        eco[phase["role"]] = parse_eco_receipt(
+            artifacts[phase["role"]], phase, eco_contract["schema"],
+            eco_contract["monotonic_epsilon_ns"])
+    final_hold = eco["eco_hold_final"]
+    if final_hold["path_count"] != hold["path_count"] or \
+            abs(final_hold["wns"] - hold["wns"]) > 1e-9 or \
+            abs(final_hold["tns"] - hold["tns"]) > 1e-9:
+        raise FlowError("final hold ECO receipt differs from final hold summary")
     for role, metrics, check in (("setup_timing", setup, "setup"),
                                  ("hold_timing", hold, "hold")):
         validate_innovus_timing(artifacts[role], top, innovus_version, check, metrics)

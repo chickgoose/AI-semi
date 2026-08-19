@@ -134,6 +134,21 @@ class ContractTests(unittest.TestCase):
         self.assertIn('se_append_report_context "$output/reports/area.rpt" area postroute',
                       text)
 
+    def test_innovus_binds_proven_bounded_eco_sequence(self):
+        text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
+        self.assertIn("true 3]", text)
+        self.assertIn("postRoute NA 6]", text)
+        self.assertEqual(text.count("postRoute_hold true 3]"), 2)
+        self.assertLess(text.index("eco_hold_pre_setup.machine"),
+                        text.index("eco_setup_recovery.machine"))
+        self.assertLess(text.index("eco_setup_recovery.machine"),
+                        text.index("eco_hold_final.machine"))
+        self.assertLess(text.index("eco_hold_final.machine"),
+                        text.index("set setup_failed [catch"))
+        _, contract = flow.validate_contract()
+        self.assertEqual([row["max_iterations"] for row in
+                          contract["bounded_eco"]["phases"]], [3, 6, 3])
+
     def test_innovus_clock_check_deduplicates_only_same_mmmc_clock_name(self):
         text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
         active = "\n".join(line for line in text.splitlines()
@@ -369,6 +384,34 @@ set_load 0.01 [get_ports {{{outputs}}}]
         for bad in bad_sdcs:
             with self.assertRaisesRegex(flow.FlowError, "mapped SDC"):
                 flow.validate_sdc(bad, self.fixture.contract)
+
+    def test_eco_iteration_receipt_is_monotonic_and_closed(self):
+        _, contract = flow.validate_contract()
+        phase = contract["bounded_eco"]["phases"][0]
+        clean = ("schema=k2_single_edge_eco_iteration_receipt_v1\n"
+                 "phase=pre_setup_hold\nview=se_hold_view\ncheck=hold\n"
+                 "optimizer=postRoute_hold\nallow_setup_tns_degrade=true\n"
+                 "max_iterations=3\nstatus=CLOSED\nobservation_count=3\n"
+                 "observation_0=10,2,-0.100,-0.150\n"
+                 "observation_1=10,2,-0.050,-0.080\n"
+                 "observation_2=10,0,0.040,0.0\n")
+        result = flow.parse_eco_receipt(
+            clean.encode(), phase, contract["bounded_eco"]["schema"],
+            contract["bounded_eco"]["monotonic_epsilon_ns"])
+        self.assertEqual(result["observation_count"], 3)
+        for mutation in (
+                clean.replace("status=CLOSED", "status=STALLED"),
+                clean.replace("max_iterations=3", "max_iterations=6"),
+                clean.replace("observation_count=3", "observation_count=999999999"),
+                clean.replace("phase=pre_setup_hold\n", ""),
+                clean.replace("observation_2=10,0,0.040,0.0",
+                              "observation_2=10,1,-0.010,-0.010"),
+                clean.replace("observation_1=10,2,-0.050,-0.080",
+                              "observation_1=10,2,-0.200,-0.300")):
+            with self.subTest(mutation=mutation), self.assertRaises(flow.FlowError):
+                flow.parse_eco_receipt(
+                    mutation.encode(), phase, contract["bounded_eco"]["schema"],
+                    contract["bounded_eco"]["monotonic_epsilon_ns"])
 
     def test_strong_zero_report_parser_rejects_contradictions(self):
         top = self.fixture.contract["candidates"]["a2"]["top"]
@@ -753,7 +796,18 @@ set_load 0.01 [get_ports {{{outputs}}}]
                     f"#  Command:           {command}\n")
         context = lambda kind, value: (flow.report_context_line(
             "Innovus", version, top, kind, value) + "\n").encode()
+        eco_receipts = {}
+        for phase in self.contract["bounded_eco"]["phases"]:
+            wns = "0.12" if phase["check"] == "setup" else "0.04"
+            eco_receipts[phase["role"]] = (
+                f"schema={self.contract['bounded_eco']['schema']}\n"
+                f"phase={phase['phase']}\nview={phase['view']}\n"
+                f"check={phase['check']}\noptimizer={phase['optimizer']}\n"
+                f"allow_setup_tns_degrade={phase['allow_setup_tns_degrade']}\n"
+                f"max_iterations={phase['max_iterations']}\nstatus=CLOSED\n"
+                f"observation_count=1\nobservation_0=1,0,{wns},0.0\n").encode()
         table = {
+            **eco_receipts,
             "genus_log": (f"Version: {self.contract['tools']['genus']['version']}\nInfo=1, Error=0, Fatal=0\nK2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}\nNormal exit.\n").encode(),
             "innovus_log": (f"Version: v{self.contract['tools']['innovus']['version']}, test\nK2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n*** Message Summary: 0 warning(s), 0 error(s)\n--- Ending \"Innovus\" (test) ---\n").encode(),
             "setup_timing": (innovus_header(
@@ -1018,6 +1072,9 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 f"# Design: {self.top}; timing setup slack: 0.12\nactive filler\n"),
             "contradictory_timing": lambda: append(
                 "setup_timing", b"1 violating path\n"),
+            "final_hold_receipt_summary_mismatch": lambda: replace(
+                "eco_hold_final", b"observation_0=1,0,0.04,0.0",
+                b"observation_0=1,0,0.05,0.0"),
             "foreign_violated_no_slack_timing": lambda: append(
                 "setup_timing",
                 b"Path 2: VIOLATED (foreign) Hold Check\nforeign no-slack text\n"),
