@@ -10,8 +10,8 @@ REDRED 현재 설계 및 팀원 Claude Code 공유 문서
 현재 통합 브랜치 이름:
   integration/redred-system-goal
 
-호환성/정책 기준 최소 commit:
-  3a63b56f41900ca4ce76e3b717035d7c2da90d66
+검증 기준 최소 commit:
+  77977091af3fd901d2b2e4bbb5e22136ba9296b8
 
 저장소는 PUBLIC이며 이 브랜치는 origin에 게시되어 있다. 팀원은 별도
 저장소 권한 없이 아래 명령으로 동일한 원격 브랜치를 fetch할 수 있다.
@@ -36,6 +36,31 @@ REDRED 현재 설계 및 팀원 Claude Code 공유 문서
 않는다. 실제 공유 tip은 다음 명령으로 확인한다.
 
   git rev-parse origin/integration/redred-system-goal
+
+위 출력은 아래 검증 기준 commit과 같거나 그 후속이어야 한다.
+
+  77977091af3fd901d2b2e4bbb5e22136ba9296b8
+
+  git merge-base --is-ancestor \
+    77977091af3fd901d2b2e4bbb5e22136ba9296b8 \
+    origin/integration/redred-system-goal
+
+주의: 이 캠페인은 여러 publication/provenance branch에 고정된 Git object도
+검증한다. 일반 clone은 모든 원격 branch를 가져오므로 재현된다. 과거에
+--single-branch로 clone했거나 fetch refspec을 좁혔다면 먼저 실행한다.
+
+  git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+  git fetch origin --prune
+
+공개 확인 완료:
+
+  - 로컬 branch 전체와 tag를 PUBLIC origin에 게시함
+  - 6fc5e167918fa4c54786c9a3abb5f60ecd8b991b commit 접근 가능
+  - ce711a4c553c5fb6cc4b2c8afc45509c4b4bf993 commit 접근 가능
+  - 0d5a1da74fb5a45e567f6b05a555d6a5db698147 commit 접근 가능
+  - 775ec4ba081c611cac88d4d75b05a1da3c68a543 commit 접근 가능
+  - 완전히 새 일반 clone에서 위 통합 tip checkout 성공
+  - 새 clone의 대표 campaign evaluation PASS
 
 
 1. 현재 목표
@@ -422,12 +447,12 @@ HOLD:
   tests/redred_final_selection/run_all.sh
   python3 -m unittest discover -s tests/known_motion_coordinate -p 'test_*.py'
 
-현재 호환성 변경 후 전체 관련 로컬 회귀: 317/317 PASS
+현재 관련 test inventory: 321개
 
   - native campaign: 112/112
   - native aggregate adversarial: 13/13
-  - endpoint physical/local compatibility: 34/34
-  - vectorless diagnostic: 29/29
+  - endpoint physical/local compatibility: 37/37
+  - vectorless diagnostic: 30/30
   - system-goal policy: 36/36
   - final-selection: 19/19, candidate NONE/HOLD
   - source-structure PDK: 17/17
@@ -435,7 +460,17 @@ HOLD:
   - known-motion coordinate: 24/24
   - historical selector quarantine: 10/10
 
-이 317개는 로컬 RTL, parser, policy 및 mutation 회귀다. 실제 Cadence
+검증 기록은 과장 없이 구분한다.
+
+  - 이전 전체 로컬 회귀: 317/317 PASS
+  - 호환성 변경 뒤 직접 영향 suite: 122/122 PASS
+    (endpoint 37 + vectorless 30 + system-goal 36 + final-selection 19)
+  - 전체 inventory는 신규 mutation 4개를 포함해 321개다. 현재 문서에서는
+    한 번의 fresh-clone 연속 실행으로 321/321을 재주장하지 않는다.
+  - PUBLIC 일반 clean clone에서 핵심 고정 commit 4개를 읽고 대표 campaign
+    evaluation을 재실행하여 PASS를 확인했다.
+
+이 검사는 로컬 RTL, parser, policy 및 mutation 회귀다. 실제 Cadence
 Genus/Innovus 또는 live GPDK045를 실행한 결과로 확대해서 주장하지 않는다.
 
 
@@ -477,12 +512,13 @@ Genus/Innovus 또는 live GPDK045를 실행한 결과로 확대해서 주장하�
 브랜치:
   integration/redred-system-goal
 
-최소 기준 commit:
-  3a63b56f41900ca4ce76e3b717035d7c2da90d66
+검증 기준 최소 commit:
+  77977091af3fd901d2b2e4bbb5e22136ba9296b8
 
 먼저 다음을 실행한다.
 
-  git fetch origin
+  git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+  git fetch origin --prune
   git switch --track origin/integration/redred-system-goal
   git status --short --branch
   git log -5 --oneline
@@ -538,11 +574,12 @@ area/power, organizer PDK legality 또는 final CDC/RDC를 증거 없이 주장�
 14. 다음 우선순위
 =================
 
-  1) [완료] 호환성 변경 전체 regression 317/317 재실행
-  2) [완료] 검증된 integration branch를 PUBLIC origin에 게시
-  3) 팀원들이 동일 remote commit에서 local compatibility gate 실행
-  4) licensed server에서 A2/A3 동일 환경 parse/elaborate/check_design smoke
-  5) smoke PASS 뒤 matched Genus/Innovus cohort 실행
-  6) post-route timing/area, mapped vectorless power, final CDC/RDC 수집
-  7) authenticated evidence publication 작성
-  8) 모든 final-selection gate가 닫힌 후 최종 후보 결정
+  1) [완료] 직접 영향 호환성 regression 122/122 재실행
+  2) [완료] 통합 branch, 전체 로컬 branch 및 tag를 PUBLIC origin에 게시
+  3) [완료] 일반 PUBLIC clean clone에서 고정 Git object와 대표 campaign 확인
+  4) 팀원들이 동일 remote commit에서 local compatibility gate 실행
+  5) licensed server에서 A2/A3 동일 환경 parse/elaborate/check_design smoke
+  6) smoke PASS 뒤 matched Genus/Innovus cohort 실행
+  7) post-route timing/area, mapped vectorless power, final CDC/RDC 수집
+  8) authenticated evidence publication 작성
+  9) 모든 final-selection gate가 닫힌 후 최종 후보 결정
