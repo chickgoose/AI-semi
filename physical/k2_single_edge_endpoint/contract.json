@@ -40,8 +40,8 @@
         {"name": "retire_valid_o", "width": 2},
         {"name": "retire_addr0_o", "width": 4},
         {"name": "retire_addr1_o", "width": 4},
-        {"name": "drain_idle_o", "width": 1},
-        {"name": "protocol_error_o", "width": 1}
+        {"name": "protocol_error_o", "width": 1},
+        {"name": "drain_idle_o", "width": 1}
       ]
     }
   },
@@ -73,6 +73,14 @@
         {"path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "sha256": "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127"},
         {"path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv", "sha256": "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057"}
       ],
+      "module_inventory": [
+        "a2_batched_iwrr_k2",
+        "w2_single_edge_error_latch",
+        "w2_single_edge_pair_tx",
+        "w2_single_edge_pair_rx",
+        "w2_single_edge_exact_pair_endpoint",
+        "a2_batched_iwrr_single_edge_top"
+      ],
       "scheduler": "A2_BATCHED_IWRR_K2",
       "release_role": "PRIMARY_PERFORMANCE_CANDIDATE"
     },
@@ -95,6 +103,14 @@
         {"path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "sha256": "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127"},
         {"path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv", "sha256": "61daf3a31f29106d3f6383936d92131a31401fd86d71e0bee5ee53a3ab5b485d"}
       ],
+      "module_inventory": [
+        "a3_exact_scalar_prefix_k2",
+        "w2_single_edge_error_latch",
+        "w2_single_edge_pair_tx",
+        "w2_single_edge_pair_rx",
+        "w2_single_edge_exact_pair_endpoint",
+        "a3_exact_scalar_prefix_k2_single_edge_top"
+      ],
       "scheduler": "A3_EXACT_SCALAR_PREFIX_K2",
       "release_role": "EXACT_PREFIX_FALLBACK"
     }
@@ -112,6 +128,7 @@
     },
     "repository_relative_regular_files_only": true,
     "candidate_and_nested_filelists_must_equal_declared_entries_in_order": true,
+    "synthesis_defines": ["SYNTHESIS"],
     "forbidden_case_insensitive_tokens": ["p6", "a7_p6", "multiclock", "ddr"],
     "forbidden_source_roots": [
       "rtl/candidates/a7_p6_exact_pair_endpoint",
@@ -177,7 +194,7 @@
     "innovus": {"entrypoint": "/tools/cadence/DDI231/INNOVUS231/bin/innovus", "resolved_path": "/tools/cadence/DDI231/INNOVUS231/bin/.cdnWrapperIndep", "sha256": "41670b96270692b6139dcae1c8d8721d7b01d41c0725eb22a1ef5ed2d4fbc3aa", "version": "23.14-s088_1"}
   },
   "flow_templates": {
-    "genus": {"path": "physical/k2_single_edge_endpoint/genus_single_edge.tcl", "sha256": "305cee38d5d1aec67d9367bb56c2700501a49fea62c0c8ed8c21d30033a4ce79"},
+    "genus": {"path": "physical/k2_single_edge_endpoint/genus_single_edge.tcl", "sha256": "ce2b33325aed2bce0e3b328873c19abffd8075ea61f33ba8cda3a3d0d98083d6"},
     "innovus_mmmc": {"path": "physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl", "sha256": "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"},
     "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "d749be4794b5b6c197b8284dbf1858c233860ef3e3d005c1ff4c8d76c7763bbf"}
   },

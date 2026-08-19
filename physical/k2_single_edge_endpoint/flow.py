@@ -49,6 +49,12 @@ RTL_ROWS = {
             ("rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127"),
             ("rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv", "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057"),
         ],
+        "modules": [
+            "a2_batched_iwrr_k2", "w2_single_edge_error_latch",
+            "w2_single_edge_pair_tx", "w2_single_edge_pair_rx",
+            "w2_single_edge_exact_pair_endpoint",
+            "a2_batched_iwrr_single_edge_top",
+        ],
     },
     "a3": {
         "top": "a3_exact_scalar_prefix_k2_single_edge_top",
@@ -67,6 +73,12 @@ RTL_ROWS = {
             ("rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127"),
             ("rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv", "61daf3a31f29106d3f6383936d92131a31401fd86d71e0bee5ee53a3ab5b485d"),
         ],
+        "modules": [
+            "a3_exact_scalar_prefix_k2", "w2_single_edge_error_latch",
+            "w2_single_edge_pair_tx", "w2_single_edge_pair_rx",
+            "w2_single_edge_exact_pair_endpoint",
+            "a3_exact_scalar_prefix_k2_single_edge_top",
+        ],
     },
 }
 GENERIC_FILELIST = {
@@ -84,7 +96,7 @@ ENV_ALLOWLIST_KEYS = ("CDS_AUTO_64BIT", "CDS_LIC_FILE", "LANG", "LC_ALL",
                       "SHELL", "USER")
 TEMPLATE_IDENTITIES = {
     "genus": ("physical/k2_single_edge_endpoint/genus_single_edge.tcl",
-              "305cee38d5d1aec67d9367bb56c2700501a49fea62c0c8ed8c21d30033a4ce79"),
+              "ce2b33325aed2bce0e3b328873c19abffd8075ea61f33ba8cda3a3d0d98083d6"),
     "innovus_mmmc": ("physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl",
                      "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"),
     "innovus": ("physical/k2_single_edge_endpoint/innovus_single_edge.tcl",
@@ -300,8 +312,8 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
         {"name": "retire_valid_o", "width": 2},
         {"name": "retire_addr0_o", "width": 4},
         {"name": "retire_addr1_o", "width": 4},
-        {"name": "drain_idle_o", "width": 1},
         {"name": "protocol_error_o", "width": 1},
+        {"name": "drain_idle_o", "width": 1},
     ]
     if (boundary.get("reset_port") != "rst_i" or
             boundary.get("reset_semantics") != "SYNCHRONOUS_ACTIVE_HIGH" or
@@ -323,6 +335,8 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
     if contract["source_policy"].get(
             "candidate_and_nested_filelists_must_equal_declared_entries_in_order") is not True:
         raise FlowError("exact filelist-order policy was weakened")
+    if contract["source_policy"].get("synthesis_defines") != ["SYNTHESIS"]:
+        raise FlowError("exact synthesis define policy was weakened")
     for name in contract["candidate_order"]:
         row = contract["candidates"][name]
         expected = RTL_ROWS[name]
@@ -333,7 +347,8 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
                 filelist != {"path": expected["filelist_path"],
                              "sha256": expected["filelist_sha256"],
                              "entries": expected["entries"]} or
-                row.get("expanded_sources") != expected_sources):
+                row.get("expanded_sources") != expected_sources or
+                row.get("module_inventory") != expected["modules"]):
             raise FlowError(f"{name} exact top/filelist mismatch")
         if len(expected_sources) != 6 or len({item["path"] for item in expected_sources}) != 6:
             raise FlowError(f"{name} expanded source set is not exact")
@@ -448,6 +463,13 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
                            if not line.lstrip().startswith("#"))
         if any(token not in active for token in tokens):
             raise FlowError(f"{name} template command inventory incomplete")
+        if name == "genus":
+            read_hdl_rows = [re.sub(r"\s+", " ", line.strip())
+                             for line in active.splitlines()
+                             if re.match(r"^\s*read_hdl\b", line)]
+            if read_hdl_rows != [
+                    "read_hdl -sv -define SYNTHESIS -f [file normalize $::env(SE_FILELIST)]"]:
+                raise FlowError("Genus read_hdl synthesis define/filelist command is not exact")
     roles = contract.get("artifact_ledger", {}).get("required_roles", [])
     mandatory = {"genus_execution_receipt", "innovus_execution_receipt",
                  "setup_timing", "hold_timing", "postroute_area", "drc", "antenna",
@@ -494,6 +516,46 @@ def static_preflight(output: Path | None) -> dict[str, Any]:
     return document
 
 
+def local_compatibility_preflight(output: Path | None) -> dict[str, Any]:
+    """Prove the pinned RTL boundary is compatible with the physical package.
+
+    This intentionally stops before live Cadence/PDK inspection.  It is the
+    development-time gate that prevents a hash-clean RTL top from reaching the
+    server with a different ordered port ABI than the mapped-netlist verifier.
+    """
+    contract_payload, contract = validate_contract()
+    candidates: dict[str, Any] = {}
+    for design in contract["candidate_order"]:
+        row = contract["candidates"][design]
+        sources = source_identity(contract, design)
+        candidates[design] = {
+            "top": row["top"],
+            "source_count": len(sources),
+            "source_inventory_sha256": sha256(canonical(sources)),
+            "module_inventory": list(row["module_inventory"]),
+            "synthesis_defines": list(contract["source_policy"]["synthesis_defines"]),
+            "exact_filelist_and_source_bytes": True,
+            "exact_module_inventory": True,
+            "exact_ordered_top_boundary": True,
+            "single_edge_source_screening": True,
+        }
+    document = seal({
+        "schema": "k2_single_edge_local_compatibility_preflight_v1",
+        "status": "PASS_LOCAL_RTL_PHYSICAL_COMPATIBILITY",
+        "contract_sha256": sha256(contract_payload),
+        "candidate_order": list(contract["candidate_order"]),
+        "candidates": candidates,
+        "live_tools_or_pdk_examined": False,
+        "server_genus_smoke_executed": False,
+        "artifact_bundle_examined": False,
+        "candidate_physical_go_allowed": False,
+        "maximum_decision": "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE",
+    })
+    if output is not None:
+        write_exclusive(output, document)
+    return document
+
+
 def source_identity(contract: dict[str, Any], design: str) -> list[dict[str, Any]]:
     row = contract["candidates"][design]
     if not optional_exact_file(row["filelist"]["path"], row["filelist"]["sha256"],
@@ -518,13 +580,11 @@ def source_identity(contract: dict[str, Any], design: str) -> list[dict[str, Any
     modules = []
     for identity in result:
         modules.extend(MODULE.findall(stable_read(repo_path(identity["path"])).decode("utf-8")))
-    if modules.count(row["top"]) != 1:
-        raise FlowError(f"exact top module is not defined once: {row['top']}")
-    top_text = stable_read(repo_path(row["expanded_sources"][-1]["path"])).decode("utf-8")
-    ports = [item["name"] for direction in ("inputs", "outputs")
-             for item in contract["boundary"]["normalized_ports"][direction]]
-    if any(not re.search(rf"\b{re.escape(port)}\b", top_text) for port in ports):
-        raise FlowError("complete top does not expose every normalized boundary port")
+    if modules != row["module_inventory"] or modules.count(row["top"]) != 1:
+        raise FlowError(f"exact module inventory/top definition differs: {design}")
+    top_payload = stable_read(repo_path(row["expanded_sources"][-1]["path"]))
+    top_text = top_payload.decode("utf-8")
+    validate_top_boundary(top_payload, row["top"], contract, f"{design} RTL top")
     if re.search(r"(?i)@(\s*negedge)|always_ff\s*@\s*\([^)]*negedge\s+clk_i", top_text):
         raise FlowError("top contains negedge clocked state")
     return result
@@ -983,7 +1043,9 @@ def declared_width(raw: str) -> int:
     return abs(int(match.group(1)) - int(match.group(2))) + 1 if match else 1
 
 
-def validate_netlist(payload: bytes, top: str, contract: dict[str, Any], role: str) -> None:
+def validate_top_boundary(payload: bytes, top: str, contract: dict[str, Any],
+                          role: str) -> tuple[str, str]:
+    """Validate one exact top and its ordered port ABI for RTL or netlists."""
     text = active_text(payload, role)
     modules = re.findall(rf"(?is)\bmodule\s+{re.escape(top)}\b(.*?)\bendmodule\b", text)
     if len(modules) != 1:
@@ -1032,6 +1094,15 @@ def validate_netlist(payload: bytes, top: str, contract: dict[str, Any], role: s
                              for direction, row in expected_rows}
     if declarations != expected_declarations:
         raise FlowError(f"{role} port directions/widths are not exact")
+    return text, body
+
+
+def validate_netlist(payload: bytes, top: str, contract: dict[str, Any], role: str) -> None:
+    text, body = validate_top_boundary(payload, top, contract, role)
+    expected_rows = [("input", row) for row in
+                     contract["boundary"]["normalized_ports"]["inputs"]] + \
+                    [("output", row) for row in
+                     contract["boundary"]["normalized_ports"]["outputs"]]
     declaration_free = re.sub(r"(?is)\b(?:input|output|inout)\b\s+[^;]+;", "", body)
     instances = re.findall(
         r"(?ms)^\s*([A-Za-z_][A-Za-z0-9_$]*)\s+([A-Za-z_][A-Za-z0-9_$]*)\s*\((.*?)\)\s*;",
@@ -1732,6 +1803,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     static = sub.add_parser("static")
     static.add_argument("--output", type=Path)
+    compatibility = sub.add_parser("compatibility")
+    compatibility.add_argument("--output", type=Path)
     plan = sub.add_parser("plan")
     plan.add_argument("--design", choices=("a2", "a3"), required=True)
     plan.add_argument("--attempt-root", type=Path, required=True)
@@ -1768,6 +1841,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "static":
             receipt = static_preflight(args.output)
             print(f"K2_SINGLE_EDGE_STATIC_PASS sha256={receipt['document_sha256']}")
+        elif args.command == "compatibility":
+            receipt = local_compatibility_preflight(args.output)
+            print("K2_SINGLE_EDGE_LOCAL_COMPATIBILITY_PASS "
+                  f"sha256={receipt['document_sha256']}")
         elif args.command == "plan":
             receipt = make_plan(args.design, args.attempt_root, args.output)
             print(f"K2_SINGLE_EDGE_PLAN_PASS sha256={receipt['document_sha256']}")

@@ -21,7 +21,7 @@ file mkdir "$output/status"
 set_db library [file normalize $::env(SE_SETUP_LIB)]
 set_db lp_insert_clock_gating false
 cd [file normalize $::env(SE_PROJECT_ROOT)]
-read_hdl -sv -f [file normalize $::env(SE_FILELIST)]
+read_hdl -sv -define SYNTHESIS -f [file normalize $::env(SE_FILELIST)]
 elaborate $top
 read_sdc [file normalize $::env(SE_SDC)]
 

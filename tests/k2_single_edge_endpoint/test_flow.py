@@ -83,6 +83,36 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(flow.static_preflight(None)["candidate_sources_present"],
                          {"a2": True, "a3": True})
 
+    def test_repository_local_compatibility_is_exact_and_eda_free(self):
+        with mock.patch.object(flow.subprocess, "run", side_effect=AssertionError("EDA called")):
+            receipt = flow.local_compatibility_preflight(None)
+        self.assertEqual(receipt["status"],
+                         "PASS_LOCAL_RTL_PHYSICAL_COMPATIBILITY")
+        self.assertEqual(receipt["candidate_order"], ["a2", "a3"])
+        self.assertFalse(receipt["live_tools_or_pdk_examined"])
+        self.assertFalse(receipt["server_genus_smoke_executed"])
+        self.assertFalse(receipt["candidate_physical_go_allowed"])
+        for design in ("a2", "a3"):
+            self.assertEqual(receipt["candidates"][design]["source_count"], 6)
+            self.assertTrue(receipt["candidates"][design]["exact_ordered_top_boundary"])
+            self.assertTrue(receipt["candidates"][design]["exact_module_inventory"])
+            self.assertEqual(receipt["candidates"][design]["synthesis_defines"],
+                             ["SYNTHESIS"])
+
+    def test_endpoint_and_vectorless_complete_boundaries_are_identical(self):
+        _, endpoint = flow.validate_contract()
+        vectorless = json.loads((REPO / "physical/k2_single_edge_vectorless/contract.json").read_text())
+
+        def signature(rows):
+            return [row["name"] + (f"[{row['width'] - 1}:0]" if row["width"] > 1 else "")
+                    for row in rows]
+
+        inputs = signature(endpoint["boundary"]["normalized_ports"]["inputs"])
+        outputs = signature(endpoint["boundary"]["normalized_ports"]["outputs"])
+        for candidate in ("a2_single_edge", "a3_single_edge"):
+            self.assertEqual(vectorless["candidates"][candidate]["inputs"], inputs)
+            self.assertEqual(vectorless["candidates"][candidate]["outputs"], outputs)
+
     def test_innovus_collects_safe_reports_before_timing_failure_exit(self):
         text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
         setup_catch = text.index("set setup_failed [catch")
@@ -115,6 +145,40 @@ class MutationTests(unittest.TestCase):
                               self.fixture.root / "attempt/plan.json")
         self.assertEqual(len(plan["sources"]), 6)
         self.assertIn("error_latch", plan["sources"][1]["path"])
+
+    def test_source_boundary_rejects_order_direction_width_missing_and_extra(self):
+        _, contract = flow.validate_contract()
+        top = contract["candidates"]["a2"]["top"]
+        rows = [("input", row) for row in contract["boundary"]["normalized_ports"]["inputs"]]
+        rows += [("output", row) for row in contract["boundary"]["normalized_ports"]["outputs"]]
+
+        def declaration(direction, row):
+            width = f" [{row['width'] - 1}:0]" if row["width"] > 1 else ""
+            return f"  {direction} logic{width} {row['name']}"
+
+        declarations = [declaration(direction, row) for direction, row in rows]
+
+        def payload(items):
+            return (f"module {top} (\n" + ",\n".join(items) +
+                    "\n);\nendmodule\n").encode()
+
+        flow.validate_top_boundary(payload(declarations), top, contract, "good RTL top")
+        mutants = {
+            "order": declarations[:-2] + [declarations[-1], declarations[-2]],
+            "direction": [item.replace("output logic [15:0] source_accept_o",
+                                        "input logic [15:0] source_accept_o")
+                          for item in declarations],
+            "width": [item.replace("output logic [1:0] accept_count_o",
+                                    "output logic [2:0] accept_count_o")
+                      for item in declarations],
+            "missing": declarations[:-1],
+            "extra": declarations + ["  output logic unexpected_o"],
+        }
+        for name, items in mutants.items():
+            with self.subTest(name=name), self.assertRaisesRegex(
+                    flow.FlowError, "exact complete boundary|directions/widths"):
+                flow.validate_top_boundary(payload(items), top, contract,
+                                           f"{name} RTL top")
 
     def test_old_or_missing_latch_bytes_reject(self):
         latch = self.fixture.root / self.fixture.contract["candidates"]["a2"]["expanded_sources"][1]["path"]
@@ -164,9 +228,21 @@ class MutationTests(unittest.TestCase):
         with self.assertRaisesRegex(flow.FlowError, "template byte identity"):
             flow.validate_contract()
 
+    def test_genus_synthesis_define_is_semantically_pinned(self):
+        row = self.fixture.contract["flow_templates"]["genus"]
+        path = self.fixture.root / row["path"]
+        path.write_text(path.read_text().replace(" -define SYNTHESIS", "", 1))
+        digest = flow.sha256(path.read_bytes())
+        row["sha256"] = digest
+        self.fixture.rewrite_contract()
+        with mock.patch.dict(flow.TEMPLATE_IDENTITIES,
+                             {"genus": (row["path"], digest)}):
+            with self.assertRaisesRegex(flow.FlowError, "read_hdl synthesis define"):
+                flow.validate_contract()
+
     def test_mapped_sdc_exact_values_and_no_exceptions(self):
         inputs = "rst_i link_enable_i source_pending_i"
-        outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o drain_idle_o protocol_error_o"
+        outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o protocol_error_o drain_idle_o"
         good = f"""create_clock -name se_primary_clk -period 6.5 -waveform {{0.0 3.25}} [get_ports {{clk_i}}]
 set_clock_uncertainty 0.25 [get_clocks {{se_primary_clk}}]
 set_min_pulse_width -high 0.50 [get_clocks {{se_primary_clk}}]
@@ -526,7 +602,7 @@ class EvidenceTests(unittest.TestCase):
         netlist = (f"module {top}({','.join(ports)});\n{declarations}\n" +
                    "DFFX1 u0 (.D(clk_i), .Q(protocol_error_o));\nendmodule\n").encode()
         inputs = "rst_i link_enable_i source_pending_i"
-        outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o drain_idle_o protocol_error_o"
+        outputs = "source_accept_o accept_count_o accept_addr0_o accept_addr1_o link_valid_o link_addr0_o link_addr1_o retire_valid_o retire_addr0_o retire_addr1_o protocol_error_o drain_idle_o"
         sdc = f"""create_clock -name se_primary_clk -period 6.5 -waveform {{0.0 3.25}} [get_ports {{clk_i}}]
 set_clock_uncertainty 0.25 [get_clocks {{se_primary_clk}}]
 set_min_pulse_width -high 0.50 [get_clocks {{se_primary_clk}}]

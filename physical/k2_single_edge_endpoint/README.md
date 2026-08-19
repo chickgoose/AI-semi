@@ -62,6 +62,25 @@ templates, exclusion policy, and ledger definition are internally consistent.
 It records whether the integration sources are present but never interprets
 source absence as physical evidence.
 
+Before any RTL commit is considered ready for a server smoke run, execute the
+source-bound compatibility gate:
+
+```sh
+python3 physical/k2_single_edge_endpoint/flow.py compatibility \
+  --output /tmp/k2-single-edge-compatibility.json
+```
+
+`PASS_LOCAL_RTL_PHYSICAL_COMPATIBILITY` requires both A2 and A3 to match their
+hash-pinned filelists, source bytes, and six-module inventories and requires
+each actual RTL top to have exactly the ordered port names, directions, and
+widths in the physical contract.  The Genus template is also pinned to exactly
+one `read_hdl -sv -define SYNTHESIS -f ...` command so simulation-only checks
+and mutation macros cannot leak into server synthesis.  This closes the
+previous gap where source inspection checked only that every port name appeared
+somewhere, while mapped-netlist qualification required exact order.  It still
+does not execute Genus, inspect live GPDK045 bytes, or establish physical or
+release evidence; the receipt records all three limits explicitly.
+
 After the exact RTL tops have landed, `plan` hashes every source and every
 package byte and emits the exact Genus/Innovus argv, cwd, environment, and a
 hash for each command:
