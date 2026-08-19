@@ -111,7 +111,10 @@ module a2_batched_iwrr_single_edge_top (
   assign accept_addr0_o = scheduler_commit ? scheduler_addr0 : 4'd0;
   assign accept_addr1_o = (scheduler_commit && (scheduler_count == 2'd2)) ?
                           scheduler_addr1 : 4'd0;
-  assign source_accept_o = scheduler_commit ? scheduler_bitmap : 16'd0;
+  // A legal scheduler bitmap is already zero when count is zero.  Masking it
+  // directly with ready preserves the reachable-cycle behavior while avoiding
+  // count/bitmap reconvergence on all sixteen externally timed accept bits.
+  assign source_accept_o = scheduler_bitmap & {16{scheduler_ready}};
   assign protocol_error_event = endpoint_error || scheduler_shape_error ||
                                 (endpoint_commit &&
                                  (endpoint_microsteps != buffer_count_q));
