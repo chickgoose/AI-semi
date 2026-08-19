@@ -1674,9 +1674,6 @@ def validate_innovus_log(text: str, top: str, version: str) -> None:
         r"([0-9]+) error\(s\)[ \t]*$", text)]
     diagnostic_text = re.sub(
         r"(?m)^Error Limit = [0-9]+; Warning Limit = [0-9]+[ \t]*$", "", text)
-    diagnostic_text = re.sub(
-        r"(?m)^(?:@file\(innovus_single_edge\.tcl\)\s+[0-9]+:|"
-        r"innovus\s+[0-9]+>)[^\r\n]*$", "", diagnostic_text)
     version_matches = list(re.finditer(r"(?m)^Version:[^\r\n]*$", text))
     versions = [match.group(0) for match in version_matches]
     version_pattern = (
