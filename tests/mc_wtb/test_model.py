@@ -230,7 +230,7 @@ class StageOneModelTests(unittest.TestCase):
         for output in inputs:
             with self.subTest(exact_output=str(output)):
                 before = {path: path.read_bytes() for path in inputs}
-                with self.assertRaisesRegex(InterfaceError, "output aliases input path"):
+                with self.assertRaisesRegex(InterfaceError, "aliases an immutable input inode"):
                     analyze_files(
                         EVENTS,
                         INTRINSICS,
@@ -254,7 +254,7 @@ class StageOneModelTests(unittest.TestCase):
             output = temporary / "hardlink-result.json"
             os.link(events, output)
             before = {path: path.read_bytes() for path in (events, intrinsics, poses)}
-            with self.assertRaisesRegex(InterfaceError, "output aliases input inode"):
+            with self.assertRaisesRegex(InterfaceError, "aliases an immutable input inode"):
                 analyze_files(
                     events,
                     intrinsics,
@@ -345,11 +345,11 @@ class StageOneModelTests(unittest.TestCase):
     def test_scope_explicitly_rejects_unimplemented_system_features(self) -> None:
         self.assertEqual(
             UNSUPPORTED_FEATURES,
-            ["depth", "pose_estimation", "reversible_codec", "rtl", "translation"],
+            ("depth", "pose_estimation", "reversible_codec", "rtl", "translation"),
         )
         with tempfile.TemporaryDirectory() as directory:
             result, _ = self.analyze(directory)
-        self.assertEqual(result["model_scope"]["unsupported"], UNSUPPORTED_FEATURES)
+        self.assertEqual(result["model_scope"]["unsupported"], list(UNSUPPORTED_FEATURES))
         self.assertTrue(result["model_scope"]["rotation_only"])
         self.assertFalse(
             result["bottleneck_metrics"]["5_timestamp_fidelity"]
@@ -361,7 +361,8 @@ class StageOneModelTests(unittest.TestCase):
         )
         self.assertEqual(
             result["output_semantics"]["atomic_visibility"],
-            "temporary file plus os.replace at destination",
+            "mode-0600 temporary regular file plus same-directory dirfd-relative "
+            "POSIX atomic rename in a pinned parent inode",
         )
         self.assertFalse(result["output_semantics"]["crash_durability_guaranteed"])
 

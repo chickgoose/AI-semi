@@ -76,9 +76,15 @@ output is written.
 
 ## Provenance and transport precondition
 
-Each of the three primary inputs is read exactly once as bytes. SHA-256 is
-computed over those exact bytes before decoding, and the output records those
-independently computed identities as `events_input_sha256`,
+Each primary input is opened once without following the final symlink and read
+from that pinned regular-file descriptor into an immutable `InputBlob`.
+SHA-256 is derived inside the frozen blob from its exact bytes, and public
+`parse_intrinsics_blob` / `parse_pose_stream_blob` functions decode only those
+bytes. The compatible `load_intrinsics(path)` and `load_pose_stream(path, ...)`
+APIs are wrappers around public `open_input_blob`. The API identity is
+`redred.known_motion.input-blob/v1`.
+
+The output records the independently computed identities as `events_input_sha256`,
 `intrinsics_input_sha256`, and `poses_input_sha256`.
 
 In contrast, embedded `provenance.content_sha256` values and the retired-event

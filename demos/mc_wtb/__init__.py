@@ -6,7 +6,9 @@ from .model import (
     EVENT_SCHEMA,
     InterfaceError,
     LOGICAL_BIT_FORMAT,
+    MODEL_IMPLEMENTATION_ID,
     RESULT_SCHEMA,
+    RESULT_CONTRACT_REVISION,
     UNSUPPORTED_FEATURES,
     analyze_files,
 )
@@ -17,7 +19,9 @@ __all__ = [
     "EVENT_SCHEMA",
     "InterfaceError",
     "LOGICAL_BIT_FORMAT",
+    "MODEL_IMPLEMENTATION_ID",
     "RESULT_SCHEMA",
+    "RESULT_CONTRACT_REVISION",
     "UNSUPPORTED_FEATURES",
     "analyze_files",
 ]

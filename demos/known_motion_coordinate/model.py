@@ -7,10 +7,12 @@ import hashlib
 import json
 import math
 import os
+import stat
 import tempfile
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 INTRINSICS_SCHEMA = "redred.known_motion.intrinsics/v2"
@@ -21,6 +23,7 @@ EVENT_SCHEMA = "redred.aer.retired_event/v3"
 RESULT_HEADER_SCHEMA = "redred.known_motion.transform_stream/v3"
 RESULT_SCHEMA = "redred.known_motion.transform_result/v3"
 SUMMARY_SCHEMA = "redred.known_motion.summary/v3"
+KNOWN_MOTION_BLOB_API_ID = "redred.known_motion.input-blob/v1"
 
 SYNTHETIC_DEMO = "SYNTHETIC_DEMO"
 CANONICAL_COMMON_SUITE = "CANONICAL_COMMON_SUITE"
@@ -63,11 +66,21 @@ class InterfaceError(ValueError):
     """Raised when an input violates the fail-closed interface contract."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class InputBlob:
     path: Path
     data: bytes
-    sha256: str
+    device: int
+    inode: int
+    size: int
+    sha256: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        if type(self.data) is not bytes:
+            raise TypeError("InputBlob.data must be immutable bytes")
+        if self.size != len(self.data):
+            raise ValueError("InputBlob.size must equal the exact data length")
+        object.__setattr__(self, "sha256", hashlib.sha256(self.data).hexdigest())
 
 
 @dataclass(frozen=True)
@@ -115,15 +128,60 @@ class Pose:
     representation: str
 
 
-def _read_once(path: str | Path, label: str) -> InputBlob:
-    resolved = Path(path)
-    if resolved.is_symlink() or not resolved.is_file():
-        raise InterfaceError(f"{label} is missing, non-file, or symlinked: {resolved}")
+def _stat_signature(value: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+@contextmanager
+def open_input_blob(path: str | Path, label: str) -> Iterator[InputBlob]:
+    """Open once, collect immutable bytes, and keep the source inode pinned."""
+
+    source = Path(path)
+    required_flags = ("O_CLOEXEC", "O_NOFOLLOW")
+    if any(not hasattr(os, name) for name in required_flags):
+        raise InterfaceError("immutable input blob reading is unsupported on this platform")
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
     try:
-        data = resolved.read_bytes()
+        descriptor = os.open(source, flags)
+    except OSError as exc:
+        raise InterfaceError(f"cannot open {label}: {exc}") from exc
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise InterfaceError(f"{label} must be a regular non-symlink file: {source}")
+        chunks: list[bytes] = []
+        while True:
+            try:
+                chunk = os.read(descriptor, 1024 * 1024)
+            except InterruptedError:
+                continue
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        if _stat_signature(before) != _stat_signature(after):
+            raise InterfaceError(f"{label} changed during its immutable byte read")
+        data = b"".join(chunks)
+        if len(data) != after.st_size:
+            raise InterfaceError(f"{label} byte count differs from its stable file size")
+        yield InputBlob(source, data, after.st_dev, after.st_ino, after.st_size)
     except OSError as exc:
         raise InterfaceError(f"cannot read {label}: {exc}") from exc
-    return InputBlob(resolved, data, hashlib.sha256(data).hexdigest())
+    finally:
+        os.close(descriptor)
+
+
+def _read_once(path: str | Path, label: str) -> InputBlob:
+    """Compatibility helper; new multi-input callers should hold the context open."""
+
+    with open_input_blob(path, label) as blob:
+        return blob
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -254,7 +312,9 @@ def _provenance(obj: Any, where: str) -> dict[str, Any]:
     return row
 
 
-def _load_intrinsics_blob(blob: InputBlob) -> Intrinsics:
+def parse_intrinsics_blob(blob: InputBlob) -> Intrinsics:
+    """Parse intrinsics exclusively from one immutable public input blob."""
+
     obj = _exact_keys(
         _load_json(blob),
         {
@@ -291,7 +351,8 @@ def _load_intrinsics_blob(blob: InputBlob) -> Intrinsics:
 def load_intrinsics(path: str | Path) -> Intrinsics:
     """Load and validate one intrinsics file from one exact byte read."""
 
-    return _load_intrinsics_blob(_read_once(path, "intrinsics input"))
+    with open_input_blob(path, "intrinsics input") as blob:
+        return parse_intrinsics_blob(blob)
 
 
 def _matmul(left: Matrix, right: Matrix) -> Matrix:
@@ -364,7 +425,11 @@ def euler_world_to_sensor(pan_deg: float, tilt_deg: float, roll_deg: float) -> M
     return _matmul(r_roll, _matmul(r_tilt, r_pan))
 
 
-def _load_pose_blob(blob: InputBlob, intrinsics: Intrinsics) -> tuple[dict[str, Any], list[Pose]]:
+def parse_pose_stream_blob(
+    blob: InputBlob, intrinsics: Intrinsics
+) -> tuple[dict[str, Any], list[Pose]]:
+    """Parse a pose stream exclusively from one immutable public input blob."""
+
     records = _load_jsonl(blob)
     header = _exact_keys(
         records[0],
@@ -426,7 +491,13 @@ def _load_pose_blob(blob: InputBlob, intrinsics: Intrinsics) -> tuple[dict[str, 
 def load_pose_stream(path: str | Path, intrinsics: Intrinsics) -> tuple[dict[str, Any], list[Pose]]:
     """Load and validate one pose JSONL file from one exact byte read."""
 
-    return _load_pose_blob(_read_once(path, "pose input"), intrinsics)
+    with open_input_blob(path, "pose input") as blob:
+        return parse_pose_stream_blob(blob, intrinsics)
+
+
+# One-release private compatibility aliases. New callers must use public names.
+_load_intrinsics_blob = parse_intrinsics_blob
+_load_pose_blob = parse_pose_stream_blob
 
 
 def warp_pixel(
@@ -700,8 +771,8 @@ def transform_files(
     event_blob = _read_once(events_path, "event input")
     intrinsics_blob = _read_once(intrinsics_path, "intrinsics input")
     pose_blob = _read_once(poses_path, "pose input")
-    intrinsics = _load_intrinsics_blob(intrinsics_blob)
-    pose_header, poses = _load_pose_blob(pose_blob, intrinsics)
+    intrinsics = parse_intrinsics_blob(intrinsics_blob)
+    pose_header, poses = parse_pose_stream_blob(pose_blob, intrinsics)
     event_header, events = _load_events_blob(event_blob, intrinsics, pose_header)
     required_frame = "world_reference_image" if mode == "world-to-sensor" else "sensor_image"
     output_frame = "sensor_image" if mode == "world-to-sensor" else "world_reference_image"

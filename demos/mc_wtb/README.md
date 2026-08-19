@@ -80,6 +80,11 @@ must fit 64 bits; x/y, tile x/y, pose code, and multiplicity count must fit thei
 declared 16-bit fields. Stage-1 fails closed on overflow instead of wrapping,
 saturating, or truncating.
 
+The fixed-v1 width table is a nested immutable mapping and is the single source
+used by both validators and accounting. Each result receives a new plain-JSON
+copy of the table and a new unsupported-feature list, so caller mutation cannot
+change module state or a later run.
+
 The occupancy projection emits one packet per fixed time/pose/polarity/tile
 key. It preserves multiplicity count but omits individual event identity,
 intra-bin timestamp, and intra-tile coordinate, so it remains explicitly
@@ -89,15 +94,30 @@ lossless compression.
 
 ## Exact-byte provenance and output semantics
 
-The result includes SHA-256 over the exact bytes of the event, intrinsics, and
-pose files. Each hash read rejects within-read file mutation, and identical
-hashes are required before and after parsing. This is a scoped stability check,
-not an atomic snapshot of all three files and not a canonical-evidence claim;
+Each primary input is opened once with no symlink following and read from that
+one pinned regular-file descriptor into an immutable public known-motion input
+blob. The parser and published SHA-256 consume the exact same blob bytes; paths
+are not reopened for parsing or provenance hashing. Each file is independently
+snapshotted, so this does not claim an atomic three-file snapshot or a writer's
+coherent multi-file transaction. It is also not a canonical-evidence claim;
 the fixture remains `SYNTHETIC_DEMO`.
 
-Output publication uses a temporary file and `os.replace`, providing atomic
-visibility at the destination after validation. The implementation does not
-call file or directory `fsync`, so it makes no crash-durability guarantee.
+On supported POSIX platforms, output publication pins the final parent directory
+with `O_DIRECTORY|O_NOFOLLOW`, creates a mode-0600 temporary regular file in
+that dirfd, checks the current parent path and no-follow target inode, and uses
+a same-dirfd atomic `rename`. Parent-path redirection and target input-inode or
+symlink aliases fail closed. Required dirfd features have no weak path-based
+fallback. The implementation does not call file or directory `fsync`, so this
+atomic visibility makes no crash-durability guarantee.
+
+`analysis_contract` binds the validated tile dimensions, time-bin size,
+inclusive maximum pose age, fixed-v1 format ID, latest-at-or-before ZOH rule,
+semantic implementation ID, result-contract revision, and public known-motion
+blob API ID. The semantic ID is source-controlled contract identity, not a
+cryptographic attestation of a binary or repository commit.
+The result schema remains `redred.mc_wtb.stage1_analysis/v1` under its additive
+consumer policy: existing keys retain their meanings and Hardening 2 adds the
+contract object plus stronger provenance/output-semantics fields.
 
 ## Metrics
 

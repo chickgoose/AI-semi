@@ -7,23 +7,27 @@ events warped into a fixed reference-camera frame using supplied rotations.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
+import secrets
 import stat
-import tempfile
 from bisect import bisect_right
 from collections import defaultdict
+from contextlib import ExitStack
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 from demos.known_motion_coordinate.model import (
+    KNOWN_MOTION_BLOB_API_ID,
+    InputBlob,
     InterfaceError,
     Intrinsics,
     Pose,
-    load_intrinsics,
-    load_pose_stream,
+    open_input_blob,
+    parse_intrinsics_blob,
+    parse_pose_stream_blob,
     warp_pixel,
 )
 
@@ -32,36 +36,48 @@ EVENT_HEADER_SCHEMA = "redred.mc_wtb.event_stream/v1"
 EVENT_SCHEMA = "redred.mc_wtb.event/v1"
 RESULT_SCHEMA = "redred.mc_wtb.stage1_analysis/v1"
 EVIDENCE_CLASS = "SYNTHETIC_DEMO"
+MODEL_IMPLEMENTATION_ID = "redred.mc_wtb.stage1.python-reference/hardening2-v1"
+RESULT_CONTRACT_REVISION = "hardening2-v1"
 
 # Logical widths are a declared comparison convention, not JSON file size or
 # an implemented wire protocol.  Keeping them data-independent prevents an
 # input from changing the accounting rule in its favor.
-LOGICAL_BIT_FORMAT: dict[str, Any] = {
+_RAW_SENSOR_PAYLOAD_WIDTHS: Mapping[str, int] = MappingProxyType({
+    "x_bits": 16,
+    "y_bits": 16,
+    "polarity_bits": 1,
+    "timestamp_bits": 64,
+    "pose_version_bits": 16,
+})
+_OCCUPANCY_PACKET_WIDTHS: Mapping[str, int] = MappingProxyType({
+    "tile_x_bits": 16,
+    "tile_y_bits": 16,
+    "polarity_bits": 1,
+    "time_bin_start_bits": 64,
+    "pose_version_bits": 16,
+    "multiplicity_count_bits": 16,
+})
+LOGICAL_BIT_FORMAT: Mapping[str, Any] = MappingProxyType({
     "format_id": "redred.mc_wtb.logical_bits/fixed-v1",
-    "raw_sensor_payload": {
-        "x_bits": 16,
-        "y_bits": 16,
-        "polarity_bits": 1,
-        "timestamp_bits": 64,
-        "pose_version_bits": 16,
-    },
-    "occupancy_packet": {
-        "tile_x_bits": 16,
-        "tile_y_bits": 16,
-        "polarity_bits": 1,
-        "time_bin_start_bits": 64,
-        "pose_version_bits": 16,
-        "multiplicity_count_bits": 16,
-    },
-}
+    "raw_sensor_payload": _RAW_SENSOR_PAYLOAD_WIDTHS,
+    "occupancy_packet": _OCCUPANCY_PACKET_WIDTHS,
+})
 
-UNSUPPORTED_FEATURES = [
+UNSUPPORTED_FEATURES = (
     "depth",
     "pose_estimation",
     "reversible_codec",
     "rtl",
     "translation",
-]
+)
+
+
+def _logical_bit_format_json() -> dict[str, Any]:
+    return {
+        "format_id": LOGICAL_BIT_FORMAT["format_id"],
+        "raw_sensor_payload": dict(_RAW_SENSOR_PAYLOAD_WIDTHS),
+        "occupancy_packet": dict(_OCCUPANCY_PACKET_WIDTHS),
+    }
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -73,16 +89,10 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _read_jsonl(path: str | Path) -> list[dict[str, Any]]:
-    source = Path(path)
-    if source.is_symlink() or not source.is_file():
-        raise InterfaceError(f"event input is missing, non-file, or symlinked: {source}")
-    try:
-        data = source.read_bytes()
-    except OSError as exc:
-        raise InterfaceError(f"cannot read event input: {exc}") from exc
+def _parse_event_jsonl(blob: InputBlob) -> list[dict[str, Any]]:
+    source = blob.path
     records: list[dict[str, Any]] = []
-    for line_number, raw in enumerate(data.splitlines(), 1):
+    for line_number, raw in enumerate(blob.data.splitlines(), 1):
         if not raw.strip():
             continue
         try:
@@ -150,61 +160,6 @@ def _timebase(value: Any, where: str) -> dict[str, str]:
     }
 
 
-def _reject_output_alias(
-    output_path: str | Path, input_paths: tuple[str | Path, ...]
-) -> None:
-    output = Path(output_path)
-    output_resolved = output.resolve(strict=False)
-    for input_path in input_paths:
-        source = Path(input_path)
-        if output_resolved == source.resolve(strict=False):
-            raise InterfaceError(f"output aliases input path: {source}")
-        if output.exists() and source.exists():
-            try:
-                if os.path.samefile(output, source):
-                    raise InterfaceError(f"output aliases input inode: {source}")
-            except OSError as exc:
-                raise InterfaceError(f"cannot validate output/input aliasing: {exc}") from exc
-
-
-def _stable_sha256(path: str | Path, label: str) -> str:
-    """Hash one regular file while rejecting mutation during this exact read."""
-
-    source = Path(path)
-    flags = os.O_RDONLY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        descriptor = os.open(source, flags)
-    except OSError as exc:
-        raise InterfaceError(f"cannot open {label} for provenance hashing: {exc}") from exc
-    digest = hashlib.sha256()
-    try:
-        before = os.fstat(descriptor)
-        if not stat.S_ISREG(before.st_mode):
-            raise InterfaceError(f"{label} must be a regular file")
-        while True:
-            chunk = os.read(descriptor, 1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-        after = os.fstat(descriptor)
-    except OSError as exc:
-        raise InterfaceError(f"cannot hash {label}: {exc}") from exc
-    finally:
-        os.close(descriptor)
-    signature = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_size,
-        item.st_mtime_ns,
-        item.st_ctime_ns,
-    )
-    if signature(before) != signature(after):
-        raise InterfaceError(f"{label} changed during provenance hashing")
-    return digest.hexdigest()
-
-
 def _rounded(value: float) -> float:
     result = round(float(value), 12)
     return 0.0 if result == 0.0 else result
@@ -215,11 +170,12 @@ def _ratio(numerator: float, denominator: float) -> float:
 
 
 def _load_events(
-    path: str | Path,
+    blob: InputBlob,
     intrinsics: Intrinsics,
     pose_header: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    records = _read_jsonl(path)
+    path = blob.path
+    records = _parse_event_jsonl(blob)
     header_keys = {
         "schema",
         "record_type",
@@ -278,13 +234,21 @@ def _load_events(
         sequence = _nonnegative_int(event["sequence_index"], f"{where}.sequence_index")
         if sequence != len(events):
             raise InterfaceError(f"{where}: sequence_index must be contiguous JSONL order")
-        timestamp = _require_uint(event["timestamp_ns"], 64, f"{where}.timestamp_ns")
+        timestamp = _require_uint(
+            event["timestamp_ns"],
+            _RAW_SENSOR_PAYLOAD_WIDTHS["timestamp_bits"],
+            f"{where}.timestamp_ns",
+        )
         if timestamp < previous_timestamp:
             raise InterfaceError(f"{where}: timestamp_ns must be nondecreasing")
         previous_timestamp = timestamp
         event["pose_version"] = _string(event["pose_version"], f"{where}.pose_version")
-        event["x"] = _require_uint(event["x"], 16, f"{where}.x")
-        event["y"] = _require_uint(event["y"], 16, f"{where}.y")
+        event["x"] = _require_uint(
+            event["x"], _RAW_SENSOR_PAYLOAD_WIDTHS["x_bits"], f"{where}.x"
+        )
+        event["y"] = _require_uint(
+            event["y"], _RAW_SENSOR_PAYLOAD_WIDTHS["y_bits"], f"{where}.y"
+        )
         if event["x"] >= intrinsics.width or event["y"] >= intrinsics.height:
             raise InterfaceError(f"{where}: sensor coordinate is out of bounds")
         if type(event["polarity"]) is not int or event["polarity"] not in (-1, 1):
@@ -298,8 +262,12 @@ def _load_events(
 
 
 def _tile(x: int, y: int, tile_width: int, tile_height: int, columns: int) -> dict[str, int]:
-    tile_x = _require_uint(x // tile_width, 16, "logical tile.x")
-    tile_y = _require_uint(y // tile_height, 16, "logical tile.y")
+    tile_x = _require_uint(
+        x // tile_width, _OCCUPANCY_PACKET_WIDTHS["tile_x_bits"], "logical tile.x"
+    )
+    tile_y = _require_uint(
+        y // tile_height, _OCCUPANCY_PACKET_WIDTHS["tile_y_bits"], "logical tile.y"
+    )
     return {"x": tile_x, "y": tile_y, "index": tile_y * columns + tile_x}
 
 
@@ -424,15 +392,25 @@ def _logical_packets(
     for time_bin, pose_code, polarity, tile_x, tile_y in sorted(groups):
         members = groups[(time_bin, pose_code, polarity, tile_x, tile_y)]
         time_bin_start = _require_uint(
-            time_bin * time_bin_ns, 64, "logical packet.time_bin_start_ns"
+            time_bin * time_bin_ns,
+            _OCCUPANCY_PACKET_WIDTHS["time_bin_start_bits"],
+            "logical packet.time_bin_start_ns",
         )
         pose_code = _require_uint(
-            pose_code, 16, "logical packet.pose_version_code"
+            pose_code,
+            _OCCUPANCY_PACKET_WIDTHS["pose_version_bits"],
+            "logical packet.pose_version_code",
         )
-        tile_x = _require_uint(tile_x, 16, "logical packet.tile.x")
-        tile_y = _require_uint(tile_y, 16, "logical packet.tile.y")
+        tile_x = _require_uint(
+            tile_x, _OCCUPANCY_PACKET_WIDTHS["tile_x_bits"], "logical packet.tile.x"
+        )
+        tile_y = _require_uint(
+            tile_y, _OCCUPANCY_PACKET_WIDTHS["tile_y_bits"], "logical packet.tile.y"
+        )
         multiplicity = _require_uint(
-            len(members), 16, "logical packet.multiplicity_count"
+            len(members),
+            _OCCUPANCY_PACKET_WIDTHS["multiplicity_count_bits"],
+            "logical packet.multiplicity_count",
         )
         packets.append(
             {
@@ -470,58 +448,198 @@ def _logical_bits(event_count: int, packet_count: int) -> dict[str, Any]:
     }
 
 
-def _atomic_write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True) + "\n"
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+class _PosixFileOps:
+    """Thin syscall adapter used for deterministic namespace fault tests."""
+
+    def open(
+        self,
+        path: str | Path,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        return os.open(path, flags, mode, dir_fd=dir_fd)
+
+    def write(self, descriptor: int, data: bytes | memoryview) -> int:
+        return os.write(descriptor, data)
+
+    def fstat(self, descriptor: int) -> os.stat_result:
+        return os.fstat(descriptor)
+
+    def statat(
+        self,
+        path: str | Path,
+        *,
+        dir_fd: int | None,
+        follow_symlinks: bool,
+    ) -> os.stat_result:
+        return os.stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+
+    def renameat(
+        self, source: str, target: str, *, src_dir_fd: int, dst_dir_fd: int
+    ) -> None:
+        os.rename(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+
+    def unlinkat(self, path: str, *, dir_fd: int) -> None:
+        os.unlink(path, dir_fd=dir_fd)
+
+    def close(self, descriptor: int) -> None:
+        os.close(descriptor)
+
+
+_FILE_OPS = _PosixFileOps()
+
+_HARDENED_DIRFD_SUPPORTED = (
+    all(hasattr(os, name) for name in ("O_CLOEXEC", "O_DIRECTORY", "O_NOFOLLOW"))
+    and all(
+        function in os.supports_dir_fd
+        for function in (os.open, os.stat, os.rename, os.unlink)
     )
+    and os.stat in os.supports_follow_symlinks
+)
+
+
+def _require_hardened_dirfd_support() -> None:
+    if not _HARDENED_DIRFD_SUPPORTED:
+        raise InterfaceError("hardened dirfd publication unsupported on this platform")
+
+
+def _publish_json_dirfd(
+    path: Path,
+    value: Any,
+    input_blobs: tuple[InputBlob, ...],
+    *,
+    ops: _PosixFileOps | None = None,
+) -> None:
+    """Publish complete JSON by same-directory rename in one pinned parent inode."""
+
+    _require_hardened_dirfd_support()
+    payload = (
+        json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True) + "\n"
+    ).encode("utf-8")
+    target_name = path.name
+    if target_name in ("", ".", "..") or Path(target_name).name != target_name:
+        raise InterfaceError("output target must be one ordinary basename component")
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    file_ops = ops or _FILE_OPS
+    parent_fd: int | None = None
+    temporary_fd: int | None = None
+    temporary_name: str | None = None
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(text)
-        os.replace(temporary_name, path)
-    except BaseException:
+        parent_fd = file_ops.open(
+            parent,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        )
+        pinned_parent = file_ops.fstat(parent_fd)
+        if not stat.S_ISDIR(pinned_parent.st_mode):
+            raise InterfaceError("output parent descriptor is not a directory")
+        for _ in range(128):
+            candidate = f".{target_name}.{secrets.token_hex(12)}.tmp"
+            try:
+                temporary_fd = file_ops.open(
+                    candidate,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | os.O_CLOEXEC
+                    | os.O_NOFOLLOW,
+                    0o600,
+                    dir_fd=parent_fd,
+                )
+                temporary_name = candidate
+                break
+            except FileExistsError:
+                continue
+        if temporary_fd is None or temporary_name is None:
+            raise InterfaceError("cannot allocate a unique hardened output temporary")
+
+        offset = 0
+        while offset < len(payload):
+            try:
+                written = file_ops.write(temporary_fd, memoryview(payload)[offset:])
+            except InterruptedError:
+                continue
+            if written <= 0:
+                raise InterfaceError("hardened output write made no progress")
+            offset += written
+        file_ops.close(temporary_fd)
+        temporary_fd = None
+
         try:
-            os.unlink(temporary_name)
+            current_parent = file_ops.statat(
+                parent, dir_fd=None, follow_symlinks=False
+            )
+        except FileNotFoundError as exc:
+            raise InterfaceError("output parent path disappeared before publication") from exc
+        if (
+            not stat.S_ISDIR(current_parent.st_mode)
+            or (current_parent.st_dev, current_parent.st_ino)
+            != (pinned_parent.st_dev, pinned_parent.st_ino)
+        ):
+            raise InterfaceError("output parent path no longer names the pinned directory")
+
+        try:
+            target_stat = file_ops.statat(
+                target_name, dir_fd=parent_fd, follow_symlinks=False
+            )
         except FileNotFoundError:
-            pass
+            target_stat = None
+        if target_stat is not None:
+            if stat.S_ISLNK(target_stat.st_mode):
+                raise InterfaceError("output target symlinks are forbidden")
+            if not stat.S_ISREG(target_stat.st_mode):
+                raise InterfaceError("existing output target must be a regular file")
+            input_identities = {(blob.device, blob.inode) for blob in input_blobs}
+            if (target_stat.st_dev, target_stat.st_ino) in input_identities:
+                raise InterfaceError("output target aliases an immutable input inode")
+
+        file_ops.renameat(
+            temporary_name,
+            target_name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+        temporary_name = None
+    except InterfaceError:
         raise
+    except OSError as exc:
+        raise InterfaceError(f"hardened output publication failed: {exc}") from exc
+    finally:
+        if temporary_fd is not None:
+            try:
+                file_ops.close(temporary_fd)
+            except OSError:
+                pass
+        if temporary_name is not None and parent_fd is not None:
+            try:
+                file_ops.unlinkat(temporary_name, dir_fd=parent_fd)
+            except OSError:
+                pass
+        if parent_fd is not None:
+            try:
+                file_ops.close(parent_fd)
+            except OSError:
+                pass
 
 
-def analyze_files(
-    events_path: str | Path,
-    intrinsics_path: str | Path,
-    poses_path: str | Path,
-    output_path: str | Path,
+def _analyze_blobs(
+    event_blob: InputBlob,
+    intrinsics_blob: InputBlob,
+    pose_blob: InputBlob,
     *,
     tile_width: int,
     tile_height: int,
     time_bin_ns: int,
     max_pose_age_ns: int,
 ) -> dict[str, Any]:
-    """Analyze one strict synthetic stream and atomically expose deterministic JSON."""
+    """Analyze three already-pinned immutable blobs without further path reads."""
 
-    input_paths = (events_path, intrinsics_path, poses_path)
-    _reject_output_alias(output_path, input_paths)
-    tile_width = _positive_int(tile_width, "tile_width")
-    tile_height = _positive_int(tile_height, "tile_height")
-    time_bin_ns = _positive_int(time_bin_ns, "time_bin_ns")
-    max_pose_age_ns = _nonnegative_int(max_pose_age_ns, "max_pose_age_ns")
-    provenance_labels = ("events input", "intrinsics input", "poses input")
-    before_hashes = tuple(
-        _stable_sha256(path, label)
-        for path, label in zip(input_paths, provenance_labels)
-    )
-    intrinsics = load_intrinsics(intrinsics_path)
-    pose_header, poses = load_pose_stream(poses_path, intrinsics)
-    header, events = _load_events(events_path, intrinsics, pose_header)
-    after_hashes = tuple(
-        _stable_sha256(path, label)
-        for path, label in zip(input_paths, provenance_labels)
-    )
-    if before_hashes != after_hashes:
-        raise InterfaceError("an input changed between provenance hashing and parsing")
-    if len(poses) > 2**LOGICAL_BIT_FORMAT["raw_sensor_payload"]["pose_version_bits"]:
+    intrinsics = parse_intrinsics_blob(intrinsics_blob)
+    pose_header, poses = parse_pose_stream_blob(pose_blob, intrinsics)
+    header, events = _load_events(event_blob, intrinsics, pose_header)
+    if len(poses) > 2 ** _RAW_SENSOR_PAYLOAD_WIDTHS["pose_version_bits"]:
         raise InterfaceError("pose stream exceeds the fixed 16-bit pose-version dictionary")
     pose_by_version: dict[str, Pose] = {pose.pose_id: pose for pose in poses}
     pose_code_by_version = {pose.pose_id: index for index, pose in enumerate(poses)}
@@ -574,7 +692,7 @@ def analyze_files(
             )
         pose_code = _require_uint(
             pose_code_by_version[event["pose_version"]],
-            16,
+            _RAW_SENSOR_PAYLOAD_WIDTHS["pose_version_bits"],
             f"event {event['event_id']}.pose_version_code",
         )
         exact_records.append(
@@ -634,7 +752,20 @@ def analyze_files(
             "coordinate_output": "fixed_reference_camera_image",
             "pose_source": "externally_supplied_explicit_pose_version",
             "rotation_only": True,
-            "unsupported": UNSUPPORTED_FEATURES,
+            "unsupported": list(UNSUPPORTED_FEATURES),
+        },
+        "analysis_contract": {
+            "implementation_id": MODEL_IMPLEMENTATION_ID,
+            "known_motion_blob_api_id": KNOWN_MOTION_BLOB_API_ID,
+            "result_contract_revision": RESULT_CONTRACT_REVISION,
+            "parameters": {
+                "tile_width": tile_width,
+                "tile_height": tile_height,
+                "time_bin_ns": time_bin_ns,
+                "max_pose_age_ns": max_pose_age_ns,
+            },
+            "logical_bit_format_id": LOGICAL_BIT_FORMAT["format_id"],
+            "pose_lookup_rule": "latest-at-or-before-zoh",
         },
         "input_contract": {
             "camera_id": header["camera_id"],
@@ -651,15 +782,15 @@ def analyze_files(
         },
         "input_provenance": {
             "hash_algorithm": "SHA-256",
-            "hash_scope": "exact file bytes",
-            "stability_scope": (
-                "each hash rejects mutation during its read; identical hashes are "
-                "required before and after parsing; no atomic three-file snapshot is claimed"
+            "hash_scope": "exact immutable bytes consumed by each parser",
+            "snapshot_scope": (
+                "each file is independently snapshotted once from one pinned descriptor; "
+                "no atomic three-file snapshot is claimed"
             ),
             "canonical_evidence_claimed": False,
-            "events_sha256": before_hashes[0],
-            "intrinsics_sha256": before_hashes[1],
-            "poses_sha256": before_hashes[2],
+            "events_sha256": event_blob.sha256,
+            "intrinsics_sha256": intrinsics_blob.sha256,
+            "poses_sha256": pose_blob.sha256,
         },
         "tiling": {
             "image_width": intrinsics.width,
@@ -704,7 +835,7 @@ def analyze_files(
             "exact_event_ledger_remains_complete": True,
         },
         "logical_bit_accounting": {
-            "format": LOGICAL_BIT_FORMAT,
+            "format": _logical_bit_format_json(),
             "scope": (
                 "declared logical fixed-width projection; not JSON bytes, actual wire "
                 "bandwidth, RTL, or a codec"
@@ -783,14 +914,55 @@ def analyze_files(
             },
         },
         "output_semantics": {
-            "atomic_visibility": "temporary file plus os.replace at destination",
+            "atomic_visibility": (
+                "mode-0600 temporary regular file plus same-directory dirfd-relative "
+                "POSIX atomic rename in a pinned parent inode"
+            ),
+            "namespace_hardening": "required-posix-dirfd-no-weak-fallback",
             "crash_durability_guaranteed": False,
             "file_fsync_performed": False,
             "directory_fsync_performed": False,
         },
     }
-    _atomic_write_json(Path(output_path), result)
     return result
+
+
+def analyze_files(
+    events_path: str | Path,
+    intrinsics_path: str | Path,
+    poses_path: str | Path,
+    output_path: str | Path,
+    *,
+    tile_width: int,
+    tile_height: int,
+    time_bin_ns: int,
+    max_pose_age_ns: int,
+) -> dict[str, Any]:
+    """Analyze one-read immutable inputs and publish through a pinned POSIX dirfd."""
+
+    tile_width = _positive_int(tile_width, "tile_width")
+    tile_height = _positive_int(tile_height, "tile_height")
+    time_bin_ns = _positive_int(time_bin_ns, "time_bin_ns")
+    max_pose_age_ns = _nonnegative_int(max_pose_age_ns, "max_pose_age_ns")
+    with ExitStack() as stack:
+        event_blob = stack.enter_context(open_input_blob(events_path, "events input"))
+        intrinsics_blob = stack.enter_context(
+            open_input_blob(intrinsics_path, "intrinsics input")
+        )
+        pose_blob = stack.enter_context(open_input_blob(poses_path, "poses input"))
+        result = _analyze_blobs(
+            event_blob,
+            intrinsics_blob,
+            pose_blob,
+            tile_width=tile_width,
+            tile_height=tile_height,
+            time_bin_ns=time_bin_ns,
+            max_pose_age_ns=max_pose_age_ns,
+        )
+        _publish_json_dirfd(
+            Path(output_path), result, (event_blob, intrinsics_blob, pose_blob)
+        )
+        return result
 
 
 __all__ = [
@@ -799,7 +971,9 @@ __all__ = [
     "EVENT_SCHEMA",
     "InterfaceError",
     "LOGICAL_BIT_FORMAT",
+    "MODEL_IMPLEMENTATION_ID",
     "RESULT_SCHEMA",
+    "RESULT_CONTRACT_REVISION",
     "UNSUPPORTED_FEATURES",
     "analyze_files",
 ]

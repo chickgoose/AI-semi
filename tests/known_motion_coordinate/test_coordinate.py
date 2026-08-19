@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 
+import demos.known_motion_coordinate.model as known_model
 from demos.known_motion_coordinate.model import (
     CANONICAL_COMMON_SUITE,
     InterfaceError,
@@ -429,16 +430,22 @@ class InterfaceTests(unittest.TestCase):
                 self.run_fixture(directory, event_records=events)
 
     def test_each_primary_input_is_read_once_and_exact_bytes_are_hashed(self) -> None:
-        original = Path.read_bytes
+        original_open = known_model.os.open
         counts: dict[Path, int] = {}
+        primary_paths = {
+            (FIXTURES / name).resolve()
+            for name in ("retired_events.jsonl", "intrinsics.json", "poses.jsonl")
+        }
 
-        def counted(path: Path) -> bytes:
-            resolved = path.resolve()
-            counts[resolved] = counts.get(resolved, 0) + 1
-            return original(path)
+        def counted(path, flags, mode=0o777, *, dir_fd=None):
+            if dir_fd is None:
+                resolved = Path(path).resolve()
+                if resolved in primary_paths:
+                    counts[resolved] = counts.get(resolved, 0) + 1
+            return original_open(path, flags, mode, dir_fd=dir_fd)
 
         with tempfile.TemporaryDirectory() as directory:
-            with mock.patch.object(Path, "read_bytes", counted):
+            with mock.patch.object(known_model.os, "open", counted):
                 summary, _, _ = self.run_fixture(directory)
         for name, provenance_key in (
             ("retired_events.jsonl", "events_input_sha256"),
@@ -448,7 +455,8 @@ class InterfaceTests(unittest.TestCase):
             path = (FIXTURES / name).resolve()
             self.assertEqual(counts[path], 1)
             self.assertEqual(
-                summary["provenance"][provenance_key], hashlib.sha256(original(path)).hexdigest()
+                summary["provenance"][provenance_key],
+                hashlib.sha256(path.read_bytes()).hexdigest(),
             )
 
     def test_embedded_digest_assertions_are_not_input_byte_identities(self) -> None:
