@@ -23,7 +23,11 @@ the scoped native canonical campaign. The twelve missing gates are:
 - organizer cell/clock/I/O rules, official constraints/corners, controlled
   producer freshness, and a matched A2/A3 cohort;
 - for each of A2 and A3: mapped PDK legality, post-route timing/area,
-  mapped vectorless power, and final mapped CDC/RDC.
+  authenticated/fresh matched physical cohort, organizer-approved mapped
+  legality and constraints, source-to-mapped semantic binding, and final
+  selected-interface CDC/RDC. A same-snapshot diagnostic cohort and structural
+  mapped/post-route CDC check now exist, but they intentionally do not satisfy
+  these authority gates.
 
 `HOLD` means evidence is absent or not authoritative. `FAIL` means a complete,
 authenticated evaluation produced a negative result. Missing evidence can

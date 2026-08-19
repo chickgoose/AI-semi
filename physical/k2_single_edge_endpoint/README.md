@@ -1,7 +1,10 @@
 # A2/A3 single-edge complete-endpoint physical staging
 
 This directory stages two independent GPDK045 Genus/Innovus rows for the
-single-edge fallback. It does not claim physical closure today. The immutable
+single-edge candidates. A hash-bound same-environment-snapshot diagnostic
+cohort now has clean setup/hold, DRC, antenna, connectivity, area, and
+vectorless-power results for both rows. It does not claim authenticated
+physical GO or sign-off. The immutable
 boundary starts at synchronous `source_pending_i`/`source_accept_o` admission
 and includes scheduler state, charged buffering, link/control, synchronous
 retirement, drain, and protocol-error logic. Testbench generation, coordinate
@@ -15,8 +18,9 @@ The exact rows are:
 | A3 | `a3_exact_scalar_prefix_k2_single_edge_top` | `rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge.f` |
 
 These are the exact names and bytes from hardened RTL source commit
-`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b` and integration commit
-`a0a4eb38632245db8ff5937ea5b6c6e3f3839246`; their RTL trees are identical.
+`eb298fe1416a4312269a6f9232e1445f8958dda2`; the physical contract pins both
+source and integration fields to that commit and tree
+`21afcca7052889d953a4801531f9f9c31b3c3be5`.
 Each three-entry candidate list
 contains its native scheduler, the exact nested
 `rtl/technology/single_edge/filelists/generic.f`, and its complete top. The

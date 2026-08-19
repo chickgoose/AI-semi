@@ -1,7 +1,10 @@
 # REDRED A2/A3 single-edge endpoint architecture contract
 
 Date: 2026-08-19
-Normative RTL: commit `6fc5e167918fa4c54786c9a3abb5f60ecd8b991b`
+Historical baseline RTL: commit `6fc5e167918fa4c54786c9a3abb5f60ecd8b991b`
+
+This is not the normative current A2 timing-optimized authority. Current status
+and code pointers are in `docs/REDRED_TEAM_STATUS_20260820.txt`.
 
 This document describes the hardened RTL bytes in commit `6fc5e16` only. The two
 complete tops are:

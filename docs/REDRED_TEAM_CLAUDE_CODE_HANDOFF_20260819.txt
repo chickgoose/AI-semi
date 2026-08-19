@@ -1,6 +1,10 @@
 REDRED 현재 설계 및 팀원 Claude Code 공유 문서
 작성 기준일: 2026-08-20
 
+2026-08-20 최종 압축 현황과 현재 검증 명령은 먼저 다음 파일을 본다.
+  docs/REDRED_TEAM_STATUS_20260820.txt
+이 문서의 과거 실행 이력과 위 압축 현황이 충돌하면 압축 현황을 우선한다.
+
 팀원 필독: 현재 설계 검토 브랜치는 아래 하나뿐이다.
   integration/redred-system-goal
 main, agents/*, codex/*, audit/* 및 다른 integration/* 브랜치는 현재 설계
@@ -17,7 +21,7 @@ main, agents/*, codex/*, audit/* 및 다른 integration/* 브랜치는 현재 �
   integration/redred-system-goal
 
 검증 기준 최소 commit:
-  bfb4b998049bbf9c66c4af9ffabba2c8ff096363
+  50e26f9
 
 검증된 A2 RTL authority commit:
   eb298fe1416a4312269a6f9232e1445f8958dda2
@@ -387,17 +391,17 @@ Native campaign publication:
   Innovus exit           PASS (0)            PASS (0)
   final setup paths      110                  101
   setup violations       0                    0
-  setup WNS              +0.0329976 ns        +0.0180397 ns
+  setup WNS              +0.0329976 ns        +0.0237889 ns
   setup TNS              0.0 ns               0.0 ns
   hold violations        0                    0
-  hold WNS               +0.00057663 ns       +0.00218582 ns
-  post-route instances   747                  583
-  post-route area        1,962.738            1,642.284
-  vectorless power       0.07962 mW            0.06759883 mW
+  hold WNS               +0.00057663 ns       +0.00103348 ns
+  post-route instances   747                  580
+  post-route area        1,962.738            1,628.262
+  vectorless power       0.07962095 mW         0.06556542 mW
 
 A2/A3 모두 Genus와 Innovus exit 0, setup/hold/DRC/antenna/connectivity 0,
 artifact ledger 생성 및 qualification parser 검증까지 완료됐다. A2는 A3보다
-area 19.51%, vectorless power 17.78%가 크지만 팀 synthetic full50에서
+area 20.54%, vectorless power 21.44%가 크지만 팀 synthetic full50에서
 accepted event 10,401개와 throughput 약 11.1%가 높다. 최신 A2 qualification은
 다음과 같다.
 
@@ -409,9 +413,14 @@ accepted event 10,401개와 throughput 약 11.1%가 높다. 최신 A2 qualificat
   qualification SHA-256:
     ccc0cd4e4e5e05feefe832c9cf1b664aad013ea176b6dbd439a528620ed621dd
 
-A3 qualification SHA-256은 다음이다.
+A3 qualification file SHA-256은 다음이다.
 
-  6a0da74d439c8490956a1e560238417caa6f3a52620a6c8dec7aa564a892a1af
+  effa068dea35a03d1ba3053fb8283f2c88750abc9f580303c1e0e4bb229442da
+
+두 후보는 동일 environment snapshot
+`6de2c54ee850bdfc82431294fa923588344026d974326c1369c829d953b90ddc`의
+diagnostic cohort에 결합됐다. Cohort file SHA-256은
+`abc1a79994a6ce752711ad1d4c093fe71744d2485d2a4061876fbddb954dc35b`다.
 
 위 power는 Innovus post-route vectorless screening 값이다. VCD/SAIF activity
 power나 signoff extraction 결과가 아니다. 두 결과 모두 진단 범위 PASS지만
@@ -501,18 +510,21 @@ Scoped PASS:
   - A3 final setup/hold 0 violation 및 artifact diagnostic qualification
   - A3 post-route area와 vectorless power screening 수집
   - A2/A3 각각 동일 contract/6.5 ns 조건의 physical closure 확인
-  - optimized A3 source에 고정된 source-level CDC/RDC 23/23
+  - eb298fe A2/A3 source set에 고정된 source-level CDC/RDC 23/23
+  - mapped/post-route structural single-clock CDC diagnostic 15/15
+  - 최신 RTL full50/mutation authority diagnostic 10/10
+  - scalar-free diagnostic candidate selection 10/10
 
 HOLD:
 
   - organizer-authoritative PDK/cell/clock/I/O/load/corner
   - signoff extraction 및 authenticated producer evidence
-  - authenticated A2/A3 matched physical cohort
+  - authenticated/fresh A2/A3 matched physical cohort
   - organizer-authoritative mapped-cell legality
   - VCD/SAIF activity power
-  - final mapped CDC/RDC
+  - source→mapped formal 또는 동등한 semantic binding
+  - final selected-interface CDC/RDC authority
   - controlled producer identity/freshness
-  - authenticated matched cohort
   - final candidate selection 및 team release
   - official dataset claim
   - coordinate numeric RTL
@@ -536,11 +548,14 @@ HOLD:
   tests/k2_single_edge_vectorless/run_all.sh
   tests/redred_single_edge_pdk_legality/run_all.sh
   tests/redred_single_edge_cdc_rdc/run_all.sh
+  tests/redred_single_edge_mapped_cdc_rdc/run_all.sh
+  tests/redred_single_edge_digital_authority/run_all.sh
+  tests/redred_diagnostic_candidate_selection/run_all.sh
   tests/redred_single_edge_campaign/run_all.sh
   tests/redred_final_selection/run_all.sh
   python3 -m unittest discover -s tests/known_motion_coordinate -p 'test_*.py'
 
-현재 관련 test inventory: 337개
+기존 관련 test inventory 337개에 이번 신규 contract test 35개가 추가됐다.
 
   - native campaign: 112/112
   - native aggregate adversarial: 13/13
@@ -550,6 +565,9 @@ HOLD:
   - final-selection: 19/19, candidate NONE/HOLD
   - source-structure PDK: 17/17
   - source CDC/RDC: 23/23
+  - mapped/post-route CDC diagnostic: 15/15
+  - latest-RTL digital authority diagnostic: 10/10
+  - diagnostic candidate selection: 10/10
   - known-motion coordinate: 24/24
   - historical selector quarantine: 10/10
 
@@ -563,9 +581,10 @@ HOLD:
   - final-selection: 19/19 PASS, candidate NONE/HOLD
 
 나머지 native campaign/coordinate/quarantine 수치는 기존 고정 결과 inventory다.
-337개 전체를 이번 한 명령에서 연속 재실행했다고 주장하지 않는다. 실제
-Cadence 결과는 위 8절의 특정 c916a21 server attempt에만 귀속하고, parser
-unit test나 local compatibility를 새 P&R 실행으로 표현하지 않는다.
+전체 inventory를 이번 한 명령에서 연속 재실행했다고 주장하지 않는다. 실제
+Cadence 결과는 `evidence/k2_single_edge_endpoint/diagnostic_20260820/`의
+archive/cohort와 각 qualification hash에만 귀속하고, parser unit test나 local
+compatibility를 새 P&R 실행으로 표현하지 않는다.
 
 
 12. 절대 금지할 주장
@@ -573,7 +592,7 @@ unit test나 local compatibility를 새 P&R 실행으로 표현하지 않는다.
 
   - A2가 최종 선정됐다.
   - team release가 완료됐다.
-  - A2가 timing closure를 달성했다.
+  - A2/A3 diagnostic timing closure를 authenticated sign-off로 표현한다.
   - A3 diagnostic closure를 signoff/Fmax 보증으로 표현한다.
   - authenticated real P&R/signoff가 완료됐다.
   - A3 vectorless 값을 VCD/SAIF activity power로 표현한다.
@@ -608,7 +627,7 @@ unit test나 local compatibility를 새 P&R 실행으로 표현하지 않는다.
   integration/redred-system-goal
 
 검증 기준 최소 commit:
-  c49fabe8aea9390512f1dea3e20a57a04b98cb01
+  50e26f9
 
 먼저 다음을 실행한다.
 
@@ -626,6 +645,7 @@ REMOTE_INTEGRATION_BRANCH_NOT_PUBLISHED라고 보고하고 중단한다.
 
 다음 파일을 우선 읽는다.
 
+  docs/REDRED_TEAM_STATUS_20260820.txt
   contracts/redred_system_goal/active_goal.json
   docs/REDRED_TEAM_CLAUDE_CODE_HANDOFF_20260819.txt
   docs/AI_SEMI_QNA_REDRED_SINGLE_EDGE_STATUS_20260819.md
@@ -648,6 +668,10 @@ unauthenticated이므로 final candidate는 NONE이고 release는 HOLD다.
 
   python3 physical/k2_single_edge_endpoint/flow.py compatibility
   tests/k2_single_edge_endpoint/run_all.sh
+  tests/redred_single_edge_cdc_rdc/run_all.sh
+  tests/redred_single_edge_mapped_cdc_rdc/run_all.sh
+  tests/redred_single_edge_digital_authority/run_all.sh
+  tests/redred_diagnostic_candidate_selection/run_all.sh
 
 이 gate는 exact RTL source/filelist/module inventory, top port order/direction/
 width, physical/vectorless boundary parity, Genus SYNTHESIS define을 검사한다.
@@ -681,6 +705,9 @@ screening 범위로만 보고한다.
   4) [완료] 동일 환경 A2/A3 Genus 및 Innovus 실행
   5) [완료] A3 post-route timing/area/vectorless power diagnostic qualification
   6) [완료] A2 onehot timing-cone 개선과 post-route setup/hold closure
-  7) authenticated producer/freshness와 matched cohort 구성
-  8) final mapped CDC/RDC 및 필요 시 VCD/SAIF power 수집
-  9) 모든 final-selection gate가 닫힌 후 최종 후보 결정
+  7) [완료] 동일 environment snapshot diagnostic cohort 구성
+  8) [완료] mapped/post-route structural CDC diagnostic와 최신 RTL replay 검증
+  9) [완료] scalar-free Pareto와 팀 조건부 A2 추천/A3 fallback 계산
+  10) authenticated producer/freshness, organizer authority와 semantic equivalence 확보
+  11) 필요 시 VCD/SAIF power 및 final selected-interface CDC/RDC 수집
+  12) 모든 final-selection authority gate가 닫힌 후 공식 후보 결정

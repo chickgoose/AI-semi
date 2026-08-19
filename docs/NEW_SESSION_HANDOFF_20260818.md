@@ -1,5 +1,9 @@
 # AI-semi 새 대화 세션 인수인계
 
+> 2026-08-20 update: 현재 코드·정량 결과·검증 명령은
+> `docs/REDRED_TEAM_STATUS_20260820.txt`를 먼저 적용한다. 아래 2026-08-18
+> 내용은 운영 진입점과 역사 복구 기록이다.
+
 기준 시각: 2026-08-18 KST
 목적: 과거 작업을 자동 재개하기 위한 문서가 아니라, 새 대화가 검증된 핵심 사실과 운영 환경을 잃지 않고 **새 목표부터 다시 시작**하게 하는 로컬 영구 메모리다.
 
@@ -456,9 +460,11 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 - Producer-native synthetic/public adapter와 aggregate pipeline은 team-canonical
   campaign 범위의 `A2_PRIMARY` 추천을 닫았다. Generic campaign-v3는 schema
   incompatible UNBOUND 상태지만 successor native pipeline의 별도 prerequisite가
-  아니다. 이 PASS는 mapped CDC/RDC, mapped/organizer PDK legality, real
-  P&R/post-route timing, mapped vectorless power, 최종 A2/A3 선택 또는 team
-  release를 닫지 않는다.
+  아니다. 이후 single-edge A2/A3 실제 Genus/Innovus post-route diagnostic,
+  mapped/post-route structural CDC 검사와 동일 environment snapshot cohort는
+  확보됐다. 다만 producer-authenticated freshness, organizer-approved
+  mapped/PDK legality와 constraints, source→mapped semantic binding, 공식 최종
+  A2/A3 선택 또는 team release는 닫지 않는다.
 - known-motion 좌표 변환은 endpoint PPA 밖의 post-retire system demo로 먼저 검증한다.
 
 새 세션의 한 문장 목표는 `docs/NEW_SESSION_START_PROMPT.txt`에 기록했다.
@@ -473,6 +479,8 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
   synchronous-input/source-only 범위에서 PASS다.
 - policy verifier는 native publication/result/seal과 정책 구조를 검증하지만
   physical/final release GO authority는 아니다.
-- Single-edge interface는 선택됐지만 mapped/organizer legality, real-server
-  P&R/post-route timing, mapped vectorless power, final CDC/RDC, 최종 A2/A3 선택과
-  team release는 모두 HOLD다.
+- Single-edge interface는 선택됐고 real-server P&R/post-route timing,
+  vectorless power, structural mapped/post-route CDC는 diagnostic PASS다.
+  Mapped/organizer legality authority, authenticated freshness, semantic
+  equivalence, final selected-interface CDC/RDC, 공식 A2/A3 선택과 team
+  release는 HOLD다.

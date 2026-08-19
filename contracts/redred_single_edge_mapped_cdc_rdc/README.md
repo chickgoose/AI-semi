@@ -62,10 +62,14 @@ Canonical structural counts are:
 
 The same offline receipt reproduces:
 
-| Candidate | Setup WNS (ns) | Hold WNS (ns) | Area (um^2) | Vectorless power (mW) |
+| Candidate | Setup WNS (ns) | Hold WNS (ns) | Area (report raw) | Vectorless power (mW) |
 |---|---:|---:|---:|---:|
 | A2 | +0.0329976 | +0.00057663 | 1962.738 | 0.07962095 |
 | A3 | +0.0237889 | +0.00103348 | 1628.262 | 0.06556542 |
+
+The binding retains the historical field name `area_um2`, but the archived
+area report does not print a unit. Treat the numbers as report-raw area unless
+the library/flow unit is separately authenticated.
 
 Both rows have zero setup/hold violations and zero DRC, antenna, signal
 connectivity, and PG connectivity problems in the archived reports.

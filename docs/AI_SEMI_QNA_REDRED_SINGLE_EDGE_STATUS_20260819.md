@@ -47,7 +47,8 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 
 ## 현재 bounded evidence
 
-- Hardened source `6fc5e167…`, integration `a0a4eb386…`의 9-wire single-edge
+- 최신 physical RTL source `eb298fe…`, integration lineage `bfb4b998…`의
+  9-wire single-edge
   complete endpoint를 구현했다. Directed smoke는 257 legal wire states와
   64 back-to-back records/96 events, disable/resume 및 sticky-error/clean-drain을
   통과했다.
@@ -84,13 +85,23 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
   Genus/Innovus exit 0, setup/hold 위반 0, DRC/antenna/connectivity 0을
   달성했다. A2는 setup WNS `+0.0329976 ns`, hold WNS `+0.00057663 ns`,
   area `1962.738`, 747 instances, post-route vectorless `0.07962 mW`다.
-  A3는 setup WNS `+0.0180397 ns`, hold WNS `+0.00218582 ns`, area
-  `1642.284`, 583 instances, `0.06759883 mW`다. A2 RTL authority
+  A3는 setup WNS `+0.0237889 ns`, hold WNS `+0.00103348 ns`, area
+  `1628.262`, 580 instances, `0.06556542 mW`다. A2 RTL authority
   `eb298fe1416a4312269a6f9232e1445f8958dda2`는 공식 integration branch
   계보에 포함되어 fresh clone에서도 접근 가능하다.
 - A2 local endpoint evidence regression은 53/53 PASS이며, scheduler model
   lockstep은 200,000 cycles, RTL mutation은 6/6 kill을 통과했다. 이는
   2-state simulation 범위이며 4-state X/formal equivalence는 별도 HOLD다.
+- 최신 RTL authority에 대해 full50 actual RTL 100회, reset 2회,
+  mutation-activation 2회, literal mutation 8회를 다시 실행해 모두 PASS했다.
+  A2/A3 full50 행은 이전 canonical result와 byte-exact로 일치한다.
+- A2/A3 physical 결과는 동일 contract와 동일 environment snapshot SHA
+  `6de2c54e…0ddc`의 diagnostic cohort로 묶였고, mapped/post-route netlist의
+  direct `clk_i` posedge 구조 검사도 PASS했다. 이는 producer-authenticated
+  freshness나 source-to-mapped formal equivalence를 의미하지 않는다.
+- scalar-free diagnostic Pareto front는 `[A2,A3]`다. 사전 정책에 따른 팀
+  조건부 추천은 A2이고 exact-prefix fallback은 A3지만, 공식 candidate는
+  계속 NONE이다.
 
 ## 현재 HOLD
 
@@ -112,9 +123,9 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 - `contracts/redred_final_selection/`의 고정 verifier는 현재 immutable
   input에서 12개 미충족 gate와 `candidate=NONE`을 재계산한다. Caller JSON,
   P6 증거, 임의 scalar score 또는 shared failure는 선택 권한을 만들 수 없다.
-- 최종 A2/A3 선택과 team release는 동일 조건 P&R·power, organizer PDK/I/O
-  authority, 보존된 canonical evidence와 선택 interface의 최종 CDC/RDC가
-  닫힐 때까지 HOLD다.
+- 최종 A2/A3 선택과 team release는 authenticated/fresh physical producer,
+  organizer PDK/I/O authority, formal 또는 동등한 source→mapped 의미 결합과
+  최종 selected-interface CDC/RDC가 닫힐 때까지 HOLD다.
 
 현재 설계 판단은 `A2 primary / A3 exact-prefix fallback`이다. A3는 exact
 scalar-prefix가 요구되거나 A2 고유 gate가 실패하고 A3가 그 gate를 독립적으로
