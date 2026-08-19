@@ -73,9 +73,9 @@ class SingleEdgeContractTests(unittest.TestCase):
     def test_canonical_pinned_a2_a3_pass(self) -> None:
         result = self.run_cli()
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn('"repository_commit": "a57943adba759fc955b4506e99703c1dd9736fba"',
+        self.assertIn('"repository_commit": "eb298fe1416a4312269a6f9232e1445f8958dda2"',
                       result.stdout)
-        self.assertIn('"integration_commit": "a57943adba759fc955b4506e99703c1dd9736fba"',
+        self.assertIn('"integration_commit": "bfb4b998049bbf9c66c4af9ffabba2c8ff096363"',
                       result.stdout)
         self.assertIn('"reset_assertion_precondition": "drain_idle_o == 1"',
                       result.stdout)

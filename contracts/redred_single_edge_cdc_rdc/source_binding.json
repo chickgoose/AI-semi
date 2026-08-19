@@ -1,16 +1,16 @@
 {
   "schema": "redred-single-edge-source-binding-v1",
-  "source_set_id": "a2-a3-single-edge-hardened-6fc5e16",
-  "repository_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
-  "integration_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
+  "source_set_id": "a2-a3-single-edge-physical-authority-eb298fe",
+  "repository_commit": "eb298fe1416a4312269a6f9232e1445f8958dda2",
+  "integration_commit": "bfb4b998049bbf9c66c4af9ffabba2c8ff096363",
   "files": [
     {
       "path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
-      "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"
+      "sha256": "f8d07af94db7fc03eb21583e29180708991d827dbed5602b305b38ab8ae6f66e"
     },
     {
       "path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
-      "sha256": "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057"
+      "sha256": "88f70140358cbfb678b71b2341e5102e982b3b8b8ce4f04d32d0504b2a44f39a"
     },
     {
       "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",

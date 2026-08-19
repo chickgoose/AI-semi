@@ -13,10 +13,10 @@ simple polarity inversion at a child reset port is permitted. Combinational
 ready/error quiescing is not treated as state reset and adds no sensitivity
 edge.
 
-`contract.json` binds the exact source blobs introduced by commit
-`6fc5e167918fa4c54786c9a3abb5f60ecd8b991b` and proves those blobs are
-byte-identical in integration commit
-`a57943adba759fc955b4506e99703c1dd9736fba`. The blobs are read from Git, so
+`contract.json` binds the exact A2 physical-authority and complete A3 endpoint
+source set at commit `eb298fe1416a4312269a6f9232e1445f8958dda2` and proves
+those blobs are byte-identical in integration commit
+`bfb4b998049bbf9c66c4af9ffabba2c8ff096363`. The blobs are read from Git, so
 the verification is independent of whether that commit has already been
 merged into the current checkout.  The canonical invocation is:
 
@@ -131,3 +131,10 @@ Run the independent mutation suite with:
 ```sh
 bash tests/redred_single_edge_cdc_rdc/run_all.sh
 ```
+
+This source-level PASS is supplemented by the exact archived mapped and
+post-route structural diagnostic in
+`contracts/redred_single_edge_mapped_cdc_rdc`. That successor diagnostic
+checks both physical netlist views but deliberately keeps the final release
+gate at HOLD until producer authentication, freshness, and organizer authority
+exist.

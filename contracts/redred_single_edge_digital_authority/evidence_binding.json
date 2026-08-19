@@ -1,0 +1,57 @@
+{
+  "schema": "redred-single-edge-digital-authority-binding-v1",
+  "archive": {
+    "path": "evidence/k2_single_edge_endpoint/digital_eb298fe_20260820/digital_authority_artifacts.tar",
+    "sha256": "c795ef5653cc9666c8912e553430e4f1987fdc8078b86d61c7853597cf30b930",
+    "size_bytes": 163840
+  },
+  "members": {
+    "pins": {"path": "pins.json", "sha256": "a5a117640b234a0e5f8535778ff2029c32f93546b66fe363f60ee2182cced920"},
+    "result": {"path": "result.json", "sha256": "096f6a784f26ba1406d712c6ccdd85c7a7dae2ecacad817077b708d47fe20f13"}
+  },
+  "rtl_authority": {
+    "source_commit": "eb298fe1416a4312269a6f9232e1445f8958dda2",
+    "source_tree": "21afcca7052889d953a4801531f9f9c31b3c3be5",
+    "integration_commit": "bfb4b998049bbf9c66c4af9ffabba2c8ff096363",
+    "integration_tree": "be2cf4ca78e2f02f59a77b748a8a226047ea3e7e"
+  },
+  "campaign": {
+    "suite": "generator-v4-full50",
+    "manifest_sha256": "9fe40060e7e3fb37d41f2b0308cbcd21d50aa7e70ac052b9a59af3df69f2bba9",
+    "actual_rtl_executions": 100,
+    "reset_executions": 2,
+    "mutation_activation_executions": 2,
+    "mutation_executions": 8,
+    "receipt_only_executions": 0
+  },
+  "expected": {
+    "a2": {
+      "generated": 106416,
+      "source_overrun": 2370,
+      "accepted": 104046,
+      "retired": 104046,
+      "fixed_window_cycles": 115968,
+      "fixed_window_retired": 103940,
+      "fixed_window_events_per_cycle": 0.896281733,
+      "occurrence_to_accept_max": 23,
+      "accept_to_retire_max": 3
+    },
+    "a3": {
+      "generated": 106416,
+      "source_overrun": 12771,
+      "accepted": 93645,
+      "retired": 93645,
+      "fixed_window_cycles": 115968,
+      "fixed_window_retired": 93548,
+      "fixed_window_events_per_cycle": 0.806670806,
+      "occurrence_to_accept_max": 265,
+      "accept_to_retire_max": 2
+    }
+  },
+  "prior_canonical_result": {
+    "path": "tests/a23_full_single_edge_replay/result.json",
+    "sha256": "e21e714e4c4ebbeba4caf63ad5656b2b29fc05881ebb74ea6d93114c5f7d8cf4",
+    "full50_rows_must_match_exactly": true
+  },
+  "evidence_class": "LOCALLY_RERUN_HASH_BOUND_DIAGNOSTIC_NOT_PRODUCER_AUTHENTICATED"
+}

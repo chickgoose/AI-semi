@@ -1,0 +1,19 @@
+{
+  "schema": "redred-single-edge-digital-authority-contract-v1",
+  "contract_id": "REDRED_LATEST_PHYSICAL_RTL_FULL50_REPLAY",
+  "decision": "DIAGNOSTIC_VERIFY_REQUIRED",
+  "binding": {
+    "path": "evidence_binding.json",
+    "sha256": "9441a2495cc43bea5923a58bede040361cb629f59281ef44ee417003bd61f0b8"
+  },
+  "required_invariants": [
+    "generated = source_overrun + accepted",
+    "accepted = retired after bounded drain",
+    "accepted event identity retires exactly once in global acceptance order",
+    "reset occurs only after externally observed clean drain",
+    "all literal error mutations compile, execute, and are killed"
+  ],
+  "selection_use": "TEAM_DIAGNOSTIC_METRICS_ELIGIBLE",
+  "evidence_class": "LOCALLY_RERUN_HASH_BOUND_DIAGNOSTIC_NOT_PRODUCER_AUTHENTICATED",
+  "maximum_release_decision": "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE"
+}

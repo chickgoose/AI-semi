@@ -21,9 +21,9 @@ from typing import Any
 CONTRACT_SCHEMA = "redred-single-edge-cdc-rdc-contract-v1"
 BINDING_SCHEMA = "redred-single-edge-source-binding-v1"
 HOLD = "HOLD_A2_SOURCE_SET_UNBOUND"
-CANONICAL_COMMIT = "a57943adba759fc955b4506e99703c1dd9736fba"
-CANONICAL_INTEGRATION_COMMIT = "a57943adba759fc955b4506e99703c1dd9736fba"
-CANONICAL_BINDING_SHA256 = "60fd5c16debd3272bcbea36b41abbf9a898eb96780216afc7e5194a599669b8c"
+CANONICAL_COMMIT = "eb298fe1416a4312269a6f9232e1445f8958dda2"
+CANONICAL_INTEGRATION_COMMIT = "bfb4b998049bbf9c66c4af9ffabba2c8ff096363"
+CANONICAL_BINDING_SHA256 = "d8c5fe2c5617dc8c43cc54b71f1c32eecc27addbda80888342175db7be74f2b6"
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*\Z")
 CLOCKISH = re.compile(r"(?:^|_)(?:clk|clock)(?:$|_)", re.I)

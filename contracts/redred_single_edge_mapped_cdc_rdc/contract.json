@@ -1,0 +1,28 @@
+{
+  "schema": "redred-single-edge-mapped-cdc-rdc-contract-v1",
+  "contract_id": "REDRED_A2_A3_MAPPED_AND_POSTROUTE_SINGLE_EDGE",
+  "decision": "DIAGNOSTIC_VERIFY_REQUIRED",
+  "binding": {
+    "path": "evidence_binding.json",
+    "sha256": "75b1098aa72c31b047338669399b5244b05a3b38526cf8f0af18437c7ed4881a"
+  },
+  "cell_semantics": {
+    "path": "cell_semantics.json",
+    "sha256": "47c513955dd892b7e293adee72256b96d4291fa0c4c6591e7adcb3f63ffa5f8e"
+  },
+  "policy": {
+    "primary_clock": "clk_i",
+    "clock_domains": 1,
+    "clock_edge": "posedge",
+    "sequential_clock_connection": "DIRECT_PRIMARY_CLOCK_ONLY",
+    "generated_gated_forwarded_clocks": "FORBIDDEN",
+    "latches": "FORBIDDEN",
+    "asynchronous_controls": "FORBIDDEN",
+    "clock_as_data": "FORBIDDEN",
+    "external_inputs": "ASSUMED_SYNCHRONOUS_TO_PRIMARY_CLOCK",
+    "unknown_cells_or_ports": "FAIL",
+    "mapped_and_postroute_views_required": true
+  },
+  "evidence_class": "CALLER_SELF_SEALED_UNAUTHENTICATED_DIAGNOSTIC_ONLY",
+  "maximum_decision": "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE"
+}

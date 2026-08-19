@@ -1,0 +1,118 @@
+{
+  "schema": "redred-single-edge-mapped-cdc-evidence-binding-v1",
+  "archive": {
+    "path": "evidence/k2_single_edge_endpoint/diagnostic_20260820/mapped_cdc_artifacts.tar",
+    "sha256": "9c85f74d4fd399149891bf39c56674132c46a554a15baa3d4c00d60ea198b698",
+    "size_bytes": 358400
+  },
+  "source_authority": {
+    "repository_commit": "eb298fe1416a4312269a6f9232e1445f8958dda2",
+    "integration_commit": "bfb4b998049bbf9c66c4af9ffabba2c8ff096363",
+    "source_cdc_contract_sha256": "d4c96072e2edbda18a79fada7d14ffc9b6dc01ee65d5d9795336ee7ff20dbf34",
+    "physical_contract_sha256": "10e0de608ecf1992a2d253a7756a2256117c76a1c507932e65f8fbcf3742b6d2"
+  },
+  "cohort": {
+    "member": "cohort/cohort.json",
+    "sha256": "abc1a79994a6ce752711ad1d4c093fe71744d2485d2a4061876fbddb954dc35b",
+    "document_sha256": "48ea43b7ad247af329785ac3bf9174a6aae9d417f63561c4449c3475adf91691",
+    "decision": "HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE",
+    "same_environment_snapshot_sha256": "6de2c54ee850bdfc82431294fa923588344026d974326c1369c829d953b90ddc"
+  },
+  "candidates": {
+    "a2": {
+      "top": "a2_batched_iwrr_single_edge_top",
+      "ledger": {
+        "member": "a2/artifact-ledger.json",
+        "sha256": "0747d52191ed0aadbf69a8bc6533e72677225116a7bf70c6948d22f6c345dda4"
+      },
+      "qualification": {
+        "member": "a2/qualification.json",
+        "sha256": "b76f83ec44fc27fdb0c449447571f4fa3ae279db4af68c7d7ce391fe70b3e5cc",
+        "document_sha256": "ccc0cd4e4e5e05feefe832c9cf1b664aad013ea176b6dbd439a528620ed621dd"
+      },
+      "mapped_netlist": {
+        "member": "a2/mapped.v",
+        "sha256": "67f3df8c333a2570d0e844bf6cbfd28b0cbe8c2ff01439bb8bcd97779c05175d",
+        "instance_count": 518,
+        "sequential_count": 55
+      },
+      "mapped_sdc": {
+        "member": "a2/mapped.sdc",
+        "sha256": "73e0a690ed3cae1cba28073acc8ecc30cd393897648a22476bce0df9bd198cde"
+      },
+      "postroute_netlist": {
+        "member": "a2/postroute.v",
+        "sha256": "493e47ccdd2d662da144a113a65fd97e843a3f4ff3e9eda805b7da4431a04e22",
+        "instance_count": 747,
+        "sequential_count": 55
+      },
+      "physical_reports": {
+        "final_timing": {"member": "a2/reports/final_timing_receipt.machine", "sha256": "2ba74dd0ed48ba3cceb4649e77b0083abe9222501b8fda78134552c2fc6c3a70"},
+        "area": {"member": "a2/reports/area.rpt", "sha256": "e4e6b4d5c7599d0b897ae2e3c4d1fc627259fbe0c587e3dfc121c5e17d8df2fd"},
+        "power": {"member": "a2/reports/power_vectorless_screening.rpt", "sha256": "ee7a1bbdb274833aee672176e6d201c5bef5aecf8bd58e00a36448c0741ed905"},
+        "drc": {"member": "a2/reports/drc.rpt", "sha256": "aa0f6dfda0b0602554903808cd74fa67d45df35cd758409c257701fade8aa0a1"},
+        "antenna": {"member": "a2/reports/antenna.rpt", "sha256": "def1b4ce3cc6b14681d6b49fb65c84368836cd37984164a0fead8eb0d661e6c2"},
+        "connectivity": {"member": "a2/reports/connectivity.rpt", "sha256": "b140b16db385e0cfcaebfccf766ed3e3a8bef9c3277cd83fa3aa8088a4ef4aee"},
+        "pg_connectivity": {"member": "a2/reports/pg_connectivity.rpt", "sha256": "3a12adf8de8747a873fe598996eb48b90cae42cceb196f99fe4179f1093bb4f3"},
+        "check_timing": {"member": "a2/reports/check_timing.rpt", "sha256": "33ce661ffb731c43434a7553810dccad9b81abf85b1d53558fdbde3a3c8f72f2"}
+      },
+      "expected_metrics": {
+        "setup_wns_ns": 0.0329976,
+        "hold_wns_ns": 0.00057663,
+        "area_um2": 1962.738,
+        "internal_power_mw": 0.04372489,
+        "switching_power_mw": 0.03585584,
+        "leakage_power_mw": 0.00004022,
+        "total_power_mw": 0.07962095
+      }
+    },
+    "a3": {
+      "top": "a3_exact_scalar_prefix_k2_single_edge_top",
+      "ledger": {
+        "member": "a3/artifact-ledger.json",
+        "sha256": "caaecf422dc47cd6578423ee81ba5013af675eed89f464458f698f1feed87ff3"
+      },
+      "qualification": {
+        "member": "a3/qualification.json",
+        "sha256": "effa068dea35a03d1ba3053fb8283f2c88750abc9f580303c1e0e4bb229442da",
+        "document_sha256": "da22467ba72725c1668ffca93719d82e83e35d1376801900c658318f76b285c1"
+      },
+      "mapped_netlist": {
+        "member": "a3/mapped.v",
+        "sha256": "c2a2ceec726b91595e3d15b8382513715a916b6d4c00106b3fcbb763232ea8fd",
+        "instance_count": 389,
+        "sequential_count": 48
+      },
+      "mapped_sdc": {
+        "member": "a3/mapped.sdc",
+        "sha256": "46295462e9c29289cb9b3f16c981c7bb7eaf8cae0271b6a622549b3a30b9020a"
+      },
+      "postroute_netlist": {
+        "member": "a3/postroute.v",
+        "sha256": "8fee18130898dc227ddce398055e538a99574995560a6ad3c026b6d0b0ce17a2",
+        "instance_count": 580,
+        "sequential_count": 48
+      },
+      "physical_reports": {
+        "final_timing": {"member": "a3/reports/final_timing_receipt.machine", "sha256": "34bb6c861d08a0da282e6c87b64c66a6b51f51739f51808a66e70e7caccd9d1d"},
+        "area": {"member": "a3/reports/area.rpt", "sha256": "d1fc37efb8780536d6d153da31bc99f1e55ba61393cf3000a0f9e16b34174981"},
+        "power": {"member": "a3/reports/power_vectorless_screening.rpt", "sha256": "e0fc647277255786cf94b8225da474b5b34f7d408fa2d3ebb221ee13b35c9074"},
+        "drc": {"member": "a3/reports/drc.rpt", "sha256": "d00e3f3207abce5fecbb266b0d82270c86c37882bb3bb8d878e6ea86062461a4"},
+        "antenna": {"member": "a3/reports/antenna.rpt", "sha256": "f7021ef2c5d8d3fecf768b0bb46fd8e0aaa572a3bf0d5f58749dda89bd27e922"},
+        "connectivity": {"member": "a3/reports/connectivity.rpt", "sha256": "67d0bf3677c45b9f5b75e9d684351d3cdcb1c5569c5474e433f8b266dc625fd5"},
+        "pg_connectivity": {"member": "a3/reports/pg_connectivity.rpt", "sha256": "93616a8a7ae267d54c9fa3f8263abe327f3ea53374f464b68c65d5a733d7120f"},
+        "check_timing": {"member": "a3/reports/check_timing.rpt", "sha256": "21f5fb123b6dd2d408039df6c0c86485e3bbf3819db80e342774d94b8117b0b6"}
+      },
+      "expected_metrics": {
+        "setup_wns_ns": 0.0237889,
+        "hold_wns_ns": 0.00103348,
+        "area_um2": 1628.262,
+        "internal_power_mw": 0.03680195,
+        "switching_power_mw": 0.02873022,
+        "leakage_power_mw": 0.00003325,
+        "total_power_mw": 0.06556542
+      }
+    }
+  },
+  "evidence_class": "CALLER_SELF_SEALED_UNAUTHENTICATED_DIAGNOSTIC_ONLY"
+}

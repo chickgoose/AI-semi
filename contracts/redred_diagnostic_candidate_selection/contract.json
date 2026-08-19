@@ -1,0 +1,42 @@
+{
+  "schema": "redred-diagnostic-candidate-selection-contract-v1",
+  "contract_id": "REDRED_A2_PRIMARY_A3_EXACT_PREFIX_FALLBACK_DIAGNOSTIC",
+  "inputs": {
+    "digital": {
+      "contract": {"path": "contracts/redred_single_edge_digital_authority/contract.json", "sha256": "9a0becdc066eee1b8f4da34d89505e0ca38f02eb43d0e0558ef037298039126c"},
+      "binding": {"path": "contracts/redred_single_edge_digital_authority/evidence_binding.json", "sha256": "9441a2495cc43bea5923a58bede040361cb629f59281ef44ee417003bd61f0b8"},
+      "verifier": {"path": "contracts/redred_single_edge_digital_authority/verify_contract.py", "sha256": "72f093684ef7ff04711656e33a1cda8b132b804b14ee6ff27a658868c046ec1c"}
+    },
+    "physical": {
+      "contract": {"path": "contracts/redred_single_edge_mapped_cdc_rdc/contract.json", "sha256": "a659939dae09788560fd9c8075185d63dfc0a4eb1b04ac9fd0ea1e78a5af98cd"},
+      "binding": {"path": "contracts/redred_single_edge_mapped_cdc_rdc/evidence_binding.json", "sha256": "75b1098aa72c31b047338669399b5244b05a3b38526cf8f0af18437c7ed4881a"},
+      "verifier": {"path": "contracts/redred_single_edge_mapped_cdc_rdc/verify_contract.py", "sha256": "fd7c2dea382a2f304e5e699276509b65bf1a6895d5f4c1ebf52bd2e2c67d0a2a"}
+    }
+  },
+  "hard_gates": {
+    "accepted_event_exact_once": "PASS_REQUIRED",
+    "source_single_edge_cdc_rdc": "PASS_REQUIRED",
+    "mapped_postroute_structural_cdc_rdc": "PASS_DIAGNOSTIC_REQUIRED",
+    "setup_hold_drc_connectivity": "PASS_DIAGNOSTIC_REQUIRED",
+    "organizer_constraints": "HOLD",
+    "authenticated_controlled_producer": "HOLD",
+    "freshness_authority": "HOLD"
+  },
+  "pareto_objectives": [
+    {"metric": "source_overrun", "direction": "min"},
+    {"metric": "fixed_window_events_per_cycle", "direction": "max"},
+    {"metric": "occurrence_to_accept_max", "direction": "min"},
+    {"metric": "accept_to_retire_max", "direction": "min"},
+    {"metric": "setup_wns_ns", "direction": "max"},
+    {"metric": "hold_wns_ns", "direction": "max"},
+    {"metric": "area_um2", "direction": "min"},
+    {"metric": "total_power_mw", "direction": "min"}
+  ],
+  "policy": {
+    "default": "AGGREGATE_WEIGHTED_PRIMARY_A2_IF_NONDOMINATED",
+    "exact_prefix_required": "A3_IF_ALL_A3_GATES_PASS",
+    "shared_hold_or_fail": "NO_OFFICIAL_CANDIDATE",
+    "scalar_score": "FORBIDDEN"
+  },
+  "maximum_decision": "DIAGNOSTIC_RECOMMENDATION_RELEASE_HOLD"
+}
