@@ -1,5 +1,11 @@
 REDRED 현재 설계 및 팀원 Claude Code 공유 문서
-작성 기준일: 2026-08-19
+작성 기준일: 2026-08-20
+
+팀원 필독: 현재 설계 검토 브랜치는 아래 하나뿐이다.
+  integration/redred-system-goal
+main, agents/*, codex/*, audit/* 및 다른 integration/* 브랜치는 현재 설계
+검토 대상이 아니다. 이들은 과거 작업·출처 추적·독립 실험용이므로 팀원은
+코드와 문서를 확인할 때 위 통합 브랜치만 checkout한다.
 
 중요: 원격 공유 상태 (게시 완료)
 ====================
@@ -11,7 +17,7 @@ REDRED 현재 설계 및 팀원 Claude Code 공유 문서
   integration/redred-system-goal
 
 검증 기준 최소 commit:
-  77977091af3fd901d2b2e4bbb5e22136ba9296b8
+  c49fabe8aea9390512f1dea3e20a57a04b98cb01
 
 저장소는 PUBLIC이며 이 브랜치는 origin에 게시되어 있다. 팀원은 별도
 저장소 권한 없이 아래 명령으로 동일한 원격 브랜치를 fetch할 수 있다.
@@ -39,10 +45,10 @@ REDRED 현재 설계 및 팀원 Claude Code 공유 문서
 
 위 출력은 아래 검증 기준 commit과 같거나 그 후속이어야 한다.
 
-  77977091af3fd901d2b2e4bbb5e22136ba9296b8
+  c49fabe8aea9390512f1dea3e20a57a04b98cb01
 
   git merge-base --is-ancestor \
-    77977091af3fd901d2b2e4bbb5e22136ba9296b8 \
+    c49fabe8aea9390512f1dea3e20a57a04b98cb01 \
     origin/integration/redred-system-goal
 
 주의: 이 캠페인은 여러 publication/provenance branch에 고정된 Git object도
@@ -89,9 +95,13 @@ physical, power, PDK, CDC/RDC 및 evidence authority gate가 모두 닫힌 뒤�
 2. 현재 한 줄 판정
 ==================
 
-A2는 actual-RTL native digital campaign에서 aggregate-weighted primary로
-추천되지만, physical/PDK/power/final CDC/freshness/cohort gate가 없으므로
-현재 final candidate는 NONE이고 selection/release는 HOLD다.
+A2는 actual-RTL native digital campaign의 aggregate 성능 primary지만,
+동일 6.5 ns GPDK045 post-route screening에서 setup을 닫지 못했다. A3는
+exact-prefix 의미를 유지하면서 최종 setup/hold를 모두 닫고 실제 artifact
+qualification의 diagnostic checks를 완료했다. 그러나 constraint는
+TEAM_PLACEHOLDER_SCREENING_ONLY이고 producer authentication/cohort/final
+release gate가 없으므로 현재 final candidate는 NONE, selection/release는
+HOLD다.
 
 
 3. 핵심 architecture
@@ -165,6 +175,10 @@ A3:
   - 또는 A2-specific named gate가 실패하고 A3가 그 gate를 독립적으로
     통과한 경우에만 활성화 가능
   - shared PDK/interface/CDC/evidence failure는 A3 선택 사유가 아님
+  - 2026-08-19 timing 개선에서 scalar grant를 native 16-bit onehot으로
+    유지하여 binary address 재인코딩/재디코딩 경로를 제거함
+  - 72 lockstep runs, 171,634 vectors에서 기존 의미와 일치했으며,
+    4-state X 동치/formal proof는 별도 HOLD 항목임
 
 
 5. 핵심 코드 위치
@@ -243,6 +257,18 @@ Historical only, current authority 아님:
   audits/k2_final_selection/
   rtl/technology/p6/
   P6/DDR/multi-edge 관련 physical 결과
+
+A6 Elias-Fano 확인:
+
+  - 공개 원격 branch: origin/agents/a6-lossless-aer-codec
+  - 실행 모델:
+      benchmarks/clean_slate_aer/a6_w3_elias_fano.py
+      benchmarks/clean_slate_aer/a6_w3_cycle_oracle.py
+  - 위 파일은 해당 A6 branch에서만 확인되는 lossless AER codec 연구물이다.
+  - 현재 integration/redred-system-goal의 active endpoint RTL, physical 후보,
+    final-selection candidate에는 포함되지 않는다.
+  - 따라서 A6/EF의 RTL 구현 완료, timing/PPA 검증 또는 현재 후보 채택을
+    주장하지 않는다. 필요하면 별도 연구 후보로 다시 qualification한다.
 
 
 6. 혁신성으로 주장 가능한 범위
@@ -345,6 +371,35 @@ Native campaign publication:
   publication SHA-256:
     89a8439fc3c5796293b56f2dcc96f2bb2141d1d2d1041bff8ca84a09e581c93c
 
+동일 서버/GPDK045/6.5 ns post-route screening 결과:
+
+                         A2                  A3
+  Innovus exit           FAIL (1)            PASS (0)
+  final setup paths      106                  101
+  setup violations       19                   0
+  setup WNS              -0.141401 ns         +0.0180397 ns
+  setup TNS              -1.6198818 ns         0.0 ns
+  hold violations        0                    0
+  hold WNS               +0.00447361 ns       +0.00218582 ns
+  post-route instances   1,024                583
+  post-route area        2,515.068            1,642.284
+  vectorless power       0.1394 mW            0.06759883 mW
+
+A3 attempt root의 Genus와 Innovus는 모두 exit 0이고 artifact ledger 생성 및
+qualification parser 검증까지 완료됐다. 최종 qualification은 다음과 같다.
+
+  decision=HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE
+  diagnostic_artifact_checks_completed=true
+  producer_authenticated=false
+  candidate_physical_go=false
+  constraint_evidence_class=TEAM_PLACEHOLDER_SCREENING_ONLY
+  qualification SHA-256:
+    6a0da74d439c8490956a1e560238417caa6f3a52620a6c8dec7aa564a892a1af
+
+위 power는 Innovus post-route vectorless screening 값이다. VCD/SAIF activity
+power나 signoff extraction 결과가 아니다. A2는 nonzero Innovus receipt이므로
+artifact ledger/qualification 대상이 아니며 physical FAIL/HOLD다.
+
 
 9. Digital-to-server compatibility 정책
 ========================================
@@ -391,6 +446,22 @@ Native campaign publication:
   server_genus_smoke_executed=false
   candidate_physical_go_allowed=false
 
+별도로 수행한 licensed-server campaign은 위 local compatibility와 구분한다.
+
+  - server repo commit: c916a2143e0e3aadd1d04724a7c31e79f347f972
+  - evidence parser/requalification public lineage: 7bf8ccf 및 후속
+  - Genus: 23.14-s090_1
+  - Innovus: 23.14-s088_1
+  - PDK: 교육용 GPDK045, slow 0.9 V / 125 C setup library
+  - period: 6.5 ns
+  - A3 Genus/Innovus exit 0, final setup/hold CLOSED
+  - A2 Innovus exit 1, final setup violation 19개
+
+실제 Cadence 로그 형식, Genus-expanded 205-command mapped SDC, no_drive 18개
+입력 slew 모델, timing path class, area/power/check-design 보고서를 검증하는
+self-contained mutation suite를 추가했다. endpoint suite는 clean clone에서도
+53/53, skipped=0으로 실행된다.
+
 
 10. 현재 PASS와 HOLD
 ====================
@@ -406,17 +477,20 @@ Scoped PASS:
   - source-structure PDK legality
   - supplied-motion coordinate software demo
   - local RTL/physical boundary compatibility
+  - A3 live Genus/Innovus exit-zero post-route diagnostic campaign
+  - A3 final setup/hold 0 violation 및 artifact diagnostic qualification
+  - A3 post-route area와 vectorless power screening 수집
+  - A2 동일 조건 physical setup failure 확인
+  - optimized A3 source에 고정된 source-level CDC/RDC 23/23
 
 HOLD:
 
   - organizer-authoritative PDK/cell/clock/I/O/load/corner
-  - live GPDK045 bytes
-  - licensed-server A2/A3 Genus smoke
-  - matched A2/A3 Genus/Innovus P&R
-  - mapped-cell legality
-  - post-route setup/hold/area
-  - DRC/antenna/connectivity/PG
-  - actual mapped vectorless power
+  - signoff extraction 및 authenticated producer evidence
+  - A2 post-route setup closure
+  - A2/A3 모두 PASS인 matched physical cohort
+  - organizer-authoritative mapped-cell legality
+  - VCD/SAIF activity power
   - final mapped CDC/RDC
   - controlled producer identity/freshness
   - authenticated matched cohort
@@ -447,11 +521,11 @@ HOLD:
   tests/redred_final_selection/run_all.sh
   python3 -m unittest discover -s tests/known_motion_coordinate -p 'test_*.py'
 
-현재 관련 test inventory: 321개
+현재 관련 test inventory: 337개
 
   - native campaign: 112/112
   - native aggregate adversarial: 13/13
-  - endpoint physical/local compatibility: 37/37
+  - endpoint physical/local compatibility: 53/53, skipped=0
   - vectorless diagnostic: 30/30
   - system-goal policy: 36/36
   - final-selection: 19/19, candidate NONE/HOLD
@@ -460,18 +534,19 @@ HOLD:
   - known-motion coordinate: 24/24
   - historical selector quarantine: 10/10
 
-검증 기록은 과장 없이 구분한다.
+이번 직접 재실행 결과:
 
-  - 이전 전체 로컬 회귀: 317/317 PASS
-  - 호환성 변경 뒤 직접 영향 suite: 122/122 PASS
-    (endpoint 37 + vectorless 30 + system-goal 36 + final-selection 19)
-  - 전체 inventory는 신규 mutation 4개를 포함해 321개다. 현재 문서에서는
-    한 번의 fresh-clone 연속 실행으로 321/321을 재주장하지 않는다.
-  - PUBLIC 일반 clean clone에서 핵심 고정 commit 4개를 읽고 대표 campaign
-    evaluation을 재실행하여 PASS를 확인했다.
+  - endpoint: 53/53 PASS, skipped=0
+  - vectorless: 30/30 PASS
+  - system-goal policy: 36/36 PASS, evidence/release=false
+  - source PDK structure: 17/17 PASS
+  - source CDC/RDC: 23/23 PASS
+  - final-selection: 19/19 PASS, candidate NONE/HOLD
 
-이 검사는 로컬 RTL, parser, policy 및 mutation 회귀다. 실제 Cadence
-Genus/Innovus 또는 live GPDK045를 실행한 결과로 확대해서 주장하지 않는다.
+나머지 native campaign/coordinate/quarantine 수치는 기존 고정 결과 inventory다.
+337개 전체를 이번 한 명령에서 연속 재실행했다고 주장하지 않는다. 실제
+Cadence 결과는 위 8절의 특정 c916a21 server attempt에만 귀속하고, parser
+unit test나 local compatibility를 새 P&R 실행으로 표현하지 않는다.
 
 
 12. 절대 금지할 주장
@@ -479,9 +554,10 @@ Genus/Innovus 또는 live GPDK045를 실행한 결과로 확대해서 주장하�
 
   - A2가 최종 선정됐다.
   - team release가 완료됐다.
-  - timing closure 또는 Fmax를 달성했다.
-  - real P&R/post-route signoff가 완료됐다.
-  - 실제 mapped area/vectorless power가 확보됐다.
+  - A2가 timing closure를 달성했다.
+  - A3 diagnostic closure를 signoff/Fmax 보증으로 표현한다.
+  - authenticated real P&R/signoff가 완료됐다.
+  - A3 vectorless 값을 VCD/SAIF activity power로 표현한다.
   - organizer PDK/cell/I/O legality가 확인됐다.
   - final mapped CDC/RDC를 통과했다.
   - P6/DDR/multi-edge가 현재 release evidence다.
@@ -490,7 +566,7 @@ Genus/Innovus 또는 live GPDK045를 실행한 결과로 확대해서 주장하�
   - UZH 1x/64x/256x가 독립 dataset 3개다.
   - coordinate demo가 coordinate RTL 또는 motion estimation evidence다.
   - policy verifier PASS가 evidence/release PASS다.
-  - local compatibility PASS가 server Genus/P&R PASS다.
+  - local compatibility PASS 자체가 server Genus/P&R PASS다.
   - self-hash 또는 unsigned Git object가 producer authentication/freshness다.
   - shared gate failure가 A3 fallback을 활성화한다.
   - 임의 scalar score/threshold로 winner를 결정한다.
@@ -513,7 +589,7 @@ Genus/Innovus 또는 live GPDK045를 실행한 결과로 확대해서 주장하�
   integration/redred-system-goal
 
 검증 기준 최소 commit:
-  77977091af3fd901d2b2e4bbb5e22136ba9296b8
+  c49fabe8aea9390512f1dea3e20a57a04b98cb01
 
 먼저 다음을 실행한다.
 
@@ -543,8 +619,10 @@ complete single-posedge AER endpoint다. A2는 [1,5,5,1] persistent weighted
 opportunity 성능 primary이고 A3는 exact two-selection scalar-prefix semantic
 fallback이다.
 
-현재 digital campaign recommendation은 A2지만 final candidate는 NONE이고
-release는 HOLD다. 이 차이를 유지한다.
+현재 digital campaign recommendation은 A2지만, 동일 6.5 ns GPDK045
+post-route screening에서는 A2 setup이 실패하고 A3만 final setup/hold를
+닫았다. A3 qualification은 diagnostic checks completed이지만 producer가
+unauthenticated이므로 final candidate는 NONE이고 release는 HOLD다.
 
 다음 local compatibility gate를 실행한다.
 
@@ -553,7 +631,8 @@ release는 HOLD다. 이 차이를 유지한다.
 
 이 gate는 exact RTL source/filelist/module inventory, top port order/direction/
 width, physical/vectorless boundary parity, Genus SYNTHESIS define을 검사한다.
-그러나 live Genus/GPDK/P&R/power 증거는 아니다.
+그러나 이 local gate 자체는 live Genus/GPDK/P&R/power 증거가 아니다.
+서버 결과는 문서 8~10절의 특정 attempt와 qualification SHA에만 귀속한다.
 
 보고서는 다음으로 구분한다.
 
@@ -564,9 +643,10 @@ width, physical/vectorless boundary parity, Genus SYNTHESIS define을 검사한�
   5. 새 코드/계약/서버 호환성 문제
   6. 다음 실행 우선순위
 
-어떤 경우에도 A2 final selection, release, Fmax, post-route closure, mapped
-area/power, organizer PDK legality 또는 final CDC/RDC를 증거 없이 주장하지
-않는다.
+어떤 경우에도 A2/A3 final selection, release, signoff/Fmax, organizer PDK
+legality, VCD/SAIF power 또는 final mapped CDC/RDC를 증거 없이 주장하지
+않는다. A3 post-route closure/area/vectorless power는 diagnostic screening
+범위로만 보고한다.
 
 --- CLAUDE CODE PROMPT END ---
 
@@ -574,12 +654,13 @@ area/power, organizer PDK legality 또는 final CDC/RDC를 증거 없이 주장�
 14. 다음 우선순위
 =================
 
-  1) [완료] 직접 영향 호환성 regression 122/122 재실행
+  1) [완료] endpoint 53/53, vectorless 30/30, system 36/36,
+     PDK 17/17, CDC/RDC 23/23, final-selection 19/19 재실행
   2) [완료] 통합 branch, 전체 로컬 branch 및 tag를 PUBLIC origin에 게시
   3) [완료] 일반 PUBLIC clean clone에서 고정 Git object와 대표 campaign 확인
-  4) 팀원들이 동일 remote commit에서 local compatibility gate 실행
-  5) licensed server에서 A2/A3 동일 환경 parse/elaborate/check_design smoke
-  6) smoke PASS 뒤 matched Genus/Innovus cohort 실행
-  7) post-route timing/area, mapped vectorless power, final CDC/RDC 수집
-  8) authenticated evidence publication 작성
+  4) [완료] 동일 환경 A2/A3 Genus 및 Innovus 실행
+  5) [완료] A3 post-route timing/area/vectorless power diagnostic qualification
+  6) A2 timing 개선 또는 A2 physical FAIL을 채택 정책에 반영
+  7) authenticated producer/freshness와 matched cohort 구성
+  8) final mapped CDC/RDC 및 필요 시 VCD/SAIF power 수집
   9) 모든 final-selection gate가 닫힌 후 최종 후보 결정
