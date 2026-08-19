@@ -741,6 +741,25 @@ def tool_identity(path: Path, expected: dict[str, Any], name: str) -> dict[str, 
             "version_output_sha256": sha256(result.stdout)}
 
 
+def validate_fresh_tool_identity(observed: dict[str, Any], fresh: dict[str, Any],
+                                 name: str) -> None:
+    """Compare stable tool identity while retaining raw probe output as provenance.
+
+    Cadence wrappers may print a per-invocation TMPDIR UUID in ``-version`` output.
+    Its raw digest therefore proves what the capture saw, but is not a stable
+    executable identity and must not be required to repeat on a fresh probe.
+    """
+    keys = {"entrypoint", "resolved_path", "sha256", "version",
+            "version_output_sha256"}
+    exact_keys(fresh, keys, f"fresh {name} identity")
+    if not SHA256.fullmatch(str(observed.get("version_output_sha256", ""))) or \
+            not SHA256.fullmatch(str(fresh.get("version_output_sha256", ""))):
+        raise FlowError(f"{name} raw version provenance hash is malformed")
+    stable = ("entrypoint", "resolved_path", "sha256", "version")
+    if any(observed.get(key) != fresh.get(key) for key in stable):
+        raise FlowError(f"live {name} bytes/path/parsed version no longer match snapshot")
+
+
 def capture_environment(pdk_root: Path, genus: Path, innovus: Path,
                         output: Path) -> dict[str, Any]:
     contract_payload, contract = validate_contract()
@@ -1478,8 +1497,7 @@ def validate_live_environment(path: Path, contract_sha: str,
                ("entrypoint", "resolved_path", "sha256", "version")):
             raise FlowError(f"recorded {name} identity mismatch")
         fresh = tool_identity(Path(observed["entrypoint"]), expected, name.title())
-        if observed != fresh:
-            raise FlowError(f"live {name} bytes/version no longer match snapshot")
+        validate_fresh_tool_identity(observed, fresh, name)
     exact_keys(document.get("technology", {}), set(contract["technology"]["files"]),
                "technology identities")
     for role, expected in contract["technology"]["files"].items():

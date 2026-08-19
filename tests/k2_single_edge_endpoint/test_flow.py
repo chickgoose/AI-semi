@@ -560,6 +560,34 @@ set_load 0.01 [get_ports {{{outputs}}}]
         with self.assertRaisesRegex(flow.FlowError, "fields differ"):
             flow.validate_live_environment(path, flow.sha256(contract_payload), contract)
 
+    def test_fresh_version_probe_ignores_only_nondeterministic_raw_stdout_hash(self):
+        captured = {
+            "entrypoint": "/tools/genus", "resolved_path": "/tools/.wrapper",
+            "sha256": "1" * 64, "version": "23.14-s090_1",
+            "version_output_sha256": "2" * 64,
+        }
+        fresh = dict(captured)
+        fresh["version_output_sha256"] = "3" * 64
+        flow.validate_fresh_tool_identity(captured, fresh, "genus")
+
+        mutations = {
+            "entrypoint": "/tools/other-genus",
+            "resolved_path": "/tools/.other-wrapper",
+            "sha256": "4" * 64,
+            "version": "23.14-s091_1",
+        }
+        for field, value in mutations.items():
+            changed = dict(fresh)
+            changed[field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                    flow.FlowError, "bytes/path/parsed version"):
+                flow.validate_fresh_tool_identity(captured, changed, "genus")
+
+        malformed = dict(fresh)
+        malformed["version_output_sha256"] = "not-a-sha256"
+        with self.assertRaisesRegex(flow.FlowError, "provenance hash"):
+            flow.validate_fresh_tool_identity(captured, malformed, "genus")
+
     def test_nonzero_execution_receipt_classifies_outputs_unbound(self):
         attempt = self.fixture.root / "failed-attempt"
         plan_path = attempt / "plan.json"
