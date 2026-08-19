@@ -237,6 +237,10 @@ set failed [catch {
   editTrim -nets [list $::env(SE_VDD) $::env(SE_VSS)]
   routeDesign
   extractRC
+  # Preserve a small positive setup margin through detailed ECO routing.  A
+  # zero target can leave sub-10 ps negative residue after RC re-extraction,
+  # even when the in-optimizer timing snapshot is nominally closed.
+  setOptMode -setupTargetSlack 0.020
   optDesign -postRoute
   setOptMode -fixHoldAllowSetupTnsDegrade true
   optDesign -postRoute -hold

@@ -117,9 +117,9 @@ class ContractTests(unittest.TestCase):
         _, contract = flow.validate_contract()
         authority = contract["rtl_authority"]
         self.assertEqual(authority["source_commit"],
-                         "a57943adba759fc955b4506e99703c1dd9736fba")
+                         "eb298fe1416a4312269a6f9232e1445f8958dda2")
         self.assertEqual(authority["integration_commit"],
-                         "a0a4eb38632245db8ff5937ea5b6c6e3f3839246")
+                         "eb298fe1416a4312269a6f9232e1445f8958dda2")
         for design in ("a2", "a3"):
             paths = [item["path"] for item in contract["candidates"][design]["expanded_sources"]]
             self.assertEqual(len(paths), 6)
