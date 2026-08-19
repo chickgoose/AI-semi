@@ -114,16 +114,16 @@ The source CDC/RDC contract is pinned at
 `9d1dced49d3fceabf812d2ba2275c8d4c02eef13`; its contract SHA-256 is
 `c4cbe85d704274a2f5d41a80652222880761465abeeca23df5b8291a7b4db44d`.
 The source-structure PDK matrix is pinned at
-`bbc6d8b8e82c795659d0bfe6b27b97a3428953e4`, SHA-256
-`6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247`.
+`dd1d30cfcb84aa1b760b8026af2807a11d84940b`, SHA-256
+`edd0ddfb33b3cde02ec90a482cd0ed61436ea4434be4d2bc1a3ac22b737dd543`.
 Those PASS rows do not promote mapped or organizer legality.
 
 The physical HOLD contract is pinned at
 `15593a72d68867641196992dd31bd00ef5dacaac`, SHA-256
 `6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544`.
 The vectorless HOLD contract and source manifest are pinned at
-`c68af0e73bb06bb99eb838c684dbffb2a8dd4995`, with SHA-256 values
-`b6aed31406fc8dee4566e1905313aced6998cf0be621817101f694221ef2e328`
+`dd1d30cfcb84aa1b760b8026af2807a11d84940b`, with SHA-256 values
+`48759f420246ea102fb5ff0bbfc441d90689fc51f03375c81e3ff9f196e6c7a0`
 and `7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c`.
 Neither is real physical or vectorless evidence.
 

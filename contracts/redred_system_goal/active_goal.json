@@ -338,20 +338,20 @@
       "claim_scope": "RTL_SOURCE_STRUCTURE_ONLY_NOT_MAPPED_NOT_ORGANIZER_APPROVAL",
       "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
       "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
-      "publication_commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+      "publication_commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
       "mapped_legality_status": "HOLD",
       "organizer_legality_status": "HOLD",
       "release_status": "HOLD",
       "artifacts": {
         "matrix": {
-          "commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+          "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
           "path": "tests/redred_single_edge_pdk_legality/legality_matrix.json",
-          "sha256": "6db4310f30b274f6055a82b12a075776d4c84aa8aafa108a337e754c57344247"
+          "sha256": "edd0ddfb33b3cde02ec90a482cd0ed61436ea4434be4d2bc1a3ac22b737dd543"
         },
         "verifier": {
-          "commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+          "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
           "path": "tests/redred_single_edge_pdk_legality/verify_matrix.py",
-          "sha256": "b86fd7de7b675e6329c7e256362c334113e9956da77d926c63c915f2c83e3b91"
+          "sha256": "e5e3e06bc20e90a5a7b4931e627824b67b5d2806b6cf3c26c9595e12b5945622"
         }
       }
     },
@@ -372,15 +372,15 @@
       "claim_scope": "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER",
       "real_mapped_vectorless_status": "HOLD",
       "release_comparison_eligible": false,
-      "publication_commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+      "publication_commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
       "artifacts": {
         "contract": {
-          "commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+          "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
           "path": "physical/k2_single_edge_vectorless/contract.json",
-          "sha256": "b6aed31406fc8dee4566e1905313aced6998cf0be621817101f694221ef2e328"
+          "sha256": "48759f420246ea102fb5ff0bbfc441d90689fc51f03375c81e3ff9f196e6c7a0"
         },
         "source_manifests": {
-          "commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+          "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
           "path": "physical/k2_single_edge_vectorless/source-manifests.json",
           "sha256": "7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c"
         }

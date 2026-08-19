@@ -654,7 +654,7 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
             "claim_scope": "RTL_SOURCE_STRUCTURE_ONLY_NOT_MAPPED_NOT_ORGANIZER_APPROVAL",
             "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
             "integrated_rtl_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
-            "publication_commit": "bbc6d8b8e82c795659d0bfe6b27b97a3428953e4",
+            "publication_commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
             "mapped_legality_status": "HOLD",
             "organizer_legality_status": "HOLD",
             "release_status": "HOLD",
@@ -710,7 +710,7 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
             "claim_scope": "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER",
             "real_mapped_vectorless_status": "HOLD",
             "release_comparison_eligible": False,
-            "publication_commit": "c68af0e73bb06bb99eb838c684dbffb2a8dd4995",
+            "publication_commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
         },
         "single-edge vectorless claim boundary",
     )
