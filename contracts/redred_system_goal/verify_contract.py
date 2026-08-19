@@ -451,6 +451,7 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
             "single_edge_source_structure_pdk",
             "single_edge_physical",
             "single_edge_vectorless",
+            "final_a2_a3_selection_readiness",
             "known_motion_supplied_rotation_synthetic_demo",
         },
     )
@@ -719,6 +720,82 @@ def verify_bounded_current_evidence(document: Mapping[str, Any]) -> None:
     verify_git_artifact(vectorless_artifacts["source_manifests"], "single-edge vectorless source manifests")
     expect(vectorless_contract.get("status"), "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER", "vectorless contract status")
     expect(vectorless_contract.get("constraint_authority", {}).get("comparison_ready_eligible"), False, "vectorless comparison eligibility")
+
+    selection = exact_object(
+        evidence["final_a2_a3_selection_readiness"],
+        "bounded_current_evidence.final_a2_a3_selection_readiness",
+        {
+            "status", "claim_scope", "publication_commit",
+            "selected_candidate", "selection_authority", "release_authority",
+            "missing_gate_count", "artifacts",
+        },
+    )
+    expect(
+        {key: selection[key] for key in selection if key != "artifacts"},
+        {
+            "status": "HOLD",
+            "claim_scope":
+                "CURRENT_SINGLE_EDGE_A2_A3_FINAL_SELECTION_READINESS_ONLY",
+            "publication_commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+            "selected_candidate": None,
+            "selection_authority": False,
+            "release_authority": False,
+            "missing_gate_count": 12,
+        },
+        "final-selection readiness claim boundary",
+    )
+    selection_artifacts = exact_object(
+        selection["artifacts"], "final-selection readiness artifacts",
+        {"contract", "verifier"})
+    selection_contract = parse_json_object(
+        verify_git_artifact(selection_artifacts["contract"],
+                            "final-selection readiness contract"),
+        "final-selection readiness contract")
+    verify_git_artifact(selection_artifacts["verifier"],
+                        "final-selection readiness verifier")
+    expect(selection_contract.get("schema"),
+           "redred_final_a2_a3_selection_contract_v1",
+           "final-selection readiness schema")
+    expect(selection_contract.get("status"),
+           "HOLD_MISSING_AUTHENTICATED_MATCHED_PHYSICAL_POWER_PDK_CDC_EVIDENCE",
+           "final-selection readiness status")
+    expect(selection_contract.get("authority"), {
+        "policy_engine_only": True,
+        "current_selection_authority": False,
+        "release_authority": False,
+        "official_score_authority": False,
+        "caller_supplied_evidence_allowed": False,
+    }, "final-selection readiness authority")
+    expect(selection_contract.get("candidate_policy", {}).get(
+        "p6_or_multi_edge_evidence_allowed"), False,
+        "final-selection readiness P6 boundary")
+    expect(selection_contract.get("candidate_policy", {}).get(
+        "score_formula_defined"), False,
+        "final-selection readiness score boundary")
+    expect(selection_contract.get("current_decision"), {
+        "selection_status": "HOLD",
+        "selected_candidate": None,
+        "campaign_recommendation": "A2",
+        "fallback_trigger": None,
+        "missing_gate_ids": [
+            "ORGANIZER_CELL_CLOCK_IO_RULES",
+            "OFFICIAL_CONSTRAINTS_CORNERS",
+            "CONTROLLED_PRODUCER_FRESHNESS",
+            "MATCHED_A2_A3_COHORT",
+            "A2:MAPPED_PDK_LEGALITY",
+            "A2:POST_ROUTE_TIMING_AREA",
+            "A2:VECTORLESS_POWER",
+            "A2:FINAL_CDC_RDC",
+            "A3:MAPPED_PDK_LEGALITY",
+            "A3:POST_ROUTE_TIMING_AREA",
+            "A3:VECTORLESS_POWER",
+            "A3:FINAL_CDC_RDC",
+        ],
+        "failed_gate_ids": [],
+        "final_selection_authority": False,
+        "release_authority": False,
+        "official_score_winner": False,
+    }, "final-selection readiness current decision")
 
     motion = exact_object(
         evidence["known_motion_supplied_rotation_synthetic_demo"],

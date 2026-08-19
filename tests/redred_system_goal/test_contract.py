@@ -679,6 +679,25 @@ class PolicyContractTest(unittest.TestCase):
             with self.subTest(index=index):
                 self.assert_invalid(mutation)
 
+    def test_final_selection_readiness_is_pinned_hold_only(self) -> None:
+        evidence = lambda doc: doc["bounded_current_evidence"][
+            "final_a2_a3_selection_readiness"
+        ]
+        mutations = [
+            lambda doc: evidence(doc).update(
+                {"status": "PASS", "selected_candidate": "A2"}),
+            lambda doc: evidence(doc).update({"selection_authority": True}),
+            lambda doc: evidence(doc).update({"release_authority": True}),
+            lambda doc: evidence(doc).update({"missing_gate_count": 0}),
+            lambda doc: evidence(doc)["artifacts"]["contract"].update(
+                {"sha256": "0" * 64}),
+            lambda doc: evidence(doc)["artifacts"]["verifier"].update(
+                {"commit": "0" * 40}),
+        ]
+        for index, mutation in enumerate(mutations):
+            with self.subTest(index=index):
+                self.assert_invalid(mutation)
+
     def test_known_motion_pass_is_synthetic_rotation_only_and_outside_ppa(self) -> None:
         evidence = lambda doc: doc["bounded_current_evidence"][
             "known_motion_supplied_rotation_synthetic_demo"

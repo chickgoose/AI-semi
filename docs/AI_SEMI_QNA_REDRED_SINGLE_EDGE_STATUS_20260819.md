@@ -97,6 +97,9 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
   DRC/antenna/connectivity 및 mapped vectorless power가 없다.
 - Physical/vectorless local 도구는 self-sealed 또는 malformed artifact가
   `GO`가 되지 않도록 HOLD-only다. 이는 실제 EDA 결과가 아니다.
+- `contracts/redred_final_selection/`의 고정 verifier는 현재 immutable
+  input에서 12개 미충족 gate와 `candidate=NONE`을 재계산한다. Caller JSON,
+  P6 증거, 임의 scalar score 또는 shared failure는 선택 권한을 만들 수 없다.
 - 최종 A2/A3 선택과 team release는 동일 조건 P&R·power, organizer PDK/I/O
   authority, 보존된 canonical evidence와 선택 interface의 최종 CDC/RDC가
   닫힐 때까지 HOLD다.

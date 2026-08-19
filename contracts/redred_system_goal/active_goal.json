@@ -386,6 +386,27 @@
         }
       }
     },
+    "final_a2_a3_selection_readiness": {
+      "status": "HOLD",
+      "claim_scope": "CURRENT_SINGLE_EDGE_A2_A3_FINAL_SELECTION_READINESS_ONLY",
+      "publication_commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+      "selected_candidate": null,
+      "selection_authority": false,
+      "release_authority": false,
+      "missing_gate_count": 12,
+      "artifacts": {
+        "contract": {
+          "commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+          "path": "contracts/redred_final_selection/contract.json",
+          "sha256": "e23262050e8a838719bb70290df88d1757bbd43f5b45895f5b0053bf135d7c20"
+        },
+        "verifier": {
+          "commit": "49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1",
+          "path": "contracts/redred_final_selection/verify_contract.py",
+          "sha256": "94004bf6f3a0fc23da95eb4cee024a134d3a56c2d2b4eea687243eab3c507ef0"
+        }
+      }
+    },
     "known_motion_supplied_rotation_synthetic_demo": {
       "status": "PASS",
       "claim_scope": "KNOWN_MOTION_SUPPLIED_ROTATION_SYNTHETIC_DEMO_ONLY",

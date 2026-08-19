@@ -127,6 +127,15 @@ The vectorless HOLD contract and source manifest are pinned at
 and `7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c`.
 Neither is real physical or vectorless evidence.
 
+The executable final-selection readiness gate is pinned at
+`49a6e28b5cf521bef1b48feb9e1d45074e9f3bb1`. Its contract and verifier
+SHA-256 values are
+`e23262050e8a838719bb70290df88d1757bbd43f5b45895f5b0053bf135d7c20`
+and `94004bf6f3a0fc23da95eb4cee024a134d3a56c2d2b4eea687243eab3c507ef0`.
+It recomputes `candidate=NONE` with twelve missing gates and has neither final
+selection nor release authority. A future all-gates-PASS policy candidate still
+requires a separate authenticated payload and noncircular publication.
+
 The known-motion package is pinned at
 `78eb019c56f2aab4b844c0fe925a5f2252fca256`. It consumes already-retired
 events and supplied rotations, and remains outside endpoint PPA. The exact

@@ -110,5 +110,8 @@ A2/A3 선택은 mapped physical·power·PDK/I/O·CDC/RDC가 닫힐 때까지 HOL
   Organizer/mapped legality, real P&R/post-route timing, mapped vectorless power,
   selected-interface final CDC/RDC, 최종 A2/A3 선택과 team release는 계속
   HOLD다.
+- 실행 가능한 final-selection readiness gate는 현재 immutable 증거에서
+  12개 미충족 항목과 `candidate=NONE`을 산출하며 선택·release authority를
+  갖지 않는다.
 - local captured-byte dataset 변환과 known-pose coordinate 실행은 각각 importer 및 `SYNTHETIC_DEMO` 검증일 뿐 공식 dataset 또는 canonical system evidence가 아니다.
 - 일부 기존 physical/Genus 회귀는 소스 실패가 아니라 `/tmp`의 세 개 golden archive가 없는 상태라 재현 HOLD다.
