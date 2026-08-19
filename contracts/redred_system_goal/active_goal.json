@@ -372,12 +372,12 @@
       "claim_scope": "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER",
       "real_mapped_vectorless_status": "HOLD",
       "release_comparison_eligible": false,
-      "publication_commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
+      "publication_commit": "800b4c51652fa665d37a8634a54394eba36d038c",
       "artifacts": {
         "contract": {
-          "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
+          "commit": "800b4c51652fa665d37a8634a54394eba36d038c",
           "path": "physical/k2_single_edge_vectorless/contract.json",
-          "sha256": "48759f420246ea102fb5ff0bbfc441d90689fc51f03375c81e3ff9f196e6c7a0"
+          "sha256": "56427928efeb30f9762789b162dc3586c96d617ff940fe1a4261be74f38c9dd5"
         },
         "source_manifests": {
           "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
@@ -389,21 +389,21 @@
     "final_a2_a3_selection_readiness": {
       "status": "HOLD",
       "claim_scope": "CURRENT_SINGLE_EDGE_A2_A3_FINAL_SELECTION_READINESS_ONLY",
-      "publication_commit": "3b3a4269344cd4e3f792e59a3364ee906ea1de7d",
+      "publication_commit": "6885bfb105cc2a11c81cc61a1f734dbd59c5f509",
       "selected_candidate": null,
       "selection_authority": false,
       "release_authority": false,
       "missing_gate_count": 12,
       "artifacts": {
         "contract": {
-          "commit": "3b3a4269344cd4e3f792e59a3364ee906ea1de7d",
+          "commit": "6885bfb105cc2a11c81cc61a1f734dbd59c5f509",
           "path": "contracts/redred_final_selection/contract.json",
-          "sha256": "22325a5b56ddeb1de8fbdf8d5c73cb27eb79a0e2a02a6dbac1f7855066cff230"
+          "sha256": "879721c1cb46296f1e79ab5027dc820cccfb79bf54a364fb9b962695d97eb186"
         },
         "verifier": {
-          "commit": "3b3a4269344cd4e3f792e59a3364ee906ea1de7d",
+          "commit": "6885bfb105cc2a11c81cc61a1f734dbd59c5f509",
           "path": "contracts/redred_final_selection/verify_contract.py",
-          "sha256": "482412c544dbdbc307c38661c729ab7473c3936c656441862984735904b0e409"
+          "sha256": "574f182ea84452327d53f9560dc68e73160e3c662168621bb591cd25626c2cb0"
         }
       }
     },
