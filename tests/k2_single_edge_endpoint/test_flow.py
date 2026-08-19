@@ -632,6 +632,55 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 flow.report_texts(("active native report\n" + diagnostic + "\n").encode(),
                                   "mutated report")
 
+    def test_actual_genus_verbose_echo_and_completion_mutations_fail_closed(self):
+        top = self.fixture.contract["candidates"]["a3"]["top"]
+        version = self.fixture.contract["tools"]["genus"]["version"]
+        marker = f"K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}"
+        actual_shape = (
+            "Cadence Genus(TM) Synthesis Solution.\n"
+            f"Version: {version}, built Wed Feb 26 17:49:50 PST 2025\n"
+            "#@ Begin verbose source genus_single_edge.tcl\n"
+            "@file(genus_single_edge.tcl) 11: foreach path [list $input] {\n"
+            "  if {![file isfile $path]} { error \"required input: $path\" }\n"
+            "}\n"
+            "@file(genus_single_edge.tcl) 29: if {$clock_count != 1 ||\n"
+            "    $clock_name ne \"se_primary_clk\"} {\n"
+            "  error \"expected exactly the primary clock\"\n"
+            "}\n"
+            "       : Info=6, Warn=2, Error=0, Fatal=0\n"
+            "@file(genus_single_edge.tcl) 54: puts \""
+            f"{marker}\"\n"
+            f"{marker}\n"
+            "@file(genus_single_edge.tcl) 55: exit 0\n"
+            "Normal exit.\n"
+        )
+        flow.validate_genus_log(actual_shape, top, version)
+
+        mutations = {
+            "duplicate-marker": actual_shape.replace(
+                f"{marker}\n@file", f"{marker}\n{marker}\n@file", 1),
+            "error": actual_shape.replace("Normal exit.", "ERROR: failed\nNormal exit."),
+            "fatal": actual_shape.replace("Normal exit.", "FATAL: failed\nNormal exit."),
+            "duplicate-summary": actual_shape.replace(
+                "       : Info=6, Warn=2, Error=0, Fatal=0\n",
+                "       : Info=6, Warn=2, Error=0, Fatal=0\n"
+                "       : Info=6, Warn=2, Error=0, Fatal=0\n"),
+            "duplicate-version": actual_shape.replace(
+                "#@ Begin verbose source",
+                f"Version: {version}, built duplicate\n#@ Begin verbose source"),
+            "version-prefix": actual_shape.replace(
+                f"Version: {version},", f"Version: prefix-{version},", 1),
+            "different-version": actual_shape.replace(version, "23.14-s091_1", 1),
+            "bad-build-suffix": actual_shape.replace(
+                ", built Wed Feb 26 17:49:50 PST 2025", ", foreign suffix", 1),
+            "duplicate-normal-exit": actual_shape.replace(
+                "Normal exit.\n", "Normal exit.\nNormal exit.\n"),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(name=name), self.assertRaisesRegex(
+                    flow.FlowError, "zero-error"):
+                flow.validate_genus_log(mutation, top, version)
+
     def test_netlist_requires_exact_boundary_and_connectivity(self):
         top = self.fixture.contract["candidates"]["a2"]["top"]
         rows = [("input", row) for row in

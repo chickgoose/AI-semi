@@ -1461,13 +1461,41 @@ def validate_spef(payload: bytes, top: str) -> None:
             raise FlowError("postroute SPEF lacks nonempty exact-design RC structure")
 
 
+def _genus_native_output(text: str) -> str:
+    """Remove Tcl verbose-source command echoes, retaining native tool output."""
+    output = []
+    echo_brace_depth = 0
+    for line in text.splitlines():
+        command = re.match(
+            r"^@file\(genus_single_edge\.tcl\)\s+[0-9]+:\s?(.*)$", line)
+        if command:
+            source = command.group(1)
+            echo_brace_depth = max(0, source.count("{") - source.count("}"))
+            continue
+        if echo_brace_depth:
+            echo_brace_depth = max(
+                0, echo_brace_depth + line.count("{") - line.count("}"))
+            continue
+        output.append(line)
+    return "\n".join(output)
+
+
 def validate_genus_log(text: str, top: str, version: str) -> None:
+    native = _genus_native_output(text)
     summaries = re.findall(
-        r"(?m)\bError=([0-9]+),\s*Fatal=([0-9]+)\b", text)
-    if has_failure_diagnostic(text) or summaries != [("0", "0")] or \
-            not re.search(rf"(?m)^Version:\s+{re.escape(version)}\s*$", text) or \
-            text.count(f"K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}") != 1 or \
-            not re.search(r"(?m)^Normal exit\.\s*\Z", text):
+        r"(?m)\bError=([0-9]+),\s*Fatal=([0-9]+)\b", native)
+    versions = re.findall(r"(?m)^Version:[^\r\n]*$", native)
+    version_pattern = (
+        rf"Version:\s+{re.escape(version)}"
+        r"(?:,\s+built\s+[^\r\n]+)?\s*")
+    marker = f"K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}"
+    markers = re.findall(
+        r"(?m)^K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE[^\r\n]*$", native)
+    normal_exits = re.findall(r"(?m)^Normal exit\.\s*$", native)
+    if has_failure_diagnostic(native) or summaries != [("0", "0")] or \
+            len(versions) != 1 or not re.fullmatch(version_pattern, versions[0]) or \
+            markers != [marker] or len(normal_exits) != 1 or \
+            not re.search(r"(?m)^Normal exit\.\s*\Z", native):
         raise FlowError("Genus log lacks one exact zero-error native completion")
 
 
