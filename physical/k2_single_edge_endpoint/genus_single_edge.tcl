@@ -31,9 +31,12 @@ if {[sizeof_collection $clocks] != 1 ||
   error "expected exactly the single primary endpoint clock"
 }
 
-check_design -all > "$output/reports/check_design.rpt"
 check_timing_intent -verbose > "$output/reports/timing_intent.rpt"
 syn_generic
+# Check after generic optimization has removed temporary elaboration case-box
+# assigns, but before technology mapping (Genus has no LEF loaded and would
+# consequently label every mapped standard cell as logical-only here).
+check_design -all > "$output/reports/check_design.rpt"
 syn_map
 syn_opt
 

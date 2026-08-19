@@ -97,7 +97,7 @@ ENV_ALLOWLIST_KEYS = ("CDS_AUTO_64BIT", "CDS_LIC_FILE", "LANG", "LC_ALL",
                       "SHELL", "USER")
 TEMPLATE_IDENTITIES = {
     "genus": ("physical/k2_single_edge_endpoint/genus_single_edge.tcl",
-              "ce2b33325aed2bce0e3b328873c19abffd8075ea61f33ba8cda3a3d0d98083d6"),
+              "c0bd75a10116bf3f036ec813aa4e48f02a20b10d229672a23eaa911e4dea2033"),
     "innovus_mmmc": ("physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl",
                      "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"),
     "innovus": ("physical/k2_single_edge_endpoint/innovus_single_edge.tcl",
