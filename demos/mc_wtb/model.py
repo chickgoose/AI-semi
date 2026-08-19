@@ -7,10 +7,13 @@ events warped into a fixed reference-camera frame using supplied rotations.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
+import stat
 import tempfile
+from bisect import bisect_right
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -35,7 +38,7 @@ EVIDENCE_CLASS = "SYNTHETIC_DEMO"
 # input from changing the accounting rule in its favor.
 LOGICAL_BIT_FORMAT: dict[str, Any] = {
     "format_id": "redred.mc_wtb.logical_bits/fixed-v1",
-    "exact_input_event": {
+    "raw_sensor_payload": {
         "x_bits": 16,
         "y_bits": 16,
         "polarity_bits": 1,
@@ -129,6 +132,79 @@ def _positive_int(value: Any, where: str) -> int:
     return result
 
 
+def _require_uint(value: Any, bits: int, where: str) -> int:
+    """Require one declared unsigned logical field to fit without truncation."""
+
+    if type(value) is not int or value < 0 or value >= 1 << bits:
+        raise InterfaceError(
+            f"{where} must fit the declared unsigned {bits}-bit field"
+        )
+    return value
+
+
+def _timebase(value: Any, where: str) -> dict[str, str]:
+    row = _exact_keys(value, {"clock_domain", "epoch", "unit"}, where)
+    return {
+        key: _string(row[key], f"{where}.{key}")
+        for key in ("clock_domain", "epoch", "unit")
+    }
+
+
+def _reject_output_alias(
+    output_path: str | Path, input_paths: tuple[str | Path, ...]
+) -> None:
+    output = Path(output_path)
+    output_resolved = output.resolve(strict=False)
+    for input_path in input_paths:
+        source = Path(input_path)
+        if output_resolved == source.resolve(strict=False):
+            raise InterfaceError(f"output aliases input path: {source}")
+        if output.exists() and source.exists():
+            try:
+                if os.path.samefile(output, source):
+                    raise InterfaceError(f"output aliases input inode: {source}")
+            except OSError as exc:
+                raise InterfaceError(f"cannot validate output/input aliasing: {exc}") from exc
+
+
+def _stable_sha256(path: str | Path, label: str) -> str:
+    """Hash one regular file while rejecting mutation during this exact read."""
+
+    source = Path(path)
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(source, flags)
+    except OSError as exc:
+        raise InterfaceError(f"cannot open {label} for provenance hashing: {exc}") from exc
+    digest = hashlib.sha256()
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise InterfaceError(f"{label} must be a regular file")
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise InterfaceError(f"cannot hash {label}: {exc}") from exc
+    finally:
+        os.close(descriptor)
+    signature = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if signature(before) != signature(after):
+        raise InterfaceError(f"{label} changed during provenance hashing")
+    return digest.hexdigest()
+
+
 def _rounded(value: float) -> float:
     result = round(float(value), 12)
     return 0.0 if result == 0.0 else result
@@ -152,7 +228,7 @@ def _load_events(
         "intrinsics_id",
         "pose_stream_id",
         "coordinate_frame",
-        "timestamp_unit",
+        "timebase",
         "declared_event_count",
     }
     header = _exact_keys(records[0], header_keys, f"{path}:1")
@@ -168,8 +244,10 @@ def _load_events(
         raise InterfaceError(f"{path}: pose-stream binding mismatch")
     if header["coordinate_frame"] != "sensor_image":
         raise InterfaceError(f"{path}: coordinate_frame must be sensor_image")
-    if header["timestamp_unit"] != "ns":
-        raise InterfaceError(f"{path}: timestamp_unit must be ns")
+    event_timebase = _timebase(header["timebase"], f"{path}:1.timebase")
+    pose_timebase = _timebase(pose_header["timebase"], "pose_header.timebase")
+    if event_timebase != pose_timebase:
+        raise InterfaceError(f"{path}: event timebase must exactly match pose timebase")
     declared_count = _nonnegative_int(
         header["declared_event_count"], f"{path}:1.declared_event_count"
     )
@@ -200,17 +278,17 @@ def _load_events(
         sequence = _nonnegative_int(event["sequence_index"], f"{where}.sequence_index")
         if sequence != len(events):
             raise InterfaceError(f"{where}: sequence_index must be contiguous JSONL order")
-        timestamp = _nonnegative_int(event["timestamp_ns"], f"{where}.timestamp_ns")
+        timestamp = _require_uint(event["timestamp_ns"], 64, f"{where}.timestamp_ns")
         if timestamp < previous_timestamp:
             raise InterfaceError(f"{where}: timestamp_ns must be nondecreasing")
         previous_timestamp = timestamp
         event["pose_version"] = _string(event["pose_version"], f"{where}.pose_version")
-        event["x"] = _nonnegative_int(event["x"], f"{where}.x")
-        event["y"] = _nonnegative_int(event["y"], f"{where}.y")
+        event["x"] = _require_uint(event["x"], 16, f"{where}.x")
+        event["y"] = _require_uint(event["y"], 16, f"{where}.y")
         if event["x"] >= intrinsics.width or event["y"] >= intrinsics.height:
             raise InterfaceError(f"{where}: sensor coordinate is out of bounds")
-        if isinstance(event["polarity"], bool) or event["polarity"] not in (-1, 1):
-            raise InterfaceError(f"{where}.polarity must be -1 or 1")
+        if type(event["polarity"]) is not int or event["polarity"] not in (-1, 1):
+            raise InterfaceError(f"{where}.polarity must be JSON integer -1 or 1")
         events.append(event)
     if declared_count != len(events):
         raise InterfaceError(
@@ -220,8 +298,8 @@ def _load_events(
 
 
 def _tile(x: int, y: int, tile_width: int, tile_height: int, columns: int) -> dict[str, int]:
-    tile_x = x // tile_width
-    tile_y = y // tile_height
+    tile_x = _require_uint(x // tile_width, 16, "logical tile.x")
+    tile_y = _require_uint(y // tile_height, 16, "logical tile.y")
     return {"x": tile_x, "y": tile_y, "index": tile_y * columns + tile_x}
 
 
@@ -345,15 +423,26 @@ def _logical_packets(
     packets: list[dict[str, Any]] = []
     for time_bin, pose_code, polarity, tile_x, tile_y in sorted(groups):
         members = groups[(time_bin, pose_code, polarity, tile_x, tile_y)]
+        time_bin_start = _require_uint(
+            time_bin * time_bin_ns, 64, "logical packet.time_bin_start_ns"
+        )
+        pose_code = _require_uint(
+            pose_code, 16, "logical packet.pose_version_code"
+        )
+        tile_x = _require_uint(tile_x, 16, "logical packet.tile.x")
+        tile_y = _require_uint(tile_y, 16, "logical packet.tile.y")
+        multiplicity = _require_uint(
+            len(members), 16, "logical packet.multiplicity_count"
+        )
         packets.append(
             {
                 "time_bin_index": time_bin,
-                "time_bin_start_ns": time_bin * time_bin_ns,
+                "time_bin_start_ns": time_bin_start,
                 "pose_version": members[0]["pose_version"],
                 "pose_version_code": pose_code,
                 "polarity": polarity,
                 "tile": {"x": tile_x, "y": tile_y},
-                "multiplicity_count": len(members),
+                "multiplicity_count": multiplicity,
                 "coalesced_event_id_count": len(members) - 1,
                 "member_event_ids": [member["event_id"] for member in members],
             }
@@ -362,21 +451,21 @@ def _logical_packets(
 
 
 def _logical_bits(event_count: int, packet_count: int) -> dict[str, Any]:
-    exact_width = sum(LOGICAL_BIT_FORMAT["exact_input_event"].values())
+    raw_width = sum(LOGICAL_BIT_FORMAT["raw_sensor_payload"].values())
     occupancy_width = sum(LOGICAL_BIT_FORMAT["occupancy_packet"].values())
-    exact_bits = event_count * exact_width
+    raw_bits = event_count * raw_width
     occupancy_bits = packet_count * occupancy_width
     return {
-        "exact_input_event_width_bits": exact_width,
-        "exact_input_total_bits": exact_bits,
+        "raw_sensor_payload_width_bits": raw_width,
+        "raw_sensor_payload_total_bits": raw_bits,
         "occupancy_packet_width_bits": occupancy_width,
         "occupancy_packet_count": packet_count,
         "occupancy_projection_total_bits": occupancy_bits,
         "occupancy_projection_bits_per_input_event": _ratio(
             occupancy_bits, event_count
         ),
-        "occupancy_projection_reduction_vs_exact_input": _ratio(
-            exact_bits - occupancy_bits, exact_bits
+        "occupancy_projection_reduction_vs_raw_sensor_payload": _ratio(
+            raw_bits - occupancy_bits, raw_bits
         ),
     }
 
@@ -410,19 +499,33 @@ def analyze_files(
     time_bin_ns: int,
     max_pose_age_ns: int,
 ) -> dict[str, Any]:
-    """Analyze one strict synthetic stream and atomically write deterministic JSON."""
+    """Analyze one strict synthetic stream and atomically expose deterministic JSON."""
 
+    input_paths = (events_path, intrinsics_path, poses_path)
+    _reject_output_alias(output_path, input_paths)
     tile_width = _positive_int(tile_width, "tile_width")
     tile_height = _positive_int(tile_height, "tile_height")
     time_bin_ns = _positive_int(time_bin_ns, "time_bin_ns")
     max_pose_age_ns = _nonnegative_int(max_pose_age_ns, "max_pose_age_ns")
+    provenance_labels = ("events input", "intrinsics input", "poses input")
+    before_hashes = tuple(
+        _stable_sha256(path, label)
+        for path, label in zip(input_paths, provenance_labels)
+    )
     intrinsics = load_intrinsics(intrinsics_path)
     pose_header, poses = load_pose_stream(poses_path, intrinsics)
     header, events = _load_events(events_path, intrinsics, pose_header)
-    if len(poses) > 2**LOGICAL_BIT_FORMAT["exact_input_event"]["pose_version_bits"]:
+    after_hashes = tuple(
+        _stable_sha256(path, label)
+        for path, label in zip(input_paths, provenance_labels)
+    )
+    if before_hashes != after_hashes:
+        raise InterfaceError("an input changed between provenance hashing and parsing")
+    if len(poses) > 2**LOGICAL_BIT_FORMAT["raw_sensor_payload"]["pose_version_bits"]:
         raise InterfaceError("pose stream exceeds the fixed 16-bit pose-version dictionary")
     pose_by_version: dict[str, Pose] = {pose.pose_id: pose for pose in poses}
     pose_code_by_version = {pose.pose_id: index for index, pose in enumerate(poses)}
+    pose_timestamps = [pose.timestamp.value for pose in poses]
     tile_columns = (intrinsics.width + tile_width - 1) // tile_width
     tile_rows = (intrinsics.height + tile_height - 1) // tile_height
 
@@ -437,6 +540,18 @@ def analyze_files(
         if pose.timestamp.value > event["timestamp_ns"]:
             raise InterfaceError(
                 f"event {event['event_id']}: pose_version is from the future"
+            )
+        latest_index = bisect_right(pose_timestamps, event["timestamp_ns"]) - 1
+        if latest_index < 0:
+            raise InterfaceError(
+                f"event {event['event_id']}: no pose exists at or before its timestamp"
+            )
+        latest_pose = poses[latest_index]
+        if pose.pose_id != latest_pose.pose_id:
+            raise InterfaceError(
+                f"event {event['event_id']}: pose_version {pose.pose_id!r} is not "
+                f"the deterministic latest pose {latest_pose.pose_id!r} at or before "
+                "the event timestamp"
             )
         pose_age = event["timestamp_ns"] - pose.timestamp.value
         if pose_age > max_pose_age_ns:
@@ -457,13 +572,18 @@ def analyze_files(
                 f"event {event['event_id']}: sensor-to-reference warp is out_of_fov "
                 f"({reference['reason']})"
             )
+        pose_code = _require_uint(
+            pose_code_by_version[event["pose_version"]],
+            16,
+            f"event {event['event_id']}.pose_version_code",
+        )
         exact_records.append(
             {
                 "event_id": event["event_id"],
                 "sequence_index": event["sequence_index"],
                 "timestamp_ns": event["timestamp_ns"],
                 "pose_version": event["pose_version"],
-                "pose_version_code": pose_code_by_version[event["pose_version"]],
+                "pose_version_code": pose_code,
                 "pose_timestamp_ns": pose.timestamp.value,
                 "pose_age_ns": pose_age,
                 "polarity": event["polarity"],
@@ -520,9 +640,26 @@ def analyze_files(
             "camera_id": header["camera_id"],
             "intrinsics_id": header["intrinsics_id"],
             "pose_stream_id": header["pose_stream_id"],
-            "timestamp_unit": "ns",
+            "timebase": header["timebase"],
             "atomic_event_fields": ["timestamp_ns", "pose_version"],
+            "pose_lookup_rule": "deterministic latest supplied pose at or before timestamp",
             "pose_version_encoding": "16-bit index in timestamp-sorted supplied pose stream",
+            "analysis_provenance_fields_excluded_from_raw_sensor_payload": [
+                "event_id",
+                "sequence_index",
+            ],
+        },
+        "input_provenance": {
+            "hash_algorithm": "SHA-256",
+            "hash_scope": "exact file bytes",
+            "stability_scope": (
+                "each hash rejects mutation during its read; identical hashes are "
+                "required before and after parsing; no atomic three-file snapshot is claimed"
+            ),
+            "canonical_evidence_claimed": False,
+            "events_sha256": before_hashes[0],
+            "intrinsics_sha256": before_hashes[1],
+            "poses_sha256": before_hashes[2],
         },
         "tiling": {
             "image_width": intrinsics.width,
@@ -568,30 +705,41 @@ def analyze_files(
         },
         "logical_bit_accounting": {
             "format": LOGICAL_BIT_FORMAT,
-            "scope": "logical fixed-width projection; not JSON bytes, RTL, or a codec",
+            "scope": (
+                "declared logical fixed-width projection; not JSON bytes, actual wire "
+                "bandwidth, RTL, or a codec"
+            ),
+            "provenance_exclusion": (
+                "event_id and sequence_index support analysis traceability and are "
+                "excluded from the raw sensor payload convention"
+            ),
             "sensor_fixed": sensor_bits,
             "pose_compensated_reference": compensated_bits,
         },
         "bottleneck_metrics": {
-            "1_address_overhead": {
-                "sensor_fixed_occupancy_bits": sensor_bits[
+            "1_packet_key_projection_not_wire_bandwidth": {
+                "sensor_fixed_projected_bits": sensor_bits[
                     "occupancy_projection_total_bits"
                 ],
-                "pose_compensated_occupancy_bits": compensated_bits[
+                "pose_compensated_projected_bits": compensated_bits[
                     "occupancy_projection_total_bits"
                 ],
-                "logical_bit_reduction": sensor_bits[
+                "projected_delta_bits": sensor_bits[
                     "occupancy_projection_total_bits"
                 ]
                 - compensated_bits["occupancy_projection_total_bits"],
-                "logical_bit_reduction_ratio": _ratio(
+                "projected_delta_ratio": _ratio(
                     sensor_bits["occupancy_projection_total_bits"]
                     - compensated_bits["occupancy_projection_total_bits"],
                     sensor_bits["occupancy_projection_total_bits"],
                 ),
+                "actual_wire_bandwidth_measured": False,
+                "actual_codec_implemented": False,
                 "caveat": (
-                    "packet preserves time-bin, pose version, polarity, tile, and count; "
-                    "it omits per-event identity, intra-bin timestamp, and intra-tile coordinate"
+                    "this is only a fixed packet-key projection comparison; it cannot "
+                    "be quoted as actual wire bandwidth reduction. The projection preserves "
+                    "time-bin, pose version, polarity, tile, and count, but omits per-event "
+                    "identity, intra-bin timestamp, and intra-tile coordinate"
                 ),
             },
             "5_timestamp_fidelity": {
@@ -633,6 +781,12 @@ def analyze_files(
                 ),
                 "world_reconstruction_error_measured": False,
             },
+        },
+        "output_semantics": {
+            "atomic_visibility": "temporary file plus os.replace at destination",
+            "crash_durability_guaranteed": False,
+            "file_fsync_performed": False,
+            "directory_fsync_performed": False,
         },
     }
     _atomic_write_json(Path(output_path), result)

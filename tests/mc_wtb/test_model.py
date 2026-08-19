@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from demos.mc_wtb.model import InterfaceError, UNSUPPORTED_FEATURES, analyze_files
+from demos.mc_wtb.model import (
+    InterfaceError,
+    UNSUPPORTED_FEATURES,
+    _require_uint,
+    analyze_files,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,20 +43,24 @@ class StageOneModelTests(unittest.TestCase):
         records: list[dict] | None = None,
         maximum_age: int = 0,
         output_name: str = "result.json",
+        events_path: Path | None = None,
+        intrinsics_path: Path | None = None,
+        poses_path: Path | None = None,
+        time_bin_ns: int = 1000,
     ) -> tuple[dict, Path]:
-        events = EVENTS
+        events = events_path or EVENTS
         if records is not None:
             events = Path(directory) / "events.jsonl"
             write_jsonl(events, records)
         output = Path(directory) / output_name
         result = analyze_files(
             events,
-            INTRINSICS,
-            POSES,
+            intrinsics_path or INTRINSICS,
+            poses_path or POSES,
             output,
             tile_width=8,
             tile_height=8,
-            time_bin_ns=1000,
+            time_bin_ns=time_bin_ns,
             max_pose_age_ns=maximum_age,
         )
         return result, output
@@ -113,9 +124,9 @@ class StageOneModelTests(unittest.TestCase):
             accounting["format"]["format_id"], "redred.mc_wtb.logical_bits/fixed-v1"
         )
         self.assertEqual(
-            accounting["sensor_fixed"]["exact_input_event_width_bits"], 113
+            accounting["sensor_fixed"]["raw_sensor_payload_width_bits"], 113
         )
-        self.assertEqual(accounting["sensor_fixed"]["exact_input_total_bits"], 2712)
+        self.assertEqual(accounting["sensor_fixed"]["raw_sensor_payload_total_bits"], 2712)
         self.assertEqual(accounting["sensor_fixed"]["occupancy_packet_count"], 10)
         self.assertEqual(
             accounting["pose_compensated_reference"]["occupancy_packet_count"], 8
@@ -126,9 +137,17 @@ class StageOneModelTests(unittest.TestCase):
         self.assertEqual(
             accounting["pose_compensated_reference"]["occupancy_projection_total_bits"], 1032
         )
-        bottleneck = result["bottleneck_metrics"]["1_address_overhead"]
-        self.assertEqual(bottleneck["logical_bit_reduction"], 258)
-        self.assertIn("preserves time-bin", bottleneck["caveat"])
+        bottleneck = result["bottleneck_metrics"][
+            "1_packet_key_projection_not_wire_bandwidth"
+        ]
+        self.assertEqual(bottleneck["projected_delta_bits"], 258)
+        self.assertFalse(bottleneck["actual_wire_bandwidth_measured"])
+        self.assertIn("cannot be quoted", bottleneck["caveat"])
+        self.assertEqual(
+            result["input_contract"]
+            ["analysis_provenance_fields_excluded_from_raw_sensor_payload"],
+            ["event_id", "sequence_index"],
+        )
 
     def test_output_bytes_and_return_value_are_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -161,6 +180,10 @@ class StageOneModelTests(unittest.TestCase):
         self.assert_fail_closed(records, "pose age 1 exceeds inclusive maximum 0")
 
         records = read_jsonl(EVENTS)
+        records[-1]["pose_version"] = "identity"
+        self.assert_fail_closed(records, "is not the deterministic latest pose")
+
+        records = read_jsonl(EVENTS)
         records[7]["x"] = 0
         records[7]["y"] = 20
         self.assert_fail_closed(records, "out_of_fov")
@@ -178,9 +201,146 @@ class StageOneModelTests(unittest.TestCase):
         records[2]["sequence_index"] = 99
         self.assert_fail_closed(records, "sequence_index")
 
+        for mutant in (0, 1.0, True, "1"):
+            with self.subTest(polarity=repr(mutant)):
+                records = read_jsonl(EVENTS)
+                records[2]["polarity"] = mutant
+                self.assert_fail_closed(records, "polarity must be JSON integer -1 or 1")
+
+    def test_event_timebase_must_exactly_match_pose_timebase(self) -> None:
+        mutations = {
+            "clock_domain": "other_clock",
+            "epoch": "other_epoch",
+            "unit": "us",
+        }
+        for key, value in mutations.items():
+            with self.subTest(field=key):
+                records = read_jsonl(EVENTS)
+                records[0]["timebase"][key] = value
+                self.assert_fail_closed(records, "event timebase must exactly match")
         records = read_jsonl(EVENTS)
-        records[2]["polarity"] = 0
-        self.assert_fail_closed(records, "polarity must be -1 or 1")
+        del records[0]["timebase"]["unit"]
+        self.assert_fail_closed(records, "timebase keys differ")
+        records = read_jsonl(EVENTS)
+        records[0]["timebase"]["scale"] = 1
+        self.assert_fail_closed(records, "timebase keys differ")
+
+    def test_output_may_not_alias_any_input_and_inputs_are_preserved(self) -> None:
+        inputs = (EVENTS, INTRINSICS, POSES)
+        for output in inputs:
+            with self.subTest(exact_output=str(output)):
+                before = {path: path.read_bytes() for path in inputs}
+                with self.assertRaisesRegex(InterfaceError, "output aliases input path"):
+                    analyze_files(
+                        EVENTS,
+                        INTRINSICS,
+                        POSES,
+                        output,
+                        tile_width=8,
+                        tile_height=8,
+                        time_bin_ns=1000,
+                        max_pose_age_ns=0,
+                    )
+                self.assertEqual(before, {path: path.read_bytes() for path in inputs})
+
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            events = temporary / "events.jsonl"
+            intrinsics = temporary / "intrinsics.json"
+            poses = temporary / "poses.jsonl"
+            shutil.copyfile(EVENTS, events)
+            shutil.copyfile(INTRINSICS, intrinsics)
+            shutil.copyfile(POSES, poses)
+            output = temporary / "hardlink-result.json"
+            os.link(events, output)
+            before = {path: path.read_bytes() for path in (events, intrinsics, poses)}
+            with self.assertRaisesRegex(InterfaceError, "output aliases input inode"):
+                analyze_files(
+                    events,
+                    intrinsics,
+                    poses,
+                    output,
+                    tile_width=8,
+                    tile_height=8,
+                    time_bin_ns=1000,
+                    max_pose_age_ns=0,
+                )
+            self.assertEqual(before, {path: path.read_bytes() for path in before})
+
+    def test_all_declared_unsigned_widths_accept_boundary_and_reject_overflow(self) -> None:
+        declared_fields = {
+            "timestamp_ns": 64,
+            "time_bin_start_ns": 64,
+            "tile.x": 16,
+            "tile.y": 16,
+            "pose_version_code": 16,
+            "multiplicity_count": 16,
+        }
+        for field, bits in declared_fields.items():
+            with self.subTest(field=field, case="boundary"):
+                self.assertEqual(_require_uint((1 << bits) - 1, bits, field), (1 << bits) - 1)
+            with self.subTest(field=field, case="overflow"):
+                with self.assertRaisesRegex(InterfaceError, f"unsigned {bits}-bit"):
+                    _require_uint(1 << bits, bits, field)
+
+        records = read_jsonl(EVENTS)
+        records[-1]["timestamp_ns"] = (1 << 64) - 1
+        with tempfile.TemporaryDirectory() as directory:
+            result, _ = self.analyze(
+                directory,
+                records=records,
+                maximum_age=(1 << 64) - 1,
+                time_bin_ns=1,
+            )
+        last_packet_start = max(
+            packet["time_bin_start_ns"]
+            for packet in result["representations"]["sensor_fixed"]
+            ["logical_occupancy_packets"]
+        )
+        self.assertEqual(last_packet_start, (1 << 64) - 1)
+
+        records[-1]["timestamp_ns"] = 1 << 64
+        self.assert_fail_closed(records, "unsigned 64-bit", maximum_age=(1 << 64) - 1)
+
+    def test_exact_input_sha256_provenance_changes_with_each_file_bytes(self) -> None:
+        hash_keys = (
+            ("events_sha256", "events.jsonl"),
+            ("intrinsics_sha256", "intrinsics.json"),
+            ("poses_sha256", "poses.jsonl"),
+        )
+        for hash_key, filename in hash_keys:
+            with self.subTest(input=hash_key), tempfile.TemporaryDirectory() as directory:
+                temporary = Path(directory)
+                events = temporary / "events.jsonl"
+                intrinsics = temporary / "intrinsics.json"
+                poses = temporary / "poses.jsonl"
+                for source, target in (
+                    (EVENTS, events),
+                    (INTRINSICS, intrinsics),
+                    (POSES, poses),
+                ):
+                    shutil.copyfile(source, target)
+                baseline, _ = self.analyze(
+                    directory,
+                    events_path=events,
+                    intrinsics_path=intrinsics,
+                    poses_path=poses,
+                    output_name="baseline.json",
+                )
+                target = temporary / filename
+                target.write_bytes(target.read_bytes() + b"\n")
+                mutated, _ = self.analyze(
+                    directory,
+                    events_path=events,
+                    intrinsics_path=intrinsics,
+                    poses_path=poses,
+                    output_name="mutated.json",
+                )
+                self.assertNotEqual(
+                    baseline["input_provenance"][hash_key],
+                    mutated["input_provenance"][hash_key],
+                )
+                self.assertFalse(mutated["input_provenance"]["canonical_evidence_claimed"])
 
     def test_scope_explicitly_rejects_unimplemented_system_features(self) -> None:
         self.assertEqual(
@@ -199,6 +359,11 @@ class StageOneModelTests(unittest.TestCase):
             result["bottleneck_metrics"]["6_motion_reference_locality"]
             ["world_reconstruction_error_measured"]
         )
+        self.assertEqual(
+            result["output_semantics"]["atomic_visibility"],
+            "temporary file plus os.replace at destination",
+        )
+        self.assertFalse(result["output_semantics"]["crash_durability_guaranteed"])
 
 
 class CliTests(unittest.TestCase):

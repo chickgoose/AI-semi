@@ -1,4 +1,4 @@
-{"schema":"redred.mc_wtb.event_stream/v1","record_type":"header","evidence_class":"SYNTHETIC_DEMO","camera_id":"synthetic-camera-0","intrinsics_id":"synthetic-pinhole-64x48-v2","pose_stream_id":"synthetic-known-motion-v2","coordinate_frame":"sensor_image","timestamp_unit":"ns","declared_event_count":24}
+{"schema":"redred.mc_wtb.event_stream/v1","record_type":"header","evidence_class":"SYNTHETIC_DEMO","camera_id":"synthetic-camera-0","intrinsics_id":"synthetic-pinhole-64x48-v2","pose_stream_id":"synthetic-known-motion-v2","coordinate_frame":"sensor_image","timebase":{"clock_domain":"scenario_absolute_clock","epoch":"synthetic_epoch_0","unit":"ns"},"declared_event_count":24}
 {"schema":"redred.mc_wtb.event/v1","record_type":"event","event_id":100,"sequence_index":0,"timestamp_ns":0,"pose_version":"identity","x":24,"y":18,"polarity":1}
 {"schema":"redred.mc_wtb.event/v1","record_type":"event","event_id":101,"sequence_index":1,"timestamp_ns":0,"pose_version":"identity","x":25,"y":18,"polarity":1}
 {"schema":"redred.mc_wtb.event/v1","record_type":"event","event_id":102,"sequence_index":2,"timestamp_ns":0,"pose_version":"identity","x":24,"y":19,"polarity":1}
