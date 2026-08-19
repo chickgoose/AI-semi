@@ -75,7 +75,7 @@ class SingleEdgeContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn('"repository_commit": "a57943adba759fc955b4506e99703c1dd9736fba"',
                       result.stdout)
-        self.assertIn('"integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"',
+        self.assertIn('"integration_commit": "a57943adba759fc955b4506e99703c1dd9736fba"',
                       result.stdout)
         self.assertIn('"reset_assertion_precondition": "drain_idle_o == 1"',
                       result.stdout)

@@ -2,7 +2,7 @@
   "schema": "redred-single-edge-source-binding-v1",
   "source_set_id": "a2-a3-single-edge-hardened-6fc5e16",
   "repository_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
-  "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+  "integration_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
   "files": [
     {
       "path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",

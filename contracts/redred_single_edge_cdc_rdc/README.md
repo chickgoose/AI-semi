@@ -16,7 +16,7 @@ edge.
 `contract.json` binds the exact source blobs introduced by commit
 `6fc5e167918fa4c54786c9a3abb5f60ecd8b991b` and proves those blobs are
 byte-identical in integration commit
-`a0a4eb38632245db8ff5937ea5b6c6e3f3839246`. The blobs are read from Git, so
+`a57943adba759fc955b4506e99703c1dd9736fba`. The blobs are read from Git, so
 the verification is independent of whether that commit has already been
 merged into the current checkout.  The canonical invocation is:
 
