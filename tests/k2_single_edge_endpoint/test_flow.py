@@ -144,6 +144,15 @@ class ContractTests(unittest.TestCase):
         self.assertIn("[llength $clock_names] != 1", active)
         self.assertIn('[lindex $clock_names 0] ne "se_primary_clk"', active)
 
+    def test_innovus_routes_pg_before_signals(self):
+        text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
+        active = "\n".join(line for line in text.splitlines()
+                           if not line.lstrip().startswith("#"))
+        self.assertLess(active.index("sroute -nets"), active.index("routeDesign"))
+        self.assertLess(active.index("editTrim -nets"), active.index("routeDesign"))
+        self.assertEqual(active.count("sroute -nets"), 1)
+        self.assertEqual(active.count("editTrim -nets"), 1)
+
 
 class MutationTests(unittest.TestCase):
     def setUp(self):

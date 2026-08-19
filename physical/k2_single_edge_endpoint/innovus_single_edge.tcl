@@ -115,13 +115,16 @@ set failed [catch {
   place_opt_design
   redirect -file "$output/reports/check_place.rpt" {checkPlace}
   clock_opt_design
+  # Build/trim the special PG network before signal routing so NanoRoute can
+  # legally avoid those shapes.  Adding special M1 wires after routeDesign can
+  # create signal-to-VDD/VSS shorts that post-route optimization cannot repair.
+  sroute -nets [list $::env(SE_VDD) $::env(SE_VSS)] \
+    -connect {blockPin padPin corePin}
+  editTrim -nets [list $::env(SE_VDD) $::env(SE_VSS)]
   routeDesign
   extractRC
   optDesign -postRoute
   optDesign -postRoute -hold
-  sroute -nets [list $::env(SE_VDD) $::env(SE_VSS)] \
-    -connect {blockPin padPin corePin}
-  editTrim -nets [list $::env(SE_VDD) $::env(SE_VSS)]
   extractRC
 
   # Preserve all independently safe post-route diagnostics even when either
