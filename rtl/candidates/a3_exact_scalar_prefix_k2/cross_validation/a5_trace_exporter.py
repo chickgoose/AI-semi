@@ -22,7 +22,7 @@ sys.path.insert(0, str(CANDIDATE))
 from oracle import AtomicK2Model  # noqa: E402
 
 
-OWNER_COMMIT = "57d46369dc6f15ec374a296518bb0678e1428613"
+OWNER_COMMIT = "a57943adba759fc955b4506e99703c1dd9736fba"
 LEGACY_EXPORTER_COMMIT = "29a5003bb47c9c502a3bec9a727de2ed14afcfeb"
 A5_COMMIT = "41c425bec79aca6c84f5856ca7dee2a4865a6447"
 OWNER_RTL = "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv"
