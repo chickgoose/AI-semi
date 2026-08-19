@@ -1,6 +1,6 @@
 # REDRED 주최 측 Q&A 기반 single-edge 목표와 현재 판정
 
-기준일: 2026-08-19
+기준일: 2026-08-20
 
 ## 확정 해석
 
@@ -80,6 +80,17 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 - Source-level single-posedge CDC/RDC와 RTL source-structure PDK 검사는
   bounded PASS다. Supplied-rotation coordinate software demo도 synthetic 범위
   안에서 PASS다.
+- 실제 GPDK045/6.5 ns complete-boundary diagnostic에서 A2와 A3 모두
+  Genus/Innovus exit 0, setup/hold 위반 0, DRC/antenna/connectivity 0을
+  달성했다. A2는 setup WNS `+0.0329976 ns`, hold WNS `+0.00057663 ns`,
+  area `1962.738`, 747 instances, post-route vectorless `0.07962 mW`다.
+  A3는 setup WNS `+0.0180397 ns`, hold WNS `+0.00218582 ns`, area
+  `1642.284`, 583 instances, `0.06759883 mW`다. A2 RTL authority
+  `eb298fe1416a4312269a6f9232e1445f8958dda2`는 공식 integration branch
+  계보에 포함되어 fresh clone에서도 접근 가능하다.
+- A2 local endpoint evidence regression은 53/53 PASS이며, scheduler model
+  lockstep은 200,000 cycles, RTL mutation은 6/6 kill을 통과했다. 이는
+  2-state simulation 범위이며 4-state X/formal equivalence는 별도 HOLD다.
 
 ## 현재 HOLD
 
@@ -91,12 +102,13 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
   `HOLD_SCHEMA_INCOMPATIBLE_UNBOUND`다. Native pipeline은 별도 버전의
   slot-specific consumer이며 generic v3 자료를 relabel하거나 lossy repack하지
   않는다.
-- Organizer-authoritative GPDK045 corner/clock/I/O/load 수치와 mapped cell
-  legality가 없다.
-- Hardened single-edge A2/A3의 실제 Genus/Innovus P&R, post-route timing,
-  DRC/antenna/connectivity 및 mapped vectorless power가 없다.
-- Physical/vectorless local 도구는 self-sealed 또는 malformed artifact가
-  `GO`가 되지 않도록 HOLD-only다. 이는 실제 EDA 결과가 아니다.
+- Organizer-authoritative GPDK045 corner/clock/I/O/load 수치와 최종 mapped
+  cell legality authority가 없다. 현재 6.5 ns와 I/O/load는
+  `TEAM_PLACEHOLDER_SCREENING_ONLY`다.
+- 실제 Genus/Innovus artifact와 해시 원장은 생성됐지만 producer는
+  out-of-band로 인증되지 않았다. A2/A3 qualification은 모두
+  `HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE`이며 diagnostic artifact PASS를
+  physical GO나 release로 승격하지 않는다.
 - `contracts/redred_final_selection/`의 고정 verifier는 현재 immutable
   input에서 12개 미충족 gate와 `candidate=NONE`을 재계산한다. Caller JSON,
   P6 증거, 임의 scalar score 또는 shared failure는 선택 권한을 만들 수 없다.
@@ -107,4 +119,5 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
 현재 설계 판단은 `A2 primary / A3 exact-prefix fallback`이다. A3는 exact
 scalar-prefix가 요구되거나 A2 고유 gate가 실패하고 A3가 그 gate를 독립적으로
 통과할 때만 대체한다. Shared interface, PDK, CDC/RDC 또는 증거 실패를 A3로
-우회하지 않는다.
+우회하지 않는다. 최신 A2 physical closure로 과거 A2 timing failure는
+해소됐지만, 이것만으로 A2/A3 최종 선택 권한이 생기지는 않는다.

@@ -107,9 +107,15 @@ A2/A3 선택은 mapped physical·power·PDK/I/O·CDC/RDC가 닫힐 때까지 HOL
   event/cycle, accept-to-retire 3 cycle이다. A3는 accepted/retired 93,645,
   source overrun 12,771, 0.806670806 event/cycle, 2 cycle이다.
 - 이 single-edge 결과와 native publication은 scoped canonical digital PASS다.
-  Organizer/mapped legality, real P&R/post-route timing, mapped vectorless power,
-  selected-interface final CDC/RDC, 최종 A2/A3 선택과 team release는 계속
-  HOLD다.
+  2026-08-20 실제 GPDK045/6.5 ns diagnostic에서 A2/A3 모두 Genus/Innovus
+  exit 0, setup/hold/DRC/antenna/connectivity 0과 post-route vectorless 결과를
+  확보했다. A2는 setup/hold WNS `+0.0329976/+0.00057663 ns`, area
+  `1962.738`, power `0.07962 mW`; A3는 `+0.0180397/+0.00218582 ns`, area
+  `1642.284`, power `0.06759883 mW`다.
+- 위 physical 결과의 constraint class는 `TEAM_PLACEHOLDER_SCREENING_ONLY`이고
+  qualification은 `HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE`다. 따라서
+  organizer PDK/I/O authority, producer authentication, selected-interface
+  final mapped CDC/RDC, 최종 A2/A3 선택과 team release는 계속 HOLD다.
 - 실행 가능한 final-selection readiness gate는 현재 immutable 증거에서
   12개 미충족 항목과 `candidate=NONE`을 산출하며 선택·release authority를
   갖지 않는다.

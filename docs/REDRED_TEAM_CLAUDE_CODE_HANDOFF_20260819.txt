@@ -17,7 +17,10 @@ main, agents/*, codex/*, audit/* 및 다른 integration/* 브랜치는 현재 �
   integration/redred-system-goal
 
 검증 기준 최소 commit:
-  c49fabe8aea9390512f1dea3e20a57a04b98cb01
+  bfb4b998049bbf9c66c4af9ffabba2c8ff096363
+
+검증된 A2 RTL authority commit:
+  eb298fe1416a4312269a6f9232e1445f8958dda2
 
 저장소는 PUBLIC이며 이 브랜치는 origin에 게시되어 있다. 팀원은 별도
 저장소 권한 없이 아래 명령으로 동일한 원격 브랜치를 fetch할 수 있다.
@@ -45,10 +48,10 @@ main, agents/*, codex/*, audit/* 및 다른 integration/* 브랜치는 현재 �
 
 위 출력은 아래 검증 기준 commit과 같거나 그 후속이어야 한다.
 
-  c49fabe8aea9390512f1dea3e20a57a04b98cb01
+  bfb4b998049bbf9c66c4af9ffabba2c8ff096363
 
   git merge-base --is-ancestor \
-    c49fabe8aea9390512f1dea3e20a57a04b98cb01 \
+    bfb4b998049bbf9c66c4af9ffabba2c8ff096363 \
     origin/integration/redred-system-goal
 
 주의: 이 캠페인은 여러 publication/provenance branch에 고정된 Git object도
@@ -95,10 +98,11 @@ physical, power, PDK, CDC/RDC 및 evidence authority gate가 모두 닫힌 뒤�
 2. 현재 한 줄 판정
 ==================
 
-A2는 actual-RTL native digital campaign의 aggregate 성능 primary지만,
-동일 6.5 ns GPDK045 post-route screening에서 setup을 닫지 못했다. A3는
-exact-prefix 의미를 유지하면서 최종 setup/hold를 모두 닫고 실제 artifact
-qualification의 diagnostic checks를 완료했다. 그러나 constraint는
+A2는 actual-RTL native digital campaign의 aggregate 성능 primary이며,
+onehot timing-cone 최적화 뒤 동일 6.5 ns GPDK045 post-route screening에서
+setup/hold를 모두 닫았다. A3도 exact-prefix 의미를 유지하면서 setup/hold를
+닫았고 A2보다 area와 vectorless power가 낮다. 두 후보 모두 실제 artifact
+qualification의 diagnostic checks를 완료했지만 constraint는
 TEAM_PLACEHOLDER_SCREENING_ONLY이고 producer authentication/cohort/final
 release gate가 없으므로 현재 final candidate는 NONE, selection/release는
 HOLD다.
@@ -166,6 +170,12 @@ A2:
   - aggregate throughput과 source-overrun 감소가 목표
   - exact scalar-prefix를 보장하지 않음
   - debt/catch-up semantics가 아님
+  - 2026-08-20 timing 개선에서 row/column 선택과 grant bitmap을 native
+    onehot으로 유지하고 lane 1 calendar decode를 등록 상태에서 선계산하여
+    source_pending_i에서 출력까지의 직렬 선택 cone을 줄임
+  - wrapper accept bitmap은 scheduler onehot bitmap을 직접 사용함
+  - 200,000-cycle Verilator model lockstep과 RTL mutation 6개 kill을 통과함
+  - 4-state X 동치/formal proof는 별도 HOLD 항목임
 
 A3:
 
@@ -371,22 +381,25 @@ Native campaign publication:
   publication SHA-256:
     89a8439fc3c5796293b56f2dcc96f2bb2141d1d2d1041bff8ca84a09e581c93c
 
-동일 서버/GPDK045/6.5 ns post-route screening 결과:
+동일 서버/GPDK045/6.5 ns post-route screening의 최신 각 후보 결과:
 
                          A2                  A3
-  Innovus exit           FAIL (1)            PASS (0)
-  final setup paths      106                  101
-  setup violations       19                   0
-  setup WNS              -0.141401 ns         +0.0180397 ns
-  setup TNS              -1.6198818 ns         0.0 ns
+  Innovus exit           PASS (0)            PASS (0)
+  final setup paths      110                  101
+  setup violations       0                    0
+  setup WNS              +0.0329976 ns        +0.0180397 ns
+  setup TNS              0.0 ns               0.0 ns
   hold violations        0                    0
-  hold WNS               +0.00447361 ns       +0.00218582 ns
-  post-route instances   1,024                583
-  post-route area        2,515.068            1,642.284
-  vectorless power       0.1394 mW            0.06759883 mW
+  hold WNS               +0.00057663 ns       +0.00218582 ns
+  post-route instances   747                  583
+  post-route area        1,962.738            1,642.284
+  vectorless power       0.07962 mW            0.06759883 mW
 
-A3 attempt root의 Genus와 Innovus는 모두 exit 0이고 artifact ledger 생성 및
-qualification parser 검증까지 완료됐다. 최종 qualification은 다음과 같다.
+A2/A3 모두 Genus와 Innovus exit 0, setup/hold/DRC/antenna/connectivity 0,
+artifact ledger 생성 및 qualification parser 검증까지 완료됐다. A2는 A3보다
+area 19.51%, vectorless power 17.78%가 크지만 팀 synthetic full50에서
+accepted event 10,401개와 throughput 약 11.1%가 높다. 최신 A2 qualification은
+다음과 같다.
 
   decision=HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE
   diagnostic_artifact_checks_completed=true
@@ -394,11 +407,15 @@ qualification parser 검증까지 완료됐다. 최종 qualification은 다음�
   candidate_physical_go=false
   constraint_evidence_class=TEAM_PLACEHOLDER_SCREENING_ONLY
   qualification SHA-256:
-    6a0da74d439c8490956a1e560238417caa6f3a52620a6c8dec7aa564a892a1af
+    ccc0cd4e4e5e05feefe832c9cf1b664aad013ea176b6dbd439a528620ed621dd
+
+A3 qualification SHA-256은 다음이다.
+
+  6a0da74d439c8490956a1e560238417caa6f3a52620a6c8dec7aa564a892a1af
 
 위 power는 Innovus post-route vectorless screening 값이다. VCD/SAIF activity
-power나 signoff extraction 결과가 아니다. A2는 nonzero Innovus receipt이므로
-artifact ledger/qualification 대상이 아니며 physical FAIL/HOLD다.
+power나 signoff extraction 결과가 아니다. 두 결과 모두 진단 범위 PASS지만
+out-of-band producer authentication이 없으므로 physical GO나 release가 아니다.
 
 
 9. Digital-to-server compatibility 정책
@@ -448,14 +465,14 @@ artifact ledger/qualification 대상이 아니며 physical FAIL/HOLD다.
 
 별도로 수행한 licensed-server campaign은 위 local compatibility와 구분한다.
 
-  - server repo commit: c916a2143e0e3aadd1d04724a7c31e79f347f972
+  - 검증 A2 RTL authority: eb298fe1416a4312269a6f9232e1445f8958dda2
   - evidence parser/requalification public lineage: 7bf8ccf 및 후속
   - Genus: 23.14-s090_1
   - Innovus: 23.14-s088_1
   - PDK: 교육용 GPDK045, slow 0.9 V / 125 C setup library
   - period: 6.5 ns
   - A3 Genus/Innovus exit 0, final setup/hold CLOSED
-  - A2 Innovus exit 1, final setup violation 19개
+  - optimized A2 Genus/Innovus exit 0, final setup/hold CLOSED
 
 실제 Cadence 로그 형식, Genus-expanded 205-command mapped SDC, no_drive 18개
 입력 slew 모델, timing path class, area/power/check-design 보고서를 검증하는
@@ -477,18 +494,20 @@ Scoped PASS:
   - source-structure PDK legality
   - supplied-motion coordinate software demo
   - local RTL/physical boundary compatibility
+  - A2 live Genus/Innovus exit-zero post-route diagnostic campaign
+  - A2 final setup/hold 0 violation 및 artifact diagnostic qualification
+  - A2 post-route area와 vectorless power screening 수집
   - A3 live Genus/Innovus exit-zero post-route diagnostic campaign
   - A3 final setup/hold 0 violation 및 artifact diagnostic qualification
   - A3 post-route area와 vectorless power screening 수집
-  - A2 동일 조건 physical setup failure 확인
+  - A2/A3 각각 동일 contract/6.5 ns 조건의 physical closure 확인
   - optimized A3 source에 고정된 source-level CDC/RDC 23/23
 
 HOLD:
 
   - organizer-authoritative PDK/cell/clock/I/O/load/corner
   - signoff extraction 및 authenticated producer evidence
-  - A2 post-route setup closure
-  - A2/A3 모두 PASS인 matched physical cohort
+  - authenticated A2/A3 matched physical cohort
   - organizer-authoritative mapped-cell legality
   - VCD/SAIF activity power
   - final mapped CDC/RDC
@@ -619,9 +638,10 @@ complete single-posedge AER endpoint다. A2는 [1,5,5,1] persistent weighted
 opportunity 성능 primary이고 A3는 exact two-selection scalar-prefix semantic
 fallback이다.
 
-현재 digital campaign recommendation은 A2지만, 동일 6.5 ns GPDK045
-post-route screening에서는 A2 setup이 실패하고 A3만 final setup/hold를
-닫았다. A3 qualification은 diagnostic checks completed이지만 producer가
+현재 digital campaign recommendation은 A2이며, 동일 6.5 ns GPDK045
+post-route screening에서 A2와 A3 모두 final setup/hold를 닫았다. A2는
+throughput/overrun 성능이 높고 A3는 area/vectorless power가 낮다. 두
+qualification 모두 diagnostic checks completed이지만 producer가
 unauthenticated이므로 final candidate는 NONE이고 release는 HOLD다.
 
 다음 local compatibility gate를 실행한다.
@@ -645,8 +665,8 @@ width, physical/vectorless boundary parity, Genus SYNTHESIS define을 검사한�
 
 어떤 경우에도 A2/A3 final selection, release, signoff/Fmax, organizer PDK
 legality, VCD/SAIF power 또는 final mapped CDC/RDC를 증거 없이 주장하지
-않는다. A3 post-route closure/area/vectorless power는 diagnostic screening
-범위로만 보고한다.
+않는다. A2/A3 post-route closure/area/vectorless power는 diagnostic
+screening 범위로만 보고한다.
 
 --- CLAUDE CODE PROMPT END ---
 
@@ -660,7 +680,7 @@ legality, VCD/SAIF power 또는 final mapped CDC/RDC를 증거 없이 주장하�
   3) [완료] 일반 PUBLIC clean clone에서 고정 Git object와 대표 campaign 확인
   4) [완료] 동일 환경 A2/A3 Genus 및 Innovus 실행
   5) [완료] A3 post-route timing/area/vectorless power diagnostic qualification
-  6) A2 timing 개선 또는 A2 physical FAIL을 채택 정책에 반영
+  6) [완료] A2 onehot timing-cone 개선과 post-route setup/hold closure
   7) authenticated producer/freshness와 matched cohort 구성
   8) final mapped CDC/RDC 및 필요 시 VCD/SAIF power 수집
   9) 모든 final-selection gate가 닫힌 후 최종 후보 결정

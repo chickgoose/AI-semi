@@ -31,3 +31,15 @@ organizer-authoritative PDK 수치, 실제 Genus/Innovus 결과, controlled prod
 freshness와 mapped PDK/CDC 증거가 닫히기 전에는 최종 A2/A3 선택이나 release를
 선언하지 않는다. Native campaign binding은 scoped digital PASS이며 release
 authority가 아니다.
+
+2026-08-20 최신 진행 상태: A2 onehot timing-cone 개선 RTL authority
+eb298fe1416a4312269a6f9232e1445f8958dda2는
+integration/redred-system-goal 계보에 포함되어 있다. Local endpoint evidence
+53/53, 200,000-cycle model lockstep과 RTL mutation 6/6이 PASS했다. 실제
+GPDK045/6.5 ns fresh Genus/Innovus diagnostic에서 A2는 setup WNS
++0.0329976 ns, hold WNS +0.00057663 ns, violation 0/0, DRC/antenna/connectivity
+0, area 1962.738, 747 instances, post-route vectorless 0.07962 mW를 기록했다.
+A3도 setup/hold를 닫았고 area 1642.284, vectorless 0.06759883 mW다. 두
+qualification은 모두 HOLD_UNAUTHENTICATED_PRODUCER_EVIDENCE이므로 최종
+candidate는 여전히 NONE이고 organizer PDK/I/O authority, producer
+authentication, mapped CDC/RDC와 final selection gate를 우회하지 않는다.
