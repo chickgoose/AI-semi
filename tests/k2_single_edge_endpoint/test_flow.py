@@ -134,6 +134,16 @@ class ContractTests(unittest.TestCase):
         self.assertIn('se_append_report_context "$output/reports/area.rpt" area postroute',
                       text)
 
+    def test_innovus_clock_check_deduplicates_only_same_mmmc_clock_name(self):
+        text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
+        active = "\n".join(line for line in text.splitlines()
+                           if not line.lstrip().startswith("#"))
+        self.assertIn("set clock_names [lsort -unique [get_object_name [get_clocks *]]]",
+                      active)
+        self.assertIn("[sizeof_collection $clock_ports] != 1", active)
+        self.assertIn("[llength $clock_names] != 1", active)
+        self.assertIn('[lindex $clock_names 0] ne "se_primary_clk"', active)
+
 
 class MutationTests(unittest.TestCase):
     def setUp(self):

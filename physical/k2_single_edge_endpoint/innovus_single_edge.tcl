@@ -79,7 +79,12 @@ set failed [catch {
   init_design
   set_interactive_constraint_modes [list se_functional]
   set clock_ports [get_ports clk_i]
-  if {[sizeof_collection $clock_ports] != 1 || [sizeof_collection [get_clocks *]] != 1} {
+  # MMMC can return one se_primary_clk object per active analysis view. Count
+  # unique clock names rather than raw view-scoped objects, while still
+  # rejecting a second/generated clock name or a missing/duplicated clk_i port.
+  set clock_names [lsort -unique [get_object_name [get_clocks *]]]
+  if {[sizeof_collection $clock_ports] != 1 ||
+      [llength $clock_names] != 1 || [lindex $clock_names 0] ne "se_primary_clk"} {
     error "initialized endpoint does not have exactly one primary clock"
   }
   set_drive 0 $clock_ports

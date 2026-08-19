@@ -196,7 +196,7 @@
   "flow_templates": {
     "genus": {"path": "physical/k2_single_edge_endpoint/genus_single_edge.tcl", "sha256": "ce2b33325aed2bce0e3b328873c19abffd8075ea61f33ba8cda3a3d0d98083d6"},
     "innovus_mmmc": {"path": "physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl", "sha256": "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"},
-    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "d749be4794b5b6c197b8284dbf1858c233860ef3e3d005c1ff4c8d76c7763bbf"}
+    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "4fa804c34e1924f453f65d0391c32984a0dbe46f9ca16559fdc9be2263233774"}
   },
   "commands": {
     "genus_argv_tail": ["-batch", "-files", "physical/k2_single_edge_endpoint/genus_single_edge.tcl"],

@@ -101,7 +101,7 @@ TEMPLATE_IDENTITIES = {
     "innovus_mmmc": ("physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl",
                      "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"),
     "innovus": ("physical/k2_single_edge_endpoint/innovus_single_edge.tcl",
-                "d749be4794b5b6c197b8284dbf1858c233860ef3e3d005c1ff4c8d76c7763bbf")}
+                "4fa804c34e1924f453f65d0391c32984a0dbe46f9ca16559fdc9be2263233774")}
 
 
 class FlowError(RuntimeError):
