@@ -139,15 +139,21 @@ class ContractTests(unittest.TestCase):
         self.assertIn("true 3]", text)
         self.assertIn("postRoute NA 6]", text)
         self.assertEqual(text.count("postRoute_hold true 3]"), 2)
-        self.assertLess(text.index("eco_hold_pre_setup.machine"),
-                        text.index("eco_setup_recovery.machine"))
-        self.assertLess(text.index("eco_setup_recovery.machine"),
-                        text.index("eco_hold_final.machine"))
-        self.assertLess(text.index("eco_hold_final.machine"),
-                        text.index("set setup_failed [catch"))
+        pre = text.index("eco_hold_pre_setup.machine")
+        setup = text.index("eco_setup_recovery.machine", pre)
+        final = text.index("eco_hold_final.machine", setup)
+        self.assertLess(pre, setup)
+        self.assertLess(setup, final)
+        self.assertLess(final, text.index("set setup_failed [catch", final))
         _, contract = flow.validate_contract()
         self.assertEqual([row["max_iterations"] for row in
                           contract["bounded_eco"]["phases"]], [3, 6, 3])
+        self.assertEqual(contract["bounded_eco"]["phases"][0]["allowed_statuses"],
+                         ["CLOSED", "STALLED", "EXHAUSTED"])
+        self.assertEqual([row["allowed_statuses"] for row in
+                          contract["bounded_eco"]["phases"][1:]],
+                         [["CLOSED"], ["CLOSED"]])
+        self.assertIn("final_timing_receipt.machine", text)
 
     def test_innovus_clock_check_deduplicates_only_same_mmmc_clock_name(self):
         text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
@@ -385,7 +391,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
             with self.assertRaisesRegex(flow.FlowError, "mapped SDC"):
                 flow.validate_sdc(bad, self.fixture.contract)
 
-    def test_eco_iteration_receipt_is_monotonic_and_closed(self):
+    def test_eco_iteration_receipt_status_semantics_are_fail_closed(self):
         _, contract = flow.validate_contract()
         phase = contract["bounded_eco"]["phases"][0]
         clean = ("schema=k2_single_edge_eco_iteration_receipt_v1\n"
@@ -399,6 +405,33 @@ set_load 0.01 [get_ports {{{outputs}}}]
             clean.encode(), phase, contract["bounded_eco"]["schema"],
             contract["bounded_eco"]["monotonic_epsilon_ns"])
         self.assertEqual(result["observation_count"], 3)
+        self.assertEqual(result["status"], "CLOSED")
+
+        stalled = clean.replace(
+            "status=CLOSED\nobservation_count=3\n"
+            "observation_0=10,2,-0.100,-0.150\n"
+            "observation_1=10,2,-0.050,-0.080\n"
+            "observation_2=10,0,0.040,0.0",
+            "status=STALLED\nobservation_count=3\n"
+            "observation_0=10,3,-0.100,-0.200\n"
+            "observation_1=10,2,-0.050,-0.080\n"
+            "observation_2=10,2,-0.060,-0.090")
+        exhausted = clean.replace(
+            "status=CLOSED\nobservation_count=3\n"
+            "observation_0=10,2,-0.100,-0.150\n"
+            "observation_1=10,2,-0.050,-0.080\n"
+            "observation_2=10,0,0.040,0.0",
+            "status=EXHAUSTED\nobservation_count=4\n"
+            "observation_0=10,4,-0.100,-0.200\n"
+            "observation_1=10,3,-0.080,-0.150\n"
+            "observation_2=10,2,-0.050,-0.080\n"
+            "observation_3=10,1,-0.010,-0.010")
+        for status_payload, status in ((stalled, "STALLED"),
+                                       (exhausted, "EXHAUSTED")):
+            parsed = flow.parse_eco_receipt(
+                status_payload.encode(), phase, contract["bounded_eco"]["schema"],
+                contract["bounded_eco"]["monotonic_epsilon_ns"])
+            self.assertEqual(parsed["status"], status)
         for mutation in (
                 clean.replace("status=CLOSED", "status=STALLED"),
                 clean.replace("max_iterations=3", "max_iterations=6"),
@@ -407,11 +440,50 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 clean.replace("observation_2=10,0,0.040,0.0",
                               "observation_2=10,1,-0.010,-0.010"),
                 clean.replace("observation_1=10,2,-0.050,-0.080",
-                              "observation_1=10,2,-0.200,-0.300")):
+                              "observation_1=10,2,-0.200,-0.300"),
+                stalled.replace("observation_2=10,2,-0.060,-0.090",
+                                "observation_2=10,1,-0.010,-0.010"),
+                exhausted.replace("observation_count=4", "observation_count=3")
+                         .replace("observation_3=10,1,-0.010,-0.010\n", "")):
             with self.subTest(mutation=mutation), self.assertRaises(flow.FlowError):
                 flow.parse_eco_receipt(
                     mutation.encode(), phase, contract["bounded_eco"]["schema"],
                     contract["bounded_eco"]["monotonic_epsilon_ns"])
+
+        setup_phase = contract["bounded_eco"]["phases"][1]
+        setup_stalled = stalled.replace("phase=pre_setup_hold", "phase=setup_recovery") \
+            .replace("view=se_hold_view", "view=se_setup_view") \
+            .replace("check=hold", "check=setup") \
+            .replace("optimizer=postRoute_hold", "optimizer=postRoute") \
+            .replace("allow_setup_tns_degrade=true", "allow_setup_tns_degrade=NA") \
+            .replace("max_iterations=3", "max_iterations=6")
+        with self.assertRaisesRegex(flow.FlowError, "contract mismatch"):
+            flow.parse_eco_receipt(
+                setup_stalled.encode(), setup_phase, contract["bounded_eco"]["schema"],
+                contract["bounded_eco"]["monotonic_epsilon_ns"])
+
+    def test_final_timing_receipt_requires_both_zero_closed_views(self):
+        good = ("schema=k2_single_edge_final_timing_receipt_v1\n"
+                "setup_view=se_setup_view\nsetup_check=setup\n"
+                "setup_path_count=2\nsetup_violation_count=0\n"
+                "setup_wns=0.12\nsetup_tns=0.0\n"
+                "hold_view=se_hold_view\nhold_check=hold\n"
+                "hold_path_count=3\nhold_violation_count=0\n"
+                "hold_wns=0.04\nhold_tns=0.0\n"
+                "final_hold_phase_receipt=eco_hold_final.machine\n")
+        parsed = flow.parse_final_timing_receipt(
+            good.encode(), "k2_single_edge_final_timing_receipt_v1")
+        self.assertEqual(parsed["setup"]["path_count"], 2)
+        self.assertEqual(parsed["hold"]["path_count"], 3)
+        for mutation in (
+                good.replace("setup_violation_count=0", "setup_violation_count=1"),
+                good.replace("hold_wns=0.04", "hold_wns=-0.01"),
+                good.replace("setup_tns=0.0", "setup_tns=-0.01"),
+                good.replace("final_hold_phase_receipt=eco_hold_final.machine",
+                             "final_hold_phase_receipt=foreign.machine")):
+            with self.subTest(mutation=mutation), self.assertRaises(flow.FlowError):
+                flow.parse_final_timing_receipt(
+                    mutation.encode(), "k2_single_edge_final_timing_receipt_v1")
 
     def test_strong_zero_report_parser_rejects_contradictions(self):
         top = self.fixture.contract["candidates"]["a2"]["top"]
@@ -820,6 +892,15 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 context("hold_timing", "postroute"),
             "setup_timing_machine": b"schema=k2_single_edge_timing_summary_v1\nview=se_setup_view\ncheck=setup\npath_count=1\nviolation_count=0\nwns=0.12\ntns=0.0\n",
             "hold_timing_machine": b"schema=k2_single_edge_timing_summary_v1\nview=se_hold_view\ncheck=hold\npath_count=1\nviolation_count=0\nwns=0.04\ntns=0.0\n",
+            "final_timing_receipt": (
+                b"schema=k2_single_edge_final_timing_receipt_v1\n"
+                b"setup_view=se_setup_view\nsetup_check=setup\n"
+                b"setup_path_count=1\nsetup_violation_count=0\n"
+                b"setup_wns=0.12\nsetup_tns=0.0\n"
+                b"hold_view=se_hold_view\nhold_check=hold\n"
+                b"hold_path_count=1\nhold_violation_count=0\n"
+                b"hold_wns=0.04\nhold_tns=0.0\n"
+                b"final_hold_phase_receipt=eco_hold_final.machine\n"),
             "drc": (innovus_header(
                 f"verify_drc -report {self.root}/innovus/reports/drc.rpt") +
                     "No DRC violations were found\n").encode() +
@@ -1041,6 +1122,41 @@ set_load 0.01 [get_ports {{{outputs}}}]
         self.assertFalse(result["candidate_physical_go"])
         self.assertNotIn("real_artifacts_verified", result)
 
+    def test_pre_setup_hold_stalled_or_exhausted_can_handoff_transparently(self):
+        paths = flow.expected_artifact_paths(self.top)
+        payloads = {
+            "STALLED": (
+                "status=STALLED\nobservation_count=2\n"
+                "observation_0=10,2,-0.100,-0.200\n"
+                "observation_1=10,2,-0.110,-0.210\n"),
+            "EXHAUSTED": (
+                "status=EXHAUSTED\nobservation_count=4\n"
+                "observation_0=10,4,-0.100,-0.200\n"
+                "observation_1=10,3,-0.080,-0.150\n"
+                "observation_2=10,2,-0.050,-0.080\n"
+                "observation_3=10,1,-0.010,-0.010\n"),
+        }
+        prefix = ("schema=k2_single_edge_eco_iteration_receipt_v1\n"
+                  "phase=pre_setup_hold\nview=se_hold_view\ncheck=hold\n"
+                  "optimizer=postRoute_hold\nallow_setup_tns_degrade=true\n"
+                  "max_iterations=3\n")
+        for status, body in payloads.items():
+            with self.subTest(status=status):
+                ledger = self.reset_fake_bundle()
+                (self.root / paths["eco_hold_pre_setup"]).write_text(prefix + body)
+                self.reseal_fake_bundle(ledger)
+                environment = self.root / "LIVE_ENVIRONMENT.json"
+                environment_payload = environment.read_bytes()
+                with mock.patch.object(flow, "validate_live_environment", return_value=(
+                        environment_payload, json.loads(environment_payload))):
+                    result = flow.qualify(
+                        "a2", self.root, environment, self.plan_path, ledger,
+                        self.root / "qualification.json")
+                self.assertTrue(result["diagnostic_artifact_checks_completed"])
+                self.assertEqual(
+                    result["diagnostic_metrics_only"]["bounded_eco"]
+                    ["eco_hold_pre_setup"]["status"], status)
+
     def test_end_to_end_resealed_parser_mutations_never_complete_diagnostics(self):
         paths = flow.expected_artifact_paths(self.top)
         inputs = "rst_i link_enable_i source_pending_i"
@@ -1075,6 +1191,19 @@ set_load 0.01 [get_ports {{{outputs}}}]
             "final_hold_receipt_summary_mismatch": lambda: replace(
                 "eco_hold_final", b"observation_0=1,0,0.04,0.0",
                 b"observation_0=1,0,0.05,0.0"),
+            "setup_recovery_not_closed": lambda: replace(
+                "eco_setup_recovery", b"status=CLOSED", b"status=STALLED"),
+            "final_hold_not_closed": lambda: replace(
+                "eco_hold_final", b"status=CLOSED", b"status=EXHAUSTED"),
+            "final_receipt_setup_summary_mismatch": lambda: replace(
+                "final_timing_receipt", b"setup_wns=0.12", b"setup_wns=0.13"),
+            "final_receipt_hold_summary_mismatch": lambda: replace(
+                "final_timing_receipt", b"hold_wns=0.04", b"hold_wns=0.05"),
+            "final_receipt_nonzero_setup": lambda: replace(
+                "final_timing_receipt", b"setup_violation_count=0",
+                b"setup_violation_count=1"),
+            "final_setup_summary_nonzero": lambda: replace(
+                "setup_timing_machine", b"violation_count=0", b"violation_count=1"),
             "foreign_violated_no_slack_timing": lambda: append(
                 "setup_timing",
                 b"Path 2: VIOLATED (foreign) Hold Check\nforeign no-slack text\n"),

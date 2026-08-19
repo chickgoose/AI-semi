@@ -197,7 +197,7 @@
   "flow_templates": {
     "genus": {"path": "physical/k2_single_edge_endpoint/genus_single_edge.tcl", "sha256": "ce2b33325aed2bce0e3b328873c19abffd8075ea61f33ba8cda3a3d0d98083d6"},
     "innovus_mmmc": {"path": "physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl", "sha256": "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"},
-    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "614a9d5f9daf1e50695be09816a2a8ff3a5c85e0a8ac125ad8acba1fd8220ba3"}
+    "innovus": {"path": "physical/k2_single_edge_endpoint/innovus_single_edge.tcl", "sha256": "b2fdfd958a1d73f97754721a3a548ad6b324fbe2aa5672f3b45e7c3b55370014"}
   },
   "commands": {
     "genus_argv_tail": ["-batch", "-files", "physical/k2_single_edge_endpoint/genus_single_edge.tcl"],
@@ -221,11 +221,13 @@
     "monotonic_epsilon_ns": 0.000001,
     "final_hold_target_slack_ns": 0.005,
     "phases": [
-      {"role": "eco_hold_pre_setup", "path": "innovus/reports/eco_hold_pre_setup.machine", "phase": "pre_setup_hold", "view": "se_hold_view", "check": "hold", "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true", "max_iterations": 3},
-      {"role": "eco_setup_recovery", "path": "innovus/reports/eco_setup_recovery.machine", "phase": "setup_recovery", "view": "se_setup_view", "check": "setup", "optimizer": "postRoute", "allow_setup_tns_degrade": "NA", "max_iterations": 6},
-      {"role": "eco_hold_final", "path": "innovus/reports/eco_hold_final.machine", "phase": "final_hold_reclosure", "view": "se_hold_view", "check": "hold", "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true", "max_iterations": 3}
+      {"role": "eco_hold_pre_setup", "path": "innovus/reports/eco_hold_pre_setup.machine", "phase": "pre_setup_hold", "view": "se_hold_view", "check": "hold", "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true", "max_iterations": 3, "allowed_statuses": ["CLOSED", "STALLED", "EXHAUSTED"]},
+      {"role": "eco_setup_recovery", "path": "innovus/reports/eco_setup_recovery.machine", "phase": "setup_recovery", "view": "se_setup_view", "check": "setup", "optimizer": "postRoute", "allow_setup_tns_degrade": "NA", "max_iterations": 6, "allowed_statuses": ["CLOSED"]},
+      {"role": "eco_hold_final", "path": "innovus/reports/eco_hold_final.machine", "phase": "final_hold_reclosure", "view": "se_hold_view", "check": "hold", "optimizer": "postRoute_hold", "allow_setup_tns_degrade": "true", "max_iterations": 3, "allowed_statuses": ["CLOSED"]}
     ],
-    "all_phases_must_close": true,
+    "pre_setup_hold_handoff_statuses": ["CLOSED", "STALLED", "EXHAUSTED"],
+    "required_closed_phases": ["eco_setup_recovery", "eco_hold_final"],
+    "final_timing_receipt": {"role": "final_timing_receipt", "path": "innovus/reports/final_timing_receipt.machine", "schema": "k2_single_edge_final_timing_receipt_v1"},
     "final_setup_and_hold_remeasured_after_last_eco": true
   },
   "artifact_ledger": {
@@ -233,7 +235,7 @@
     "required_roles": [
       "genus_execution_receipt", "genus_log", "genus_timing", "genus_area", "genus_check_design", "genus_timing_intent", "genus_qor", "genus_power", "genus_clocks",
       "mapped_netlist", "mapped_sdc", "mapped_sdf",
-      "innovus_execution_receipt", "innovus_log", "eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final", "setup_timing", "setup_timing_machine", "hold_timing", "hold_timing_machine",
+      "innovus_execution_receipt", "innovus_log", "eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final", "final_timing_receipt", "setup_timing", "setup_timing_machine", "hold_timing", "hold_timing_machine",
       "postroute_area", "postroute_power", "check_timing", "check_design_pre_place", "check_place", "check_design_post_route", "route",
       "drc", "antenna", "connectivity", "pg_connectivity",
       "postroute_netlist", "postroute_sdf", "postroute_spef", "innovus_database_manifest",
@@ -241,7 +243,7 @@
     ],
     "each_row_requires": ["role", "path", "sha256", "size_bytes", "producer_command_sha256"],
     "native_zero_violation_roles": ["drc", "antenna", "connectivity", "pg_connectivity"],
-    "timing_closure_roles": ["eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final", "setup_timing_machine", "hold_timing_machine"]
+    "timing_closure_roles": ["eco_hold_pre_setup", "eco_setup_recovery", "eco_hold_final", "final_timing_receipt", "setup_timing_machine", "hold_timing_machine"]
   },
   "qualification": {
     "static_preflight_may_pass": true,
@@ -253,7 +255,9 @@
     "producer_authentication_available": false,
     "zero_setup_and_hold_violations_required": true,
     "bounded_eco_receipts_required": true,
-    "bounded_eco_all_phases_closed_required": true,
+    "bounded_eco_pre_setup_hold_handoff_allowed": true,
+    "bounded_eco_setup_recovery_and_final_hold_closed_required": true,
+    "final_setup_hold_zero_and_receipt_match_required": true,
     "final_timing_must_match_post_eco_state": true,
     "zero_drc_antenna_and_connectivity_required": true,
     "no_unconstrained_or_missing_io_load_checks_required": true,

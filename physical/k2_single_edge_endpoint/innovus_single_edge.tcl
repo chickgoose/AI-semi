@@ -43,6 +43,28 @@ proc se_timing_summary {path view check} {
   if {$violations != 0 || $wns < 0.0 || $tns != 0.0} {
     error "$check timing is not closed"
   }
+  return [list $path_count $violations $wns $tns]
+}
+
+proc se_write_final_timing_receipt {path setup_metrics hold_metrics} {
+  lassign $setup_metrics setup_paths setup_violations setup_wns setup_tns
+  lassign $hold_metrics hold_paths hold_violations hold_wns hold_tns
+  set handle [open $path {WRONLY CREAT EXCL}]
+  puts $handle "schema=k2_single_edge_final_timing_receipt_v1"
+  puts $handle "setup_view=se_setup_view"
+  puts $handle "setup_check=setup"
+  puts $handle "setup_path_count=$setup_paths"
+  puts $handle "setup_violation_count=$setup_violations"
+  puts $handle "setup_wns=$setup_wns"
+  puts $handle "setup_tns=$setup_tns"
+  puts $handle "hold_view=se_hold_view"
+  puts $handle "hold_check=hold"
+  puts $handle "hold_path_count=$hold_paths"
+  puts $handle "hold_violation_count=$hold_violations"
+  puts $handle "hold_wns=$hold_wns"
+  puts $handle "hold_tns=$hold_tns"
+  puts $handle "final_hold_phase_receipt=eco_hold_final.machine"
+  close $handle
 }
 
 proc se_timing_improved {before after} {
@@ -229,8 +251,8 @@ set failed [catch {
   set pre_hold_status [se_run_eco_phase \
     "$output/reports/eco_hold_pre_setup.machine" pre_setup_hold \
     se_hold_view hold postRoute_hold true 3]
-  if {$pre_hold_status ne "CLOSED"} {
-    lappend eco_phase_failures "pre-setup hold ECO: $pre_hold_status"
+  if {$pre_hold_status ni {CLOSED STALLED EXHAUSTED}} {
+    lappend eco_phase_failures "pre-setup hold ECO invalid status: $pre_hold_status"
   }
 
   setAnalysisMode -checkType setup
@@ -271,7 +293,8 @@ set failed [catch {
     report_timing -view se_setup_view -check_type setup -max_paths 50 \
       > "$output/reports/setup_timing.rpt"
     se_append_report_context "$output/reports/setup_timing.rpt" setup_timing postroute
-    se_timing_summary "$output/reports/setup_timing.machine" se_setup_view setup
+    set final_setup_metrics [se_timing_summary \
+      "$output/reports/setup_timing.machine" se_setup_view setup]
   } setup_error]
   if {$setup_failed} { lappend diagnostic_failures "setup: $setup_error" }
   set hold_failed [catch {
@@ -279,9 +302,15 @@ set failed [catch {
     report_timing -view se_hold_view -check_type hold -max_paths 50 \
       > "$output/reports/hold_timing.rpt"
     se_append_report_context "$output/reports/hold_timing.rpt" hold_timing postroute
-    se_timing_summary "$output/reports/hold_timing.machine" se_hold_view hold
+    set final_hold_metrics [se_timing_summary \
+      "$output/reports/hold_timing.machine" se_hold_view hold]
   } hold_error]
   if {$hold_failed} { lappend diagnostic_failures "hold: $hold_error" }
+  if {!$setup_failed && !$hold_failed} {
+    se_write_final_timing_receipt \
+      "$output/reports/final_timing_receipt.machine" \
+      $final_setup_metrics $final_hold_metrics
+  }
   setAnalysisMode -checkType setup
 
   report_area > "$output/reports/area.rpt"
