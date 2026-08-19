@@ -1,0 +1,584 @@
+{
+  "coordinate_frame": "fixed_reference_camera_image",
+  "events": [
+    {
+      "event_id": 5000,
+      "landmark_id": "L0",
+      "polarity": 1,
+      "reference_xy": [
+        21,
+        24
+      ],
+      "sensor_xy": [
+        21,
+        24
+      ],
+      "sequence_index": 0,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5001,
+      "landmark_id": "L1",
+      "polarity": 1,
+      "reference_xy": [
+        32,
+        41
+      ],
+      "sensor_xy": [
+        32,
+        41
+      ],
+      "sequence_index": 1,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5002,
+      "landmark_id": "L2",
+      "polarity": 1,
+      "reference_xy": [
+        43,
+        31
+      ],
+      "sensor_xy": [
+        43,
+        31
+      ],
+      "sequence_index": 2,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5003,
+      "landmark_id": "L3",
+      "polarity": 1,
+      "reference_xy": [
+        25,
+        21
+      ],
+      "sensor_xy": [
+        25,
+        21
+      ],
+      "sequence_index": 3,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5004,
+      "landmark_id": "L4",
+      "polarity": 1,
+      "reference_xy": [
+        36,
+        38
+      ],
+      "sensor_xy": [
+        36,
+        38
+      ],
+      "sequence_index": 4,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5005,
+      "landmark_id": "L5",
+      "polarity": 1,
+      "reference_xy": [
+        18,
+        28
+      ],
+      "sensor_xy": [
+        18,
+        28
+      ],
+      "sequence_index": 5,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5006,
+      "landmark_id": "L6",
+      "polarity": 1,
+      "reference_xy": [
+        29,
+        45
+      ],
+      "sensor_xy": [
+        29,
+        45
+      ],
+      "sequence_index": 6,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5007,
+      "landmark_id": "L7",
+      "polarity": -1,
+      "reference_xy": [
+        40,
+        20
+      ],
+      "sensor_xy": [
+        40,
+        20
+      ],
+      "sequence_index": 7,
+      "timestamp_ns": 1000,
+      "true_pose": "P0"
+    },
+    {
+      "event_id": 5008,
+      "landmark_id": "L0",
+      "polarity": 1,
+      "reference_xy": [
+        21,
+        24
+      ],
+      "sensor_xy": [
+        40,
+        21
+      ],
+      "sequence_index": 8,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5009,
+      "landmark_id": "L1",
+      "polarity": 1,
+      "reference_xy": [
+        32,
+        41
+      ],
+      "sensor_xy": [
+        23,
+        32
+      ],
+      "sequence_index": 9,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5010,
+      "landmark_id": "L2",
+      "polarity": 1,
+      "reference_xy": [
+        43,
+        31
+      ],
+      "sensor_xy": [
+        33,
+        43
+      ],
+      "sequence_index": 10,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5011,
+      "landmark_id": "L3",
+      "polarity": 1,
+      "reference_xy": [
+        25,
+        21
+      ],
+      "sensor_xy": [
+        43,
+        25
+      ],
+      "sequence_index": 11,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5012,
+      "landmark_id": "L4",
+      "polarity": 1,
+      "reference_xy": [
+        36,
+        38
+      ],
+      "sensor_xy": [
+        26,
+        36
+      ],
+      "sequence_index": 12,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5013,
+      "landmark_id": "L5",
+      "polarity": 1,
+      "reference_xy": [
+        18,
+        28
+      ],
+      "sensor_xy": [
+        36,
+        18
+      ],
+      "sequence_index": 13,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5014,
+      "landmark_id": "L6",
+      "polarity": 1,
+      "reference_xy": [
+        29,
+        45
+      ],
+      "sensor_xy": [
+        19,
+        29
+      ],
+      "sequence_index": 14,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5015,
+      "landmark_id": "L7",
+      "polarity": -1,
+      "reference_xy": [
+        40,
+        20
+      ],
+      "sensor_xy": [
+        44,
+        40
+      ],
+      "sequence_index": 15,
+      "timestamp_ns": 2000,
+      "true_pose": "P1"
+    },
+    {
+      "event_id": 5016,
+      "landmark_id": "L0",
+      "polarity": 1,
+      "reference_xy": [
+        21,
+        24
+      ],
+      "sensor_xy": [
+        43,
+        40
+      ],
+      "sequence_index": 16,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5017,
+      "landmark_id": "L1",
+      "polarity": 1,
+      "reference_xy": [
+        32,
+        41
+      ],
+      "sensor_xy": [
+        32,
+        23
+      ],
+      "sequence_index": 17,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5018,
+      "landmark_id": "L2",
+      "polarity": 1,
+      "reference_xy": [
+        43,
+        31
+      ],
+      "sensor_xy": [
+        21,
+        33
+      ],
+      "sequence_index": 18,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5019,
+      "landmark_id": "L3",
+      "polarity": 1,
+      "reference_xy": [
+        25,
+        21
+      ],
+      "sensor_xy": [
+        39,
+        43
+      ],
+      "sequence_index": 19,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5020,
+      "landmark_id": "L4",
+      "polarity": 1,
+      "reference_xy": [
+        36,
+        38
+      ],
+      "sensor_xy": [
+        28,
+        26
+      ],
+      "sequence_index": 20,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5021,
+      "landmark_id": "L5",
+      "polarity": 1,
+      "reference_xy": [
+        18,
+        28
+      ],
+      "sensor_xy": [
+        46,
+        36
+      ],
+      "sequence_index": 21,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5022,
+      "landmark_id": "L6",
+      "polarity": 1,
+      "reference_xy": [
+        29,
+        45
+      ],
+      "sensor_xy": [
+        35,
+        19
+      ],
+      "sequence_index": 22,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5023,
+      "landmark_id": "L7",
+      "polarity": -1,
+      "reference_xy": [
+        40,
+        20
+      ],
+      "sensor_xy": [
+        24,
+        44
+      ],
+      "sequence_index": 23,
+      "timestamp_ns": 3000,
+      "true_pose": "P2"
+    },
+    {
+      "event_id": 5024,
+      "landmark_id": "L0",
+      "polarity": 1,
+      "reference_xy": [
+        21,
+        24
+      ],
+      "sensor_xy": [
+        24,
+        43
+      ],
+      "sequence_index": 24,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    },
+    {
+      "event_id": 5025,
+      "landmark_id": "L1",
+      "polarity": 1,
+      "reference_xy": [
+        32,
+        41
+      ],
+      "sensor_xy": [
+        41,
+        32
+      ],
+      "sequence_index": 25,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    },
+    {
+      "event_id": 5026,
+      "landmark_id": "L2",
+      "polarity": 1,
+      "reference_xy": [
+        43,
+        31
+      ],
+      "sensor_xy": [
+        31,
+        21
+      ],
+      "sequence_index": 26,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    },
+    {
+      "event_id": 5027,
+      "landmark_id": "L3",
+      "polarity": 1,
+      "reference_xy": [
+        25,
+        21
+      ],
+      "sensor_xy": [
+        21,
+        39
+      ],
+      "sequence_index": 27,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    },
+    {
+      "event_id": 5028,
+      "landmark_id": "L4",
+      "polarity": 1,
+      "reference_xy": [
+        36,
+        38
+      ],
+      "sensor_xy": [
+        38,
+        28
+      ],
+      "sequence_index": 28,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    },
+    {
+      "event_id": 5029,
+      "landmark_id": "L5",
+      "polarity": 1,
+      "reference_xy": [
+        18,
+        28
+      ],
+      "sensor_xy": [
+        28,
+        46
+      ],
+      "sequence_index": 29,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    },
+    {
+      "event_id": 5030,
+      "landmark_id": "L6",
+      "polarity": 1,
+      "reference_xy": [
+        29,
+        45
+      ],
+      "sensor_xy": [
+        45,
+        35
+      ],
+      "sequence_index": 30,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    },
+    {
+      "event_id": 5031,
+      "landmark_id": "L7",
+      "polarity": -1,
+      "reference_xy": [
+        40,
+        20
+      ],
+      "sensor_xy": [
+        20,
+        24
+      ],
+      "sequence_index": 31,
+      "timestamp_ns": 4000,
+      "true_pose": "P3"
+    }
+  ],
+  "landmarks": [
+    {
+      "landmark_id": "L0",
+      "polarity": 1,
+      "reference_xy": [
+        21,
+        24
+      ]
+    },
+    {
+      "landmark_id": "L1",
+      "polarity": 1,
+      "reference_xy": [
+        32,
+        41
+      ]
+    },
+    {
+      "landmark_id": "L2",
+      "polarity": 1,
+      "reference_xy": [
+        43,
+        31
+      ]
+    },
+    {
+      "landmark_id": "L3",
+      "polarity": 1,
+      "reference_xy": [
+        25,
+        21
+      ]
+    },
+    {
+      "landmark_id": "L4",
+      "polarity": 1,
+      "reference_xy": [
+        36,
+        38
+      ]
+    },
+    {
+      "landmark_id": "L5",
+      "polarity": 1,
+      "reference_xy": [
+        18,
+        28
+      ]
+    },
+    {
+      "landmark_id": "L6",
+      "polarity": 1,
+      "reference_xy": [
+        29,
+        45
+      ]
+    },
+    {
+      "landmark_id": "L7",
+      "polarity": -1,
+      "reference_xy": [
+        40,
+        20
+      ]
+    }
+  ],
+  "schema": "redred.mc_wtb.causal_oracle/v1"
+}

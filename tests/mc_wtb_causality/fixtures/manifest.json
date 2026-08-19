@@ -1,0 +1,85 @@
+{
+  "artifact_bundle_sha256": "316e223c9e6f8c61e5f8ca93e7c7f998a5c9f98aef6c8da2da334b9a543b2de4",
+  "artifact_sha256": {
+    "events_causal.jsonl": "e360cf52aa497d3fe4ba7201751166504abe1f3d56330441462f82075f883249",
+    "events_identity.jsonl": "a55fec9b54141a20c2bbd0fedd360c78eaf5dbfcda57d57c13222b42b740d833",
+    "expected_summary.json": "c6e8c0bcf54ff751aadbfa197ea67a3fe953f136a6d19cd335a93537b0267009",
+    "intrinsics.json": "9479425b415d549f321be90ddc37cbd7954b7f055ac3e67e19944105cb198f5c",
+    "oracle.json": "d643cd545e9c85367f30ca37034838ea139f23b20e085ff66b0947fd4b6605ab",
+    "poses_correct.jsonl": "a033315f2e09a8926612d46d8ca4443888af51c4f95f13d893f0b87076be63c5",
+    "poses_identity.jsonl": "525ef68efe9297d24b29a8fd7d0e6a97b53e2a32b04d6e3894acace3316050dd",
+    "poses_permuted.jsonl": "eb34d37ec1476294eaa07a3b4aec849633a6d785fb604c647f74173f9273f0ae",
+    "poses_wrong_valid.jsonl": "d0b6305401170175cc25cf3939b9163b809d74a2b2b1be738081c0f4ae93b136"
+  },
+  "claim_scope": "test-only quarter-turn synthetic causal core",
+  "common_c1_c2_c3_event_sha256": "e360cf52aa497d3fe4ba7201751166504abe1f3d56330441462f82075f883249",
+  "expected_results": {
+    "C0_IDENTITY": {
+      "changed_coordinate_count": 0,
+      "compensated_packets": 7,
+      "compensated_projected_bits": 903,
+      "event_count": 8,
+      "exact_reference_events": 8,
+      "geometry_accept": true,
+      "negative_events": 1,
+      "pixel_sse": 0,
+      "positive_events": 7,
+      "sensor_packets": 7,
+      "sensor_projected_bits": 903
+    },
+    "C1_CORRECT": {
+      "compensated_packets": 28,
+      "compensated_projected_bits": 3612,
+      "decoded_unique_reference_pixels": 8,
+      "event_count": 32,
+      "exact_reference_events": 32,
+      "geometry_accept": true,
+      "negative_events": 4,
+      "per_landmark_unique_pixel_count": 1,
+      "pixel_sse": 0,
+      "positive_events": 28,
+      "sensor_packets": 28,
+      "sensor_projected_bits": 3612
+    },
+    "C2_WRONG_VALID": {
+      "compensated_packets": 28,
+      "compensated_projected_bits": 3612,
+      "event_count": 32,
+      "exact_reference_events": 8,
+      "geometry_accept": false,
+      "negative_events": 4,
+      "per_landmark_unique_pixel_count": 4,
+      "pixel_sse": 9664,
+      "positive_events": 28,
+      "sensor_packets": 28,
+      "sensor_projected_bits": 3612
+    },
+    "C3_POSE_PERMUTED": {
+      "apparent_packet_delta": 4,
+      "compensated_packets": 24,
+      "compensated_projected_bits": 3096,
+      "event_count": 32,
+      "exact_reference_events": 0,
+      "geometry_accept": false,
+      "negative_events": 4,
+      "per_landmark_unique_pixel_count": 1,
+      "pixel_sse": 9664,
+      "positive_events": 28,
+      "sensor_packets": 28,
+      "sensor_projected_bits": 3612
+    }
+  },
+  "forbidden_claims": [
+    "actual wire bandwidth reduction",
+    "codec or reversible transport",
+    "real-data generalization",
+    "RTL or PPA readiness",
+    "PASS_SYNTHETIC_CAUSAL_DISCRIMINATION"
+  ],
+  "generator_seed": null,
+  "generator_source_sha256": "c40db652c547a332938b6839d6adde58c7fbb7b58d5aa5844345c7ae84b1d03f",
+  "generator_version": "mcwtb-independent-quarter-turn/v1",
+  "landmark_table_sha256": "ac21f9a677b7d44bdbad88d2544c30565cbe11cc4379eaebc66a5bc228b8ae27",
+  "schema": "redred.mc_wtb.causal_manifest/v1",
+  "status": "PASS_SYNTHETIC_CAUSAL_CORE"
+}

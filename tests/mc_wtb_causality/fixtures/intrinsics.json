@@ -1,0 +1,48 @@
+{
+  "camera_id": "mcwtb-causal-camera-65",
+  "convention": {
+    "camera_axes": {
+      "handedness": "right_handed",
+      "x": "+right",
+      "y": "+down",
+      "z": "+forward"
+    },
+    "convention_id": "redred.camera.xyz-rdf.active-w2s.rrtp.deg.pinhole-row-major/v1",
+    "pixel_axes": {
+      "origin": "top_left_pixel_center_0_0",
+      "x": "+right",
+      "y": "+down"
+    },
+    "projection": {
+      "extrinsic_equation": "ray_sensor=R_world_to_sensor@ray_world",
+      "input_ray": "K_inverse@[x,y,1]",
+      "intrinsic_equation": "pixel=K*(ray/ray_z)",
+      "model": "pinhole"
+    },
+    "rotation": {
+      "angle_unit": "degrees",
+      "degrees_to_radians": "radians=degrees*pi/180",
+      "direction": "world_to_sensor",
+      "euler_order": "R_roll@R_tilt@R_pan",
+      "internal_trig_angle_unit": "radians",
+      "matrix_storage": "row_major",
+      "pan_axis": "+Y",
+      "roll_axis": "+Z",
+      "tilt_axis": "+X",
+      "type": "active"
+    }
+  },
+  "cx": 32,
+  "cy": 32,
+  "fx": 32,
+  "fy": 32,
+  "height": 65,
+  "intrinsics_id": "mcwtb-causal-pinhole-65-v1",
+  "provenance": {
+    "content_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "created_by": "test-only independent integer generator",
+    "source_id": "mcwtb-independent-causal-generator-v1"
+  },
+  "schema": "redred.known_motion.intrinsics/v2",
+  "width": 65
+}
