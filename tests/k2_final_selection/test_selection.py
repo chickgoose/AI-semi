@@ -64,8 +64,10 @@ class FinalSelectionTests(unittest.TestCase):
             lifecycle["current_implemented_endpoint_boundary"],
             goal["endpoint_boundary"]["boundary_id"],
         )
-        self.assertIsNone(lifecycle["current_release_interface"])
-        self.assertEqual(lifecycle["current_release_interface_status"], "HOLD")
+        self.assertEqual(lifecycle["current_release_interface"],
+                         "PARALLEL_FALLBACK")
+        self.assertEqual(lifecycle["current_release_interface_status"],
+                         "IMPLEMENTED_RELEASE_HELD")
         self.assertEqual(lifecycle["current_final_a2_a3_decision"], "HOLD")
 
     def test_actual_rtl_mutation_gate_is_fail_closed(self):

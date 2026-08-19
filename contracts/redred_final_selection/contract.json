@@ -1,0 +1,165 @@
+{
+  "schema": "redred_final_a2_a3_selection_contract_v1",
+  "contract_id": "redred-final-a2-a3-selection-v1-2026-08-19",
+  "status": "HOLD_MISSING_AUTHENTICATED_MATCHED_PHYSICAL_POWER_PDK_CDC_EVIDENCE",
+  "claim_scope": "CURRENT_SINGLE_EDGE_A2_A3_FINAL_SELECTION_READINESS_ONLY",
+  "authority": {
+    "policy_engine_only": true,
+    "current_selection_authority": false,
+    "release_authority": false,
+    "official_score_authority": false,
+    "caller_supplied_evidence_allowed": false
+  },
+  "policy_binding": {
+    "commit": "119133d39ec7bbf4e341e515b784cfcb00e27c29",
+    "path": "contracts/redred_system_goal/active_goal.json",
+    "sha256": "eb13a9a7eae385968199a0f6501e63c0c2f2adfb6cd0f8ced1ba6a4857683e67"
+  },
+  "candidate_policy": {
+    "release_interface": "PARALLEL_FALLBACK",
+    "candidate_order": ["A2", "A3"],
+    "primary_candidate": "A2",
+    "semantic_fallback": "A3",
+    "a3_activation_triggers": [
+      "EXACT_PREFIX_REQUIRED",
+      "A2_SPECIFIC_GATE_FAILURE_INDEPENDENTLY_PASSED_BY_A3"
+    ],
+    "forbidden_fallback_triggers": [
+      "SHARED_INTERFACE_FAILURE",
+      "SHARED_EVIDENCE_FAILURE",
+      "SHARED_CDC_RDC_FAILURE",
+      "SHARED_PDK_IO_FAILURE"
+    ],
+    "p6_or_multi_edge_evidence_allowed": false,
+    "score_formula_defined": false,
+    "invented_scalar_score_allowed": false,
+    "default_semantic_requirement": "AGGREGATE_WEIGHTED_PRIMARY"
+  },
+  "decision_model": {
+    "gate_states": ["PASS", "HOLD", "FAIL"],
+    "shared_gate_ids": [
+      "SINGLE_EDGE_INTERFACE_POLICY",
+      "CANONICAL_DIGITAL",
+      "ORGANIZER_CELL_CLOCK_IO_RULES",
+      "OFFICIAL_CONSTRAINTS_CORNERS",
+      "CONTROLLED_PRODUCER_FRESHNESS",
+      "MATCHED_A2_A3_COHORT"
+    ],
+    "candidate_gate_ids": [
+      "MAPPED_PDK_LEGALITY",
+      "POST_ROUTE_TIMING_AREA",
+      "VECTORLESS_POWER",
+      "FINAL_CDC_RDC"
+    ],
+    "ppa_metric_vector": [
+      "POST_ROUTE_SETUP_SLACK",
+      "POST_ROUTE_HOLD_SLACK",
+      "STANDARD_CELL_AREA",
+      "VECTORLESS_INTERNAL_POWER",
+      "VECTORLESS_SWITCHING_POWER",
+      "VECTORLESS_LEAKAGE_POWER",
+      "VECTORLESS_TOTAL_POWER",
+      "SOURCE_OVERRUN",
+      "FIXED_WINDOW_THROUGHPUT",
+      "OCCURRENCE_TO_ACCEPT_LATENCY",
+      "ACCEPT_TO_RETIRE_LATENCY"
+    ],
+    "rules": [
+      "ANY_HOLD_RETURNS_HOLD_WITH_NO_SELECTED_CANDIDATE",
+      "ANY_SHARED_FAIL_CANNOT_ACTIVATE_A3",
+      "A3_MUST_INDEPENDENTLY_PASS_EVERY_CANDIDATE_GATE",
+      "A2_FAIL_MAY_ACTIVATE_A3_ONLY_WHEN_EVALUATION_IS_COMPLETE_AND_EACH_FAILURE_IS_NAMED",
+      "EXACT_PREFIX_REQUIRED_SELECTS_A3_ONLY_AFTER_COMPLETE_A2_AND_A3_EVALUATION",
+      "ALL_PASS_WITH_DEFAULT_AGGREGATE_WEIGHTED_POLICY_SELECTS_PREDECLARED_PRIMARY_A2",
+      "RAW_METRIC_VECTOR_AND_PARETO_RELATIONS_MAY_BE_REPORTED_WITHOUT_A_SCALAR_SCORE",
+      "SELECTION_NEVER_IMPLIES_TEAM_RELEASE_OR_OFFICIAL_SCORE_WINNER"
+    ]
+  },
+  "evidence_bindings": {
+    "canonical_campaign": {
+      "commit": "ccc6064a2f28f0d0476ff4cb08b25a028cb47392",
+      "path": "benchmarks/redred_single_edge_campaign/native_pipeline_publication.json",
+      "sha256": "89a8439fc3c5796293b56f2dcc96f2bb2141d1d2d1041bff8ca84a09e581c93c"
+    },
+    "endpoint_physical_contract": {
+      "commit": "15593a72d68867641196992dd31bd00ef5dacaac",
+      "path": "physical/k2_single_edge_endpoint/contract.json",
+      "sha256": "6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544"
+    },
+    "vectorless_contract": {
+      "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
+      "path": "physical/k2_single_edge_vectorless/contract.json",
+      "sha256": "48759f420246ea102fb5ff0bbfc441d90689fc51f03375c81e3ff9f196e6c7a0"
+    },
+    "pdk_legality_matrix": {
+      "commit": "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
+      "path": "tests/redred_single_edge_pdk_legality/legality_matrix.json",
+      "sha256": "edd0ddfb33b3cde02ec90a482cd0ed61436ea4434be4d2bc1a3ac22b737dd543"
+    },
+    "source_cdc_rdc_contract": {
+      "commit": "9d1dced49d3fceabf812d2ba2275c8d4c02eef13",
+      "path": "contracts/redred_single_edge_cdc_rdc/contract.json",
+      "sha256": "c4cbe85d704274a2f5d41a80652222880761465abeeca23df5b8291a7b4db44d"
+    }
+  },
+  "current_observation": {
+    "shared_gates": {
+      "SINGLE_EDGE_INTERFACE_POLICY": "PASS",
+      "CANONICAL_DIGITAL": "PASS",
+      "ORGANIZER_CELL_CLOCK_IO_RULES": "HOLD",
+      "OFFICIAL_CONSTRAINTS_CORNERS": "HOLD",
+      "CONTROLLED_PRODUCER_FRESHNESS": "HOLD",
+      "MATCHED_A2_A3_COHORT": "HOLD"
+    },
+    "candidate_gates": {
+      "A2": {
+        "MAPPED_PDK_LEGALITY": "HOLD",
+        "POST_ROUTE_TIMING_AREA": "HOLD",
+        "VECTORLESS_POWER": "HOLD",
+        "FINAL_CDC_RDC": "HOLD"
+      },
+      "A3": {
+        "MAPPED_PDK_LEGALITY": "HOLD",
+        "POST_ROUTE_TIMING_AREA": "HOLD",
+        "VECTORLESS_POWER": "HOLD",
+        "FINAL_CDC_RDC": "HOLD"
+      }
+    },
+    "semantic_requirement": "AGGREGATE_WEIGHTED_PRIMARY",
+    "a2_specific_failures": []
+  },
+  "current_decision": {
+    "selection_status": "HOLD",
+    "selected_candidate": null,
+    "campaign_recommendation": "A2",
+    "fallback_trigger": null,
+    "missing_gate_ids": [
+      "ORGANIZER_CELL_CLOCK_IO_RULES",
+      "OFFICIAL_CONSTRAINTS_CORNERS",
+      "CONTROLLED_PRODUCER_FRESHNESS",
+      "MATCHED_A2_A3_COHORT",
+      "A2:MAPPED_PDK_LEGALITY",
+      "A2:POST_ROUTE_TIMING_AREA",
+      "A2:VECTORLESS_POWER",
+      "A2:FINAL_CDC_RDC",
+      "A3:MAPPED_PDK_LEGALITY",
+      "A3:POST_ROUTE_TIMING_AREA",
+      "A3:VECTORLESS_POWER",
+      "A3:FINAL_CDC_RDC"
+    ],
+    "failed_gate_ids": [],
+    "final_selection_authority": false,
+    "release_authority": false,
+    "official_score_winner": false
+  },
+  "security": {
+    "authoritative_cli_uses_fixed_contract_path": true,
+    "git_replace_objects_disabled": true,
+    "git_configuration_sanitized": true,
+    "duplicate_json_keys_rejected": true,
+    "artifact_paths_repository_relative": true,
+    "future_go_requires_separate_authenticated_payload_and_noncircular_publication": true,
+    "unsigned_git_objects_are_producer_authentication": false,
+    "self_hash_is_producer_authentication": false
+  }
+}

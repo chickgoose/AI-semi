@@ -75,7 +75,7 @@ data는 추후 제공 예정이다. 공개 dataset은 별도 참고 자료다. P
   허용한 synthetic gate 세 곳만 승격했고, public 1×/64×/256×는 독립 표본
   1개인 동일 retiming family로 유지했다. 봉인 결과는 campaign 범위에서
   `A2_PRIMARY`이며 raw/semantic SHA-256은 각각
-  `9ffd3219…7963`/`789703a6…593c`다. 전체 campaign 회귀 108개와 별도
+  `9ffd3219…7963`/`789703a6…593c`다. 전체 campaign 회귀 112개와 별도
   adversarial 보안 회귀 13개가 통과했다.
 - Source-level single-posedge CDC/RDC와 RTL source-structure PDK 검사는
   bounded PASS다. Supplied-rotation coordinate software demo도 synthetic 범위

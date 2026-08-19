@@ -5,7 +5,9 @@ current goal contract at `contracts/redred_system_goal/active_goal.json`
 supersedes it. Its recorded A2 selection is **noncurrent** and has no authority
 for the implemented single-edge endpoint, the current A2/A3 decision, release
 interface selection, or team release. All of those release decisions remain
-HOLD; the current selected release interface is null.
+HOLD. The current single-edge `PARALLEL_FALLBACK` interface is implemented and
+selected as the only release-eligible interface, but its release remains held.
+That interface policy does not restore any authority to this P6 study.
 
 Within its historical scope, this receipt consumed the
 immutable actual-scheduler+actual-P6 replay and the identical-boundary generic

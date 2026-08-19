@@ -192,12 +192,12 @@
     "current_final_a2_a3_decision": "HOLD",
     "current_goal_authority": false,
     "current_implemented_endpoint_boundary": "IMPLEMENTED_SINGLE_EDGE_SOURCE_PENDING_ACCEPT_THROUGH_RETIRE",
-    "current_release_interface": null,
+    "current_release_interface": "PARALLEL_FALLBACK",
     "current_release_interface_authority": false,
-    "current_release_interface_status": "HOLD",
+    "current_release_interface_status": "IMPLEMENTED_RELEASE_HELD",
     "status": "SUPERSEDED_HISTORICAL_NONCURRENT",
     "superseded_by": {
-      "contract_id": "redred-system-goal-v2-2026-08-19",
+      "contract_id": "redred-system-goal-v3-2026-08-19",
       "path": "contracts/redred_system_goal/active_goal.json"
     },
     "team_release_authority": false

@@ -27,5 +27,7 @@ PPA와 분리된 system demo로 검증한다. P6/multi-edge는 superseded/noncur
 
 현재 판정과 증거 경계는
 docs/AI_SEMI_QNA_REDRED_SINGLE_EDGE_STATUS_20260819.md를 기준으로 삼고,
-organizer-authoritative PDK 수치, 실제 Genus/Innovus 결과, campaign-v3 native
-binding이 닫히기 전에는 최종 A2/A3 선택이나 release를 선언하지 않는다.
+organizer-authoritative PDK 수치, 실제 Genus/Innovus 결과, controlled producer
+freshness와 mapped PDK/CDC 증거가 닫히기 전에는 최종 A2/A3 선택이나 release를
+선언하지 않는다. Native campaign binding은 scoped digital PASS이며 release
+authority가 아니다.

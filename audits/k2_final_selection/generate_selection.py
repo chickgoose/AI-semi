@@ -298,13 +298,13 @@ def generate(root: Path) -> dict[str, Any]:
             "team_release_authority": False,
             "superseded_by": {
                 "path": "contracts/redred_system_goal/active_goal.json",
-                "contract_id": "redred-system-goal-v2-2026-08-19",
+                "contract_id": "redred-system-goal-v3-2026-08-19",
             },
             "current_implemented_endpoint_boundary": (
                 "IMPLEMENTED_SINGLE_EDGE_SOURCE_PENDING_ACCEPT_THROUGH_RETIRE"
             ),
-            "current_release_interface": None,
-            "current_release_interface_status": "HOLD",
+            "current_release_interface": "PARALLEL_FALLBACK",
+            "current_release_interface_status": "IMPLEMENTED_RELEASE_HELD",
             "current_final_a2_a3_decision": "HOLD",
         },
         "inputs": {
