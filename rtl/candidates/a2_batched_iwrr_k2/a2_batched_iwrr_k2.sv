@@ -41,39 +41,82 @@ module a2_batched_iwrr_k2 (
     token_inc = (token == 4'd11) ? 4'd0 : token + 4'd1;
   endfunction
 
-  function automatic logic [2:0] choose_row(
+  function automatic logic [3:0] choose_row_onehot(
       input logic [3:0] active_rows,
       input logic [1:0] preferred
   );
     begin
-      if (active_rows[preferred])
-        choose_row = {1'b1, preferred};
-      else if (active_rows[preferred + 2'd1])
-        choose_row = {1'b1, preferred + 2'd1};
-      else if (active_rows[preferred + 2'd2])
-        choose_row = {1'b1, preferred + 2'd2};
-      else if (active_rows[preferred + 2'd3])
-        choose_row = {1'b1, preferred + 2'd3};
-      else
-        choose_row = 3'b000;
+      choose_row_onehot = 4'b0000;
+      case (preferred)
+        2'd0: begin
+          if (active_rows[0])      choose_row_onehot = 4'b0001;
+          else if (active_rows[1]) choose_row_onehot = 4'b0010;
+          else if (active_rows[2]) choose_row_onehot = 4'b0100;
+          else if (active_rows[3]) choose_row_onehot = 4'b1000;
+        end
+        2'd1: begin
+          if (active_rows[1])      choose_row_onehot = 4'b0010;
+          else if (active_rows[2]) choose_row_onehot = 4'b0100;
+          else if (active_rows[3]) choose_row_onehot = 4'b1000;
+          else if (active_rows[0]) choose_row_onehot = 4'b0001;
+        end
+        2'd2: begin
+          if (active_rows[2])      choose_row_onehot = 4'b0100;
+          else if (active_rows[3]) choose_row_onehot = 4'b1000;
+          else if (active_rows[0]) choose_row_onehot = 4'b0001;
+          else if (active_rows[1]) choose_row_onehot = 4'b0010;
+        end
+        default: begin
+          if (active_rows[3])      choose_row_onehot = 4'b1000;
+          else if (active_rows[0]) choose_row_onehot = 4'b0001;
+          else if (active_rows[1]) choose_row_onehot = 4'b0010;
+          else if (active_rows[2]) choose_row_onehot = 4'b0100;
+        end
+      endcase
     end
   endfunction
 
-  function automatic logic [2:0] pick_column(
+  function automatic logic [3:0] pick_column_onehot(
       input logic [3:0] row_req,
       input logic [1:0] pointer
   );
     begin
-      if (row_req[pointer])
-        pick_column = {1'b1, pointer};
-      else if (row_req[pointer + 2'd1])
-        pick_column = {1'b1, pointer + 2'd1};
-      else if (row_req[pointer + 2'd2])
-        pick_column = {1'b1, pointer + 2'd2};
-      else if (row_req[pointer + 2'd3])
-        pick_column = {1'b1, pointer + 2'd3};
-      else
-        pick_column = 3'b000;
+      pick_column_onehot = 4'b0000;
+      case (pointer)
+        2'd0: begin
+          if (row_req[0])      pick_column_onehot = 4'b0001;
+          else if (row_req[1]) pick_column_onehot = 4'b0010;
+          else if (row_req[2]) pick_column_onehot = 4'b0100;
+          else if (row_req[3]) pick_column_onehot = 4'b1000;
+        end
+        2'd1: begin
+          if (row_req[1])      pick_column_onehot = 4'b0010;
+          else if (row_req[2]) pick_column_onehot = 4'b0100;
+          else if (row_req[3]) pick_column_onehot = 4'b1000;
+          else if (row_req[0]) pick_column_onehot = 4'b0001;
+        end
+        2'd2: begin
+          if (row_req[2])      pick_column_onehot = 4'b0100;
+          else if (row_req[3]) pick_column_onehot = 4'b1000;
+          else if (row_req[0]) pick_column_onehot = 4'b0001;
+          else if (row_req[1]) pick_column_onehot = 4'b0010;
+        end
+        default: begin
+          if (row_req[3])      pick_column_onehot = 4'b1000;
+          else if (row_req[0]) pick_column_onehot = 4'b0001;
+          else if (row_req[1]) pick_column_onehot = 4'b0010;
+          else if (row_req[2]) pick_column_onehot = 4'b0100;
+        end
+      endcase
+    end
+  endfunction
+
+  function automatic logic [1:0] index_onehot4(input logic [3:0] onehot);
+    begin
+      if (onehot[0])      index_onehot4 = 2'd0;
+      else if (onehot[1]) index_onehot4 = 2'd1;
+      else if (onehot[2]) index_onehot4 = 2'd2;
+      else                index_onehot4 = 2'd3;
     end
   endfunction
 
@@ -85,9 +128,12 @@ module a2_batched_iwrr_k2 (
   logic [3:0] scan_cursor;
   logic [1:0] scan_ptr [0:3];
   logic [1:0] preferred_row;
-  logic [2:0] selected_row;
-  logic [2:0] selected_column;
+  logic [3:0] selected_row_onehot;
+  logic [3:0] selected_column_onehot;
+  logic [3:0] selected_row_req;
+  logic [1:0] selected_row_ptr;
   logic [3:0] selected_source;
+  logic [15:0] selected_bitmap;
   integer lane;
   integer row_index;
 
@@ -100,9 +146,12 @@ module a2_batched_iwrr_k2 (
     active_rows = 4'd0;
     scan_cursor = token_cursor_q;
     preferred_row = 2'd0;
-    selected_row = 3'd0;
-    selected_column = 3'd0;
+    selected_row_onehot = 4'd0;
+    selected_column_onehot = 4'd0;
+    selected_row_req = 4'd0;
+    selected_row_ptr = 2'd0;
     selected_source = 4'd0;
+    selected_bitmap = 16'd0;
     token_cursor_d = token_cursor_q;
     for (row_index = 0; row_index < 4; row_index = row_index + 1) begin
       scan_ptr[row_index] = row_ptr_q[row_index];
@@ -110,22 +159,53 @@ module a2_batched_iwrr_k2 (
     end
 
     for (lane = 0; lane < 2; lane = lane + 1) begin
-      for (row_index = 0; row_index < 4; row_index = row_index + 1)
-        active_rows[row_index] = |work_req[row_index*4 +: 4];
-      preferred_row = calendar_row(scan_cursor);
-      selected_row = choose_row(active_rows, preferred_row);
-      selected_column = pick_column(
-          work_req[selected_row[1:0]*4 +: 4], scan_ptr[selected_row[1:0]]);
-      if (selected_row[2] && selected_column[2]) begin
-        selected_source = {selected_row[1:0], selected_column[1:0]};
+      active_rows[0] = |work_req[3:0];
+      active_rows[1] = |work_req[7:4];
+      active_rows[2] = |work_req[11:8];
+      active_rows[3] = |work_req[15:12];
+      // The second calendar slot is fixed whenever lane 0 is valid.  If lane 0
+      // is invalid then no request exists, so lane 1 is invalid regardless of
+      // its preferred row.  Computing both slots from registered state avoids
+      // placing token_inc/calendar decode in the lane-0-to-lane-1 data cone.
+      if (lane == 0)
+        preferred_row = calendar_row(token_cursor_q);
+      else
+        preferred_row = calendar_row(token_inc(token_cursor_q));
+      selected_row_onehot = choose_row_onehot(active_rows, preferred_row);
+      selected_row_req =
+          ({4{selected_row_onehot[0]}} & work_req[3:0]) |
+          ({4{selected_row_onehot[1]}} & work_req[7:4]) |
+          ({4{selected_row_onehot[2]}} & work_req[11:8]) |
+          ({4{selected_row_onehot[3]}} & work_req[15:12]);
+      selected_row_ptr =
+          ({2{selected_row_onehot[0]}} & scan_ptr[0]) |
+          ({2{selected_row_onehot[1]}} & scan_ptr[1]) |
+          ({2{selected_row_onehot[2]}} & scan_ptr[2]) |
+          ({2{selected_row_onehot[3]}} & scan_ptr[3]);
+      selected_column_onehot = pick_column_onehot(
+          selected_row_req, selected_row_ptr);
+      selected_source = {index_onehot4(selected_row_onehot),
+                         index_onehot4(selected_column_onehot)};
+      selected_bitmap[3:0] =
+          {4{selected_row_onehot[0]}} & selected_column_onehot;
+      selected_bitmap[7:4] =
+          {4{selected_row_onehot[1]}} & selected_column_onehot;
+      selected_bitmap[11:8] =
+          {4{selected_row_onehot[2]}} & selected_column_onehot;
+      selected_bitmap[15:12] =
+          {4{selected_row_onehot[3]}} & selected_column_onehot;
+      if ((|selected_row_onehot) && (|selected_column_onehot)) begin
         fresh_count = fresh_count + 2'd1;
         if (lane == 0)
           fresh_addr0 = selected_source;
         else
           fresh_addr1 = selected_source;
-        fresh_bitmap[selected_source] = 1'b1;
-        work_req[selected_source] = 1'b0;
-        scan_ptr[selected_row[1:0]] = selected_column[1:0] + 2'd1;
+        fresh_bitmap = fresh_bitmap | selected_bitmap;
+        work_req = work_req & ~selected_bitmap;
+        for (row_index = 0; row_index < 4; row_index = row_index + 1) begin
+          if (selected_row_onehot[row_index])
+            scan_ptr[row_index] = index_onehot4(selected_column_onehot) + 2'd1;
+        end
         scan_cursor = token_inc(scan_cursor);
       end
     end

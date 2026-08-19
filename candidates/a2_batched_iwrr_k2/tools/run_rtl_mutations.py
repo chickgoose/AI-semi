@@ -16,7 +16,8 @@ TB = ROOT / "tb/a2_batched_iwrr_k2_lockstep_tb.sv"
 MUTANTS = {
     "wrong_weight_token": ("4'd0:  calendar_row = 2'd1;",
                            "4'd0:  calendar_row = 2'd0;"),
-    "fixed_priority": ("scan_ptr[selected_row[1:0]]);", "2'd0);"),
+    "fixed_priority": ("selected_row_req, selected_row_ptr);",
+                       "selected_row_req, 2'd0);"),
     "advance_on_stall": ("if (fresh_count != 0) begin\n        if (bundle_ready) begin",
                          "if (fresh_count != 0) begin\n        if (1'b1) begin"),
     "drop_second_lane": ("lane < 2; lane = lane + 1", "lane < 1; lane = lane + 1"),
