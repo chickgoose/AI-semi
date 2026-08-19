@@ -15,8 +15,8 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 MATRIX_PATH = Path(__file__).with_name("legality_matrix.json")
-HARDENED_SOURCE_COMMIT = "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
-AUDITED_INTEGRATED_COMMIT = "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"
+HARDENED_SOURCE_COMMIT = "a57943adba759fc955b4506e99703c1dd9736fba"
+AUDITED_INTEGRATED_COMMIT = "3cd0057d8705c316201f8e4b52cb5b73290eb5f5"
 SUPERSEDED_BASELINE_COMMIT = "4ce4836fab1309d3468db8e660d2da9af371f784"
 ROOT_FILELISTS = (
     "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge.f",
@@ -42,7 +42,7 @@ EXPECTED_SOURCES = {
     "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv":
         "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057",
     "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv":
-        "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9",
+        "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22",
     "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv":
         "61daf3a31f29106d3f6383936d92131a31401fd86d71e0bee5ee53a3ab5b485d",
 }

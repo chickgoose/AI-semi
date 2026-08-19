@@ -47,7 +47,7 @@
   },
   "candidate_order": ["a2", "a3"],
   "rtl_authority": {
-    "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+    "source_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
     "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
     "identical_rtl_tree": "2bf541f9f15740dc5ee2aa5318051840232929f4",
     "subject": "rtl: harden single-edge protocol errors",
@@ -96,7 +96,7 @@
         ]
       },
       "expanded_sources": [
-        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"},
+        {"path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "sha256": "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22"},
         {"path": "rtl/technology/single_edge/w2_single_edge_error_latch.sv", "sha256": "02729b04c8326bd898a465a5343eb34b40a7c60c3667f6d0bb16eb3fcdb83260"},
         {"path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv", "sha256": "e00ac30015e826cef7d017b0a72066e405bce3e84a4ee454e99fb34c68e2642c"},
         {"path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"},

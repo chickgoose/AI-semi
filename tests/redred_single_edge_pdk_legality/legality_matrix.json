@@ -1,8 +1,8 @@
 {
   "schema": "redred_single_edge_gpdk045_legality_matrix_v2",
   "audit_date": "2026-08-19",
-  "audit_source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
-  "audit_integrated_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+  "audit_source_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
+  "audit_integrated_commit": "3cd0057d8705c316201f8e4b52cb5b73290eb5f5",
   "decision": "HOLD",
   "decision_rule": {
     "operator": "ALL",
@@ -174,8 +174,8 @@
     }
   },
   "audited_rtl": {
-    "source_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
-    "integrated_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
+    "source_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
+    "integrated_commit": "3cd0057d8705c316201f8e4b52cb5b73290eb5f5",
     "supersedes_commit": "4ce4836fab1309d3468db8e660d2da9af371f784",
     "commit_role": "HARDENED_SOURCE_PROVENANCE_AND_INTEGRATED_AUDIT_TARGET",
     "source_structure_status": "PASS",
@@ -227,7 +227,7 @@
       },
       {
         "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
-        "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+        "sha256": "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22"
       },
       {
         "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",

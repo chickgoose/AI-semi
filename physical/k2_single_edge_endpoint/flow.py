@@ -30,7 +30,7 @@ NONZERO_DIAGNOSTIC = re.compile(
     r"(?i)\b(?:errors?|fatals?)(?:\s+count)?\s*[:=]\s*[1-9][0-9]*\b|"
     r"\b[1-9][0-9]*\s+(?:errors?|fatals?)(?:\(s\))?(?![A-Za-z0-9_])"
 )
-RTL_SOURCE_COMMIT = "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
+RTL_SOURCE_COMMIT = "a57943adba759fc955b4506e99703c1dd9736fba"
 RTL_INTEGRATION_COMMIT = "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"
 RTL_ROWS = {
     "a2": {
@@ -67,7 +67,7 @@ RTL_ROWS = {
             "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",
         ],
         "sources": [
-            ("rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"),
+            ("rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv", "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22"),
             ("rtl/technology/single_edge/w2_single_edge_error_latch.sv", "02729b04c8326bd898a465a5343eb34b40a7c60c3667f6d0bb16eb3fcdb83260"),
             ("rtl/technology/single_edge/w2_single_edge_pair_tx.sv", "e00ac30015e826cef7d017b0a72066e405bce3e84a4ee454e99fb34c68e2642c"),
             ("rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"),

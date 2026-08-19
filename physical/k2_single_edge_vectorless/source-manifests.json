@@ -1,8 +1,8 @@
 {
   "schema": "k2_single_edge_vectorless_source_pins_v2",
   "equivalent_hardened_commits": [
-    "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
-    "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
+    "a57943adba759fc955b4506e99703c1dd9736fba",
+    "3cd0057d8705c316201f8e4b52cb5b73290eb5f5"
   ],
   "candidates": {
     "a2_single_edge": {
@@ -61,7 +61,7 @@
       "sources": [
         {
           "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
-          "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+          "sha256": "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22"
         },
         {
           "path": "rtl/technology/single_edge/w2_single_edge_error_latch.sv",

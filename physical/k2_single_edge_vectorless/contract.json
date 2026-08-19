@@ -26,7 +26,7 @@
   },
   "source_pins": {
     "path": "physical/k2_single_edge_vectorless/source-manifests.json",
-    "sha256": "7a32863c8da85bc6dc80086476950d16bf84912125c051e4e52e18454598aa4c"
+    "sha256": "ec110a5aacae2aa2da968c6d413549474d6e88662826667d17b53553dbaf6e79"
   },
   "constraint_authority": {
     "status": "UNCONFIRMED_TEAM_PLACEHOLDER",

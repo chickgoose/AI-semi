@@ -1,7 +1,7 @@
 {
   "schema": "redred-single-edge-source-binding-v1",
   "source_set_id": "a2-a3-single-edge-hardened-6fc5e16",
-  "repository_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+  "repository_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
   "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
   "files": [
     {
@@ -14,7 +14,7 @@
     },
     {
       "path": "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv",
-      "sha256": "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+      "sha256": "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22"
     },
     {
       "path": "rtl/candidates/a3_exact_scalar_prefix_k2_single_edge/a3_exact_scalar_prefix_k2_single_edge_top.sv",

@@ -209,8 +209,8 @@ class ContractTest(unittest.TestCase):
     def test_hardened_commits_exact_filelists_sources_and_error_latch(self) -> None:
         contract, sources = contract_and_sources()
         self.assertEqual(sources["equivalent_hardened_commits"], [
-            "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
-            "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+            "a57943adba759fc955b4506e99703c1dd9736fba",
+            "3cd0057d8705c316201f8e4b52cb5b73290eb5f5",
         ])
         for candidate, row in sources["candidates"].items():
             self.assertEqual(len(row["filelists"]), 2, candidate)

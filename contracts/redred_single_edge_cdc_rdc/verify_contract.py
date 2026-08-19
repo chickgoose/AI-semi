@@ -21,7 +21,7 @@ from typing import Any
 CONTRACT_SCHEMA = "redred-single-edge-cdc-rdc-contract-v1"
 BINDING_SCHEMA = "redred-single-edge-source-binding-v1"
 HOLD = "HOLD_A2_SOURCE_SET_UNBOUND"
-CANONICAL_COMMIT = "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"
+CANONICAL_COMMIT = "a57943adba759fc955b4506e99703c1dd9736fba"
 CANONICAL_INTEGRATION_COMMIT = "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"
 CANONICAL_BINDING_SHA256 = "48974c5831f75177703b00853fdad1b3074d77b9faa8e5ef3a64cbbadd46887f"
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")

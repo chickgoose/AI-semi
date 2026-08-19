@@ -73,7 +73,7 @@ class SingleEdgeContractTests(unittest.TestCase):
     def test_canonical_pinned_a2_a3_pass(self) -> None:
         result = self.run_cli()
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn('"repository_commit": "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b"',
+        self.assertIn('"repository_commit": "a57943adba759fc955b4506e99703c1dd9736fba"',
                       result.stdout)
         self.assertIn('"integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"',
                       result.stdout)

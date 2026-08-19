@@ -76,7 +76,7 @@ class ContractTests(unittest.TestCase):
         _, contract = flow.validate_contract()
         authority = contract["rtl_authority"]
         self.assertEqual(authority["source_commit"],
-                         "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b")
+                         "a57943adba759fc955b4506e99703c1dd9736fba")
         self.assertEqual(authority["integration_commit"],
                          "a0a4eb38632245db8ff5937ea5b6c6e3f3839246")
         for design in ("a2", "a3"):

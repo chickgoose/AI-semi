@@ -413,8 +413,8 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
     hardened_commits = source_doc["equivalent_hardened_commits"]
     if (source_doc["schema"] != "k2_single_edge_vectorless_source_pins_v2" or
             hardened_commits != [
-                "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
-                "6fc5e167918fa4c54786c9a3abb5f60ecd8b991b",
+                "a57943adba759fc955b4506e99703c1dd9736fba",
+                "3cd0057d8705c316201f8e4b52cb5b73290eb5f5",
             ]):
         raise EvidenceError("source pin schema mismatch")
 
