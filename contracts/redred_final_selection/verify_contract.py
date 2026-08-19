@@ -60,9 +60,9 @@ ARTIFACTS = {
         "88a0050a61c6d52905d6f0b69e940fcef655727029f180b69ba7cba65ae93704",
     ),
     "vectorless_contract": (
-        "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
+        "800b4c51652fa665d37a8634a54394eba36d038c",
         "physical/k2_single_edge_vectorless/contract.json",
-        "48759f420246ea102fb5ff0bbfc441d90689fc51f03375c81e3ff9f196e6c7a0",
+        "56427928efeb30f9762789b162dc3586c96d617ff940fe1a4261be74f38c9dd5",
     ),
     "pdk_legality_matrix": (
         "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
