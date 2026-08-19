@@ -47,10 +47,10 @@
   },
   "candidate_order": ["a2", "a3"],
   "rtl_authority": {
-    "source_commit": "a57943adba759fc955b4506e99703c1dd9736fba",
-    "integration_commit": "a0a4eb38632245db8ff5937ea5b6c6e3f3839246",
-    "identical_rtl_tree": "2bf541f9f15740dc5ee2aa5318051840232929f4",
-    "subject": "rtl: harden single-edge protocol errors",
+    "source_commit": "eb298fe1416a4312269a6f9232e1445f8958dda2",
+    "integration_commit": "eb298fe1416a4312269a6f9232e1445f8958dda2",
+    "identical_rtl_tree": "21afcca7052889d953a4801531f9f9c31b3c3be5",
+    "subject": "rtl: shorten A2 two-grant timing cone",
     "policy": "EXACT_COMMITTED_FILELIST_AND_EXPANDED_SOURCE_BYTES"
   },
   "candidates": {
@@ -66,12 +66,12 @@
         ]
       },
       "expanded_sources": [
-        {"path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "sha256": "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"},
+        {"path": "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "sha256": "f8d07af94db7fc03eb21583e29180708991d827dbed5602b305b38ab8ae6f66e"},
         {"path": "rtl/technology/single_edge/w2_single_edge_error_latch.sv", "sha256": "02729b04c8326bd898a465a5343eb34b40a7c60c3667f6d0bb16eb3fcdb83260"},
         {"path": "rtl/technology/single_edge/w2_single_edge_pair_tx.sv", "sha256": "e00ac30015e826cef7d017b0a72066e405bce3e84a4ee454e99fb34c68e2642c"},
         {"path": "rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "sha256": "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"},
         {"path": "rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "sha256": "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127"},
-        {"path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv", "sha256": "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057"}
+        {"path": "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv", "sha256": "88f70140358cbfb678b71b2341e5102e982b3b8b8ce4f04d32d0504b2a44f39a"}
       ],
       "module_inventory": [
         "a2_batched_iwrr_k2",

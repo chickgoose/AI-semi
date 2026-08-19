@@ -30,8 +30,8 @@ NONZERO_DIAGNOSTIC = re.compile(
     r"(?i)\b(?:errors?|fatals?)(?:\s+count)?\s*[:=]\s*[1-9][0-9]*\b|"
     r"\b[1-9][0-9]*\s+(?:errors?|fatals?)(?:\(s\))?(?![A-Za-z0-9_])"
 )
-RTL_SOURCE_COMMIT = "a57943adba759fc955b4506e99703c1dd9736fba"
-RTL_INTEGRATION_COMMIT = "a0a4eb38632245db8ff5937ea5b6c6e3f3839246"
+RTL_SOURCE_COMMIT = "eb298fe1416a4312269a6f9232e1445f8958dda2"
+RTL_INTEGRATION_COMMIT = "eb298fe1416a4312269a6f9232e1445f8958dda2"
 RTL_ROWS = {
     "a2": {
         "top": "a2_batched_iwrr_single_edge_top",
@@ -43,12 +43,12 @@ RTL_ROWS = {
             "rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv",
         ],
         "sources": [
-            ("rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "800d320cdb82a53ce84e4bace69f27a241eef1aaebf447025394574b994a135d"),
+            ("rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv", "f8d07af94db7fc03eb21583e29180708991d827dbed5602b305b38ab8ae6f66e"),
             ("rtl/technology/single_edge/w2_single_edge_error_latch.sv", "02729b04c8326bd898a465a5343eb34b40a7c60c3667f6d0bb16eb3fcdb83260"),
             ("rtl/technology/single_edge/w2_single_edge_pair_tx.sv", "e00ac30015e826cef7d017b0a72066e405bce3e84a4ee454e99fb34c68e2642c"),
             ("rtl/technology/single_edge/w2_single_edge_pair_rx.sv", "c6ebefc560e158d4ffa4d1ac340c1c1b65d8caafbe2c1a8957fadbea3b7e59a5"),
             ("rtl/technology/single_edge/w2_single_edge_exact_pair_endpoint.sv", "8fb80462a84929813965b9740628ae396ce6a8ebbf5f26a96e67d7ee926a8127"),
-            ("rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv", "52cf307b92cce5c227d072f103825abe8e321363a9d583369123186e2ebbd057"),
+            ("rtl/candidates/a2_batched_iwrr_single_edge/a2_batched_iwrr_single_edge_top.sv", "88f70140358cbfb678b71b2341e5102e982b3b8b8ce4f04d32d0504b2a44f39a"),
         ],
         "modules": [
             "a2_batched_iwrr_k2", "w2_single_edge_error_latch",
@@ -324,8 +324,8 @@ def validate_contract() -> tuple[bytes, dict[str, Any]]:
     if contract.get("rtl_authority") != {
             "source_commit": RTL_SOURCE_COMMIT,
             "integration_commit": RTL_INTEGRATION_COMMIT,
-            "identical_rtl_tree": "2bf541f9f15740dc5ee2aa5318051840232929f4",
-            "subject": "rtl: harden single-edge protocol errors",
+            "identical_rtl_tree": "21afcca7052889d953a4801531f9f9c31b3c3be5",
+            "subject": "rtl: shorten A2 two-grant timing cone",
             "policy": "EXACT_COMMITTED_FILELIST_AND_EXPANDED_SOURCE_BYTES"}:
         raise FlowError("single-edge RTL authority commit mismatch")
     forbidden = [token.lower() for token in
