@@ -22,7 +22,7 @@ drain changes only FIFO state and capacity; it cannot advance scheduler policy.
 A scheduler-only evaluator must omit this link and remain atomic.
 
 The exporter fails closed unless Git resolves full owner commit
-`632e68d247ec36a35b62dbd5c100b0a23d47cf7b`, and unless working owner RTL and
+`57d46369dc6f15ec374a296518bb0678e1428613`, and unless working owner RTL and
 `oracle.py` are byte-identical to blobs at that commit. It also binds A5 commit
 `41c425bec79aca6c84f5856ca7dee2a4865a6447` and that evaluator's
 `k2_oracle.py` SHA-256. Evidence identity fields mean:

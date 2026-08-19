@@ -22,13 +22,13 @@ sys.path.insert(0, str(CANDIDATE))
 from oracle import AtomicK2Model  # noqa: E402
 
 
-OWNER_COMMIT = "632e68d247ec36a35b62dbd5c100b0a23d47cf7b"
+OWNER_COMMIT = "57d46369dc6f15ec374a296518bb0678e1428613"
 LEGACY_EXPORTER_COMMIT = "29a5003bb47c9c502a3bec9a727de2ed14afcfeb"
 A5_COMMIT = "41c425bec79aca6c84f5856ca7dee2a4865a6447"
 OWNER_RTL = "rtl/candidates/a3_exact_scalar_prefix_k2/rtl/a3_exact_scalar_prefix_k2.sv"
 OWNER_ORACLE = "rtl/candidates/a3_exact_scalar_prefix_k2/oracle.py"
 A5_ORACLE = "tests/a5_k2_common_evaluator/k2_oracle.py"
-EXPECTED_OWNER_RTL_SHA256 = "bd00ade6ebd5f6c5e03ff356393a59f1baf6d890cfb3809a10bf0cda3bb1b0d9"
+EXPECTED_OWNER_RTL_SHA256 = "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22"
 EXPECTED_OWNER_ORACLE_SHA256 = "c2c793a284cb6d58507de6e2d62c25ce54d7120bbd6f9ee642bd210528f0ff9c"
 EXPECTED_A5_ORACLE_SHA256 = "193a3ac629b4e27418b29af58331b9261922002a74364a892c004340957cc6f8"
 ADAPTER = CANDIDATE / "cross_validation/a3_k2_ordered_link_adapter.sv"

@@ -79,7 +79,11 @@ class CrossValidationTests(unittest.TestCase):
     def test_owner_and_oracle_provenance_is_full_sha_bound(self) -> None:
         provenance = exporter.verify_provenance()
         self.assertEqual(exporter.OWNER_COMMIT,
-                         "632e68d247ec36a35b62dbd5c100b0a23d47cf7b")
+                         "57d46369dc6f15ec374a296518bb0678e1428613")
+        self.assertEqual(
+            provenance["owner_rtl_sha256"],
+            "a1898ff0d142584507b7a78571724e8a7fc9a02d64ad1dbf519dde6942cfef22",
+        )
         self.assertEqual(provenance["owner_oracle_sha256"],
                          exporter.EXPECTED_OWNER_ORACLE_SHA256)
         self.assertEqual(provenance["a5_oracle_sha256"],
