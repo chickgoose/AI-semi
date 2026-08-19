@@ -101,7 +101,7 @@ TEMPLATE_IDENTITIES = {
     "innovus_mmmc": ("physical/k2_single_edge_endpoint/innovus_mmmc_single_edge.tcl",
                      "425fed71eeb06b39ed2f598eca8f9b938d67e9c140cc6930e2f65e6b087d92e9"),
     "innovus": ("physical/k2_single_edge_endpoint/innovus_single_edge.tcl",
-                "ba02d88aca60c17e43a335662613212eb50d50c49700493b87c813088aa132c0")}
+                "96a3f8a4c524a098b6527aa60898e20e9dbf7d32511a08627795ac0107a2a2be")}
 
 
 class FlowError(RuntimeError):
@@ -1451,8 +1451,11 @@ def validate_check_place_report(payload: bytes) -> None:
     unplaced = re.findall(r"(?mi)^\s*\*info:\s*Unplaced\s*=\s*([0-9]+)\s*$", raw)
     overlaps = [int(value) for value in re.findall(
         r"(?mi)^\s*Overlapping with other instance:\s*([0-9]+)\s*$", raw)]
-    if unplaced != ["0"] or any(overlaps):
-        raise FlowError("check_place contains nonzero unplaced/overlap evidence")
+    tech_site = [int(value) for value in re.findall(
+        r"(?mi)^\s*TechSite Violation:\s*([0-9]+)\s*$", raw)]
+    if unplaced != ["0"] or any(overlaps) or any(tech_site):
+        raise FlowError(
+            "check_place contains nonzero unplaced/overlap/tech-site evidence")
 
 
 def validate_route_report(payload: bytes) -> None:

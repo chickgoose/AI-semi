@@ -153,6 +153,23 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(active.count("sroute -nets"), 1)
         self.assertEqual(active.count("editTrim -nets"), 1)
 
+    def test_innovus_normalizes_incompatible_bufx2_site_before_floorplan(self):
+        text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
+        active = "\n".join(line for line in text.splitlines()
+                           if not line.lstrip().startswith("#"))
+        replace = active.index("ecoChangeCell -inst")
+        forbid = active.index("setDontUse BUFX2 true")
+        floorplan = active.index("floorPlan -r")
+        hold = active.index("optDesign -postRoute -hold")
+        final_check = active.index(
+            'redirect -file "$output/reports/check_place.rpt" {checkPlace}')
+        self.assertLess(replace, forbid)
+        self.assertLess(forbid, floorplan)
+        self.assertLess(hold, final_check)
+        self.assertIn("BUFX4 replacement does not use the contract site", active)
+        self.assertIn("BUFX2 instances remain after site normalization", active)
+        self.assertIn("post-route instance uses non-contract site", active)
+
 
 class MutationTests(unittest.TestCase):
     def setUp(self):
@@ -1067,6 +1084,8 @@ set_load 0.01 [get_ports {{{outputs}}}]
                 "check_timing", b"| mystery_warning | unknown warning | 1 |\n"),
             "nonzero_check_place": lambda: append(
                 "check_place", b"Overlapping with other instance:\t1\n"),
+            "nonzero_tech_site": lambda: append(
+                "check_place", b"TechSite Violation:\t1\n"),
             "check_design_error": lambda: replace(
                 "check_design_post_route", b"0 error(s)", b"1 error(s)"),
             "route_failure": lambda: replace(

@@ -91,11 +91,37 @@ set failed [catch {
   setDesignMode -process $::env(SE_PROCESS)
   setAnalysisMode -analysisType onChipVariation -cppr both
 
+  # The pinned GPDK045 LEF assigns BUFX2 to CoreSiteDouble even though the
+  # macro is only one CoreSite high.  A CoreSite-only floorplan therefore
+  # cannot legally place it.  Normalize mapped instances to the same-site
+  # BUFX4 before floorplanning and keep optimization from reintroducing BUFX2.
+  # This matches the repository's previously exercised core physical flow.
+  set bufx2_cells [get_db base_cells -if {.name == BUFX2}]
+  set bufx4_cells [get_db base_cells -if {.name == BUFX4}]
+  if {[llength $bufx2_cells] != 1 || [llength $bufx4_cells] != 1} {
+    error "required BUFX2/BUFX4 cells are not uniquely available"
+  }
+  if {[get_db [lindex $bufx4_cells 0] .site.name] ne $::env(SE_SITE)} {
+    error "BUFX4 replacement does not use the contract site"
+  }
+  foreach instance [get_db insts -if {.base_cell.name == BUFX2}] {
+    ecoChangeCell -inst [get_db $instance .name] -cell BUFX4
+  }
+  if {[llength [get_db insts -if {.base_cell.name == BUFX2}]] != 0} {
+    error "BUFX2 instances remain after site normalization"
+  }
+  setDontUse BUFX2 true
+
   floorPlan -r $aspect $util $margin $margin $margin $margin
   set rows [dbGet top.fPlan.rows.name]
   if {[llength $rows] == 0} { error "floorplan created no rows" }
   foreach row_site [dbGet top.fPlan.rows.site.name -u] {
     if {$row_site ne $::env(SE_SITE)} { error "non-contract placement site $row_site" }
+  }
+  foreach instance_site [lsort -unique [get_db insts .base_cell.site.name]] {
+    if {$instance_site ne $::env(SE_SITE)} {
+      error "mapped instance uses non-contract site $instance_site"
+    }
   }
   # Pin placement is a disclosed core-boundary screening placeholder, not a
   # pad, package, signal-integrity, or organizer I/O assignment.
@@ -113,7 +139,6 @@ set failed [catch {
 
   redirect -file "$output/reports/check_design_pre_place.rpt" {checkDesign -all}
   place_opt_design
-  redirect -file "$output/reports/check_place.rpt" {checkPlace}
   clock_opt_design
   # Build/trim the special PG network before signal routing so NanoRoute can
   # legally avoid those shapes.  Adding special M1 wires after routeDesign can
@@ -126,6 +151,14 @@ set failed [catch {
   optDesign -postRoute
   optDesign -postRoute -hold
   extractRC
+  # Check the final optimized placement, including cells inserted by CTS and
+  # post-route hold repair, rather than only the pre-CTS placement snapshot.
+  foreach instance_site [lsort -unique [get_db insts .base_cell.site.name]] {
+    if {$instance_site ne $::env(SE_SITE)} {
+      error "post-route instance uses non-contract site $instance_site"
+    }
+  }
+  redirect -file "$output/reports/check_place.rpt" {checkPlace}
 
   # Preserve all independently safe post-route diagnostics even when either
   # timing view is not closed.  The stage still exits nonzero after collection.
