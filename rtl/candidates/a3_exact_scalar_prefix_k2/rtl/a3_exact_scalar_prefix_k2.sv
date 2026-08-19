@@ -44,8 +44,8 @@ module a3_exact_scalar_prefix_k2 (
   logic [2:0] selection_column;
   logic [2:0] selection_round;
 
-  logic [16:0] stage0;
-  logic [16:0] stage1;
+  logic [32:0] stage0;
+  logic [32:0] stage1;
   logic [15:0] stage1_req;
   logic candidate0_valid;
   logic [3:0] candidate0_addr;
@@ -129,8 +129,9 @@ module a3_exact_scalar_prefix_k2 (
   endfunction
 
   // Packed result:
-  // {valid, addr, next_round, next_center, next_periph, next_column}
-  function automatic logic [16:0] scalar_grant(
+  // {grant_onehot, valid, addr, next_round, next_center, next_periph,
+  //  next_column}
+  function automatic logic [32:0] scalar_grant(
     input logic [15:0] req,
     input logic [2:0]  round_in,
     input logic [2:0]  center_in,
@@ -152,6 +153,7 @@ module a3_exact_scalar_prefix_k2 (
     logic [3:0] selected_columns;
     logic [3:0] column_grant;
     logic [1:0] column_index;
+    logic [15:0] grant_onehot;
     logic valid;
     logic [2:0] round_out;
     logic [2:0] center_out;
@@ -191,6 +193,10 @@ module a3_exact_scalar_prefix_k2 (
 
       column_grant = arb4_grant(selected_columns, column_in);
       column_index = idx4(column_grant);
+      grant_onehot[3:0] = {4{row_grant[0]}} & column_grant;
+      grant_onehot[7:4] = {4{row_grant[1]}} & column_grant;
+      grant_onehot[11:8] = {4{row_grant[2]}} & column_grant;
+      grant_onehot[15:12] = {4{row_grant[3]}} & column_grant;
 
       center_out = arb4_next(center_req, center_in);
       periph_out = arb4_next(periph_req, periph_in);
@@ -200,8 +206,8 @@ module a3_exact_scalar_prefix_k2 (
       else
         round_out = round_in;
 
-      scalar_grant = {valid, {row_index, column_index}, round_out,
-                      center_out, periph_out, column_out};
+      scalar_grant = {grant_onehot, valid, {row_index, column_index},
+                      round_out, center_out, periph_out, column_out};
     end
   endfunction
 
@@ -233,7 +239,7 @@ module a3_exact_scalar_prefix_k2 (
     candidate0_addr = stage0[15:12];
     stage1_req = selection_req;
     if (candidate0_valid)
-      stage1_req[candidate0_addr] = 1'b0;
+      stage1_req = selection_req & ~stage0[32:17];
 
 `ifdef A3_K2_MUT_DUP
     stage1_req = selection_req;

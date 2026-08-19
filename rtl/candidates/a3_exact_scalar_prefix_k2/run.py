@@ -472,6 +472,7 @@ def execute(output: Path | None) -> dict:
         compile_iverilog(iverilog, lockstep_image, LOCKSTEP_TB)
         direct = command([str(vvp), str(direct_image)])
         directed_markers = (
+            "A3_K2_NATIVE_ONEHOT_PASS",
             "A3_K2_PERSISTENT_PASS", "A3_K2_SPARSE_FALLBACK_PASS",
             "A3_K2_STALL_ATOMIC_PASS", "A3_K2_RESET_DRAIN_PASS",
             "A3_K2_RETRIGGER_PASS", "A3_EXACT_SCALAR_PREFIX_K2_DIRECT_PASS",

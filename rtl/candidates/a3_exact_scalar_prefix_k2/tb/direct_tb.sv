@@ -57,6 +57,26 @@ module a3_exact_scalar_prefix_k2_direct_tb;
     end
   endtask
 
+  task automatic check_native_onehot;
+    logic [15:0] expected_stage0_onehot;
+    logic [15:0] expected_stage1_onehot;
+    begin
+      expected_stage0_onehot = dut.stage0[16] ?
+                               (16'b1 << dut.stage0[15:12]) : 16'b0;
+      expected_stage1_onehot = dut.stage1[16] ?
+                               (16'b1 << dut.stage1[15:12]) : 16'b0;
+      if (dut.stage0[32:17] !== expected_stage0_onehot)
+        $fatal(1, "DIRECT stage0 native one-hot/address mismatch");
+      if (dut.stage1[32:17] !== expected_stage1_onehot)
+        $fatal(1, "DIRECT stage1 native one-hot/address mismatch");
+      if (dut.stage0[16] &&
+          (dut.stage1_req !== (dut.selection_req & ~dut.stage0[32:17])))
+        $fatal(1, "DIRECT valid stage1 request did not use native g0 one-hot");
+      if (!dut.stage0[16] && (dut.stage1_req !== dut.selection_req))
+        $fatal(1, "DIRECT invalid stage0 changed stage1 request");
+    end
+  endtask
+
   initial begin
     rst = 1'b1;
     source_pending = 16'b0;
@@ -64,6 +84,18 @@ module a3_exact_scalar_prefix_k2_direct_tb;
 
     // Persistent opportunity ratio: count 120 committed full K2 bundles.
     reset_dut();
+    check_native_onehot();
+    if (dut.candidate0_addr !== 4'd4)
+      $fatal(1, "DIRECT native one-hot probe requires canonical g0=4");
+    force dut.candidate0_addr = 4'd5;
+    #1;
+    if (dut.stage1_req !== 16'hffef)
+      $fatal(1, "DIRECT stage1 request depends on binary g0 address");
+    release dut.candidate0_addr;
+    #1;
+    check_native_onehot();
+    $display("A3_K2_NATIVE_ONEHOT_PASS");
+
     row_count[0] = 0; row_count[1] = 0;
     row_count[2] = 0; row_count[3] = 0;
     bundles = 0;
