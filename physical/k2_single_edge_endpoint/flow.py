@@ -1499,14 +1499,47 @@ def validate_genus_log(text: str, top: str, version: str) -> None:
         raise FlowError("Genus log lacks one exact zero-error native completion")
 
 
+def _innovus_native_output(text: str) -> str:
+    """Remove Tcl command echoes, retaining native Innovus output."""
+    output = []
+    echo_brace_depth = 0
+    for line in text.splitlines():
+        command = re.match(
+            r"^(?:@file\(innovus_single_edge\.tcl\)\s+[0-9]+:|"
+            r"innovus\s+[0-9]+>)\s?(.*)$", line)
+        if command:
+            source = command.group(1)
+            echo_brace_depth = max(0, source.count("{") - source.count("}"))
+            continue
+        if echo_brace_depth:
+            echo_brace_depth = max(
+                0, echo_brace_depth + line.count("{") - line.count("}"))
+            continue
+        output.append(line)
+    return "\n".join(output)
+
+
 def validate_innovus_log(text: str, top: str, version: str) -> None:
+    native = _innovus_native_output(text)
     error_counts = [int(value) for value in re.findall(
-        r"(?<![0-9])([0-9]+)\s+error\(s\)", text, re.IGNORECASE)]
-    if has_failure_diagnostic(text) or \
-            not re.search(rf"(?m)^Version:\s+v?{re.escape(version)}", text) or \
-            text.count(f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}") != 1 or \
-            error_counts != [0] or \
-            not re.search(r'--- Ending "Innovus".*---\s*\Z', text):
+        r"(?<![0-9])([0-9]+)\s+error\(s\)", native, re.IGNORECASE)]
+    diagnostic_text = re.sub(
+        r"(?mi)^\s*Error Limit\s*=\s*[0-9]+;\s*"
+        r"Warning Limit\s*=\s*[0-9]+\s*$", "", native)
+    versions = re.findall(r"(?m)^Version:[^\r\n]*$", native)
+    version_pattern = (
+        rf"Version:\s+v{re.escape(version)}"
+        r"(?:,\s+built\s+[^\r\n]+)?\s*")
+    marker = f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}"
+    markers = re.findall(
+        r"(?m)^K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE[^\r\n]*$", native)
+    ending_pattern = r'(?m)^--- Ending "Innovus"[^\r\n]*---[ \t]*$'
+    endings = re.findall(ending_pattern, native)
+    if has_failure_diagnostic(diagnostic_text) or not error_counts or \
+            any(value != 0 for value in error_counts) or len(versions) != 1 or \
+            not re.fullmatch(version_pattern, versions[0]) or markers != [marker] or \
+            len(endings) != 1 or not re.search(
+                r'(?m)^--- Ending "Innovus"[^\r\n]*---[ \t]*\s*\Z', native):
         raise FlowError("Innovus log lacks one exact zero-error native completion")
 
 

@@ -607,7 +607,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
         genus_version = self.fixture.contract["tools"]["genus"]["version"]
         genus_log = (f"Version: {genus_version}\nInfo=1, Error=0, Fatal=0\n"
                      f"K2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}\nNormal exit.\n")
-        innovus_log = (f"Version: v{version}, test\n"
+        innovus_log = (f"Version: v{version}, built Fri Feb 28 12:25:44 PST 2025\n"
                        f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n"
                        "*** Message Summary: 0 warning(s), 0 error(s)\n"
                        "--- Ending \"Innovus\" (test) ---\n")
@@ -680,6 +680,71 @@ set_load 0.01 [get_ports {{{outputs}}}]
             with self.subTest(name=name), self.assertRaisesRegex(
                     flow.FlowError, "zero-error"):
                 flow.validate_genus_log(mutation, top, version)
+
+    def test_actual_innovus_multiphase_log_and_completion_mutations_fail_closed(self):
+        top = self.fixture.contract["candidates"]["a3"]["top"]
+        version = self.fixture.contract["tools"]["innovus"]["version"]
+        marker = f"K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}"
+        ending = ('--- Ending "Innovus" '
+                  '(totcpu=0:03:34, real=0:05:06, mem=3498.9M) ---')
+        actual_shape = (
+            "Cadence Innovus(TM) Implementation System.\n"
+            f"Version:\tv{version}, built Fri Feb 28 12:25:44 PST 2025\n"
+            "innovus 1> puts \"ERROR FATAL " + marker + "\"\n"
+            "*** Message Summary: 69 warning(s), 0 error(s)\n"
+            "Error Limit = 1000; Warning Limit = 1000\n"
+            "*** Message Summary: 29 warning(s), 0 error(s)\n"
+            f"{marker}\n"
+            "*** Message Summary: 365 warning(s), 0 error(s)\n"
+            f"{ending}\n"
+        )
+        flow.validate_innovus_log(actual_shape, top, version)
+        flow.validate_innovus_log(
+            actual_shape.replace(
+                f"{marker}\n", "*** Message Summary: 0 warning(s), 0 error(s)\n"
+                f"{marker}\n", 1),
+            top, version)
+
+        missing_summary = actual_shape
+        for summary in (
+                "*** Message Summary: 69 warning(s), 0 error(s)\n",
+                "*** Message Summary: 29 warning(s), 0 error(s)\n",
+                "*** Message Summary: 365 warning(s), 0 error(s)\n"):
+            missing_summary = missing_summary.replace(summary, "")
+        mutations = {
+            "missing-summary": missing_summary,
+            "nonzero-summary": actual_shape.replace(
+                "29 warning(s), 0 error(s)", "29 warning(s), 1 error(s)", 1),
+            "structured-error": actual_shape.replace(
+                f"{marker}\n*** Message Summary: 365",
+                f"**ERROR: failed\n{marker}\n*** Message Summary: 365", 1),
+            "structured-fatal": actual_shape.replace(
+                f"{marker}\n*** Message Summary: 365",
+                f"**FATAL: failed\n{marker}\n*** Message Summary: 365", 1),
+            "duplicate-marker": actual_shape.replace(
+                f"{marker}\n*** Message Summary: 365",
+                f"{marker}\n{marker}\n*** Message Summary: 365", 1),
+            "wrong-marker": actual_shape.replace(
+                f"{marker}\n*** Message Summary: 365",
+                "K2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top=wrong_top\n"
+                "*** Message Summary: 365", 1),
+            "duplicate-version": actual_shape.replace(
+                "*** Message Summary: 69",
+                f"Version: v{version}, built duplicate\n*** Message Summary: 69", 1),
+            "version-prefix": actual_shape.replace(
+                f"Version:\tv{version},", f"Version:\tvprefix-{version},", 1),
+            "different-version": actual_shape.replace(version, "23.14-s089_1", 1),
+            "bad-version-suffix": actual_shape.replace(
+                ", built Fri Feb 28 12:25:44 PST 2025", ", foreign suffix", 1),
+            "duplicate-ending": actual_shape.replace(
+                f"{marker}\n*** Message Summary: 365",
+                f"{ending}\n{marker}\n*** Message Summary: 365", 1),
+            "ending-not-eof": actual_shape + "post-exit output\n",
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(name=name), self.assertRaisesRegex(
+                    flow.FlowError, "zero-error"):
+                flow.validate_innovus_log(mutation, top, version)
 
     def test_netlist_requires_exact_boundary_and_connectivity(self):
         top = self.fixture.contract["candidates"]["a2"]["top"]
@@ -930,7 +995,7 @@ set_load 0.01 [get_ports {{{outputs}}}]
         table = {
             **eco_receipts,
             "genus_log": (f"Version: {self.contract['tools']['genus']['version']}\nInfo=1, Error=0, Fatal=0\nK2_SINGLE_EDGE_GENUS_COMMANDS_COMPLETE top={top}\nNormal exit.\n").encode(),
-            "innovus_log": (f"Version: v{self.contract['tools']['innovus']['version']}, test\nK2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n*** Message Summary: 0 warning(s), 0 error(s)\n--- Ending \"Innovus\" (test) ---\n").encode(),
+            "innovus_log": (f"Version: v{self.contract['tools']['innovus']['version']}, built Fri Feb 28 12:25:44 PST 2025\nK2_SINGLE_EDGE_INNOVUS_COMMANDS_COMPLETE top={top}\n*** Message Summary: 0 warning(s), 0 error(s)\n--- Ending \"Innovus\" (test) ---\n").encode(),
             "setup_timing": (innovus_header(
                 "report_timing -view se_setup_view -check_type setup -max_paths 50") +
                 "Path 1: MET (0.120 ns) Setup Check\n= Slack Time 0.120\n").encode() +
