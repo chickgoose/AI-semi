@@ -55,9 +55,9 @@ ARTIFACTS = {
         "89a8439fc3c5796293b56f2dcc96f2bb2141d1d2d1041bff8ca84a09e581c93c",
     ),
     "endpoint_physical_contract": (
-        "15593a72d68867641196992dd31bd00ef5dacaac",
+        "527bf36451229e630c162369732475f5fbd8458c",
         "physical/k2_single_edge_endpoint/contract.json",
-        "6e0e8bb0381419bbb556561314f7bea774c4e131fddf904517baf13ae4232544",
+        "88a0050a61c6d52905d6f0b69e940fcef655727029f180b69ba7cba65ae93704",
     ),
     "vectorless_contract": (
         "dd1d30cfcb84aa1b760b8026af2807a11d84940b",
