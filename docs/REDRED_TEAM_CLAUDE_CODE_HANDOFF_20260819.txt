@@ -415,14 +415,21 @@ HOLD:
   tests/redred_final_selection/run_all.sh
   python3 -m unittest discover -s tests/known_motion_coordinate -p 'test_*.py'
 
-현재 호환성 변경 후 집중 회귀:
+현재 호환성 변경 후 전체 관련 로컬 회귀: 317/317 PASS
 
-  - endpoint physical/local compatibility: 34/34 PASS
-  - system-goal policy: 36/36 PASS
-  - final-selection: 19/19 PASS, candidate NONE/HOLD
+  - native campaign: 112/112
+  - native aggregate adversarial: 13/13
+  - endpoint physical/local compatibility: 34/34
+  - vectorless diagnostic: 29/29
+  - system-goal policy: 36/36
+  - final-selection: 19/19, candidate NONE/HOLD
+  - source-structure PDK: 17/17
+  - source CDC/RDC: 23/23
+  - known-motion coordinate: 24/24
+  - historical selector quarantine: 10/10
 
-전체 suite 재실행 전에는 기존 전체 회귀 수를 새 호환성 변경의 전체 PASS로
-확대해서 주장하지 않는다.
+이 317개는 로컬 RTL, parser, policy 및 mutation 회귀다. 실제 Cadence
+Genus/Innovus 또는 live GPDK045를 실행한 결과로 확대해서 주장하지 않는다.
 
 
 12. 절대 금지할 주장
