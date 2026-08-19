@@ -164,6 +164,7 @@
   },
   "execution_policy": {
     "argv_suffix": ["-batch", "-files"],
+    "synthesis_defines": ["SYNTHESIS"],
     "semantic_environment_keys": [
       "K2_SE_TOP",
       "K2_SE_SOURCES_SV",
@@ -218,7 +219,7 @@
   "templates": {
     "driver": {
       "path": "physical/k2_single_edge_vectorless/genus_default_vectorless.tcl",
-      "sha256": "743c3aec1ffc14a1f1dca4ce0f20718a0925e6cb8e501b571b6bb4a14a1b06ee"
+      "sha256": "54ea4f58c0696cea98d9e81a0960766aabe10cd03b48a23eb2af2017ef21453c"
     },
     "sdc": {
       "path": "physical/k2_single_edge_vectorless/single_edge_strict.sdc",

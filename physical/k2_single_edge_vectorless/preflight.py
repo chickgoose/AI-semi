@@ -546,7 +546,7 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
         raise EvidenceError("exact Genus identity changed")
 
     execution = exact_keys(contract["execution_policy"], {
-        "argv_suffix", "semantic_environment_keys", "required_exit_code",
+        "argv_suffix", "synthesis_defines", "semantic_environment_keys", "required_exit_code",
         "require_absolute_cwd_and_driver", "require_in_place_server_root",
     }, "execution_policy")
     expected_env = [
@@ -554,6 +554,7 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
         "K2_SE_OUTPUT", "K2_SE_ACTIVITY_MODE", "LC_ALL",
     ]
     if (execution["argv_suffix"] != ["-batch", "-files"] or
+            execution["synthesis_defines"] != ["SYNTHESIS"] or
             execution["semantic_environment_keys"] != expected_env or
             execution["required_exit_code"] != 0 or
             execution["require_absolute_cwd_and_driver"] is not True or
@@ -609,6 +610,10 @@ def validate_contract(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
             raise EvidenceError(f"Genus driver requires exactly one {command}")
     if len(re.findall(r"(?m)^\s*report_power\b", driver_text)) != 1:
         raise EvidenceError("Genus driver requires exactly one report_power")
+    if len(re.findall(
+            r"(?m)^\s*read_hdl\s+-sv\s+-define\s+SYNTHESIS\s+"
+            r"\{\*\}\$::env\(K2_SE_SOURCES_SV\)\s*$", driver_text)) != 1:
+        raise EvidenceError("Genus driver requires one exact SYNTHESIS-defined RTL read")
     if ("K2_SE_ACTIVITY_MODE" not in driver_text or
             "GENUS_DEFAULT_VECTORLESS" not in driver_text or
             "K2_SINGLE_EDGE_VECTORLESS_DIAGNOSTIC_COMPLETE" not in driver_text):
@@ -831,18 +836,37 @@ def validate_structural_netlist(payload: bytes, top: str) -> dict[str, int]:
     if re.search(r"(?mi)^\s*(?:always|initial)\b", text):
         raise EvidenceError("mapped netlist is behavioral, not mapped")
 
-    declared: dict[str, set[str]] = {"input": set(), "output": set()}
+    header = re.findall(
+        rf"(?ms)^\s*module\s+{re.escape(top)}\s*\((.*?)\)\s*;", text)
+    if len(header) != 1:
+        raise EvidenceError("mapped netlist top header is not uniquely parseable")
+    header_names = [name.strip() for name in header[0].split(",")]
+    expected_header = [value.split("[")[0]
+                       for value in EXPECTED_INPUTS + EXPECTED_OUTPUTS]
+    if (header_names != expected_header or
+            any(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", name) is None
+                for name in header_names)):
+        raise EvidenceError("mapped netlist ordered complete-boundary header mismatch")
+
+    declared: dict[str, tuple[str, str]] = {}
     for direction, width, names in re.findall(
             r"(?ms)\b(input|output)\b\s+(?:(?:wire|reg|logic)\s+)?"
             r"(\[[^\]]+\])?\s*([^;]+);", text):
         normalized_width = re.sub(r"\s+", "", width)
         for raw_name in names.split(","):
             name = raw_name.strip().split("=")[0].strip()
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", name):
-                declared[direction].add(name + normalized_width)
-    if declared["input"] != set(EXPECTED_INPUTS) or \
-            declared["output"] != set(EXPECTED_OUTPUTS):
-        raise EvidenceError("mapped netlist complete-boundary port set mismatch")
+            if (re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", name) is None or
+                    name in declared):
+                raise EvidenceError("mapped netlist has duplicate or unparseable port declaration")
+            declared[name] = (direction, normalized_width)
+    expected_declarations = {
+        value.split("[")[0]:
+            (direction, value[len(value.split("[")[0]):])
+        for direction, values in (("input", EXPECTED_INPUTS), ("output", EXPECTED_OUTPUTS))
+        for value in values
+    }
+    if declared != expected_declarations:
+        raise EvidenceError("mapped netlist complete-boundary declarations mismatch")
 
     keywords = {"module", "input", "output", "inout", "wire", "reg", "logic",
                 "assign", "always", "initial", "if", "for", "case", "function"}

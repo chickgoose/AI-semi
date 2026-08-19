@@ -14,7 +14,7 @@ set OUT_DIR  $::env(K2_SE_OUTPUT)
 file mkdir $OUT_DIR
 
 set_db library $LIB_FILE
-read_hdl -sv {*}$::env(K2_SE_SOURCES_SV)
+read_hdl -sv -define SYNTHESIS {*}$::env(K2_SE_SOURCES_SV)
 elaborate $DESIGN
 read_sdc $SDC_FILE
 set clocks [get_clocks *]

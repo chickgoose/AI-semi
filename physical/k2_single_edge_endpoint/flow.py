@@ -19,6 +19,7 @@ from typing import Any, Iterable
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 CONTRACT = HERE / "contract.json"
+VECTORLESS_CONTRACT = ROOT / "physical/k2_single_edge_vectorless/contract.json"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MODULE = re.compile(r"(?m)^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)\b")
 BAD_LOG = re.compile(
@@ -524,6 +525,7 @@ def local_compatibility_preflight(output: Path | None) -> dict[str, Any]:
     server with a different ordered port ABI than the mapped-netlist verifier.
     """
     contract_payload, contract = validate_contract()
+    vectorless = validate_vectorless_compatibility(contract)
     candidates: dict[str, Any] = {}
     for design in contract["candidate_order"]:
         row = contract["candidates"][design]
@@ -544,6 +546,7 @@ def local_compatibility_preflight(output: Path | None) -> dict[str, Any]:
         "status": "PASS_LOCAL_RTL_PHYSICAL_COMPATIBILITY",
         "contract_sha256": sha256(contract_payload),
         "candidate_order": list(contract["candidate_order"]),
+        "vectorless_compatibility": vectorless,
         "candidates": candidates,
         "live_tools_or_pdk_examined": False,
         "server_genus_smoke_executed": False,
@@ -554,6 +557,55 @@ def local_compatibility_preflight(output: Path | None) -> dict[str, Any]:
     if output is not None:
         write_exclusive(output, document)
     return document
+
+
+def validate_vectorless_compatibility(endpoint_contract: dict[str, Any]) -> dict[str, Any]:
+    """Bind the diagnostic power flow to the exact endpoint compile ABI."""
+    payload, contract = load_json(VECTORLESS_CONTRACT, "single-edge vectorless contract")
+    if (contract.get("schema") != "k2_single_edge_vectorless_contract_v2" or
+            contract.get("status") !=
+            "DIAGNOSTIC_ONLY_PLACEHOLDER_IO_NO_CONTROLLED_PRODUCER"):
+        raise FlowError("vectorless contract identity/status mismatch")
+    decision = contract.get("decision_policy", {})
+    if decision.get("candidate_order") != ["a2_single_edge", "a3_single_edge"]:
+        raise FlowError("vectorless candidate order differs from endpoint order")
+
+    def signature(rows: list[dict[str, Any]]) -> list[str]:
+        return [row["name"] + (f"[{row['width'] - 1}:0]" if row["width"] > 1 else "")
+                for row in rows]
+
+    inputs = signature(endpoint_contract["boundary"]["normalized_ports"]["inputs"])
+    outputs = signature(endpoint_contract["boundary"]["normalized_ports"]["outputs"])
+    vectorless_rows = contract.get("candidates", {})
+    for endpoint_name, vectorless_name in zip(
+            endpoint_contract["candidate_order"], decision["candidate_order"]):
+        endpoint_row = endpoint_contract["candidates"][endpoint_name]
+        row = vectorless_rows.get(vectorless_name, {})
+        if (row.get("architecture") != endpoint_name.upper() or
+                row.get("top") != endpoint_row["top"] or
+                row.get("inputs") != inputs or row.get("outputs") != outputs):
+            raise FlowError(f"{vectorless_name} vectorless compile boundary differs")
+    execution = contract.get("execution_policy", {})
+    if execution.get("synthesis_defines") != \
+            endpoint_contract["source_policy"]["synthesis_defines"]:
+        raise FlowError("vectorless synthesis defines differ from endpoint flow")
+    driver = contract.get("templates", {}).get("driver", {})
+    driver_path = repo_path(driver.get("path"))
+    driver_payload = stable_read(driver_path)
+    if sha256(driver_payload) != driver.get("sha256"):
+        raise FlowError("vectorless driver byte identity mismatch")
+    driver_text = driver_payload.decode("utf-8")
+    exact_read = "read_hdl -sv -define SYNTHESIS {*}$::env(K2_SE_SOURCES_SV)"
+    if [line.strip() for line in driver_text.splitlines()].count(exact_read) != 1:
+        raise FlowError("vectorless driver lacks one exact SYNTHESIS-defined RTL read")
+    return {
+        "contract_sha256": sha256(payload),
+        "driver_sha256": sha256(driver_payload),
+        "exact_candidate_order": True,
+        "exact_ordered_top_boundary": True,
+        "exact_synthesis_defines": list(execution["synthesis_defines"]),
+        "diagnostic_hold_preserved": True,
+    }
 
 
 def source_identity(contract: dict[str, Any], design: str) -> list[dict[str, Any]]:
@@ -579,12 +631,15 @@ def source_identity(contract: dict[str, Any], design: str) -> list[dict[str, Any
         result.append({"path": raw, "sha256": sha256(payload), "size_bytes": len(payload)})
     modules = []
     for identity in result:
-        modules.extend(MODULE.findall(stable_read(repo_path(identity["path"])).decode("utf-8")))
+        source_payload = stable_read(repo_path(identity["path"]))
+        modules.extend(MODULE.findall(synthesis_text(
+            source_payload, f"{design} SYNTHESIS source {identity['path']}")))
     if modules != row["module_inventory"] or modules.count(row["top"]) != 1:
         raise FlowError(f"exact module inventory/top definition differs: {design}")
     top_payload = stable_read(repo_path(row["expanded_sources"][-1]["path"]))
-    top_text = top_payload.decode("utf-8")
-    validate_top_boundary(top_payload, row["top"], contract, f"{design} RTL top")
+    top_text = synthesis_text(top_payload, f"{design} SYNTHESIS RTL top")
+    validate_top_boundary(top_text.encode("utf-8"), row["top"], contract,
+                          f"{design} SYNTHESIS RTL top")
     if re.search(r"(?i)@(\s*negedge)|always_ff\s*@\s*\([^)]*negedge\s+clk_i", top_text):
         raise FlowError("top contains negedge clocked state")
     return result
@@ -885,6 +940,58 @@ def active_text(payload: bytes, label: str) -> str:
     return stripped
 
 
+def synthesis_text(payload: bytes, label: str) -> str:
+    """Return comment-free text active when only SYNTHESIS is defined.
+
+    This is intentionally a small fail-closed conditional preprocessor for
+    source inventory and top-boundary screening.  Genus remains the authority
+    for full SystemVerilog preprocessing and elaboration.
+    """
+    text = strip_comments(payload.decode("utf-8"))
+    frames: list[tuple[bool, bool, bool]] = []
+    active = True
+    result: list[str] = []
+    conditional = re.compile(
+        r"^\s*`(ifdef|ifndef|else|endif)(?:\s+([A-Za-z_][A-Za-z0-9_$]*))?\s*$")
+    for line in text.splitlines():
+        stripped = line.strip()
+        match = conditional.fullmatch(line)
+        if match:
+            command, name = match.groups()
+            if command in {"ifdef", "ifndef"}:
+                if name is None:
+                    raise FlowError(f"{label} has a conditional without a macro name")
+                condition = name == "SYNTHESIS"
+                if command == "ifndef":
+                    condition = not condition
+                frames.append((active, condition, False))
+                active = active and condition
+            elif command == "else":
+                if name is not None or not frames:
+                    raise FlowError(f"{label} has an unmatched preprocessor else")
+                parent, condition, seen_else = frames[-1]
+                if seen_else:
+                    raise FlowError(f"{label} has more than one preprocessor else")
+                frames[-1] = (parent, condition, True)
+                active = parent and not condition
+            else:
+                if name is not None or not frames:
+                    raise FlowError(f"{label} has an unmatched preprocessor endif")
+                parent, _, _ = frames.pop()
+                active = parent
+            continue
+        if stripped.startswith("`elsif") or stripped.startswith("`if"):
+            raise FlowError(f"{label} uses an unsupported conditional directive")
+        if active:
+            result.append(line)
+    if frames:
+        raise FlowError(f"{label} has an unterminated preprocessor conditional")
+    joined = "\n".join(result)
+    if not joined.strip():
+        raise FlowError(f"{label} has no SYNTHESIS-active source text")
+    return joined
+
+
 def report_texts(payload: bytes, label: str) -> tuple[str, str]:
     """Return the untouched native report and its active, non-comment text."""
     raw = payload.decode("utf-8")
@@ -1039,8 +1146,28 @@ def split_verilog_list(raw: str) -> list[str]:
 
 
 def declared_width(raw: str) -> int:
-    match = re.search(r"\[\s*([0-9]+)\s*:\s*([0-9]+)\s*\]", raw)
-    return abs(int(match.group(1)) - int(match.group(2))) + 1 if match else 1
+    ranges = re.findall(r"\[[^\]]*\]", raw)
+    if not ranges:
+        if "[" in raw or "]" in raw:
+            raise FlowError("port declaration contains an unterminated range")
+        return 1
+    if len(ranges) != 1:
+        raise FlowError("port declaration requires at most one numeric packed range")
+    match = re.fullmatch(r"\[\s*([0-9]+)\s*:\s*([0-9]+)\s*\]", ranges[0])
+    if match is None:
+        raise FlowError("port declaration contains a symbolic or malformed range")
+    msb, lsb = int(match.group(1)), int(match.group(2))
+    if lsb != 0 or msb < lsb:
+        raise FlowError("port packed range must use descending [N:0] orientation")
+    range_start = raw.index(ranges[0])
+    prefix = re.sub(r"\b(?:input|output|inout|wire|logic|reg|tri|signed|unsigned)\b",
+                    "", raw[:range_start])
+    if re.search(r"[A-Za-z_][A-Za-z0-9_$]*", prefix):
+        raise FlowError("port range is unpacked rather than packed")
+    suffix = raw[range_start + len(ranges[0]):]
+    if re.search(r"[A-Za-z_][A-Za-z0-9_$]*", suffix) is None:
+        raise FlowError("port range is unpacked or lacks a following identifier")
+    return msb + 1
 
 
 def validate_top_boundary(payload: bytes, top: str, contract: dict[str, Any],

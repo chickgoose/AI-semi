@@ -266,6 +266,10 @@ class ContractTest(unittest.TestCase):
     def test_driver_and_sdc_are_default_vectorless_placeholder_only(self) -> None:
         contract, _ = contract_and_sources()
         driver = (ROOT / contract["templates"]["driver"]["path"]).read_text()
+        self.assertEqual(contract["execution_policy"]["synthesis_defines"],
+                         ["SYNTHESIS"])
+        self.assertEqual(driver.count(
+            "read_hdl -sv -define SYNTHESIS {*}$::env(K2_SE_SOURCES_SV)"), 1)
         self.assertIn("K2_SE_ACTIVITY_MODE", driver)
         self.assertIn("GENUS_DEFAULT_VECTORLESS", driver)
         self.assertIn("check_design -all", driver)
@@ -451,6 +455,26 @@ class StructuralDiagnosticTest(unittest.TestCase):
         )
         for mutation in mutations:
             with self.assertRaises(flow.EvidenceError):
+                flow.validate_structural_netlist(mutation, self.TOP)
+
+    def test_structural_netlist_rejects_port_reorder_duplicate_and_range_direction(self) -> None:
+        valid = structural_netlist(self.TOP)
+        mutations = {
+            "header-reorder": valid.replace(
+                b"protocol_error_o, drain_idle_o);",
+                b"drain_idle_o, protocol_error_o);"),
+            "duplicate": valid.replace(
+                b"output drain_idle_o;",
+                b"output protocol_error_o;\noutput drain_idle_o;"),
+            "ascending-range": valid.replace(
+                b"input [15:0] source_pending_i;",
+                b"input [0:15] source_pending_i;"),
+            "symbolic-range": valid.replace(
+                b"input [15:0] source_pending_i;",
+                b"input [SOURCE_COUNT-1:0] source_pending_i;"),
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(name=name), self.assertRaises(flow.EvidenceError):
                 flow.validate_structural_netlist(mutation, self.TOP)
 
     def test_exact_mapped_sdc_selectors_cardinality_and_order(self) -> None:

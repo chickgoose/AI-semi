@@ -31,6 +31,10 @@ class Fixture:
         self.here = self.root / "physical/k2_single_edge_endpoint"
         self.here.parent.mkdir(parents=True)
         shutil.copytree(REPO / "physical/k2_single_edge_endpoint", self.here)
+        self.vectorless = self.root / "physical/k2_single_edge_vectorless"
+        shutil.copytree(REPO / "physical/k2_single_edge_vectorless", self.vectorless)
+        self.vectorless_contract_path = self.vectorless / "contract.json"
+        self.vectorless_contract = json.loads(self.vectorless_contract_path.read_text())
         self.contract_path = self.here / "contract.json"
         self.contract = json.loads(self.contract_path.read_text())
         paths = {self.contract["source_policy"]["nested_generic_filelist"]["path"]}
@@ -46,10 +50,14 @@ class Fixture:
 
     def patch(self):
         return mock.patch.multiple(flow, ROOT=self.root, HERE=self.here,
-                                   CONTRACT=self.contract_path)
+                                   CONTRACT=self.contract_path,
+                                   VECTORLESS_CONTRACT=self.vectorless / "contract.json")
 
     def rewrite_contract(self) -> None:
         self.contract_path.write_bytes(flow.canonical(self.contract))
+
+    def rewrite_vectorless_contract(self) -> None:
+        self.vectorless_contract_path.write_bytes(flow.canonical(self.vectorless_contract))
 
     def close(self) -> None:
         self.temp.cleanup()
@@ -92,6 +100,10 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(receipt["live_tools_or_pdk_examined"])
         self.assertFalse(receipt["server_genus_smoke_executed"])
         self.assertFalse(receipt["candidate_physical_go_allowed"])
+        self.assertTrue(receipt["vectorless_compatibility"]
+                        ["exact_ordered_top_boundary"])
+        self.assertEqual(receipt["vectorless_compatibility"]
+                         ["exact_synthesis_defines"], ["SYNTHESIS"])
         for design in ("a2", "a3"):
             self.assertEqual(receipt["candidates"][design]["source_count"], 6)
             self.assertTrue(receipt["candidates"][design]["exact_ordered_top_boundary"])
@@ -101,17 +113,10 @@ class ContractTests(unittest.TestCase):
 
     def test_endpoint_and_vectorless_complete_boundaries_are_identical(self):
         _, endpoint = flow.validate_contract()
-        vectorless = json.loads((REPO / "physical/k2_single_edge_vectorless/contract.json").read_text())
-
-        def signature(rows):
-            return [row["name"] + (f"[{row['width'] - 1}:0]" if row["width"] > 1 else "")
-                    for row in rows]
-
-        inputs = signature(endpoint["boundary"]["normalized_ports"]["inputs"])
-        outputs = signature(endpoint["boundary"]["normalized_ports"]["outputs"])
-        for candidate in ("a2_single_edge", "a3_single_edge"):
-            self.assertEqual(vectorless["candidates"][candidate]["inputs"], inputs)
-            self.assertEqual(vectorless["candidates"][candidate]["outputs"], outputs)
+        result = flow.validate_vectorless_compatibility(endpoint)
+        self.assertTrue(result["exact_candidate_order"])
+        self.assertTrue(result["exact_ordered_top_boundary"])
+        self.assertEqual(result["exact_synthesis_defines"], ["SYNTHESIS"])
 
     def test_innovus_collects_safe_reports_before_timing_failure_exit(self):
         text = (REPO / "physical/k2_single_edge_endpoint/innovus_single_edge.tcl").read_text()
@@ -146,6 +151,25 @@ class MutationTests(unittest.TestCase):
         self.assertEqual(len(plan["sources"]), 6)
         self.assertIn("error_latch", plan["sources"][1]["path"])
 
+    def test_synthesis_text_excludes_comments_and_inactive_conditionals(self):
+        payload = b"""/* module commented_out; endmodule */
+`ifdef UNUSED_MUTATION
+module inactive_ifdef; endmodule
+`else
+module synthesis_active; endmodule
+`endif
+`ifndef SYNTHESIS
+module simulation_only; endmodule
+`endif
+"""
+        text = flow.synthesis_text(payload, "fixture")
+        self.assertEqual(flow.MODULE.findall(text), ["synthesis_active"])
+        for payload in (b"`ifdef SYNTHESIS\nmodule x; endmodule\n",
+                        b"`else\nmodule x; endmodule\n",
+                        b"`ifdef SYNTHESIS\n`else\n`else\n`endif\n"):
+            with self.assertRaises(flow.FlowError):
+                flow.synthesis_text(payload, "malformed fixture")
+
     def test_source_boundary_rejects_order_direction_width_missing_and_extra(self):
         _, contract = flow.validate_contract()
         top = contract["candidates"]["a2"]["top"]
@@ -173,12 +197,53 @@ class MutationTests(unittest.TestCase):
                       for item in declarations],
             "missing": declarations[:-1],
             "extra": declarations + ["  output logic unexpected_o"],
+            "ascending-range": [item.replace("input logic [15:0] source_pending_i",
+                                               "input logic [0:15] source_pending_i")
+                                for item in declarations],
+            "symbolic-range": [item.replace("input logic [15:0] source_pending_i",
+                                              "input logic [SOURCE_COUNT-1:0] source_pending_i")
+                               for item in declarations],
+            "multidimensional-range": [item.replace(
+                "input logic [15:0] source_pending_i",
+                "input logic [15:0][1:0] source_pending_i")
+                for item in declarations],
+            "unpacked-range": [item.replace("input logic [15:0] source_pending_i",
+                                              "input logic source_pending_i [15:0]")
+                               for item in declarations],
         }
         for name, items in mutants.items():
             with self.subTest(name=name), self.assertRaisesRegex(
-                    flow.FlowError, "exact complete boundary|directions/widths"):
+                    flow.FlowError, "exact complete boundary|directions/widths|range"):
                 flow.validate_top_boundary(payload(items), top, contract,
                                            f"{name} RTL top")
+
+    def test_local_compatibility_rejects_vectorless_boundary_and_define_drift(self):
+        mutations = ("output-order", "synthesis-define")
+        for mutation in mutations:
+            original = json.loads(json.dumps(self.fixture.vectorless_contract))
+            if mutation == "output-order":
+                outputs = self.fixture.vectorless_contract["candidates"] \
+                    ["a2_single_edge"]["outputs"]
+                outputs[-2], outputs[-1] = outputs[-1], outputs[-2]
+            else:
+                self.fixture.vectorless_contract["execution_policy"] \
+                    ["synthesis_defines"] = []
+            self.fixture.rewrite_vectorless_contract()
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(
+                    flow.FlowError, "vectorless compile boundary|synthesis defines"):
+                flow.local_compatibility_preflight(None)
+            self.fixture.vectorless_contract = original
+            self.fixture.rewrite_vectorless_contract()
+
+    def test_local_compatibility_rejects_vectorless_driver_without_synthesis_define(self):
+        driver = self.fixture.root / self.fixture.vectorless_contract["templates"] \
+            ["driver"]["path"]
+        driver.write_text(driver.read_text().replace("-define SYNTHESIS ", "", 1))
+        self.fixture.vectorless_contract["templates"]["driver"]["sha256"] = \
+            flow.sha256(driver.read_bytes())
+        self.fixture.rewrite_vectorless_contract()
+        with self.assertRaisesRegex(flow.FlowError, "SYNTHESIS-defined RTL read"):
+            flow.local_compatibility_preflight(None)
 
     def test_old_or_missing_latch_bytes_reject(self):
         latch = self.fixture.root / self.fixture.contract["candidates"]["a2"]["expanded_sources"][1]["path"]
