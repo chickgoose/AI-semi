@@ -1,0 +1,116 @@
+{
+  "schema": "redred.uzh_shapes_pose_join.spec/v1",
+  "source_lock": {
+    "profile_id": "uzh-rpg-davis240c-shapes_rotation-text-zip-v1",
+    "authority_scope": "official_requested_url_plus_exact_local_archive_member_and_license_bytes",
+    "remote_server_authenticated": false
+  },
+  "dataset": {
+    "provider": "University of Zurich Robotics and Perception Group",
+    "collection": "Event-Camera Dataset",
+    "sequence": "shapes_rotation",
+    "sensor": "DAVIS240C",
+    "camera_id": "uzh-davis240c-shapes_rotation",
+    "landing_url": "https://rpg.ifi.uzh.ch/davis_data.html",
+    "download_url": "https://rpg.ifi.uzh.ch/datasets/davis/shapes_rotation.zip",
+    "citation_url": "https://arxiv.org/abs/1610.08336",
+    "license_spdx": "CC-BY-NC-SA-3.0"
+  },
+  "source_archive": {
+    "official_download_basename": "shapes_rotation.zip",
+    "basename": "uzh-shapes_rotation.zip",
+    "size_bytes": 157446920,
+    "sha256": "56aade6bf53dcf73e8fe40905ccac8385cd7606bc9a85103bf2c9f9045117551",
+    "expected_entry_count": 1363
+  },
+  "license": {
+    "basename": "CC-BY-NC-SA-3.0.txt",
+    "size_bytes": 22306,
+    "sha256": "8812f83442fd0eca14eb0208988e190fdcbfebec58fa5459d3218edfdfdc5a32",
+    "source_url": "https://creativecommons.org/licenses/by-nc-sa/3.0/legalcode.txt",
+    "deed_url": "https://creativecommons.org/licenses/by-nc-sa/3.0/"
+  },
+  "required_members": {
+    "events": {
+      "name": "events.txt",
+      "size_bytes": 509907771,
+      "compressed_size_bytes": 130659807,
+      "crc32": "c54a9cef",
+      "sha256": "d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda",
+      "line_count": 23126288
+    },
+    "poses": {
+      "name": "groundtruth.txt",
+      "size_bytes": 1379205,
+      "compressed_size_bytes": 597809,
+      "crc32": "28836890",
+      "sha256": "bb62c320a51c1be412e17065eb86cfffa9041841290d439c23e447f1991aabdb",
+      "line_count": 11883
+    },
+    "calibration": {
+      "name": "calib.txt",
+      "size_bytes": 128,
+      "compressed_size_bytes": 82,
+      "crc32": "0a2da176",
+      "sha256": "ab797c55a990c03656fbddac2473d3eace2a22f87fea4ca3b0497862b50545cd",
+      "line_count": 1
+    }
+  },
+  "sensor": {
+    "width": 240,
+    "height": 180,
+    "pixel_origin": "top_left_0_0",
+    "source_polarity_values": [0, 1]
+  },
+  "source_formats": {
+    "separator": "single_ascii_space",
+    "line_termination": "LF",
+    "timestamp_fractional_digits": 9,
+    "events_fields": ["timestamp", "x", "y", "polarity"],
+    "poses_fields": ["timestamp", "px", "py", "pz", "qx", "qy", "qz", "qw"],
+    "calibration_fields": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3"]
+  },
+  "timebase": {
+    "unit": "ns",
+    "epoch": "uzh_shapes_rotation_sequence_zero_after_source_minimum_timestamp_subtraction"
+  },
+  "selection": {
+    "start_timestamp_ns_inclusive": 41321000000,
+    "end_timestamp_ns_exclusive": 41322000000,
+    "expected_event_count": 1100,
+    "expected_first_dataset_event_index": 13856250,
+    "expected_last_dataset_event_index": 13857349,
+    "expected_first_timestamp_ns": 41321000000,
+    "expected_last_timestamp_ns": 41321999000,
+    "selected_raw_lines_sha256": "013fe8b9886e37fe9616e47e0c54a80a57298d98f08a1e11f7daf712af3f59ab"
+  },
+  "join_policy": {
+    "ordering": "preserve_source_order",
+    "causal_pose": "latest_at_or_before_event_timestamp",
+    "future_bracket": "first_pose_strictly_after_event_timestamp",
+    "interpolation_output": "none_bracket_identity_only",
+    "max_causal_pose_age_ns_inclusive": 5000000,
+    "missing_stale_or_unbracketed": "fail_package_no_partial_success"
+  },
+  "resource_limits": {
+    "max_archive_bytes": 157446920,
+    "max_zip_entries": 1363,
+    "max_event_line_bytes": 96,
+    "max_pose_line_bytes": 256,
+    "max_calibration_line_bytes": 512,
+    "max_pose_records": 20000,
+    "max_selected_events": 2000,
+    "max_license_bytes": 65536,
+    "copy_chunk_bytes": 1048576
+  },
+  "claim_scope": {
+    "official_uzh_source": true,
+    "official_redred_traffic": false,
+    "canonical_redred_traffic": false,
+    "transport_replay_performed": false,
+    "warp_performed": false,
+    "pure_rotation_claimed": false,
+    "distortion_applied": false,
+    "translation_preserved_not_applied": true
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/redred/uzh-shapes-pose-join-record-v1.schema.json",
+  "title": "REDRED UZH source-preserving pose-join artifact records v1",
+  "oneOf": [
+    {"$ref": "#/$defs/calibration"},
+    {"$ref": "#/$defs/poseHeader"},
+    {"$ref": "#/$defs/pose"},
+    {"$ref": "#/$defs/eventHeader"},
+    {"$ref": "#/$defs/event"}
+  ],
+  "$defs": {
+    "timebase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["unit", "epoch"],
+      "properties": {
+        "unit": {"const": "ns"},
+        "epoch": {"const": "uzh_shapes_rotation_sequence_zero_after_source_minimum_timestamp_subtraction"}
+      }
+    },
+    "decimal": {"type": "string", "pattern": "^-?(?:0|[1-9][0-9]*)\\.[0-9]+$"},
+    "calibration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "calibration_id", "camera_id", "sensor", "model", "parameter_order", "parameters_exact_decimal", "source_member", "source_record_index"],
+      "properties": {
+        "schema": {"const": "redred.uzh_shapes_pose_join.calibration/v1"},
+        "calibration_id": {"type": "string", "minLength": 1},
+        "camera_id": {"type": "string", "minLength": 1},
+        "sensor": {"const": {"width": 240, "height": 180}},
+        "model": {"const": "opencv_pinhole_radtan"},
+        "parameter_order": {"const": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3"]},
+        "parameters_exact_decimal": {
+          "type": "object", "additionalProperties": false,
+          "required": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3"],
+          "properties": {
+            "fx": {"$ref": "#/$defs/decimal"}, "fy": {"$ref": "#/$defs/decimal"},
+            "cx": {"$ref": "#/$defs/decimal"}, "cy": {"$ref": "#/$defs/decimal"},
+            "k1": {"$ref": "#/$defs/decimal"}, "k2": {"$ref": "#/$defs/decimal"},
+            "p1": {"$ref": "#/$defs/decimal"}, "p2": {"$ref": "#/$defs/decimal"},
+            "k3": {"$ref": "#/$defs/decimal"}
+          }
+        },
+        "source_member": {"const": "calib.txt"},
+        "source_record_index": {"const": 0}
+      }
+    },
+    "poseHeader": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "record_type", "pose_stream_id", "camera_id", "timebase", "record_count", "source_member", "source_pose_meaning", "source_world_z_axis", "source_quaternion_order", "source_quaternion_convention", "matrix_direction_conversion", "translation_policy"],
+      "properties": {
+        "schema": {"const": "redred.uzh_shapes_pose_join.pose_stream/v1"},
+        "record_type": {"const": "header"},
+        "pose_stream_id": {"type": "string", "minLength": 1},
+        "camera_id": {"type": "string", "minLength": 1},
+        "timebase": {"$ref": "#/$defs/timebase"},
+        "record_count": {"type": "integer", "minimum": 1},
+        "source_member": {"const": "groundtruth.txt"},
+        "source_pose_meaning": {"const": "event_camera_pose_with_respect_to_arbitrary_motion_capture_origin"},
+        "source_world_z_axis": {"const": "gravity_aligned_pointing_up"},
+        "source_quaternion_order": {"const": ["qx", "qy", "qz", "qw"]},
+        "source_quaternion_convention": {"const": "JPL_as_documented_by_UZH_source_paper"},
+        "matrix_direction_conversion": {"const": "UNRESOLVED_NOT_PERFORMED"},
+        "translation_policy": {"const": "preserved_not_applied"}
+      }
+    },
+    "pose": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "record_type", "source_pose_index", "timestamp_ns", "timestamp_seconds_lexeme", "position_m_exact_decimal", "quaternion_exact_decimal"],
+      "properties": {
+        "schema": {"const": "redred.uzh_shapes_pose_join.pose/v1"},
+        "record_type": {"const": "pose"},
+        "source_pose_index": {"type": "integer", "minimum": 0},
+        "timestamp_ns": {"type": "integer", "minimum": 0},
+        "timestamp_seconds_lexeme": {"type": "string", "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{9}$"},
+        "position_m_exact_decimal": {"$ref": "#/$defs/position"},
+        "quaternion_exact_decimal": {"$ref": "#/$defs/quaternion"}
+      }
+    },
+    "position": {
+      "type": "object", "additionalProperties": false, "required": ["px", "py", "pz"],
+      "properties": {"px": {"$ref": "#/$defs/decimal"}, "py": {"$ref": "#/$defs/decimal"}, "pz": {"$ref": "#/$defs/decimal"}}
+    },
+    "quaternion": {
+      "type": "object", "additionalProperties": false, "required": ["qx", "qy", "qz", "qw"],
+      "properties": {"qx": {"$ref": "#/$defs/decimal"}, "qy": {"$ref": "#/$defs/decimal"}, "qz": {"$ref": "#/$defs/decimal"}, "qw": {"$ref": "#/$defs/decimal"}}
+    },
+    "eventHeader": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "record_type", "event_stream_id", "camera_id", "calibration_id", "pose_stream_id", "timebase", "coordinate_frame", "source_member", "record_count", "selection", "join_policy", "claim_scope"],
+      "properties": {
+        "schema": {"const": "redred.uzh_shapes_pose_join.event_stream/v1"},
+        "record_type": {"const": "header"},
+        "event_stream_id": {"type": "string", "minLength": 1},
+        "camera_id": {"type": "string", "minLength": 1},
+        "calibration_id": {"type": "string", "minLength": 1},
+        "pose_stream_id": {"type": "string", "minLength": 1},
+        "timebase": {"$ref": "#/$defs/timebase"},
+        "coordinate_frame": {"const": "original_davis240c_sensor_image"},
+        "source_member": {"const": "events.txt"},
+        "record_count": {"type": "integer", "minimum": 1},
+        "selection": {"$ref": "#/$defs/selection"},
+        "join_policy": {"$ref": "#/$defs/joinPolicy"},
+        "claim_scope": {"$ref": "#/$defs/claimScope"}
+      }
+    },
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "record_type", "dataset_event_index", "join_sequence_index", "timestamp_ns", "timestamp_seconds_lexeme", "x", "y", "polarity_01", "calibration_id", "causal_pose", "bracket"],
+      "properties": {
+        "schema": {"const": "redred.uzh_shapes_pose_join.event/v1"},
+        "record_type": {"const": "event"},
+        "dataset_event_index": {"type": "integer", "minimum": 0},
+        "join_sequence_index": {"type": "integer", "minimum": 0},
+        "timestamp_ns": {"type": "integer", "minimum": 0},
+        "timestamp_seconds_lexeme": {"type": "string", "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{9}$"},
+        "x": {"type": "integer", "minimum": 0, "maximum": 239},
+        "y": {"type": "integer", "minimum": 0, "maximum": 179},
+        "polarity_01": {"enum": [0, 1]},
+        "calibration_id": {"type": "string", "minLength": 1},
+        "causal_pose": {"$ref": "#/$defs/causal"},
+        "bracket": {"$ref": "#/$defs/bracket"}
+      }
+    },
+    "causal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_pose_index", "pose_timestamp_ns", "age_ns"],
+      "properties": {
+        "source_pose_index": {"type": "integer", "minimum": 0},
+        "pose_timestamp_ns": {"type": "integer", "minimum": 0},
+        "age_ns": {"type": "integer", "minimum": 0}
+      }
+    },
+    "bracket": {
+      "type": "object", "additionalProperties": false,
+      "required": ["left_source_pose_index", "right_source_pose_index", "left_timestamp_ns", "right_timestamp_ns", "alpha_numerator_ns", "alpha_denominator_ns"],
+      "properties": {
+        "left_source_pose_index": {"type": "integer", "minimum": 0},
+        "right_source_pose_index": {"type": "integer", "minimum": 1},
+        "left_timestamp_ns": {"type": "integer", "minimum": 0},
+        "right_timestamp_ns": {"type": "integer", "minimum": 1},
+        "alpha_numerator_ns": {"type": "integer", "minimum": 0},
+        "alpha_denominator_ns": {"type": "integer", "minimum": 1}
+      }
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "selection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["start_timestamp_ns_inclusive", "end_timestamp_ns_exclusive", "expected_event_count", "expected_first_dataset_event_index", "expected_last_dataset_event_index", "expected_first_timestamp_ns", "expected_last_timestamp_ns", "selected_raw_lines_sha256"],
+      "properties": {
+        "start_timestamp_ns_inclusive": {"type": "integer", "minimum": 0},
+        "end_timestamp_ns_exclusive": {"type": "integer", "minimum": 1},
+        "expected_event_count": {"type": "integer", "minimum": 1},
+        "expected_first_dataset_event_index": {"type": "integer", "minimum": 0},
+        "expected_last_dataset_event_index": {"type": "integer", "minimum": 0},
+        "expected_first_timestamp_ns": {"type": "integer", "minimum": 0},
+        "expected_last_timestamp_ns": {"type": "integer", "minimum": 0},
+        "selected_raw_lines_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "joinPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ordering", "causal_pose", "future_bracket", "interpolation_output", "max_causal_pose_age_ns_inclusive", "missing_stale_or_unbracketed"],
+      "properties": {
+        "ordering": {"const": "preserve_source_order"},
+        "causal_pose": {"const": "latest_at_or_before_event_timestamp"},
+        "future_bracket": {"const": "first_pose_strictly_after_event_timestamp"},
+        "interpolation_output": {"const": "none_bracket_identity_only"},
+        "max_causal_pose_age_ns_inclusive": {"const": 5000000},
+        "missing_stale_or_unbracketed": {"const": "fail_package_no_partial_success"}
+      }
+    },
+    "claimScope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["official_uzh_source", "generated_artifact_official_uzh", "official_redred_traffic", "canonical_redred_traffic", "transport_replay_performed", "warp_performed", "pure_rotation_claimed", "distortion_applied", "translation_preserved_not_applied"],
+      "properties": {
+        "official_uzh_source": {"type": "boolean"},
+        "generated_artifact_official_uzh": {"const": false},
+        "official_redred_traffic": {"const": false},
+        "canonical_redred_traffic": {"const": false},
+        "transport_replay_performed": {"const": false},
+        "warp_performed": {"const": false},
+        "pure_rotation_claimed": {"const": false},
+        "distortion_applied": {"const": false},
+        "translation_preserved_not_applied": {"const": true}
+      }
+    }
+  }
+}

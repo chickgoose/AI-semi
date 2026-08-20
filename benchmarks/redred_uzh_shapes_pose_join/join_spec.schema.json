@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/redred/uzh-shapes-pose-join-spec-v1.schema.json",
+  "title": "REDRED pinned UZH shapes_rotation pose-join specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "source_lock", "dataset", "source_archive", "license", "required_members",
+    "sensor", "source_formats", "timebase", "selection", "join_policy",
+    "resource_limits", "claim_scope"
+  ],
+  "properties": {
+    "schema": {"const": "redred.uzh_shapes_pose_join.spec/v1"},
+    "source_lock": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "authority_scope", "remote_server_authenticated"],
+      "properties": {
+        "profile_id": {"const": "uzh-rpg-davis240c-shapes_rotation-text-zip-v1"},
+        "authority_scope": {"const": "official_requested_url_plus_exact_local_archive_member_and_license_bytes"},
+        "remote_server_authenticated": {"const": false}
+      }
+    },
+    "dataset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "collection", "sequence", "sensor", "camera_id", "landing_url", "download_url", "citation_url", "license_spdx"],
+      "properties": {
+        "provider": {"const": "University of Zurich Robotics and Perception Group"},
+        "collection": {"const": "Event-Camera Dataset"},
+        "sequence": {"const": "shapes_rotation"},
+        "sensor": {"const": "DAVIS240C"},
+        "camera_id": {"const": "uzh-davis240c-shapes_rotation"},
+        "landing_url": {"const": "https://rpg.ifi.uzh.ch/davis_data.html"},
+        "download_url": {"const": "https://rpg.ifi.uzh.ch/datasets/davis/shapes_rotation.zip"},
+        "citation_url": {"const": "https://arxiv.org/abs/1610.08336"},
+        "license_spdx": {"const": "CC-BY-NC-SA-3.0"}
+      }
+    },
+    "source_archive": {"$ref": "#/$defs/archive"},
+    "license": {"$ref": "#/$defs/license"},
+    "required_members": {
+      "type": "object", "additionalProperties": false,
+      "required": ["events", "poses", "calibration"],
+      "properties": {
+        "events": {"$ref": "#/$defs/member"},
+        "poses": {"$ref": "#/$defs/member"},
+        "calibration": {"$ref": "#/$defs/member"}
+      }
+    },
+    "sensor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height", "pixel_origin", "source_polarity_values"],
+      "properties": {
+        "width": {"const": 240}, "height": {"const": 180},
+        "pixel_origin": {"const": "top_left_0_0"},
+        "source_polarity_values": {"const": [0, 1]}
+      }
+    },
+    "source_formats": {
+      "type": "object", "additionalProperties": false,
+      "required": ["separator", "line_termination", "timestamp_fractional_digits", "events_fields", "poses_fields", "calibration_fields"],
+      "properties": {
+        "separator": {"const": "single_ascii_space"},
+        "line_termination": {"const": "LF"},
+        "timestamp_fractional_digits": {"const": 9},
+        "events_fields": {"const": ["timestamp", "x", "y", "polarity"]},
+        "poses_fields": {"const": ["timestamp", "px", "py", "pz", "qx", "qy", "qz", "qw"]},
+        "calibration_fields": {"const": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3"]}
+      }
+    },
+    "timebase": {"$ref": "#/$defs/timebase"},
+    "selection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["start_timestamp_ns_inclusive", "end_timestamp_ns_exclusive", "expected_event_count", "expected_first_dataset_event_index", "expected_last_dataset_event_index", "expected_first_timestamp_ns", "expected_last_timestamp_ns", "selected_raw_lines_sha256"],
+      "properties": {
+        "start_timestamp_ns_inclusive": {"const": 41321000000},
+        "end_timestamp_ns_exclusive": {"const": 41322000000},
+        "expected_event_count": {"const": 1100},
+        "expected_first_dataset_event_index": {"const": 13856250},
+        "expected_last_dataset_event_index": {"const": 13857349},
+        "expected_first_timestamp_ns": {"const": 41321000000},
+        "expected_last_timestamp_ns": {"const": 41321999000},
+        "selected_raw_lines_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "join_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ordering", "causal_pose", "future_bracket", "interpolation_output", "max_causal_pose_age_ns_inclusive", "missing_stale_or_unbracketed"],
+      "properties": {
+        "ordering": {"const": "preserve_source_order"},
+        "causal_pose": {"const": "latest_at_or_before_event_timestamp"},
+        "future_bracket": {"const": "first_pose_strictly_after_event_timestamp"},
+        "interpolation_output": {"const": "none_bracket_identity_only"},
+        "max_causal_pose_age_ns_inclusive": {"const": 5000000},
+        "missing_stale_or_unbracketed": {"const": "fail_package_no_partial_success"}
+      }
+    },
+    "resource_limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_archive_bytes", "max_zip_entries", "max_event_line_bytes", "max_pose_line_bytes", "max_calibration_line_bytes", "max_pose_records", "max_selected_events", "max_license_bytes", "copy_chunk_bytes"],
+      "properties": {
+        "max_archive_bytes": {"type": "integer", "minimum": 1},
+        "max_zip_entries": {"type": "integer", "minimum": 1},
+        "max_event_line_bytes": {"type": "integer", "minimum": 1},
+        "max_pose_line_bytes": {"type": "integer", "minimum": 1},
+        "max_calibration_line_bytes": {"type": "integer", "minimum": 1},
+        "max_pose_records": {"type": "integer", "minimum": 1},
+        "max_selected_events": {"type": "integer", "minimum": 1},
+        "max_license_bytes": {"type": "integer", "minimum": 1},
+        "copy_chunk_bytes": {"type": "integer", "minimum": 4096, "maximum": 8388608}
+      }
+    },
+    "claim_scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["official_uzh_source", "official_redred_traffic", "canonical_redred_traffic", "transport_replay_performed", "warp_performed", "pure_rotation_claimed", "distortion_applied", "translation_preserved_not_applied"],
+      "properties": {
+        "official_uzh_source": {"const": true},
+        "official_redred_traffic": {"const": false},
+        "canonical_redred_traffic": {"const": false},
+        "transport_replay_performed": {"const": false},
+        "warp_performed": {"const": false},
+        "pure_rotation_claimed": {"const": false},
+        "distortion_applied": {"const": false},
+        "translation_preserved_not_applied": {"const": true}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "crc32": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
+    "archive": {
+      "type": "object", "additionalProperties": false,
+      "required": ["official_download_basename", "basename", "size_bytes", "sha256", "expected_entry_count"],
+      "properties": {
+        "official_download_basename": {"const": "shapes_rotation.zip"},
+        "basename": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "expected_entry_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "license": {
+      "type": "object", "additionalProperties": false,
+      "required": ["basename", "size_bytes", "sha256", "source_url", "deed_url"],
+      "properties": {
+        "basename": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "source_url": {"const": "https://creativecommons.org/licenses/by-nc-sa/3.0/legalcode.txt"},
+        "deed_url": {"const": "https://creativecommons.org/licenses/by-nc-sa/3.0/"}
+      }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "size_bytes", "compressed_size_bytes", "crc32", "sha256", "line_count"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "compressed_size_bytes": {"type": "integer", "minimum": 1},
+        "crc32": {"$ref": "#/$defs/crc32"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "line_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "timebase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["unit", "epoch"],
+      "properties": {
+        "unit": {"const": "ns"},
+        "epoch": {"const": "uzh_shapes_rotation_sequence_zero_after_source_minimum_timestamp_subtraction"}
+      }
+    }
+  }
+}

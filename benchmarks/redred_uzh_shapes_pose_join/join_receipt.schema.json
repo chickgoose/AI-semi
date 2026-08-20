@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/redred/uzh-shapes-pose-join-receipt-v1.schema.json",
+  "title": "REDRED UZH source-preserving pose-join receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "evidence_class", "promotion_status",
+    "source_dataset_identity", "source_provenance", "specification_identity",
+    "input_contract", "selection", "join_policy", "conservation",
+    "pose_coverage_metrics", "artifact_inventory", "claim_scope"
+  ],
+  "properties": {
+    "schema": {"const": "redred.uzh_shapes_pose_join.receipt/v1"},
+    "status": {"const": "PUBLIC_UZH_SOURCE_POSE_JOIN_COMPLETE_UNQUALIFIED"},
+    "evidence_class": {"const": "PUBLIC_DATASET_SOURCE_PRESERVING_POSE_JOIN"},
+    "promotion_status": {"const": "HOLD_MC_WTB_ADAPTER"},
+    "source_dataset_identity": {"$ref": "#/$defs/sourceDatasetIdentity"},
+    "source_provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capture_strategy", "archive", "members", "license"],
+      "properties": {
+        "capture_strategy": {"const": "one_pinned_source_descriptor_to_private_exact_byte_spool_then_parse_spool"},
+        "archive": {"$ref": "#/$defs/artifact"},
+        "members": {
+          "type": "object", "additionalProperties": false,
+          "required": ["events", "poses", "calibration"],
+          "properties": {
+            "events": {"$ref": "#/$defs/member"},
+            "poses": {"$ref": "#/$defs/member"},
+            "calibration": {"$ref": "#/$defs/member"}
+          }
+        },
+        "license": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "specification_identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["basename", "raw_sha256", "semantic_sha256"],
+      "properties": {
+        "basename": {"type": "string", "minLength": 1},
+        "raw_sha256": {"$ref": "#/$defs/sha256"},
+        "semantic_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "input_contract": {"$ref": "#/$defs/inputContract"},
+    "selection": {"$ref": "#/$defs/selection"},
+    "join_policy": {"$ref": "#/$defs/joinPolicy"},
+    "conservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_event_records", "before_window_records", "admitted_window_records", "after_window_records", "joined_event_records", "join_rejected_or_dropped_records", "source_partition_equation", "zero_drop_equation", "join_failure_policy", "timestamp_tie_extras", "exact_duplicate_input_extras", "polarity_0_records", "polarity_1_records"],
+      "properties": {
+        "source_event_records": {"type": "integer", "minimum": 1},
+        "before_window_records": {"type": "integer", "minimum": 0},
+        "admitted_window_records": {"type": "integer", "minimum": 1},
+        "after_window_records": {"type": "integer", "minimum": 0},
+        "joined_event_records": {"type": "integer", "minimum": 1},
+        "join_rejected_or_dropped_records": {"const": 0},
+        "source_partition_equation": {"const": "source_event_records == before_window_records + admitted_window_records + after_window_records"},
+        "zero_drop_equation": {"const": "admitted_window_records == joined_event_records + join_rejected_or_dropped_records"},
+        "join_failure_policy": {"const": "FAIL_PACKAGE_NO_PARTIAL_SUCCESS"},
+        "timestamp_tie_extras": {"type": "integer", "minimum": 0},
+        "exact_duplicate_input_extras": {"type": "integer", "minimum": 0},
+        "polarity_0_records": {"type": "integer", "minimum": 0},
+        "polarity_1_records": {"type": "integer", "minimum": 0}
+      }
+    },
+    "pose_coverage_metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pose_record_count", "first_pose_timestamp_ns", "last_pose_timestamp_ns", "minimum_causal_pose_age_ns", "maximum_causal_pose_age_ns", "minimum_future_pose_distance_ns", "maximum_future_pose_distance_ns", "minimum_bracket_span_ns", "maximum_bracket_span_ns", "maximum_allowed_causal_pose_age_ns_inclusive", "negative_adjacent_quaternion_dot_boundaries", "quaternion_interpolation_performed"],
+      "properties": {
+        "pose_record_count": {"type": "integer", "minimum": 2},
+        "first_pose_timestamp_ns": {"type": "integer", "minimum": 0},
+        "last_pose_timestamp_ns": {"type": "integer", "minimum": 1},
+        "minimum_causal_pose_age_ns": {"type": "integer", "minimum": 0},
+        "maximum_causal_pose_age_ns": {"type": "integer", "minimum": 0},
+        "minimum_future_pose_distance_ns": {"type": "integer", "minimum": 1},
+        "maximum_future_pose_distance_ns": {"type": "integer", "minimum": 1},
+        "minimum_bracket_span_ns": {"type": "integer", "minimum": 1},
+        "maximum_bracket_span_ns": {"type": "integer", "minimum": 1},
+        "maximum_allowed_causal_pose_age_ns_inclusive": {"type": "integer", "minimum": 0},
+        "negative_adjacent_quaternion_dot_boundaries": {"type": "integer", "minimum": 0},
+        "quaternion_interpolation_performed": {"const": false}
+      }
+    },
+    "artifact_inventory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["LICENSE.txt", "calibration.json", "poses.jsonl", "events_pose_join.jsonl"],
+      "properties": {
+        "LICENSE.txt": {"$ref": "#/$defs/output"},
+        "calibration.json": {"$ref": "#/$defs/output"},
+        "poses.jsonl": {"$ref": "#/$defs/output"},
+        "events_pose_join.jsonl": {"$ref": "#/$defs/output"}
+      }
+    },
+    "claim_scope": {"$ref": "#/$defs/claimScope"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sourceDatasetIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "collection", "sequence", "sensor", "camera_id", "landing_url", "download_url", "citation_url", "license_spdx", "official_download_basename", "provided_local_archive_basename"],
+      "properties": {
+        "provider": {"const": "University of Zurich Robotics and Perception Group"},
+        "collection": {"const": "Event-Camera Dataset"},
+        "sequence": {"const": "shapes_rotation"},
+        "sensor": {"const": "DAVIS240C"},
+        "camera_id": {"const": "uzh-davis240c-shapes_rotation"},
+        "landing_url": {"const": "https://rpg.ifi.uzh.ch/davis_data.html"},
+        "download_url": {"const": "https://rpg.ifi.uzh.ch/datasets/davis/shapes_rotation.zip"},
+        "citation_url": {"const": "https://arxiv.org/abs/1610.08336"},
+        "license_spdx": {"const": "CC-BY-NC-SA-3.0"},
+        "official_download_basename": {"const": "shapes_rotation.zip"},
+        "provided_local_archive_basename": {"const": "uzh-shapes_rotation.zip"}
+      }
+    },
+    "timebase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["unit", "epoch"],
+      "properties": {
+        "unit": {"const": "ns"},
+        "epoch": {"const": "uzh_shapes_rotation_sequence_zero_after_source_minimum_timestamp_subtraction"}
+      }
+    },
+    "sourceLock": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "authority_scope", "remote_server_authenticated"],
+      "properties": {
+        "profile_id": {"const": "uzh-rpg-davis240c-shapes_rotation-text-zip-v1"},
+        "authority_scope": {"const": "official_requested_url_plus_exact_local_archive_member_and_license_bytes"},
+        "remote_server_authenticated": {"const": false}
+      }
+    },
+    "inputContract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_lock", "sensor", "source_formats", "timebase", "license_exact_bytes_url"],
+      "properties": {
+        "source_lock": {"$ref": "#/$defs/sourceLock"},
+        "sensor": {
+          "const": {"width": 240, "height": 180, "pixel_origin": "top_left_0_0", "source_polarity_values": [0, 1]}
+        },
+        "source_formats": {
+          "const": {
+            "separator": "single_ascii_space", "line_termination": "LF", "timestamp_fractional_digits": 9,
+            "events_fields": ["timestamp", "x", "y", "polarity"],
+            "poses_fields": ["timestamp", "px", "py", "pz", "qx", "qy", "qz", "qw"],
+            "calibration_fields": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3"]
+          }
+        },
+        "timebase": {"$ref": "#/$defs/timebase"},
+        "license_exact_bytes_url": {"const": "https://creativecommons.org/licenses/by-nc-sa/3.0/legalcode.txt"}
+      }
+    },
+    "selection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["start_timestamp_ns_inclusive", "end_timestamp_ns_exclusive", "expected_event_count", "expected_first_dataset_event_index", "expected_last_dataset_event_index", "expected_first_timestamp_ns", "expected_last_timestamp_ns", "selected_raw_lines_sha256"],
+      "properties": {
+        "start_timestamp_ns_inclusive": {"type": "integer", "minimum": 0},
+        "end_timestamp_ns_exclusive": {"type": "integer", "minimum": 1},
+        "expected_event_count": {"type": "integer", "minimum": 1},
+        "expected_first_dataset_event_index": {"type": "integer", "minimum": 0},
+        "expected_last_dataset_event_index": {"type": "integer", "minimum": 0},
+        "expected_first_timestamp_ns": {"type": "integer", "minimum": 0},
+        "expected_last_timestamp_ns": {"type": "integer", "minimum": 0},
+        "selected_raw_lines_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "joinPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ordering", "causal_pose", "future_bracket", "interpolation_output", "max_causal_pose_age_ns_inclusive", "missing_stale_or_unbracketed"],
+      "properties": {
+        "ordering": {"const": "preserve_source_order"},
+        "causal_pose": {"const": "latest_at_or_before_event_timestamp"},
+        "future_bracket": {"const": "first_pose_strictly_after_event_timestamp"},
+        "interpolation_output": {"const": "none_bracket_identity_only"},
+        "max_causal_pose_age_ns_inclusive": {"const": 5000000},
+        "missing_stale_or_unbracketed": {"const": "fail_package_no_partial_success"}
+      }
+    },
+    "claimScope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["official_uzh_source", "generated_artifact_official_uzh", "official_redred_traffic", "canonical_redred_traffic", "transport_replay_performed", "warp_performed", "pure_rotation_claimed", "distortion_applied", "translation_preserved_not_applied"],
+      "properties": {
+        "official_uzh_source": {"type": "boolean"},
+        "generated_artifact_official_uzh": {"const": false},
+        "official_redred_traffic": {"const": false},
+        "canonical_redred_traffic": {"const": false},
+        "transport_replay_performed": {"const": false},
+        "warp_performed": {"const": false},
+        "pure_rotation_claimed": {"const": false},
+        "distortion_applied": {"const": false},
+        "translation_preserved_not_applied": {"const": true}
+      }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["basename", "size_bytes", "sha256"],
+      "properties": {
+        "basename": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "size_bytes", "compressed_size_bytes", "crc32", "sha256", "line_count"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "compressed_size_bytes": {"type": "integer", "minimum": 1},
+        "crc32": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "line_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "size_bytes", "sha256", "record_count"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "record_count": {"type": ["integer", "null"], "minimum": 0}
+      }
+    }
+  }
+}

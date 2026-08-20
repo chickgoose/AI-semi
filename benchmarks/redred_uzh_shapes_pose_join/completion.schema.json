@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/redred/uzh-shapes-pose-join-completion-v1.schema.json",
+  "title": "REDRED UZH source-preserving pose-join completion v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "promotion_status", "artifacts"],
+  "properties": {
+    "schema": {"const": "redred.uzh_shapes_pose_join.completion/v1"},
+    "status": {"const": "PUBLIC_UZH_SOURCE_POSE_JOIN_COMPLETE_UNQUALIFIED"},
+    "promotion_status": {"const": "HOLD_MC_WTB_ADAPTER"},
+    "artifacts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["LICENSE.txt", "calibration.json", "poses.jsonl", "events_pose_join.jsonl", "receipt.json"],
+      "properties": {
+        "LICENSE.txt": {"$ref": "#/$defs/artifact"},
+        "calibration.json": {"$ref": "#/$defs/artifact"},
+        "poses.jsonl": {"$ref": "#/$defs/artifact"},
+        "events_pose_join.jsonl": {"$ref": "#/$defs/artifact"},
+        "receipt.json": {"$ref": "#/$defs/artifact"}
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["size_bytes", "sha256"],
+      "properties": {
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
