@@ -1,7 +1,8 @@
 {
-  "schema": "redred.uzh_mc_wtb_controls.preregistration/v1",
-  "parameter_set_id": "UZH-S2-CONTROLS-8X8-1MS-V1",
+  "schema": "redred.uzh_mc_wtb_controls.preregistration/v2",
+  "parameter_set_id": "UZH-S2-CONTROLS-8X8-1MS-V2",
   "arms": [
+    "RAW",
     "SENSOR_FIXED",
     "MC_CORRECT",
     "MC_WRONG",
@@ -9,6 +10,24 @@
     "RETIRE_WARP"
   ],
   "cohort_policy": "one_event_record_contains_every_arm_no_arm_local_filtering",
+  "adapter_compatibility": {
+    "native_identity_fields": [
+      "dataset_event_index",
+      "join_sequence_index",
+      "timestamp_ns",
+      "x_raw",
+      "y_raw",
+      "polarity_01"
+    ],
+    "join_sequence_policy": "exact_zero_to_n_minus_one_source_order",
+    "package_boundary": "separate_evaluator_does_not_modify_or_relabel_native_adapter"
+  },
+  "raw_semantics": {
+    "geometry": "unwarped_source_sensor_ray_interpreted_without_pose_transform",
+    "locality": "original_raw_sensor_coordinates",
+    "pose_lookup_timestamp_ns": null,
+    "expected_relation_to_sensor_fixed": "identical_locality_coordinates_but_distinct_geometry_semantics"
+  },
   "tile": {
     "width_px": 8,
     "height_px": 8,

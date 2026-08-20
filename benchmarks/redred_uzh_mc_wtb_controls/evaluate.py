@@ -2,7 +2,7 @@
 """Evaluate geometry controls and tile-locality opportunity, never rate benefit.
 
 The input boundary is deliberately adapter-neutral: one record owns one event
-identity and contains all five arm outputs.  An adapter therefore cannot make
+identity and contains all six arm outputs.  An adapter therefore cannot make
 an arm look better by omitting a difficult event or by selecting an arm-local
 cohort.  This module performs no importing, pose interpolation, warping,
 serialization, codec evaluation, RTL work, or PPA estimation.
@@ -18,11 +18,12 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 
-SCHEMA = "redred.uzh_mc_wtb_controls.evaluation/v1"
-RECORD_SCHEMA = "redred.uzh_mc_wtb_controls.adapter_record/v1"
+SCHEMA = "redred.uzh_mc_wtb_controls.evaluation/v2"
+RECORD_SCHEMA = "redred.uzh_mc_wtb_controls.adapter_record/v2"
 EVALUATION_STATUS = "CONTROL_EVALUATION_ONLY_NO_BANDWIDTH_OR_BENEFIT_CLAIM"
 
 ARM_NAMES = (
+    "RAW",
     "SENSOR_FIXED",
     "MC_CORRECT",
     "MC_WRONG",
@@ -57,8 +58,11 @@ TIMING_P95_RELATIVE_REDUCTION_MIN = 0.20
 
 _EVENT_KEYS = {
     "schema",
-    "event_id",
+    "dataset_event_index",
+    "join_sequence_index",
     "timestamp_ns",
+    "x_raw",
+    "y_raw",
     "polarity_01",
     "oracle_status",
     "oracle_reference_ray",
@@ -93,6 +97,10 @@ def _integer(value: Any, where: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise EvaluationFailure(f"{where} must be an integer >= {minimum}")
     return value
+
+
+def _optional_integer(value: Any, where: str, *, minimum: int = 0) -> int | None:
+    return None if value is None else _integer(value, where, minimum=minimum)
 
 
 def _finite(value: Any, where: str) -> float:
@@ -159,45 +167,80 @@ def _summarize(values: Sequence[float]) -> dict[str, float]:
 def _validate_arm(
     value: Any,
     arm: str,
-    event_id: int,
+    dataset_event_index: int,
     timestamp_ns: int,
 ) -> dict[str, Any]:
-    row = _strict_mapping(value, _ARM_KEYS, f"event {event_id} arm {arm}")
+    row = _strict_mapping(
+        value, _ARM_KEYS, f"event {dataset_event_index} arm {arm}"
+    )
     status = row["geometry_status"]
     if status not in GEOMETRY_STATUSES:
-        raise EvaluationFailure(f"event {event_id} arm {arm} has invalid geometry_status")
-    ray = _optional_vector3(row["reference_ray"], f"event {event_id} arm {arm}.reference_ray")
-    x = _optional_coordinate(row["locality_x"], f"event {event_id} arm {arm}.locality_x")
-    y = _optional_coordinate(row["locality_y"], f"event {event_id} arm {arm}.locality_y")
-    lookup = _integer(
+        raise EvaluationFailure(
+            f"event {dataset_event_index} arm {arm} has invalid geometry_status"
+        )
+    if arm == "RAW" and status not in (IN_FOV, INVALID_DISTORTION):
+        raise EvaluationFailure(
+            f"event {dataset_event_index} RAW unwarped geometry cannot be OOF or behind"
+        )
+    ray = _optional_vector3(
+        row["reference_ray"],
+        f"event {dataset_event_index} arm {arm}.reference_ray",
+    )
+    x = _optional_coordinate(
+        row["locality_x"], f"event {dataset_event_index} arm {arm}.locality_x"
+    )
+    y = _optional_coordinate(
+        row["locality_y"], f"event {dataset_event_index} arm {arm}.locality_y"
+    )
+    lookup = _optional_integer(
         row["pose_lookup_timestamp_ns"],
-        f"event {event_id} arm {arm}.pose_lookup_timestamp_ns",
+        f"event {dataset_event_index} arm {arm}.pose_lookup_timestamp_ns",
     )
 
     if status == INVALID_DISTORTION:
         if ray is not None:
-            raise EvaluationFailure(f"event {event_id} arm {arm} invalid distortion exposes a ray")
+            raise EvaluationFailure(
+                f"event {dataset_event_index} arm {arm} invalid distortion exposes a ray"
+            )
     elif ray is None:
-        raise EvaluationFailure(f"event {event_id} arm {arm} valid geometry must expose a ray")
+        raise EvaluationFailure(
+            f"event {dataset_event_index} arm {arm} valid geometry must expose a ray"
+        )
 
     coordinates_present = x is not None and y is not None
     if (x is None) != (y is None):
-        raise EvaluationFailure(f"event {event_id} arm {arm} locality coordinates are partial")
-    if arm == "SENSOR_FIXED":
+        raise EvaluationFailure(
+            f"event {dataset_event_index} arm {arm} locality coordinates are partial"
+        )
+    if arm in ("RAW", "SENSOR_FIXED"):
         if not coordinates_present:
-            raise EvaluationFailure("SENSOR_FIXED must retain raw sensor locality coordinates")
+            raise EvaluationFailure(f"{arm} must retain raw sensor locality coordinates")
     elif status in (IN_FOV, OUTSIDE_REFERENCE_IMAGE):
         if not coordinates_present:
-            raise EvaluationFailure(f"event {event_id} arm {arm} projected status needs coordinates")
+            raise EvaluationFailure(
+                f"event {dataset_event_index} arm {arm} projected status needs coordinates"
+            )
     elif coordinates_present:
-        raise EvaluationFailure(f"event {event_id} arm {arm} nonprojectable status exposes coordinates")
+        raise EvaluationFailure(
+            f"event {dataset_event_index} arm {arm} nonprojectable status exposes coordinates"
+        )
 
+    if arm == "RAW" and lookup is not None:
+        raise EvaluationFailure(
+            f"event {dataset_event_index} RAW must not perform a pose lookup"
+        )
     if arm in ("SENSOR_FIXED", "MC_CORRECT", "MC_WRONG") and lookup != timestamp_ns:
-        raise EvaluationFailure(f"event {event_id} arm {arm} must use occurrence timestamp")
-    if arm == "MC_DELAYED" and lookup >= timestamp_ns:
-        raise EvaluationFailure(f"event {event_id} MC_DELAYED must use a strictly earlier timestamp")
-    if arm == "RETIRE_WARP" and lookup < timestamp_ns:
-        raise EvaluationFailure(f"event {event_id} RETIRE_WARP precedes occurrence")
+        raise EvaluationFailure(
+            f"event {dataset_event_index} arm {arm} must use occurrence timestamp"
+        )
+    if arm == "MC_DELAYED" and (lookup is None or lookup >= timestamp_ns):
+        raise EvaluationFailure(
+            f"event {dataset_event_index} MC_DELAYED must use a strictly earlier timestamp"
+        )
+    if arm == "RETIRE_WARP" and (lookup is None or lookup < timestamp_ns):
+        raise EvaluationFailure(
+            f"event {dataset_event_index} RETIRE_WARP precedes occurrence"
+        )
 
     return {
         "geometry_status": status,
@@ -212,8 +255,17 @@ def _validate_record(value: Any, ordinal: int) -> dict[str, Any]:
     row = _strict_mapping(value, _EVENT_KEYS, f"record {ordinal}")
     if row["schema"] != RECORD_SCHEMA:
         raise EvaluationFailure(f"record {ordinal} schema mismatch")
-    event_id = _integer(row["event_id"], f"record {ordinal}.event_id")
+    dataset_event_index = _integer(
+        row["dataset_event_index"], f"record {ordinal}.dataset_event_index"
+    )
+    join_sequence_index = _integer(
+        row["join_sequence_index"], f"record {ordinal}.join_sequence_index"
+    )
     timestamp_ns = _integer(row["timestamp_ns"], f"record {ordinal}.timestamp_ns")
+    x_raw = _integer(row["x_raw"], f"record {ordinal}.x_raw")
+    y_raw = _integer(row["y_raw"], f"record {ordinal}.y_raw")
+    if x_raw > 239 or y_raw > 179:
+        raise EvaluationFailure(f"record {ordinal} raw coordinate is outside DAVIS240C")
     polarity = _integer(row["polarity_01"], f"record {ordinal}.polarity_01")
     if polarity not in (0, 1):
         raise EvaluationFailure(f"record {ordinal}.polarity_01 must be 0 or 1")
@@ -230,12 +282,27 @@ def _validate_record(value: Any, ordinal: int) -> dict[str, Any]:
         raise EvaluationFailure(f"record {ordinal} valid oracle must expose a ray")
     arms = _strict_mapping(row["arms"], set(ARM_NAMES), f"record {ordinal}.arms")
     checked_arms = {
-        arm: _validate_arm(arms[arm], arm, event_id, timestamp_ns)
+        arm: _validate_arm(arms[arm], arm, dataset_event_index, timestamp_ns)
         for arm in ARM_NAMES
     }
+    for coordinate in ("locality_x", "locality_y"):
+        if checked_arms["RAW"][coordinate] != checked_arms["SENSOR_FIXED"][coordinate]:
+            raise EvaluationFailure(
+                f"record {ordinal} RAW and SENSOR_FIXED must preserve identical raw locality coordinates"
+            )
+    if (
+        checked_arms["RAW"]["locality_x"] != float(x_raw)
+        or checked_arms["RAW"]["locality_y"] != float(y_raw)
+    ):
+        raise EvaluationFailure(
+            f"record {ordinal} RAW/SENSOR_FIXED locality differs from x_raw/y_raw"
+        )
     return {
-        "event_id": event_id,
+        "dataset_event_index": dataset_event_index,
+        "join_sequence_index": join_sequence_index,
         "timestamp_ns": timestamp_ns,
+        "x_raw": x_raw,
+        "y_raw": y_raw,
         "polarity_01": polarity,
         "oracle_status": oracle_status,
         "oracle_reference_ray": oracle_ray,
@@ -250,7 +317,7 @@ def _coordinate_key(row: Mapping[str, Any], arm: str) -> tuple[Any, ...]:
     if x is None or y is None:
         # Per-event escape keys keep unprojectable events in N without creating
         # artificial concentration by pooling every failure into one tile.
-        return ("escape", output["geometry_status"], row["event_id"])
+        return ("escape", output["geometry_status"], row["dataset_event_index"])
     return (
         "tile",
         math.floor((x - TILE_ORIGIN_X_PX) / TILE_WIDTH_PX),
@@ -424,23 +491,27 @@ def _geometry_control_gate(
 
 
 def evaluate_records(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """Evaluate one frozen equal-ID cohort under the v1 pre-registration."""
+    """Evaluate one frozen equal-ID cohort under the v2 pre-registration."""
 
     checked = [_validate_record(value, index) for index, value in enumerate(records)]
     if not checked:
         raise EvaluationFailure("at least one admitted event is required")
-    prior_id = -1
+    prior_dataset_index = -1
     prior_timestamp = -1
     for ordinal, row in enumerate(checked):
-        if row["event_id"] <= prior_id:
+        if row["join_sequence_index"] != ordinal:
             raise EvaluationFailure(
-                f"record {ordinal} event IDs must be unique and strictly increasing"
+                f"record {ordinal} join_sequence_index must equal source-order ordinal"
+            )
+        if row["dataset_event_index"] <= prior_dataset_index:
+            raise EvaluationFailure(
+                f"record {ordinal} dataset event IDs must be unique and strictly increasing"
             )
         if row["timestamp_ns"] < prior_timestamp:
             raise EvaluationFailure(
                 f"record {ordinal} timestamps must be nondecreasing in event order"
             )
-        prior_id = row["event_id"]
+        prior_dataset_index = row["dataset_event_index"]
         prior_timestamp = row["timestamp_ns"]
 
     arm_results = {
@@ -452,19 +523,29 @@ def evaluate_records(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     }
     geometry_views = {arm: arm_results[arm]["geometry"] for arm in ARM_NAMES}
     event_id_bytes = b"".join(
-        f"{row['event_id']}\n".encode("ascii") for row in checked
+        f"{row['dataset_event_index']}\n".encode("ascii") for row in checked
     )
     return {
         "schema": SCHEMA,
         "status": EVALUATION_STATUS,
         "cohort": {
             "admitted_event_count": len(checked),
-            "first_event_id": checked[0]["event_id"],
-            "last_event_id": checked[-1]["event_id"],
-            "ordered_event_id_sha256": hashlib.sha256(event_id_bytes).hexdigest(),
-            "ordered_event_id_hash_grammar": "ascii_decimal_event_id_plus_lf_per_record",
+            "first_dataset_event_index": checked[0]["dataset_event_index"],
+            "last_dataset_event_index": checked[-1]["dataset_event_index"],
+            "ordered_dataset_event_index_sha256": hashlib.sha256(
+                event_id_bytes
+            ).hexdigest(),
+            "ordered_dataset_event_index_hash_grammar": (
+                "ascii_decimal_dataset_event_index_plus_lf_per_record"
+            ),
             "arm_names": list(ARM_NAMES),
             "equal_event_ids_by_construction": True,
+            "raw_sensor_fixed_relation": {
+                "locality_coordinates_exact_equal": True,
+                "raw_pose_transform": "none",
+                "sensor_fixed_geometry_evaluation": "receiver_side_occurrence_pose",
+                "geometry_ray_equality_required": False,
+            },
         },
         "pre_registered_parameters": {
             "tile_width_px": TILE_WIDTH_PX,
