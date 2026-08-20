@@ -1,0 +1,57 @@
+{
+  "schema": "redred.mc_wtb_motion_qualified_baseline_completion/v1",
+  "date_kst": "2026-08-21",
+  "status": "PASS_CLASSIFIER_SCOPED_HOLD_DATAPATH_AND_BENEFIT",
+  "implemented": {
+    "classes": ["UNRELIABLE", "LOW", "MID", "HIGH"],
+    "routes": ["SENSOR_FIXED_BYPASS", "MC_CORRECT_SPARSE", "MC_WTB_TILE"],
+    "pose_fault_behavior": "IMMEDIATE_SAFE_BYPASS",
+    "reliable_transition_filter": "ORDERED_HYSTERESIS_AND_MINIMUM_DWELL",
+    "threshold_authority": "EXPLICIT_CALLER_CONFIGURATION_NOT_PERFORMANCE_VALIDATED"
+  },
+  "preserved_evidence": {
+    "metric_v3_consumed_holdout_rerun": false,
+    "metric_v3_runtime_modified": false,
+    "phase4_occurrence_rtl_modified": false,
+    "failed_holdout_reinterpreted": false
+  },
+  "validation": {
+    "local_python_unit": "PASS_6_OF_6",
+    "server_python_version": "3.8.10",
+    "server_python_unit": "PASS_6_OF_6",
+    "metric_v3_regression": "PASS_91_SKIPPED_OPTIONAL_OFFICIAL_SOURCE_1",
+    "server_xcelium_version": "23.09-s013",
+    "server_xcelium_marker": "MC_WTB_MOTION_QUALIFIER_RTL_PASS",
+    "server_genus_version": "23.14-s090_1",
+    "server_genus_marker": "MC_WTB_MOTION_QUALIFIER_GENUS_ELABORATION_PASS",
+    "server_library": "GPDK045_SLOW_1P0V",
+    "server_run_root": "/tmp/mcwtb-motionqual.wfCcgu"
+  },
+  "file_sha256": {
+    "benchmarks/redred_mc_wtb_motion_qualification/__init__.py": "823cc7684d51a41df0c0f33ce972cb565f8960e3c7cd767088f70cccfbd0622d",
+    "benchmarks/redred_mc_wtb_motion_qualification/controller.py": "fee2819cb7205ced693cece540c0d50b0e3e96574af9f1d03bc5392d3f4447e1",
+    "benchmarks/redred_mc_wtb_motion_qualification/README.md": "18ff106094d92a457c8b7d2040ca0a2cbdad97c46d12618093c4a60c341e72cf",
+    "rtl/candidates/mc_wtb_motion_qualification/mc_wtb_motion_qualifier.sv": "102718917a458bdd8927c2c6f5390d4e5feeffadfa09ce45ed25da7772cf91ae",
+    "rtl/candidates/mc_wtb_motion_qualification/mc_wtb_motion_qualification.f": "f983bc04b949903df3974cb0797639ef5aa0859dfd12022e40978fbf52b01d13",
+    "tests/redred_mc_wtb_motion_qualification/test_controller.py": "03e482144f1c441f9749d3cd2feaf94f5d08c52baafd467e080d73ba7bcd1210",
+    "tests/redred_mc_wtb_motion_qualification/tb.sv": "b57820a88be97fb957865b06c5133e06957caab64e481c06a65e60c9756f4b24",
+    "tests/redred_mc_wtb_motion_qualification/run_all.sh": "c2849acf90b74df04994068f52f0dac8cb4567dc330f9dbccd7fc93a57bdbc29",
+    "tests/redred_mc_wtb_motion_qualification/genus_elaborate.tcl": "51deb0db31643a2a3326896073d1978499580785874013f3907ec42a32086b05",
+    "docs/MC_WTB_MOTION_QUALIFIED_BASELINE_20260821.md": "22f9335afefb09bdfe5969fe6d527264f27b7a62d97ddca42e9c0969573c2da0"
+  },
+  "hold": {
+    "complete_sparse_warp_datapath": true,
+    "complete_world_tile_datapath": true,
+    "epoch_drain_commit_interlock": true,
+    "per_event_mixed_mode_ledger": true,
+    "production_thresholds": true,
+    "motion_benefit": true,
+    "mapped_timing_area_power": true,
+    "innovus_pnr": true
+  },
+  "innovation_candidate": {
+    "name": "PREDICTIVE_REPRESENTATION_CONTROLLER",
+    "status": "IDEA_SAVED_IMPLEMENTATION_HOLD",
+    "implemented_in_this_change": false
+  }
+}
