@@ -8,7 +8,6 @@
 
 ```text
 PASS_SIX_ARM_GENERATOR_IMPLEMENTATION_SCOPED
-PENDING_FINAL_IMPLEMENTATION_AND_TEST_HASHES
 
 PASS_INDEPENDENT_AVAILABLE_FIVE_ARM_NUMERICAL_ORACLE
 PASS_WRONG_AND_DELAYED_CONTROLS_INFORMATIVE_THIS_WINDOW
@@ -22,8 +21,8 @@ HOLD_MC_WTB_REAL_DATA_BENEFIT
 
 `PASS_SIX_ARM_GENERATOR_IMPLEMENTATION_SCOPED`는 strict generator/inspector, independent
 geometry, deterministic package 및 fail-closed retire-input 계약의 **software 구현 범위**에만
-해당한다. 최종 generator commit, source/schema/test blobs와 detached run receipt의 hashes는 이
-문서 작성 시점에 아직 동결되지 않았으므로 archival hash binding은 `PENDING`이다.
+해당한다. 구현·schema·test bytes와 실행 결과는 이 문서 및 함께 커밋된
+`MC_WTB_UZH_SIX_ARM_VALIDATION_20260820.json`에 고정했다.
 
 Pinned official UZH source에서 `RAW`, `SENSOR_FIXED`, `MC_CORRECT`, `MC_WRONG`,
 `MC_DELAYED` 다섯 available arm은 1,100 event 전체에 대해 독립 계산으로 수치 검증했다.
@@ -35,19 +34,19 @@ artifact도 발행할 수 없다. 누락 81건의 retire time을 복사, 평균,
 이 PASS/HOLD 조합은 codec, packet/wire bits, bandwidth, throughput benefit, causal hardware,
 RTL, timing, power 또는 PPA 결과가 아니다.
 
-## 2. 근거 문서와 authority 순서
+## 2. 저장소 안의 재현 가능한 authority
 
-이 문서는 다음 read-only reports에서 작성했다. SHA-256는 보고서 bytes의 identity이며,
-보고서 안의 source/artifact hashes를 대신하지 않는다.
+팀원이 별도 로컬 보고서 없이 확인할 수 있도록 authority를 모두 이 브랜치의 커밋된 파일로
+고정했다.
 
-| authority | 역할 | report SHA-256 |
-|---|---|---|
-| `/tmp/uzh-sixarm-contract-final-a2.md` | 최종 최소 API/schema/status/claim 계약 | `de65916699d5b335915f50f3dcd3837ea430a6a5d26975a0730a2c7352f05cec` |
-| `/tmp/uzh-sixarm-oracle-a6.md` | production helper 비사용 five-arm 독립 수치 oracle | `ef78a53a8714373ff394086f897e55fe01c56fe464568910d5a6566e52fd9b19` |
-| `/tmp/uzh-sixarm-a23-negative-a5.md` | A23 1x actual RTL 81-overrun negative acceptance recipe | `02d70c2695b6c7f1d54b1302b3edf780099d9f39b4471ed4c8f5abb7cfce6779` |
-
-충돌 시 contract-final A2의 public grammar와 status가 우선한다. A6는 다섯 available arm의
-수치 golden이고, A23는 actual endpoint completeness를 부정하는 negative authority다.
+| authority | 역할 |
+|---|---|
+| `benchmarks/redred_uzh_mc_wtb_six_arm_generator/` | public API, runtime contract, 네 schema, claim boundary |
+| `tests/redred_uzh_mc_wtb_six_arm_generator/` | native fail-closed 및 publication 검증 |
+| `tests/redred_uzh_mc_wtb_sixarm_independent/` | black-box 독립 acceptance와 A23 negative gate |
+| `tests/redred_uzh_mc_wtb_sixarm_official_oracle/` | production helper 비사용 official-source five-arm golden |
+| `tests/a23_full_single_edge_replay/public_projected_export.tar.gz` | actual RTL 1,019/1,100 negative evidence |
+| `MC_WTB_UZH_SIX_ARM_VALIDATION_20260820.json` | final hashes, suite ledger, PASS/HOLD receipt |
 
 Repository의 상위 맥락은
 [`MC_WTB_STAGE1_QNA_TRACEABILITY_20260820.md`](MC_WTB_STAGE1_QNA_TRACEABILITY_20260820.md),
@@ -60,7 +59,7 @@ Repository의 상위 맥락은
 ### 3.1 UZH archive와 members
 
 ```text
-local archive /tmp/uzh-shapes_rotation.zip
+acquisition input archive (Git에 저장하지 않는 대용량 official-source 입력)
 archive SHA-256
   56aade6bf53dcf73e8fe40905ccac8385cd7606bc9a85103bf2c9f9045117551
 
@@ -176,33 +175,25 @@ preregistration으로 artifact/receipt/evaluator result를 다시 계산해야 �
 일관되게 고친 rewrite는 PASS가 아니다. Missing/invalid retire input은 partial five-arm artifact나
 placeholder `RETIRE_WARP`를 발행하지 않고 fail-closed해야 한다.
 
-### 4.3 Pending final hash binding
+### 4.3 Final implementation hash binding
 
-다음 값은 implementation-scoped PASS의 archival identity를 닫기 전에 반드시 추가한다. 현재
-값을 추정하거나 개발 중 worktree hash로 대신하지 않는다.
-
-| required final identity | 현재 상태 |
+| identity | final value |
 |---|---|
-| integrated generator commit | `PENDING_FINAL_HASH` |
-| generator implementation source | `PENDING_FINAL_HASH` |
-| generator spec/retire/receipt/completion schemas | `PENDING_FINAL_HASHES` |
-| native and independent test sources/runner | `PENDING_FINAL_HASHES` |
-| clean test command, exact pass/skip count and detached log | `PENDING_FINAL_RECEIPT` |
-| synthetic fixture output/receipt/COMPLETE | `PENDING_FINAL_HASHES` |
+| integrated implementation commit | `c9d34dcef0d1d8cbffe1652c1b76e066d8f90ead` |
+| `generator.py` | `38de67f3a47ca09bd901c8d6e4e22e0555356d65a39b2351254224e6435e3afe` |
+| `generator_receipt.schema.json` | `99fddf78d02ee483f4e7fe394015c1d462e6d455e5d568659840118a4dc5a0bd` |
+| native test | `4cff4062fec10b337b22a3f18fea4c6f6d4128183240c8410c1f51d505978e26` |
+| independent test | `8f29ed707bfe9fb1f953d879b4f6b69eb9f426cdcc86dd3bdebae5bf1b35fb31` |
+| official five-arm oracle test | `1b4e7fa20453efc66ebaad235f084afc21abf5420301e81af7c9ba1fef95babb` |
 
-이 pending은 software 의미 범위의 PASS를 official execution PASS로 승격하지 못하게 하는 release
-gate다. Actual official retire receipt와 production six-arm hashes는 구현 hash와도 별개의 external
-HOLD다.
+나머지 schema·runner hashes와 전체 suite ledger는 validation JSON에 있다. Synthetic 5-record
+package는 controls `45e49057...de11`, receipt `50db618d...ff2`, COMPLETE
+`e7365002...564d`로 byte-deterministic하다. 이는 fixture 증거이며 official output이 아니다.
 
 ## 5. 다섯 available official-source arms의 독립 수치 검증
 
-A6 계산기 `/tmp/uzh-sixarm-oracle-calc-a6.py`는 Python standard library만 사용하고 repository
-module 또는 production geometry helper를 import하지 않았다.
-
-```text
-oracle script SHA-256
-  ce0b8a68d1d9faed0d813f1cb33c4e826e3487e47f90b60569cc4d3b7fb4835e
-```
+커밋된 `tests/redred_uzh_mc_wtb_sixarm_official_oracle/`은 Python standard library만 사용하고
+generator 또는 adapter geometry helper를 import하지 않는다.
 
 모든 stream은 source order 1,100 rows이며 signed Q12
 `sign(v)*floor(abs(v)*10^12+0.5)`와 compact sorted-key ASCII JSONL로 canonicalize했다.
@@ -362,7 +353,7 @@ Q&A traceability가 정리한 HIGH-confidence 축에 대한 팀 evidence mapping
 | encoder/decoder/serializer/buffer를 포함한 full-system | Generator contract는 occurrence부터 per-ID retire authority까지 요구하며 missing retire에서 fail-closed한다. | Actual endpoint producer, codec/decoder/link, causal clocks 및 complete boundary 측정은 미완료다. |
 | 구현 가능성과 usable PPA | Strict standard-library companion generator의 software 구현 범위는 scoped PASS다. | Supplied-pose RTL, legal buffers, timing, power와 45 nm complete-endpoint PPA는 별도 HOLD다. |
 | 문제 타당성이 projection 감소보다 우선 | Five-arm geometry와 actual event accounting을 먼저 고정하고, packet-key/locality나 압축 수치를 benefit으로 승격하지 않는다. | Equal-bit/equal-loss codec 및 wire accounting이 필요하다. |
-| 발표·공개 비교의 재현성 | Source, cohort, oracle 및 negative A23 hashes/counts를 이 문서에 공개했다. | Pending final generator/test/run hashes가 채워져야 implementation archival evidence가 완결된다. |
+| 발표·공개 비교의 재현성 | Source, cohort, oracle, negative A23 및 final generator/test/run hashes를 커밋했다. | 외부 official bytes는 고정 hash로 별도 획득해야 한다. |
 
 따라서 이 단계가 Q&A 전체 질문에 주는 답은 다음과 같다.
 
@@ -379,12 +370,10 @@ Q&A traceability가 정리한 HIGH-confidence 축에 대한 팀 evidence mapping
 
 ### Implementation evidence hash closure
 
-- [ ] Integrated generator commit과 source/schema hashes 고정
-- [ ] Native/independent test blobs와 runner hash 고정
-- [ ] Clean detached run의 command, pass/skip count 및 log/receipt hash 고정
-- [ ] Synthetic fixture package 세 파일의 size/SHA 고정
-
-위 네 항목은 `PASS_SIX_ARM_GENERATOR_IMPLEMENTATION_SCOPED`의 archival completion에만 필요하다.
+- [x] Integrated generator commit과 source/schema hashes 고정
+- [x] Native/independent/official-oracle test blobs와 runner hash 고정
+- [x] Clean integrated run의 command와 pass/skip ledger 고정
+- [x] Synthetic fixture package 세 파일의 size/SHA 고정
 
 ### Official RETIRE_WARP / six-arm promotion
 
@@ -405,7 +394,7 @@ tile locality, equal-bit/equal-loss codec, wire accounting, latency/loss, causal
 
 허용:
 
-- Generator software implementation은 scoped PASS이며 final archival hashes는 pending이다.
+- Generator software implementation과 archival hashes는 scoped PASS다.
 - Pinned official UZH source input에서 five available arms 1,100건을 독립 수치 검증했다.
 - 이 window에서 wrong-direction 및 delayed controls는 informative하다.
 - A23 A2/A3 1x actual replay는 각각 1,019 accepted events를 1,019 retire했지만 generated
@@ -418,12 +407,11 @@ tile locality, equal-bit/equal-loss codec, wire accounting, latency/loss, causal
 - Missing 81 retire times를 추정해 no-loss/full-cohort output 만들기
 - `1,094/1,100` in-FOV disposition을 accuracy, success 또는 compression ratio로 부르기
 - Geometry/locality를 packet, bandwidth, codec, benefit, RTL 또는 PPA evidence로 승격하기
-- Pending implementation hashes를 임의 worktree 값으로 채우기
 
 최종 현재 상태는 다음과 같다.
 
 ```text
-IMPLEMENTATION  PASS_SCOPED_PENDING_FINAL_HASHES
+IMPLEMENTATION  PASS_SIX_ARM_GENERATOR_IMPLEMENTATION_SCOPED
 FIVE_ARM        PASS_NUMERICAL_ORACLE_ON_PINNED_OFFICIAL_SOURCE_INPUT
 RETIRE_WARP     HOLD_NO_VALID_FULL_COHORT_ACTUAL_RECEIPT
 SIX_ARM OUTPUT  HOLD_NOT_GENERATED
