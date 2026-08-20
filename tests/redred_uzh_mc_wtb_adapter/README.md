@@ -1,0 +1,104 @@
+# UZH pose-join to geometry adapter acceptance tests
+
+These tests independently define the smallest public adapter contract between
+the committed UZH source-preserving pose join and the committed orientation-only
+geometry core. They are test-owned: expected rotations, SLERP values, OpenCV
+radtan projection, and OOF coordinates are produced by analytical code in the
+test module, not by production helpers.
+
+The expected production package is
+`benchmarks.redred_uzh_mc_wtb_adapter` with this API:
+
+```python
+adapt(join_result_dir: Path, join_spec_path: Path, result_dir: Path) -> dict
+inspect(result_dir: Path, join_result_dir: Path, join_spec_path: Path) -> dict
+AdapterFailure
+```
+
+`adapt` must fail closed when the completed join package is tampered or does
+not bind to the supplied spec. It publishes a new result directory without
+overwriting an existing path. The exact published inventory is:
+
+```text
+events_mc_wtb_adapter.jsonl
+receipt.json
+COMPLETE.json
+```
+
+The JSONL contains one header followed by exactly one record per joined source
+event. Every record has exactly one recognized `disposition`:
+
+- `WORLD_REFERENCE_EVENT`: a valid in-FOV orientation-only warp.
+- `RAW_ESCAPE_GEOMETRIC_OOF`: valid geometry outside the raw reference image
+  or behind it.
+- `RAW_BYPASS_INVALID_GEOMETRY`: calibration/inversion/non-finite geometry,
+  kept separate from geometric OOF.
+
+Every disposition retains the complete occurrence under `source_event`:
+dataset and join indices, timestamp and lexeme, raw `x_sensor`, `y_sensor`,
+and polarity, plus a canonical identity SHA-256. Raw escape identity is thus
+preserved without inventing a packet/payload schema. `geometry` carries its
+status, continuous decimal-string coordinates, optional rounded pixel, ray Z,
+retained relative translation, and
+`translation_applied_to_pixel_warp=false`.
+
+The fixed reference time is the joined selection start. Reference and event
+poses use offline shortest-arc SLERP from each event's exact source bracket.
+The adapter preserves the bracket indices/timestamps/fraction and does not
+relabel future lookahead as causal zero-age hardware. Tests independently
+derive `R_Ct_C0 = R_WCt^T R_WC0` and transpose `R_C0_Ct`, then use an
+analytic-Jacobian radtan inverse to check the emitted warp. Redundant matrices
+need not be serialized.
+
+The receipt contains exact source/output identities, reference and convention
+IDs, one exact artifact identity, and these conservation counters:
+
+```text
+input_joined_events
+output_dispositions
+world_reference_events
+raw_escape_geometric_oof
+raw_bypass_invalid_geometry
+dropped_events
+duplicate_events
+reordered_events
+```
+
+The accepted equations are:
+
+```text
+input_joined_events == output_dispositions
+output_dispositions == world_reference_events + raw_escape_geometric_oof + raw_bypass_invalid_geometry
+dropped_events == duplicate_events == reordered_events == 0
+```
+
+The adapter is a deterministic software geometry artifact. Its receipt must
+keep codec, wire, transport replay, MC-WTB benefit, RTL, and PPA claims false
+or HOLD. Translation is retained but not applied without depth/plane data.
+
+Run the always-on synthetic suite with:
+
+```bash
+bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+```
+
+To run tests against production in another worktree:
+
+```bash
+REDRED_ADAPTER_PRODUCTION_ROOT=/tmp/redred-mcwtb-adapter-impl \
+  bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+```
+
+The official joined-artifact test is opt-in and never downloads data:
+
+```bash
+REDRED_RUN_UZH_ADAPTER_OFFICIAL=1 \
+REDRED_UZH_JOINED_ROOT=/path/to/completed-pose-join \
+REDRED_UZH_JOIN_SPEC=/path/to/join_spec.json \
+REDRED_ADAPTER_PRODUCTION_ROOT=/tmp/redred-mcwtb-adapter-impl \
+  bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+```
+
+Its exact expected partition is 1,094 world-reference events, six geometric
+raw escapes with the pinned dataset IDs/continuous coordinates, and zero
+invalid bypasses or drops.
