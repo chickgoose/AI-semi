@@ -11,6 +11,7 @@
   "claim_ledger": {
     "benefit_or_codec_or_wire": "HOLD_NOT_EVALUATED",
     "causal_rtl_or_ppa": "HOLD_NOT_EVALUATED",
+    "external_generator_spec_byte_approval": "PASS_REQUIRED_IN_PRODUCTION",
     "external_retire_authenticity_verified": false,
     "implementation": "PASS_SIX_ARM_GENERATOR_IMPLEMENTATION_SCOPED",
     "official_retire_warp": "HOLD_NO_VALID_FULL_COHORT_ACTUAL_RECEIPT",
@@ -25,21 +26,21 @@
   },
   "date": "2026-08-20",
   "file_sha256": {
-    "benchmarks/redred_uzh_mc_wtb_six_arm_generator/README.md": "77022e3b0728048aec1046a3da698a9317a6b141a65d603d8d5c6c48092cc9ad",
+    "benchmarks/redred_uzh_mc_wtb_six_arm_generator/README.md": "dcd73d965726c3e0185393500c17ba543070dd6dd54132cb5986d56a08bbfec0",
     "benchmarks/redred_uzh_mc_wtb_six_arm_generator/__init__.py": "6296bb253cc5d53d4355659464a60d1dfabcbe903ad46a1d72ac650c6bce9db6",
-    "benchmarks/redred_uzh_mc_wtb_six_arm_generator/generator.py": "38de67f3a47ca09bd901c8d6e4e22e0555356d65a39b2351254224e6435e3afe",
+    "benchmarks/redred_uzh_mc_wtb_six_arm_generator/generator.py": "fb4c80e56cdfd13390e397ae7d435e813f91275aaf0811e5695bdb9ba24429d5",
     "benchmarks/redred_uzh_mc_wtb_six_arm_generator/generator_completion.schema.json": "318b53bbaca92655afa8c640b622ad28170bf6077f3e90a217243d8dc6ed18bf",
     "benchmarks/redred_uzh_mc_wtb_six_arm_generator/generator_receipt.schema.json": "99fddf78d02ee483f4e7fe394015c1d462e6d455e5d568659840118a4dc5a0bd",
     "benchmarks/redred_uzh_mc_wtb_six_arm_generator/generator_spec.schema.json": "1bf1499ad21ae89b15397aa9d75c6bdee55c21dd71aab6981f4d5103a48de4af",
     "benchmarks/redred_uzh_mc_wtb_six_arm_generator/retire_receipt.schema.json": "479043db077ff6f8eed541a940a00ba50ea7458906617653b5d90cbdc996d0c2",
     "tests/redred_uzh_mc_wtb_six_arm_generator/run_native.sh": "fe1e1cea35c898f03d0076061a60a76a01c6f2754b6cfd1606c76363090d2c3d",
-    "tests/redred_uzh_mc_wtb_six_arm_generator/test_generator_native.py": "4cff4062fec10b337b22a3f18fea4c6f6d4128183240c8410c1f51d505978e26",
+    "tests/redred_uzh_mc_wtb_six_arm_generator/test_generator_native.py": "e8a79218e5e454df65d1f1205240181bd5f977a0b4d49b345906cbd7b0ae6d10",
     "tests/redred_uzh_mc_wtb_sixarm_independent/run_all.sh": "549815529bad11c6ad92ea12d56a52131bf8dcc0c92dc07164770acbd20bc29d",
-    "tests/redred_uzh_mc_wtb_sixarm_independent/test_sixarm_independent.py": "8f29ed707bfe9fb1f953d879b4f6b69eb9f426cdcc86dd3bdebae5bf1b35fb31",
+    "tests/redred_uzh_mc_wtb_sixarm_independent/test_sixarm_independent.py": "8e017ad34301daece22196d585ce7c0a288b2da5a7eda0c1970501c26d6f2b17",
     "tests/redred_uzh_mc_wtb_sixarm_official_oracle/run_all.sh": "4b7c7c4b179528f65491e3482a48016a69ef1f9847dbb1a53faf3466a54f2f64",
     "tests/redred_uzh_mc_wtb_sixarm_official_oracle/test_official_five_arm_oracle.py": "1b4e7fa20453efc66ebaad235f084afc21abf5420301e81af7c9ba1fef95babb"
   },
-  "implementation_commit": "c9d34dcef0d1d8cbffe1652c1b76e066d8f90ead",
+  "implementation_commit": "af9f45d9b6c77de54da32f4229800850d5a87e87",
   "generator_publication_platform_policy": {
     "current_linux_host_native_suite_pass": true,
     "linux_renameat2_noreplace_required": true,
@@ -75,10 +76,10 @@
   },
   "schema": "redred.mc_wtb_uzh_six_arm_validation/v1",
   "synthetic_fixture": {
-    "COMPLETE_json_sha256": "e7365002231ca495940f4b223ff5c19eee20010ead0143bedcd7f27eae39564d",
+    "COMPLETE_json_sha256": "92bfa06191aa24b9ecc0a466e3a2fe676a0527a1a239674c6206b885e794c0dc",
     "controls_six_arm_jsonl_sha256": "45e490575fccfb5cf20bb75b1c04c134dfccfee753f496295c99109fb8edde11",
     "record_count": 5,
-    "receipt_json_sha256": "50db618d3604d15292bb3afafc197e630792a08792ab70894506564cb3f06ff2",
+    "receipt_json_sha256": "89c20612d00de9829353aa3bcce9e5541f46a3939d4a817e963a57b78429da76",
     "status": "PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE"
   }
 }

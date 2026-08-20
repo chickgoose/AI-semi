@@ -146,6 +146,11 @@ SHA-256          db7f5d5f9dc2c055c6f8430bc14ce268c02b37c4085f4bfd92b1d871c25f2f5
 
 Production parameter set은 reference timestamp `41,321,000,000 ns`, delayed delta
 `4,998,186 ns`, exact 1,100 IDs와 위 source/adapter/preregistration pins를 실행 전에 고정한다.
+또한 production 호출은 외부 검토자가 별도 전달한
+`REDRED_SIXARM_APPROVED_GENERATOR_SPEC_SHA256`와 generator spec raw bytes의 SHA-256이
+정확히 같아야 한다. 누락·형식 오류·불일치뿐 아니라 whitespace-only byte mutation도 artifact
+발행 전에 거부한다. 이 값은 검토 대상 호출이 같은 spec에서 즉석 계산해서 승인값처럼 사용하면
+안 되며, reviewer 또는 retire producer의 진위를 증명하는 수단도 아니다.
 
 ### 4.2 Required six-arm semantics
 
@@ -179,16 +184,16 @@ placeholder `RETIRE_WARP`를 발행하지 않고 fail-closed해야 한다.
 
 | identity | final value |
 |---|---|
-| integrated implementation commit | `c9d34dcef0d1d8cbffe1652c1b76e066d8f90ead` |
-| `generator.py` | `38de67f3a47ca09bd901c8d6e4e22e0555356d65a39b2351254224e6435e3afe` |
+| integrated implementation commit | `af9f45d9b6c77de54da32f4229800850d5a87e87` |
+| `generator.py` | `fb4c80e56cdfd13390e397ae7d435e813f91275aaf0811e5695bdb9ba24429d5` |
 | `generator_receipt.schema.json` | `99fddf78d02ee483f4e7fe394015c1d462e6d455e5d568659840118a4dc5a0bd` |
-| native test | `4cff4062fec10b337b22a3f18fea4c6f6d4128183240c8410c1f51d505978e26` |
-| independent test | `8f29ed707bfe9fb1f953d879b4f6b69eb9f426cdcc86dd3bdebae5bf1b35fb31` |
+| native test | `e8a79218e5e454df65d1f1205240181bd5f977a0b4d49b345906cbd7b0ae6d10` |
+| independent test | `8e017ad34301daece22196d585ce7c0a288b2da5a7eda0c1970501c26d6f2b17` |
 | official five-arm oracle test | `1b4e7fa20453efc66ebaad235f084afc21abf5420301e81af7c9ba1fef95babb` |
 
 나머지 schema·runner hashes와 전체 suite ledger는 validation JSON에 있다. Synthetic 5-record
-package는 controls `45e49057...de11`, receipt `50db618d...ff2`, COMPLETE
-`e7365002...564d`로 byte-deterministic하다. 이는 fixture 증거이며 official output이 아니다.
+package는 controls `45e49057...de11`, receipt `89c20612...da76`, COMPLETE
+`92bfa061...c0dc`로 byte-deterministic하다. 이는 fixture 증거이며 official output이 아니다.
 
 ## 5. 다섯 available official-source arms의 독립 수치 검증
 
