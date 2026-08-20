@@ -8,4 +8,4 @@ if [[ -n "$production_root" ]]; then
 fi
 cd "$repo_root"
 PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover \
-  -s tests/redred_uzh_mc_wtb_adapter -p 'test_*.py' -v
+  -s tests/redred_uzh_mc_wtb_adapter -p 'test_adapter_independent.py' -v

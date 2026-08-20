@@ -94,14 +94,14 @@ or HOLD. Translation is retained but not applied without depth/plane data.
 Run the always-on synthetic suite with:
 
 ```bash
-bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+bash tests/redred_uzh_mc_wtb_adapter/run_independent.sh
 ```
 
 To run tests against production in another worktree:
 
 ```bash
 REDRED_ADAPTER_PRODUCTION_ROOT=/tmp/redred-mcwtb-adapter-impl \
-  bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+  bash tests/redred_uzh_mc_wtb_adapter/run_independent.sh
 ```
 
 The authoritative generated input for the opt-in test is
@@ -114,7 +114,7 @@ REDRED_RUN_UZH_ADAPTER_OFFICIAL=1 \
 REDRED_UZH_JOINED_ROOT=/tmp/uzh-posejoin-c6a \
 REDRED_UZH_JOIN_SPEC=/path/to/join_spec.json \
 REDRED_ADAPTER_PRODUCTION_ROOT=/tmp/redred-mcwtb-adapter-impl \
-  bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+  bash tests/redred_uzh_mc_wtb_adapter/run_independent.sh
 ```
 
 Its exact expected partition is 1,094 world-reference events, six geometric
