@@ -91,7 +91,13 @@ The adapter is a deterministic software geometry artifact. Its receipt must
 keep codec, wire, transport replay, MC-WTB benefit, RTL, and PPA claims false
 or HOLD. Translation is retained but not applied without depth/plane data.
 
-Run the always-on synthetic suite with:
+Run both the native and independent suites with:
+
+```bash
+bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+```
+
+Run only the always-on independent synthetic suite with:
 
 ```bash
 bash tests/redred_uzh_mc_wtb_adapter/run_independent.sh
