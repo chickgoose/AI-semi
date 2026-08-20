@@ -1,0 +1,123 @@
+{
+  "schema": "redred.uzh_mc_wtb_motion_v3.cohorts/v1",
+  "dataset": {
+    "provider": "University of Zurich Robotics and Perception Group",
+    "collection": "Event-Camera Dataset",
+    "sequence": "shapes_rotation",
+    "sensor": "DAVIS240C",
+    "official_redred_traffic": false
+  },
+  "source": {
+    "basename": "events.txt",
+    "size_bytes": 509907771,
+    "line_count": 23126288,
+    "sha256": "d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda"
+  },
+  "sensor": {
+    "width": 240,
+    "height": 180
+  },
+  "timebase": {
+    "unit": "integer_nanoseconds",
+    "source_timestamp_fractional_digits": 9,
+    "window_rule": "start_timestamp_ns_inclusive <= timestamp_ns < end_timestamp_ns_exclusive"
+  },
+  "identity": {
+    "dataset_event_index": "zero_based_physical_events_txt_line_index",
+    "selected_raw_lines_sha256": "sha256_of_concatenated_original_selected_line_bytes_in_source_order",
+    "ordered_event_ids_sha256": "sha256_of_each_base10_dataset_event_index_followed_by_LF_in_source_order",
+    "downstream_equal_ids_rule": "every compared arm must contain exactly the ordered query dataset_event_index sequence"
+  },
+  "split_policy": {
+    "development_origin": "existing_pinned_41.321000000_to_41.322000000_query",
+    "anchor_duration_ns": 250000,
+    "query_duration_ns": 1000000,
+    "holdout_search": "future_positive_whole_second_offsets_from_development_query_start",
+    "holdout_eligibility": "first_offset_whose_anchor_has_at_least_32_events_of_each_polarity",
+    "selected_holdout_offset_seconds": 2,
+    "metric_or_arm_scores_consulted": false,
+    "holdout_remains_blinded_for_metric_threshold_selection": true
+  },
+  "splits": {
+    "development": [
+      "shapes_rotation_dev_41_321"
+    ],
+    "holdout": [
+      "shapes_rotation_holdout_43_321"
+    ]
+  },
+  "cohorts": [
+    {
+      "id": "shapes_rotation_dev_41_321",
+      "split": "development",
+      "anchor": {
+        "id": "shapes_rotation_dev_41_321_anchor",
+        "start_seconds_exact": "41.320750000",
+        "end_seconds_exact": "41.321000000",
+        "start_timestamp_ns_inclusive": 41320750000,
+        "end_timestamp_ns_exclusive": 41321000000,
+        "expected_event_count": 251,
+        "expected_first_dataset_event_index": 13855999,
+        "expected_last_dataset_event_index": 13856249,
+        "expected_first_timestamp_ns": 41320750001,
+        "expected_last_timestamp_ns": 41320999001,
+        "expected_polarity_0": 153,
+        "expected_polarity_1": 98,
+        "selected_raw_lines_sha256": "c16686c78fc2b54214177e1a482f2f62f20ef66337aa9d6adf5e731b779b7865",
+        "ordered_event_ids_sha256": "7970c6ce96d20b1d1ab379631ebccec2d972ee63a6b63096194fb411c3108db2"
+      },
+      "query": {
+        "id": "shapes_rotation_dev_41_321_query",
+        "start_seconds_exact": "41.321000000",
+        "end_seconds_exact": "41.322000000",
+        "start_timestamp_ns_inclusive": 41321000000,
+        "end_timestamp_ns_exclusive": 41322000000,
+        "expected_event_count": 1100,
+        "expected_first_dataset_event_index": 13856250,
+        "expected_last_dataset_event_index": 13857349,
+        "expected_first_timestamp_ns": 41321000000,
+        "expected_last_timestamp_ns": 41321999000,
+        "expected_polarity_0": 674,
+        "expected_polarity_1": 426,
+        "selected_raw_lines_sha256": "013fe8b9886e37fe9616e47e0c54a80a57298d98f08a1e11f7daf712af3f59ab",
+        "ordered_event_ids_sha256": "0eb870ed84539b786d8944330d0618509b7e331eab4ca4b4bba21bc51c3e44f0"
+      }
+    },
+    {
+      "id": "shapes_rotation_holdout_43_321",
+      "split": "holdout",
+      "anchor": {
+        "id": "shapes_rotation_holdout_43_321_anchor",
+        "start_seconds_exact": "43.320750000",
+        "end_seconds_exact": "43.321000000",
+        "start_timestamp_ns_inclusive": 43320750000,
+        "end_timestamp_ns_exclusive": 43321000000,
+        "expected_event_count": 102,
+        "expected_first_dataset_event_index": 14932359,
+        "expected_last_dataset_event_index": 14932460,
+        "expected_first_timestamp_ns": 43320757001,
+        "expected_last_timestamp_ns": 43320999001,
+        "expected_polarity_0": 49,
+        "expected_polarity_1": 53,
+        "selected_raw_lines_sha256": "2547105c6fce0a37d526460cfe9a8b5ecab8a73df20aeb869a0509c6fced5ce9",
+        "ordered_event_ids_sha256": "003e24950d9ca1a7c4d29012c54e9aa165dc697a8f7084093f7e0bd79de5a8b4"
+      },
+      "query": {
+        "id": "shapes_rotation_holdout_43_321_query",
+        "start_seconds_exact": "43.321000000",
+        "end_seconds_exact": "43.322000000",
+        "start_timestamp_ns_inclusive": 43321000000,
+        "end_timestamp_ns_exclusive": 43322000000,
+        "expected_event_count": 370,
+        "expected_first_dataset_event_index": 14932461,
+        "expected_last_dataset_event_index": 14932830,
+        "expected_first_timestamp_ns": 43321000000,
+        "expected_last_timestamp_ns": 43321994001,
+        "expected_polarity_0": 181,
+        "expected_polarity_1": 189,
+        "selected_raw_lines_sha256": "065e737ab3749ac1b7e2cbf683805380f9a197b02156829ebfa4d8211be5d6b2",
+        "ordered_event_ids_sha256": "99af2f5aaee56bc32a91af25594a46d1ae19d70f8a57e7514facc1c855afaba9"
+      }
+    }
+  ]
+}
