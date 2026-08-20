@@ -49,6 +49,7 @@ ARMS = ("RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED")
 DEFAULT_DELAY_NS = 4_998_186
 DEFAULT_SIGMA_PX = 1.0
 DEFAULT_CANVAS = PaddedCanvas(240, 180, 16.0)
+DEFAULT_EXECUTION_LOCK = Path(__file__).with_name("execution_lock.json")
 
 
 class EvaluationError(ValueError):
@@ -72,6 +73,53 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def validate_execution_lock(
+    path: str | Path = DEFAULT_EXECUTION_LOCK,
+    *,
+    repository_root: str | Path | None = None,
+) -> dict[str, object]:
+    """Verify every runtime source byte pinned before holdout unblinding."""
+
+    lock_path = Path(path)
+    try:
+        raw = lock_path.read_bytes()
+        lock = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise EvaluationError("cannot read canonical execution lock") from exc
+    required = {
+        "schema", "status", "holdout_cohort_id", "created_before_holdout_score_access",
+        "first_unblind_only", "runtime_files_sha256",
+    }
+    if not isinstance(lock, dict) or set(lock) != required:
+        raise EvaluationError("execution lock keys differ from the frozen contract")
+    if lock["schema"] != "redred.uzh_mc_wtb_motion_v3.execution_lock/v1":
+        raise EvaluationError("execution lock schema mismatch")
+    if lock["status"] != "SEALED_READY_FOR_ONE_INTERNAL_HOLDOUT_RUN":
+        raise EvaluationError("execution lock is not sealed-ready")
+    if lock["holdout_cohort_id"] != "shapes_rotation_holdout_43_321":
+        raise EvaluationError("execution lock holdout cohort mismatch")
+    if lock["created_before_holdout_score_access"] is not True or lock["first_unblind_only"] is not True:
+        raise EvaluationError("execution lock blindness declaration mismatch")
+    files = lock["runtime_files_sha256"]
+    if not isinstance(files, dict) or not files:
+        raise EvaluationError("execution lock runtime file pins are missing")
+    root = Path(repository_root) if repository_root is not None else Path(__file__).resolve().parents[2]
+    for relative_path, expected_digest in files.items():
+        if (
+            not isinstance(relative_path, str)
+            or relative_path.startswith("/")
+            or ".." in Path(relative_path).parts
+            or not isinstance(expected_digest, str)
+            or len(expected_digest) != 64
+        ):
+            raise EvaluationError("execution lock contains an invalid runtime pin")
+        source = root / relative_path
+        if _sha256(source) != expected_digest:
+            raise EvaluationError(f"execution lock runtime hash mismatch: {relative_path}")
+    lock["execution_lock_sha256"] = hashlib.sha256(raw).hexdigest()
+    return lock
 
 
 def load_calibration(path: str | Path) -> RadtanCalibration:
@@ -553,6 +601,9 @@ def evaluate_dataset_cohort(
         raise EvaluationError(f"unknown cohort: {cohort_id}")
     if split == "holdout" and not allow_holdout:
         raise EvaluationError("holdout remains sealed; pass explicit allow_holdout only after contract freeze")
+    execution_lock = None
+    if split == "holdout":
+        execution_lock = validate_execution_lock()
     extraction = extract_cohorts(root / "events.txt")
     prereg = json.loads((Path(__file__).with_name("development_preregistered.json")).read_text())
     pins = prereg["input_authority"]
@@ -563,7 +614,7 @@ def evaluate_dataset_cohort(
     cohort = next(item for item in spec["cohorts"] if item["id"] == cohort_id)
     reference_timestamp_ns = int(cohort["query"]["start_timestamp_ns_inclusive"])
     seed_role = "internal_holdout" if split == "holdout" else "development"
-    return evaluate_window(
+    result = evaluate_window(
         cohort_id=cohort_id,
         anchor_events=extraction.window(cohort_id, "anchor").records,
         query_events=extraction.window(cohort_id, "query").records,
@@ -576,6 +627,13 @@ def evaluate_dataset_cohort(
         sigma_px=float(prereg["complementary_gate"]["sigma_px"]),
         seed_text=str(prereg["bootstrap"]["seed_text_by_cohort"][seed_role]),
     )
+    if execution_lock is not None:
+        result["execution_lock"] = {
+            "schema": execution_lock["schema"],
+            "sha256": execution_lock["execution_lock_sha256"],
+            "status": execution_lock["status"],
+        }
+    return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:

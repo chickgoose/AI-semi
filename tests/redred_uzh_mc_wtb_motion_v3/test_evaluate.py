@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import math
+import hashlib
+import json
+from pathlib import Path
+import tempfile
 import unittest
 
 from benchmarks.redred_uzh_mc_wtb_motion_v3.cohort import Event
@@ -10,6 +14,7 @@ from benchmarks.redred_uzh_mc_wtb_motion_v3.evaluate import (
     _focus_score_for_blocks,
     evaluate_dataset_cohort,
     evaluate_window,
+    validate_execution_lock,
 )
 from benchmarks.redred_uzh_mc_wtb_motion_v3.focus import FocusSample, PaddedCanvas, compute_focus
 from benchmarks.redred_uzh_mc_wtb_motion_v3.geometry_reference import (
@@ -124,6 +129,28 @@ class EvaluatorTests(unittest.TestCase):
                 "/path/is/not/opened",
                 "shapes_rotation_holdout_43_321",
             )
+
+    def test_execution_lock_rejects_runtime_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = root / "runtime.py"
+            runtime.write_bytes(b"frozen\n")
+            lock_path = root / "lock.json"
+            lock = {
+                "schema": "redred.uzh_mc_wtb_motion_v3.execution_lock/v1",
+                "status": "SEALED_READY_FOR_ONE_INTERNAL_HOLDOUT_RUN",
+                "holdout_cohort_id": "shapes_rotation_holdout_43_321",
+                "created_before_holdout_score_access": True,
+                "first_unblind_only": True,
+                "runtime_files_sha256": {
+                    "runtime.py": hashlib.sha256(runtime.read_bytes()).hexdigest(),
+                },
+            }
+            lock_path.write_text(json.dumps(lock), encoding="utf-8")
+            self.assertEqual(validate_execution_lock(lock_path, repository_root=root)["status"], lock["status"])
+            runtime.write_bytes(b"mutated\n")
+            with self.assertRaisesRegex(EvaluationError, "hash mismatch"):
+                validate_execution_lock(lock_path, repository_root=root)
 
     def test_fast_focus_resample_matches_direct_duplicate_occurrences(self) -> None:
         coordinates = ((1.0, 1.0, 0), (2.0, 1.0, 0), (1.0, 3.0, 1),
