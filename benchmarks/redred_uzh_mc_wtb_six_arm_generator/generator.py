@@ -659,7 +659,6 @@ def _retire_receipt(payload: bytes, events: Sequence[Mapping[str, Any]], epoch: 
     ):
         raise GeneratorFailure("retire record count differs from source cohort")
     lookup: dict[int, int] = {}
-    previous_retire = -1
     for ordinal, (record_value, event) in enumerate(zip(rows[1:], events)):
         record = _strict(record_value, {"schema", "record_type", "dataset_event_index", "join_sequence_index", "occurrence_timestamp_ns", "accepted_count", "retired_count", "retire_timestamp_ns"}, f"retire record {ordinal}")
         if record["schema"] != RETIRE_RECORD_SCHEMA or record["record_type"] != "retire":
@@ -671,10 +670,14 @@ def _retire_receipt(payload: bytes, events: Sequence[Mapping[str, Any]], epoch: 
             raise GeneratorFailure("retire identity/occurrence differs from source order")
         if record["accepted_count"] != 1 or record["retired_count"] != 1 or retired < occurrence:
             raise GeneratorFailure("retire record is not accepted/retired exactly once after occurrence")
-        if dataset_index in lookup or retired < previous_retire:
-            raise GeneratorFailure("retire records are duplicate or reordered")
+        # Receipt rows are in immutable source-cohort order.  A real arbiter is
+        # allowed to retire independent sources out of occurrence order, so
+        # per-ID retire timestamps need not be monotonic in this row order.
+        # Reordered rows are already rejected by the exact identity/ordinal
+        # comparison above; duplicate identities remain independently fatal.
+        if dataset_index in lookup:
+            raise GeneratorFailure("retire records are duplicate")
         lookup[dataset_index] = retired
-        previous_retire = retired
     return lookup, {"provenance_class": header["provenance_class"], "producer": dict(producer), "source_timebase": dict(source_timebase), "retire_clock": dict(retire_clock), "mapping_to_source_timebase": dict(mapping)}
 
 

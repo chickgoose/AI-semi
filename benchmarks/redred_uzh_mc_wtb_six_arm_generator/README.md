@@ -31,8 +31,11 @@ cycle period, average, or adapter output.  An official-source run requires an
 external JSONL receipt whose provenance class is `OBSERVED_ENDPOINT_RUN`,
 whose 1:1 IDs/timestamps bind to the pose-join source epoch, and whose records
 contain the supplied per-event retire timestamps.  Missing, synthetic,
-duplicate, reordered, pre-occurrence, or out-of-pose-coverage retire data
-fails before publication.  The repository contains no official retire receipt
+duplicate or source-row-reordered, pre-occurrence, or out-of-pose-coverage
+retire data fails before publication.  Arbitration may reorder retirement across independent sources;
+therefore retire timestamps are not required to be monotonic in source-row
+order.
+The repository contains no official retire receipt
 and therefore makes no official six-arm output claim by itself.
 The provenance-class string alone is not authority: the production generator
 accepts only retire JSONL bytes that a reviewer has approved out-of-band and

@@ -1,0 +1,54 @@
+{
+  "schema": "redred.uzh_mc_wtb_motion.paret_preregistration/v1",
+  "metric_id": "UZH-P4-PARET-v2",
+  "frozen_before_full_six_arm_generation": true,
+  "source_member_sha256": "d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda",
+  "sensor": {"width": 240, "height": 180},
+  "anchor": {
+    "start_timestamp_ns_inclusive": 41320750000,
+    "end_timestamp_ns_exclusive": 41321000000,
+    "expected_records": 251,
+    "expected_polarity_0": 153,
+    "expected_polarity_1": 98,
+    "minimum_records_per_polarity": 32,
+    "minimum_unique_pixels_per_polarity": 16
+  },
+  "query": {
+    "start_timestamp_ns_inclusive": 41321000000,
+    "end_timestamp_ns_exclusive": 41322000000,
+    "record_count": 1100,
+    "first_dataset_event_index": 13856250,
+    "last_dataset_event_index": 13857349,
+    "same_ordered_denominator_for_all_arms": true
+  },
+  "arms": ["RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED", "RETIRE_WARP"],
+  "cost": {
+    "description": "same-polarity Euclidean distance to nearest pre-window raw-event anchor divided by sensor diagonal and capped at one",
+    "raw_and_sensor_fixed": "use_valid_raw_locality_regardless_of_projected_geometry_status",
+    "projected_arm_non_in_fov_or_missing_penalty": 1.0,
+    "drop_duplicate_or_missing_event": "hard_fail",
+    "lower_is_better": true
+  },
+  "primary_effect": {
+    "comparison": "MC_CORRECT_vs_SENSOR_FIXED",
+    "relative_reduction_strictly_greater_than": 0.05,
+    "one_sided_lower_confidence_bound": 0.975
+  },
+  "bootstrap": {
+    "resamples": 10000,
+    "unit": "equal_timestamp_cluster",
+    "method": "circular_moving_block",
+    "block_length_clusters": 32,
+    "sampled_clusters": "ceil(cluster_count/32)_blocks_then_truncate_to_cluster_count",
+    "seed_text": "UZH-P4-PARET-v2|41321000000|1100",
+    "seed_derivation": "unsigned_integer_from_first_16_hex_digits_of_sha256"
+  },
+  "controls": {
+    "raw_sensor_fixed_costs_must_match": true,
+    "wrong_delayed_and_informative_retire": "MC_CORRECT_must_have_positive_one_sided_98.333_percent_moving_block_bootstrap_lower_bound_for_each_control_Bonferroni_familywise_alpha_0.05_over_three_predeclared_controls",
+    "retire": "if_frozen_angular_timing_gate_is_uninformative_report_HOLD_not_PASS_or_FAIL",
+    "retire_latency_must_not_be_artificially_increased": true,
+    "retire_authority": "six_arm_RETIRE_WARP_lookup_must_equal_every_timestamp_in_the_independently_inspected_1100_of_1100_observed_receipt"
+  },
+  "claim_limit": "fixed_UZH_shapes_rotation_1ms_1100_event_window_only_no_generalization_no_codec_no_PPA"
+}

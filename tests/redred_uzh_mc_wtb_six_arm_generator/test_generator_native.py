@@ -329,6 +329,33 @@ class SyntheticFixture:
 
 
 class GeneratorNativeTest(unittest.TestCase):
+    def test_source_ordered_receipt_allows_real_cross_source_retire_reordering(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = SyntheticFixture(Path(directory))
+            records = []
+            # Event occurrences are 100 us apart.  The first offset therefore
+            # has to exceed the second by more than 100 us to create a real
+            # adjacent source-row timestamp descent.
+            retire_offsets = (250_000, 50_000, 70_000, 80_000)
+            for event, offset in zip(fixture.events, retire_offsets):
+                records.append({
+                    "schema": generator.RETIRE_RECORD_SCHEMA,
+                    "record_type": "retire",
+                    "dataset_event_index": event["dataset_event_index"],
+                    "join_sequence_index": event["join_sequence_index"],
+                    "occurrence_timestamp_ns": event["timestamp_ns"],
+                    "accepted_count": 1,
+                    "retired_count": 1,
+                    "retire_timestamp_ns": event["timestamp_ns"] + offset,
+                })
+            fixture._write_retire(records)
+            fixture._write_spec()
+            result = fixture.root / "cross-source-retire-reorder"
+            with fixture.inspector_patches():
+                receipt = generator.generate(*fixture.args(result))
+            self.assertEqual(receipt["status"], generator.SYNTHETIC_STATUS)
+            self.assertTrue((result / generator.OUTPUT_NAME).is_file())
+
     def test_receipt_schema_accepts_emitted_sample_and_rejects_nested_malformed_receipts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fixture = SyntheticFixture(Path(directory))

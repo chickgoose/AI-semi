@@ -1,0 +1,3 @@
+rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv
+rtl/candidates/mc_wtb_occurrence_baseline/mc_wtb_occurrence_baseline_top.sv
+tests/mc_wtb_occurrence_baseline/tb.sv
