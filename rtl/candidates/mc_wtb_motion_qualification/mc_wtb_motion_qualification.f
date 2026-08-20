@@ -1,1 +1,2 @@
 rtl/candidates/mc_wtb_motion_qualification/mc_wtb_motion_qualifier.sv
+rtl/candidates/mc_wtb_motion_qualification/mc_wtb_epoch_route_interlock.sv

@@ -1,0 +1,47 @@
+{
+  "schema": "redred.mc_wtb_stage1_3_causal_development_receipt/v1",
+  "status": "COMPLETE_STAGE1_3_STAGE3_CAUSAL_BENEFIT_HOLD",
+  "base_commit": "089d3e7f5c16b22955639774249c817a988569b0",
+  "branch": "dev/mcwtb-motion-qualified-v4-dev",
+  "stage4_started": false,
+  "consumed_interval_raw_bytes_scanned_for_source_hash_and_full_file_pass": true,
+  "consumed_interval_selected": false,
+  "consumed_interval_arm_generated": false,
+  "consumed_interval_scored": false,
+  "consumed_interval_blacklist_ns": [43320750000, 43322000000],
+  "artifacts": {
+    "development_py_sha256": "dbd8cf95df3a5d6520aad047e5a0706fc3618866e700ef97478b13add5068d42",
+    "reference_py_sha256": "91476780b663991ab39f9f60d6afc900ae32ae58e4d790d105995a345f9bcd83",
+    "routing_py_sha256": "665405747de889a100c21c145aad8847286e299ec0a8c1722eea04614aea1929",
+    "development_result_sha256": "875ee90040561317710f044aea46528bcfb0b90577a51d421ce9508073f1bb70",
+    "interlock_rtl_sha256": "15d37cd0b4aca54a4342d81ec678938aa148c7d2045eee966b421f8ca06522eb",
+    "interlock_tb_sha256": "895f2e85f52f97b064f7b2e818ae85197e3f8eea06f9880aaefc08037b75ced3"
+  },
+  "verification": {
+    "local_python": "14/14 PASS",
+    "server_python_3_8_10": "14/14 PASS",
+    "server_xcelium_23_09": "MC_WTB_EPOCH_ROUTE_INTERLOCK_RTL_PASS",
+    "server_genus_23_14_gpdk045": "MC_WTB_EPOCH_ROUTE_INTERLOCK_GENUS_ELABORATION_PASS",
+    "mapped_ppa": "HOLD_NOT_RUN",
+    "place_and_route": "HOLD_NOT_RUN"
+  },
+  "development_observation": {
+    "sequence": "UZH DAVIS shapes_rotation",
+    "window_count": 24,
+    "low_windows": 9,
+    "mid_windows": 10,
+    "high_windows": 5,
+    "low_always_corrected_equal_window_mean_reduction": 0.00015385155113336848,
+    "mid_always_corrected_equal_window_mean_reduction": 7.468797469378785e-10,
+    "high_always_corrected_equal_window_mean_reduction": 1.6173062888924505e-12,
+    "ideal_tier_policy_equal_window_mean_reduction": 3.115368333676353e-10,
+    "always_corrected_all_window_mean_reduction": 0.00005769464321184655,
+    "qualifier_hysteresis_or_dwell_executed": false
+  },
+  "claim_limits": [
+    "development-only diagnostic; causal motion benefit is HOLD/practically zero",
+    "standalone interlock primitive, not complete route datapath",
+    "floating-point causal reference, not fixed-point RTL",
+    "no confirmatory benefit, PPA, P&R, or innovation claim"
+  ]
+}

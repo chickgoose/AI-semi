@@ -15,6 +15,11 @@ if command -v iverilog >/dev/null 2>&1; then
     rtl/candidates/mc_wtb_motion_qualification/mc_wtb_motion_qualifier.sv \
     tests/redred_mc_wtb_motion_qualification/tb.sv
   vvp "$build_dir/motion_qualifier.vvp"
+  iverilog -g2012 -s mc_wtb_epoch_route_interlock_tb \
+    -o "$build_dir/epoch_route_interlock.vvp" \
+    rtl/candidates/mc_wtb_motion_qualification/mc_wtb_epoch_route_interlock.sv \
+    tests/redred_mc_wtb_motion_qualification/tb_interlock.sv
+  vvp "$build_dir/epoch_route_interlock.vvp"
 else
   echo "SKIP_IVERILOG_NOT_INSTALLED"
 fi

@@ -32,10 +32,11 @@ transition, and datapath cost.  Future evaluation must report LOW
 non-inferiority, HIGH benefit, regime prevalence, and charged overall PPA
 separately.
 
-The implemented qualifier assumes its epoch-update strobe arrives only after a
-safe datapath boundary.  A complete bank-drain/commit interlock and per-event
-mode ledger are not yet integrated, so exact mixed-mode system behavior remains
-HOLD even though the classifier state machine is implemented and tested.
+The later stage-1–3 branch adds a standalone drain/commit interlock and an
+exact-once software route ledger.  They close the primitive/control contract,
+but a complete wrapper over every sparse/tile/raw pipeline and buffer remains
+HOLD.  See `docs/MC_WTB_STAGE1_3_CAUSAL_DEVELOPMENT_20260821.md` for the newer,
+narrowly scoped evidence boundary.
 
 ## Relationship to Fovea/A2
 

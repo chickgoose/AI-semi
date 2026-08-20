@@ -37,10 +37,15 @@ The accompanying RTL is only the synthesizable classifier/control primitive.
 `tile_enable_o` does not claim that a complete tile datapath has been
 implemented or physically validated.
 
-The current primitive assumes `epoch_valid_i` is asserted only at a safe,
-drained epoch boundary.  The complete datapath commit/drain interlock remains
-an integration HOLD and must be charged and verified before system promotion.
+`mc_wtb_epoch_route_interlock.sv` now provides a standalone drain/commit
+primitive: it closes admission, preserves the active route until abstract
+transport/adapter empty acknowledgments arrive, and fails closed on transport
+or pose/profile faults.  The qualifier result must be staged before its route
+request; pulsing classifier and interlock requests on the same clock would
+otherwise capture the previous class.  A complete wrapper that binds every
+sparse/tile/raw pipeline, buffer, credit, and output to those acknowledgments
+remains an integration HOLD.
 
-`tests/redred_mc_wtb_motion_qualification/genus_elaborate.tcl` is an educational
-45 nm library syntax/elaboration smoke only.  It does not perform mapping,
+The two `genus_elaborate*.tcl` scripts are educational
+45 nm library syntax/elaboration smokes only.  They do not perform mapping,
 timing, area, power, placement, routing, or signoff.
