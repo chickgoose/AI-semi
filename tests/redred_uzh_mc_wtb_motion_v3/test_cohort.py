@@ -176,6 +176,12 @@ class FrozenManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(CohortError, "event-ID ranges overlap"):
             validate_spec(overlapping_ids, require_official_source=False)
 
+    def test_declared_holdout_offset_must_match_frozen_windows(self):
+        _, spec = _synthetic_source_and_spec()
+        spec["split_policy"]["selected_holdout_offset_seconds"] = 7
+        with self.assertRaisesRegex(CohortError, "offset"):
+            validate_spec(spec, require_official_source=False)
+
 
 class SyntheticExtractionTests(unittest.TestCase):
     def setUp(self):

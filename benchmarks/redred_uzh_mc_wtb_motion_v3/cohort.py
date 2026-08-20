@@ -358,6 +358,17 @@ def validate_spec(spec: object, *, require_official_source: bool = True) -> None
         for left, right in zip(ordered, ordered[1:]):
             if left[1] > right[0]:
                 raise CohortError(f"{label} overlap: {left[3]} and {right[3]}")
+    if len(split_ids["development"]) == 1 and len(split_ids["holdout"]) == 1:
+        by_cohort_id = {str(cohort["id"]): cohort for cohort in cohorts}
+        development = by_cohort_id[split_ids["development"][0]]
+        holdout = by_cohort_id[split_ids["holdout"][0]]
+        declared_offset_ns = int(policy["selected_holdout_offset_seconds"]) * 1_000_000_000
+        actual_offset_ns = (
+            int(holdout["query"]["start_timestamp_ns_inclusive"])
+            - int(development["query"]["start_timestamp_ns_inclusive"])
+        )
+        if actual_offset_ns != declared_offset_ns:
+            raise CohortError("selected holdout offset does not match the frozen query windows")
 
 
 def load_spec(
@@ -456,6 +467,14 @@ def extract_cohorts(
     source_size = 0
     line_count = 0
     previous_timestamp_ns = -1
+    eligibility_counts: dict[int, list[int]] = {}
+    policy = loaded["split_policy"]
+    if policy["holdout_eligibility"] == "first_offset_whose_anchor_has_at_least_32_events_of_each_polarity":
+        development_id = loaded["splits"]["development"][0]
+        development = next(cohort for cohort in loaded["cohorts"] if cohort["id"] == development_id)
+        base_query_ns = int(development["query"]["start_timestamp_ns_inclusive"])
+        selected_offset = int(policy["selected_holdout_offset_seconds"])
+        eligibility_counts = {offset: [0, 0] for offset in range(1, selected_offset + 1)}
     try:
         with path.open("rb") as stream:
             for dataset_event_index, raw_line in enumerate(stream):
@@ -471,6 +490,10 @@ def extract_cohorts(
                 if event.timestamp_ns < previous_timestamp_ns:
                     raise CohortError(f"events timestamps decrease at source line {dataset_event_index + 1}")
                 previous_timestamp_ns = event.timestamp_ns
+                for offset, counts in eligibility_counts.items():
+                    candidate_query_ns = base_query_ns + offset * 1_000_000_000
+                    if candidate_query_ns - int(policy["anchor_duration_ns"]) <= event.timestamp_ns < candidate_query_ns:
+                        counts[event.polarity_01] += 1
                 for window in windows:
                     start = int(window["start_timestamp_ns_inclusive"])
                     end = int(window["end_timestamp_ns_exclusive"])
@@ -485,6 +508,13 @@ def extract_cohorts(
     actual_source_sha = source_digest.hexdigest()
     if source_size != source["size_bytes"] or line_count != source["line_count"] or actual_source_sha != source["sha256"]:
         raise CohortError("events source immutable size/line/hash pins mismatch")
+    if eligibility_counts:
+        selected_offset = int(policy["selected_holdout_offset_seconds"])
+        for offset in range(1, selected_offset):
+            if min(eligibility_counts[offset]) >= 32:
+                raise CohortError("selected holdout is not the first polarity-eligible offset")
+        if min(eligibility_counts[selected_offset]) < 32:
+            raise CohortError("selected holdout does not meet the frozen polarity eligibility rule")
 
     extracted: dict[str, WindowExtraction] = {}
     for window in windows:
