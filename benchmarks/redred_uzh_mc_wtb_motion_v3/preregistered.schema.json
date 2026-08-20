@@ -557,7 +557,7 @@
             "internal_holdout": {"type": "string", "minLength": 1}
           }
         },
-        "seed_derivation": {"const": "UNSIGNED_INTEGER_FROM_FIRST_16_HEX_DIGITS_OF_SHA256"},
+        "seed_derivation": {"const": "SHA256_COUNTER_REJECTION_SAMPLING_DOMAIN_SEPARATED_BY_STREAM_ID"},
         "one_sided_primary_lower_quantile": {"const": 0.025}
       }
     },

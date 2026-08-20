@@ -6,12 +6,18 @@ import unittest
 from benchmarks.redred_uzh_mc_wtb_motion_v3.cohort import Event
 from benchmarks.redred_uzh_mc_wtb_motion_v3.evaluate import (
     EvaluationError,
+    _cluster_focus_prefix,
+    _focus_score_for_blocks,
     evaluate_dataset_cohort,
     evaluate_window,
 )
+from benchmarks.redred_uzh_mc_wtb_motion_v3.focus import FocusSample, PaddedCanvas, compute_focus
 from benchmarks.redred_uzh_mc_wtb_motion_v3.geometry_reference import (
+    FOVDecision,
+    IN_FOV,
     PoseSeries,
     RadtanCalibration,
+    ReferenceWarp,
     TimedPoseTWC,
 )
 
@@ -81,7 +87,9 @@ class EvaluatorTests(unittest.TestCase):
         self.assertGreater(primary["point"]["relative_mean_reduction"], 0.0)
         self.assertGreater(primary["relative_reduction_lower_bound"], 0.0)
         self.assertTrue(all(result["focus"]["gate"].values()))
-        self.assertTrue(result["candidate_gate_all_components"])
+        self.assertTrue(result["motion_component_gate"])
+        self.assertFalse(result["candidate_gate_all_components"])
+        self.assertEqual(result["overall_verdict"], "HOLD_RETIRE_CONTROL_NOT_EVALUATED")
         self.assertEqual(result["event_identity"]["query_count"], len(self.query))
         for counts in result["coverage"].values():
             self.assertEqual(sum(counts.values()), len(self.query))
@@ -117,7 +125,32 @@ class EvaluatorTests(unittest.TestCase):
                 "shapes_rotation_holdout_43_321",
             )
 
+    def test_fast_focus_resample_matches_direct_duplicate_occurrences(self) -> None:
+        coordinates = ((1.0, 1.0, 0), (2.0, 1.0, 0), (1.0, 3.0, 1),
+                       (2.0, 3.0, 1), (4.0, 1.0, 0), (4.0, 3.0, 1))
+        values = tuple(
+            ReferenceWarp(
+                index, index, 0, x, y, polarity, IN_FOV, (0.0, 0.0, 1.0),
+                x, y, FOVDecision("continuous_extent", True, True, True, round(x), round(y)),
+                0, 0, 0, 0,
+            )
+            for index, (x, y, polarity) in enumerate(coordinates)
+        )
+        clusters = tuple((index,) for index in range(len(values)))
+        prefix, counts = _cluster_focus_prefix(values, clusters, 1.0)
+        starts = (4, 1, 5)
+        fast = _focus_score_for_blocks(prefix, counts, starts, 2)
+        indices = (4, 5, 1, 2, 5, 0)
+        direct = compute_focus(
+            tuple(
+                FocusSample(ordinal, values[index].reference_x, values[index].reference_y, values[index].polarity)
+                for ordinal, index in enumerate(indices)
+            ),
+            sigma_px=1.0,
+            canvas=PaddedCanvas(10, 10, 0.0),
+        ).score
+        self.assertAlmostEqual(fast, direct, places=14)
+
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -37,7 +37,12 @@ from .geometry_reference import (
     transpose,
     undistort_normalized,
 )
-from .statistics import moving_block_cluster_draws, paired_effect_sizes
+from .statistics import (
+    equal_timestamp_clusters,
+    moving_block_cluster_draws,
+    moving_block_cluster_start_draws,
+    paired_effect_sizes,
+)
 
 
 ARMS = ("RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED")
@@ -211,6 +216,7 @@ def _bootstrap_effect(
     resamples: int,
     block_length_clusters: int,
     lower_quantile: float,
+    stream_id: str,
 ) -> dict[str, object]:
     point = paired_effect_sizes(baseline, candidate)
     draws = moving_block_cluster_draws(
@@ -218,7 +224,7 @@ def _bootstrap_effect(
         block_length_clusters=block_length_clusters,
         resamples=resamples,
         seed_text=seed_text,
-        stream_id="angular-primary",
+        stream_id=stream_id,
     )
     reductions = sorted(
         paired_effect_sizes(
@@ -233,6 +239,141 @@ def _bootstrap_effect(
         "bootstrap_resamples": resamples,
         "one_sided_lower_quantile": lower_quantile,
         "relative_reduction_lower_bound": reductions[rank],
+    }
+
+
+def _segments(start: int, length: int, size: int) -> tuple[tuple[int, int], ...]:
+    end = start + length
+    if end <= size:
+        return ((start, end),)
+    return ((start, size), (0, end - size))
+
+
+def _rectangle(prefix: Sequence[Sequence[float]], r0: int, r1: int, c0: int, c1: int) -> float:
+    return prefix[r1][c1] - prefix[r0][c1] - prefix[r1][c0] + prefix[r0][c0]
+
+
+def _cyclic_rectangle(
+    prefix: Sequence[Sequence[float]],
+    row_start: int,
+    row_length: int,
+    column_start: int,
+    column_length: int,
+    size: int,
+) -> float:
+    return math.fsum(
+        _rectangle(prefix, r0, r1, c0, c1)
+        for r0, r1 in _segments(row_start, row_length, size)
+        for c0, c1 in _segments(column_start, column_length, size)
+    )
+
+
+def _cluster_focus_prefix(
+    values: Sequence[ReferenceWarp],
+    clusters: Sequence[Sequence[int]],
+    sigma_px: float,
+) -> tuple[list[list[float]], tuple[tuple[int, int], ...]]:
+    size = len(clusters)
+    cluster_for_index = [0] * len(values)
+    counts: list[tuple[int, int]] = []
+    for cluster_index, cluster in enumerate(clusters):
+        p0 = p1 = 0
+        for index in cluster:
+            cluster_for_index[index] = cluster_index
+            if values[index].polarity == 0:
+                p0 += 1
+            else:
+                p1 += 1
+        counts.append((p0, p1))
+    matrix = [[0.0] * size for _ in range(size)]
+    factor = 1.0 / (4.0 * sigma_px * sigma_px)
+    for left_index, left in enumerate(values):
+        if left.reference_x is None or left.reference_y is None:
+            raise EvaluationError("focus projection unavailable")
+        row = matrix[cluster_for_index[left_index]]
+        for right_index, right in enumerate(values):
+            if left.polarity != right.polarity:
+                continue
+            if right.reference_x is None or right.reference_y is None:
+                raise EvaluationError("focus projection unavailable")
+            dx = left.reference_x - right.reference_x
+            dy = left.reference_y - right.reference_y
+            row[cluster_for_index[right_index]] += math.exp(-(dx * dx + dy * dy) * factor)
+    prefix = [[0.0] * (size + 1) for _ in range(size + 1)]
+    for row_index, row in enumerate(matrix, 1):
+        running = 0.0
+        prior = prefix[row_index - 1]
+        output = prefix[row_index]
+        for column_index, value in enumerate(row, 1):
+            running += value
+            output[column_index] = prior[column_index] + running
+    return prefix, tuple(counts)
+
+
+def _block_count(
+    counts: Sequence[tuple[int, int]], start: int, length: int, polarity: int
+) -> int:
+    return sum(counts[index % len(counts)][polarity] for index in range(start, start + length))
+
+
+def _focus_score_for_blocks(
+    prefix: Sequence[Sequence[float]],
+    counts: Sequence[tuple[int, int]],
+    starts: Sequence[int],
+    block_length: int,
+) -> float:
+    cluster_count = len(counts)
+    final_length = cluster_count - block_length * (len(starts) - 1)
+    lengths = (block_length,) * (len(starts) - 1) + (final_length,)
+    polarity_counts = [
+        sum(_block_count(counts, start, length, polarity) for start, length in zip(starts, lengths))
+        for polarity in (0, 1)
+    ]
+    denominator = sum(count * (count - 1) for count in polarity_counts)
+    if denominator <= 0:
+        raise EvaluationError("focus bootstrap draw lacks same-polarity pairs")
+    including_self = math.fsum(
+        _cyclic_rectangle(prefix, left, left_length, right, right_length, cluster_count)
+        for left, left_length in zip(starts, lengths)
+        for right, right_length in zip(starts, lengths)
+    )
+    event_occurrences = sum(polarity_counts)
+    return (including_self - event_occurrences) / denominator
+
+
+def _bootstrap_focus_effect(
+    timestamps_ns: Sequence[int],
+    baseline: Sequence[ReferenceWarp],
+    candidate: Sequence[ReferenceWarp],
+    *,
+    sigma_px: float,
+    seed_text: str,
+    resamples: int,
+    block_length_clusters: int,
+    lower_quantile: float,
+) -> dict[str, object]:
+    clusters = equal_timestamp_clusters(timestamps_ns)
+    starts = moving_block_cluster_start_draws(
+        timestamps_ns,
+        block_length_clusters=block_length_clusters,
+        resamples=resamples,
+        seed_text=seed_text,
+        stream_id="focus-complement",
+    )
+    baseline_prefix, baseline_counts = _cluster_focus_prefix(baseline, clusters, sigma_px)
+    candidate_prefix, candidate_counts = _cluster_focus_prefix(candidate, clusters, sigma_px)
+    if baseline_counts != candidate_counts:
+        raise EvaluationError("focus arms differ in timestamp-cluster polarity identity")
+    differences = sorted(
+        _focus_score_for_blocks(candidate_prefix, candidate_counts, draw, block_length_clusters)
+        - _focus_score_for_blocks(baseline_prefix, baseline_counts, draw, block_length_clusters)
+        for draw in starts
+    )
+    rank = max(0, min(len(differences) - 1, math.ceil(lower_quantile * len(differences)) - 1))
+    return {
+        "bootstrap_resamples": resamples,
+        "one_sided_lower_quantile": lower_quantile,
+        "absolute_focus_increase_lower_bound": differences[rank],
     }
 
 
@@ -257,6 +398,7 @@ def evaluate_window(
     resamples: int = 10_000,
     block_length_clusters: int = 32,
     minimum_relative_reduction: float = 0.05,
+    seed_text: str | None = None,
 ) -> dict[str, object]:
     """Evaluate one already-frozen window without changing any source record."""
 
@@ -293,18 +435,20 @@ def evaluate_window(
 
     costs = {name: _nearest_costs(values, anchor) for name, values in arms.items()}
     timestamps = tuple(event.timestamp_ns for event in query_events)
-    seed = f"UZH-MCWTB-METRIC-V3|{cohort_id}|{reference_timestamp_ns}|{len(query_events)}"
+    seed = seed_text or f"UZH-MCWTB-METRIC-V3|{cohort_id}|{reference_timestamp_ns}|{len(query_events)}"
     primary = _bootstrap_effect(
         timestamps, costs["SENSOR_FIXED"], costs["MC_CORRECT"],
         seed_text=seed, resamples=resamples,
         block_length_clusters=block_length_clusters, lower_quantile=0.025,
+        stream_id="primary",
     )
     controls = {
         name: _bootstrap_effect(
             timestamps, costs[name], costs["MC_CORRECT"],
-            seed_text=f"{seed}|CONTROL|{name}", resamples=resamples,
+            seed_text=seed, resamples=resamples,
             block_length_clusters=block_length_clusters,
             lower_quantile=1.0 / 60.0,
+            stream_id=f"control-{name}",
         )
         for name in ("MC_WRONG", "MC_DELAYED")
     }
@@ -321,6 +465,16 @@ def evaluate_window(
         raise EvaluationError("focus projection unavailable for at least one event")
     focus = compute_focus_by_arm(focus_inputs, sigma_px=sigma_px, canvas=canvas)
     focus_scores = {name: value.score for name, value in focus.items()}
+    focus_bootstrap = _bootstrap_focus_effect(
+        timestamps,
+        arms["SENSOR_FIXED"],
+        arms["MC_CORRECT"],
+        sigma_px=sigma_px,
+        seed_text=seed,
+        resamples=resamples,
+        block_length_clusters=block_length_clusters,
+        lower_quantile=0.025,
+    )
     focus_gate = {
         "mc_correct_strictly_above_sensor_fixed": focus_scores["MC_CORRECT"] > focus_scores["SENSOR_FIXED"],
         "mc_correct_strictly_above_wrong": focus_scores["MC_CORRECT"] > focus_scores["MC_WRONG"],
@@ -335,12 +489,23 @@ def evaluate_window(
     }
     point = primary["point"]
     assert isinstance(point, Mapping)
-    candidate_gate = (
+    motion_component_gate = (
         float(point["relative_mean_reduction"]) > minimum_relative_reduction
         and float(primary["relative_reduction_lower_bound"]) > minimum_relative_reduction
         and all(float(value["relative_reduction_lower_bound"]) > 0.0 for value in controls.values())
+        and float(focus_bootstrap["absolute_focus_increase_lower_bound"]) > 0.0
         and all(focus_gate.values())
     )
+    # RETIRE_WARP requires an independently observed endpoint-retirement
+    # receipt for every query ID.  This software-only evaluator must not
+    # synthesize one or silently promote a five-arm motion component to the
+    # six-arm system assay.
+    transport_control = {
+        "arm": "RETIRE_WARP",
+        "status": "HOLD_RETIRE_CONTROL_NOT_EVALUATED",
+        "observed_retire_receipt_present": False,
+        "synthetic_retire_timestamps_forbidden": True,
+    }
     return {
         "schema": "redred.uzh_mc_wtb_motion_v3.window_result/v1",
         "cohort_id": cohort_id,
@@ -357,11 +522,16 @@ def evaluate_window(
             "metric_id": next(iter(focus.values())).metric_id,
             "sigma_px": sigma_px,
             "scores": focus_scores,
+            "absolute_increase": focus_scores["MC_CORRECT"] - focus_scores["SENSOR_FIXED"],
+            "bootstrap": focus_bootstrap,
             "gate": focus_gate,
             "diagnostics": focus_diagnostics,
         },
         "coverage": {name: _status_counts(values) for name, values in arms.items()},
-        "candidate_gate_all_components": candidate_gate,
+        "motion_component_gate": motion_component_gate,
+        "transport_control": transport_control,
+        "candidate_gate_all_components": False,
+        "overall_verdict": "HOLD_RETIRE_CONTROL_NOT_EVALUATED",
         "claim": "DEVELOPMENT_DIAGNOSTIC_ONLY_UNLESS_BOUND_TO_A_SEALED_HOLDOUT_RECEIPT",
     }
 
@@ -392,6 +562,7 @@ def evaluate_dataset_cohort(
         raise EvaluationError("calib.txt hash differs from preregistration")
     cohort = next(item for item in spec["cohorts"] if item["id"] == cohort_id)
     reference_timestamp_ns = int(cohort["query"]["start_timestamp_ns_inclusive"])
+    seed_role = "internal_holdout" if split == "holdout" else "development"
     return evaluate_window(
         cohort_id=cohort_id,
         anchor_events=extraction.window(cohort_id, "anchor").records,
@@ -400,6 +571,10 @@ def evaluate_dataset_cohort(
         calibration=load_calibration(root / "calib.txt"),
         reference_timestamp_ns=reference_timestamp_ns,
         resamples=resamples,
+        block_length_clusters=int(prereg["bootstrap"]["block_length_clusters"]),
+        minimum_relative_reduction=float(prereg["primary"]["candidate_minimum_relative_reduction"]),
+        sigma_px=float(prereg["complementary_gate"]["sigma_px"]),
+        seed_text=str(prereg["bootstrap"]["seed_text_by_cohort"][seed_role]),
     )
 
 

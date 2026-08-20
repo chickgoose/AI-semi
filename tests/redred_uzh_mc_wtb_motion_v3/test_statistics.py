@@ -8,6 +8,7 @@ from benchmarks.redred_uzh_mc_wtb_motion_v3.statistics import (
     analyze_multiple_windows,
     equal_timestamp_clusters,
     moving_block_cluster_draws,
+    moving_block_cluster_start_draws,
     paired_effect_sizes,
 )
 
@@ -88,6 +89,25 @@ class EqualTimestampMovingBlockTests(unittest.TestCase):
         other = moving_block_cluster_draws(**args, stream_id="W30")
         self.assertEqual(first, second)
         self.assertNotEqual(first, other)
+
+    def test_start_draws_reconstruct_event_draws(self):
+        timestamps = [0, 0, 1, 2, 2, 3, 4]
+        clusters = equal_timestamp_clusters(timestamps)
+        starts = moving_block_cluster_start_draws(
+            timestamps, block_length_clusters=2, resamples=20,
+            seed_text="starts", stream_id="same",
+        )
+        draws = moving_block_cluster_draws(
+            timestamps, block_length_clusters=2, resamples=20,
+            seed_text="starts", stream_id="same",
+        )
+        rebuilt = []
+        for replicate in starts:
+            sampled = []
+            for start in replicate:
+                sampled.extend(clusters[(start + offset) % len(clusters)] for offset in range(2))
+            rebuilt.append(tuple(index for cluster in sampled[:len(clusters)] for index in cluster))
+        self.assertEqual(tuple(rebuilt), draws)
 
     def test_cluster_inputs_fail_closed(self):
         invalid = (

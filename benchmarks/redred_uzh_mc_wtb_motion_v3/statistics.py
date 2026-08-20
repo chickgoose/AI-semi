@@ -153,22 +153,56 @@ def moving_block_cluster_draws(
         raise StatisticsFailure("at least two timestamp clusters are required")
     if block > len(clusters):
         raise StatisticsFailure("block length exceeds timestamp-cluster count")
-    blocks_per_draw = math.ceil(len(clusters) / block)
-    seed_bytes = hashlib.sha256(
-        b"redred.mcwtb.motion.v3.bootstrap\0" + seed.encode("ascii")
-        + b"\0" + stream.encode("ascii")
-    ).digest()
+    starts = moving_block_cluster_start_draws(
+        timestamps_ns,
+        block_length_clusters=block,
+        resamples=count,
+        seed_text=seed,
+        stream_id=stream,
+    )
     output: list[tuple[int, ...]] = []
-    for replicate in range(count):
+    for replicate, replicate_starts in enumerate(starts):
         sampled: list[tuple[int, ...]] = []
-        for block_index in range(blocks_per_draw):
-            start = _uniform_below(seed_bytes, replicate, block_index, len(clusters))
+        for start in replicate_starts:
             sampled.extend(
                 clusters[(start + offset) % len(clusters)] for offset in range(block)
             )
         indices = tuple(index for cluster in sampled[:len(clusters)] for index in cluster)
         output.append(indices)
     return tuple(output)
+
+
+def moving_block_cluster_start_draws(
+    timestamps_ns: Sequence[int],
+    *,
+    block_length_clusters: int,
+    resamples: int,
+    seed_text: str,
+    stream_id: str = "default",
+) -> tuple[tuple[int, ...], ...]:
+    """Return the exact circular block starts used by the event-index draws."""
+
+    clusters = equal_timestamp_clusters(timestamps_ns)
+    block = _integer(block_length_clusters, "block_length_clusters", 1)
+    count = _integer(resamples, "resamples", 2)
+    seed = _identifier(seed_text, "seed_text")
+    stream = _identifier(stream_id, "stream_id")
+    if len(clusters) < 2:
+        raise StatisticsFailure("at least two timestamp clusters are required")
+    if block > len(clusters):
+        raise StatisticsFailure("block length exceeds timestamp-cluster count")
+    blocks_per_draw = math.ceil(len(clusters) / block)
+    seed_bytes = hashlib.sha256(
+        b"redred.mcwtb.motion.v3.bootstrap\0" + seed.encode("ascii")
+        + b"\0" + stream.encode("ascii")
+    ).digest()
+    return tuple(
+        tuple(
+            _uniform_below(seed_bytes, replicate, block_index, len(clusters))
+            for block_index in range(blocks_per_draw)
+        )
+        for replicate in range(count)
+    )
 
 
 def paired_effect_sizes(
@@ -450,5 +484,6 @@ __all__ = [
     "analyze_multiple_windows",
     "equal_timestamp_clusters",
     "moving_block_cluster_draws",
+    "moving_block_cluster_start_draws",
     "paired_effect_sizes",
 ]

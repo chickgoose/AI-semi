@@ -281,7 +281,7 @@
       "development": "UZH-MCWTB-METRIC-V3-DEVELOPMENT-V2|41321000000|1100",
       "internal_holdout": "UZH-MCWTB-METRIC-V3-DEVELOPMENT-V2|43321000000|370"
     },
-    "seed_derivation": "UNSIGNED_INTEGER_FROM_FIRST_16_HEX_DIGITS_OF_SHA256",
+    "seed_derivation": "SHA256_COUNTER_REJECTION_SAMPLING_DOMAIN_SEPARATED_BY_STREAM_ID",
     "one_sided_primary_lower_quantile": 0.025
   },
   "decision_policy": {
