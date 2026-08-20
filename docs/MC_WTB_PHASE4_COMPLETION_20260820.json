@@ -68,6 +68,8 @@
     "six_arm_sha256": "15671cdf943f78c9b00e8b3fb261b03fa544e1a6326234e7fb2e352cff5c442c",
     "preregistration_sha256": "2d564d92460b86e7aaaadfe4c4118d3d42310520e31c9af4c1f581cd16f1f548",
     "result_sha256": "3aad0bd9c585a4450a099c126d4da8d650e6feb9ccf2c0c3f1bd31af2614833d",
+    "result_filename": "paret_result_frozen_rule.json",
+    "historical_precedence_result_is_authoritative": false,
     "status": "HOLD_RETIRE_CONTROL_UNINFORMATIVE",
     "primary_gate_status": "FAIL_NO_PREREGISTERED_BENEFIT",
     "negative_controls_pass": false,

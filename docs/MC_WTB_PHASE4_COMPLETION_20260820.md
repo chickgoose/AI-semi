@@ -122,6 +122,10 @@ SHA-256은 `2d564d92460b86e7aaaadfe4c4118d3d42310520e31c9af4c1f581cd16f1f548`다
 informative하지 않았다. frozen preregistration은 이 경우 PASS나 FAIL이 아닌
 HOLD를 요구하므로 전체 최종 상태는 `HOLD_RETIRE_CONTROL_UNINFORMATIVE`다.
 즉 formal verdict는 HOLD이지만, 선택한 proxy에서 개선 방향의 신호는 없었다.
+최종 result 파일은 `paret_result_frozen_rule.json`, SHA-256
+`3aad0bd9c585a4450a099c126d4da8d650e6feb9ccf2c0c3f1bd31af2614833d`다.
+같은 임시 작업 경로의 이전 `paret_result.json`은 precedence 수정 전 역사적
+산출물이며 최종 authority가 아니다.
 
 이 결과가 뜻하는 것은 현재 orientation-only, fixed reference, nearest-anchor
 baseline이 선택한 window에서 event cloud를 안정화하지 못했다는 것이다.
