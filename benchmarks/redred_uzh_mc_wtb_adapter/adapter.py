@@ -21,9 +21,9 @@ from benchmarks.redred_uzh_mc_wtb import geometry
 from benchmarks.redred_uzh_shapes_pose_join import inspect as inspect_pose_join
 
 
-STATUS = "PASS_UZH_MC_WTB_DISPOSITION_ADAPTER_SCOPED"
+STATUS = "PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED"
 EVIDENCE_CLASS = "SOURCE_BOUND_ORIENTATION_ONLY_EVENT_DISPOSITIONS"
-PROMOTION_STATUS = "HOLD_BENEFIT_CODEC_RTL_PPA"
+PROMOTION_STATUS = "HOLD_MC_WTB_REAL_DATA_BENEFIT"
 
 STREAM_SCHEMA = "redred.uzh_mc_wtb_adapter.event_stream/v1"
 EVENT_SCHEMA = "redred.uzh_mc_wtb_adapter.event_disposition/v1"
@@ -373,6 +373,10 @@ def _claim_scope(official_input: bool) -> dict[str, Any]:
         "orientation_only": True,
         "translation_preserved_not_applied": True,
         "depth_or_plane_model_applied": False,
+        "offline_future_bracket_slerp": True,
+        "future_pose_lookahead_required": True,
+        "causal_hardware_claimed": False,
+        "clock_alignment_validated": False,
         "raw_escape_is_disposition_only": True,
         "raw_packet_fifo_or_decoder_implemented": False,
         "controls_implemented": False,
@@ -629,10 +633,10 @@ def _inspect_payloads(result_dir: Path) -> tuple[bytes, dict[str, Any]]:
 
 def inspect(
     result_dir: Path,
-    pose_join_dir: Path | None = None,
-    spec_path: Path | None = None,
+    pose_join_dir: Path,
+    spec_path: Path,
 ) -> dict[str, Any]:
-    """Inspect an adapter package, optionally recomputing it from bound source."""
+    """Inspect and recompute an adapter package from its bound source and spec."""
 
     events_payload, receipt = _inspect_payloads(Path(result_dir))
     expected_receipt_keys = {
@@ -714,15 +718,12 @@ def inspect(
     if any(conservation.get(name) != 0 for name in ("dropped_events", "duplicate_events", "reordered_events")):
         raise AdapterFailure("adapter loss/order counters were promoted")
 
-    if (pose_join_dir is None) != (spec_path is None):
-        raise AdapterFailure("source-bound inspection requires both pose_join_dir and spec_path")
-    if pose_join_dir is not None and spec_path is not None:
-        expected_payload, core = _transform(Path(pose_join_dir), Path(spec_path))
-        if events_payload != expected_payload:
-            raise AdapterFailure("adapter artifact differs from source-bound recomputation")
-        for key, expected_value in core.items():
-            if receipt.get(key) != expected_value:
-                raise AdapterFailure(f"adapter receipt differs from recomputation: {key}")
+    expected_payload, core = _transform(Path(pose_join_dir), Path(spec_path))
+    if events_payload != expected_payload:
+        raise AdapterFailure("adapter artifact differs from source-bound recomputation")
+    for key, expected_value in core.items():
+        if receipt.get(key) != expected_value:
+            raise AdapterFailure(f"adapter receipt differs from recomputation: {key}")
     return {
         "status": STATUS,
         "promotion_status": PROMOTION_STATUS,

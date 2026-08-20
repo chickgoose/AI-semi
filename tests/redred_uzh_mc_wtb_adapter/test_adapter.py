@@ -19,6 +19,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = ROOT / "benchmarks" / "redred_uzh_shapes_pose_join" / "join_spec.json"
 SOURCE_ENV = "REDRED_UZH_POSE_JOIN_PACKAGE"
 EXPECTED_RAW_IDS = [13_856_524, 13_856_654, 13_856_794, 13_857_092, 13_857_160, 13_857_171]
+EXPECTED_STATUS = "PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED"
+EXPECTED_PROMOTION = "HOLD_MC_WTB_REAL_DATA_BENEFIT"
 
 
 def read_json(path: Path):
@@ -48,6 +50,13 @@ class AdapterIntegrationTest(unittest.TestCase):
             result = Path(directory) / "result"
             receipt = adapter.adapt(self.source, SPEC, result)
             inspected = adapter.inspect(result, self.source, SPEC)
+            completion = read_json(result / adapter.COMPLETION_NAME)
+            header = read_jsonl(result / adapter.EVENTS_NAME)[0]
+            for value in (receipt, completion, header):
+                self.assertEqual(value["status"], EXPECTED_STATUS)
+                self.assertEqual(value["promotion_status"], EXPECTED_PROMOTION)
+            self.assertEqual(inspected["status"], EXPECTED_STATUS)
+            self.assertEqual(inspected["promotion_status"], EXPECTED_PROMOTION)
             self.assertEqual(inspected["record_count"], 1100)
             self.assertEqual(inspected["world_reference_events"], 1094)
             self.assertEqual(inspected["raw_escape_geometric_oof"], 6)
@@ -81,6 +90,10 @@ class AdapterIntegrationTest(unittest.TestCase):
             claims = receipt["claim_scope"]
             self.assertTrue(claims["orientation_only"])
             self.assertTrue(claims["translation_preserved_not_applied"])
+            self.assertTrue(claims["offline_future_bracket_slerp"])
+            self.assertTrue(claims["future_pose_lookahead_required"])
+            self.assertFalse(claims["causal_hardware_claimed"])
+            self.assertFalse(claims["clock_alignment_validated"])
             self.assertTrue(claims["raw_escape_is_disposition_only"])
             self.assertFalse(claims["raw_packet_fifo_or_decoder_implemented"])
             self.assertFalse(claims["controls_implemented"])
@@ -132,6 +145,13 @@ class AdapterIntegrationTest(unittest.TestCase):
             artifact.write_bytes(artifact.read_bytes() + b" \n")
             with self.assertRaises(adapter.AdapterFailure):
                 adapter.inspect(second, self.source, SPEC)
+
+    def test_inspection_requires_source_and_spec(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = Path(directory) / "result"
+            adapter.adapt(self.source, SPEC, result)
+            with self.assertRaises(TypeError):
+                adapter.inspect(result)
 
     def test_source_tamper_overwrite_symlink_and_invalid_geometry_are_separate(self):
         with tempfile.TemporaryDirectory() as directory:

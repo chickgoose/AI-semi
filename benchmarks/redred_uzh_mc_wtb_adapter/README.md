@@ -30,9 +30,29 @@ source window, not accuracy, compression, or MC-WTB benefit.
 The output status remains scoped:
 
 ```text
-PASS_UZH_MC_WTB_DISPOSITION_ADAPTER_SCOPED
-HOLD_BENEFIT_CODEC_RTL_PPA
+PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED
+HOLD_MC_WTB_REAL_DATA_BENEFIT
 ```
 
 No translation/depth compensation, controls, tile aggregation, wire format,
 RTL, timing, power, or PPA claim is made.
+
+## Offline boundary and threat model
+
+This is an offline, source-bound analytical adapter.  Both the reference pose
+and every event pose use a closed left/future-right bracket, so normalized
+SLERP requires future-pose lookahead.  The result is not evidence of a causal
+hardware path, real-time pose availability, or validated event/pose clock
+alignment.  The receipt records these four facts explicitly as
+`offline_future_bracket_slerp=true`, `future_pose_lookahead_required=true`,
+`causal_hardware_claimed=false`, and `clock_alignment_validated=false`.
+
+The inspector treats the result directory, its receipt/completion hashes, and
+all generated fields as attacker-replaceable.  Consequently `inspect` always
+requires the original completed pose-join directory and its exact bound spec,
+revalidates that source package, then recomputes the complete adapter artifact
+and receipt semantics.  Hash-only or source-free inspection cannot return
+PASS.  This protects the scoped package from ordinary post-publication tamper
+or coordinated local rehash, but it is not a signature, trust anchor, secure
+clock, or proof that the supplied official source itself establishes MC-WTB
+benefit.
