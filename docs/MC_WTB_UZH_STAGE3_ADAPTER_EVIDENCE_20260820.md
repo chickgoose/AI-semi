@@ -15,9 +15,11 @@ promotion_status  HOLD_MC_WTB_REAL_DATA_BENEFIT
 real-data benefit, bottleneck 개선, codec/wire bandwidth, causal hardware, clock
 alignment, RTL, timing, power 및 PPA는 아직 증명하지 않았다.
 
-통합 전 기준은 `c6a89039987134a028bc12b1f22ecdf29fd78291`, Stage-3 코드와
-통합 test runner가 모두 들어간 검증 대상 commit은
-`bc92beb17a1d50315ebcd6c68af05627e61637e9`이다.
+통합 전 기준은 `c6a89039987134a028bc12b1f22ecdf29fd78291`이다. Stage-3
+adapter/control 코드와 두 test suite는
+`bc92beb17a1d50315ebcd6c68af05627e61637e9`에 통합했고, source binding 네 개를
+주지 않으면 full gate가 fail-closed하도록 만든 release-runner commit은
+`6359c9689eb01f8e5c573c4499c1dd9032b1bb8e`이다.
 
 ## 2. 고정 입력과 provenance
 
@@ -106,6 +108,10 @@ bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
 ```
 
 결과: **14/14 PASS, 0 skip**.
+
+필수 source binding이 하나라도 없거나
+`REDRED_RUN_UZH_ADAPTER_OFFICIAL=1`이 아니면 `run_all.sh`는 exit 2로 종료한다.
+따라서 partial/skip 실행을 full release PASS로 오인할 수 없다.
 
 ### Six-arm control evaluator
 
