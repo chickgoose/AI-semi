@@ -17,10 +17,10 @@ clean skip:
 bash tests/redred_uzh_mc_wtb_sixarm_official_oracle/run_all.sh
 ```
 
-Run against the currently pinned local package with:
+Run against an explicitly supplied completed package with:
 
 ```sh
-REDRED_UZH_SIXARM_ORACLE_POSE_JOIN=/tmp/uzh-posejoin-c6a \
+REDRED_UZH_SIXARM_ORACLE_POSE_JOIN=/path/to/completed-pose-join \
   bash tests/redred_uzh_mc_wtb_sixarm_official_oracle/run_all.sh
 ```
 

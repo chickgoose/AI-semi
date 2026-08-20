@@ -38,6 +38,7 @@ GEOMETRY_STATUSES = (
 )
 RECORD_SCHEMA = "redred.uzh_mc_wtb_controls.adapter_record/v2"
 GENERATOR_SPEC_SCHEMA = "redred.uzh_mc_wtb_controls.generator_spec/v1"
+APPROVED_GENERATOR_SPEC_SHA256_ENV = "REDRED_SIXARM_APPROVED_GENERATOR_SPEC_SHA256"
 RECEIPT_SCHEMA = "redred.uzh_mc_wtb_controls.generator_receipt/v1"
 COMPLETION_SCHEMA = "redred.uzh_mc_wtb_controls.generator_completion/v1"
 RETIRE_STREAM_SCHEMA = "redred.uzh_mc_wtb_controls.retire_stream/v1"
@@ -226,6 +227,16 @@ def _load_spec(path: Path) -> tuple[dict[str, Any], bytes, bytes]:
         raise GeneratorFailure("generator spec schema differs")
     if spec.get("mode") not in (PRODUCTION_MODE, SYNTHETIC_MODE):
         raise GeneratorFailure("generator spec mode differs")
+    if spec["mode"] == PRODUCTION_MODE:
+        approved_sha256 = os.environ.get(APPROVED_GENERATOR_SPEC_SHA256_ENV)
+        if approved_sha256 is None:
+            raise GeneratorFailure(
+                f"production requires externally approved generator spec SHA-256 in "
+                f"{APPROVED_GENERATOR_SPEC_SHA256_ENV}"
+            )
+        _digest(approved_sha256, "approved generator spec SHA-256")
+        if approved_sha256 != _sha(raw):
+            raise GeneratorFailure("generator spec bytes differ from external approval")
     if not isinstance(spec.get("parameter_set_id"), str) or not spec["parameter_set_id"]:
         raise GeneratorFailure("generator parameter_set_id is absent")
     controls = _strict(spec.get("controls_preregistration"), {"schema", "parameter_set_id", "raw_sha256"}, "controls preregistration pin")
@@ -1100,6 +1111,6 @@ def inspect(result_dir: Path, pose_join_dir: Path, join_spec_path: Path, adapter
 
 
 __all__ = [
-    "ARM_NAMES", "GeneratorFailure", "IMPLEMENTATION_STATUS", "PRODUCTION_STATUS",
+    "APPROVED_GENERATOR_SPEC_SHA256_ENV", "ARM_NAMES", "GeneratorFailure", "IMPLEMENTATION_STATUS", "PRODUCTION_STATUS",
     "PROMOTION_STATUS", "SYNTHETIC_STATUS", "generate", "inspect",
 ]

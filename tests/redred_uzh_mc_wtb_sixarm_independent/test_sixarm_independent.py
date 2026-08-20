@@ -695,6 +695,9 @@ class SixArmIndependentAcceptance(unittest.TestCase):
         }
         values = {name: os.environ.get(variable) for name, variable in names.items()}
         missing = [names[name] for name, value in values.items() if not value or not Path(value).exists()]
+        approved_generator_spec_sha256 = os.environ.get("REDRED_SIXARM_APPROVED_GENERATOR_SPEC_SHA256")
+        if not approved_generator_spec_sha256:
+            missing.append("REDRED_SIXARM_APPROVED_GENERATOR_SPEC_SHA256")
         if missing:
             self.skipTest("HOLD_ACTUAL_RETIRE_RECEIPT_MISSING: " + ", ".join(missing))
         with tempfile.TemporaryDirectory() as directory:

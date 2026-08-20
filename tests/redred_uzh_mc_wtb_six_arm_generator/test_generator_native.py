@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 import re
 import tempfile
 import unittest
@@ -445,14 +446,27 @@ class GeneratorNativeTest(unittest.TestCase):
                 generator.generate(*fixture.args(result))
             self.assertFalse(result.exists())
 
-    def test_official_mode_rejects_synthetic_retire_and_publishes_nothing(self) -> None:
+    def test_production_spec_requires_external_byte_approval_and_rejects_synthetic_retire(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fixture = SyntheticFixture(Path(directory))
             fixture._write_spec(generator.PRODUCTION_MODE)
-            result = fixture.root / "official-blocked"
-            with fixture.inspector_patches(official=True), mock.patch.object(generator, "_PRODUCTION_SHA256", fixture.production_pin_view()), self.assertRaises(generator.GeneratorFailure):
-                generator.generate(*fixture.args(result))
-            self.assertFalse(result.exists())
+            approved = sha(fixture.generator_spec.read_bytes())
+            common = (
+                fixture.inspector_patches(official=True),
+                mock.patch.object(generator, "_PRODUCTION_SHA256", fixture.production_pin_view()),
+            )
+            with common[0], common[1], mock.patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(generator.GeneratorFailure, "externally approved generator spec"):
+                generator.generate(*fixture.args(fixture.root / "missing-approval"))
+            with fixture.inspector_patches(official=True), mock.patch.object(generator, "_PRODUCTION_SHA256", fixture.production_pin_view()), mock.patch.dict(os.environ, {generator.APPROVED_GENERATOR_SPEC_SHA256_ENV: "0" * 64}, clear=True), self.assertRaisesRegex(generator.GeneratorFailure, "external approval"):
+                generator.generate(*fixture.args(fixture.root / "wrong-approval"))
+            with fixture.inspector_patches(official=True), mock.patch.object(generator, "_PRODUCTION_SHA256", fixture.production_pin_view()), mock.patch.dict(os.environ, {generator.APPROVED_GENERATOR_SPEC_SHA256_ENV: approved}, clear=True), self.assertRaises(generator.GeneratorFailure):
+                generator.generate(*fixture.args(fixture.root / "synthetic-retire-blocked"))
+
+            fixture.generator_spec.write_bytes(fixture.generator_spec.read_bytes() + b"\n")
+            with fixture.inspector_patches(official=True), mock.patch.object(generator, "_PRODUCTION_SHA256", fixture.production_pin_view()), mock.patch.dict(os.environ, {generator.APPROVED_GENERATOR_SPEC_SHA256_ENV: approved}, clear=True), self.assertRaisesRegex(generator.GeneratorFailure, "external approval"):
+                generator.generate(*fixture.args(fixture.root / "mutated-spec-blocked"))
+
+            self.assertFalse(any(path.name.endswith("blocked") for path in fixture.root.iterdir() if path.is_dir()))
 
     def test_retire_identity_timebase_and_timestamp_mutants_fail_closed(self) -> None:
         mutations = ("duplicate", "reordered", "pre_occurrence", "out_of_pose_coverage", "timebase")

@@ -36,10 +36,10 @@ coherence, output/source tamper, coherent output rehash, deterministic bytes,
 source-required inspection, false benefit/official claims, and explicit
 rejection of the A23 1x replay with 81 overruns and only 1,019/1,100 retires.
 
-Run synthetic acceptance with:
+Run synthetic acceptance from the repository root with:
 
 ```bash
-REDRED_SIXARM_PRODUCTION_ROOT=/tmp/redred-mcwtb-sixarm-impl \
+REDRED_SIXARM_PRODUCTION_ROOT="$(pwd)" \
   bash tests/redred_uzh_mc_wtb_sixarm_independent/run_all.sh
 ```
 
@@ -49,12 +49,13 @@ one actual source-epoch-bound retire JSONL and its pre-pinned generator spec:
 
 ```bash
 REDRED_RUN_SIXARM_OFFICIAL=1 \
-REDRED_UZH_JOINED_ROOT=/tmp/uzh-posejoin-c6a \
+REDRED_UZH_JOINED_ROOT=/path/to/completed-pose-join \
 REDRED_UZH_JOIN_SPEC=/path/to/join_spec.json \
 REDRED_UZH_ADAPTER_ROOT=/path/to/completed-adapter \
 REDRED_UZH_RETIRE_RECEIPT=/path/to/actual-retire-receipt.jsonl \
 REDRED_SIXARM_GENERATOR_SPEC=/path/to/frozen-generator-spec.json \
-REDRED_SIXARM_PRODUCTION_ROOT=/tmp/redred-mcwtb-sixarm-impl \
+REDRED_SIXARM_APPROVED_GENERATOR_SPEC_SHA256=/externally/reviewed/lowercase-sha256 \
+REDRED_SIXARM_PRODUCTION_ROOT="$(pwd)" \
   bash tests/redred_uzh_mc_wtb_sixarm_independent/run_all.sh
 ```
 

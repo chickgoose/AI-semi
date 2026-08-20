@@ -41,6 +41,15 @@ configuration, raw-run artifact, and clock-mapping evidence is not established
 by their digest strings and remains an external review gate.  Official
 promotion therefore remains HOLD even when the generator accepts the receipt.
 
+Production also requires the raw generator-spec bytes to be approved through
+the separate `REDRED_SIXARM_APPROVED_GENERATOR_SPEC_SHA256` environment value.
+The value must be an exact lowercase SHA-256 of `generator_spec_path`; absence,
+an invalid digest, or even a whitespace-only byte mutation fails before
+publication.  The approval value must come from the external review process,
+not be calculated by the invocation that is being approved.  This pin proves
+only that the reviewed spec bytes were supplied; it does not authenticate the
+reviewer or any retire producer.
+
 Synthetic retire receipts are accepted only with a `SYNTHETIC_FIXTURE` generator
 spec and non-production fixture authorities.  They receive `PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE`
 and exist solely for native tests.  They can never produce the official-source
