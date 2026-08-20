@@ -1,0 +1,72 @@
+{
+  "schema": "redred.uzh_mc_wtb_motion_v3.internal_holdout_result/v1",
+  "status": "FAIL_INTERNAL_HOLDOUT_NO_PREREGISTERED_MOTION_BENEFIT",
+  "unblind_run_ordinal": 1,
+  "rerun_with_changed_code_metric_threshold_or_window_forbidden": true,
+  "execution": {
+    "git_commit": "0f9e406c202258ae69d7a6650eb6ed4dc2cc91eb",
+    "execution_lock_sha256": "1d5a24259cd3aa9025042f5011664c82fec2ccd8e67dc097f780b27f5888a4f0",
+    "bootstrap_resamples": 10000,
+    "block_length_timestamp_clusters": 32
+  },
+  "cohort": {
+    "id": "shapes_rotation_holdout_43_321",
+    "reference_timestamp_ns": 43321000000,
+    "anchor_count": 102,
+    "query_count": 370,
+    "first_query_dataset_event_index": 14932461,
+    "last_query_dataset_event_index": 14932830,
+    "ordered_query_id_sha256": "99af2f5aaee56bc32a91af25594a46d1ae19d70f8a57e7514facc1c855afaba9"
+  },
+  "primary_angular_nn": {
+    "threshold_relative_reduction_strictly_greater_than": 0.05,
+    "sensor_fixed_mean_radians": 0.020218266461927918,
+    "mc_correct_mean_radians": 0.020138473481245554,
+    "point_relative_reduction": 0.0039465787451470336,
+    "one_sided_97_5_percent_lower_bound": -0.00028162063104941737,
+    "candidate_better_events": 202,
+    "candidate_worse_events": 168,
+    "ties": 0,
+    "gate": "FAIL"
+  },
+  "complementary_gaussian_focus": {
+    "sigma_px": 1.0,
+    "sensor_fixed_score": 0.008350068838812898,
+    "mc_correct_score": 0.008382306219700817,
+    "point_absolute_increase": 0.00003223738088791936,
+    "one_sided_97_5_percent_absolute_increase_lower_bound": -0.00013985127623685964,
+    "gate": "FAIL_LOWER_BOUND_NOT_POSITIVE"
+  },
+  "negative_controls": {
+    "mc_wrong": {
+      "point_relative_reduction_correct_vs_control": 0.015029833031677042,
+      "one_sided_98_333_percent_lower_bound": 0.004064735976653466,
+      "gate": "PASS"
+    },
+    "mc_delayed": {
+      "delay_ns": 4998186,
+      "point_relative_reduction_correct_vs_control": 0.17582054531591795,
+      "one_sided_98_333_percent_lower_bound": 0.14048860327165225,
+      "gate": "PASS"
+    }
+  },
+  "coverage": {
+    "RAW": {"in_fov": 369, "outside_fov": 1, "behind_reference": 0, "invalid_geometry": 0},
+    "SENSOR_FIXED": {"in_fov": 369, "outside_fov": 1, "behind_reference": 0, "invalid_geometry": 0},
+    "MC_CORRECT": {"in_fov": 367, "outside_fov": 3, "behind_reference": 0, "invalid_geometry": 0},
+    "MC_WRONG": {"in_fov": 367, "outside_fov": 3, "behind_reference": 0, "invalid_geometry": 0},
+    "MC_DELAYED": {"in_fov": 366, "outside_fov": 4, "behind_reference": 0, "invalid_geometry": 0}
+  },
+  "motion_component_gate": false,
+  "transport_control": {
+    "status": "HOLD_RETIRE_CONTROL_NOT_EVALUATED",
+    "observed_retire_receipt_present": false
+  },
+  "overall_verdict": "FAIL_MOTION_COMPONENT_AND_HOLD_RETIRE_CONTROL_NOT_EVALUATED",
+  "claim_scope": {
+    "internal_holdout_motion_benefit": false,
+    "dataset_generalization": false,
+    "system_level_mc_wtb_pass": false,
+    "rtl_or_ppa_implication": false
+  }
+}
