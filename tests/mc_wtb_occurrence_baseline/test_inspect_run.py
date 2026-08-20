@@ -4,12 +4,14 @@ import tempfile
 import unittest
 import json
 import hashlib
+import subprocess
 from pathlib import Path
 
 from tests.mc_wtb_occurrence_baseline.inspect_run import (
     InspectionFailure,
     inspect,
     reference_endpoint_schedule,
+    validate_implementation_commit,
 )
 from tests.mc_wtb_occurrence_baseline.prepare import START_NS, pack
 
@@ -117,7 +119,36 @@ class InspectorMutationTests(unittest.TestCase):
         receipt, mapping, summary = self.call()
         self.assertIn(b'"record_count":1100', receipt)
         self.assertIn(b'"validated":false', mapping)
+        self.assertIn(b'"maximum_quantization_error_ns_inclusive":0.5', mapping)
         self.assertEqual(summary["retired"], 1100)
+
+    def test_synthetic_bytes_cannot_claim_production_authority(self):
+        with self.assertRaises(InspectionFailure):
+            inspect(
+                self.source,
+                self.stimulus,
+                self.manifest,
+                self.raw,
+                self.status,
+                self.simulator_log,
+                self.commit,
+                "mutation-test",
+                True,
+            )
+
+    def test_commit_authority_requires_existing_exact_tree_bytes(self):
+        with self.assertRaises(InspectionFailure):
+            validate_implementation_commit("1" * 40)
+        current = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        # During a clean committed regression the current implementation files
+        # must be byte-identical to the named commit.
+        validate_implementation_commit(current)
 
     def test_missing_retire_rejected(self):
         def change(rows):

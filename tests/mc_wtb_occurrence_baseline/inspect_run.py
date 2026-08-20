@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 
@@ -19,6 +20,17 @@ SOURCE_EPOCH = "uzh_shapes_rotation_sequence_zero_after_source_minimum_timestamp
 EXPECTED_A23_SHA256 = "7eb025d9ba6de3dcd538311e75b11b55c51439ba9fc8fbf747213af1577053e0"
 EXPECTED_POSE_JOIN_EVENTS_SHA256 = "a49b7d813fde313bfbcc27526e337c7268ab11803a19898feee8f27afc576796"
 EXPECTED_JOIN_SPEC_SHA256 = "04a81a809164556f744e55b075b94cbc7e2042ccb714e0e03fab8d4aa55a177e"
+EXPECTED_SOURCE_RECORDS_SHA256 = "5a2dbab0766c60e78b25a726b63b79b61cf15bd4a0589c1ac4a7f88b51da85cd"
+EXPECTED_STIMULUS_SHA256 = "98a2afba1e19a52c9d3456af05e6d051bf679355cef0a9573023bac8f43b1186"
+EXPECTED_STIMULUS_MANIFEST_SHA256 = "57a13c8e726a3e083ae6af3a81a828d0976ac3b505cbbf3d99588d235cc42e8d"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+COMMIT_BOUND_PATHS = (
+    "rtl/candidates/a2_batched_iwrr_k2/a2_batched_iwrr_k2.sv",
+    "rtl/candidates/mc_wtb_occurrence_baseline/mc_wtb_occurrence_baseline_top.sv",
+    "tests/mc_wtb_occurrence_baseline/tb.sv",
+    "tests/mc_wtb_occurrence_baseline/prepare.py",
+    "tests/mc_wtb_occurrence_baseline/inspect_run.py",
+)
 
 
 class InspectionFailure(RuntimeError):
@@ -31,6 +43,34 @@ def canonical(value: object) -> bytes:
 
 def digest(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def validate_implementation_commit(implementation_commit: str) -> None:
+    if len(implementation_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in implementation_commit
+    ):
+        raise InspectionFailure("implementation commit is not a full SHA-1")
+    existence = subprocess.run(
+        ["git", "cat-file", "-e", f"{implementation_commit}^{{commit}}"],
+        cwd=REPO_ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if existence.returncode != 0:
+        raise InspectionFailure("implementation commit does not exist in this repository")
+    for relative_path in COMMIT_BOUND_PATHS:
+        committed = subprocess.run(
+            ["git", "show", f"{implementation_commit}:{relative_path}"],
+            cwd=REPO_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if committed.returncode != 0 or committed.stdout != (REPO_ROOT / relative_path).read_bytes():
+            raise InspectionFailure(
+                f"current production input differs from implementation commit: {relative_path}"
+            )
 
 
 def read_jsonl(path: Path) -> list[dict]:
@@ -66,7 +106,7 @@ def decode_payload(payload_hex: str) -> dict[str, int]:
 def mapped_ns(cycle: int) -> int:
     if cycle < 0:
         raise InspectionFailure("negative endpoint cycle")
-    # Exact ceil(cycle * 13 / 2), bounded to <0.5 ns quantization error.
+    # Exact ceil(cycle * 13 / 2), bounded to <=0.5 ns quantization error.
     return START_NS + (cycle * PERIOD_NUMERATOR_NS + PERIOD_DENOMINATOR - 1) // PERIOD_DENOMINATOR
 
 
@@ -164,6 +204,12 @@ def inspect(
     ):
         raise InspectionFailure("source/manifest binding differs")
     if require_production_authority:
+        if (
+            digest(source_raw) != EXPECTED_SOURCE_RECORDS_SHA256
+            or digest(stimulus_raw) != EXPECTED_STIMULUS_SHA256
+            or digest(manifest_raw) != EXPECTED_STIMULUS_MANIFEST_SHA256
+        ):
+            raise InspectionFailure("production source/stimulus/manifest bytes differ")
         expected_manifest = {
             "schema": "redred.mc_wtb_occurrence_baseline.stimulus/v1",
             "record_count": 1100,
@@ -307,7 +353,11 @@ def inspect(
         raise InspectionFailure("server status is not an exact clean 1100/1100/1100 PASS")
     if int(status_match.group(1)) != max(retire_cycle.values()) + 1:
         raise InspectionFailure("server final cycle is not bound to the raw retirement tail")
-    if len(implementation_commit) != 40 or any(c not in "0123456789abcdef" for c in implementation_commit):
+    if require_production_authority:
+        validate_implementation_commit(implementation_commit)
+    elif len(implementation_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in implementation_commit
+    ):
         raise InspectionFailure("implementation commit is not a full SHA-1")
 
     mapping = {
@@ -317,7 +367,7 @@ def inspect(
         "clock_period_numerator_ns": PERIOD_NUMERATOR_NS,
         "clock_period_denominator": PERIOD_DENOMINATOR,
         "rounding": "ceil_to_integer_ns",
-        "maximum_quantization_error_ns_exclusive": 0.5,
+        "maximum_quantization_error_ns_inclusive": 0.5,
         "retire_cycle_min": min(retire_cycle.values()),
         "retire_cycle_max": max(retire_cycle.values()),
         "latency_cycles": 1,
