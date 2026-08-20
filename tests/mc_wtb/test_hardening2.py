@@ -17,6 +17,7 @@ from demos.mc_wtb.model import (
     MODEL_IMPLEMENTATION_ID,
     RESULT_CONTRACT_REVISION,
     InterfaceError,
+    PublicationCleanupError,
     analyze_files,
 )
 
@@ -97,6 +98,130 @@ class PublicationFailureOps(DelegatingFileOps):
         )
 
 
+class LateParentRedirectOps(DelegatingFileOps):
+    def __init__(self, parent: Path, moved: Path, redirect: Path) -> None:
+        super().__init__()
+        self.parent = parent
+        self.moved = moved
+        self.redirect = redirect
+        self.injected = False
+
+    def renameat(self, source, target, *, src_dir_fd, dst_dir_fd):
+        if not self.injected:
+            os.rename(self.parent, self.moved)
+            os.symlink(self.redirect, self.parent, target_is_directory=True)
+            self.injected = True
+        return self.real.renameat(
+            source,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+
+class LateTargetAliasOps(DelegatingFileOps):
+    def __init__(self, output: Path, victim: Path, kind: str) -> None:
+        super().__init__()
+        self.output = output
+        self.victim = victim
+        self.kind = kind
+        self.injected = False
+
+    def renameat(self, source, target, *, src_dir_fd, dst_dir_fd):
+        if not self.injected:
+            if self.kind == "hardlink":
+                os.link(self.victim, self.output)
+            else:
+                os.symlink(self.victim, self.output)
+            self.injected = True
+        return self.real.renameat(
+            source,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+
+class PostRenameTargetReplacementOps(DelegatingFileOps):
+    def __init__(self, output: Path, displaced: Path, victim: Path) -> None:
+        super().__init__()
+        self.output = output
+        self.displaced = displaced
+        self.victim = victim
+
+    def renameat(self, source, target, *, src_dir_fd, dst_dir_fd):
+        self.real.renameat(
+            source,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+        os.rename(self.output, self.displaced)
+        os.link(self.victim, self.output)
+
+
+class CleanupFailureOps(DelegatingFileOps):
+    def __init__(self, failure: str) -> None:
+        super().__init__()
+        self.failure = failure
+        self.parent_fd = None
+        self.temporary_fd = None
+        self.open_fds: set[int] = set()
+        self.close_attempts: list[int] = []
+        self.write_failed = False
+
+    def open(self, path, flags, mode=0o777, *, dir_fd=None):
+        descriptor = self.real.open(path, flags, mode, dir_fd=dir_fd)
+        self.open_fds.add(descriptor)
+        if flags & os.O_DIRECTORY:
+            self.parent_fd = descriptor
+        elif dir_fd is not None:
+            self.temporary_fd = descriptor
+        return descriptor
+
+    def write(self, descriptor, data):
+        if not self.write_failed:
+            self.write_failed = True
+            raise OSError(errno.ENOSPC, "injected primary write failure")
+        return self.real.write(descriptor, data)
+
+    def close(self, descriptor):
+        self.close_attempts.append(descriptor)
+        if self.failure in ("temporary_close", "all") and descriptor == self.temporary_fd:
+            raise OSError(errno.EIO, "injected temporary cleanup close failure")
+        if self.failure in ("parent_close", "all") and descriptor == self.parent_fd:
+            raise OSError(errno.EIO, "injected parent cleanup close failure")
+        self.real.close(descriptor)
+        self.open_fds.discard(descriptor)
+
+    def unlinkat(self, path, *, dir_fd):
+        if self.failure in ("unlink", "all"):
+            raise OSError(errno.EIO, "injected temporary unlink failure")
+        self.real.unlinkat(path, dir_fd=dir_fd)
+
+    def force_close_residual_fds(self) -> None:
+        for descriptor in tuple(self.open_fds):
+            self.real.close(descriptor)
+            self.open_fds.discard(descriptor)
+
+
+class ParentCloseAfterSuccessOps(CleanupFailureOps):
+    def write(self, descriptor, data):
+        return self.real.write(descriptor, data)
+
+
+class ShortWriteEintrOps(DelegatingFileOps):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def write(self, descriptor, data):
+        self.calls += 1
+        if self.calls == 1:
+            raise InterruptedError(errno.EINTR, "injected first-write interrupt")
+        return self.real.write(descriptor, data[: min(7, len(data))])
+
+
 class HardeningTwoTests(unittest.TestCase):
     def copy_inputs(self, directory: str) -> tuple[Path, Path, Path]:
         base = Path(directory)
@@ -167,6 +292,9 @@ class HardeningTwoTests(unittest.TestCase):
                 "exact immutable bytes consumed by each parser",
             )
             self.assertIn("no atomic three-file snapshot", provenance["snapshot_scope"])
+            self.assertEqual(
+                provenance["stability_scope"], provenance["snapshot_scope"]
+            )
 
     def test_a_to_b_to_a_during_parse_cannot_mismatch_hash_and_geometry(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -307,6 +435,42 @@ class HardeningTwoTests(unittest.TestCase):
             self.assertFalse((input_dir / "result.json").exists())
             self.assertFalse(any(path.name.endswith(".tmp") for path in parent.iterdir()))
 
+    def test_late_parent_redirect_is_reported_after_pinned_rename(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            input_dir = base / "inputs"
+            input_dir.mkdir()
+            events, intrinsics, poses = self.copy_inputs(str(input_dir))
+            parent = base / "outparent"
+            parent.mkdir()
+            moved = base / "outparent-pinned"
+            output = parent / "result.json"
+            before = {path: path.read_bytes() for path in (events, intrinsics, poses)}
+            ops = LateParentRedirectOps(parent, moved, input_dir)
+            try:
+                with mock.patch.object(mc_model, "_FILE_OPS", ops):
+                    with self.assertRaisesRegex(
+                        InterfaceError,
+                        "post-rename publication verification failed.*not rolled back",
+                    ):
+                        self.analyze(events, intrinsics, poses, output)
+                self.assertFalse((input_dir / output.name).exists())
+                pinned_result = moved / output.name
+                self.assertTrue(pinned_result.is_file())
+                self.assertEqual(
+                    json.loads(pinned_result.read_text(encoding="utf-8"))["schema"],
+                    mc_model.RESULT_SCHEMA,
+                )
+                self.assertFalse(
+                    any(path.name.endswith(".tmp") for path in moved.iterdir())
+                )
+            finally:
+                if parent.is_symlink():
+                    parent.unlink()
+                if moved.exists():
+                    os.rename(moved, parent)
+            self.assertEqual(before, {path: path.read_bytes() for path in before})
+
     def test_target_hardlink_and_symlink_injection_are_rejected(self) -> None:
         for kind in ("hardlink", "symlink"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
@@ -332,6 +496,58 @@ class HardeningTwoTests(unittest.TestCase):
                     any(path.name.endswith(".tmp") for path in output_dir.iterdir())
                 )
 
+    def test_target_alias_created_after_lstat_is_replaced_without_victim_write(self) -> None:
+        for kind in ("hardlink", "symlink"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                inputs = base / "inputs"
+                output_dir = base / "output"
+                inputs.mkdir()
+                output_dir.mkdir()
+                events, intrinsics, poses = self.copy_inputs(str(inputs))
+                output = output_dir / "result.json"
+                victim = base / "victim.json"
+                victim_bytes = b"hostile-late-alias-victim\n"
+                victim.write_bytes(victim_bytes)
+                ops = LateTargetAliasOps(output, victim, kind)
+                with mock.patch.object(mc_model, "_FILE_OPS", ops):
+                    result = self.analyze(events, intrinsics, poses, output)
+                self.assertEqual(victim.read_bytes(), victim_bytes)
+                self.assertFalse(output.is_symlink())
+                self.assertNotEqual(output.stat().st_ino, victim.stat().st_ino)
+                self.assertEqual(json.loads(output.read_text())["schema"], result["schema"])
+
+    def test_target_replaced_after_rename_fails_post_identity_check(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            inputs = base / "inputs"
+            output_dir = base / "output"
+            inputs.mkdir()
+            output_dir.mkdir()
+            events, intrinsics, poses = self.copy_inputs(str(inputs))
+            output = output_dir / "result.json"
+            displaced = output_dir / "displaced-result.json"
+            victim = base / "victim.json"
+            victim_bytes = b"post-rename-victim\n"
+            victim.write_bytes(victim_bytes)
+            ops = PostRenameTargetReplacementOps(output, displaced, victim)
+            with mock.patch.object(mc_model, "_FILE_OPS", ops):
+                with self.assertRaisesRegex(
+                    InterfaceError,
+                    "published target no longer names the written temporary inode",
+                ):
+                    self.analyze(events, intrinsics, poses, output)
+            self.assertEqual(victim.read_bytes(), victim_bytes)
+            self.assertEqual(output.read_bytes(), victim_bytes)
+            self.assertEqual(output.stat().st_ino, victim.stat().st_ino)
+            self.assertEqual(
+                json.loads(displaced.read_text(encoding="utf-8"))["schema"],
+                mc_model.RESULT_SCHEMA,
+            )
+            self.assertFalse(
+                any(path.name.endswith(".tmp") for path in output_dir.iterdir())
+            )
+
     def test_publication_failures_preserve_existing_output_and_remove_temp(self) -> None:
         for failure in ("write", "rename"):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
@@ -350,6 +566,103 @@ class HardeningTwoTests(unittest.TestCase):
                     any(path.name.endswith(".tmp") for path in Path(directory).iterdir())
                 )
 
+    def test_cleanup_failures_are_composite_and_all_cleanup_is_attempted(self) -> None:
+        for failure in ("unlink", "temporary_close", "all"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                events, intrinsics, poses = self.copy_inputs(directory)
+                output = Path(directory) / "result.json"
+                old_bytes = b"old-output-survives-cleanup-fault\n"
+                output.write_bytes(old_bytes)
+                ops = CleanupFailureOps(failure)
+                try:
+                    with mock.patch.object(mc_model, "_FILE_OPS", ops):
+                        with self.assertRaises(PublicationCleanupError) as raised:
+                            self.analyze(events, intrinsics, poses, output)
+                    error = raised.exception
+                    self.assertIsInstance(error.primary_error, InterfaceError)
+                    self.assertIn("injected primary write failure", str(error.primary_error))
+                    stages = [stage for stage, _ in error.cleanup_failures]
+                    expected_stages = {
+                        "unlink": ["temporary_unlink"],
+                        "temporary_close": ["temporary_fd_close"],
+                        "all": [
+                            "temporary_fd_close",
+                            "temporary_unlink",
+                            "parent_fd_close",
+                        ],
+                    }
+                    self.assertEqual(stages, expected_stages[failure])
+                    self.assertEqual(output.read_bytes(), old_bytes)
+                    self.assertIn(ops.parent_fd, ops.close_attempts)
+                    temps = [
+                        path
+                        for path in Path(directory).iterdir()
+                        if path.name.endswith(".tmp")
+                    ]
+                    if failure == "unlink":
+                        self.assertEqual(len(temps), 1)
+                        self.assertEqual(error.temporary_name, temps[0].name)
+                        self.assertEqual(ops.open_fds, set())
+                    elif failure == "temporary_close":
+                        self.assertEqual(temps, [])
+                        self.assertIsNone(error.temporary_name)
+                        self.assertEqual(ops.open_fds, {ops.temporary_fd})
+                        self.assertTrue(error.temporary_fd_close_uncertain)
+                    else:
+                        self.assertEqual(len(temps), 1)
+                        self.assertEqual(error.temporary_name, temps[0].name)
+                        self.assertEqual(
+                            ops.open_fds, {ops.temporary_fd, ops.parent_fd}
+                        )
+                        self.assertTrue(error.temporary_fd_close_uncertain)
+                        self.assertTrue(error.parent_fd_close_uncertain)
+                finally:
+                    ops.force_close_residual_fds()
+
+    def test_parent_close_failure_reports_successful_publication_and_fd_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            events, intrinsics, poses = self.copy_inputs(directory)
+            output = Path(directory) / "result.json"
+            ops = ParentCloseAfterSuccessOps("parent_close")
+            try:
+                with mock.patch.object(mc_model, "_FILE_OPS", ops):
+                    with self.assertRaises(PublicationCleanupError) as raised:
+                        self.analyze(events, intrinsics, poses, output)
+                error = raised.exception
+                self.assertIsNone(error.primary_error)
+                self.assertEqual(
+                    [stage for stage, _ in error.cleanup_failures],
+                    ["parent_fd_close"],
+                )
+                self.assertTrue(error.parent_fd_close_uncertain)
+                self.assertIsNone(error.temporary_name)
+                self.assertEqual(ops.open_fds, {ops.parent_fd})
+                self.assertEqual(
+                    json.loads(output.read_text(encoding="utf-8"))["schema"],
+                    mc_model.RESULT_SCHEMA,
+                )
+                self.assertFalse(
+                    any(path.name.endswith(".tmp") for path in Path(directory).iterdir())
+                )
+            finally:
+                ops.force_close_residual_fds()
+
+    def test_first_write_eintr_and_repeated_short_writes_publish_exact_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            events, intrinsics, poses = self.copy_inputs(directory)
+            output = Path(directory) / "result.json"
+            ops = ShortWriteEintrOps()
+            with mock.patch.object(mc_model, "_FILE_OPS", ops):
+                result = self.analyze(events, intrinsics, poses, output)
+            expected = (
+                json.dumps(result, sort_keys=True, indent=2, ensure_ascii=True) + "\n"
+            ).encode("utf-8")
+            self.assertGreater(ops.calls, 2)
+            self.assertEqual(output.read_bytes(), expected)
+            self.assertFalse(
+                any(path.name.endswith(".tmp") for path in Path(directory).iterdir())
+            )
+
     def test_missing_dirfd_features_fail_closed_without_weak_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             events, intrinsics, poses = self.copy_inputs(directory)
@@ -362,6 +675,22 @@ class HardeningTwoTests(unittest.TestCase):
                 ):
                     self.analyze(events, intrinsics, poses, output)
             self.assertEqual(output.read_bytes(), old_bytes)
+
+    def test_symlink_final_output_parent_is_intentionally_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            events, intrinsics, poses = self.copy_inputs(directory)
+            real_parent = base / "real-output"
+            parent_link = base / "output-link"
+            real_parent.mkdir()
+            os.symlink(real_parent, parent_link, target_is_directory=True)
+            with self.assertRaisesRegex(
+                InterfaceError, "hardened output publication failed"
+            ):
+                self.analyze(
+                    events, intrinsics, poses, parent_link / "result.json"
+                )
+            self.assertFalse((real_parent / "result.json").exists())
 
 
 if __name__ == "__main__":

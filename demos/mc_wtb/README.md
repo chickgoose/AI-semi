@@ -105,10 +105,32 @@ the fixture remains `SYNTHETIC_DEMO`.
 On supported POSIX platforms, output publication pins the final parent directory
 with `O_DIRECTORY|O_NOFOLLOW`, creates a mode-0600 temporary regular file in
 that dirfd, checks the current parent path and no-follow target inode, and uses
-a same-dirfd atomic `rename`. Parent-path redirection and target input-inode or
-symlink aliases fail closed. Required dirfd features have no weak path-based
-fallback. The implementation does not call file or directory `fsync`, so this
-atomic visibility makes no crash-durability guarantee.
+a same-dirfd atomic `rename`. It rechecks both the current parent identity and
+the published target inode after the rename before returning success. A late
+parent redirect therefore returns an error, although the complete result may
+already exist in the pinned directory under its moved name; no rollback is
+attempted or claimed. Required dirfd features have no weak path-based fallback.
+The implementation does not call file or directory `fsync`, so this atomic
+visibility makes no crash-durability guarantee.
+
+An input-inode hardlink or target symlink that is present when the commit-time
+no-follow `stat` runs is rejected. A hostile writer with write access to the
+same output directory can still create an alias after that check. The pinned
+rename cannot be redirected to another directory and replaces that late alias
+entry without writing through it, so the alias victim's contents are not
+modified. This is not a compare-and-swap protocol and does not exclude a
+same-directory writer; a target replacement observed by the post-rename check
+is reported as failure. No guarantee is made about a race occurring after the
+final check.
+
+Cleanup attempts are independent: temporary-descriptor close, temporary unlink,
+and parent-descriptor close continue after an earlier cleanup failure. Any such
+failure is surfaced as a composite `PublicationCleanupError` (an
+`InterfaceError`) containing the primary error, cleanup stages, and remaining
+temporary name. A reported close failure means descriptor state is uncertain;
+the implementation does not blindly retry a close that already failed in the
+main publication path. Physical cleanup cannot be guaranteed when the cleanup
+syscall itself fails.
 
 `analysis_contract` binds the validated tile dimensions, time-bin size,
 inclusive maximum pose age, fixed-v1 format ID, latest-at-or-before ZOH rule,
@@ -116,8 +138,22 @@ semantic implementation ID, result-contract revision, and public known-motion
 blob API ID. The semantic ID is source-controlled contract identity, not a
 cryptographic attestation of a binary or repository commit.
 The result schema remains `redred.mc_wtb.stage1_analysis/v1` under its additive
-consumer policy: existing keys retain their meanings and Hardening 2 adds the
-contract object plus stronger provenance/output-semantics fields.
+consumer policy. `input_provenance.stability_scope` remains as a deprecated
+compatibility alias with exactly the same value as the more precise
+`snapshot_scope`; both describe independent one-descriptor snapshots and deny
+an atomic three-file snapshot.
+
+## Hardening 2 compatibility notes
+
+- Public `LOGICAL_BIT_FORMAT` is now a nested read-only `Mapping` rather than a
+  mutable `dict`; result JSON still contains a fresh ordinary-dict copy.
+- Public `UNSUPPORTED_FEATURES` is now an immutable `tuple`; result JSON still
+  exposes a fresh list.
+- A symlink used as the final output parent is rejected by `O_NOFOLLOW`. This is
+  an intentional safety-policy change from the earlier path-based publisher.
+- Directly serializing the read-only public mapping with `json.dumps` is not a
+  supported compatibility path; consumers should use the result's
+  `logical_bit_accounting.format` JSON object.
 
 ## Metrics
 

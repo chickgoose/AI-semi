@@ -490,6 +490,46 @@ class _PosixFileOps:
 
 _FILE_OPS = _PosixFileOps()
 
+
+class PublicationCleanupError(InterfaceError):
+    """Publication error carrying both the primary and cleanup failures."""
+
+    def __init__(
+        self,
+        primary_error: BaseException | None,
+        cleanup_failures: tuple[tuple[str, BaseException], ...],
+        temporary_name: str | None,
+    ) -> None:
+        self.primary_error = primary_error
+        self.cleanup_failures = cleanup_failures
+        self.temporary_name = temporary_name
+        self.temporary_fd_close_uncertain = any(
+            stage == "temporary_fd_close" for stage, _ in cleanup_failures
+        )
+        self.parent_fd_close_uncertain = any(
+            stage == "parent_fd_close" for stage, _ in cleanup_failures
+        )
+        primary_detail = (
+            "publication already reached rename"
+            if primary_error is None
+            else f"{type(primary_error).__name__}: {primary_error}"
+        )
+        cleanup_detail = "; ".join(
+            f"{stage}={type(error).__name__}: {error}"
+            for stage, error in cleanup_failures
+        )
+        residual_detail = (
+            f"temporary_name={temporary_name!r}"
+            if temporary_name is not None
+            else "temporary_name=None"
+        )
+        super().__init__(
+            "hardened output publication/cleanup composite failure: "
+            f"primary=({primary_detail}); cleanup=({cleanup_detail}); "
+            f"{residual_detail}"
+        )
+
+
 _HARDENED_DIRFD_SUPPORTED = (
     all(hasattr(os, name) for name in ("O_CLOEXEC", "O_DIRECTORY", "O_NOFOLLOW"))
     and all(
@@ -526,7 +566,10 @@ def _publish_json_dirfd(
     file_ops = ops or _FILE_OPS
     parent_fd: int | None = None
     temporary_fd: int | None = None
+    temporary_close_attempted = False
     temporary_name: str | None = None
+    primary_error: BaseException | None = None
+    primary_cause: BaseException | None = None
     try:
         parent_fd = file_ops.open(
             parent,
@@ -564,6 +607,11 @@ def _publish_json_dirfd(
             if written <= 0:
                 raise InterfaceError("hardened output write made no progress")
             offset += written
+        temporary_stat = file_ops.fstat(temporary_fd)
+        if not stat.S_ISREG(temporary_stat.st_mode):
+            raise InterfaceError("hardened output temporary is not a regular file")
+        published_identity = (temporary_stat.st_dev, temporary_stat.st_ino)
+        temporary_close_attempted = True
         file_ops.close(temporary_fd)
         temporary_fd = None
 
@@ -602,26 +650,95 @@ def _publish_json_dirfd(
             dst_dir_fd=parent_fd,
         )
         temporary_name = None
-    except InterfaceError:
-        raise
-    except OSError as exc:
-        raise InterfaceError(f"hardened output publication failed: {exc}") from exc
-    finally:
-        if temporary_fd is not None:
-            try:
-                file_ops.close(temporary_fd)
-            except OSError:
-                pass
-        if temporary_name is not None and parent_fd is not None:
-            try:
-                file_ops.unlinkat(temporary_name, dir_fd=parent_fd)
-            except OSError:
-                pass
-        if parent_fd is not None:
-            try:
-                file_ops.close(parent_fd)
-            except OSError:
-                pass
+
+        verification_failures: list[str] = []
+        try:
+            current_parent = file_ops.statat(
+                parent, dir_fd=None, follow_symlinks=False
+            )
+        except OSError as exc:
+            verification_failures.append(
+                f"current output parent cannot be inspected after rename: {exc}"
+            )
+        else:
+            if (
+                not stat.S_ISDIR(current_parent.st_mode)
+                or (current_parent.st_dev, current_parent.st_ino)
+                != (pinned_parent.st_dev, pinned_parent.st_ino)
+            ):
+                verification_failures.append(
+                    "current output parent no longer names the pinned directory "
+                    "after rename"
+                )
+        try:
+            published_target = file_ops.statat(
+                target_name, dir_fd=parent_fd, follow_symlinks=False
+            )
+        except OSError as exc:
+            verification_failures.append(
+                f"published target cannot be inspected after rename: {exc}"
+            )
+        else:
+            if (
+                not stat.S_ISREG(published_target.st_mode)
+                or (published_target.st_dev, published_target.st_ino)
+                != published_identity
+            ):
+                verification_failures.append(
+                    "published target no longer names the written temporary inode "
+                    "after rename"
+                )
+        if verification_failures:
+            raise InterfaceError(
+                "post-rename publication verification failed: "
+                + "; ".join(verification_failures)
+                + "; publication is not rolled back and the result may already exist "
+                "in the pinned directory"
+            )
+    except BaseException as exc:
+        if isinstance(exc, OSError):
+            primary_error = InterfaceError(
+                f"hardened output publication failed: {exc}"
+            )
+            primary_error.__cause__ = exc
+            primary_cause = exc
+        else:
+            primary_error = exc
+
+    cleanup_failures: list[tuple[str, BaseException]] = []
+    if temporary_fd is not None and not temporary_close_attempted:
+        try:
+            file_ops.close(temporary_fd)
+        except Exception as exc:
+            cleanup_failures.append(("temporary_fd_close", exc))
+        else:
+            temporary_fd = None
+    if temporary_name is not None and parent_fd is not None:
+        try:
+            file_ops.unlinkat(temporary_name, dir_fd=parent_fd)
+        except Exception as exc:
+            cleanup_failures.append(("temporary_unlink", exc))
+        else:
+            temporary_name = None
+    if parent_fd is not None:
+        try:
+            file_ops.close(parent_fd)
+        except Exception as exc:
+            cleanup_failures.append(("parent_fd_close", exc))
+        else:
+            parent_fd = None
+
+    if cleanup_failures:
+        composite = PublicationCleanupError(
+            primary_error,
+            tuple(cleanup_failures),
+            temporary_name,
+        )
+        raise composite from (primary_error or cleanup_failures[0][1])
+    if primary_error is not None:
+        if primary_cause is not None:
+            raise primary_error from primary_cause
+        raise primary_error
 
 
 def _analyze_blobs(
@@ -687,8 +804,8 @@ def _analyze_blobs(
         )
         if reference["status"] != "in_fov":
             raise InterfaceError(
-                f"event {event['event_id']}: sensor-to-reference warp is out_of_fov "
-                f"({reference['reason']})"
+                f"event {event['event_id']}: sensor-to-reference warp failed with "
+                f"status={reference['status']}, reason={reference['reason']}"
             )
         pose_code = _require_uint(
             pose_code_by_version[event["pose_version"]],
@@ -745,6 +862,10 @@ def _analyze_blobs(
     positive = sum(record["polarity"] == 1 for record in exact_records)
     negative = len(exact_records) - positive
 
+    snapshot_scope = (
+        "each file is independently snapshotted once from one pinned descriptor; "
+        "no atomic three-file snapshot is claimed"
+    )
     result: dict[str, Any] = {
         "schema": RESULT_SCHEMA,
         "evidence_class": EVIDENCE_CLASS,
@@ -783,10 +904,8 @@ def _analyze_blobs(
         "input_provenance": {
             "hash_algorithm": "SHA-256",
             "hash_scope": "exact immutable bytes consumed by each parser",
-            "snapshot_scope": (
-                "each file is independently snapshotted once from one pinned descriptor; "
-                "no atomic three-file snapshot is claimed"
-            ),
+            "snapshot_scope": snapshot_scope,
+            "stability_scope": snapshot_scope,
             "canonical_evidence_claimed": False,
             "events_sha256": event_blob.sha256,
             "intrinsics_sha256": intrinsics_blob.sha256,
@@ -972,6 +1091,7 @@ __all__ = [
     "InterfaceError",
     "LOGICAL_BIT_FORMAT",
     "MODEL_IMPLEMENTATION_ID",
+    "PublicationCleanupError",
     "RESULT_SCHEMA",
     "RESULT_CONTRACT_REVISION",
     "UNSUPPORTED_FEATURES",

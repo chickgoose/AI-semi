@@ -186,7 +186,10 @@ class StageOneModelTests(unittest.TestCase):
         records = read_jsonl(EVENTS)
         records[7]["x"] = 0
         records[7]["y"] = 20
-        self.assert_fail_closed(records, "out_of_fov")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(InterfaceError, "out_of_fov") as raised:
+                self.analyze(directory, records=records)
+            self.assertEqual(str(raised.exception).count("out_of_fov"), 1)
 
     def test_count_identity_order_and_polarity_mutants_fail(self) -> None:
         records = read_jsonl(EVENTS)
