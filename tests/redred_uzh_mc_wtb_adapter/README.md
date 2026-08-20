@@ -93,7 +93,9 @@ or HOLD. Translation is retained but not applied without depth/plane data.
 
 Run the complete native plus official independent gate with all four source
 bindings set. `run_all.sh` rejects a partial invocation instead of reporting a
-green exit with skipped official cases:
+green exit with skipped official cases. It also clears external production-root
+and `PYTHONPATH` overrides so the integrated checkout is the implementation
+under test:
 
 ```bash
 REDRED_UZH_POSE_JOIN_PACKAGE=/tmp/uzh-posejoin-c6a \

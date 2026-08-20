@@ -20,5 +20,9 @@ if [[ "$REDRED_RUN_UZH_ADAPTER_OFFICIAL" != "1" ]]; then
   exit 2
 fi
 
+# The integrated release gate must exercise this checkout, not a production
+# package injected from another worktree or inherited shell configuration.
+unset REDRED_ADAPTER_PRODUCTION_ROOT REDRED_ADAPTER_TEST_ROOT PYTHONPATH
+
 PYTHONDONTWRITEBYTECODE=1 bash "$script_dir/run_native.sh"
 PYTHONDONTWRITEBYTECODE=1 bash "$script_dir/run_independent.sh"
