@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://redred.local/schemas/uzh-mc-wtb-motion-v3-preregistration-v1.json",
+  "$id": "https://redred.local/schemas/uzh-mc-wtb-motion-v3-preregistration-v2.json",
   "title": "REDRED UZH MC-WTB motion metric v3 preregistration",
   "type": "object",
   "additionalProperties": false,
@@ -15,6 +15,7 @@
     "same_reference",
     "denominator",
     "primary",
+    "complementary_gate",
     "secondaries",
     "controls",
     "coverage_escape",
@@ -24,7 +25,7 @@
   ],
   "properties": {
     "schema": {
-      "const": "redred.uzh_mc_wtb_motion_v3.preregistration/v1"
+      "const": "redred.uzh_mc_wtb_motion_v3.preregistration/v2"
     },
     "assay_id": {
       "type": "string",
@@ -32,7 +33,7 @@
     },
     "status": {
       "enum": [
-        "DEVELOPMENT_PREREGISTRATION_ONLY_NO_CONFIRMATORY_RESULT",
+        "DEVELOPMENT_PREREGISTRATION_WITH_SELECTED_BLINDED_INTERNAL_HOLDOUT_NO_RESULT",
         "HOLDOUT_PREREGISTRATION_FROZEN_NO_RESULT"
       ]
     },
@@ -44,6 +45,8 @@
         "confirmatory_eligible",
         "development_data_previously_observed",
         "frozen_before_partition_access",
+        "holdout_metric_or_arm_scores_inspected",
+        "frozen_before_holdout_score_access",
         "change_policy"
       ],
       "properties": {
@@ -57,6 +60,12 @@
           "type": "boolean"
         },
         "frozen_before_partition_access": {
+          "type": "boolean"
+        },
+        "holdout_metric_or_arm_scores_inspected": {
+          "type": "boolean"
+        },
+        "frozen_before_holdout_score_access": {
           "type": "boolean"
         },
         "change_policy": {
@@ -93,7 +102,8 @@
         "events_member_sha256",
         "poses_member_sha256",
         "calibration_member_sha256",
-        "six_arm_artifact_sha256",
+        "development_six_arm_artifact_sha256",
+        "internal_holdout_derived_artifact_binding_policy",
         "source_pose_meaning",
         "quaternion_order",
         "translation_policy"
@@ -113,7 +123,8 @@
         "events_member_sha256": {"$ref": "#/$defs/sha256"},
         "poses_member_sha256": {"$ref": "#/$defs/sha256"},
         "calibration_member_sha256": {"$ref": "#/$defs/sha256"},
-        "six_arm_artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "development_six_arm_artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "internal_holdout_derived_artifact_binding_policy": {"const": "VERIFY_EXACT_COHORT_SOURCE_IDS_TIMESTAMPS_POLARITIES_AND_RECORD_ARTIFACT_SHA256_IN_RECEIPT_BEFORE_METRIC_COMPUTATION"},
         "source_pose_meaning": {"const": "camera_to_world_T_WC"},
         "quaternion_order": {"const": "xyzw"},
         "translation_policy": {"const": "preserved_not_applied_orientation_only_assay"}
@@ -127,6 +138,8 @@
         "partition_id",
         "anchor",
         "query",
+        "cohort_selection_authority",
+        "internal_holdout",
         "holdout_separation"
       ],
       "properties": {
@@ -134,27 +147,67 @@
         "partition_id": {"type": "string", "minLength": 1},
         "anchor": {"$ref": "#/$defs/cohortWindow"},
         "query": {"$ref": "#/$defs/cohortWindow"},
+        "cohort_selection_authority": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256",
+            "schema",
+            "selection_rule",
+            "selected_holdout_offset_seconds",
+            "metric_or_arm_scores_consulted",
+            "holdout_remains_blinded_for_metric_threshold_selection"
+          ],
+          "properties": {
+            "path": {"const": "benchmarks/redred_uzh_mc_wtb_motion_v3/cohorts.json"},
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "schema": {"const": "redred.uzh_mc_wtb_motion_v3.cohorts/v1"},
+            "selection_rule": {"const": "FIRST_FUTURE_POSITIVE_WHOLE_SECOND_OFFSET_FROM_DEVELOPMENT_QUERY_START_WITH_AT_LEAST_32_ANCHOR_EVENTS_OF_EACH_POLARITY"},
+            "selected_holdout_offset_seconds": {"type": "integer", "minimum": 1},
+            "metric_or_arm_scores_consulted": {"const": false},
+            "holdout_remains_blinded_for_metric_threshold_selection": {"const": true}
+          }
+        },
+        "internal_holdout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cohort_id", "partition_id", "reference_timestamp_ns", "anchor", "query"],
+          "properties": {
+            "cohort_id": {"type": "string", "minLength": 1},
+            "partition_id": {"type": "string", "minLength": 1},
+            "reference_timestamp_ns": {"type": "integer", "minimum": 0},
+            "anchor": {"$ref": "#/$defs/cohortWindow"},
+            "query": {"$ref": "#/$defs/cohortWindow"}
+          }
+        },
         "holdout_separation": {
           "type": "object",
           "additionalProperties": false,
           "required": [
             "development_partition_id",
+            "holdout_partition_id",
             "holdout_required",
             "holdout_selection_status",
             "holdout_results_present",
-            "exact_byte_pins_required_before_access",
+            "exact_byte_pins_required_before_score_access",
+            "metric_or_arm_scores_consulted",
+            "holdout_metric_evaluation_forbidden_before_contract_freeze",
             "event_id_disjoint_from_development",
             "time_interval_disjoint_from_development",
             "metric_changes_after_holdout_selection_forbidden"
           ],
           "properties": {
             "development_partition_id": {"type": "string", "minLength": 1},
+            "holdout_partition_id": {"type": "string", "minLength": 1},
             "holdout_required": {"const": true},
             "holdout_selection_status": {
-              "enum": ["NOT_SELECTED_IN_DEVELOPMENT_REGISTRATION", "EXACTLY_PINNED_BEFORE_ACCESS"]
+              "const": "EXACTLY_PINNED_SCORE_BLIND_BY_COHORTS_JSON"
             },
             "holdout_results_present": {"const": false},
-            "exact_byte_pins_required_before_access": {"const": true},
+            "exact_byte_pins_required_before_score_access": {"const": true},
+            "metric_or_arm_scores_consulted": {"const": false},
+            "holdout_metric_evaluation_forbidden_before_contract_freeze": {"const": true},
             "event_id_disjoint_from_development": {"const": true},
             "time_interval_disjoint_from_development": {"const": true},
             "metric_changes_after_holdout_selection_forbidden": {"const": true}
@@ -166,7 +219,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "reference_timestamp_ns",
+        "reference_timestamp_ns_by_cohort",
         "reference_axes",
         "canonical_formula",
         "canonical_anchor_transform",
@@ -175,10 +228,18 @@
         "reference_image_bounds_define_world_validity"
       ],
       "properties": {
-        "reference_timestamp_ns": {"type": "integer", "minimum": 0},
+        "reference_timestamp_ns_by_cohort": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["development", "internal_holdout"],
+          "properties": {
+            "development": {"type": "integer", "minimum": 0},
+            "internal_holdout": {"type": "integer", "minimum": 0}
+          }
+        },
         "reference_axes": {"const": "camera_axes_at_reference_timestamp"},
         "canonical_formula": {
-          "const": "normalize(transpose(R_WC(reference_timestamp_ns))*R_WC(sample_timestamp_ns)*undistorted_sensor_ray)"
+          "const": "normalize(transpose(R_WC(cohort_reference_timestamp_ns))*R_WC(sample_timestamp_ns)*undistorted_sensor_ray)"
         },
         "canonical_anchor_transform": {"const": "CANONICAL_FORMULA_AT_EACH_ANCHOR_TIMESTAMP"},
         "query_transform_by_arm": {
@@ -203,8 +264,7 @@
       "additionalProperties": false,
       "required": [
         "arms",
-        "exact_ordered_query_records",
-        "ordered_dataset_event_index_sha256",
+        "cohorts",
         "ordered_id_hash_grammar",
         "same_exact_ordered_ids_for_every_arm",
         "one_record_contains_every_arm",
@@ -212,8 +272,7 @@
         "duplicate_policy",
         "reorder_policy",
         "arm_local_filtering",
-        "polarity_treatment",
-        "primary_world_valid_records_required"
+        "polarity_treatment"
       ],
       "properties": {
         "arms": {
@@ -229,8 +288,15 @@
           "minItems": 6,
           "maxItems": 6
         },
-        "exact_ordered_query_records": {"type": "integer", "minimum": 1},
-        "ordered_dataset_event_index_sha256": {"$ref": "#/$defs/sha256"},
+        "cohorts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["development", "internal_holdout"],
+          "properties": {
+            "development": {"$ref": "#/$defs/denominatorCohort"},
+            "internal_holdout": {"$ref": "#/$defs/denominatorCohort"}
+          }
+        },
         "ordered_id_hash_grammar": {"const": "ascii_decimal_dataset_event_index_plus_lf_per_record"},
         "same_exact_ordered_ids_for_every_arm": {"const": true},
         "one_record_contains_every_arm": {"const": true},
@@ -238,8 +304,7 @@
         "duplicate_policy": {"const": "HARD_FAIL"},
         "reorder_policy": {"const": "HARD_FAIL"},
         "arm_local_filtering": {"const": "FORBIDDEN"},
-        "polarity_treatment": {"const": "SAME_POLARITY_ONLY_REPORTED_SEPARATELY_AND_COMBINED_WITH_EXACT_EVENT_WEIGHT"},
-        "primary_world_valid_records_required": {"type": "integer", "minimum": 1}
+        "polarity_treatment": {"const": "SAME_POLARITY_ONLY_REPORTED_SEPARATELY_AND_COMBINED_WITH_EXACT_EVENT_WEIGHT"}
       }
     },
     "primary": {
@@ -274,10 +339,78 @@
         "development_can_emit_confirmatory_pass": {"const": false}
       }
     },
+    "complementary_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_id",
+        "implementation_metric_id",
+        "role",
+        "mandatory_for_any_motion_benefit_pass",
+        "may_substitute_for_primary",
+        "event_set",
+        "same_reference_requirement",
+        "coordinate_domain",
+        "canvas",
+        "outside_canvas_policy",
+        "kernel",
+        "sigma_px",
+        "polarity_channels",
+        "mass_per_event",
+        "minimum_events_per_polarity",
+        "ordered_pair_rule",
+        "score",
+        "grid_or_splat",
+        "control_arm",
+        "treatment_arm",
+        "effect",
+        "candidate_minimum_absolute_increase",
+        "candidate_one_sided_confidence",
+        "bootstrap_application",
+        "failure_policy"
+      ],
+      "properties": {
+        "metric_id": {"const": "V3_COMPLEMENTARY_ANALYTIC_GAUSSIAN_FOCUS_GATE"},
+        "implementation_metric_id": {"const": "polarity-separated-analytic-gaussian-pair-overlap/v1"},
+        "role": {"const": "MANDATORY_COMPLEMENTARY_GATE_NON_PRIMARY_NON_SUBSTITUTABLE"},
+        "mandatory_for_any_motion_benefit_pass": {"const": true},
+        "may_substitute_for_primary": {"const": false},
+        "event_set": {"const": "EXACT_ORDERED_QUERY_EVENTS_ONLY"},
+        "same_reference_requirement": {"const": "EVERY_ARM_COORDINATE_PROJECTED_FROM_THE_SAME_COHORT_REFERENCE_AXES_DEFINED_BY_SAME_REFERENCE"},
+        "coordinate_domain": {"const": "CONTINUOUS_REFERENCE_IMAGE_PROJECTION_VALID_OOF_RETAINED"},
+        "canvas": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x_min_inclusive", "x_max_inclusive", "y_min_inclusive", "y_max_inclusive"],
+          "properties": {
+            "x_min_inclusive": {"type": "number"},
+            "x_max_inclusive": {"type": "number"},
+            "y_min_inclusive": {"type": "number"},
+            "y_max_inclusive": {"type": "number"}
+          }
+        },
+        "outside_canvas_policy": {"const": "HOLD_CANVAS_INSUFFICIENT_NEVER_DROP_CLIP_OR_RESIZE"},
+        "kernel": {"const": "exp(-squared_euclidean_distance_px/(4*sigma_px^2))"},
+        "sigma_px": {"const": 1.0},
+        "polarity_channels": {"const": "TWO_SEPARATE_CHANNELS_NO_CROSS_POLARITY_PAIRS"},
+        "mass_per_event": {"const": 1},
+        "minimum_events_per_polarity": {"const": 2},
+        "ordered_pair_rule": {"const": "ALL_DISTINCT_ORDERED_SAME_POLARITY_EVENT_PAIRS_EXACT_EQUAL_ID_DENOMINATOR"},
+        "score": {"const": "sum_same_polarity_i_not_equal_j_exp(-squared_distance_ij/(4*sigma_px^2))/(N0*(N0-1)+N1*(N1-1))"},
+        "grid_or_splat": {"const": "NONE_ANALYTIC_CONTINUOUS_PAIR_OVERLAP"},
+        "control_arm": {"const": "SENSOR_FIXED"},
+        "treatment_arm": {"const": "MC_CORRECT"},
+        "effect": {"const": "score_MC_CORRECT-score_SENSOR_FIXED"},
+        "candidate_minimum_absolute_increase": {"const": 0.0},
+        "candidate_one_sided_confidence": {"const": 0.975},
+        "bootstrap_application": {"const": "PAIRED_EQUAL_TIMESTAMP_CLUSTER_RESAMPLE_RECOMPUTE_BOTH_ARM_SCORES_AND_EFFECT_EACH_RESAMPLE"},
+        "failure_policy": {"const": "HOLD_OR_FAIL_NO_MOTION_BENEFIT_PASS_PRIMARY_CANNOT_OVERRIDE"}
+      }
+    },
     "secondaries": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["symmetric_chamfer", "per_polarity", "iwe_concentration"],
+      "required": ["symmetric_chamfer", "per_polarity"],
       "properties": {
         "symmetric_chamfer": {
           "type": "object",
@@ -301,55 +434,6 @@
               "minItems": 2,
               "maxItems": 2
             },
-            "role": {"const": "DESCRIPTIVE_ONLY_NO_PRIMARY_SUBSTITUTION"}
-          }
-        },
-        "iwe_concentration": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "metric_id",
-            "coordinate_domain",
-            "canvas",
-            "outside_canvas_policy",
-            "splat",
-            "polarity_channels",
-            "mass_per_event",
-            "metric",
-            "normalization",
-            "grid_phase_offsets_px",
-            "report_raw_energy",
-            "higher_is_better",
-            "role"
-          ],
-          "properties": {
-            "metric_id": {"const": "V3_SECONDARY_PADDED_IWE_CROSS_EVENT_CONCENTRATION"},
-            "coordinate_domain": {"const": "CONTINUOUS_REFERENCE_IMAGE_PROJECTION_VALID_OOF_RETAINED"},
-            "canvas": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["x_min_inclusive", "x_max_inclusive", "y_min_inclusive", "y_max_inclusive"],
-              "properties": {
-                "x_min_inclusive": {"type": "integer"},
-                "x_max_inclusive": {"type": "integer"},
-                "y_min_inclusive": {"type": "integer"},
-                "y_max_inclusive": {"type": "integer"}
-              }
-            },
-            "outside_canvas_policy": {"const": "HOLD_CANVAS_INSUFFICIENT_NEVER_DROP_CLIP_OR_RESIZE"},
-            "splat": {"const": "BILINEAR_FOUR_PIXEL_MASS_PRESERVING"},
-            "polarity_channels": {"const": "TWO_SEPARATE_CHANNELS_NO_SIGN_CANCELLATION"},
-            "mass_per_event": {"const": 1},
-            "metric": {"const": "sum_I_squared_minus_sum_per_event_kernel_self_energy"},
-            "normalization": {"const": "ordered_same_polarity_event_pairs_N0_times_N0_minus1_plus_N1_times_N1_minus1"},
-            "grid_phase_offsets_px": {
-              "type": "array",
-              "prefixItems": [{"const": 0.0}, {"const": 0.25}, {"const": 0.5}, {"const": 0.75}],
-              "minItems": 4,
-              "maxItems": 4
-            },
-            "report_raw_energy": {"const": true},
-            "higher_is_better": {"const": true},
             "role": {"const": "DESCRIPTIVE_ONLY_NO_PRIMARY_SUBSTITUTION"}
           }
         }
@@ -405,7 +489,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "full_query_denominator",
+        "full_query_denominators",
         "exactly_one_disposition_per_arm_event",
         "dispositions",
         "valid_reference_image_oof_policy",
@@ -413,10 +497,18 @@
         "report_counts_by_arm_and_polarity",
         "report_ordered_id_hash_per_disposition",
         "scalar_accuracy_penalty_for_oof_or_escape",
-        "coverage_is_separate_from_primary_accuracy"
+        "coverage_is_separate_from_primary_accuracy_and_complementary_focus"
       ],
       "properties": {
-        "full_query_denominator": {"type": "integer", "minimum": 1},
+        "full_query_denominators": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["development", "internal_holdout"],
+          "properties": {
+            "development": {"type": "integer", "minimum": 1},
+            "internal_holdout": {"type": "integer", "minimum": 1}
+          }
+        },
         "exactly_one_disposition_per_arm_event": {"const": true},
         "dispositions": {
           "type": "array",
@@ -430,11 +522,11 @@
           "maxItems": 4
         },
         "valid_reference_image_oof_policy": {"const": "KEEP_WORLD_RAY_KEEP_CONTINUOUS_PADDED_PROJECTION_NEVER_PENALIZE_OR_DROP"},
-        "invalid_geometry_policy": {"const": "RECORD_ESCAPE_AND_HOLD_PRIMARY_IF_EXACT_WORLD_VALID_DENOMINATOR_IS_NOT_MET"},
+        "invalid_geometry_policy": {"const": "RECORD_ESCAPE_AND_HOLD_ASSAY_IF_EXACT_WORLD_VALID_DENOMINATOR_IS_NOT_MET"},
         "report_counts_by_arm_and_polarity": {"const": true},
         "report_ordered_id_hash_per_disposition": {"const": true},
         "scalar_accuracy_penalty_for_oof_or_escape": {"const": false},
-        "coverage_is_separate_from_primary_accuracy": {"const": true}
+        "coverage_is_separate_from_primary_accuracy_and_complementary_focus": {"const": true}
       }
     },
     "bootstrap": {
@@ -446,7 +538,7 @@
         "method",
         "block_length_clusters",
         "sampled_clusters",
-        "seed_text",
+        "seed_text_by_cohort",
         "seed_derivation",
         "one_sided_primary_lower_quantile"
       ],
@@ -456,7 +548,15 @@
         "method": {"const": "CIRCULAR_MOVING_BLOCK"},
         "block_length_clusters": {"type": "integer", "minimum": 1},
         "sampled_clusters": {"const": "ceil(cluster_count/block_length_clusters)_blocks_then_truncate_to_cluster_count"},
-        "seed_text": {"type": "string", "minLength": 1},
+        "seed_text_by_cohort": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["development", "internal_holdout"],
+          "properties": {
+            "development": {"type": "string", "minLength": 1},
+            "internal_holdout": {"type": "string", "minLength": 1}
+          }
+        },
         "seed_derivation": {"const": "UNSIGNED_INTEGER_FROM_FIRST_16_HEX_DIGITS_OF_SHA256"},
         "one_sided_primary_lower_quantile": {"const": 0.025}
       }
@@ -467,21 +567,29 @@
       "required": [
         "development_status",
         "development_promotion_forbidden",
-        "future_holdout_candidate_primary_gate",
+        "internal_holdout_primary_gate",
+        "internal_holdout_complementary_gate",
+        "joint_pass_rule",
         "primary_denominator_mismatch",
         "control_gate_required",
         "coverage_report_required",
         "multiple_primary_metrics_forbidden",
+        "complementary_gate_required",
+        "complementary_gate_substitution_forbidden",
         "secondary_substitution_forbidden"
       ],
       "properties": {
         "development_status": {"const": "DEVELOPMENT_METRIC_ESTIMATE_ONLY"},
         "development_promotion_forbidden": {"const": true},
-        "future_holdout_candidate_primary_gate": {"const": "point_relative_reduction_strictly_greater_than_candidate_minimum_AND_one_sided_97_5_lower_bound_strictly_greater_than_candidate_minimum"},
+        "internal_holdout_primary_gate": {"const": "point_relative_reduction_strictly_greater_than_candidate_minimum_AND_one_sided_97_5_lower_bound_strictly_greater_than_candidate_minimum"},
+        "internal_holdout_complementary_gate": {"const": "point_absolute_focus_increase_strictly_greater_than_zero_AND_one_sided_97_5_lower_bound_strictly_greater_than_zero"},
+        "joint_pass_rule": {"const": "PRIMARY_AND_COMPLEMENTARY_FOCUS_AND_CONTROLS_AND_COVERAGE_ALL_PASS_OTHERWISE_NO_MOTION_BENEFIT_PASS"},
         "primary_denominator_mismatch": {"const": "HOLD_EXACT_DENOMINATOR_NOT_MET"},
         "control_gate_required": {"const": true},
         "coverage_report_required": {"const": true},
         "multiple_primary_metrics_forbidden": {"const": true},
+        "complementary_gate_required": {"const": true},
+        "complementary_gate_substitution_forbidden": {"const": true},
         "secondary_substitution_forbidden": {"const": true}
       }
     },
@@ -530,12 +638,14 @@
       },
       "then": {
         "properties": {
-          "status": {"const": "DEVELOPMENT_PREREGISTRATION_ONLY_NO_CONFIRMATORY_RESULT"},
+          "status": {"const": "DEVELOPMENT_PREREGISTRATION_WITH_SELECTED_BLINDED_INTERNAL_HOLDOUT_NO_RESULT"},
           "registration": {
             "properties": {
               "confirmatory_eligible": {"const": false},
               "development_data_previously_observed": {"const": true},
-              "frozen_before_partition_access": {"const": false}
+              "frozen_before_partition_access": {"const": false},
+              "holdout_metric_or_arm_scores_inspected": {"const": false},
+              "frozen_before_holdout_score_access": {"const": true}
             }
           },
           "partition": {
@@ -543,7 +653,7 @@
               "role": {"const": "DEVELOPMENT"},
               "holdout_separation": {
                 "properties": {
-                  "holdout_selection_status": {"const": "NOT_SELECTED_IN_DEVELOPMENT_REGISTRATION"}
+                  "holdout_selection_status": {"const": "EXACTLY_PINNED_SCORE_BLIND_BY_COHORTS_JSON"}
                 }
               }
             }
@@ -557,7 +667,9 @@
             "properties": {
               "confirmatory_eligible": {"const": true},
               "development_data_previously_observed": {"const": false},
-              "frozen_before_partition_access": {"const": true}
+              "frozen_before_partition_access": {"const": true},
+              "holdout_metric_or_arm_scores_inspected": {"const": false},
+              "frozen_before_holdout_score_access": {"const": true}
             }
           },
           "partition": {
@@ -565,7 +677,7 @@
               "role": {"const": "HOLDOUT"},
               "holdout_separation": {
                 "properties": {
-                  "holdout_selection_status": {"const": "EXACTLY_PINNED_BEFORE_ACCESS"}
+                  "holdout_selection_status": {"const": "EXACTLY_PINNED_SCORE_BLIND_BY_COHORTS_JSON"}
                 }
               }
             }
@@ -583,20 +695,54 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "id",
+        "start_seconds_exact",
+        "end_seconds_exact",
         "start_timestamp_ns_inclusive",
         "end_timestamp_ns_exclusive",
         "record_count",
         "first_dataset_event_index",
         "last_dataset_event_index",
+        "first_timestamp_ns",
+        "last_timestamp_ns",
+        "polarity_0",
+        "polarity_1",
+        "selected_raw_lines_sha256",
         "ordered_dataset_event_index_sha256"
       ],
       "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "start_seconds_exact": {"type": "string", "pattern": "^[0-9]+\\.[0-9]{9}$"},
+        "end_seconds_exact": {"type": "string", "pattern": "^[0-9]+\\.[0-9]{9}$"},
         "start_timestamp_ns_inclusive": {"type": "integer", "minimum": 0},
         "end_timestamp_ns_exclusive": {"type": "integer", "minimum": 1},
         "record_count": {"type": "integer", "minimum": 1},
         "first_dataset_event_index": {"type": "integer", "minimum": 0},
         "last_dataset_event_index": {"type": "integer", "minimum": 0},
+        "first_timestamp_ns": {"type": "integer", "minimum": 0},
+        "last_timestamp_ns": {"type": "integer", "minimum": 0},
+        "polarity_0": {"type": "integer", "minimum": 0},
+        "polarity_1": {"type": "integer", "minimum": 0},
+        "selected_raw_lines_sha256": {"$ref": "#/$defs/sha256"},
         "ordered_dataset_event_index_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "denominatorCohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "partition_id",
+        "exact_ordered_query_records",
+        "ordered_dataset_event_index_sha256",
+        "primary_world_valid_records_required",
+        "complementary_focus_records_required"
+      ],
+      "properties": {
+        "partition_id": {"type": "string", "minLength": 1},
+        "exact_ordered_query_records": {"type": "integer", "minimum": 1},
+        "ordered_dataset_event_index_sha256": {"$ref": "#/$defs/sha256"},
+        "primary_world_valid_records_required": {"type": "integer", "minimum": 1},
+        "complementary_focus_records_required": {"type": "integer", "minimum": 1}
       }
     }
   }

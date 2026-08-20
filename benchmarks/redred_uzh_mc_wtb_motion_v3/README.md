@@ -9,11 +9,15 @@ separate metric family and cannot be substituted for v2 results.
 
 Files:
 
-- `preregistered.schema.json` is the strict JSON Schema for development and
-  future holdout preregistrations.
-- `development_preregistered.json` is the exact development partition
-  registration. The development observations were already available when this
-  contract was written, so it is not confirmatory evidence.
+- `preregistered.schema.json` is the strict JSON Schema for the development
+  contract and its score-blind selected internal holdout.
+- `development_preregistered.json` binds both exact cohorts and the metric
+  gates. Development observations were already available, so development
+  estimates are not confirmatory evidence.
+
+This schema revision is `preregistration/v2` because cohort selection and the
+mandatory complementary gate are material contract changes. That revision is
+unrelated to, and does not alter, the preserved legacy PARET metric v2.
 
 ## Assay question
 
@@ -34,18 +38,19 @@ rotation. Wrong-direction, delayed-pose, and observed-retire-pose arms are
 predeclared controls, not alternate primaries.
 
 The primary per-event cost is the angular distance to the nearest canonical
-anchor of the same polarity. Its denominator is the exact ordered 1,100-event
-query identity ledger for every arm. Missing, duplicate, reordered, or
-arm-filtered events are hard failures. A valid world ray remains valid even
-when its continuous projection lies outside the 240x180 reference image.
-Reference-image OOF therefore never becomes a scalar accuracy penalty.
+anchor of the same polarity. Its denominator is the exact ordered query
+identity ledger for every arm: 1,100 development IDs or 370 internal-holdout
+IDs. Missing, duplicate, reordered, or arm-filtered events are hard failures.
+A valid world ray remains valid even when its continuous projection lies
+outside the 240x180 reference image. Reference-image OOF therefore never
+becomes a scalar accuracy penalty.
 
 Invalid distortion, a non-finite ray, or a ray behind a domain that requires a
 forward projection is reported through the separate coverage/escape ledger.
-The development primary requires all 1,100 world rays; an invalid event causes
-a HOLD instead of an arm-local drop or an invented score.
+Each cohort requires every registered world ray; an invalid event causes a
+HOLD instead of an arm-local drop or an invented score.
 
-## Primary, secondaries, and controls
+## Primary, mandatory complementary gate, and secondaries
 
 There is exactly one primary:
 
@@ -54,21 +59,38 @@ mean same-polarity query-to-canonical-anchor angular nearest-neighbor cost
 relative reduction = 1 - mean(MC_CORRECT) / mean(SENSOR_FIXED)
 ```
 
-The preregistration records the v2-compatible candidate effect threshold and
-moving-block bootstrap, but a development result can never emit a confirmatory
-PASS. The registered secondaries are descriptive only:
+The angular NN above remains the only primary. The preregistration records the
+legacy-v2-compatible candidate effect threshold and moving-block bootstrap,
+but a development result can never emit a confirmatory PASS.
+
+The analytic Gaussian focus is mandatory complementary evidence, not a second
+primary and never a substitute for angular NN. For continuous reference-image
+coordinates `u_i`, fixed `sigma = 1.0 px`, and distinct ordered same-polarity
+pairs, its bounded score is:
+
+```text
+G = sum_(p_i=p_j, i!=j) exp(-||u_i-u_j||^2 / (4 sigma^2))
+    / (N0(N0-1) + N1(N1-1))
+```
+
+It has no raster, grid phase, bilinear splat, or self-energy subtraction.
+It consumes only the exact ordered query events, projected from the same
+cohort-reference axes as the primary. Every event has unit mass and the same
+exact cohort ID denominator. Finite reference-image OOF coordinates remain
+admitted on the fixed padded canvas
+`[-16,255] x [-16,195]`; a coordinate beyond that predeclared admission
+envelope causes HOLD, never clipping, dropping, or resizing. A motion-benefit
+PASS requires both the angular primary gate and a strictly positive
+`MC_CORRECT - SENSOR_FIXED` Gaussian-focus effect with a positive one-sided
+97.5% lower bound. Each moving-block resample uses paired equal-timestamp
+clusters and recomputes both complete arm scores and their difference. Passing
+focus cannot rescue a failed primary, and passing the primary cannot override
+a failed focus gate.
+
+The registered secondaries remain descriptive only:
 
 - symmetric angular Chamfer distance;
-- polarity-stratified primary components;
-- self-energy-subtracted, polarity-separated image-of-warped-events (IWE)
-  concentration on one fixed padded canvas, including a fixed grid-phase
-  sensitivity set.
-
-The IWE canvas retains finite OOF coordinates. Any coordinate outside the
-declared padding produces HOLD rather than clipping or dropping. IWE is not a
-substitute for the angular primary: raster phase, splat kernel, and coherent
-but wrongly shifted clouds can change concentration without changing absolute
-world-coordinate correctness.
+- polarity-stratified primary components.
 
 `MC_WRONG` and `MC_DELAYED` must be identified negative controls.
 `RETIRE_WARP` must bind exact observed retire timestamps and is tested for
@@ -84,14 +106,32 @@ for the `SENSOR_FIXED` ablation.
 registration.stage = DEVELOPMENT
 registration.confirmatory_eligible = false
 registration.development_data_previously_observed = true
+registration.holdout_metric_or_arm_scores_inspected = false
+registration.frozen_before_holdout_score_access = true
 ```
 
-A future holdout requires a separate preregistration instance validated by the
-same schema, exact source/cohort byte pins frozen before access, and event-ID
-and time-interval disjointness from this development partition. The holdout
-partition is intentionally not selected or named here. Changing the metric,
-threshold, controls, padding, kernel, or bootstrap after holdout selection
-requires a new version and cannot reuse the same confirmatory claim.
+The internal holdout is no longer unspecified. The registration binds the
+score-blind selection contract
+`benchmarks/redred_uzh_mc_wtb_motion_v3/cohorts.json` at SHA-256
+`5a24829fdaaaec679e8ef82ac435158ee0225af5b644d3056895e7fcc94acef4`.
+That contract selects `shapes_rotation_holdout_43_321` by the first eligible
+positive whole-second offset rule without consulting metric or arm scores. Its
+102-event anchor is `[43.320750000,43.321000000)` and its exact 370-event query
+is `[43.321000000,43.322000000)`. Raw-line and ordered-ID hashes are repeated
+in the preregistration. Development and holdout intervals and IDs are
+disjoint.
+
+The existing six-arm artifact SHA is explicitly development-only. A derived
+internal-holdout artifact must verify the registered source IDs, timestamps,
+and polarities and bind its own SHA in an evaluation receipt before any metric
+computation; the development artifact SHA cannot be reused as its authority.
+
+No holdout score was inspected to write this contract, and no holdout result
+is present here. The cohort bytes/counts needed for score-blind selection are
+not called unseen data; the protected boundary is metric/arm score access.
+Changing the primary, complementary focus definition or sigma, thresholds,
+controls, padding, or bootstrap after this freeze requires a new assay version
+and cannot reuse the same confirmatory claim.
 
 ## Validation
 

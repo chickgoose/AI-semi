@@ -1,12 +1,14 @@
 {
-  "schema": "redred.uzh_mc_wtb_motion_v3.preregistration/v1",
-  "assay_id": "UZH-MCWTB-METRIC-V3-DEVELOPMENT-V1",
-  "status": "DEVELOPMENT_PREREGISTRATION_ONLY_NO_CONFIRMATORY_RESULT",
+  "schema": "redred.uzh_mc_wtb_motion_v3.preregistration/v2",
+  "assay_id": "UZH-MCWTB-METRIC-V3-DEVELOPMENT-V2",
+  "status": "DEVELOPMENT_PREREGISTRATION_WITH_SELECTED_BLINDED_INTERNAL_HOLDOUT_NO_RESULT",
   "registration": {
     "stage": "DEVELOPMENT",
     "confirmatory_eligible": false,
     "development_data_previously_observed": true,
     "frozen_before_partition_access": false,
+    "holdout_metric_or_arm_scores_inspected": false,
+    "frozen_before_holdout_score_access": true,
     "change_policy": "ANY_METRIC_THRESHOLD_CONTROL_PARTITION_OR_SERIALIZATION_CHANGE_REQUIRES_NEW_ASSAY_VERSION"
   },
   "legacy_v2": {
@@ -27,7 +29,8 @@
     "events_member_sha256": "d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda",
     "poses_member_sha256": "bb62c320a51c1be412e17065eb86cfffa9041841290d439c23e447f1991aabdb",
     "calibration_member_sha256": "ab797c55a990c03656fbddac2473d3eace2a22f87fea4ca3b0497862b50545cd",
-    "six_arm_artifact_sha256": "15671cdf943f78c9b00e8b3fb261b03fa544e1a6326234e7fb2e352cff5c442c",
+    "development_six_arm_artifact_sha256": "15671cdf943f78c9b00e8b3fb261b03fa544e1a6326234e7fb2e352cff5c442c",
+    "internal_holdout_derived_artifact_binding_policy": "VERIFY_EXACT_COHORT_SOURCE_IDS_TIMESTAMPS_POLARITIES_AND_RECORD_ARTIFACT_SHA256_IN_RECEIPT_BEFORE_METRIC_COMPUTATION",
     "source_pose_meaning": "camera_to_world_T_WC",
     "quaternion_order": "xyzw",
     "translation_policy": "preserved_not_applied_orientation_only_assay"
@@ -36,36 +39,104 @@
     "role": "DEVELOPMENT",
     "partition_id": "UZH-SHAPES-ROTATION-41321000000-41322000000-DEVELOPMENT-V1",
     "anchor": {
+      "id": "shapes_rotation_dev_41_321_anchor",
+      "start_seconds_exact": "41.320750000",
+      "end_seconds_exact": "41.321000000",
       "start_timestamp_ns_inclusive": 41320750000,
       "end_timestamp_ns_exclusive": 41321000000,
       "record_count": 251,
       "first_dataset_event_index": 13855999,
       "last_dataset_event_index": 13856249,
+      "first_timestamp_ns": 41320750001,
+      "last_timestamp_ns": 41320999001,
+      "polarity_0": 153,
+      "polarity_1": 98,
+      "selected_raw_lines_sha256": "c16686c78fc2b54214177e1a482f2f62f20ef66337aa9d6adf5e731b779b7865",
       "ordered_dataset_event_index_sha256": "7970c6ce96d20b1d1ab379631ebccec2d972ee63a6b63096194fb411c3108db2"
     },
     "query": {
+      "id": "shapes_rotation_dev_41_321_query",
+      "start_seconds_exact": "41.321000000",
+      "end_seconds_exact": "41.322000000",
       "start_timestamp_ns_inclusive": 41321000000,
       "end_timestamp_ns_exclusive": 41322000000,
       "record_count": 1100,
       "first_dataset_event_index": 13856250,
       "last_dataset_event_index": 13857349,
+      "first_timestamp_ns": 41321000000,
+      "last_timestamp_ns": 41321999000,
+      "polarity_0": 674,
+      "polarity_1": 426,
+      "selected_raw_lines_sha256": "013fe8b9886e37fe9616e47e0c54a80a57298d98f08a1e11f7daf712af3f59ab",
       "ordered_dataset_event_index_sha256": "0eb870ed84539b786d8944330d0618509b7e331eab4ca4b4bba21bc51c3e44f0"
+    },
+    "cohort_selection_authority": {
+      "path": "benchmarks/redred_uzh_mc_wtb_motion_v3/cohorts.json",
+      "sha256": "5a24829fdaaaec679e8ef82ac435158ee0225af5b644d3056895e7fcc94acef4",
+      "schema": "redred.uzh_mc_wtb_motion_v3.cohorts/v1",
+      "selection_rule": "FIRST_FUTURE_POSITIVE_WHOLE_SECOND_OFFSET_FROM_DEVELOPMENT_QUERY_START_WITH_AT_LEAST_32_ANCHOR_EVENTS_OF_EACH_POLARITY",
+      "selected_holdout_offset_seconds": 2,
+      "metric_or_arm_scores_consulted": false,
+      "holdout_remains_blinded_for_metric_threshold_selection": true
+    },
+    "internal_holdout": {
+      "cohort_id": "shapes_rotation_holdout_43_321",
+      "partition_id": "UZH-SHAPES-ROTATION-43321000000-43322000000-INTERNAL-HOLDOUT-V1",
+      "reference_timestamp_ns": 43321000000,
+      "anchor": {
+        "id": "shapes_rotation_holdout_43_321_anchor",
+        "start_seconds_exact": "43.320750000",
+        "end_seconds_exact": "43.321000000",
+        "start_timestamp_ns_inclusive": 43320750000,
+        "end_timestamp_ns_exclusive": 43321000000,
+        "record_count": 102,
+        "first_dataset_event_index": 14932359,
+        "last_dataset_event_index": 14932460,
+        "first_timestamp_ns": 43320757001,
+        "last_timestamp_ns": 43320999001,
+        "polarity_0": 49,
+        "polarity_1": 53,
+        "selected_raw_lines_sha256": "2547105c6fce0a37d526460cfe9a8b5ecab8a73df20aeb869a0509c6fced5ce9",
+        "ordered_dataset_event_index_sha256": "003e24950d9ca1a7c4d29012c54e9aa165dc697a8f7084093f7e0bd79de5a8b4"
+      },
+      "query": {
+        "id": "shapes_rotation_holdout_43_321_query",
+        "start_seconds_exact": "43.321000000",
+        "end_seconds_exact": "43.322000000",
+        "start_timestamp_ns_inclusive": 43321000000,
+        "end_timestamp_ns_exclusive": 43322000000,
+        "record_count": 370,
+        "first_dataset_event_index": 14932461,
+        "last_dataset_event_index": 14932830,
+        "first_timestamp_ns": 43321000000,
+        "last_timestamp_ns": 43321994001,
+        "polarity_0": 181,
+        "polarity_1": 189,
+        "selected_raw_lines_sha256": "065e737ab3749ac1b7e2cbf683805380f9a197b02156829ebfa4d8211be5d6b2",
+        "ordered_dataset_event_index_sha256": "99af2f5aaee56bc32a91af25594a46d1ae19d70f8a57e7514facc1c855afaba9"
+      }
     },
     "holdout_separation": {
       "development_partition_id": "UZH-SHAPES-ROTATION-41321000000-41322000000-DEVELOPMENT-V1",
+      "holdout_partition_id": "UZH-SHAPES-ROTATION-43321000000-43322000000-INTERNAL-HOLDOUT-V1",
       "holdout_required": true,
-      "holdout_selection_status": "NOT_SELECTED_IN_DEVELOPMENT_REGISTRATION",
+      "holdout_selection_status": "EXACTLY_PINNED_SCORE_BLIND_BY_COHORTS_JSON",
       "holdout_results_present": false,
-      "exact_byte_pins_required_before_access": true,
+      "exact_byte_pins_required_before_score_access": true,
+      "metric_or_arm_scores_consulted": false,
+      "holdout_metric_evaluation_forbidden_before_contract_freeze": true,
       "event_id_disjoint_from_development": true,
       "time_interval_disjoint_from_development": true,
       "metric_changes_after_holdout_selection_forbidden": true
     }
   },
   "same_reference": {
-    "reference_timestamp_ns": 41321000000,
+    "reference_timestamp_ns_by_cohort": {
+      "development": 41321000000,
+      "internal_holdout": 43321000000
+    },
     "reference_axes": "camera_axes_at_reference_timestamp",
-    "canonical_formula": "normalize(transpose(R_WC(reference_timestamp_ns))*R_WC(sample_timestamp_ns)*undistorted_sensor_ray)",
+    "canonical_formula": "normalize(transpose(R_WC(cohort_reference_timestamp_ns))*R_WC(sample_timestamp_ns)*undistorted_sensor_ray)",
     "canonical_anchor_transform": "CANONICAL_FORMULA_AT_EACH_ANCHOR_TIMESTAMP",
     "query_transform_by_arm": {
       "RAW": "IDENTITY_SENSOR_RAY_INTERPRETED_IN_REFERENCE_AXES_INTEGRITY_ONLY",
@@ -80,8 +151,22 @@
   },
   "denominator": {
     "arms": ["RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED", "RETIRE_WARP"],
-    "exact_ordered_query_records": 1100,
-    "ordered_dataset_event_index_sha256": "0eb870ed84539b786d8944330d0618509b7e331eab4ca4b4bba21bc51c3e44f0",
+    "cohorts": {
+      "development": {
+        "partition_id": "UZH-SHAPES-ROTATION-41321000000-41322000000-DEVELOPMENT-V1",
+        "exact_ordered_query_records": 1100,
+        "ordered_dataset_event_index_sha256": "0eb870ed84539b786d8944330d0618509b7e331eab4ca4b4bba21bc51c3e44f0",
+        "primary_world_valid_records_required": 1100,
+        "complementary_focus_records_required": 1100
+      },
+      "internal_holdout": {
+        "partition_id": "UZH-SHAPES-ROTATION-43321000000-43322000000-INTERNAL-HOLDOUT-V1",
+        "exact_ordered_query_records": 370,
+        "ordered_dataset_event_index_sha256": "99af2f5aaee56bc32a91af25594a46d1ae19d70f8a57e7514facc1c855afaba9",
+        "primary_world_valid_records_required": 370,
+        "complementary_focus_records_required": 370
+      }
+    },
     "ordered_id_hash_grammar": "ascii_decimal_dataset_event_index_plus_lf_per_record",
     "same_exact_ordered_ids_for_every_arm": true,
     "one_record_contains_every_arm": true,
@@ -89,8 +174,7 @@
     "duplicate_policy": "HARD_FAIL",
     "reorder_policy": "HARD_FAIL",
     "arm_local_filtering": "FORBIDDEN",
-    "polarity_treatment": "SAME_POLARITY_ONLY_REPORTED_SEPARATELY_AND_COMBINED_WITH_EXACT_EVENT_WEIGHT",
-    "primary_world_valid_records_required": 1100
+    "polarity_treatment": "SAME_POLARITY_ONLY_REPORTED_SEPARATELY_AND_COMBINED_WITH_EXACT_EVENT_WEIGHT"
   },
   "primary": {
     "metric_id": "V3_PRIMARY_SAME_REFERENCE_ANGULAR_NN",
@@ -106,6 +190,38 @@
     "candidate_one_sided_confidence": 0.975,
     "development_can_emit_confirmatory_pass": false
   },
+  "complementary_gate": {
+    "metric_id": "V3_COMPLEMENTARY_ANALYTIC_GAUSSIAN_FOCUS_GATE",
+    "implementation_metric_id": "polarity-separated-analytic-gaussian-pair-overlap/v1",
+    "role": "MANDATORY_COMPLEMENTARY_GATE_NON_PRIMARY_NON_SUBSTITUTABLE",
+    "mandatory_for_any_motion_benefit_pass": true,
+    "may_substitute_for_primary": false,
+    "event_set": "EXACT_ORDERED_QUERY_EVENTS_ONLY",
+    "same_reference_requirement": "EVERY_ARM_COORDINATE_PROJECTED_FROM_THE_SAME_COHORT_REFERENCE_AXES_DEFINED_BY_SAME_REFERENCE",
+    "coordinate_domain": "CONTINUOUS_REFERENCE_IMAGE_PROJECTION_VALID_OOF_RETAINED",
+    "canvas": {
+      "x_min_inclusive": -16.0,
+      "x_max_inclusive": 255.0,
+      "y_min_inclusive": -16.0,
+      "y_max_inclusive": 195.0
+    },
+    "outside_canvas_policy": "HOLD_CANVAS_INSUFFICIENT_NEVER_DROP_CLIP_OR_RESIZE",
+    "kernel": "exp(-squared_euclidean_distance_px/(4*sigma_px^2))",
+    "sigma_px": 1.0,
+    "polarity_channels": "TWO_SEPARATE_CHANNELS_NO_CROSS_POLARITY_PAIRS",
+    "mass_per_event": 1,
+    "minimum_events_per_polarity": 2,
+    "ordered_pair_rule": "ALL_DISTINCT_ORDERED_SAME_POLARITY_EVENT_PAIRS_EXACT_EQUAL_ID_DENOMINATOR",
+    "score": "sum_same_polarity_i_not_equal_j_exp(-squared_distance_ij/(4*sigma_px^2))/(N0*(N0-1)+N1*(N1-1))",
+    "grid_or_splat": "NONE_ANALYTIC_CONTINUOUS_PAIR_OVERLAP",
+    "control_arm": "SENSOR_FIXED",
+    "treatment_arm": "MC_CORRECT",
+    "effect": "score_MC_CORRECT-score_SENSOR_FIXED",
+    "candidate_minimum_absolute_increase": 0.0,
+    "candidate_one_sided_confidence": 0.975,
+    "bootstrap_application": "PAIRED_EQUAL_TIMESTAMP_CLUSTER_RESAMPLE_RECOMPUTE_BOTH_ARM_SCORES_AND_EFFECT_EACH_RESAMPLE",
+    "failure_policy": "HOLD_OR_FAIL_NO_MOTION_BENEFIT_PASS_PRIMARY_CANNOT_OVERRIDE"
+  },
   "secondaries": {
     "symmetric_chamfer": {
       "metric_id": "V3_SECONDARY_SYMMETRIC_ANGULAR_CHAMFER",
@@ -115,26 +231,6 @@
     "per_polarity": {
       "metric_id": "V3_SECONDARY_PRIMARY_COMPONENTS_BY_POLARITY",
       "values": [0, 1],
-      "role": "DESCRIPTIVE_ONLY_NO_PRIMARY_SUBSTITUTION"
-    },
-    "iwe_concentration": {
-      "metric_id": "V3_SECONDARY_PADDED_IWE_CROSS_EVENT_CONCENTRATION",
-      "coordinate_domain": "CONTINUOUS_REFERENCE_IMAGE_PROJECTION_VALID_OOF_RETAINED",
-      "canvas": {
-        "x_min_inclusive": -16,
-        "x_max_inclusive": 255,
-        "y_min_inclusive": -16,
-        "y_max_inclusive": 195
-      },
-      "outside_canvas_policy": "HOLD_CANVAS_INSUFFICIENT_NEVER_DROP_CLIP_OR_RESIZE",
-      "splat": "BILINEAR_FOUR_PIXEL_MASS_PRESERVING",
-      "polarity_channels": "TWO_SEPARATE_CHANNELS_NO_SIGN_CANCELLATION",
-      "mass_per_event": 1,
-      "metric": "sum_I_squared_minus_sum_per_event_kernel_self_energy",
-      "normalization": "ordered_same_polarity_event_pairs_N0_times_N0_minus1_plus_N1_times_N1_minus1",
-      "grid_phase_offsets_px": [0.0, 0.25, 0.5, 0.75],
-      "report_raw_energy": true,
-      "higher_is_better": true,
       "role": "DESCRIPTIVE_ONLY_NO_PRIMARY_SUBSTITUTION"
     }
   },
@@ -157,7 +253,10 @@
     "negative_control_failure_policy": "HOLD_OR_FAIL_CONTROL_NO_MOTION_BENEFIT_PASS"
   },
   "coverage_escape": {
-    "full_query_denominator": 1100,
+    "full_query_denominators": {
+      "development": 1100,
+      "internal_holdout": 370
+    },
     "exactly_one_disposition_per_arm_event": true,
     "dispositions": [
       "WORLD_DOMAIN_VALID_REFERENCE_IMAGE_IN_FOV",
@@ -166,11 +265,11 @@
       "INVALID_GEOMETRY_ESCAPE"
     ],
     "valid_reference_image_oof_policy": "KEEP_WORLD_RAY_KEEP_CONTINUOUS_PADDED_PROJECTION_NEVER_PENALIZE_OR_DROP",
-    "invalid_geometry_policy": "RECORD_ESCAPE_AND_HOLD_PRIMARY_IF_EXACT_WORLD_VALID_DENOMINATOR_IS_NOT_MET",
+    "invalid_geometry_policy": "RECORD_ESCAPE_AND_HOLD_ASSAY_IF_EXACT_WORLD_VALID_DENOMINATOR_IS_NOT_MET",
     "report_counts_by_arm_and_polarity": true,
     "report_ordered_id_hash_per_disposition": true,
     "scalar_accuracy_penalty_for_oof_or_escape": false,
-    "coverage_is_separate_from_primary_accuracy": true
+    "coverage_is_separate_from_primary_accuracy_and_complementary_focus": true
   },
   "bootstrap": {
     "resamples": 10000,
@@ -178,18 +277,25 @@
     "method": "CIRCULAR_MOVING_BLOCK",
     "block_length_clusters": 32,
     "sampled_clusters": "ceil(cluster_count/block_length_clusters)_blocks_then_truncate_to_cluster_count",
-    "seed_text": "UZH-MCWTB-METRIC-V3-DEVELOPMENT-V1|41321000000|1100",
+    "seed_text_by_cohort": {
+      "development": "UZH-MCWTB-METRIC-V3-DEVELOPMENT-V2|41321000000|1100",
+      "internal_holdout": "UZH-MCWTB-METRIC-V3-DEVELOPMENT-V2|43321000000|370"
+    },
     "seed_derivation": "UNSIGNED_INTEGER_FROM_FIRST_16_HEX_DIGITS_OF_SHA256",
     "one_sided_primary_lower_quantile": 0.025
   },
   "decision_policy": {
     "development_status": "DEVELOPMENT_METRIC_ESTIMATE_ONLY",
     "development_promotion_forbidden": true,
-    "future_holdout_candidate_primary_gate": "point_relative_reduction_strictly_greater_than_candidate_minimum_AND_one_sided_97_5_lower_bound_strictly_greater_than_candidate_minimum",
+    "internal_holdout_primary_gate": "point_relative_reduction_strictly_greater_than_candidate_minimum_AND_one_sided_97_5_lower_bound_strictly_greater_than_candidate_minimum",
+    "internal_holdout_complementary_gate": "point_absolute_focus_increase_strictly_greater_than_zero_AND_one_sided_97_5_lower_bound_strictly_greater_than_zero",
+    "joint_pass_rule": "PRIMARY_AND_COMPLEMENTARY_FOCUS_AND_CONTROLS_AND_COVERAGE_ALL_PASS_OTHERWISE_NO_MOTION_BENEFIT_PASS",
     "primary_denominator_mismatch": "HOLD_EXACT_DENOMINATOR_NOT_MET",
     "control_gate_required": true,
     "coverage_report_required": true,
     "multiple_primary_metrics_forbidden": true,
+    "complementary_gate_required": true,
+    "complementary_gate_substitution_forbidden": true,
     "secondary_substitution_forbidden": true
   },
   "claim_scope": {
