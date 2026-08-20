@@ -1,4 +1,4 @@
-"""Source-bound integration and fail-closed tests for the UZH adapter."""
+"""Native source-bound integration and fail-closed tests for the UZH adapter."""
 
 from __future__ import annotations
 
