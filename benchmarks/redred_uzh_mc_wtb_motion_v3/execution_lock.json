@@ -1,0 +1,20 @@
+{
+  "schema": "redred.uzh_mc_wtb_motion_v3.execution_lock/v1",
+  "status": "SEALED_READY_FOR_ONE_INTERNAL_HOLDOUT_RUN",
+  "holdout_cohort_id": "shapes_rotation_holdout_43_321",
+  "created_before_holdout_score_access": true,
+  "first_unblind_only": true,
+  "runtime_files_sha256": {
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/__init__.py": "35519a6ff2259027fc5b54904c82c5d0cb280da345ebdb111aeff0e4c7fe0b0d",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/cohort.py": "90a1ca039ee7b98055310354cdf4e23098a8495f5e0ae7c877027f229a4848db",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/cohorts.json": "5a24829fdaaaec679e8ef82ac435158ee0225af5b644d3056895e7fcc94acef4",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/coverage.py": "8b7683682869a51a5a74d00b77a63d4be997abd442788041c3e8657ffb60822d",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/development_preregistered.json": "2fa452a2bc083194daf66b90b8de821a810995ee3857b83cd2727b6e88a502df",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/evaluate.py": "ca8a9711c8b729ea38b96babcab03404e5224767400087787ff163f70854b2e0",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/focus.py": "f71e1d9b023a3a2d1bd49034af0e00a47cc8e0a71455a57a34dca2600b36d0d8",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/geometry_reference.py": "d1c8171be4f258319a80131156947aad39a053b2a04824435fa87424b6b842c8",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/preregistered.schema.json": "a6d44b37fcc1326799c3d08d16c8152755451605204decbf978511e5bdd8ac09",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/redteam.py": "1b4f4931610eb0fa0789a2601f4fe71bb73a1ba45d4b63d91304b471d12d853f",
+    "benchmarks/redred_uzh_mc_wtb_motion_v3/statistics.py": "c747010bb8a846a0554e503c235d6fa33f4c3b01b291e85255290819311e5f2c"
+  }
+}
