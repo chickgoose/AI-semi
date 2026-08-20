@@ -14,7 +14,7 @@ an admitted event.
 The successful status is:
 
 ```text
-PUBLIC_UZH_SOURCE_POSE_JOIN_COMPLETE_UNQUALIFIED
+PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED
 ```
 
 Its promotion status is always:

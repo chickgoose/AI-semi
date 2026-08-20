@@ -32,8 +32,8 @@ EVENT_SCHEMA = "redred.uzh_shapes_pose_join.event/v1"
 RECEIPT_SCHEMA = "redred.uzh_shapes_pose_join.receipt/v1"
 COMPLETION_SCHEMA = "redred.uzh_shapes_pose_join.completion/v1"
 
-STATUS = "PUBLIC_UZH_SOURCE_POSE_JOIN_COMPLETE_UNQUALIFIED"
-EVIDENCE_CLASS = "PUBLIC_DATASET_SOURCE_PRESERVING_POSE_JOIN"
+STATUS = "PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED"
+EVIDENCE_CLASS = "DATASET_SOURCE_PRESERVING_POSE_JOIN"
 PROMOTION_STATUS = "HOLD_MC_WTB_ADAPTER"
 
 LICENSE_NAME = "LICENSE.txt"
@@ -1249,7 +1249,52 @@ def inspect(result_dir: Path, spec_path: Path | None = None) -> dict[str, Any]:
     _basename(specification["basename"], "specification_identity.basename"); _digest(specification["raw_sha256"], "specification_identity.raw_sha256"); _digest(specification["semantic_sha256"], "specification_identity.semantic_sha256")
     if spec_path is not None:
         spec, raw = _load_spec(Path(spec_path))
-        if specification != {"basename": Path(spec_path).name, "raw_sha256": _sha(raw), "semantic_sha256": _sha(_canonical(spec))}: raise JoinFailure("provided specification differs from package binding")
+        if specification != {
+            "basename": Path(spec_path).name,
+            "raw_sha256": _sha(raw),
+            "semantic_sha256": _sha(_canonical(spec)),
+        }:
+            raise JoinFailure("provided specification differs from package binding")
+
+        expected_production = _production_lock_matches(spec)
+        expected_source_identity = {
+            **spec["dataset"],
+            "official_download_basename": spec["source_archive"]["official_download_basename"],
+            "provided_local_archive_basename": spec["source_archive"]["basename"],
+        }
+        expected_provenance = {
+            "capture_strategy": "one_pinned_source_descriptor_to_private_exact_byte_spool_then_parse_spool",
+            "archive": {
+                "basename": spec["source_archive"]["basename"],
+                "size_bytes": spec["source_archive"]["size_bytes"],
+                "sha256": spec["source_archive"]["sha256"],
+            },
+            "members": spec["required_members"],
+            "license": {
+                "basename": spec["license"]["basename"],
+                "size_bytes": spec["license"]["size_bytes"],
+                "sha256": spec["license"]["sha256"],
+            },
+        }
+        expected_input_contract = {
+            "source_lock": spec["source_lock"],
+            "sensor": spec["sensor"],
+            "source_formats": spec["source_formats"],
+            "timebase": spec["timebase"],
+            "license_exact_bytes_url": LICENSE_BYTES_URL,
+        }
+        if source_identity != expected_source_identity:
+            raise JoinFailure("source dataset identity differs from provided specification")
+        if provenance != expected_provenance:
+            raise JoinFailure("source provenance differs from provided specification")
+        if input_contract != expected_input_contract:
+            raise JoinFailure("input contract differs from provided specification")
+        if selection != spec["selection"] or join_policy != spec["join_policy"]:
+            raise JoinFailure("selection/join policy differs from provided specification")
+        if receipt["claim_scope"] != _claim_scope(expected_production):
+            raise JoinFailure("claim scope differs from provided specification source lock")
+        if production != expected_production:
+            raise JoinFailure("production-source classification differs from provided specification")
     return {"status": STATUS, "promotion_status": PROMOTION_STATUS, "official_uzh_source": production, "generated_artifact_official_uzh": False, "receipt_sha256": _sha(payloads[RECEIPT_NAME])}
 
 

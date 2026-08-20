@@ -7,7 +7,7 @@
   "required": ["schema", "status", "promotion_status", "artifacts"],
   "properties": {
     "schema": {"const": "redred.uzh_shapes_pose_join.completion/v1"},
-    "status": {"const": "PUBLIC_UZH_SOURCE_POSE_JOIN_COMPLETE_UNQUALIFIED"},
+    "status": {"const": "PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED"},
     "promotion_status": {"const": "HOLD_MC_WTB_ADAPTER"},
     "artifacts": {
       "type": "object", "additionalProperties": false,

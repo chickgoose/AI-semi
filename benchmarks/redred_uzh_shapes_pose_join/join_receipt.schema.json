@@ -12,8 +12,8 @@
   ],
   "properties": {
     "schema": {"const": "redred.uzh_shapes_pose_join.receipt/v1"},
-    "status": {"const": "PUBLIC_UZH_SOURCE_POSE_JOIN_COMPLETE_UNQUALIFIED"},
-    "evidence_class": {"const": "PUBLIC_DATASET_SOURCE_PRESERVING_POSE_JOIN"},
+    "status": {"const": "PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED"},
+    "evidence_class": {"const": "DATASET_SOURCE_PRESERVING_POSE_JOIN"},
     "promotion_status": {"const": "HOLD_MC_WTB_ADAPTER"},
     "source_dataset_identity": {"$ref": "#/$defs/sourceDatasetIdentity"},
     "source_provenance": {

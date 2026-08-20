@@ -248,6 +248,9 @@ class PoseJoinTest(unittest.TestCase):
             receipt = fixture.run(result)
             inspected = inspect(result)
             self.assertIsInstance(inspected, dict)
+            self.assertEqual(receipt["status"], "PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED")
+            self.assertFalse(receipt["claim_scope"]["official_uzh_source"])
+            self.assertFalse(inspected["official_uzh_source"])
 
             rows = read_jsonl(result / "events_pose_join.jsonl")
             records = [row for row in rows if "dataset_event_index" in row]
@@ -495,6 +498,48 @@ class PoseJoinTest(unittest.TestCase):
             complete_path.write_bytes(canonical_json(completion))
             self.assert_inspect_rejected(promoted)
 
+    def test_rehashed_selection_tamper_is_rejected_against_bound_spec(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = Fixture(root)
+            result = root / "selection-tampered"
+            fixture.run(result)
+
+            events_path = result / "events_pose_join.jsonl"
+            receipt_path = result / "receipt.json"
+            complete_path = result / "COMPLETE.json"
+
+            event_lines = events_path.read_bytes().splitlines(keepends=True)
+            event_header = json.loads(event_lines[0])
+            event_header["selection"]["start_timestamp_ns_inclusive"] -= 1
+            event_bytes = canonical_json(event_header) + b"".join(event_lines[1:])
+            events_path.write_bytes(event_bytes)
+
+            receipt = read_json(receipt_path)
+            receipt["selection"]["start_timestamp_ns_inclusive"] -= 1
+            event_inventory = receipt["artifact_inventory"]["events_pose_join.jsonl"]
+            event_inventory["size_bytes"] = len(event_bytes)
+            event_inventory["sha256"] = sha256(event_bytes)
+            receipt_bytes = canonical_json(receipt)
+            receipt_path.write_bytes(receipt_bytes)
+
+            completion = read_json(complete_path)
+            completion["artifacts"]["events_pose_join.jsonl"] = {
+                "size_bytes": len(event_bytes),
+                "sha256": sha256(event_bytes),
+            }
+            completion["artifacts"]["receipt.json"] = {
+                "size_bytes": len(receipt_bytes),
+                "sha256": sha256(receipt_bytes),
+            }
+            complete_path.write_bytes(canonical_json(completion))
+
+            with self.assertRaises(Exception) as caught:
+                inspect(result, fixture.spec)
+            self.assertNotIsInstance(
+                caught.exception, (TypeError, AttributeError, AssertionError)
+            )
+
     def test_fixture_zip_and_all_published_artifacts_are_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -537,7 +582,10 @@ class PoseJoinTest(unittest.TestCase):
             self.assertEqual(records[-1]["dataset_event_index"], 13_857_349)
             self.assertEqual({row["causal_pose"]["source_pose_index"] for row in records}, {8241})
             self.assertEqual({row["bracket"]["right_source_pose_index"] for row in records}, {8242})
-            inspect(result)
+            inspected = inspect(result, PRODUCTION_SPEC)
+            self.assertEqual(receipt["status"], "PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED")
+            self.assertTrue(receipt["claim_scope"]["official_uzh_source"])
+            self.assertTrue(inspected["official_uzh_source"])
 
 
 if __name__ == "__main__":
