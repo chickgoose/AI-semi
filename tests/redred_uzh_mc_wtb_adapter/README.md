@@ -91,10 +91,16 @@ The adapter is a deterministic software geometry artifact. Its receipt must
 keep codec, wire, transport replay, MC-WTB benefit, RTL, and PPA claims false
 or HOLD. Translation is retained but not applied without depth/plane data.
 
-Run both the native and independent suites with:
+Run the complete native plus official independent gate with all four source
+bindings set. `run_all.sh` rejects a partial invocation instead of reporting a
+green exit with skipped official cases:
 
 ```bash
-bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
+REDRED_UZH_POSE_JOIN_PACKAGE=/tmp/uzh-posejoin-c6a \
+REDRED_RUN_UZH_ADAPTER_OFFICIAL=1 \
+REDRED_UZH_JOINED_ROOT=/tmp/uzh-posejoin-c6a \
+REDRED_UZH_JOIN_SPEC=benchmarks/redred_uzh_shapes_pose_join/join_spec.json \
+  bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
 ```
 
 Run only the always-on independent synthetic suite with:
