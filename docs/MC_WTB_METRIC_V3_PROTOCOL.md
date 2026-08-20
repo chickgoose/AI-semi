@@ -1,6 +1,16 @@
 # MC-WTB Metric V3 protocol rationale
 
-Status: protocol rationale only; no holdout result and no motion-benefit claim
+Status: protocol rationale plus a failed first internal `shapes_rotation`
+holdout receipt; no motion-benefit claim
+
+Post-protocol result note: the byte-locked 43.321 s internal holdout was
+unblinded once at execution commit `0f9e406`. Angular NN improved by 0.3947%
+with a negative 97.5% lower bound, and the mandatory Gaussian-focus lower
+bound was also negative. The preregistered motion component therefore failed;
+RETIRE_WARP remains separately HOLD because no observed retire receipt was
+evaluated. See
+`benchmarks/redred_uzh_mc_wtb_motion_v3/internal_holdout_result.json`. This
+note does not modify the pre-unblind metric, threshold, window, or protocol.
 
 Scope: official UZH DAVIS rotation-labelled sequences, supplied pose, software-side evaluation
 
@@ -309,8 +319,10 @@ Holdout rules:
 5. After first unblinding, any code/spec change creates a new version and new
    untouched holdout requirement; it cannot overwrite V3.
 
-No holdout bytes or results were downloaded or inspected while authoring this
-document.
+No holdout scores were inspected while authoring the pre-unblind protocol.
+The later internal result is recorded in the post-protocol note above. The
+external `poster_rotation` and `boxes_rotation` sequence holdouts described
+below remain unacquired and unevaluated.
 
 ## 6. Official acquisition URLs and license authority
 

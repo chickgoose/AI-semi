@@ -1,0 +1,40 @@
+{
+  "schema": "redred.uzh_mc_wtb_motion_v3.post_unblind_audit/v1",
+  "status": "FAIL_RESULT_PRESERVED_WITH_EXPLICIT_EVIDENCE_LIMITS",
+  "pre_unblind_execution": {
+    "commit": "0f9e406c202258ae69d7a6650eb6ed4dc2cc91eb",
+    "ready_lock_sha256": "1d5a24259cd3aa9025042f5011664c82fec2ccd8e67dc097f780b27f5888a4f0"
+  },
+  "first_result": {
+    "commit": "1edbfa69ed4012bc8eaa1dcb8e9d5455f0f15a65",
+    "path": "benchmarks/redred_uzh_mc_wtb_motion_v3/internal_holdout_result.json",
+    "sha256": "d5406c959a6238a1473938c83b2e95f7b845b69e1f45c0c07d8d31d7724188ee",
+    "gate_arithmetic_static_audit": "PASS",
+    "cohort_identity_static_audit": "PASS",
+    "runtime_file_pins_static_audit": "PASS"
+  },
+  "one_shot_state": {
+    "status": "CONSUMED_BY_INTERNAL_HOLDOUT_RUN_1_NO_RERUN",
+    "consumed_lock_sha256": "c6ec7801f37de6fc6ae276751f11e063a58d3eb5c51702af59d675cd02195371",
+    "canonical_evaluator_rejects_consumed_lock": true
+  },
+  "coverage_audit": {
+    "all_five_reported_arm_status_counts_sum_to_370": true,
+    "exact_ordered_query_ids_enforced_by_evaluator_path": true,
+    "finite_oof_scalar_penalty_found": false,
+    "coverage_py_full_disposition_ledger_invoked": false,
+    "full_missing_duplicate_drop_cross_table_and_disposition_hash_evidence": "NOT_PROVEN"
+  },
+  "publication_audit": {
+    "aggregate_result_receipt_committed": true,
+    "original_stdout_bytes_separately_captured_and_hashed": false,
+    "aggregate_receipt_to_original_stdout_byte_binding": "NOT_PROVEN"
+  },
+  "required_interpretation": {
+    "motion_benefit": "FAIL",
+    "retire_transport_control": "HOLD_NOT_EVALUATED",
+    "full_coverage_ledger": "NOT_PROVEN",
+    "same_holdout_rerun": "FORBIDDEN",
+    "rtl_ppa_or_dataset_generalization_claim": "FORBIDDEN"
+  }
+}

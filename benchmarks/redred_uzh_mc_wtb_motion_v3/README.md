@@ -1,7 +1,7 @@
 # MC-WTB motion metric v3 contract
 
-This directory defines a development-only preregistration contract for a
-replacement MC-WTB motion assay. It does not implement an evaluator and it does
+This directory defines the preregistration, evaluator, execution lock, and
+first internal-holdout receipt for a replacement MC-WTB motion assay. It does
 not change, supersede, reinterpret, or delete the frozen v2 assay in
 `benchmarks/redred_uzh_mc_wtb_motion/`. The development registration binds
 the exact bytes of its frozen `paret_preregistered.json`; v3 results remain a
@@ -14,6 +14,20 @@ Files:
 - `development_preregistered.json` binds both exact cohorts and the metric
   gates. Development observations were already available, so development
   estimates are not confirmatory evidence.
+- `evaluate.py` implements the locked common-reference evaluator.
+- `execution_lock.json` is consumed and no longer authorizes a rerun.
+- `internal_holdout_result.json` records the first and only 43.321 s unblind.
+
+## First internal-holdout result
+
+The locked run failed the preregistered motion-benefit gates. Angular NN
+improved by only 0.3947%, below the strict 5% threshold, and its one-sided
+97.5% lower bound was negative. Analytic Gaussian focus had a small positive
+point change but a negative lower bound. Wrong-direction and delayed-pose
+controls separated, but they cannot rescue the failed primary/focus gates.
+The endpoint retire receipt was not evaluated, so the transport control also
+remains HOLD. The exact result is `internal_holdout_result.json`; the same
+holdout must not be rerun with changed code, metric, threshold, or window.
 
 This schema revision is `preregistration/v2` because cohort selection and the
 mandatory complementary gate are material contract changes. That revision is
@@ -126,8 +140,8 @@ internal-holdout artifact must verify the registered source IDs, timestamps,
 and polarities and bind its own SHA in an evaluation receipt before any metric
 computation; the development artifact SHA cannot be reused as its authority.
 
-No holdout score was inspected to write this contract, and no holdout result
-is present here. The cohort bytes/counts needed for score-blind selection are
+No holdout score was inspected while writing the contract. The later first
+unblind is preserved separately in `internal_holdout_result.json`. The cohort bytes/counts needed for score-blind selection are
 not called unseen data; the protected boundary is metric/arm score access.
 Changing the primary, complementary focus definition or sigma, thresholds,
 controls, padding, or bootstrap after this freeze requires a new assay version
@@ -153,6 +167,6 @@ python3 -c 'import json, jsonschema, pathlib; p=pathlib.Path("benchmarks/redred_
 
 ## Claim boundary
 
-This package is a metric contract only. It contains no motion-benefit result,
-holdout result, dataset generalization, codec or bandwidth evidence, RTL,
-synthesis, timing, area, power, P&R, or phase-5 architecture claim.
+This package contains a failed scoped internal-holdout motion result. It does
+not contain dataset generalization, codec or bandwidth evidence, RTL,
+synthesis, timing, area, power, P&R, or phase-5 architecture evidence.

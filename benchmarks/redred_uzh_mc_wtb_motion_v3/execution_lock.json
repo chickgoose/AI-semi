@@ -1,6 +1,6 @@
 {
   "schema": "redred.uzh_mc_wtb_motion_v3.execution_lock/v1",
-  "status": "SEALED_READY_FOR_ONE_INTERNAL_HOLDOUT_RUN",
+  "status": "CONSUMED_BY_INTERNAL_HOLDOUT_RUN_1_NO_RERUN",
   "holdout_cohort_id": "shapes_rotation_holdout_43_321",
   "created_before_holdout_score_access": true,
   "first_unblind_only": true,
