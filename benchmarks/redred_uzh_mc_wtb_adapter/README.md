@@ -56,3 +56,6 @@ PASS.  This protects the scoped package from ordinary post-publication tamper
 or coordinated local rehash, but it is not a signature, trust anchor, secure
 clock, or proof that the supplied official source itself establishes MC-WTB
 benefit.
+
+A concurrent same-UID source-package swap and a mutable network filesystem are
+explicitly outside this threat model.
