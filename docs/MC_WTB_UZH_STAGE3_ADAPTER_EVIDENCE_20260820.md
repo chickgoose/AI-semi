@@ -20,6 +20,8 @@ adapter/control 코드와 두 test suite는
 `bc92beb17a1d50315ebcd6c68af05627e61637e9`에 통합했고, source binding 네 개를
 주지 않으면 full gate가 fail-closed하도록 만든 release-runner commit은
 `6359c9689eb01f8e5c573c4499c1dd9032b1bb8e`이다.
+외부 worktree와 inherited `PYTHONPATH` override까지 제거해 현재 checkout만 검사하도록
+고정한 commit은 `66c78314e602943a2adff06ece4c9fd9d1cf4d20`이다.
 
 ## 2. 고정 입력과 provenance
 
@@ -91,6 +93,13 @@ corrected SHA-256               5b63662ad305d3a6ec5705c3b2958dc1078a437abda7301c
 `c6a8903`의 실제 연산 tree를 따르며 production과 모든 row와 field가 같다. 잘못된
 초기 hash는 acceptance 값으로 사용하지 않는다.
 
+이 1,100-row full-coordinate 비교는 이번 개발 중 수행한 독립 one-off diagnostic이며,
+현재 repository에 같은 canonical hash를 재생성하는 committed regression suite는 없다.
+Committed independent official test가 지속적으로 보장하는 범위는 1,100-event 보존,
+1,094/6/0 partition, exact six OOF ID/continuous coordinates, 그리고 synthetic
+transform/SLERP/radtan oracle이다. 따라서 위 full-row hash를 상시 CI gate 또는
+dataset 일반화 증거로 표현하지 않는다.
+
 ## 5. 실행한 gate
 
 ### Integrated adapter gate
@@ -129,13 +138,18 @@ contract에 대한 scoped PASS다. Official pose-join/adapter에서 이 six-arm 
 ### Relevant regressions
 
 ```text
+MC-WTB Stage-1 model/hardening                 28/28 PASS
 UZH geometry with pinned external members      19/19 PASS
 MC-WTB causality                               10/10 PASS
+Known-motion coordinate contract               27/27 PASS
 UZH source projection                           8/8 PASS
 UZH source-preserving pose join                10/10 PASS
+System-goal policy + contract                   36/36 PASS
 ```
 
 Pose-join full-byte test는 23,126,288-event source member를 실제로 읽어 실행했다.
+위 9개 suite는 총 162 tests이며 system-goal policy는 의도대로
+`evidence_qualified=false`, `release_qualified=false`를 유지했다.
 
 ## 6. Machine-readable claim boundary
 

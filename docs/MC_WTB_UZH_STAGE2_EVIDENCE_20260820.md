@@ -1,17 +1,23 @@
-# MC-WTB UZH Stage-2 evidence — 2026-08-20
+# MC-WTB UZH data/geometry evidence (pre-RTL) — 2026-08-20
 
 ## Current decision
 
 The pinned UZH `shapes_rotation` source-preserving pose join and the
-orientation-only geometry core are implemented and independently replayed.
+orientation-only geometry core are implemented. Production runs cover all
+1,100 dispositions; independent analytical tests cover transform direction,
+SLERP/radtan semantics, mutants, conservation, and the six pinned OOF
+coordinates.
 This is a scoped data/geometry baseline, not an MC-WTB benefit, codec, RTL, or
 PPA result.
 
 ```text
 PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED
 PASS_UZH_ROTATION_ONLY_NUMERIC_CORE_SCOPED
-HOLD_MC_WTB_ADAPTER
+PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED
 HOLD_MC_WTB_REAL_DATA_BENEFIT
+HOLD_OFFICIAL_SIX_ARM_GENERATOR
+HOLD_SOURCE_BOUND_RETIRE_TIMESTAMPS
+HOLD_STAGE2A_SUPPLIED_POSE_RTL
 HOLD_CODEC_WIRE_RTL_PPA
 ```
 
@@ -117,13 +123,9 @@ Observed results:
 
 ## Claim boundary and next gate
 
-This evidence does not yet measure tile locality, packet count, total wire
-bits, loss, decoder reconstruction, or motion fidelity. It therefore does not
-show that MC-WTB solves bottleneck 1 or 5.
-
-The next implementation gate is a separate adapter that consumes the joined
-event/pose records, performs explicit SLERP plus orientation-only radtan warp,
-and emits exactly one disposition per source event:
+The source-bound adapter now consumes the joined event/pose records, performs
+explicit offline SLERP plus orientation-only radtan warp, and emits exactly one
+disposition per source event:
 
 ```text
 WORLD_REFERENCE_EVENT
@@ -131,6 +133,15 @@ RAW_ESCAPE_GEOMETRIC_OOF
 RAW_BYPASS_INVALID_GEOMETRY
 ```
 
-Only after equal-event-ID RAW, SENSOR_FIXED, MC_CORRECT, MC_WRONG, MC_DELAYED,
-and RETIRE_WARP controls are produced may locality opportunity be evaluated.
-Codec/wire, RTL, and PPA remain later gates.
+The six-arm evaluator contract and synthetic denominator tests also pass, but
+no source-bound generator yet derives equal-event-ID RAW, SENSOR_FIXED,
+MC_CORRECT, MC_WRONG, MC_DELAYED, and RETIRE_WARP records from the official
+pose-join/adapter package. Therefore no official UZH locality result, packet
+count, total wire bits, loss, decoder reconstruction, motion-fidelity benefit,
+or bottleneck 1/5 improvement is claimed. Codec/wire, supplied-pose RTL, and
+PPA remain later gates.
+
+The pose-join package's own `promotion_status=HOLD_MC_WTB_ADAPTER` remains an
+artifact-local invariant: the pose-join artifact itself is not relabeled as an
+adapter result. It does not mean the separate downstream adapter is still
+unimplemented.

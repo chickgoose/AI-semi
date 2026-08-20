@@ -2,13 +2,15 @@
 
 기준일: 2026-08-20
 
-현재 좁은 판정: **`PASS_SYNTHETIC_CAUSAL_CORE` + `PASS_HARDENING_2`**
+현재 좁은 판정: **`PASS_SYNTHETIC_CAUSAL_CORE` + `PASS_HARDENING_2` +
+`PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED` +
+`PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED`**
 
 전체 판정: **일반 Stage-1 acceptance는 `HOLD`**
 
 ## 1. 현재 판정의 정확한 범위
 
-MC-WTB Stage-1이 현재 입증한 것은 두 가지이며, 서로 대신하지 않는다.
+MC-WTB Stage-1이 현재 입증한 것은 네 가지이며, 서로 대신하지 않는다.
 
 1. 독립 생성한 rotation-only 합성 fixture에서 source timestamp와 올바른 supplied
    pose를 사용한 software coordinate transform이 identity, wrong-valid,
@@ -16,6 +18,10 @@ MC-WTB Stage-1이 현재 입증한 것은 두 가지이며, 서로 대신하지 
 2. 지원되는 POSIX 환경에서 parser와 SHA-256이 동일한 one-read immutable input
    bytes를 사용하고, 고정 폭 계약·parameter identity·dirfd 기반 publication 및
    cleanup failure reporting이 적대 시험을 통과한다.
+3. Pinned UZH source의 1 ms window에서 event, calibration, pose가 source-preserving
+   package로 결합되고 1,100 occurrences가 zero-drop으로 보존된다.
+4. 위 pose join을 offline orientation-only geometry로 변환한 adapter가 1,094 world,
+   6 geometric RAW escape, 0 invalid로 exact-once 분류한다.
 
 커밋별 증거는 다음처럼 분리한다.
 
@@ -46,9 +52,11 @@ projection만 보면 28→24 packets, 3612→3096 projected bits로 더 좋아�
 |---|---|---|
 | 독립 합성 rotation causal core | **`PASS_SYNTHETIC_CAUSAL_CORE`** | 고정된 C0/C1/C2/C3 fixture와 oracle에 한정 |
 | Hardening 2 | **`PASS_HARDENING_2`** | `76f62f3` + `c863c0c` 및 final detached acceptance 범위에 한정 |
-| 일반 Stage-1 acceptance | **`HOLD`** | real pose-joined data, codec/wire와 broad campaign이 미완료 |
+| 일반 Stage-1 acceptance | **`HOLD`** | official six-arm/retire evaluation, real-data benefit, codec/wire와 broad campaign이 미완료 |
 | 넓은 mutation/discrimination campaign | `HOLD_NOT_RUN` | `PASS_SYNTHETIC_CAUSAL_DISCRIMINATION`이 아님 |
-| UZH event+pose+calibration 결합 | `HOLD_MISSING_ARTIFACT` | real geometry evidence 없음 |
+| UZH event+pose+calibration 결합 | **`PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED`** | pinned 1 ms source package만; official generated artifact나 benefit PASS가 아님 |
+| UZH pose-join→geometry adapter | **`PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED`** | offline future-bracket, orientation-only; `HOLD_MC_WTB_REAL_DATA_BENEFIT` 동반 |
+| official six-arm/retire evaluation | `HOLD_NOT_IMPLEMENTED` | evaluator contract는 있으나 source-bound generator와 retire receipt 없음 |
 | MVSEC importer와 6-DoF/depth profile | `HOLD_NOT_IMPLEMENTED` | initial rotation profile의 대체물이 아님 |
 | 실제 packet codec/decoder와 wire accounting | `HOLD_NOT_IMPLEMENTED` | 현재 129-bit 수치는 lossy packet-key projection |
 | Stage-2A supplied-pose RTL | `HOLD_NOT_STARTED` | fixed-point, finite storage, packet grammar 미확정 |
@@ -294,10 +302,13 @@ world-aligned error를 동시에 개선하는 것이다. 그 전까지 일반 St
 
 ### G2 — Real data gate
 
-official URL/license와 immutable member digest, original event/calibration/pose
-identity, frame/time convention, interpolation, stale/missing/OOF counters와 zero-drop
-conservation을 갖춘 UZH pose-join artifact를 만든다. synthetic와 real evidence class를
-분리한다. MVSEC와 Samsung은 각 promotion 조건 전에는 포함하지 않는다.
+G2a source acquisition/pose join과 G2b offline orientation adapter는 각각
+`PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED`와
+`PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED`로 닫혔다. 다음 G2c는 동일
+1,100-occurrence cohort에서 RAW/SENSOR_FIXED/MC_CORRECT/MC_WRONG/MC_DELAYED/
+RETIRE_WARP를 만드는 source-bound generator와 actual retire provenance다. G2d
+real-data benefit/generalization은 그 control evaluation 이후까지 HOLD한다. MVSEC와
+Samsung은 각 promotion 조건 전에는 포함하지 않는다.
 
 ### G3 — Stage-2A supplied-pose RTL gate
 
@@ -335,7 +346,7 @@ CDC/RDC·pose/config atomicity·reset/drain·stall/overflow·packet-fault 안정
 다음 또는 동등한 주장은 해당 gate 전까지 금지한다.
 
 - `PASS_SYNTHETIC_CAUSAL_DISCRIMINATION`
-- 일반 `PASS_STAGE1`, real-data generalization 또는 real pose-joined PASS
+- 일반 `PASS_STAGE1`, real-data generalization 또는 real-data benefit PASS
 - actual wire bandwidth/bitrate reduction 또는 codec benefit
 - codec/reversible transport, lossless original-event reconstruction
 - RTL/PPA readiness, synthesizable/45 nm ready, MC-WTB complete-endpoint PPA PASS
@@ -356,4 +367,4 @@ CDC/RDC·pose/config atomicity·reset/drain·stall/overflow·packet-fault 안정
 
 현재 허용되는 한 줄 결론은 다음과 같다.
 
-> `MC-WTB Stage-1 = PASS_SYNTHETIC_CAUSAL_CORE + PASS_HARDENING_2; HOLD general Stage-1 acceptance, real pose-joined data, actual codec/wire benefit, RTL, and MC-WTB complete-endpoint 45 nm PPA.`
+> `MC-WTB Stage-1 = PASS_SYNTHETIC_CAUSAL_CORE + PASS_HARDENING_2 + PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED + PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED; HOLD general Stage-1 acceptance, official six-arm/retire evaluation, real-data benefit/generalization, actual codec/wire benefit, RTL, and MC-WTB complete-endpoint 45 nm PPA.`
