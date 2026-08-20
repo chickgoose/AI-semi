@@ -244,6 +244,47 @@ def validate_retire_authority(
     }
 
 
+def decide_status(
+    baseline_score: float,
+    primary: float | None,
+    samples: dict,
+    geometry: dict,
+    prereg: dict,
+) -> tuple[str, str, bool]:
+    """Apply the frozen gate order, preserving diagnostics under a HOLD."""
+    if baseline_score == 0.0:
+        return "HOLD_ZERO_BASELINE_COST", "NOT_EVALUABLE_ZERO_BASELINE", False
+    threshold = prereg["primary_effect"]["relative_reduction_strictly_greater_than"]
+    primary_pass = (
+        primary is not None
+        and samples["SENSOR_FIXED"]["lower_97_5_one_sided"] > threshold
+    )
+    primary_gate = "PASS" if primary_pass else "FAIL_NO_PREREGISTERED_BENEFIT"
+    retire_informative = geometry["timing_controls"]["RETIRE_WARP"]["informative"]
+    controls_to_check = ["MC_WRONG", "MC_DELAYED"]
+    if retire_informative:
+        controls_to_check.append("RETIRE_WARP")
+    controls_pass = all(
+        samples[arm]["lower_98_333_one_sided_bonferroni_three_controls"] > 0.0
+        for arm in controls_to_check
+    )
+    # The frozen preregistration says an uninformative RETIRE angular gate
+    # reports HOLD, not PASS or FAIL.  Preserve the primary diagnostic above,
+    # but do not let it override that literal final-status rule.
+    if not retire_informative:
+        return "HOLD_RETIRE_CONTROL_UNINFORMATIVE", primary_gate, controls_pass
+    if not primary_pass:
+        return "FAIL_NO_PREREGISTERED_BENEFIT", primary_gate, controls_pass
+    if (
+        not geometry["mc_wrong"]["identified"]
+        or not geometry["timing_controls"]["MC_DELAYED"]["identified"]
+        or not controls_pass
+        or not geometry["timing_controls"]["RETIRE_WARP"]["identified"]
+    ):
+        return "FAIL_NEGATIVE_CONTROL", primary_gate, controls_pass
+    return "PASS_PARET_MOTION_IMPROVEMENT_FIXED_WINDOW_SCOPED", primary_gate, controls_pass
+
+
 def evaluate(
     events_path: Path,
     six_arm_path: Path,
@@ -283,33 +324,16 @@ def evaluate(
     )
     values = costs(rows, anchor, prereg)
     scores = {arm: sum(values[arm]) / len(rows) for arm in ARMS}
-    if scores["SENSOR_FIXED"] == 0.0:
-        status = "HOLD_ZERO_BASELINE_COST"
-        primary = None
-    else:
-        primary = 1.0 - scores["MC_CORRECT"] / scores["SENSOR_FIXED"]
-        status = "PENDING_CONTROLS"
+    primary = (
+        None
+        if scores["SENSOR_FIXED"] == 0.0
+        else 1.0 - scores["MC_CORRECT"] / scores["SENSOR_FIXED"]
+    )
     samples = bootstrap(rows, values, prereg)
     geometry = evaluate_records(rows)["geometry_control_gate"]
-    retire_informative = geometry["timing_controls"]["RETIRE_WARP"]["informative"]
-    controls_to_check = ["MC_WRONG", "MC_DELAYED"]
-    if retire_informative:
-        controls_to_check.append("RETIRE_WARP")
-    controls_pass = all(
-        samples[arm]["lower_98_333_one_sided_bonferroni_three_controls"] > 0.0
-        for arm in controls_to_check
+    status, primary_gate_status, negative_controls_pass = decide_status(
+        scores["SENSOR_FIXED"], primary, samples, geometry, prereg
     )
-    if status != "HOLD_ZERO_BASELINE_COST":
-        if primary is None or samples["SENSOR_FIXED"]["lower_97_5_one_sided"] <= prereg["primary_effect"]["relative_reduction_strictly_greater_than"]:
-            status = "FAIL_NO_PREREGISTERED_BENEFIT"
-        elif not geometry["mc_wrong"]["identified"] or not geometry["timing_controls"]["MC_DELAYED"]["identified"] or not controls_pass:
-            status = "FAIL_NEGATIVE_CONTROL"
-        elif not retire_informative:
-            status = "HOLD_RETIRE_CONTROL_UNINFORMATIVE"
-        elif not geometry["timing_controls"]["RETIRE_WARP"]["identified"]:
-            status = "FAIL_NEGATIVE_CONTROL"
-        else:
-            status = "PASS_PARET_MOTION_IMPROVEMENT_FIXED_WINDOW_SCOPED"
     return {
         "schema": "redred.uzh_mc_wtb_motion.paret_result/v1",
         "status": status,
@@ -327,6 +351,8 @@ def evaluate(
         "query_records": len(rows),
         "scores": scores,
         "primary_relative_reduction": primary,
+        "primary_gate_status": primary_gate_status,
+        "negative_controls_pass": negative_controls_pass,
         "bootstrap": samples,
         "bonferroni_three_control_familywise_alpha": 0.05,
         "retire_authority": retire_authority,

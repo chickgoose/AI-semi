@@ -8,6 +8,7 @@ from benchmarks.redred_uzh_mc_wtb_motion.evaluate_paret import (
     EvaluationFailure,
     EXPECTED_PREREGISTRATION_SHA256,
     costs,
+    decide_status,
     timestamp_ns,
 )
 
@@ -81,6 +82,32 @@ class ParetUnitTests(unittest.TestCase):
         }]
         with self.assertRaises(EvaluationFailure):
             costs(rows, anchor, {"sensor": {"width": 10, "height": 10}})
+
+    def test_uninformative_retire_holds_without_hiding_primary_failure(self):
+        samples = {
+            name: {
+                "lower_97_5_one_sided": -1.0,
+                "lower_98_333_one_sided_bonferroni_three_controls": -1.0,
+            }
+            for name in ("SENSOR_FIXED", "MC_WRONG", "MC_DELAYED", "RETIRE_WARP")
+        }
+        geometry = {
+            "mc_wrong": {"identified": True},
+            "timing_controls": {
+                "MC_DELAYED": {"identified": True},
+                "RETIRE_WARP": {"identified": False, "informative": False},
+            },
+        }
+        status, primary_gate, controls_pass = decide_status(
+            1.0,
+            -0.5,
+            samples,
+            geometry,
+            {"primary_effect": {"relative_reduction_strictly_greater_than": 0.05}},
+        )
+        self.assertEqual(status, "HOLD_RETIRE_CONTROL_UNINFORMATIVE")
+        self.assertEqual(primary_gate, "FAIL_NO_PREREGISTERED_BENEFIT")
+        self.assertFalse(controls_pass)
 
 if __name__ == "__main__":
     unittest.main()
