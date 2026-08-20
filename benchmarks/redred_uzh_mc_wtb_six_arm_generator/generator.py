@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+import ctypes
 import hashlib
 import json
 import math
@@ -31,6 +32,7 @@ ARM_NAMES = (
     "RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG",
     "MC_DELAYED", "RETIRE_WARP",
 )
+AVAILABLE_FIVE_ARM_NAMES = ARM_NAMES[:-1]
 GEOMETRY_STATUSES = (
     "in_fov", "outside_reference_image", "behind_reference", "invalid_distortion",
 )
@@ -44,6 +46,43 @@ OUTPUT_NAME = "controls_six_arm.jsonl"
 RECEIPT_NAME = "receipt.json"
 COMPLETION_NAME = "COMPLETE.json"
 FINAL_NAMES = frozenset({OUTPUT_NAME, RECEIPT_NAME, COMPLETION_NAME})
+
+_PRODUCTION_SHA256 = {
+    "pose_join_receipt": "85c182e1daa2f380dffa34a559ae2093835b1052c3d9d9a7f5a1f014a9974f87",
+    "pose_join_completion": "c7692b20dc7d1f305a723cff695b9b794421fdfd39d6a021a17876c56d155756",
+    "pose_join_events": "a49b7d813fde313bfbcc27526e337c7268ab11803a19898feee8f27afc576796",
+    "pose_join_poses": "4461d867e8adc8daaeb089fc739613ee7c89ac2f32c825de561ba88ff83ca0c1",
+    "pose_join_calibration": "bf718266f210e0bf7d64ff31b1fb4d125f905b0f67d6070976bdaf25ec450cdb",
+    "join_spec": "04a81a809164556f744e55b075b94cbc7e2042ccb714e0e03fab8d4aa55a177e",
+    "adapter_events": "a8a78cab40e8679cd98b50d78cda5df5c93e55ec100227862c0ad1b611bf599a",
+    "adapter_receipt": "f34655799be9b29d82774cf3210f4f870eb396024cdf18f69bb4e48c6bda0197",
+    "adapter_completion": "7919657165b5a44696ee34e5d5f1bdab22a21ee2f09f0f97078ae99284ac7b25",
+}
+
+_PRODUCTION_FIVE_ORACLE_HASHES = {
+    "RAW": "9eff30df05a770cee5930929faa9816a5235cb4e8a6b29c185379e38535b03c2",
+    "SENSOR_FIXED": "9009a43c69da4537169e8145935c777259196f04e248c2de85f1d5bb632c8771",
+    "MC_CORRECT": "39529955f2565be311b44f45e3d5012a5906bcde7efa3d8de5ce44c07189a189",
+    "MC_WRONG": "3ed987fa2fa239b3bd0ec1c520392dd4edff250de19e34ae3e7804d2878bde32",
+    "MC_DELAYED": "9389abf2ecaba4d922511f153703fe1e9547f4da912c2c9c6c599a45747c3df3",
+    "AVAILABLE_FIVE_COMBINED": "55566cdc189c3519f56ac8d648a74c7b33bb003067e0b1c53c62b404a89cfe2a",
+}
+
+_PRODUCTION_FIVE_STATUS_COUNTS = {
+    "RAW": {"in_fov": 1100, "outside_reference_image": 0, "behind_reference": 0, "invalid_distortion": 0},
+    "SENSOR_FIXED": {"in_fov": 1094, "outside_reference_image": 6, "behind_reference": 0, "invalid_distortion": 0},
+    "MC_CORRECT": {"in_fov": 1094, "outside_reference_image": 6, "behind_reference": 0, "invalid_distortion": 0},
+    "MC_WRONG": {"in_fov": 1094, "outside_reference_image": 6, "behind_reference": 0, "invalid_distortion": 0},
+    "MC_DELAYED": {"in_fov": 1089, "outside_reference_image": 11, "behind_reference": 0, "invalid_distortion": 0},
+}
+
+_PRODUCTION_FIVE_OOF_IDS = {
+    "RAW": [],
+    "SENSOR_FIXED": [13_856_524, 13_856_654, 13_856_794, 13_857_092, 13_857_160, 13_857_171],
+    "MC_CORRECT": [13_856_524, 13_856_654, 13_856_794, 13_857_092, 13_857_160, 13_857_171],
+    "MC_WRONG": [13_856_285, 13_856_525, 13_856_993, 13_857_224, 13_857_294, 13_857_334],
+    "MC_DELAYED": [13_856_285, 13_856_487, 13_856_525, 13_856_576, 13_856_993, 13_856_995, 13_857_174, 13_857_224, 13_857_288, 13_857_294, 13_857_334],
+}
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _PREREG_PATH = _PACKAGE_DIR.parent / "redred_uzh_mc_wtb_controls" / "preregistered.json"
@@ -283,7 +322,7 @@ def _matvec(matrix: Sequence[Sequence[float]], vector: Sequence[float]) -> tuple
 def _distort(x: float, y: float, calibration: Sequence[float]) -> tuple[float, float]:
     _, _, _, _, k1, k2, p1, p2, k3 = calibration
     radius2 = x * x + y * y
-    radial = 1.0 + k1 * radius2 + k2 * radius2**2 + k3 * radius2**3
+    radial = 1.0 + k1 * radius2 + k2 * radius2 * radius2 + k3 * radius2 * radius2 * radius2
     delta_x = 2.0 * p1 * x * y + p2 * (radius2 + 2.0 * x * x)
     delta_y = p1 * (radius2 + 2.0 * y * y) + 2.0 * p2 * x * y
     return x * radial + delta_x, y * radial + delta_y
@@ -296,8 +335,8 @@ def _undistort(xd: float, yd: float, calibration: Sequence[float]) -> tuple[floa
         projected_x, projected_y = _distort(x, y, calibration)
         residual_x, residual_y = projected_x - xd, projected_y - yd
         radius2 = x * x + y * y
-        radial = 1.0 + k1 * radius2 + k2 * radius2**2 + k3 * radius2**3
-        gradient = k1 + 2.0 * k2 * radius2 + 3.0 * k3 * radius2**2
+        radial = 1.0 + k1 * radius2 + k2 * radius2 * radius2 + k3 * radius2 * radius2 * radius2
+        gradient = k1 + 2.0 * k2 * radius2 + 3.0 * k3 * radius2 * radius2
         dr_dx, dr_dy = 2.0 * x * gradient, 2.0 * y * gradient
         j00 = radial + x * dr_dx + 2.0 * p1 * y + 6.0 * p2 * x
         j01 = x * dr_dy + 2.0 * p1 * x + 2.0 * p2 * y
@@ -336,6 +375,108 @@ def _project(ray: Sequence[float] | None, calibration: Sequence[float], width: i
     if not (0.0 <= x_float <= width - 1 and 0.0 <= y_float <= height - 1):
         return "outside_reference_image", x_float, y_float, None, None
     return "in_fov", x_float, y_float, math.floor(x_float + 0.5), math.floor(y_float + 0.5)
+
+
+def _raw_observation(x: int, y: int, ray: Sequence[float] | None) -> tuple[str, float | None, float | None, int | None, int | None]:
+    """Classify a source pixel without numerically reprojecting its inverse ray.
+
+    The pose-join authority has already established that ``x,y`` are valid sensor
+    coordinates.  A successful inverse-distortion therefore makes RAW in-FOV by
+    definition; round-trip noise at an image edge must not turn the observation
+    into an escape.
+    """
+    if ray is None:
+        return "invalid_distortion", None, None, None, None
+    return "in_fov", float(x), float(y), x, y
+
+
+def _q12(value: float | None) -> int | None:
+    if value is None:
+        return None
+    scale = 10**12
+    return (-1 if value < 0.0 else 1) * math.floor(abs(value) * scale + 0.5)
+
+
+def _oracle_geometry(
+    ray: Sequence[float] | None,
+    projection: tuple[str, float | None, float | None, int | None, int | None],
+    locality: tuple[float | None, float | None],
+) -> dict[str, Any]:
+    return {
+        "geometry_status": projection[0],
+        "reference_ray_q12": None if ray is None else [_q12(value) for value in ray],
+        "projected_x_q12": _q12(projection[1]),
+        "projected_y_q12": _q12(projection[2]),
+        "projected_x_pixel": projection[3],
+        "projected_y_pixel": projection[4],
+        "locality_x_q12": _q12(locality[0]),
+        "locality_y_q12": _q12(locality[1]),
+    }
+
+
+def _oracle_arm_row(
+    arm: str,
+    identity: Mapping[str, int],
+    lookup_timestamp: int | None,
+    bracket: Mapping[str, int] | None,
+    ray: Sequence[float] | None,
+    projection: tuple[str, float | None, float | None, int | None, int | None],
+    locality: tuple[float | None, float | None],
+) -> dict[str, Any]:
+    return {
+        "schema": "redred.uzh_sixarm_independent_oracle.arm/v1",
+        "arm": arm,
+        "dataset_event_index": identity["dataset_event_index"],
+        "join_sequence_index": identity["join_sequence_index"],
+        "timestamp_ns": identity["timestamp_ns"],
+        "raw": {
+            "x": identity["x_raw"],
+            "y": identity["y_raw"],
+            "polarity_01": identity["polarity_01"],
+        },
+        "pose_lookup_timestamp_ns": lookup_timestamp,
+        "pose_bracket": None if bracket is None else dict(bracket),
+        "geometry": _oracle_geometry(ray, projection, locality),
+    }
+
+
+def _available_five_oracle(rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str, Any]:
+    artifacts: dict[str, Any] = {}
+    for arm in AVAILABLE_FIVE_ARM_NAMES:
+        payload = b"".join(_canonical(row) for row in rows[arm])
+        artifacts[arm] = {"rows": len(rows[arm]), "bytes": len(payload), "sha256": _sha(payload)}
+    combined: list[dict[str, Any]] = []
+    for ordinal in range(len(rows["RAW"])):
+        first = rows["RAW"][ordinal]
+        combined.append({
+            "schema": "redred.uzh_sixarm_independent_oracle.available_five/v1",
+            "dataset_event_index": first["dataset_event_index"],
+            "join_sequence_index": first["join_sequence_index"],
+            "timestamp_ns": first["timestamp_ns"],
+            "raw": first["raw"],
+            "arms": {
+                arm: {
+                    **rows[arm][ordinal]["geometry"],
+                    "pose_lookup_timestamp_ns": rows[arm][ordinal]["pose_lookup_timestamp_ns"],
+                    "pose_bracket": rows[arm][ordinal]["pose_bracket"],
+                }
+                for arm in AVAILABLE_FIVE_ARM_NAMES
+            },
+        })
+    payload = b"".join(_canonical(row) for row in combined)
+    artifacts["AVAILABLE_FIVE_COMBINED"] = {"rows": len(combined), "bytes": len(payload), "sha256": _sha(payload)}
+    oof_ids = {
+        arm: [
+            row["dataset_event_index"] for row in rows[arm]
+            if row["geometry"]["geometry_status"] in ("outside_reference_image", "behind_reference")
+        ]
+        for arm in AVAILABLE_FIVE_ARM_NAMES
+    }
+    return {
+        "canonical_artifacts": artifacts,
+        "oof_dataset_event_indices": oof_ids,
+        "oof_dataset_event_indices_sha256": {arm: _sha(_canonical(ids)) for arm, ids in oof_ids.items()},
+    }
 
 
 def _decimal_mapping(value: Any, names: Sequence[str], where: str) -> tuple[float, ...]:
@@ -583,6 +724,20 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
     }
     if spec.get("input_pins") != actual_input_pins:
         raise GeneratorFailure("runtime input bytes/status differ from frozen generator spec")
+    if spec["mode"] == PRODUCTION_MODE:
+        production_actual = {
+            "pose_join_receipt": actual_input_pins["pose_join"]["receipt"]["sha256"],
+            "pose_join_completion": actual_input_pins["pose_join"]["completion"]["sha256"],
+            "pose_join_events": actual_input_pins["pose_join"]["events"]["sha256"],
+            "pose_join_poses": actual_input_pins["pose_join"]["poses"]["sha256"],
+            "pose_join_calibration": actual_input_pins["pose_join"]["calibration"]["sha256"],
+            "join_spec": actual_input_pins["join_spec"]["sha256"],
+            "adapter_events": actual_input_pins["adapter"]["events"]["sha256"],
+            "adapter_receipt": actual_input_pins["adapter"]["receipt"]["sha256"],
+            "adapter_completion": actual_input_pins["adapter"]["completion"]["sha256"],
+        }
+        if production_actual != _PRODUCTION_SHA256:
+            raise GeneratorFailure("production source/adapter bytes differ from frozen canonical pins")
     if spec["retire_contract"]["receipt_sha256"] != _sha(retire_raw):
         raise GeneratorFailure("retire receipt differs from its frozen spec pin")
     retire_times, retire_meta = _retire_receipt(retire_raw, events, epoch_value["epoch"], spec)
@@ -595,6 +750,7 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
     reference_rotation = _rotation(reference_q)
     reference_inverse = _transpose(reference_rotation)
     output: list[dict[str, Any]] = []
+    available_five_rows: dict[str, list[dict[str, Any]]] = {arm: [] for arm in AVAILABLE_FIVE_ARM_NAMES}
     status_counts = {arm: Counter() for arm in ARM_NAMES}
     correct_oof: list[int] = []
     delayed_brackets: list[dict[str, Any]] = []
@@ -647,7 +803,7 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
         delayed_ray = None if raw_ray is None else _normalize(_matvec(delayed_matrix, raw_ray), "delayed ray")
         retire_matrix = _matmul(reference_inverse, _rotation(retire_q))
         retire_ray = None if raw_ray is None else _normalize(_matvec(retire_matrix, raw_ray), "retire ray")
-        raw_projection = _project(raw_ray, calibration, width, height)
+        raw_projection = _raw_observation(identity["x_raw"], identity["y_raw"], raw_ray)
         correct_projection = _project(correct_ray, calibration, width, height)
         wrong_projection = _project(wrong_ray, calibration, width, height)
         delayed_projection = _project(delayed_ray, calibration, width, height)
@@ -689,6 +845,15 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
         }
         for arm, value in arms.items():
             status_counts[arm][value["geometry_status"]] += 1
+        available_five_definitions = {
+            "RAW": (None, None, raw_ray, raw_projection, (float(identity["x_raw"]), float(identity["y_raw"]))),
+            "SENSOR_FIXED": (timestamp, occurrence_bracket, correct_ray, correct_projection, (float(identity["x_raw"]), float(identity["y_raw"]))),
+            "MC_CORRECT": (timestamp, occurrence_bracket, correct_ray, correct_projection, (correct_projection[1], correct_projection[2])),
+            "MC_WRONG": (timestamp, occurrence_bracket, wrong_ray, wrong_projection, (wrong_projection[1], wrong_projection[2])),
+            "MC_DELAYED": (delayed_timestamp, delayed_bracket, delayed_ray, delayed_projection, (delayed_projection[1], delayed_projection[2])),
+        }
+        for arm, (lookup, bracket, ray, projection, locality) in available_five_definitions.items():
+            available_five_rows[arm].append(_oracle_arm_row(arm, identity, lookup, bracket, ray, projection, locality))
         record = {"schema": RECORD_SCHEMA, **identity, "oracle_status": correct_projection[0], "oracle_reference_ray": None if correct_ray is None else list(correct_ray), "arms": arms}
         output.append(record)
         source_bindings.append(_sha(_canonical({"pose_join": event, "adapter": native})))
@@ -711,6 +876,11 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
     }
     if spec["cohort"] != expected_cohort:
         raise GeneratorFailure("cohort identity/ledger differs from frozen generator spec")
+    available_five_oracle = _available_five_oracle(available_five_rows)
+    available_five_status_counts = {
+        arm: {status: status_counts[arm][status] for status in GEOMETRY_STATUSES}
+        for arm in AVAILABLE_FIVE_ARM_NAMES
+    }
     if spec["mode"] == PRODUCTION_MODE:
         if (
             spec["parameter_set_id"] != "UZH-SHAPES-ROTATION-SIXARM-8X8-1MS-DELAY4998186-V1"
@@ -721,10 +891,14 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
             or expected_cohort["last_dataset_event_index"] != 13_857_349
             or expected_cohort["decimal_id_lf_sha256"] != "0eb870ed84539b786d8944330d0618509b7e331eab4ca4b4bba21bc51c3e44f0"
             or expected_cohort["compact_id_array_lf_sha256"] != "3bfedeb52763572d42d285b5b7483356f5156e535e657ecb67b0f1f7cf2a90ac"
-            or {status: status_counts["MC_CORRECT"][status] for status in GEOMETRY_STATUSES} != {"in_fov": 1094, "outside_reference_image": 6, "behind_reference": 0, "invalid_distortion": 0}
-            or correct_oof != [13_856_524, 13_856_654, 13_856_794, 13_857_092, 13_857_160, 13_857_171]
+            or expected_cohort["polarity_0"] != 674
+            or expected_cohort["polarity_1"] != 426
+            or expected_cohort["timestamp_tie_extras"] != 458
+            or available_five_status_counts != _PRODUCTION_FIVE_STATUS_COUNTS
+            or available_five_oracle["oof_dataset_event_indices"] != _PRODUCTION_FIVE_OOF_IDS
+            or {name: value["sha256"] for name, value in available_five_oracle["canonical_artifacts"].items()} != _PRODUCTION_FIVE_ORACLE_HASHES
         ):
-            raise GeneratorFailure("production cohort/count/OOF anchors differ")
+            raise GeneratorFailure("production cohort/five-arm oracle anchors differ")
     evaluation = evaluate_records(output)
     if evaluation.get("status") != "CONTROL_EVALUATION_ONLY_NO_BANDWIDTH_OR_BENEFIT_CLAIM":
         raise GeneratorFailure("controls evaluator status differs")
@@ -759,6 +933,7 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
         "cohort": {**expected_cohort, "source_binding_stream_sha256": _sha(_canonical(source_bindings))},
         "arm_ledgers": {
             "status_counts": {arm: {status_name: status_counts[arm][status_name] for status_name in GEOMETRY_STATUSES} for arm in ARM_NAMES},
+            "available_five_canonical_oracle": available_five_oracle,
             "geometry_denominator_per_arm": len(output),
             "locality_denominator_per_arm": len(output),
             "correct_geometry_crosscheck": {"max_adapter_coordinate_component_error_px": max_adapter_coordinate_error, "rounded_pixel_mismatches": rounded_mismatches, "translation_applied_events": 0, "correct_oof_dataset_event_indices": correct_oof, "correct_oof_dataset_event_indices_sha256": _sha(_canonical(correct_oof))},
@@ -774,17 +949,36 @@ def _transform(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, ret
 
 def _write_file(path: Path, payload: bytes) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags, 0o444)
+    try:
+        descriptor = os.open(path, flags, 0o444)
+    except OSError as error:
+        raise GeneratorFailure(f"cannot create staged artifact {path.name}: {error}") from error
     try:
         view = memoryview(payload)
         while view:
-            count = os.write(descriptor, view)
+            try:
+                count = os.write(descriptor, view)
+            except OSError as error:
+                raise GeneratorFailure(f"cannot write staged artifact {path.name}: {error}") from error
             if count <= 0:
-                raise OSError("short write")
+                raise GeneratorFailure(f"short write for staged artifact {path.name}")
             view = view[count:]
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _rename_noreplace(parent_fd: int, source_name: str, target_name: str) -> None:
+    """Linux renameat2(RENAME_NOREPLACE), fail closed when unavailable."""
+    library = ctypes.CDLL(None, use_errno=True)
+    operation = getattr(library, "renameat2", None)
+    if operation is None:
+        raise GeneratorFailure("atomic no-replace renameat2 is unavailable")
+    operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    operation.restype = ctypes.c_int
+    if operation(parent_fd, os.fsencode(source_name), parent_fd, os.fsencode(target_name), 1) != 0:
+        error_number = ctypes.get_errno()
+        raise GeneratorFailure(f"atomic no-overwrite publication failed: {os.strerror(error_number)}")
 
 
 def _publish(result_dir: Path, events_payload: bytes, core: dict[str, Any]) -> dict[str, Any]:
@@ -793,7 +987,16 @@ def _publish(result_dir: Path, events_payload: bytes, core: dict[str, Any]) -> d
     if result_dir.exists() or result_dir.is_symlink():
         raise GeneratorFailure("result path already exists")
     result_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{result_dir.name}.sixarm-", dir=result_dir.parent))
+    parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        parent_fd = os.open(result_dir.parent, parent_flags)
+    except OSError as error:
+        raise GeneratorFailure(f"cannot pin publication parent: {error}") from error
+    try:
+        staging = Path(tempfile.mkdtemp(prefix=f".{result_dir.name}.sixarm-", dir=result_dir.parent))
+    except Exception:
+        os.close(parent_fd)
+        raise
     try:
         receipt = {**core, "artifact": {"name": OUTPUT_NAME, "size_bytes": len(events_payload), "sha256": _sha(events_payload), "record_count": core["cohort"]["record_count"]}}
         receipt_payload = _canonical(receipt)
@@ -804,18 +1007,22 @@ def _publish(result_dir: Path, events_payload: bytes, core: dict[str, Any]) -> d
         os.chmod(staging, 0o555)
         if result_dir.exists() or result_dir.is_symlink():
             raise GeneratorFailure("result path appeared during publication")
-        os.rename(staging, result_dir)
+        _rename_noreplace(parent_fd, staging.name, result_dir.name)
+        os.fsync(parent_fd)
         return receipt
     except Exception:
         if staging.exists():
             os.chmod(staging, 0o700)
             shutil.rmtree(staging)
         raise
+    finally:
+        os.close(parent_fd)
 
 
 def generate(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, retire_receipt_path: Path, generator_spec_path: Path, result_dir: Path) -> dict[str, Any]:
     """Generate a deterministic six-arm package from five frozen inputs."""
     paths = tuple(Path(value) for value in (pose_join_dir, join_spec_path, adapter_dir, retire_receipt_path, generator_spec_path, result_dir))
+    _validate_input_paths(paths[0], paths[1], paths[2], paths[3], paths[4], paths[5])
     events_payload, core = _transform(paths[0], paths[1], paths[2], paths[3], paths[4])
     receipt = _publish(paths[5], events_payload, core)
     checked = inspect(paths[5], paths[0], paths[1], paths[2], paths[3], paths[4])
@@ -844,8 +1051,31 @@ def _published(result_dir: Path) -> tuple[bytes, dict[str, Any]]:
     return payloads[OUTPUT_NAME], _json(payloads[RECEIPT_NAME], RECEIPT_NAME)
 
 
+def _validate_input_paths(pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, retire_receipt_path: Path, generator_spec_path: Path, result_dir: Path) -> None:
+    inputs = (pose_join_dir, join_spec_path, adapter_dir, retire_receipt_path, generator_spec_path)
+    for path in inputs:
+        _reject_symlink_components(path)
+        if not path.exists():
+            raise GeneratorFailure(f"required input is absent: {path}")
+    for left_index, left in enumerate(inputs):
+        for right in inputs[left_index + 1:]:
+            try:
+                if os.path.samefile(left, right):
+                    raise GeneratorFailure("input authorities must not alias each other")
+            except OSError as error:
+                raise GeneratorFailure(f"cannot establish input identity: {error}") from error
+    result_absolute = result_dir.absolute()
+    for directory in (pose_join_dir.absolute(), adapter_dir.absolute()):
+        try:
+            if os.path.commonpath((str(result_absolute), str(directory))) == str(directory):
+                raise GeneratorFailure("result path must not lie inside an input package")
+        except ValueError as error:
+            raise GeneratorFailure(f"cannot compare result/input paths: {error}") from error
+
+
 def inspect(result_dir: Path, pose_join_dir: Path, join_spec_path: Path, adapter_dir: Path, retire_receipt_path: Path, generator_spec_path: Path) -> dict[str, Any]:
     """Recompute a package from every original authority; no source-free PASS."""
+    _validate_input_paths(Path(pose_join_dir), Path(join_spec_path), Path(adapter_dir), Path(retire_receipt_path), Path(generator_spec_path), Path(result_dir))
     events_payload, receipt = _published(Path(result_dir))
     _strict(receipt, {"schema", "status", "evidence_class", "promotion_status", "input_binding", "parameters", "cohort", "arm_ledgers", "evaluator_result", "claim_scope", "artifact"}, "generator receipt")
     expected_payload, expected_core = _transform(Path(pose_join_dir), Path(join_spec_path), Path(adapter_dir), Path(retire_receipt_path), Path(generator_spec_path))

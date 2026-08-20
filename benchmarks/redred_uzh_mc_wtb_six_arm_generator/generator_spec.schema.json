@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UZH MC-WTB six-arm frozen generator spec",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size_bytes", "sha256"],
+      "properties": {
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "claim_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["official_uzh_source_input", "generated_artifact_official_uzh", "official_redred_traffic", "canonical_redred_traffic", "source_bound_pose_join", "source_bound_correct_adapter", "actual_retire_receipt_bound", "retire_timebase_mapping_validated", "six_controls_generated", "orientation_only", "translation_preserved_not_applied", "depth_or_plane_model_applied", "offline_future_bracket_slerp", "future_pose_lookahead_required", "causal_hardware_claimed", "clock_alignment_validated", "codec_evaluated", "bandwidth_measured", "compression_measured", "benefit_claimed", "rtl_or_ppa_evaluated"],
+      "properties": {
+        "official_uzh_source_input": {"type": "boolean"},
+        "generated_artifact_official_uzh": {"const": false},
+        "official_redred_traffic": {"const": false},
+        "canonical_redred_traffic": {"const": false},
+        "source_bound_pose_join": {"type": "boolean"},
+        "source_bound_correct_adapter": {"type": "boolean"},
+        "actual_retire_receipt_bound": {"type": "boolean"},
+        "retire_timebase_mapping_validated": {"type": "boolean"},
+        "six_controls_generated": {"const": true},
+        "orientation_only": {"const": true},
+        "translation_preserved_not_applied": {"const": true},
+        "depth_or_plane_model_applied": {"const": false},
+        "offline_future_bracket_slerp": {"const": true},
+        "future_pose_lookahead_required": {"const": true},
+        "causal_hardware_claimed": {"const": false},
+        "clock_alignment_validated": {"const": false},
+        "codec_evaluated": {"const": false},
+        "bandwidth_measured": {"const": false},
+        "compression_measured": {"const": false},
+        "benefit_claimed": {"const": false},
+        "rtl_or_ppa_evaluated": {"const": false}
+      }
+    },
+    "cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_count", "first_dataset_event_index", "last_dataset_event_index", "decimal_id_lf_sha256", "compact_id_array_lf_sha256", "polarity_0", "polarity_1", "timestamp_tie_extras"],
+      "properties": {
+        "record_count": {"type": "integer", "minimum": 1},
+        "first_dataset_event_index": {"type": "integer", "minimum": 0},
+        "last_dataset_event_index": {"type": "integer", "minimum": 0},
+        "decimal_id_lf_sha256": {"$ref": "#/$defs/sha256"},
+        "compact_id_array_lf_sha256": {"$ref": "#/$defs/sha256"},
+        "polarity_0": {"type": "integer", "minimum": 0},
+        "polarity_1": {"type": "integer", "minimum": 0},
+        "timestamp_tie_extras": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "mode", "parameter_set_id", "input_pins", "cohort", "geometry_contract", "delay_contract", "retire_contract", "controls_preregistration", "serialization", "claim_scope", "resource_limits"],
+  "properties": {
+    "schema": {"const": "redred.uzh_mc_wtb_controls.generator_spec/v1"},
+    "mode": {"enum": ["PRODUCTION_SOURCE_BOUND", "SYNTHETIC_FIXTURE"]},
+    "parameter_set_id": {"type": "string", "minLength": 1},
+    "input_pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pose_join", "join_spec", "adapter", "retire_receipt"],
+      "properties": {
+        "pose_join": {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "promotion_status", "receipt", "completion", "events", "poses", "calibration"],
+          "properties": {
+            "status": {"const": "PASS_SOURCE_POSE_JOIN_PACKAGE_SCOPED"},
+            "promotion_status": {"const": "HOLD_MC_WTB_ADAPTER"},
+            "receipt": {"$ref": "#/$defs/identity"}, "completion": {"$ref": "#/$defs/identity"},
+            "events": {"$ref": "#/$defs/identity"}, "poses": {"$ref": "#/$defs/identity"},
+            "calibration": {"$ref": "#/$defs/identity"}
+          }
+        },
+        "join_spec": {"$ref": "#/$defs/identity"},
+        "adapter": {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "promotion_status", "receipt", "completion", "events"],
+          "properties": {
+            "status": {"const": "PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED"},
+            "promotion_status": {"const": "HOLD_MC_WTB_REAL_DATA_BENEFIT"},
+            "receipt": {"$ref": "#/$defs/identity"}, "completion": {"$ref": "#/$defs/identity"},
+            "events": {"$ref": "#/$defs/identity"}
+          }
+        },
+        "retire_receipt": {"$ref": "#/$defs/identity"}
+      }
+    },
+    "cohort": {"$ref": "#/$defs/cohort"},
+    "geometry_contract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_schema", "source_pose", "quaternion_order", "reference_timestamp_ns", "translation_policy", "pixel_rounding", "bounds"],
+      "properties": {
+        "record_schema": {"const": "redred.uzh_mc_wtb_controls.adapter_record/v2"},
+        "source_pose": {"const": "camera_to_world_T_WC"},
+        "quaternion_order": {"const": "xyzw"},
+        "reference_timestamp_ns": {"type": "integer", "minimum": 0},
+        "translation_policy": {"const": "preserved_not_applied"},
+        "pixel_rounding": {"const": "floor(value_plus_0.5)"},
+        "bounds": {"const": "continuous_before_rounding"}
+      }
+    },
+    "delay_contract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mc_delayed_delta_ns", "lookup"],
+      "properties": {
+        "mc_delayed_delta_ns": {"type": "integer", "minimum": 0},
+        "lookup": {"const": "occurrence_minus_delta_no_clamp"}
+      }
+    },
+    "retire_contract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provenance_class", "source_timebase", "missing_policy", "receipt_sha256"],
+      "properties": {
+        "provenance_class": {"enum": ["OBSERVED_ENDPOINT_RUN", "SYNTHETIC_TEST_FIXTURE"]},
+        "source_timebase": {
+          "type": "object", "additionalProperties": false,
+          "required": ["unit", "epoch"],
+          "properties": {"unit": {"const": "ns"}, "epoch": {"type": "string", "minLength": 1}}
+        },
+        "missing_policy": {"const": "fail_no_partial_output"},
+        "receipt_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "controls_preregistration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "parameter_set_id", "raw_sha256"],
+      "properties": {
+        "schema": {"const": "redred.uzh_mc_wtb_controls.preregistration/v2"},
+        "parameter_set_id": {"const": "UZH-S2-CONTROLS-8X8-1MS-V2"},
+        "raw_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "serialization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["encoding", "json", "line_ending", "header_in_output"],
+      "properties": {
+        "encoding": {"const": "ASCII"}, "json": {"const": "compact_sorted_keys"},
+        "line_ending": {"const": "LF"}, "header_in_output": {"const": false}
+      }
+    },
+    "claim_scope": {"$ref": "#/$defs/claim_scope"},
+    "resource_limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_pose_bytes", "max_event_bytes", "max_adapter_bytes", "max_retire_bytes", "max_records"],
+      "properties": {
+        "max_pose_bytes": {"type": "integer", "minimum": 1},
+        "max_event_bytes": {"type": "integer", "minimum": 1},
+        "max_adapter_bytes": {"type": "integer", "minimum": 1},
+        "max_retire_bytes": {"type": "integer", "minimum": 1},
+        "max_records": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

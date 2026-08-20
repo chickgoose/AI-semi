@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UZH MC-WTB six-arm generator completion marker",
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size_bytes", "sha256"],
+      "properties": {
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "promotion_status", "artifacts"],
+  "properties": {
+    "schema": {"const": "redred.uzh_mc_wtb_controls.generator_completion/v1"},
+    "status": {"enum": ["PASS_SOURCE_BOUND_SIX_ARM_GENERATOR_SCOPED", "PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE"]},
+    "promotion_status": {"const": "HOLD_MC_WTB_REAL_DATA_BENEFIT"},
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["controls_six_arm.jsonl", "receipt.json"],
+      "properties": {
+        "controls_six_arm.jsonl": {"$ref": "#/$defs/identity"},
+        "receipt.json": {"$ref": "#/$defs/identity"}
+      }
+    }
+  }
+}

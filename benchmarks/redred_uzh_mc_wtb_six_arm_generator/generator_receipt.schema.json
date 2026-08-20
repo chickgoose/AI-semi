@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UZH MC-WTB six-arm generator receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "evidence_class", "promotion_status", "input_binding", "parameters", "cohort", "arm_ledgers", "evaluator_result", "claim_scope", "artifact"],
+  "properties": {
+    "schema": {"const": "redred.uzh_mc_wtb_controls.generator_receipt/v1"},
+    "status": {"enum": ["PASS_SOURCE_BOUND_SIX_ARM_GENERATOR_SCOPED", "PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE"]},
+    "evidence_class": {"const": "SOURCE_BOUND_EQUAL_ID_SIX_ARM_GEOMETRY_CONTROLS"},
+    "promotion_status": {"const": "HOLD_MC_WTB_REAL_DATA_BENEFIT"},
+    "input_binding": {"type": "object"},
+    "parameters": {"type": "object"},
+    "cohort": {"type": "object"},
+    "arm_ledgers": {"type": "object"},
+    "evaluator_result": {"type": "object"},
+    "claim_scope": {"type": "object"},
+    "artifact": {"type": "object"}
+  }
+}

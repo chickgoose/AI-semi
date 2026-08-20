@@ -239,11 +239,68 @@ class SyntheticFixture:
         )
         return stack
 
+    def production_pin_view(self) -> dict[str, str]:
+        pins = self._input_pins()
+        return {
+            "pose_join_receipt": pins["pose_join"]["receipt"]["sha256"],
+            "pose_join_completion": pins["pose_join"]["completion"]["sha256"],
+            "pose_join_events": pins["pose_join"]["events"]["sha256"],
+            "pose_join_poses": pins["pose_join"]["poses"]["sha256"],
+            "pose_join_calibration": pins["pose_join"]["calibration"]["sha256"],
+            "join_spec": pins["join_spec"]["sha256"],
+            "adapter_events": pins["adapter"]["events"]["sha256"],
+            "adapter_receipt": pins["adapter"]["receipt"]["sha256"],
+            "adapter_completion": pins["adapter"]["completion"]["sha256"],
+        }
+
     def args(self, result: Path) -> tuple[Path, ...]:
         return self.joined, self.join_spec, self.adapter, self.retire, self.generator_spec, result
 
 
 class GeneratorNativeTest(unittest.TestCase):
+    def test_raw_top_edge_is_observed_in_fov_without_roundtrip_reclassification(self) -> None:
+        calibration = (
+            199.092366542, 198.82882047, 132.192071378, 110.712660011,
+            -0.368436311798, 0.150947243557, -0.000296130534385,
+            -0.000759431726241, 0.0,
+        )
+        ray = generator._raw_ray(215, 0, calibration)
+        self.assertIsNotNone(ray)
+        roundtrip = generator._project(ray, calibration, 240, 180)
+        self.assertLess(roundtrip[2], 0.0)
+        self.assertEqual(roundtrip[0], "outside_reference_image")
+        self.assertEqual(
+            generator._raw_observation(215, 0, ray),
+            ("in_fov", 215.0, 0.0, 215, 0),
+        )
+
+    def test_official_event_13857156_projection_uses_oracle_multiplication_order(self) -> None:
+        calibration = (
+            199.092366542, 198.82882047, 132.192071378, 110.712660011,
+            -0.368436311798, 0.150947243557, -0.000296130534385,
+            -0.000759431726241, 0.0,
+        )
+        ray = (-0.5428099828647766, -0.2186013185656448, 0.8109073843687098)
+        projection = generator._project(ray, calibration, 240, 180)
+        self.assertEqual(projection[0], "in_fov")
+        self.assertEqual((generator._q12(projection[1]), generator._q12(projection[2])), (18_801_187_420_721, 65_109_152_625_717))
+        self.assertEqual(projection[3:], (19, 65))
+
+    def test_frozen_public_constants_and_committed_schema_ids(self) -> None:
+        self.assertEqual(generator.PRODUCTION_STATUS, "PASS_SOURCE_BOUND_SIX_ARM_GENERATOR_SCOPED")
+        self.assertEqual(generator.SYNTHETIC_STATUS, "PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE")
+        self.assertEqual(generator.PROMOTION_STATUS, "HOLD_MC_WTB_REAL_DATA_BENEFIT")
+        self.assertEqual(generator.IMPLEMENTATION_STATUS, "PASS_SIX_ARM_GENERATOR_IMPLEMENTATION_SCOPED")
+        self.assertEqual(
+            generator._PRODUCTION_FIVE_ORACLE_HASHES["AVAILABLE_FIVE_COMBINED"],
+            "55566cdc189c3519f56ac8d648a74c7b33bb003067e0b1c53c62b404a89cfe2a",
+        )
+        package = Path(generator.__file__).resolve().parent
+        receipt_schema = json.loads((package / "generator_receipt.schema.json").read_text(encoding="ascii"))
+        completion_schema = json.loads((package / "generator_completion.schema.json").read_text(encoding="ascii"))
+        self.assertEqual(receipt_schema["properties"]["schema"]["const"], generator.RECEIPT_SCHEMA)
+        self.assertEqual(completion_schema["properties"]["schema"]["const"], generator.COMPLETION_SCHEMA)
+
     def test_synthetic_six_arm_publish_inspect_and_deterministic_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fixture = SyntheticFixture(Path(directory))
@@ -263,6 +320,7 @@ class GeneratorNativeTest(unittest.TestCase):
             self.assertEqual(len(records), 4)
             self.assertEqual(set(records[0]["arms"]), set(ARM_NAMES))
             for source, record in zip(fixture.events, records):
+                self.assertEqual(record["arms"]["RAW"]["geometry_status"], "in_fov")
                 self.assertEqual(record["arms"]["RETIRE_WARP"]["pose_lookup_timestamp_ns"], source["timestamp_ns"] + 50_000)
                 self.assertIsNone(record["arms"]["RAW"]["pose_lookup_timestamp_ns"])
                 self.assertEqual(record["arms"]["RAW"]["locality_x"], record["arms"]["SENSOR_FIXED"]["locality_x"])
@@ -284,9 +342,84 @@ class GeneratorNativeTest(unittest.TestCase):
             fixture = SyntheticFixture(Path(directory))
             fixture._write_spec(generator.PRODUCTION_MODE)
             result = fixture.root / "official-blocked"
-            with fixture.inspector_patches(official=True), self.assertRaises(generator.GeneratorFailure):
+            with fixture.inspector_patches(official=True), mock.patch.object(generator, "_PRODUCTION_SHA256", fixture.production_pin_view()), self.assertRaises(generator.GeneratorFailure):
                 generator.generate(*fixture.args(result))
             self.assertFalse(result.exists())
+
+    def test_retire_identity_timebase_and_timestamp_mutants_fail_closed(self) -> None:
+        mutations = ("duplicate", "reordered", "pre_occurrence", "out_of_pose_coverage", "timebase")
+        for mutation in mutations:
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                fixture = SyntheticFixture(Path(directory))
+                rows = generator._jsonl(fixture.retire.read_bytes(), "fixture retire")
+                header, records = rows[0], rows[1:]
+                if mutation == "duplicate":
+                    records[1]["dataset_event_index"] = records[0]["dataset_event_index"]
+                elif mutation == "reordered":
+                    records[1], records[2] = records[2], records[1]
+                elif mutation == "pre_occurrence":
+                    records[0]["retire_timestamp_ns"] = records[0]["occurrence_timestamp_ns"] - 1
+                elif mutation == "out_of_pose_coverage":
+                    records[-1]["retire_timestamp_ns"] = 41_326_000_000
+                else:
+                    header["source_timebase"]["epoch"] = "wrong_epoch"
+                if mutation == "timebase":
+                    write(fixture.retire, canonical(header) + b"".join(canonical(row) for row in records))
+                else:
+                    fixture._write_retire(records)
+                fixture._write_spec()
+                result = fixture.root / "blocked"
+                with fixture.inspector_patches(), self.assertRaises(generator.GeneratorFailure):
+                    generator.generate(*fixture.args(result))
+                self.assertFalse(result.exists())
+
+    def test_coherent_repin_cannot_hide_source_divergence_and_symlink_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = SyntheticFixture(Path(directory))
+            rows = generator._jsonl((fixture.joined / "events_pose_join.jsonl").read_bytes(), "join events")
+            rows[1]["x"] += 1
+            write(fixture.joined / "events_pose_join.jsonl", b"".join(canonical(row) for row in rows))
+            fixture._write_spec()
+            result = fixture.root / "coherent-rehash-blocked"
+            with fixture.inspector_patches(), self.assertRaises(generator.GeneratorFailure):
+                generator.generate(*fixture.args(result))
+            self.assertFalse(result.exists())
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = SyntheticFixture(Path(directory))
+            linked = fixture.root / "linked-retire.jsonl"
+            linked.symlink_to(fixture.retire)
+            result = fixture.root / "symlink-blocked"
+            with fixture.inspector_patches(), self.assertRaises(generator.GeneratorFailure):
+                generator.generate(fixture.joined, fixture.join_spec, fixture.adapter, linked, fixture.generator_spec, result)
+            self.assertFalse(result.exists())
+
+    def test_wrong_transpose_and_delayed_lookup_are_not_correct_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = SyntheticFixture(Path(directory))
+            result = fixture.root / "result"
+            with fixture.inspector_patches():
+                generator.generate(*fixture.args(result))
+            records = load_records_jsonl(result / generator.OUTPUT_NAME)
+            separations = []
+            for record in records:
+                correct = record["arms"]["MC_CORRECT"]["reference_ray"]
+                wrong = record["arms"]["MC_WRONG"]["reference_ray"]
+                separations.append(math.sqrt(sum((a - b) ** 2 for a, b in zip(correct, wrong))))
+                self.assertEqual(
+                    record["arms"]["MC_DELAYED"]["pose_lookup_timestamp_ns"],
+                    record["timestamp_ns"] - 4_998_186,
+                )
+            self.assertGreater(max(separations), 1e-4)
+
+    def test_short_write_fails_without_result_or_staging_residue(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = SyntheticFixture(Path(directory))
+            result = fixture.root / "short-write-blocked"
+            with fixture.inspector_patches(), mock.patch.object(generator.os, "write", side_effect=OSError("injected short write")), self.assertRaises(generator.GeneratorFailure):
+                generator.generate(*fixture.args(result))
+            self.assertFalse(result.exists())
+            self.assertEqual(list(fixture.root.glob(".short-write-blocked.sixarm-*")), [])
 
     def test_source_free_inspection_tamper_and_overwrite_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -1,8 +1,8 @@
 # Source-bound UZH MC-WTB six-arm companion generator
 
-This standard-library package consumes four external authorities: a completed
-pose-join package with its exact bound spec, a completed source-bound geometry
-adapter package, and a per-event retire receipt.  It emits the strict controls
+This standard-library package consumes five runtime inputs: a completed
+pose-join package, its exact bound join spec, a completed source-bound geometry
+adapter package, a per-event retire receipt, and a frozen generator spec.  It emits the strict controls
 V2 arms `RAW`, `SENSOR_FIXED`, `MC_CORRECT`, `MC_WRONG`, `MC_DELAYED`, and
 `RETIRE_WARP` without changing the controls evaluator.
 
@@ -11,6 +11,20 @@ qualification.  Its quaternion interpolation, rotation matrices, analytic
 Jacobian radtan inverse, projection, status and arm rays are implemented here
 independently; the production adapter is compared against this path and is not
 used as the geometry oracle.
+The production gate also binds the independent oracle's canonical Q12 hashes,
+status counts, and OOF-ID lists for all five arms available before a retire
+receipt (`RAW` through `MC_DELAYED`).  Its radtan polynomial uses the frozen
+explicit multiplication chain so Python exponentiation reassociation cannot
+silently move a Q12 boundary.
+
+The public API is exactly:
+
+```python
+generate(pose_join_dir, join_spec_path, adapter_dir, retire_receipt_path,
+         generator_spec_path, result_dir)
+inspect(result_dir, pose_join_dir, join_spec_path, adapter_dir,
+        retire_receipt_path, generator_spec_path)
+```
 
 `RETIRE_WARP` is never inferred from occurrence time, a constant latency,
 cycle period, average, or adapter output.  An official-source run requires an
@@ -20,6 +34,9 @@ contain the supplied per-event retire timestamps.  Missing, synthetic,
 duplicate, reordered, pre-occurrence, or out-of-pose-coverage retire data
 fails before publication.  The repository contains no official retire receipt
 and therefore makes no official six-arm output claim by itself.
+The provenance-class string alone is not authority: the production generator
+spec must pin the reviewer-approved receipt SHA-256 and its producer/run
+evidence before generation.
 
 Synthetic retire receipts are accepted only with a `SYNTHETIC_FIXTURE` generator
 spec and non-production fixture authorities.  They receive `PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE`
@@ -32,8 +49,14 @@ Successful production generation is scoped to
 not a throughput, loss, latency-benefit, clock-alignment, codec, wire, RTL or
 PPA measurement.
 
+Implementation acceptance is only
+`PASS_SIX_ARM_GENERATOR_IMPLEMENTATION_SCOPED`.  Until a complete reviewed
+1,100-record retire receipt exists, the release ledger remains
+`HOLD_OFFICIAL_SIX_ARM_GENERATOR`, `HOLD_SOURCE_BOUND_RETIRE_TIMESTAMPS`, and
+`HOLD_MC_WTB_REAL_DATA_BENEFIT`.
+
 `inspect(result, pose_join, join_spec, adapter, retire_receipt, generator_spec)`
-always requires all six objects and recomputes the complete JSONL and receipt.
+always requires the result plus all five source authorities and recomputes the complete JSONL and receipt.
 Self-contained hashes are insufficient.  Publication is deterministic,
 no-overwrite, files-first and `COMPLETE.json`-last through a private sibling
 staging directory.  Concurrent same-UID input swaps and mutable network

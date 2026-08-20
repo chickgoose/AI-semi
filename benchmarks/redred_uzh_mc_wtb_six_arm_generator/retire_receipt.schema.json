@@ -1,8 +1,81 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Retire receipt JSONL record union",
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation_id", "implementation_commit", "config_sha256", "run_id", "raw_run_artifact_sha256"],
+      "properties": {
+        "implementation_id": {"type": "string", "minLength": 1},
+        "implementation_commit": {"type": "string", "minLength": 1},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "run_id": {"type": "string", "minLength": 1},
+        "raw_run_artifact_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "source_timebase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "epoch"],
+      "properties": {
+        "unit": {"const": "ns"},
+        "epoch": {"type": "string", "minLength": 1}
+      }
+    },
+    "retire_clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clock_domain", "unit", "epoch"],
+      "properties": {
+        "clock_domain": {"type": "string", "minLength": 1},
+        "unit": {"type": "string", "minLength": 1},
+        "epoch": {"type": "string", "minLength": 1}
+      }
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "evidence_sha256", "validated"],
+      "properties": {
+        "method": {"type": "string", "minLength": 1},
+        "evidence_sha256": {"$ref": "#/$defs/sha256"},
+        "validated": {"type": "boolean"}
+      }
+    }
+  },
   "oneOf": [
-    {"type": "object", "required": ["schema", "record_type", "provenance_class", "producer", "source_timebase", "retire_clock", "mapping_to_source_timebase", "record_count", "ordered_dataset_event_index_sha256"]},
-    {"type": "object", "required": ["schema", "record_type", "dataset_event_index", "join_sequence_index", "occurrence_timestamp_ns", "accepted_count", "retired_count", "retire_timestamp_ns"]}
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "record_type", "provenance_class", "producer", "source_timebase", "retire_clock", "mapping_to_source_timebase", "record_count", "ordered_dataset_event_index_sha256"],
+      "properties": {
+        "schema": {"const": "redred.uzh_mc_wtb_controls.retire_stream/v1"},
+        "record_type": {"const": "header"},
+        "provenance_class": {"enum": ["OBSERVED_ENDPOINT_RUN", "SYNTHETIC_TEST_FIXTURE"]},
+        "producer": {"$ref": "#/$defs/producer"},
+        "source_timebase": {"$ref": "#/$defs/source_timebase"},
+        "retire_clock": {"$ref": "#/$defs/retire_clock"},
+        "mapping_to_source_timebase": {"$ref": "#/$defs/mapping"},
+        "record_count": {"type": "integer", "minimum": 1},
+        "ordered_dataset_event_index_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "record_type", "dataset_event_index", "join_sequence_index", "occurrence_timestamp_ns", "accepted_count", "retired_count", "retire_timestamp_ns"],
+      "properties": {
+        "schema": {"const": "redred.uzh_mc_wtb_controls.retire_record/v1"},
+        "record_type": {"const": "retire"},
+        "dataset_event_index": {"type": "integer", "minimum": 0},
+        "join_sequence_index": {"type": "integer", "minimum": 0},
+        "occurrence_timestamp_ns": {"type": "integer", "minimum": 0},
+        "accepted_count": {"const": 1},
+        "retired_count": {"const": 1},
+        "retire_timestamp_ns": {"type": "integer", "minimum": 0}
+      }
+    }
   ]
 }
