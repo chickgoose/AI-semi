@@ -1,6 +1,210 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "UZH MC-WTB six-arm generator receipt",
+  "$defs": {
+    "uint": {"type": "integer", "minimum": 0},
+    "positive_int": {"type": "integer", "minimum": 1},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonempty_string": {"type": "string", "minLength": 1},
+    "finite_number": {"type": "number"},
+    "bracket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left_source_pose_index", "right_source_pose_index", "left_timestamp_ns", "right_timestamp_ns", "alpha_numerator_ns", "alpha_denominator_ns"],
+      "properties": {
+        "left_source_pose_index": {"$ref": "#/$defs/uint"},
+        "right_source_pose_index": {"$ref": "#/$defs/uint"},
+        "left_timestamp_ns": {"$ref": "#/$defs/uint"},
+        "right_timestamp_ns": {"$ref": "#/$defs/uint"},
+        "alpha_numerator_ns": {"$ref": "#/$defs/uint"},
+        "alpha_denominator_ns": {"$ref": "#/$defs/positive_int"}
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation_id", "implementation_commit", "config_sha256", "run_id", "raw_run_artifact_sha256"],
+      "properties": {
+        "implementation_id": {"$ref": "#/$defs/nonempty_string"},
+        "implementation_commit": {"$ref": "#/$defs/nonempty_string"},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "run_id": {"$ref": "#/$defs/nonempty_string"},
+        "raw_run_artifact_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "source_timebase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "epoch"],
+      "properties": {
+        "unit": {"const": "ns"},
+        "epoch": {"$ref": "#/$defs/nonempty_string"}
+      }
+    },
+    "retire_clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clock_domain", "unit", "epoch"],
+      "properties": {
+        "clock_domain": {"$ref": "#/$defs/nonempty_string"},
+        "unit": {"$ref": "#/$defs/nonempty_string"},
+        "epoch": {"$ref": "#/$defs/nonempty_string"}
+      }
+    },
+    "timebase_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "evidence_sha256", "validated"],
+      "properties": {
+        "method": {"$ref": "#/$defs/nonempty_string"},
+        "evidence_sha256": {"$ref": "#/$defs/sha256"},
+        "validated": {"type": "boolean"}
+      }
+    },
+    "four_status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["in_fov", "outside_reference_image", "behind_reference", "invalid_distortion"],
+      "properties": {
+        "in_fov": {"$ref": "#/$defs/uint"},
+        "outside_reference_image": {"$ref": "#/$defs/uint"},
+        "behind_reference": {"$ref": "#/$defs/uint"},
+        "invalid_distortion": {"$ref": "#/$defs/uint"}
+      }
+    },
+    "six_status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED", "RETIRE_WARP"],
+      "properties": {
+        "RAW": {"$ref": "#/$defs/four_status_counts"},
+        "SENSOR_FIXED": {"$ref": "#/$defs/four_status_counts"},
+        "MC_CORRECT": {"$ref": "#/$defs/four_status_counts"},
+        "MC_WRONG": {"$ref": "#/$defs/four_status_counts"},
+        "MC_DELAYED": {"$ref": "#/$defs/four_status_counts"},
+        "RETIRE_WARP": {"$ref": "#/$defs/four_status_counts"}
+      }
+    },
+    "canonical_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows", "bytes", "sha256"],
+      "properties": {
+        "rows": {"$ref": "#/$defs/positive_int"},
+        "bytes": {"$ref": "#/$defs/positive_int"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "id_array": {
+      "type": "array",
+      "maxItems": 1100,
+      "items": {"$ref": "#/$defs/uint"}
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p50", "p95", "p99", "max", "rms"],
+      "properties": {
+        "p50": {"$ref": "#/$defs/finite_number"},
+        "p95": {"$ref": "#/$defs/finite_number"},
+        "p99": {"$ref": "#/$defs/finite_number"},
+        "max": {"$ref": "#/$defs/finite_number"},
+        "rms": {"$ref": "#/$defs/finite_number"}
+      }
+    },
+    "concentration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["denominator_events", "active_keys", "events_per_key", "hhi_numerator", "hhi_denominator", "hhi", "same_key_pair_numerator", "same_key_pair_denominator", "same_key_pair_concentration"],
+      "properties": {
+        "denominator_events": {"$ref": "#/$defs/positive_int"},
+        "active_keys": {"$ref": "#/$defs/positive_int"},
+        "events_per_key": {
+          "type": "object", "additionalProperties": false,
+          "required": ["p50", "p95", "max"],
+          "properties": {"p50": {"$ref": "#/$defs/positive_int"}, "p95": {"$ref": "#/$defs/positive_int"}, "max": {"$ref": "#/$defs/positive_int"}}
+        },
+        "hhi_numerator": {"$ref": "#/$defs/positive_int"},
+        "hhi_denominator": {"$ref": "#/$defs/positive_int"},
+        "hhi": {"type": "number", "minimum": 0, "maximum": 1},
+        "same_key_pair_numerator": {"$ref": "#/$defs/uint"},
+        "same_key_pair_denominator": {"$ref": "#/$defs/uint"},
+        "same_key_pair_concentration": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "geometry_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["denominator_events", "penalized_error_events", "invalid_penalty_degrees", "status_counts", "angular_error_degrees", "meets_correct_geometry_gate"],
+      "properties": {
+        "denominator_events": {"$ref": "#/$defs/positive_int"},
+        "penalized_error_events": {"$ref": "#/$defs/uint"},
+        "invalid_penalty_degrees": {"const": 180.0},
+        "status_counts": {"$ref": "#/$defs/four_status_counts"},
+        "angular_error_degrees": {"$ref": "#/$defs/summary"},
+        "meets_correct_geometry_gate": {"type": "boolean"}
+      }
+    },
+    "locality_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate_events", "escape_events", "persistent_map", "packet_key"],
+      "properties": {
+        "coordinate_events": {"$ref": "#/$defs/uint"},
+        "escape_events": {"$ref": "#/$defs/uint"},
+        "persistent_map": {"$ref": "#/$defs/concentration"},
+        "packet_key": {"$ref": "#/$defs/concentration"}
+      }
+    },
+    "arm_evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geometry", "tile_locality_opportunity"],
+      "properties": {
+        "geometry": {"$ref": "#/$defs/geometry_result"},
+        "tile_locality_opportunity": {"$ref": "#/$defs/locality_result"}
+      }
+    },
+    "timing_control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["correct_to_control_ray_separation_degrees", "all_rays_valid", "informative", "identified"],
+      "properties": {
+        "correct_to_control_ray_separation_degrees": {"$ref": "#/$defs/summary"},
+        "all_rays_valid": {"type": "boolean"},
+        "informative": {"type": "boolean"},
+        "identified": {"type": "boolean"}
+      }
+    },
+    "generator_claim_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["official_uzh_source_input", "generated_artifact_official_uzh", "official_redred_traffic", "canonical_redred_traffic", "source_bound_pose_join", "source_bound_correct_adapter", "actual_retire_receipt_bound", "retire_timebase_mapping_validated", "six_controls_generated", "orientation_only", "translation_preserved_not_applied", "depth_or_plane_model_applied", "offline_future_bracket_slerp", "future_pose_lookahead_required", "causal_hardware_claimed", "clock_alignment_validated", "codec_evaluated", "bandwidth_measured", "compression_measured", "benefit_claimed", "rtl_or_ppa_evaluated"],
+      "properties": {
+        "official_uzh_source_input": {"type": "boolean"},
+        "generated_artifact_official_uzh": {"const": false},
+        "official_redred_traffic": {"const": false},
+        "canonical_redred_traffic": {"const": false},
+        "source_bound_pose_join": {"type": "boolean"},
+        "source_bound_correct_adapter": {"type": "boolean"},
+        "actual_retire_receipt_bound": {"type": "boolean"},
+        "retire_timebase_mapping_validated": {"type": "boolean"},
+        "six_controls_generated": {"const": true},
+        "orientation_only": {"const": true},
+        "translation_preserved_not_applied": {"const": true},
+        "depth_or_plane_model_applied": {"const": false},
+        "offline_future_bracket_slerp": {"const": true},
+        "future_pose_lookahead_required": {"const": true},
+        "causal_hardware_claimed": {"const": false},
+        "clock_alignment_validated": {"const": false},
+        "codec_evaluated": {"const": false},
+        "bandwidth_measured": {"const": false},
+        "compression_measured": {"const": false},
+        "benefit_claimed": {"const": false},
+        "rtl_or_ppa_evaluated": {"const": false}
+      }
+    }
+  },
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "status", "evidence_class", "promotion_status", "input_binding", "parameters", "cohort", "arm_ledgers", "evaluator_result", "claim_scope", "artifact"],
@@ -9,12 +213,161 @@
     "status": {"enum": ["PASS_SOURCE_BOUND_SIX_ARM_GENERATOR_SCOPED", "PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE"]},
     "evidence_class": {"const": "SOURCE_BOUND_EQUAL_ID_SIX_ARM_GEOMETRY_CONTROLS"},
     "promotion_status": {"const": "HOLD_MC_WTB_REAL_DATA_BENEFIT"},
-    "input_binding": {"type": "object"},
-    "parameters": {"type": "object"},
-    "cohort": {"type": "object"},
-    "arm_ledgers": {"type": "object"},
-    "evaluator_result": {"type": "object"},
-    "claim_scope": {"type": "object"},
-    "artifact": {"type": "object"}
+    "input_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pose_join", "join_spec", "adapter", "retire_receipt", "generator_spec", "controls_preregistration", "generator_implementation"],
+      "properties": {
+        "pose_join": {
+          "type": "object", "additionalProperties": false,
+          "required": ["receipt_sha256", "completion_sha256", "events_sha256", "poses_sha256", "calibration_sha256"],
+          "properties": {"receipt_sha256": {"$ref": "#/$defs/sha256"}, "completion_sha256": {"$ref": "#/$defs/sha256"}, "events_sha256": {"$ref": "#/$defs/sha256"}, "poses_sha256": {"$ref": "#/$defs/sha256"}, "calibration_sha256": {"$ref": "#/$defs/sha256"}}
+        },
+        "join_spec": {
+          "type": "object", "additionalProperties": false, "required": ["basename", "raw_sha256"],
+          "properties": {"basename": {"$ref": "#/$defs/nonempty_string"}, "raw_sha256": {"$ref": "#/$defs/sha256"}}
+        },
+        "adapter": {
+          "type": "object", "additionalProperties": false, "required": ["receipt_sha256", "completion_sha256", "events_sha256"],
+          "properties": {"receipt_sha256": {"$ref": "#/$defs/sha256"}, "completion_sha256": {"$ref": "#/$defs/sha256"}, "events_sha256": {"$ref": "#/$defs/sha256"}}
+        },
+        "retire_receipt": {
+          "type": "object", "additionalProperties": false,
+          "required": ["basename", "size_bytes", "raw_sha256", "provenance_class", "producer", "source_timebase", "retire_clock", "mapping_to_source_timebase"],
+          "properties": {
+            "basename": {"$ref": "#/$defs/nonempty_string"}, "size_bytes": {"$ref": "#/$defs/positive_int"}, "raw_sha256": {"$ref": "#/$defs/sha256"},
+            "provenance_class": {"enum": ["OBSERVED_ENDPOINT_RUN", "SYNTHETIC_TEST_FIXTURE"]},
+            "producer": {"$ref": "#/$defs/producer"}, "source_timebase": {"$ref": "#/$defs/source_timebase"},
+            "retire_clock": {"$ref": "#/$defs/retire_clock"}, "mapping_to_source_timebase": {"$ref": "#/$defs/timebase_mapping"}
+          }
+        },
+        "generator_spec": {
+          "type": "object", "additionalProperties": false, "required": ["basename", "size_bytes", "raw_sha256", "parameter_set_id", "mode"],
+          "properties": {"basename": {"$ref": "#/$defs/nonempty_string"}, "size_bytes": {"$ref": "#/$defs/positive_int"}, "raw_sha256": {"$ref": "#/$defs/sha256"}, "parameter_set_id": {"$ref": "#/$defs/nonempty_string"}, "mode": {"enum": ["PRODUCTION_SOURCE_BOUND", "SYNTHETIC_FIXTURE"]}}
+        },
+        "controls_preregistration": {
+          "type": "object", "additionalProperties": false, "required": ["basename", "size_bytes", "raw_sha256", "parameter_set_id"],
+          "properties": {"basename": {"const": "preregistered.json"}, "size_bytes": {"$ref": "#/$defs/positive_int"}, "raw_sha256": {"$ref": "#/$defs/sha256"}, "parameter_set_id": {"const": "UZH-S2-CONTROLS-8X8-1MS-V2"}}
+        },
+        "generator_implementation": {
+          "type": "object", "additionalProperties": false, "required": ["module", "source_sha256"],
+          "properties": {"module": {"const": "benchmarks/redred_uzh_mc_wtb_six_arm_generator/generator.py"}, "source_sha256": {"$ref": "#/$defs/sha256"}}
+        }
+      }
+    },
+    "parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reference_timestamp_ns", "mc_delayed_delta_ns", "reference_bracket"],
+      "properties": {"reference_timestamp_ns": {"$ref": "#/$defs/uint"}, "mc_delayed_delta_ns": {"$ref": "#/$defs/uint"}, "reference_bracket": {"$ref": "#/$defs/bracket"}}
+    },
+    "cohort": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_count", "first_dataset_event_index", "last_dataset_event_index", "decimal_id_lf_sha256", "compact_id_array_lf_sha256", "polarity_0", "polarity_1", "timestamp_tie_extras", "source_binding_stream_sha256"],
+      "properties": {
+        "record_count": {"$ref": "#/$defs/positive_int"}, "first_dataset_event_index": {"$ref": "#/$defs/uint"}, "last_dataset_event_index": {"$ref": "#/$defs/uint"},
+        "decimal_id_lf_sha256": {"$ref": "#/$defs/sha256"}, "compact_id_array_lf_sha256": {"$ref": "#/$defs/sha256"},
+        "polarity_0": {"$ref": "#/$defs/uint"}, "polarity_1": {"$ref": "#/$defs/uint"}, "timestamp_tie_extras": {"$ref": "#/$defs/uint"}, "source_binding_stream_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "arm_ledgers": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status_counts", "available_five_canonical_oracle", "geometry_denominator_per_arm", "locality_denominator_per_arm", "correct_geometry_crosscheck", "delayed_lookup_bracket_stream_sha256", "retire_lookup_bracket_stream_sha256", "conservation"],
+      "properties": {
+        "status_counts": {"$ref": "#/$defs/six_status_counts"},
+        "available_five_canonical_oracle": {
+          "type": "object", "additionalProperties": false,
+          "required": ["canonical_artifacts", "oof_dataset_event_indices", "oof_dataset_event_indices_sha256"],
+          "properties": {
+            "canonical_artifacts": {
+              "type": "object", "additionalProperties": false,
+              "required": ["RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED", "AVAILABLE_FIVE_COMBINED"],
+              "properties": {"RAW": {"$ref": "#/$defs/canonical_artifact"}, "SENSOR_FIXED": {"$ref": "#/$defs/canonical_artifact"}, "MC_CORRECT": {"$ref": "#/$defs/canonical_artifact"}, "MC_WRONG": {"$ref": "#/$defs/canonical_artifact"}, "MC_DELAYED": {"$ref": "#/$defs/canonical_artifact"}, "AVAILABLE_FIVE_COMBINED": {"$ref": "#/$defs/canonical_artifact"}}
+            },
+            "oof_dataset_event_indices": {
+              "type": "object", "additionalProperties": false, "required": ["RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED"],
+              "properties": {"RAW": {"$ref": "#/$defs/id_array"}, "SENSOR_FIXED": {"$ref": "#/$defs/id_array"}, "MC_CORRECT": {"$ref": "#/$defs/id_array"}, "MC_WRONG": {"$ref": "#/$defs/id_array"}, "MC_DELAYED": {"$ref": "#/$defs/id_array"}}
+            },
+            "oof_dataset_event_indices_sha256": {
+              "type": "object", "additionalProperties": false, "required": ["RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED"],
+              "properties": {"RAW": {"$ref": "#/$defs/sha256"}, "SENSOR_FIXED": {"$ref": "#/$defs/sha256"}, "MC_CORRECT": {"$ref": "#/$defs/sha256"}, "MC_WRONG": {"$ref": "#/$defs/sha256"}, "MC_DELAYED": {"$ref": "#/$defs/sha256"}}
+            }
+          }
+        },
+        "geometry_denominator_per_arm": {"$ref": "#/$defs/positive_int"},
+        "locality_denominator_per_arm": {"$ref": "#/$defs/positive_int"},
+        "correct_geometry_crosscheck": {
+          "type": "object", "additionalProperties": false,
+          "required": ["max_adapter_coordinate_component_error_px", "rounded_pixel_mismatches", "translation_applied_events", "correct_oof_dataset_event_indices", "correct_oof_dataset_event_indices_sha256"],
+          "properties": {"max_adapter_coordinate_component_error_px": {"type": "number", "minimum": 0}, "rounded_pixel_mismatches": {"$ref": "#/$defs/uint"}, "translation_applied_events": {"const": 0}, "correct_oof_dataset_event_indices": {"$ref": "#/$defs/id_array"}, "correct_oof_dataset_event_indices_sha256": {"$ref": "#/$defs/sha256"}}
+        },
+        "delayed_lookup_bracket_stream_sha256": {"$ref": "#/$defs/sha256"},
+        "retire_lookup_bracket_stream_sha256": {"$ref": "#/$defs/sha256"},
+        "conservation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["source_events", "controls_records", "arms_per_record", "arm_entries", "dropped", "duplicate", "reordered", "missing_arms"],
+          "properties": {"source_events": {"$ref": "#/$defs/positive_int"}, "controls_records": {"$ref": "#/$defs/positive_int"}, "arms_per_record": {"const": 6}, "arm_entries": {"$ref": "#/$defs/positive_int"}, "dropped": {"const": 0}, "duplicate": {"const": 0}, "reordered": {"const": 0}, "missing_arms": {"const": 0}}
+        }
+      }
+    },
+    "evaluator_result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "status", "cohort", "pre_registered_parameters", "arms", "geometry_control_gate", "claim_scope"],
+      "properties": {
+        "schema": {"const": "redred.uzh_mc_wtb_controls.evaluation/v2"},
+        "status": {"const": "CONTROL_EVALUATION_ONLY_NO_BANDWIDTH_OR_BENEFIT_CLAIM"},
+        "cohort": {
+          "type": "object", "additionalProperties": false,
+          "required": ["admitted_event_count", "first_dataset_event_index", "last_dataset_event_index", "ordered_dataset_event_index_sha256", "ordered_dataset_event_index_hash_grammar", "arm_names", "equal_event_ids_by_construction", "raw_sensor_fixed_relation"],
+          "properties": {
+            "admitted_event_count": {"$ref": "#/$defs/positive_int"}, "first_dataset_event_index": {"$ref": "#/$defs/uint"}, "last_dataset_event_index": {"$ref": "#/$defs/uint"}, "ordered_dataset_event_index_sha256": {"$ref": "#/$defs/sha256"},
+            "ordered_dataset_event_index_hash_grammar": {"const": "ascii_decimal_dataset_event_index_plus_lf_per_record"},
+            "arm_names": {"type": "array", "minItems": 6, "maxItems": 6, "prefixItems": [{"const": "RAW"}, {"const": "SENSOR_FIXED"}, {"const": "MC_CORRECT"}, {"const": "MC_WRONG"}, {"const": "MC_DELAYED"}, {"const": "RETIRE_WARP"}], "items": false},
+            "equal_event_ids_by_construction": {"const": true},
+            "raw_sensor_fixed_relation": {
+              "type": "object", "additionalProperties": false,
+              "required": ["locality_coordinates_exact_equal", "raw_pose_transform", "sensor_fixed_geometry_evaluation", "geometry_ray_equality_required"],
+              "properties": {"locality_coordinates_exact_equal": {"const": true}, "raw_pose_transform": {"const": "none"}, "sensor_fixed_geometry_evaluation": {"const": "receiver_side_occurrence_pose"}, "geometry_ray_equality_required": {"const": false}}
+            }
+          }
+        },
+        "pre_registered_parameters": {
+          "type": "object", "additionalProperties": false,
+          "required": ["tile_width_px", "tile_height_px", "tile_origin_x_px", "tile_origin_y_px", "tile_boundary", "time_bin_ns", "time_origin_ns", "time_assignment"],
+          "properties": {"tile_width_px": {"const": 8}, "tile_height_px": {"const": 8}, "tile_origin_x_px": {"const": 0}, "tile_origin_y_px": {"const": 0}, "tile_boundary": {"const": "half_open_floor"}, "time_bin_ns": {"const": 1000000}, "time_origin_ns": {"const": 41321000000}, "time_assignment": {"const": "occurrence_timestamp_for_every_arm"}}
+        },
+        "arms": {
+          "type": "object", "additionalProperties": false,
+          "required": ["RAW", "SENSOR_FIXED", "MC_CORRECT", "MC_WRONG", "MC_DELAYED", "RETIRE_WARP"],
+          "properties": {"RAW": {"$ref": "#/$defs/arm_evaluation"}, "SENSOR_FIXED": {"$ref": "#/$defs/arm_evaluation"}, "MC_CORRECT": {"$ref": "#/$defs/arm_evaluation"}, "MC_WRONG": {"$ref": "#/$defs/arm_evaluation"}, "MC_DELAYED": {"$ref": "#/$defs/arm_evaluation"}, "RETIRE_WARP": {"$ref": "#/$defs/arm_evaluation"}}
+        },
+        "geometry_control_gate": {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "sensor_fixed_and_mc_correct_meet_absolute_gate", "mc_wrong", "timing_controls"],
+          "properties": {
+            "status": {"enum": ["PASS_GEOMETRY_CONTROLS_ONLY", "FAIL_PRIMARY_GEOMETRY", "HOLD_WRONG_CONTROL_NOT_IDENTIFIED", "HOLD_TIMING_CONTROLS_UNINFORMATIVE", "HOLD_TIMING_CONTROLS_NOT_IDENTIFIED"]},
+            "sensor_fixed_and_mc_correct_meet_absolute_gate": {"type": "boolean"},
+            "mc_wrong": {
+              "type": "object", "additionalProperties": false,
+              "required": ["p95_absolute_delta_degrees", "p95_ratio_to_correct", "p95_ratio_is_unbounded_from_zero_correct_error", "all_rays_valid", "identified"],
+              "properties": {"p95_absolute_delta_degrees": {"$ref": "#/$defs/finite_number"}, "p95_ratio_to_correct": {"type": ["number", "null"]}, "p95_ratio_is_unbounded_from_zero_correct_error": {"type": "boolean"}, "all_rays_valid": {"type": "boolean"}, "identified": {"type": "boolean"}}
+            },
+            "timing_controls": {
+              "type": "object", "additionalProperties": false, "required": ["MC_DELAYED", "RETIRE_WARP"],
+              "properties": {"MC_DELAYED": {"$ref": "#/$defs/timing_control"}, "RETIRE_WARP": {"$ref": "#/$defs/timing_control"}}
+            }
+          }
+        },
+        "claim_scope": {
+          "type": "object", "additionalProperties": false,
+          "required": ["geometry_control_evaluation", "tile_locality_opportunity", "bandwidth_measured", "compression_measured", "benefit_claimed", "codec_evaluated", "rtl_or_ppa_evaluated"],
+          "properties": {"geometry_control_evaluation": {"const": true}, "tile_locality_opportunity": {"const": true}, "bandwidth_measured": {"const": false}, "compression_measured": {"const": false}, "benefit_claimed": {"const": false}, "codec_evaluated": {"const": false}, "rtl_or_ppa_evaluated": {"const": false}}
+        }
+      }
+    },
+    "claim_scope": {"$ref": "#/$defs/generator_claim_scope"},
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "size_bytes", "sha256", "record_count"],
+      "properties": {"name": {"const": "controls_six_arm.jsonl"}, "size_bytes": {"$ref": "#/$defs/positive_int"}, "sha256": {"$ref": "#/$defs/sha256"}, "record_count": {"$ref": "#/$defs/positive_int"}}
+    }
   }
 }

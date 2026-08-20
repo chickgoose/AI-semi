@@ -35,8 +35,11 @@ duplicate, reordered, pre-occurrence, or out-of-pose-coverage retire data
 fails before publication.  The repository contains no official retire receipt
 and therefore makes no official six-arm output claim by itself.
 The provenance-class string alone is not authority: the production generator
-spec must pin the reviewer-approved receipt SHA-256 and its producer/run
-evidence before generation.
+accepts only retire JSONL bytes that a reviewer has approved out-of-band and
+pinned by SHA-256 in the generator spec.  Authenticity of the producer,
+configuration, raw-run artifact, and clock-mapping evidence is not established
+by their digest strings and remains an external review gate.  Official
+promotion therefore remains HOLD even when the generator accepts the receipt.
 
 Synthetic retire receipts are accepted only with a `SYNTHETIC_FIXTURE` generator
 spec and non-production fixture authorities.  They receive `PASS_SYNTHETIC_SIX_ARM_GENERATOR_FIXTURE`
@@ -61,6 +64,12 @@ Self-contained hashes are insufficient.  Publication is deterministic,
 no-overwrite, files-first and `COMPLETE.json`-last through a private sibling
 staging directory.  Concurrent same-UID input swaps and mutable network
 filesystems remain outside this local filesystem threat model.
+
+Publication requires Linux `renameat2(RENAME_NOREPLACE)` and fails closed when
+that primitive is unavailable.  The supported development path is WSL/Linux,
+matching the Linux server environment.  Native Windows execution is not
+supported or claimed.  The package otherwise uses only the Python standard
+library and has no external runtime dependency.
 
 The available A23 projected replay is negative evidence, not a retire input:
 its 1x summaries report `generated=1100`, `source_overrun=81`, and

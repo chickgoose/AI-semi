@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +27,74 @@ def sha(data: bytes) -> str:
 def write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
+
+
+class SchemaSubsetError(AssertionError):
+    """The committed receipt schema subset rejected an instance."""
+
+
+def validate_schema_subset(value: object, schema: dict, root: dict | None = None, path: str = "$") -> None:
+    """Validate the Draft 2020-12 keywords used by the committed receipt schema."""
+    root = schema if root is None else root
+    if "$ref" in schema:
+        reference = schema["$ref"]
+        if not isinstance(reference, str) or not reference.startswith("#/$defs/"):
+            raise SchemaSubsetError(f"{path}: unsupported reference {reference!r}")
+        validate_schema_subset(value, root["$defs"][reference.removeprefix("#/$defs/")], root, path)
+        return
+    if "const" in schema and value != schema["const"]:
+        raise SchemaSubsetError(f"{path}: const mismatch")
+    if "enum" in schema and value not in schema["enum"]:
+        raise SchemaSubsetError(f"{path}: enum mismatch")
+    type_names = schema.get("type")
+    if type_names is not None:
+        type_names = [type_names] if isinstance(type_names, str) else type_names
+        checks = {
+            "object": lambda item: isinstance(item, dict),
+            "array": lambda item: isinstance(item, list),
+            "string": lambda item: isinstance(item, str),
+            "integer": lambda item: isinstance(item, int) and not isinstance(item, bool),
+            "number": lambda item: isinstance(item, (int, float)) and not isinstance(item, bool) and math.isfinite(item),
+            "boolean": lambda item: isinstance(item, bool),
+            "null": lambda item: item is None,
+        }
+        if not any(checks[name](value) for name in type_names):
+            raise SchemaSubsetError(f"{path}: type mismatch")
+    if isinstance(value, dict):
+        required = schema.get("required", [])
+        missing = set(required) - set(value)
+        if missing:
+            raise SchemaSubsetError(f"{path}: missing {sorted(missing)}")
+        properties = schema.get("properties", {})
+        if schema.get("additionalProperties") is False:
+            extra = set(value) - set(properties)
+            if extra:
+                raise SchemaSubsetError(f"{path}: extra {sorted(extra)}")
+        for name, child in properties.items():
+            if name in value:
+                validate_schema_subset(value[name], child, root, f"{path}.{name}")
+    if isinstance(value, list):
+        if len(value) < schema.get("minItems", 0) or len(value) > schema.get("maxItems", len(value)):
+            raise SchemaSubsetError(f"{path}: array length")
+        for index, child in enumerate(schema.get("prefixItems", [])):
+            if index < len(value):
+                validate_schema_subset(value[index], child, root, f"{path}[{index}]")
+        items = schema.get("items")
+        if items is False and len(value) > len(schema.get("prefixItems", [])):
+            raise SchemaSubsetError(f"{path}: additional array item")
+        if isinstance(items, dict):
+            for index, item in enumerate(value):
+                validate_schema_subset(item, items, root, f"{path}[{index}]")
+    if isinstance(value, str):
+        if len(value) < schema.get("minLength", 0):
+            raise SchemaSubsetError(f"{path}: string too short")
+        if "pattern" in schema and re.fullmatch(schema["pattern"], value) is None:
+            raise SchemaSubsetError(f"{path}: pattern mismatch")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            raise SchemaSubsetError(f"{path}: below minimum")
+        if "maximum" in schema and value > schema["maximum"]:
+            raise SchemaSubsetError(f"{path}: above maximum")
 
 
 class SyntheticFixture:
@@ -258,6 +328,44 @@ class SyntheticFixture:
 
 
 class GeneratorNativeTest(unittest.TestCase):
+    def test_receipt_schema_accepts_emitted_sample_and_rejects_nested_malformed_receipts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = SyntheticFixture(Path(directory))
+            result = fixture.root / "schema-sample"
+            with fixture.inspector_patches():
+                generator.generate(*fixture.args(result))
+            receipt = json.loads((result / generator.RECEIPT_NAME).read_text(encoding="ascii"))
+            schema_path = Path(generator.__file__).resolve().parent / "generator_receipt.schema.json"
+            schema = json.loads(schema_path.read_text(encoding="ascii"))
+            validate_schema_subset(receipt, schema)
+
+            malformed = []
+            missing_artifact_sha = copy.deepcopy(receipt)
+            del missing_artifact_sha["artifact"]["sha256"]
+            malformed.append(missing_artifact_sha)
+            extra_claim = copy.deepcopy(receipt)
+            extra_claim["claim_scope"]["producer_authenticity_verified"] = True
+            malformed.append(extra_claim)
+            missing_conservation = copy.deepcopy(receipt)
+            del missing_conservation["arm_ledgers"]["conservation"]["missing_arms"]
+            malformed.append(missing_conservation)
+            extra_retire_provenance = copy.deepcopy(receipt)
+            extra_retire_provenance["input_binding"]["retire_receipt"]["mapping_to_source_timebase"]["reviewed"] = True
+            malformed.append(extra_retire_provenance)
+            missing_parameter = copy.deepcopy(receipt)
+            del missing_parameter["parameters"]["reference_bracket"]["alpha_denominator_ns"]
+            malformed.append(missing_parameter)
+            wrong_evaluator_status = copy.deepcopy(receipt)
+            wrong_evaluator_status["evaluator_result"]["status"] = "PASS_GEOMETRY_CONTROLS_ONLY"
+            malformed.append(wrong_evaluator_status)
+            unbounded_evaluator_detail = copy.deepcopy(receipt)
+            unbounded_evaluator_detail["evaluator_result"]["arms"]["RAW"]["geometry"]["undocumented_metric"] = 1
+            malformed.append(unbounded_evaluator_detail)
+
+            for index, mutant in enumerate(malformed):
+                with self.subTest(mutant=index), self.assertRaises(SchemaSubsetError):
+                    validate_schema_subset(mutant, schema)
+
     def test_raw_top_edge_is_observed_in_fov_without_roundtrip_reclassification(self) -> None:
         calibration = (
             199.092366542, 198.82882047, 132.192071378, 110.712660011,
@@ -420,6 +528,18 @@ class GeneratorNativeTest(unittest.TestCase):
                 generator.generate(*fixture.args(result))
             self.assertFalse(result.exists())
             self.assertEqual(list(fixture.root.glob(".short-write-blocked.sixarm-*")), [])
+
+    def test_missing_linux_renameat2_fails_closed_without_publication(self) -> None:
+        class LibcWithoutRenameAt2:
+            pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = SyntheticFixture(Path(directory))
+            result = fixture.root / "renameat2-unavailable"
+            with fixture.inspector_patches(), mock.patch.object(generator.ctypes, "CDLL", return_value=LibcWithoutRenameAt2()), self.assertRaisesRegex(generator.GeneratorFailure, "renameat2 is unavailable"):
+                generator.generate(*fixture.args(result))
+            self.assertFalse(result.exists())
+            self.assertEqual(list(fixture.root.glob(".renameat2-unavailable.sixarm-*")), [])
 
     def test_source_free_inspection_tamper_and_overwrite_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
