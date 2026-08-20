@@ -50,6 +50,21 @@ derive `R_Ct_C0 = R_WCt^T R_WC0` and transpose `R_C0_Ct`, then use an
 analytic-Jacobian radtan inverse to check the emitted warp. Redundant matrices
 need not be serialized.
 
+The native nested event ABI and filename above are accepted. The semantic
+status boundary is nevertheless exact:
+
+```text
+status = PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED
+promotion_status = HOLD_MC_WTB_REAL_DATA_BENEFIT
+```
+
+Both the artifact header and receipt claim scope must bind the offline nature
+of the pose interpolation: `offline_future_bracket_slerp=true`,
+`future_pose_lookahead_required=true`, `causal_hardware_claimed=false`, and
+`clock_alignment_validated=false`. A public inspection without both the
+source pose-join directory and its exact spec must reject and cannot return the
+scoped PASS status.
+
 The receipt contains exact source/output identities, reference and convention
 IDs, one exact artifact identity, and these conservation counters:
 
@@ -89,11 +104,14 @@ REDRED_ADAPTER_PRODUCTION_ROOT=/tmp/redred-mcwtb-adapter-impl \
   bash tests/redred_uzh_mc_wtb_adapter/run_all.sh
 ```
 
-The official joined-artifact test is opt-in and never downloads data:
+The authoritative generated input for the opt-in test is
+`/tmp/uzh-posejoin-c6a`, whose `receipt.json` SHA-256 is
+`85c182e1daa2f380dffa34a559ae2093835b1052c3d9d9a7f5a1f014a9974f87`.
+The test never downloads data:
 
 ```bash
 REDRED_RUN_UZH_ADAPTER_OFFICIAL=1 \
-REDRED_UZH_JOINED_ROOT=/path/to/completed-pose-join \
+REDRED_UZH_JOINED_ROOT=/tmp/uzh-posejoin-c6a \
 REDRED_UZH_JOIN_SPEC=/path/to/join_spec.json \
 REDRED_ADAPTER_PRODUCTION_ROOT=/tmp/redred-mcwtb-adapter-impl \
   bash tests/redred_uzh_mc_wtb_adapter/run_all.sh

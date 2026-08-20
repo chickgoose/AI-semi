@@ -27,6 +27,11 @@ EVENTS_NAME = "events_mc_wtb_adapter.jsonl"
 RECEIPT_NAME = "receipt.json"
 COMPLETE_NAME = "COMPLETE.json"
 EXPECTED_INVENTORY = {EVENTS_NAME, RECEIPT_NAME, COMPLETE_NAME}
+EXPECTED_STATUS = "PASS_POSE_JOIN_TO_ROTATION_GEOMETRY_ADAPTER_SCOPED"
+EXPECTED_PROMOTION = "HOLD_MC_WTB_REAL_DATA_BENEFIT"
+OFFICIAL_JOIN_RECEIPT_SHA256 = (
+    "85c182e1daa2f380dffa34a559ae2093835b1052c3d9d9a7f5a1f014a9974f87"
+)
 
 WORLD = "WORLD_REFERENCE_EVENT"
 RAW_ESCAPE = "RAW_ESCAPE_GEOMETRIC_OOF"
@@ -377,6 +382,25 @@ class AdapterAcceptanceTests(unittest.TestCase):
         if result is not None:
             self.assertFalse((result / COMPLETE_NAME).exists())
 
+    def assert_status_and_offline_scope(
+        self,
+        result: Path,
+        receipt: dict[str, Any],
+        header: dict[str, Any],
+    ) -> None:
+        """Enforce the accepted native ABI's merge-blocking semantic labels."""
+
+        completion = read_json(result / COMPLETE_NAME)
+        for value in (receipt, header, completion):
+            self.assertEqual(value["status"], EXPECTED_STATUS)
+            self.assertEqual(value["promotion_status"], EXPECTED_PROMOTION)
+        for value in (receipt, header):
+            claims = value["claim_scope"]
+            self.assertIs(claims["offline_future_bracket_slerp"], True)
+            self.assertIs(claims["future_pose_lookahead_required"], True)
+            self.assertIs(claims["causal_hardware_claimed"], False)
+            self.assertIs(claims["clock_alignment_validated"], False)
+
     def test_event_conservation_exclusivity_and_raw_escape_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -389,7 +413,10 @@ class AdapterAcceptanceTests(unittest.TestCase):
             self.assertEqual({path.name for path in result.iterdir()}, EXPECTED_INVENTORY)
 
             source = joined_event_records(fixture.joined)
-            _, records = event_rows(result)
+            header, records = event_rows(result)
+            self.assert_status_and_offline_scope(result, receipt, header)
+            self.assertEqual(inspected["status"], EXPECTED_STATUS)
+            self.assertEqual(inspected["promotion_status"], EXPECTED_PROMOTION)
             self.assertEqual(len(records), len(source))
             self.assertEqual(len(records), 9)
             source_by_sequence = {row["join_sequence_index"]: row for row in source}
@@ -432,6 +459,15 @@ class AdapterAcceptanceTests(unittest.TestCase):
             self.assertEqual(inspected["record_count"], 9)
             self.assertEqual(inspected["world_reference_events"], 3)
             self.assertEqual(inspected["raw_escape_geometric_oof"], 6)
+
+    def test_source_and_spec_free_inspection_cannot_return_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = JoinedFixture(root)
+            result = root / "adapter"
+            fixture.run_adapter(result)
+            with self.assertRaises((AdapterFailure, TypeError)):
+                inspect(result)
 
     def test_frame_transpose_radtan_and_exact_six_oof_coordinates(self) -> None:
         calibration = tuple(float(value) for value in CALIBRATION.split())
@@ -637,7 +673,8 @@ class AdapterAcceptanceTests(unittest.TestCase):
                 "codec_or_wire_benefit_claimed", "rtl_timing_power_or_ppa_claimed",
             ):
                 self.assertFalse(claims[name], name)
-            self.assertTrue(first_receipt["promotion_status"].startswith("HOLD_"))
+            self.assertEqual(first_receipt["status"], EXPECTED_STATUS)
+            self.assertEqual(first_receipt["promotion_status"], EXPECTED_PROMOTION)
 
     @unittest.skipUnless(
         os.environ.get("REDRED_RUN_UZH_ADAPTER_OFFICIAL") == "1",
@@ -651,10 +688,12 @@ class AdapterAcceptanceTests(unittest.TestCase):
         joined, spec = Path(joined_value), Path(spec_value)
         self.assertTrue(joined.is_dir())
         self.assertTrue(spec.is_file())
+        self.assertEqual(sha256((joined / RECEIPT_NAME).read_bytes()), OFFICIAL_JOIN_RECEIPT_SHA256)
         with tempfile.TemporaryDirectory() as directory:
             result = Path(directory) / "adapter"
             receipt = adapt(joined, spec, result)
-            _, records = event_rows(result)
+            header, records = event_rows(result)
+            self.assert_status_and_offline_scope(result, receipt, header)
             self.assertEqual(len(records), 1_100)
             counts = receipt["conservation"]
             self.assertEqual(counts["world_reference_events"], 1_094)
