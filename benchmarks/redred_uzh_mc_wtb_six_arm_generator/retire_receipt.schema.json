@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Retire receipt JSONL record union",
+  "oneOf": [
+    {"type": "object", "required": ["schema", "record_type", "provenance_class", "producer", "source_timebase", "retire_clock", "mapping_to_source_timebase", "record_count", "ordered_dataset_event_index_sha256"]},
+    {"type": "object", "required": ["schema", "record_type", "dataset_event_index", "join_sequence_index", "occurrence_timestamp_ns", "accepted_count", "retired_count", "retire_timestamp_ns"]}
+  ]
+}
