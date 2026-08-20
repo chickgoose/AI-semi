@@ -18,7 +18,7 @@ REDRED의 새 목표는 다음과 같다.
 | 1–3 timing·조건·power | timing 확인 필요, 공통 교육용 45 nm PDK와 그 I/O 조건 사용, power는 vectorless | post-layout simulation, 일반 범위 PVT/온도, activity/loading 민감도는 가능하면 수행 | complete endpoint의 고정 operating point timing과 동일 방법 mapped vectorless power를 별도 gate로 둔다 | 주최 측의 정확한 수치 corner/clock/I/O 표와 power-variation 채점 여부 |
 | 평가 철학 | 문제 정의, 혁신성, 기능 성공, 구현 가능성, 사용할 수 있는 PPA, 안정성을 종합 평가 | 문헌 근거와 발표·녹화 demo 강화 | 임의 종합 점수 대신 correctness/loss/throughput/latency/PPA의 원자료와 Pareto 관계를 제시 | 주최 측 AER 점수식이나 pass threshold는 없음 |
 | 좌표 변환 | world↔sensor 변환이 필요할 수 있고 초기에는 motion parameter가 주어진다고 가정 가능 | unknown-motion 추정은 후속 확장 | known-motion 변환은 retire 이후 software system demo로 먼저 검증 | 공식 numeric width, scale, rounding, saturation, pose 동기 규칙과 synthesizable RTL |
-| 4 전체 범위 | 평가 범위는 시스템 전체이며 encoder/decoder/link bottleneck도 성능에 포함 | 핵심부터 완성하고 단계적으로 확장, 10/100 GB/s는 예시 | source admission부터 retirement까지 모든 synthesizable scheduler/buffer/TX/RX/control을 charge | real pad, package, channel을 포함한 silicon PHY 범위 |
+| 4 전체 범위 | 평가 범위는 시스템 전체이며 encoder/decoder/link bottleneck도 성능에 포함 | 핵심부터 완성하고 단계적으로 확장, 10/100 Gbps는 시나리오 예시일 뿐 목표나 합격선이 아님 | source admission부터 retirement까지 모든 synthesizable scheduler/buffer/TX/RX/control을 charge | real pad, package, channel을 포함한 silicon PHY 범위 |
 | 5 event loss | 포착 또는 전송하지 못한 event는 system loss이며 과도한 loss는 성능 실패 | 허용 가능한 수준은 팀 시나리오로 정의 | `generated = source_overrun + accepted`, drain 후 `accepted = retired`; overrun과 accepted-event 오류를 분리 보고 | 주최 측이 정한 허용 loss threshold는 없음 |
 | 6 traffic·dataset | 공식 traffic pattern과 평가 지표는 제공하지 않으며 주최 측 sensor data는 추후 제공 예정 | Zürich/UPenn 공개 dataset 참고 | full50을 candidate-neutral 팀 canonical suite로 유지하고 새 dataset은 versioned extension으로 추가 | 주최 측 dataset bytes, format, license, scenario, 전달 시점 |
 | 7 DDR·clock·primitive | 교육용 45 nm PDK가 제공하는 범위 밖 사용은 제한 | 없음 | 현재 후보는 generated/gated/forwarded/negedge clock이 없는 single-edge endpoint로 한정하고 P6는 역사 자료로만 보존 | 주최 측 허용 cell/clock 구조의 서면 규칙과 single-edge P&R/power |
@@ -82,7 +82,7 @@ A2/A3 선택은 mapped physical·power·PDK/I/O·CDC/RDC가 닫힐 때까지 HOL
 - Genus 합성 면적·전력만으로 post-route 또는 Fmax를 주장하지 않는다.
 - core-only PPA와 complete endpoint PPA를 같은 순위로 섞지 않는다.
 - `capacity22`를 full50 외의 22개 추가 실행으로 합산하지 않는다.
-- 10/100 GB/s 예시를 주최 측 목표 bandwidth로 쓰지 않는다.
+- 10/100 Gbps 시나리오 예시를 주최 측 목표·요구 bandwidth나 합격선으로 쓰지 않는다.
 - full50을 공식 또는 주최 측 dataset이라고 부르지 않는다.
 - P6 standard-cell timing PASS를 organizer legality, ODDR/IDDR pad, package/channel signoff로 확대하지 않는다.
 - coordinate out-of-FOV를 AER transport loss로 분류하지 않는다.
