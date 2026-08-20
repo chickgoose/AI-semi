@@ -1,0 +1,55 @@
+{
+  "schema": "redred.uzh_mc_wtb_controls.preregistration/v1",
+  "parameter_set_id": "UZH-S2-CONTROLS-8X8-1MS-V1",
+  "arms": [
+    "SENSOR_FIXED",
+    "MC_CORRECT",
+    "MC_WRONG",
+    "MC_DELAYED",
+    "RETIRE_WARP"
+  ],
+  "cohort_policy": "one_event_record_contains_every_arm_no_arm_local_filtering",
+  "tile": {
+    "width_px": 8,
+    "height_px": 8,
+    "origin_x_px": 0,
+    "origin_y_px": 0,
+    "boundary": "half_open_floor"
+  },
+  "time_bin": {
+    "width_ns": 1000000,
+    "origin_ns": 41321000000,
+    "assignment": "occurrence_timestamp_for_every_arm"
+  },
+  "invalid_geometry": {
+    "angular_penalty_degrees": 180.0,
+    "locality_key": "event_unique_escape_key",
+    "remains_in_all_denominators": true
+  },
+  "correct_geometry_gate_degrees": {
+    "p50_max": 0.01,
+    "p99_max": 0.05,
+    "max": 0.1,
+    "invalid_or_missing_ray_count": 0
+  },
+  "wrong_control_gate": {
+    "p95_absolute_delta_from_mc_correct_min_degrees": 0.1,
+    "p95_ratio_to_mc_correct_min": 2.0,
+    "invalid_or_missing_ray_count": 0
+  },
+  "timing_control_gate": {
+    "correct_to_control_p95_informative_min_degrees": 0.05,
+    "control_p95_absolute_delta_from_correct_min_degrees": 0.02,
+    "correct_p95_relative_reduction_min": 0.2,
+    "invalid_or_missing_ray_count": 0
+  },
+  "claim_scope": {
+    "geometry_control_evaluation": true,
+    "tile_locality_opportunity": true,
+    "bandwidth_measured": false,
+    "compression_measured": false,
+    "benefit_claimed": false,
+    "codec_evaluated": false,
+    "rtl_or_ppa_evaluated": false
+  }
+}
