@@ -1120,6 +1120,12 @@ class IntegrationTests(unittest.TestCase):
         )
         bounded_record_hash = bounded.decision_records_sha256
         bounded_receipt_hash = bounded.cycle_receipts_sha256
+        bounded_record_bytes = canonical_json_bytes(
+            [record.to_mapping() for record in bounded.records]
+        )
+        bounded_receipt_bytes = canonical_json_bytes(
+            [receipt.to_mapping() for receipt in bounded.cycle_receipts]
+        )
 
         with self.assertRaisesRegex(
             IntegrationError,
@@ -1132,6 +1138,18 @@ class IntegrationTests(unittest.TestCase):
         )
         self.assertEqual(bounded.decision_records_sha256, bounded_record_hash)
         self.assertEqual(bounded.cycle_receipts_sha256, bounded_receipt_hash)
+        self.assertEqual(
+            canonical_json_bytes(
+                [record.to_mapping() for record in bounded.records]
+            ),
+            bounded_record_bytes,
+        )
+        self.assertEqual(
+            canonical_json_bytes(
+                [receipt.to_mapping() for receipt in bounded.cycle_receipts]
+            ),
+            bounded_receipt_bytes,
+        )
         self.assertEqual(accounting.peak_buffer_entries, 1_024)
         self.assertEqual(accounting.minimum_zero_loss_buffer_entries, 1_026)
         self.assertEqual(accounting.operational_waste_event_ids, (0, 1))
@@ -1158,6 +1176,133 @@ class IntegrationTests(unittest.TestCase):
             IntegrationError, "unbounded delayed diagnostic is invalid"
         ):
             integration._derive_accounting(inputs, bounded, converted, invalid)
+
+        swapped_window = run_delayed_unbounded_diagnostic(
+            window_id=window_id + "-swapped",
+            window_start_ns=window_start,
+            events=tuple(events),
+            poses=poses,
+            synthetic_test_mode=True,
+        )
+        with self.assertRaisesRegex(IntegrationError, "input binding differs"):
+            integration._derive_accounting(
+                inputs, bounded, converted, swapped_window
+            )
+
+        timestamp_mutated_events = tuple(
+            replace(event, timestamp_ns=event.timestamp_ns + 1)
+            for event in events
+        )
+        timestamp_mutated = run_delayed_unbounded_diagnostic(
+            window_id=window_id,
+            window_start_ns=window_start,
+            events=timestamp_mutated_events,
+            poses=poses,
+            synthetic_test_mode=True,
+        )
+        with self.assertRaisesRegex(
+            IntegrationError, "admission schedule differs|recomputation differs"
+        ):
+            integration._derive_accounting(
+                inputs, bounded, converted, timestamp_mutated
+            )
+
+        altered_poses = (poses[0], replace(poses[1], pose_sha256=HASH_C))
+        pose_mutated = run_delayed_unbounded_diagnostic(
+            window_id=window_id,
+            window_start_ns=window_start,
+            events=tuple(events),
+            poses=altered_poses,
+            synthetic_test_mode=True,
+        )
+        with self.assertRaisesRegex(IntegrationError, "recomputation differs"):
+            integration._derive_accounting(
+                inputs, bounded, converted, pose_mutated
+            )
+
+        pressure_free_events = tuple(
+            replace(event, causal_pose_index=None) for event in events
+        )
+        pressure_free_poses = [PosePacket.dataset(0, 0, window_start, HASH_A)]
+        pressure_free_poses.extend(
+            PosePacket.dataset(
+                pose_id,
+                timestamp_for_cycle(cycle),
+                window_start,
+                HASH_A if pose_id % 2 == 0 else HASH_B,
+            )
+            for pose_id, cycle in enumerate(range(3, 518), 1)
+        )
+        shallow_diagnostic = run_delayed_unbounded_diagnostic(
+            window_id=window_id,
+            window_start_ns=window_start,
+            events=pressure_free_events,
+            poses=tuple(pressure_free_poses),
+            synthetic_test_mode=True,
+        )
+        self.assertLessEqual(shallow_diagnostic.peak_fifo_depth, 1_024)
+        with self.assertRaisesRegex(IntegrationError, "recomputation differs"):
+            integration._derive_accounting(
+                inputs, bounded, converted, shallow_diagnostic
+            )
+
+        self.assertEqual(
+            canonical_json_bytes(
+                [record.to_mapping() for record in bounded.records]
+            ),
+            bounded_record_bytes,
+        )
+        self.assertEqual(
+            canonical_json_bytes(
+                [receipt.to_mapping() for receipt in bounded.cycle_receipts]
+            ),
+            bounded_receipt_bytes,
+        )
+
+    def test_no_pressure_rejects_attached_unbounded_diagnostic(self):
+        window_id = "synthetic-no-pressure-integration-window"
+        events = (Event(7, 13, causal_pose_index=0),)
+        poses = (
+            PosePacket.dataset(0, 0, 0, HASH_A),
+            PosePacket.dataset(1, 14, 0, HASH_B),
+        )
+        bounded = run_cycle_model(
+            window_id=window_id,
+            window_start_ns=0,
+            arm=Arm.DELAYED_EXACT,
+            events=events,
+            poses=poses,
+            synthetic_test_mode=True,
+        )
+        diagnostic = run_delayed_unbounded_diagnostic(
+            window_id=window_id,
+            window_start_ns=0,
+            events=events,
+            poses=poses,
+            synthetic_test_mode=True,
+        )
+        inputs = integration.WindowCycleInputs(
+            window_id,
+            0,
+            0,
+            100,
+            ({"is_query": True},),
+            events,
+            ((0.0, 0.0, 1.0),),
+            poses,
+            (),
+            {},
+            {},
+        )
+        converted = tuple(
+            integration._convert_record(record) for record in bounded.records
+        )
+        with self.assertRaisesRegex(
+            IntegrationError, "forbidden without full pressure"
+        ):
+            integration._derive_accounting(
+                inputs, bounded, converted, diagnostic
+            )
 
     def test_actual_generated_assay_fixture_builds_all_four_arms(self):
         with tempfile.TemporaryDirectory() as directory:
