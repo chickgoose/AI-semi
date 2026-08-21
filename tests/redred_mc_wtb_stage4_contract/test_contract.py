@@ -24,7 +24,7 @@ class ContractTests(unittest.TestCase):
     def test_frozen_contract_and_existing_registry_validate(self) -> None:
         self.assertEqual(
             self.contract.canonical_sha256,
-            "370cafc9a523b1d9f777eda9083514c27dc2ce64fe793379c616ae9ccc735350",
+            "a95eab8d29196175bb05e3b705f65ce8f0304929f69fece3ed71c974148bf631",
         )
         receipt = validate_existing_registry(self.contract)
         self.assertEqual(receipt.window_count, 24)
@@ -267,18 +267,37 @@ class ContractTests(unittest.TestCase):
                 "transport_sequence_tag_bits": 24,
                 "transport_sequence_tag_modulus": 1 << 24,
                 "transport_sequence_tag_rule": "source_event_id_modulo_2^24",
-                "transport_sequence_tag_uniqueness_required": True,
-                "transport_sequence_tag_uniqueness_scope": (
-                    "per_independently_simulated_window"
+                "independent_reset_domain": "each_independently_simulated_window",
+                "per_window_transport_sequence_tag_uniqueness_required": True,
+                "max_source_event_id_span_per_window_rule": (
+                    "serialized_max_source_event_id_minus_min_source_event_id_"
+                    "strictly_less_than_2^23"
                 ),
+                "global_selected_transport_tags_unique": True,
+                "global_selected_transport_tag_scope": (
+                    "frozen_24_window_assay_artifact"
+                ),
+                "cross_window_source_event_id_range_used_as_live_span": False,
                 "full_source_event_id_scope": (
                     "score_free_artifacts_and_receipts_verification_only"
                 ),
                 "full_source_event_id_hardware_state_bits": 0,
+                "timestamp_bits": 36,
+                "timestamp_role": "retained_functional_motion_data",
                 "maximum_simultaneous_live_records": 1032,
+                "maximum_simultaneous_live_records_role": (
+                    "capacity_fact_only_not_wrap_safety_evidence"
+                ),
                 "serial_number_half_range": 1 << 23,
-                "wrap_safety_relation": "1032_strictly_less_than_2^23",
-                "mismatch_collision_or_half_range_violation": (
+                "wrap_safety_source_event_id_span_rule": (
+                    "every_simultaneously_live_or_replayable_set_max_source_"
+                    "event_id_minus_min_source_event_id_strictly_less_than_2^23"
+                ),
+                "cycle_observer_alias_policy": (
+                    "verify_transport_tags_fail_closed_on_alias_and_never_use_"
+                    "full_source_event_ids_to_mask_collision"
+                ),
+                "mismatch_collision_or_span_violation": (
                     "fail_closed_before_scoring"
                 ),
             },
@@ -289,9 +308,9 @@ class ContractTests(unittest.TestCase):
             self.contract.as_dict()["score_free_accounting"]
             ["common_state_envelope"]["maximum_simultaneous_live_references"],
         )
-        self.assertLess(
-            identity["maximum_simultaneous_live_records"],
-            identity["serial_number_half_range"],
+        self.assertEqual(
+            identity["maximum_simultaneous_live_records_role"],
+            "capacity_fact_only_not_wrap_safety_evidence",
         )
 
     def test_contract_rejects_duplicate_key_extra_field_and_wrong_type(self) -> None:

@@ -55,14 +55,26 @@ the event.
   These are cycle/state accounting constants, not measured physical results.
 - The 24-bit identity field inside each 102-bit event record is a modulo
   transport sequence tag, not a 24-bit dataset event index. For every record,
-  `transport_sequence_tag = source_event_id mod 2^24`, and tags must be unique
-  within each independently simulated window. The full source `event_id`
-  remains in score-free artifacts and receipts for exact verification only;
-  it is not carried as hardware state. At most 1,032 event records may be live
-  simultaneously (1,024 delayed, six ingress, and two pipeline), and
-  `1,032 < 2^23` preserves unambiguous 24-bit serial-number ordering across a
-  wrap. A tag mismatch, within-window collision, or violation of this
-  half-range invariant fails closed before scoring.
+  `transport_sequence_tag = source_event_id mod 2^24`. Each independently
+  simulated window is a reset domain. Its serialized score-free evidence must
+  prove unique tags and
+  `max(source_event_id) - min(source_event_id) < 2^23`. Every set of records
+  that can be simultaneously live or replayable must independently satisfy
+  that same source-ID-span bound; the live-record count alone does not prove
+  wrap safety. The frozen selected 24-window assay must additionally prove
+  global uniqueness of all selected transport tags. This extra artifact-wide
+  collision check does not combine the independent window reset domains, and
+  the roughly 20-million cross-window source-ID range is not a live span and
+  must not be compared with `2^23`.
+- The full source `event_id` remains in score-free artifacts and receipts as
+  verification identity only and contributes zero hardware-state bits. The
+  full 36-bit timestamp remains in the 102-bit record because it is functional
+  motion data. The cycle model and observer must verify the modulo tag and
+  detect aliases in the transport-tag domain; they may not use distinct full
+  source IDs to make colliding tags appear distinct. A tag mismatch,
+  collision, or source-ID-span violation fails closed before scoring. The
+  maximum of 1,032 simultaneously live records (1,024 delayed, six ingress,
+  and two pipeline) remains a separate capacity fact only.
 - The source may present up to six records in one occurrence cycle, matching
   the existing occurrence-preserving baseline. A charged six-entry ingress
   capture takes the complete batch atomically, binds its occurrence pose
@@ -307,13 +319,15 @@ Every arm is conservatively charged the same common logical-state envelope:
 
 The 11-bit live-reference width covers at most 1,032 simultaneous references:
 1,024 delayed, six ingress, and two pipeline records. The 24-bit modulo
-transport sequence tag and 14-bit causal pose index are already inside each
-102-bit event record. The full source `event_id`, receipt, packet, artifact,
-and provenance hashes are verification-only and contribute zero logical
-hardware-state bits. Every arm is conservatively charged a 192-bit pose
-interface at 1,000 packets/s, or exactly 192,000 bit/s. These state and rate
-figures are logical comparison accounting only, not synthesis, mapped-area,
-timing, power, routing, or other PPA evidence.
+transport sequence tag, full 36-bit functional timestamp, and 14-bit causal
+pose index are already inside each 102-bit event record. The full source
+`event_id`, receipt, packet, artifact, and provenance hashes are
+verification-only and contribute zero logical hardware-state bits. The 1,032
+capacity bound is not evidence about source-ID span or wrap safety. Every arm
+is conservatively charged a 192-bit pose interface at 1,000 packets/s, or
+exactly 192,000 bit/s. These state and rate figures are logical comparison
+accounting only, not synthesis, mapped-area, timing, power, routing, or other
+PPA evidence.
 
 Latency percentiles use nearest rank on per-event integer cycle deltas, sorted
 by `(latency_cycles,event_id)`. Added latency is each policy retirement cycle
