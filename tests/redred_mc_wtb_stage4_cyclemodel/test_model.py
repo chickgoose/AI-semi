@@ -7,10 +7,12 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     ARM_LABELS,
     BUFFER_ENTRIES,
     CAUSAL_POSE_INDEX_BITS,
+    CAUSAL_POSE_INDEX_LIMIT,
     DELAYED_DEADLINE_CYCLES,
     INGRESS_STAGING_ENTRIES,
     POSE_RING_ENTRIES,
     POSE_RING_STATE_BITS,
+    POSE_ID_GAPS_ALLOWED,
     RAW_INGRESS_LANES,
     Arm,
     CycleModelError,
@@ -20,6 +22,7 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     PoseSource,
     ceil_div,
     pose_timestamp_to_cycle,
+    pose_ring_slot,
     run_cycle_model,
     signed_ceil_div,
     timestamp_to_cycle,
@@ -68,6 +71,7 @@ def simulate(arm, events, poses):
         arm=arm,
         events=events,
         poses=poses,
+        synthetic_test_mode=True,
     )
 
 
@@ -99,6 +103,7 @@ class IntegerTimingTests(unittest.TestCase):
             arm=Arm.CAUSAL_CAV,
             events=[Event(1, 100)],
             poses=poses,
+            synthetic_test_mode=True,
         )
         record = result.records[0]
         self.assertEqual(record.occurrence_cycle, 0)
@@ -193,14 +198,14 @@ class CausalArmTests(unittest.TestCase):
         self.assertEqual(bypass.disposition_reason, "stale_pose")
 
     def test_oracle_commit_and_visibility_delays_are_both_observed(self):
-        oracle = PosePacket.oracle_1khz(20, 0, START, SHA_A)
+        oracle = PosePacket.oracle_1khz(0, 0, START, SHA_A)
         self.assertEqual(oracle.commit_cycle, 1)
         events = [Event(1, 6), Event(2, 13)]
         result = simulate(Arm.ORACLE_1KHZ, events, [oracle])
         self.assertEqual(result.records[0].occurrence_cycle, 1)
         self.assertEqual(result.records[0].disposition_reason, "no_occurrence_pose")
         self.assertEqual(result.records[1].occurrence_cycle, 2)
-        self.assertEqual(result.records[1].used_pose_ids, (20,))
+        self.assertEqual(result.records[1].used_pose_ids, (0,))
         self.assertEqual(result.records[1].disposition_reason, "oracle_fresh_zoh")
         self.assertEqual(result.arm_disposition_label, "INTERFACE_VALUE_ONLY")
 
@@ -373,6 +378,246 @@ class DelayedArmTests(unittest.TestCase):
 
 
 class ContractAndRecordTests(unittest.TestCase):
+    def test_integration_pose_index_is_required_verified_and_exposed(self):
+        pose = dataset_pose(10, 0)
+        result = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=START,
+            arm=Arm.ZOH_FRESHNESS,
+            events=[Event(1, 13, causal_pose_index=10)],
+            poses=[pose],
+        )
+        self.assertTrue(result.all_event_pose_indices_verified)
+        self.assertFalse(result.synthetic_test_mode)
+        self.assertTrue(result.cycle_receipts[0].causal_pose_index_verified)
+        self.assertEqual(result.cycle_receipts[0].event_causal_pose_index, 10)
+
+        with self.assertRaisesRegex(CycleModelError, "missing causal_pose_index"):
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=START,
+                arm=Arm.ZOH_FRESHNESS,
+                events=[Event(1, 13)],
+                poses=[pose],
+            )
+        synthetic = simulate(Arm.ZOH_FRESHNESS, [Event(1, 13)], [pose])
+        self.assertFalse(synthetic.all_event_pose_indices_verified)
+        self.assertFalse(
+            synthetic.cycle_receipts[0].causal_pose_index_verified
+        )
+
+    def test_mutated_event_pose_index_fails_closed(self):
+        with self.assertRaisesRegex(CycleModelError, "latest occurrence pose"):
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=START,
+                arm=Arm.ZOH_FRESHNESS,
+                events=[Event(1, 13, causal_pose_index=9)],
+                poses=[dataset_pose(10, 0)],
+            )
+
+    def test_pose_identity_range_duplicates_order_and_gaps_are_explicit(self):
+        self.assertEqual(CAUSAL_POSE_INDEX_LIMIT, 1 << 14)
+        self.assertTrue(POSE_ID_GAPS_ALLOWED)
+        self.assertEqual(pose_ring_slot(0), 0)
+        self.assertEqual(pose_ring_slot(16), 0)
+        with self.assertRaisesRegex(CycleModelError, "14 bits"):
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=START,
+                arm=Arm.ZOH_FRESHNESS,
+                events=[
+                    Event(
+                        1,
+                        13,
+                        causal_pose_index=CAUSAL_POSE_INDEX_LIMIT,
+                    )
+                ],
+                poses=[dataset_pose(10, 0)],
+            )
+        large_packet = dataset_pose(CAUSAL_POSE_INDEX_LIMIT, 0)
+        self.assertEqual(
+            pose_ring_slot(large_packet.pose_id),
+            CAUSAL_POSE_INDEX_LIMIT % 16,
+        )
+        self.assertEqual(
+            simulate(Arm.ZOH_FRESHNESS, [], [large_packet]).pose_ring_accounting.writes,
+            1,
+        )
+
+        duplicate = [dataset_pose(2, 0), dataset_pose(2, 1)]
+        with self.assertRaisesRegex(CycleModelError, "duplicate pose IDs"):
+            simulate(Arm.ZOH_FRESHNESS, [], duplicate)
+        reordered = [dataset_pose(2, 0), dataset_pose(1, 1)]
+        with self.assertRaisesRegex(CycleModelError, "in increasing order"):
+            simulate(Arm.ZOH_FRESHNESS, [], reordered)
+
+        deleted_packet = [
+            dataset_pose(pose_id, pose_id)
+            for pose_id in range(17)
+            if pose_id != 8
+        ]
+        accounting = simulate(
+            Arm.ZOH_FRESHNESS, [], deleted_packet
+        ).pose_ring_accounting
+        self.assertEqual(accounting.writes, 16)
+        self.assertEqual(accounting.safe_overwrites, 1)
+        self.assertEqual(accounting.peak_occupied_entries, 15)
+
+    def test_negative_cycle_ring_phase_crosses_window_edge_fail_closed(self):
+        poses = [
+            PosePacket.dataset(0, 90, 100, SHA_A),
+            PosePacket.dataset(16, 100, 100, SHA_B),
+        ]
+        self.assertEqual(poses[0].commit_cycle, -1)
+        self.assertEqual(poses[1].commit_cycle, 0)
+        with self.assertRaises(PoseRingSafetyError) as raised:
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=100,
+                arm=Arm.ZOH_FRESHNESS,
+                events=[Event(1, 100, causal_pose_index=0)],
+                poses=poses,
+            )
+        evidence = raised.exception.evidence
+        self.assertEqual(evidence.reason, "live_reference_overwrite")
+        self.assertEqual(evidence.cycle, 0)
+        self.assertEqual(evidence.ring_slot, 0)
+        self.assertEqual(evidence.incoming_pose_id, 16)
+        self.assertEqual(evidence.resident_pose_id, 0)
+
+    def test_oracle_pre_window_commit_applies_signed_plus_one(self):
+        window_start = 2_000_000
+        oracle = PosePacket.oracle_1khz(
+            1, 1_000_000, window_start, SHA_A
+        )
+        self.assertEqual(
+            oracle.commit_cycle,
+            pose_timestamp_to_cycle(1_000_000, window_start) + 1,
+        )
+        self.assertLess(oracle.commit_cycle, 0)
+        result = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=window_start,
+            arm=Arm.ORACLE_1KHZ,
+            events=[Event(1, window_start)],
+            poses=[oracle],
+        )
+        self.assertTrue(result.all_event_pose_indices_verified)
+        self.assertFalse(result.cycle_receipts[0].causal_pose_index_applicable)
+        self.assertFalse(result.cycle_receipts[0].causal_pose_index_verified)
+        self.assertEqual(
+            result.records[0].occurrence_pose_commit_cycles,
+            (oracle.commit_cycle,),
+        )
+
+    def test_oracle_global_phase_id_may_exceed_dataset_index_width(self):
+        oracle_id = CAUSAL_POSE_INDEX_LIMIT + 17
+        pose_timestamp = oracle_id * 1_000_000
+        window_start = pose_timestamp + 1_000_000
+        oracle = PosePacket.oracle_1khz(
+            oracle_id, pose_timestamp, window_start, SHA_A
+        )
+        result = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=window_start,
+            arm=Arm.ORACLE_1KHZ,
+            events=[Event(1, window_start)],
+            poses=[oracle],
+        )
+        self.assertEqual(result.records[0].used_pose_ids, (oracle_id,))
+        self.assertEqual(pose_ring_slot(oracle_id), oracle_id % 16)
+        self.assertTrue(result.all_event_pose_indices_verified)
+
+        ignored_dataset_index = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=window_start,
+            arm=Arm.ORACLE_1KHZ,
+            events=[
+                Event(
+                    1,
+                    window_start,
+                    causal_pose_index=CAUSAL_POSE_INDEX_LIMIT + 99,
+                )
+            ],
+            poses=[oracle],
+        )
+        self.assertEqual(
+            ignored_dataset_index.records[0].used_pose_ids,
+            (oracle_id,),
+        )
+        self.assertFalse(
+            ignored_dataset_index.cycle_receipts[0].causal_pose_index_applicable
+        )
+        wrong_id = PosePacket.oracle_1khz(
+            oracle_id + 1, pose_timestamp, window_start, SHA_A
+        )
+        with self.assertRaisesRegex(CycleModelError, "global phase schedule"):
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=window_start,
+                arm=Arm.ORACLE_1KHZ,
+                events=[],
+                poses=[wrong_id],
+            )
+
+    def test_cav_reference_to_evicted_gap_phase_pose_is_rejected(self):
+        with self.assertRaises(PoseRingSafetyError) as raised:
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=START,
+                arm=Arm.CAUSAL_CAV,
+                events=[Event(1, 13, causal_pose_index=16)],
+                poses=[dataset_pose(0, 0), dataset_pose(16, 6)],
+            )
+        evidence = raised.exception.evidence
+        self.assertEqual(evidence.reason, "referenced_pose_not_resident")
+        self.assertEqual(evidence.ring_slot, 0)
+        self.assertEqual(evidence.referenced_pose_id, 0)
+        self.assertEqual(evidence.resident_pose_id, 16)
+
+    def test_invalid_right_is_cycle_evidence_but_not_receipt_used_pose(self):
+        result = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=START,
+            arm=Arm.DELAYED_EXACT,
+            events=[Event(7, 13, causal_pose_index=0)],
+            poses=[
+                dataset_pose(0, 0),
+                dataset_pose(1, 14, value_valid=False),
+            ],
+        )
+        record = result.records[0]
+        cycle_receipt = result.cycle_receipts[0]
+        self.assertEqual(record.disposition_reason, "invalid_pose")
+        self.assertEqual(record.used_pose_ids, (0,))
+        ReceiptDecisionRecord.from_mapping(record.to_mapping())
+        self.assertEqual(cycle_receipt.inspection_cycle, 4)
+        self.assertEqual(cycle_receipt.inspected_pose_ids, (1,))
+        self.assertEqual(cycle_receipt.inspected_pose_commit_cycles, (3,))
+        self.assertEqual(result.pose_ring_accounting.live_reference_checks, 2)
+
+    def test_invalid_right_same_cycle_overwrite_precedes_release(self):
+        with self.assertRaises(PoseRingSafetyError) as raised:
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=START,
+                arm=Arm.DELAYED_EXACT,
+                events=[Event(7, 13, causal_pose_index=0)],
+                poses=[
+                    dataset_pose(0, 0),
+                    dataset_pose(1, 14, value_valid=False),
+                    dataset_pose(17, 20),
+                ],
+            )
+        evidence = raised.exception.evidence
+        self.assertEqual(evidence.reason, "live_reference_overwrite")
+        self.assertEqual(evidence.cycle, 4)
+        self.assertEqual(evidence.ring_slot, 1)
+        self.assertEqual(evidence.incoming_pose_id, 17)
+        self.assertEqual(evidence.resident_pose_id, 1)
+        self.assertEqual(evidence.live_event_ids, (7,))
+
     def test_every_arm_constructs_complete_ingress_accounting_result(self):
         required_fields = (
             "common_serializer_cycles",
@@ -424,7 +669,7 @@ class ContractAndRecordTests(unittest.TestCase):
             (
                 Arm.ORACLE_1KHZ,
                 [Event(1, 13)],
-                [PosePacket.oracle_1khz(10, 0, START, SHA_A)],
+                [PosePacket.oracle_1khz(0, 0, START, SHA_A)],
             ),
         )
         for arm, events, poses in cases:

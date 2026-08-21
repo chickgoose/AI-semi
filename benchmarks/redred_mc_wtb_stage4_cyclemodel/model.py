@@ -24,6 +24,8 @@ TRANSFORM_PIPELINE_CYCLES = 1
 BUFFER_ENTRIES = 1_024
 EVENT_RECORD_BITS = 102
 CAUSAL_POSE_INDEX_BITS = 14
+CAUSAL_POSE_INDEX_LIMIT = 1 << CAUSAL_POSE_INDEX_BITS
+POSE_ID_GAPS_ALLOWED = True
 POSE_PACKET_BITS = 192
 POSE_RING_ENTRIES = 16
 POSE_RING_STATE_BITS = POSE_RING_ENTRIES * POSE_PACKET_BITS
@@ -135,17 +137,27 @@ def pose_timestamp_to_cycle(timestamp_ns: int, window_start_ns: int) -> int:
     )
 
 
+def pose_ring_slot(pose_id: int) -> int:
+    """Return the deterministic ring slot for a nonnegative pose identity."""
+
+    pose_id = _nonnegative_int(pose_id, "pose_id")
+    return pose_id % POSE_RING_ENTRIES
+
+
 @dataclass(frozen=True)
 class Event:
     event_id: int
     timestamp_ns: int
     transform_guard_valid: bool = True
+    causal_pose_index: Optional[int] = None
 
     def __post_init__(self) -> None:
         _nonnegative_int(self.event_id, "event_id")
         _nonnegative_int(self.timestamp_ns, "event timestamp_ns")
         if type(self.transform_guard_valid) is not bool:
             raise CycleModelError("transform_guard_valid must be bool")
+        if self.causal_pose_index is not None:
+            _nonnegative_int(self.causal_pose_index, "causal_pose_index")
 
 
 @dataclass(frozen=True)
@@ -159,7 +171,7 @@ class PosePacket:
     arithmetic_valid: bool = True
 
     def __post_init__(self) -> None:
-        _nonnegative_int(self.pose_id, "pose_id")
+        pose_ring_slot(self.pose_id)
         _nonnegative_int(self.timestamp_ns, "pose timestamp_ns")
         _integer(self.commit_cycle, "pose commit_cycle")
         if not isinstance(self.source, PoseSource):
@@ -272,6 +284,9 @@ class CycleReceipt:
     event_id: int
     arm: str
     arm_semantic_label: str
+    event_causal_pose_index: Optional[int]
+    causal_pose_index_applicable: bool
+    causal_pose_index_verified: bool
     occurrence_cycle: int
     admission_cycle: int
     admission_lane: int
@@ -285,6 +300,11 @@ class CycleReceipt:
     fifo_occupancy_after_retire: int
     disposition: str
     disposition_reason: str
+    inspection_cycle: Optional[int]
+    inspected_pose_ids: Tuple[int, ...]
+    inspected_pose_timestamps_ns: Tuple[int, ...]
+    inspected_pose_commit_cycles: Tuple[int, ...]
+    inspected_pose_sha256: Tuple[str, ...]
     decision_record_sha256: str
 
     def to_mapping(self) -> Dict[str, Any]:
@@ -293,6 +313,9 @@ class CycleReceipt:
             "event_id": self.event_id,
             "arm": self.arm,
             "arm_semantic_label": self.arm_semantic_label,
+            "event_causal_pose_index": self.event_causal_pose_index,
+            "causal_pose_index_applicable": self.causal_pose_index_applicable,
+            "causal_pose_index_verified": self.causal_pose_index_verified,
             "occurrence_cycle": self.occurrence_cycle,
             "admission_cycle": self.admission_cycle,
             "admission_lane": self.admission_lane,
@@ -306,6 +329,15 @@ class CycleReceipt:
             "fifo_occupancy_after_retire": self.fifo_occupancy_after_retire,
             "disposition": self.disposition,
             "disposition_reason": self.disposition_reason,
+            "inspection_cycle": self.inspection_cycle,
+            "inspected_pose_ids": list(self.inspected_pose_ids),
+            "inspected_pose_timestamps_ns": list(
+                self.inspected_pose_timestamps_ns
+            ),
+            "inspected_pose_commit_cycles": list(
+                self.inspected_pose_commit_cycles
+            ),
+            "inspected_pose_sha256": list(self.inspected_pose_sha256),
             "decision_record_sha256": self.decision_record_sha256,
         }
 
@@ -336,6 +368,8 @@ class SimulationResult:
     transform_pipeline_cycles: int
     dataset_pose_arrival_assumption: str
     arm_disposition_label: str
+    synthetic_test_mode: bool
+    all_event_pose_indices_verified: bool
     pose_ring_entries: int
     pose_ring_state_bits: int
     pose_ring_accounting: "PoseRingAccounting"
@@ -429,6 +463,8 @@ class _EventState:
     event: Event
     occurrence_cycle: int
     occurrence_snapshot: Tuple[PosePacket, ...]
+    pose_index_applicable: bool = True
+    pose_index_verified: bool = False
     accept_cycle: Optional[int] = None
     admission_lane: Optional[int] = None
     deadline_cycle: Optional[int] = None
@@ -443,6 +479,8 @@ class _EventState:
     selected: Tuple[PosePacket, ...] = ()
     disposition: Optional[str] = None
     reason: Optional[str] = None
+    inspection_cycle: Optional[int] = None
+    inspected: Tuple[PosePacket, ...] = ()
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -464,10 +502,13 @@ def _validate_and_prepare(
     arm: Arm,
     events: Sequence[Event],
     poses: Sequence[PosePacket],
+    synthetic_test_mode: bool,
 ) -> Tuple[List[_EventState], Tuple[PosePacket, ...]]:
     _nonnegative_int(window_start_ns, "window_start_ns")
     if not isinstance(arm, Arm):
         raise CycleModelError("arm must be Arm")
+    if type(synthetic_test_mode) is not bool:
+        raise CycleModelError("synthetic_test_mode must be bool")
     if isinstance(events, (str, bytes)) or not isinstance(events, Sequence):
         raise CycleModelError("events must be an ordered sequence")
     if isinstance(poses, (str, bytes)) or not isinstance(poses, Sequence):
@@ -489,11 +530,14 @@ def _validate_and_prepare(
         for left, right in zip(event_values, event_values[1:])
     ):
         raise CycleModelError("event timestamps must be nondecreasing")
+    pose_ids = [pose.pose_id for pose in pose_values]
+    if len(set(pose_ids)) != len(pose_ids):
+        raise CycleModelError("duplicate pose IDs are forbidden")
     if any(
-        right.pose_id <= left.pose_id
+        right.pose_id < left.pose_id
         for left, right in zip(pose_values, pose_values[1:])
     ):
-        raise CycleModelError("pose IDs must be strictly increasing")
+        raise CycleModelError("pose IDs must be presented in increasing order")
     if any(
         right.timestamp_ns <= left.timestamp_ns
         for left, right in zip(pose_values, pose_values[1:])
@@ -521,6 +565,11 @@ def _validate_and_prepare(
             and pose.timestamp_ns % ORACLE_CADENCE_NS != 0
         ):
             raise CycleModelError("oracle pose timestamp violates global 1 kHz phase")
+        if (
+            pose.source is PoseSource.ORACLE_1KHZ
+            and pose.pose_id != pose.timestamp_ns // ORACLE_CADENCE_NS
+        ):
+            raise CycleModelError("oracle pose ID violates the global phase schedule")
 
     occurrence_cycles = [
         timestamp_to_cycle(event.timestamp_ns, window_start_ns)
@@ -540,11 +589,35 @@ def _validate_and_prepare(
             if pose.commit_cycle < occurrence_cycle
             and pose.timestamp_ns <= event.timestamp_ns
         )
+        expected_pose_index = visible[-1].pose_id if visible else None
+        pose_index_applicable = arm is not Arm.ORACLE_1KHZ
+        if not pose_index_applicable:
+            pose_index_verified = False
+        elif event.causal_pose_index is None:
+            if not synthetic_test_mode:
+                raise CycleModelError(
+                    "integration event is missing causal_pose_index"
+                )
+            pose_index_verified = False
+        else:
+            if event.causal_pose_index >= CAUSAL_POSE_INDEX_LIMIT:
+                raise CycleModelError("dataset causal_pose_index exceeds 14 bits")
+            if expected_pose_index is None:
+                raise CycleModelError(
+                    "causal_pose_index has no visible occurrence pose"
+                )
+            if event.causal_pose_index != expected_pose_index:
+                raise CycleModelError(
+                    "causal_pose_index differs from the latest occurrence pose"
+                )
+            pose_index_verified = True
         prepared.append(
             _EventState(
                 event=event,
                 occurrence_cycle=occurrence_cycle,
                 occurrence_snapshot=visible[-2:],
+                pose_index_applicable=pose_index_applicable,
+                pose_index_verified=pose_index_verified,
                 deadline_cycle=(
                     occurrence_cycle + DELAYED_DEADLINE_CYCLES
                     if arm is Arm.DELAYED_EXACT
@@ -743,10 +816,10 @@ def _delayed_status(
     state: _EventState,
     poses: Tuple[PosePacket, ...],
     cycle: int,
-) -> Tuple[str, Tuple[PosePacket, ...], str]:
+) -> Tuple[str, Tuple[PosePacket, ...], str, Tuple[PosePacket, ...]]:
     left = state.occurrence_snapshot[-1:] if state.occurrence_snapshot else ()
     if not left:
-        return "raw", (), "missing_bracket"
+        return "raw", (), "missing_bracket", ()
     right = _first_right_pose(state, poses)
     if right is not None and right.commit_cycle < cycle:
         selected = (left[0], right)
@@ -757,13 +830,13 @@ def _delayed_status(
             and right.arithmetic_valid
             and state.event.transform_guard_valid
         ):
-            return "correct", selected, "bracket_interpolation"
-        return "raw", left, "invalid_pose"
+            return "correct", selected, "bracket_interpolation", ()
+        return "raw", left, "invalid_pose", (right,)
     if state.deadline_cycle is None:
         raise CycleModelError("delayed event has no deadline")
     if cycle >= state.deadline_cycle:
-        return "raw", left, "deadline_timeout"
-    return "wait", left, "waiting_for_right_bracket"
+        return "raw", left, "deadline_timeout", ()
+    return "wait", left, "waiting_for_right_bracket", ()
 
 
 def _pop_raw_head(
@@ -843,9 +916,14 @@ def _run_delayed(
             inflight = []
 
         while queue and retirements < EVENT_LANES:
-            status, selected, reason = _delayed_status(queue[0], poses, cycle)
+            status, selected, reason, inspected = _delayed_status(
+                queue[0], poses, cycle
+            )
             if status != "raw":
                 break
+            if inspected:
+                queue[0].inspection_cycle = cycle
+                queue[0].inspected = inspected
             _pop_raw_head(
                 queue,
                 records,
@@ -895,7 +973,9 @@ def _run_delayed(
         for launch_lane, state in enumerate(queue[:EVENT_LANES]):
             if state.inflight:
                 break
-            status, selected, reason = _delayed_status(state, poses, cycle)
+            status, selected, reason, _inspected = _delayed_status(
+                state, poses, cycle
+            )
             if status != "correct":
                 break
             state.inflight = True
@@ -993,6 +1073,7 @@ def _make_cycle_receipts(
 ) -> Tuple[CycleReceipt, ...]:
     receipts = []  # type: List[CycleReceipt]
     for state, record in zip(states, records):
+        inspected = _provenance(state.inspected)
         required = (
             state.accept_cycle,
             state.admission_lane,
@@ -1012,12 +1093,27 @@ def _make_cycle_receipts(
             raise CycleModelError("retire lane is outside the two-lane service")
         if state.launch_lane is not None and not 0 <= state.launch_lane < EVENT_LANES:
             raise CycleModelError("launch lane is outside the two-lane pipeline")
+        if state.inspected:
+            if (
+                state.inspection_cycle is None
+                or record.disposition != "raw_bypass"
+                or record.disposition_reason != "invalid_pose"
+                or len(state.inspected) != 1
+                or state.inspected[0].commit_cycle >= state.inspection_cycle
+                or state.inspection_cycle > record.retire_cycle
+            ):
+                raise CycleModelError("invalid-pose inspection evidence is inconsistent")
+        elif state.inspection_cycle is not None:
+            raise CycleModelError("inspection cycle has no inspected pose")
         receipts.append(
             CycleReceipt(
                 window_id=window_id,
                 event_id=state.event.event_id,
                 arm=arm.value,
                 arm_semantic_label=ARM_LABELS[arm.value],
+                event_causal_pose_index=state.event.causal_pose_index,
+                causal_pose_index_applicable=state.pose_index_applicable,
+                causal_pose_index_verified=state.pose_index_verified,
                 occurrence_cycle=state.occurrence_cycle,
                 admission_cycle=state.accept_cycle,
                 admission_lane=state.admission_lane,
@@ -1031,6 +1127,11 @@ def _make_cycle_receipts(
                 fifo_occupancy_after_retire=state.fifo_occupancy_after_retire,
                 disposition=record.disposition,
                 disposition_reason=record.disposition_reason,
+                inspection_cycle=state.inspection_cycle,
+                inspected_pose_ids=inspected[0],
+                inspected_pose_timestamps_ns=inspected[1],
+                inspected_pose_commit_cycles=inspected[2],
+                inspected_pose_sha256=inspected[3],
                 decision_record_sha256=record.canonical_sha256(),
             )
         )
@@ -1044,19 +1145,19 @@ def _verify_pose_ring(
 ) -> PoseRingAccounting:
     """Replay the charged ring and fail before any live entry can be replaced.
 
-    Slots are assigned in stable packet-commit order through a modulo-16 write
-    pointer. References begin before writes on their start cycle and remain
-    live through the retire phase of their end cycle.
+    Slot phase is the authoritative nonnegative pose identity modulo 16;
+    packet gaps never renumber later slots. References begin before writes on
+    their start cycle and remain live through the retire phase of their end
+    cycle.
     """
 
     pose_by_id = {pose.pose_id: pose for pose in poses}
     slot_by_pose_id = {
-        pose.pose_id: ordinal % POSE_RING_ENTRIES
-        for ordinal, pose in enumerate(poses)
+        pose.pose_id: pose_ring_slot(pose.pose_id) for pose in poses
     }
-    writes_by_cycle = {}  # type: Dict[int, List[Tuple[int, PosePacket]]]
-    for ordinal, pose in enumerate(poses):
-        writes_by_cycle.setdefault(pose.commit_cycle, []).append((ordinal, pose))
+    writes_by_cycle = {}  # type: Dict[int, List[PosePacket]]
+    for pose in poses:
+        writes_by_cycle.setdefault(pose.commit_cycle, []).append(pose)
 
     starts_by_cycle = {}  # type: Dict[int, List[Tuple[int, int, int]]]
     releases_by_cycle = {}  # type: Dict[int, List[Tuple[int, int]]]
@@ -1072,6 +1173,10 @@ def _verify_pose_ring(
                         "a non-occurrence pose has no transform launch cycle"
                     )
                 references[pose_id] = state.launch_cycle
+        for pose in state.inspected:
+            if state.inspection_cycle is None:
+                raise CycleModelError("inspected pose has no inspection cycle")
+            references[pose.pose_id] = state.inspection_cycle
         for pose_id, start_cycle in references.items():
             if pose_id not in pose_by_id:
                 raise CycleModelError("event references an unknown pose ID")
@@ -1133,8 +1238,8 @@ def _verify_pose_ring(
             active.setdefault(pose_id, []).append(event_id)
         peak_live = max(peak_live, sum(len(values) for values in active.values()))
 
-        for ordinal, pose in writes_by_cycle.get(cycle, ()):
-            slot = ordinal % POSE_RING_ENTRIES
+        for pose in writes_by_cycle.get(cycle, ()):
+            slot = pose_ring_slot(pose.pose_id)
             resident_pose_id = resident[slot]
             if resident_pose_id is not None and active.get(resident_pose_id):
                 fail(
@@ -1183,12 +1288,13 @@ def run_cycle_model(
     arm: Arm,
     events: Sequence[Event],
     poses: Sequence[PosePacket],
+    synthetic_test_mode: bool = False,
 ) -> SimulationResult:
     """Simulate one arm/window and return exact-once score-free decisions."""
 
     _nonempty_text(window_id, "window_id")
     states, checked_poses = _validate_and_prepare(
-        window_start_ns, arm, events, poses
+        window_start_ns, arm, events, poses, synthetic_test_mode
     )
     if arm is Arm.DELAYED_EXACT:
         records, peak, peak_staging = _run_delayed(
@@ -1238,6 +1344,11 @@ def run_cycle_model(
         transform_pipeline_cycles=TRANSFORM_PIPELINE_CYCLES,
         dataset_pose_arrival_assumption=DATASET_POSE_ARRIVAL_ASSUMPTION,
         arm_disposition_label=label,
+        synthetic_test_mode=synthetic_test_mode,
+        all_event_pose_indices_verified=all(
+            not state.pose_index_applicable or state.pose_index_verified
+            for state in states
+        ),
         pose_ring_entries=POSE_RING_ENTRIES,
         pose_ring_state_bits=POSE_RING_STATE_BITS,
         pose_ring_accounting=pose_ring_accounting,

@@ -29,6 +29,15 @@ fixed accounting metadata.
   burst is five. The serializer serves stable event-ID order at two records
   per cycle, and every member retains its occurrence-edge snapshot even when
   it exits staging later.
+- In normal integration mode, every dataset-arm `Event` must carry its 14-bit
+  `causal_pose_index`, and it must equal the latest pose in the occurrence-edge
+  snapshot. Missing or corrupted bindings fail closed. Tests that intentionally
+  synthesize events without this ingress field must opt into
+  `synthetic_test_mode=True`; the result-level
+  `all_event_pose_indices_verified` and per-event cycle receipt state disclose
+  whether every applicable binding was verified. The oracle arm does not use
+  this dataset index; its cycle receipt marks the field not applicable and its
+  packet identity is checked against the global 1 kHz schedule instead.
 - Common serializer residence is included in occurrence-to-retire latency.
   `SimulationResult.common_serializer_cycles` and the matching
   `always_bypass_retire_cycles` make it explicit; policy-added latency is
@@ -45,11 +54,18 @@ fixed accounting metadata.
 All pose packets are replayed into an immutable-while-referenced 16-entry by
 192-bit circular ring. The charge is exactly 3,072 state bits; provenance
 hashes are verification evidence and are not counted as hardware state. A
-stable commit-order write pointer assigns packet ordinal `n` to slot `n % 16`.
+packet's authoritative nonnegative `pose_id` assigns slot `pose_id % 16`.
+Packet IDs are not limited to 14 bits: oracle IDs are the global 1 kHz phase
+index and may exceed 16,383. Duplicate IDs and decreasing presentation order
+are rejected. Gaps are explicitly legal and never renumber later slots, so
+deleting a packet cannot change the slot phase of every following packet.
 An event's occurrence-snapshot references become live before pose writes on
 that occurrence cycle and remain live through its retirement phase. A delayed
 right-bracket reference becomes live at transform launch and likewise remains
-live through retirement.
+live through retirement. An invalid delayed right packet inspected to choose
+`invalid_pose` is also a live internal ring reference from inspection through
+that raw retirement, even though receipt-v2 correctly keeps it out of
+`used_pose_*`.
 
 `SimulationResult.pose_ring_entries` and `pose_ring_state_bits` expose the
 fixed charge directly. `pose_ring_accounting` additionally exposes writes,
@@ -98,7 +114,9 @@ exact label, and the result-level label is identical.
 It binds serializer admission cycle/lane, optional transform launch
 cycle/lane, retirement cycle/lane, FIFO occupancy immediately before and
 after admission and retirement, disposition/reason, and the corresponding
-decision-record digest. Raw delayed bypass has no launch cycle or lane.
+decision-record digest. It also binds event-index verification and any invalid
+right-packet inspection cycle/provenance. Raw delayed bypass has no launch
+cycle or lane.
 
 The pose generators and quaternion interpolation math remain upstream of this
 cycle/packet-selection boundary. `PosePacket.oracle_1khz` validates the frozen
