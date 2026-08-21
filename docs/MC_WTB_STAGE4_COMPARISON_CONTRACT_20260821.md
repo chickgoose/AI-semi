@@ -53,6 +53,16 @@ the event.
   one-cycle transform pipeline, 102-bit event records, 192-bit pose packets,
   and at most 1,024 delayed events.
   These are cycle/state accounting constants, not measured physical results.
+- The 24-bit identity field inside each 102-bit event record is a modulo
+  transport sequence tag, not a 24-bit dataset event index. For every record,
+  `transport_sequence_tag = source_event_id mod 2^24`, and tags must be unique
+  within each independently simulated window. The full source `event_id`
+  remains in score-free artifacts and receipts for exact verification only;
+  it is not carried as hardware state. At most 1,032 event records may be live
+  simultaneously (1,024 delayed, six ingress, and two pipeline), and
+  `1,032 < 2^23` preserves unambiguous 24-bit serial-number ordering across a
+  wrap. A tag mismatch, within-window collision, or violation of this
+  half-range invariant fails closed before scoring.
 - The source may present up to six records in one occurrence cycle, matching
   the existing occurrence-preserving baseline. A charged six-entry ingress
   capture takes the complete batch atomically, binds its occurrence pose
@@ -296,8 +306,9 @@ Every arm is conservatively charged the same common logical-state envelope:
 | **Conservative common total** | **108,799** |
 
 The 11-bit live-reference width covers at most 1,032 simultaneous references:
-1,024 delayed, six ingress, and two pipeline records. The 14-bit causal pose
-index is already inside each 102-bit event record. Receipt, packet, artifact,
+1,024 delayed, six ingress, and two pipeline records. The 24-bit modulo
+transport sequence tag and 14-bit causal pose index are already inside each
+102-bit event record. The full source `event_id`, receipt, packet, artifact,
 and provenance hashes are verification-only and contribute zero logical
 hardware-state bits. Every arm is conservatively charged a 192-bit pose
 interface at 1,000 packets/s, or exactly 192,000 bit/s. These state and rate

@@ -24,7 +24,7 @@ class ContractTests(unittest.TestCase):
     def test_frozen_contract_and_existing_registry_validate(self) -> None:
         self.assertEqual(
             self.contract.canonical_sha256,
-            "d145ef342654069c442361f386d6b60fe2abff36d8fb7fa655dc1c0066921eba",
+            "370cafc9a523b1d9f777eda9083514c27dc2ce64fe793379c616ae9ccc735350",
         )
         receipt = validate_existing_registry(self.contract)
         self.assertEqual(receipt.window_count, 24)
@@ -229,7 +229,9 @@ class ContractTests(unittest.TestCase):
                 "live_reference_counter_entries": 16,
                 "live_reference_counter_width_bits": 11,
                 "maximum_simultaneous_live_references": 1032,
+                "transport_sequence_tag_already_in_event_record": True,
                 "causal_pose_index_already_in_event_record": True,
+                "full_source_event_id_hardware_state_bits": 0,
                 "verification_hash_state_bits": 0,
                 "evidence_class": "logical_comparison_accounting_not_ppa",
             },
@@ -253,6 +255,43 @@ class ContractTests(unittest.TestCase):
         self.assertLessEqual(
             accounting["pose_interface"]["pose_bandwidth_bits_per_second"],
             gates["maximum_pose_bandwidth_bits_per_second"],
+        )
+
+    def test_event_record_identity_contract_is_exact(self) -> None:
+        timing = self.contract.as_dict()["timing"]
+        identity = timing["event_record_identity"]
+        self.assertEqual(
+            identity,
+            {
+                "payload_field": "transport_sequence_tag_not_dataset_event_index",
+                "transport_sequence_tag_bits": 24,
+                "transport_sequence_tag_modulus": 1 << 24,
+                "transport_sequence_tag_rule": "source_event_id_modulo_2^24",
+                "transport_sequence_tag_uniqueness_required": True,
+                "transport_sequence_tag_uniqueness_scope": (
+                    "per_independently_simulated_window"
+                ),
+                "full_source_event_id_scope": (
+                    "score_free_artifacts_and_receipts_verification_only"
+                ),
+                "full_source_event_id_hardware_state_bits": 0,
+                "maximum_simultaneous_live_records": 1032,
+                "serial_number_half_range": 1 << 23,
+                "wrap_safety_relation": "1032_strictly_less_than_2^23",
+                "mismatch_collision_or_half_range_violation": (
+                    "fail_closed_before_scoring"
+                ),
+            },
+        )
+        self.assertEqual(timing["event_record_bits"], 102)
+        self.assertEqual(
+            identity["maximum_simultaneous_live_records"],
+            self.contract.as_dict()["score_free_accounting"]
+            ["common_state_envelope"]["maximum_simultaneous_live_references"],
+        )
+        self.assertLess(
+            identity["maximum_simultaneous_live_records"],
+            identity["serial_number_half_range"],
         )
 
     def test_contract_rejects_duplicate_key_extra_field_and_wrong_type(self) -> None:
