@@ -337,6 +337,27 @@ class DelayedArmTests(unittest.TestCase):
 
 
 class ContractAndRecordTests(unittest.TestCase):
+    def test_every_arm_constructs_complete_ingress_accounting_result(self):
+        required_fields = (
+            "common_serializer_cycles",
+            "always_bypass_retire_cycles",
+            "policy_added_latency_cycles",
+            "peak_ingress_staging_occupancy",
+            "raw_ingress_lanes",
+            "ingress_staging_entries",
+        )
+        for arm in Arm:
+            with self.subTest(arm=arm.value):
+                result = simulate(arm, [], [])
+                for field_name in required_fields:
+                    self.assertTrue(hasattr(result, field_name), field_name)
+                self.assertEqual(result.common_serializer_cycles, ())
+                self.assertEqual(result.always_bypass_retire_cycles, ())
+                self.assertEqual(result.policy_added_latency_cycles, ())
+                self.assertEqual(result.peak_ingress_staging_occupancy, 0)
+                self.assertEqual(result.raw_ingress_lanes, 6)
+                self.assertEqual(result.ingress_staging_entries, 6)
+
     def test_decision_record_digest_is_deterministic_and_score_free(self):
         events = [Event(1, 13)]
         poses = [dataset_pose(10, 0)]
