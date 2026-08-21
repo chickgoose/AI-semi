@@ -79,6 +79,15 @@ def normalize_quaternion_xyzw(value: Sequence[float]) -> QuaternionXYZW:
     return result  # type: ignore[return-value]
 
 
+def _canonicalize_projective(value: QuaternionXYZW) -> QuaternionXYZW:
+    """Choose one deterministic representative of the q/-q rotation."""
+
+    pivot = max(range(4), key=lambda index: (abs(value[index]), -index))
+    if value[pivot] < 0.0:
+        return tuple(-component for component in value)  # type: ignore[return-value]
+    return value
+
+
 def _align_shortest_arc(
     before: QuaternionXYZW, after: QuaternionXYZW
 ) -> Tuple[QuaternionXYZW, float]:
@@ -99,8 +108,8 @@ def shortest_arc_slerp_xyzw(
     fraction = _finite(alpha, "alpha")
     if not 0.0 <= fraction <= 1.0:
         raise GeometryError("alpha must lie in the closed interval [0, 1]")
-    before = normalize_quaternion_xyzw(before_xyzw)
-    after = normalize_quaternion_xyzw(after_xyzw)
+    before = _canonicalize_projective(normalize_quaternion_xyzw(before_xyzw))
+    after = _canonicalize_projective(normalize_quaternion_xyzw(after_xyzw))
     after, cosine = _align_shortest_arc(before, after)
 
     if cosine > SLERP_LINEAR_DOT_THRESHOLD:
@@ -154,8 +163,8 @@ def extrapolate_constant_angular_velocity(
 
     interval = _integer(previous_interval_ns, "previous_interval_ns", 1)
     horizon = _integer(age_ns, "age_ns")
-    previous = normalize_quaternion_xyzw(previous_xyzw)
-    latest = normalize_quaternion_xyzw(latest_xyzw)
+    previous = _canonicalize_projective(normalize_quaternion_xyzw(previous_xyzw))
+    latest = _canonicalize_projective(normalize_quaternion_xyzw(latest_xyzw))
     latest, _ = _align_shortest_arc(previous, latest)
 
     delta = normalize_quaternion_xyzw(_multiply(_conjugate(previous), latest))

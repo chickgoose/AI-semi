@@ -19,68 +19,13 @@ class ContractError(ValueError):
 
 
 CONTRACT_SCHEMA = "redred.mc_wtb.stage4_comparison_contract/v1"
-EXPECTED_CANONICAL_SHA256 = "50201b521af2df69c76566cc7a2685395d38c7cd04e2b0c47025024a01cd574d"
+EXPECTED_CANONICAL_SHA256 = "f6350c8fe24a2ee36d988aedaba265ef2a81f19539bd2cb0a4b70b0765d9d1bd"
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONTRACT_PATH = (
-    Path(__file__).resolve().parents[2]
+    _REPOSITORY_ROOT
     / "docs"
     / "MC_WTB_STAGE4_COMPARISON_CONTRACT_20260821.json"
 )
-
-
-_EXPECTED_CONTRACT = {
-    "schema": CONTRACT_SCHEMA,
-    "status": "frozen_before_arm_scoring",
-    "checkpoint_commit": "7791e21a8415b0b5dd2c76cc6ea83698c7427d71",
-    "development_only": True,
-    "registry": {
-        "window_count": 24,
-        "query_event_count": 8914,
-        "sha256": "19df5788d3300ef9e6169165ed1dc68806a08f4e4af73eb4a52aebc9b642f62f",
-        "forbidden_interval_ns": [43320750000, 43322000000],
-    },
-    "timing": {
-        "clock_period_ps": 6500,
-        "same_edge_pose_visible_to_event": False,
-        "event_lanes": 2,
-        "transform_pipeline_cycles": 1,
-        "event_record_bits": 102,
-        "pose_packet_bits": 192,
-        "buffer_entries": 1024,
-        "dataset_pose_arrival_assumption": "arrival_equals_recorded_timestamp",
-    },
-    "arms": {
-        "zoh_freshness": {"max_pose_age_ns": 1000000},
-        "delayed_exact": {"deadline_ns": 6000000, "ordered": True},
-        "causal_cav": {
-            "max_horizon_ns": 5000000,
-            "max_horizon_pose_intervals": 1,
-            "zoh_fallback_max_age_ns": 1000000,
-        },
-        "supplied_pose_1khz": {
-            "cadence_ns": 1000000,
-            "commit_delay_cycles": 1,
-            "max_pose_age_ns": 1000000,
-            "counterfactual_upstream_interface": True,
-        },
-    },
-    "go_to_rtl": {
-        "minimum_r_all_fraction": 0.01,
-        "minimum_positive_windows": 18,
-        "minimum_enable_rate": 0.10,
-        "maximum_quality_waste_rate": 0.50,
-        "maximum_operational_waste_rate": 0.01,
-        "maximum_accepted_event_loss": 0,
-        "maximum_added_p99_latency_ns": 1000000,
-        "maximum_buffer_entries": 1024,
-        "maximum_pose_bandwidth_bits_per_second": 250000,
-        "maximum_incremental_state_bits": 131072,
-    },
-    "score_blind_decision_receipt_required": True,
-    "score_all_arms_once": True,
-    "holdout_claim_authorized": False,
-    "rtl_or_ppa_claim_authorized": False,
-    "novelty_claim_authorized": False,
-}
 
 
 def _validate_json_domain(value: Any, where: str = "$") -> None:
@@ -137,31 +82,6 @@ def _reject_json_constant(value: str) -> None:
     raise ContractError("non-finite JSON number: %s" % value)
 
 
-def _strict_match(actual: Any, expected: Any, where: str = "$") -> None:
-    if type(actual) is not type(expected):
-        raise ContractError("%s has the wrong JSON type" % where)
-    if isinstance(expected, dict):
-        actual_keys = set(actual)
-        expected_keys = set(expected)
-        if actual_keys != expected_keys:
-            missing = sorted(expected_keys - actual_keys)
-            extra = sorted(actual_keys - expected_keys)
-            raise ContractError(
-                "%s keys differ; missing=%r extra=%r" % (where, missing, extra)
-            )
-        for key in sorted(expected):
-            _strict_match(actual[key], expected[key], "%s.%s" % (where, key))
-        return
-    if isinstance(expected, list):
-        if len(actual) != len(expected):
-            raise ContractError("%s has the wrong list length" % where)
-        for index, (actual_item, expected_item) in enumerate(zip(actual, expected)):
-            _strict_match(actual_item, expected_item, "%s[%d]" % (where, index))
-        return
-    if actual != expected:
-        raise ContractError("%s differs from the frozen value" % where)
-
-
 @dataclass(frozen=True)
 class ComparisonContract:
     source_path: Path
@@ -214,11 +134,25 @@ def load_comparison_contract(path: Path = DEFAULT_CONTRACT_PATH) -> ComparisonCo
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ContractError("comparison contract is not valid JSON") from exc
     _validate_json_domain(document)
-    _strict_match(document, _EXPECTED_CONTRACT)
+    if not isinstance(document, dict) or document.get("schema") != CONTRACT_SCHEMA:
+        raise ContractError("comparison contract schema differs")
     canonical = canonical_json_bytes(document)
     digest = hashlib.sha256(canonical).hexdigest()
     if digest != EXPECTED_CANONICAL_SHA256:
         raise ContractError("comparison contract canonical hash differs")
+    normative_relative = document.get("normative_markdown")
+    normative_digest = document.get("normative_markdown_sha256")
+    if normative_relative != "docs/MC_WTB_STAGE4_COMPARISON_CONTRACT_20260821.md":
+        raise ContractError("normative Markdown path differs")
+    if type(normative_digest) is not str or len(normative_digest) != 64:
+        raise ContractError("normative Markdown hash is invalid")
+    normative_path = _REPOSITORY_ROOT / normative_relative
+    try:
+        actual_normative_digest = hashlib.sha256(normative_path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ContractError("cannot read normative Markdown") from exc
+    if actual_normative_digest != normative_digest:
+        raise ContractError("normative Markdown hash differs")
     return ComparisonContract(source, canonical, digest)
 
 

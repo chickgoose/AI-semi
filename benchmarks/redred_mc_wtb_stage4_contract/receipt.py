@@ -15,7 +15,12 @@ class ReceiptError(ValueError):
 
 
 DECISION_ARMS = frozenset(
-    ("zoh_freshness", "delayed_exact", "causal_cav", "supplied_pose_1khz")
+    (
+        "zoh_freshness",
+        "delayed_exact",
+        "causal_cav",
+        "oracle_resampled_groundtruth_1khz",
+    )
 )
 DISPOSITIONS = frozenset(("corrected_world_ray", "raw_bypass"))
 _REASON = re.compile(r"[a-z][a-z0-9_]*\Z")
@@ -23,11 +28,19 @@ _DECISION_FIELDS = frozenset(
     (
         "window_id",
         "event_id",
+        "event_timestamp_ns",
         "arm",
         "occurrence_cycle",
         "retire_cycle",
-        "available_pose_ids",
-        "available_pose_timestamps_ns",
+        "occurrence_pose_ids",
+        "occurrence_pose_timestamps_ns",
+        "occurrence_pose_commit_cycles",
+        "occurrence_pose_sha256",
+        "used_pose_ids",
+        "used_pose_timestamps_ns",
+        "used_pose_commit_cycles",
+        "used_pose_sha256",
+        "intentional_future_pose_use",
         "pose_age_ns",
         "disposition",
         "disposition_reason",
@@ -58,11 +71,19 @@ def _reject_score_or_loss_fields(value: Any, where: str = "decision") -> None:
 class DecisionRecord:
     window_id: str
     event_id: int
+    event_timestamp_ns: int
     arm: str
     occurrence_cycle: int
     retire_cycle: int
-    available_pose_ids: Tuple[int, ...]
-    available_pose_timestamps_ns: Tuple[int, ...]
+    occurrence_pose_ids: Tuple[int, ...]
+    occurrence_pose_timestamps_ns: Tuple[int, ...]
+    occurrence_pose_commit_cycles: Tuple[int, ...]
+    occurrence_pose_sha256: Tuple[str, ...]
+    used_pose_ids: Tuple[int, ...]
+    used_pose_timestamps_ns: Tuple[int, ...]
+    used_pose_commit_cycles: Tuple[int, ...]
+    used_pose_sha256: Tuple[str, ...]
+    intentional_future_pose_use: bool
     pose_age_ns: Optional[int]
     disposition: str
     disposition_reason: str
@@ -73,6 +94,8 @@ class DecisionRecord:
             raise ReceiptError("window_id must be a non-empty string")
         if not _is_nonnegative_int(self.event_id):
             raise ReceiptError("event_id must be a non-negative integer")
+        if not _is_nonnegative_int(self.event_timestamp_ns):
+            raise ReceiptError("event_timestamp_ns must be a non-negative integer")
         if type(self.arm) is not str or self.arm not in DECISION_ARMS:
             raise ReceiptError("arm is not frozen by the comparison contract")
         if not _is_nonnegative_int(self.occurrence_cycle):
@@ -81,40 +104,94 @@ class DecisionRecord:
             raise ReceiptError("retire_cycle must be a non-negative integer")
         if self.retire_cycle < self.occurrence_cycle:
             raise ReceiptError("retirement precedes occurrence")
-        if type(self.available_pose_ids) is not tuple:
-            raise ReceiptError("available_pose_ids must be a tuple")
-        if type(self.available_pose_timestamps_ns) is not tuple:
-            raise ReceiptError("available_pose_timestamps_ns must be a tuple")
-        if len(self.available_pose_ids) != len(self.available_pose_timestamps_ns):
-            raise ReceiptError("available pose IDs/timestamps have different lengths")
-        if any(not _is_nonnegative_int(value) for value in self.available_pose_ids):
-            raise ReceiptError("available pose IDs must be non-negative integers")
+        pose_groups = (
+            (
+                "occurrence",
+                self.occurrence_pose_ids,
+                self.occurrence_pose_timestamps_ns,
+                self.occurrence_pose_commit_cycles,
+                self.occurrence_pose_sha256,
+            ),
+            (
+                "used",
+                self.used_pose_ids,
+                self.used_pose_timestamps_ns,
+                self.used_pose_commit_cycles,
+                self.used_pose_sha256,
+            ),
+        )
+        for name, ids, timestamps, commits, hashes in pose_groups:
+            if not all(type(value) is tuple for value in (ids, timestamps, commits, hashes)):
+                raise ReceiptError("%s pose provenance must use tuples" % name)
+            if len({len(ids), len(timestamps), len(commits), len(hashes)}) != 1:
+                raise ReceiptError("%s pose provenance arrays have different lengths" % name)
+            if len(ids) > 2:
+                raise ReceiptError("%s pose snapshot exceeds two poses" % name)
+            if any(not _is_nonnegative_int(value) for value in ids):
+                raise ReceiptError("%s pose IDs must be non-negative integers" % name)
+            if any(not _is_nonnegative_int(value) for value in timestamps):
+                raise ReceiptError("%s pose timestamps must be non-negative integers" % name)
+            if any(not _is_nonnegative_int(value) for value in commits):
+                raise ReceiptError("%s pose commit cycles must be non-negative integers" % name)
+            if any(
+                type(value) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None
+                for value in hashes
+            ):
+                raise ReceiptError("%s pose hashes must be lowercase SHA-256" % name)
+            if any(right <= left for left, right in zip(ids, ids[1:])):
+                raise ReceiptError("%s pose IDs must be strictly increasing" % name)
+            if any(right <= left for left, right in zip(timestamps, timestamps[1:])):
+                raise ReceiptError("%s pose timestamps must be strictly increasing" % name)
+        if any(cycle >= self.occurrence_cycle for cycle in self.occurrence_pose_commit_cycles):
+            raise ReceiptError("occurrence pose is not visible before the event edge")
         if any(
-            not _is_nonnegative_int(value)
-            for value in self.available_pose_timestamps_ns
+            timestamp > self.event_timestamp_ns
+            for timestamp in self.occurrence_pose_timestamps_ns
         ):
-            raise ReceiptError("available pose timestamps must be non-negative integers")
-        if any(
-            right <= left
-            for left, right in zip(self.available_pose_ids, self.available_pose_ids[1:])
-        ):
-            raise ReceiptError("available pose IDs must be strictly increasing")
-        if any(
-            right <= left
-            for left, right in zip(
-                self.available_pose_timestamps_ns,
-                self.available_pose_timestamps_ns[1:],
-            )
-        ):
-            raise ReceiptError("available pose timestamps must be strictly increasing")
+            raise ReceiptError("occurrence pose has a future measurement timestamp")
+        if type(self.intentional_future_pose_use) is not bool:
+            raise ReceiptError("intentional_future_pose_use must be bool")
+        occurrence_rows = set(zip(
+            self.occurrence_pose_ids,
+            self.occurrence_pose_timestamps_ns,
+            self.occurrence_pose_commit_cycles,
+            self.occurrence_pose_sha256,
+        ))
+        used_rows = tuple(zip(
+            self.used_pose_ids,
+            self.used_pose_timestamps_ns,
+            self.used_pose_commit_cycles,
+            self.used_pose_sha256,
+        ))
+        if self.arm == "delayed_exact":
+            if not self.intentional_future_pose_use:
+                raise ReceiptError("delayed_exact must declare intentional future pose use")
+            if len(used_rows) != 2 or not (
+                self.used_pose_timestamps_ns[0]
+                <= self.event_timestamp_ns
+                < self.used_pose_timestamps_ns[1]
+            ):
+                raise ReceiptError("delayed_exact requires a strict right bracket")
+            if any(cycle >= self.retire_cycle for cycle in self.used_pose_commit_cycles):
+                raise ReceiptError("delayed pose is not visible before retirement")
+        else:
+            if self.intentional_future_pose_use:
+                raise ReceiptError("causal arm cannot declare future pose use")
+            if any(row not in occurrence_rows for row in used_rows):
+                raise ReceiptError("causal arm used pose outside occurrence snapshot")
         if self.pose_age_ns is not None and (
             isinstance(self.pose_age_ns, bool) or not isinstance(self.pose_age_ns, int)
         ):
             raise ReceiptError("pose_age_ns must be an integer or null")
-        if self.available_pose_ids and self.pose_age_ns is None:
+        if self.used_pose_ids and self.pose_age_ns is None:
             raise ReceiptError("pose_age_ns is required when a pose is available")
-        if not self.available_pose_ids and self.pose_age_ns is not None:
+        if not self.used_pose_ids and self.pose_age_ns is not None:
             raise ReceiptError("pose_age_ns requires an available pose")
+        if self.used_pose_ids and self.pose_age_ns != (
+            self.event_timestamp_ns - self.used_pose_timestamps_ns[-1]
+        ):
+            raise ReceiptError("pose_age_ns differs from the latest used pose")
         if type(self.disposition) is not str or self.disposition not in DISPOSITIONS:
             raise ReceiptError("invalid disposition")
         if type(self.disposition_reason) is not str or _REASON.fullmatch(
@@ -137,20 +214,38 @@ class DecisionRecord:
             raise ReceiptError(
                 "decision fields differ; missing=%r extra=%r" % (missing, extra)
             )
-        pose_ids = value["available_pose_ids"]
-        pose_times = value["available_pose_timestamps_ns"]
-        if not isinstance(pose_ids, (list, tuple)) or isinstance(pose_ids, (str, bytes)):
-            raise ReceiptError("available_pose_ids must be an array")
-        if not isinstance(pose_times, (list, tuple)) or isinstance(pose_times, (str, bytes)):
-            raise ReceiptError("available_pose_timestamps_ns must be an array")
+        tuple_fields = (
+            "occurrence_pose_ids",
+            "occurrence_pose_timestamps_ns",
+            "occurrence_pose_commit_cycles",
+            "occurrence_pose_sha256",
+            "used_pose_ids",
+            "used_pose_timestamps_ns",
+            "used_pose_commit_cycles",
+            "used_pose_sha256",
+        )
+        for field in tuple_fields:
+            field_value = value[field]
+            if not isinstance(field_value, (list, tuple)) or isinstance(
+                field_value, (str, bytes)
+            ):
+                raise ReceiptError("%s must be an array" % field)
         return cls(
             window_id=value["window_id"],
             event_id=value["event_id"],
+            event_timestamp_ns=value["event_timestamp_ns"],
             arm=value["arm"],
             occurrence_cycle=value["occurrence_cycle"],
             retire_cycle=value["retire_cycle"],
-            available_pose_ids=tuple(pose_ids),
-            available_pose_timestamps_ns=tuple(pose_times),
+            occurrence_pose_ids=tuple(value["occurrence_pose_ids"]),
+            occurrence_pose_timestamps_ns=tuple(value["occurrence_pose_timestamps_ns"]),
+            occurrence_pose_commit_cycles=tuple(value["occurrence_pose_commit_cycles"]),
+            occurrence_pose_sha256=tuple(value["occurrence_pose_sha256"]),
+            used_pose_ids=tuple(value["used_pose_ids"]),
+            used_pose_timestamps_ns=tuple(value["used_pose_timestamps_ns"]),
+            used_pose_commit_cycles=tuple(value["used_pose_commit_cycles"]),
+            used_pose_sha256=tuple(value["used_pose_sha256"]),
+            intentional_future_pose_use=value["intentional_future_pose_use"],
             pose_age_ns=value["pose_age_ns"],
             disposition=value["disposition"],
             disposition_reason=value["disposition_reason"],
@@ -161,13 +256,19 @@ class DecisionRecord:
         return {
             "window_id": self.window_id,
             "event_id": self.event_id,
+            "event_timestamp_ns": self.event_timestamp_ns,
             "arm": self.arm,
             "occurrence_cycle": self.occurrence_cycle,
             "retire_cycle": self.retire_cycle,
-            "available_pose_ids": list(self.available_pose_ids),
-            "available_pose_timestamps_ns": list(
-                self.available_pose_timestamps_ns
-            ),
+            "occurrence_pose_ids": list(self.occurrence_pose_ids),
+            "occurrence_pose_timestamps_ns": list(self.occurrence_pose_timestamps_ns),
+            "occurrence_pose_commit_cycles": list(self.occurrence_pose_commit_cycles),
+            "occurrence_pose_sha256": list(self.occurrence_pose_sha256),
+            "used_pose_ids": list(self.used_pose_ids),
+            "used_pose_timestamps_ns": list(self.used_pose_timestamps_ns),
+            "used_pose_commit_cycles": list(self.used_pose_commit_cycles),
+            "used_pose_sha256": list(self.used_pose_sha256),
+            "intentional_future_pose_use": self.intentional_future_pose_use,
             "pose_age_ns": self.pose_age_ns,
             "disposition": self.disposition,
             "disposition_reason": self.disposition_reason,

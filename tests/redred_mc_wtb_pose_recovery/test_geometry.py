@@ -45,6 +45,24 @@ class QuaternionGeometryTests(unittest.TestCase):
         assert_quaternion_equivalent(self, midpoint, z_rotation(60.0))
         assert_quaternion_equivalent(self, midpoint, antipodal)
 
+    def test_exact_180_degree_tie_is_antipodal_invariant(self):
+        endpoints = (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (math.sqrt(0.5), math.sqrt(0.5), 0.0, 0.0),
+        )
+        for endpoint in endpoints:
+            expected = shortest_arc_slerp_xyzw(Q_IDENTITY, endpoint, 0.5)
+            for left_sign, right_sign in ((1, -1), (-1, 1), (-1, -1)):
+                observed = shortest_arc_slerp_xyzw(
+                    tuple(left_sign * value for value in Q_IDENTITY),
+                    tuple(right_sign * value for value in endpoint),
+                    0.5,
+                )
+                with self.subTest(endpoint=endpoint, signs=(left_sign, right_sign)):
+                    assert_quaternion_equivalent(self, observed, expected)
+
     def test_committed_bracket_interpolation_and_same_cycle_rejection(self):
         left = PoseSample(1_000_000, 10, Q_IDENTITY)
         right = PoseSample(3_000_000, 20, z_rotation(90.0))

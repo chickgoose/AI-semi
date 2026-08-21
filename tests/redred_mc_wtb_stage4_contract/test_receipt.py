@@ -17,14 +17,23 @@ ARM = "zoh_freshness"
 
 
 def record(event_id: int, occurrence: int, retire: int):
+    hashes = ["1" * 64, "2" * 64]
     return {
         "window_id": WINDOW,
         "event_id": event_id,
+        "event_timestamp_ns": 5_320_500_000,
         "arm": ARM,
         "occurrence_cycle": occurrence,
         "retire_cycle": retire,
-        "available_pose_ids": [10, 11],
-        "available_pose_timestamps_ns": [5319000000, 5320000000],
+        "occurrence_pose_ids": [10, 11],
+        "occurrence_pose_timestamps_ns": [5_319_000_000, 5_320_000_000],
+        "occurrence_pose_commit_cycles": [1, 2],
+        "occurrence_pose_sha256": hashes,
+        "used_pose_ids": [10, 11],
+        "used_pose_timestamps_ns": [5_319_000_000, 5_320_000_000],
+        "used_pose_commit_cycles": [1, 2],
+        "used_pose_sha256": hashes,
+        "intentional_future_pose_use": False,
         "pose_age_ns": 500000,
         "disposition": "corrected_world_ray",
         "disposition_reason": "fresh_pose",
@@ -102,12 +111,17 @@ class ReceiptTests(unittest.TestCase):
     def test_pose_provenance_is_paired_ordered_and_pose_age_may_be_signed(self) -> None:
         delayed = record(101, 4, 8)
         delayed["arm"] = "delayed_exact"
+        delayed["used_pose_ids"] = [11, 12]
+        delayed["used_pose_timestamps_ns"] = [5_320_000_000, 5_321_000_000]
+        delayed["used_pose_commit_cycles"] = [2, 5]
+        delayed["used_pose_sha256"] = ["2" * 64, "3" * 64]
+        delayed["intentional_future_pose_use"] = True
         delayed["pose_age_ns"] = -500000
         parsed = DecisionRecord.from_mapping(delayed)
         self.assertEqual(parsed.pose_age_ns, -500000)
 
         malformed = copy.deepcopy(self.rows[0])
-        malformed["available_pose_timestamps_ns"] = [5320000000]
+        malformed["occurrence_pose_timestamps_ns"] = [5_320_000_000]
         with self.assertRaisesRegex(ReceiptError, "different lengths"):
             DecisionRecord.from_mapping(malformed)
 
@@ -121,6 +135,33 @@ class ReceiptTests(unittest.TestCase):
         nonstring_arm["arm"] = []
         with self.assertRaisesRegex(ReceiptError, "arm"):
             DecisionRecord.from_mapping(nonstring_arm)
+
+    def test_causal_pose_snapshot_cannot_see_same_edge_or_dequeue_pose(self) -> None:
+        same_edge = copy.deepcopy(self.rows[0])
+        same_edge["occurrence_pose_commit_cycles"][-1] = same_edge["occurrence_cycle"]
+        same_edge["used_pose_commit_cycles"][-1] = same_edge["occurrence_cycle"]
+        with self.assertRaisesRegex(ReceiptError, "not visible before"):
+            DecisionRecord.from_mapping(same_edge)
+
+        dequeue_pose = copy.deepcopy(self.rows[0])
+        dequeue_pose["used_pose_ids"] = [12]
+        dequeue_pose["used_pose_timestamps_ns"] = [5_320_250_000]
+        dequeue_pose["used_pose_commit_cycles"] = [3]
+        dequeue_pose["used_pose_sha256"] = ["3" * 64]
+        dequeue_pose["pose_age_ns"] = 250_000
+        with self.assertRaisesRegex(ReceiptError, "outside occurrence snapshot"):
+            DecisionRecord.from_mapping(dequeue_pose)
+
+    def test_only_delayed_arm_may_declare_future_pose_use(self) -> None:
+        causal = copy.deepcopy(self.rows[0])
+        causal["intentional_future_pose_use"] = True
+        with self.assertRaisesRegex(ReceiptError, "causal arm"):
+            DecisionRecord.from_mapping(causal)
+
+        delayed_without_label = copy.deepcopy(self.rows[0])
+        delayed_without_label["arm"] = "delayed_exact"
+        with self.assertRaisesRegex(ReceiptError, "must declare"):
+            DecisionRecord.from_mapping(delayed_without_label)
 
 
 if __name__ == "__main__":
