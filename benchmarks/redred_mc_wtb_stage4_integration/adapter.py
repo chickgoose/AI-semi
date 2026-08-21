@@ -22,6 +22,12 @@ from benchmarks.redred_mc_wtb_pose_recovery import (
     recover_causal_cav,
     rotate_sensor_ray_to_world,
 )
+from benchmarks.redred_mc_wtb_stage4_assay.source import (
+    Calibration,
+    EventSample,
+    SourceInputError,
+    sensor_ray,
+)
 from benchmarks.redred_mc_wtb_stage4_contract import (
     DecisionReceipt,
     DecisionRecord,
@@ -117,6 +123,20 @@ _STATE_COMPONENTS_BITS = (
 )
 _CONSERVATIVE_INCREMENTAL_STATE_BITS = 108_799
 _CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND = 192_000
+_CALIBRATION_FIELDS = (
+    "width",
+    "height",
+    "fx",
+    "fy",
+    "cx",
+    "cy",
+    "k1",
+    "k2",
+    "p1",
+    "p2",
+    "k3",
+)
+_SENSOR_RAY_GENERATOR_RULE = "radtan_inverse_newton_then_normalized_sensor_ray"
 
 
 def _duplicate_rejecting_object(pairs: Sequence[Tuple[str, Any]]) -> Dict[str, Any]:
@@ -229,6 +249,8 @@ class AssayBundle:
     manifest: Mapping[str, Any]
     manifest_sha256: str
     authority_sha256: str
+    calibration: Calibration
+    calibration_authority_sha256: str
     events: Tuple[Mapping[str, Any], ...]
     batches: Tuple[Mapping[str, Any], ...]
     snapshots: Tuple[Mapping[str, Any], ...]
@@ -245,6 +267,7 @@ class WindowCycleInputs:
     window_end_ns: int
     event_rows: Tuple[Mapping[str, Any], ...]
     events: Tuple[Event, ...]
+    sensor_rays: Tuple[Tuple[float, float, float], ...]
     dataset_poses: Tuple[PosePacket, ...]
     oracle_poses: Tuple[PosePacket, ...]
     dataset_quaternions: Mapping[int, Tuple[float, float, float, float]]
@@ -334,6 +357,86 @@ def _validate_pose_value(
     supplied = _require_sha(row.get("pose_value_sha256"), "%s pose value" % where)
     if supplied != _pose_value_sha256(pose_id, timestamp_ns, quaternion):
         raise IntegrationError("%s pose value hash differs" % where)
+
+
+def _load_calibration_authority(
+    authority: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    source: Mapping[str, Any],
+) -> Tuple[Calibration, str]:
+    calibration_authority = _require_mapping(
+        authority.get("calibration_model"), "authority.calibration_model"
+    )
+    body = dict(calibration_authority)
+    authority_sha256 = _require_sha(
+        body.pop("authority_sha256", None), "calibration authority"
+    )
+    if canonical_sha256(body) != authority_sha256:
+        raise IntegrationError("calibration authority canonical hash differs")
+    if set(body) != {
+        "schema",
+        "source_path",
+        "source_sha256",
+        "sensor_ray_generator_rule",
+        "model",
+    }:
+        raise IntegrationError("calibration authority fields differ")
+    calibration_source_sha256 = _require_sha(
+        source.get("calibration_sha256"), "source calibration hash"
+    )
+    if (
+        body.get("schema") != "redred.mc_wtb.stage4_calibration_authority/v1"
+        or body.get("source_path") != "calib.txt"
+        or body.get("source_sha256") != calibration_source_sha256
+        or body.get("sensor_ray_generator_rule") != _SENSOR_RAY_GENERATOR_RULE
+    ):
+        raise IntegrationError("calibration authority provenance differs")
+    event_inputs = _require_mapping(manifest.get("event_inputs"), "event_inputs")
+    if (
+        event_inputs.get("calibration_authority_sha256") != authority_sha256
+        or event_inputs.get("ray_model") != _SENSOR_RAY_GENERATOR_RULE
+    ):
+        raise IntegrationError("event inputs do not bind calibration authority")
+    model = _require_mapping(body.get("model"), "calibration authority model")
+    if set(model) != set(_CALIBRATION_FIELDS):
+        raise IntegrationError("calibration authority fields differ")
+    for name in ("width", "height"):
+        _require_int(model.get(name), "calibration %s" % name, 1)
+    for name in _CALIBRATION_FIELDS[2:]:
+        value = model.get(name)
+        if type(value) is not float or not math.isfinite(value):
+            raise IntegrationError("calibration %s must be an exact finite float" % name)
+    try:
+        calibration = Calibration(**{name: model[name] for name in _CALIBRATION_FIELDS})
+    except SourceInputError as exc:
+        raise IntegrationError("calibration authority model is invalid") from exc
+    return calibration, authority_sha256
+
+
+def _recompute_sensor_ray(
+    row: Mapping[str, Any], calibration: Calibration
+) -> Tuple[float, float, float]:
+    event = EventSample(
+        event_id=_require_int(row.get("event_id"), "event_id", 0),
+        timestamp_ns=_require_int(row.get("timestamp_ns"), "event timestamp", 0),
+        x=_require_int(row.get("x"), "event x", 0),
+        y=_require_int(row.get("y"), "event y", 0),
+        polarity=_require_int(row.get("polarity"), "event polarity", 0),
+    )
+    try:
+        recovered = sensor_ray(event, calibration)
+    except SourceInputError as exc:
+        raise IntegrationError("payload-bound sensor-ray recovery failed") from exc
+    serialized = row.get("sensor_ray")
+    if (
+        type(serialized) is not list
+        or len(serialized) != 3
+        or any(type(value) is not float or not math.isfinite(value) for value in serialized)
+    ):
+        raise IntegrationError("serialized sensor ray must contain exact finite floats")
+    if serialized != list(recovered):
+        raise IntegrationError("sensor ray differs from calibration recovery")
+    return recovered
 
 
 def load_assay_bundle(
@@ -428,6 +531,9 @@ def load_assay_bundle(
         "calib.txt_sha256": source.get("calibration_sha256"),
     }:
         raise IntegrationError("raw source/calibration binding differs")
+    calibration, calibration_authority_sha256 = _load_calibration_authority(
+        authority, manifest, source
+    )
     generator_runtime = _require_mapping(
         manifest.get("generator_runtime"), "manifest.generator_runtime"
     )
@@ -437,6 +543,7 @@ def load_assay_bundle(
         raise IntegrationError("generator/runtime authority binding differs")
     for row in loaded[_EVENTS]:
         _validate_payload(row)
+        _recompute_sensor_ray(row, calibration)
         timestamp_ns = _require_int(row.get("timestamp_ns"), "event timestamp", 0)
         if forbidden[0] <= timestamp_ns < forbidden[1]:
             raise IntegrationError("forbidden event reached assay inputs")
@@ -566,6 +673,7 @@ def load_assay_bundle(
             raise IntegrationError("equal-timestamp cluster has multiple snapshots")
 
     oracle_by_id = {}  # type: Dict[int, Mapping[str, Any]]
+    oracle_packet_hashes = []  # type: List[str]
     for packet in loaded[_ORACLE_POSES]:
         _validate_pose_value(
             packet,
@@ -574,6 +682,12 @@ def load_assay_bundle(
             "oracle packet",
         )
         pose_id = _require_int(packet.get("oracle_pose_id"), "oracle_pose_id", 0)
+        packet_body = dict(packet)
+        packet_sha256 = _require_sha(
+            packet_body.pop("packet_sha256", None), "oracle packet hash"
+        )
+        if canonical_sha256(packet_body) != packet_sha256:
+            raise IntegrationError("oracle pose packet canonical hash differs")
         if pose_id in oracle_by_id:
             raise IntegrationError("oracle pose identity is duplicated")
         if (
@@ -582,7 +696,18 @@ def load_assay_bundle(
             < forbidden[1]
         ):
             raise IntegrationError("forbidden oracle pose reached assay inputs")
+        oracle_packet_hashes.append(packet_sha256)
         oracle_by_id[pose_id] = packet
+    oracle_authority = _require_mapping(
+        authority.get("oracle_pose_stream"), "authority.oracle_pose_stream"
+    )
+    if (
+        oracle_authority.get("packet_sha256_rule")
+        != "canonical_sha256_of_record_without_packet_sha256"
+        or oracle_authority.get("ordered_packet_sha256")
+        != canonical_sha256(oracle_packet_hashes)
+    ):
+        raise IntegrationError("oracle packet hash authority differs")
     for schedule in loaded[_ORACLE_SCHEDULE]:
         pose_id = _require_int(
             schedule.get("oracle_pose_id"), "oracle schedule pose ID", 0
@@ -592,6 +717,7 @@ def load_assay_bundle(
             schedule.get("effective_timestamp_ns")
             != packet.get("effective_timestamp_ns")
             or schedule.get("pose_value_sha256") != packet.get("pose_value_sha256")
+            or schedule.get("packet_sha256") != packet.get("packet_sha256")
         ):
             raise IntegrationError("oracle schedule differs from pose packet authority")
         effective_cycle = _require_int(
@@ -607,6 +733,8 @@ def load_assay_bundle(
         manifest,
         manifest_sha256,
         supplied_binding,
+        calibration,
+        calibration_authority_sha256,
         loaded[_EVENTS],
         loaded[_BATCHES],
         loaded[_SNAPSHOTS],
@@ -640,15 +768,22 @@ def _window_limits(
     row = matches[0]
     if any(
         name not in row
-        for name in ("window_start_ns", "query_start_ns", "window_end_ns")
-    ):
-        raise IntegrationError(
-            "UPSTREAM_WINDOW_LIMITS_NOT_SERIALIZED: "
-            "window_start_ns/query_start_ns/window_end_ns are required"
+        for name in (
+            "warmup_start_ns_inclusive",
+            "query_start_ns_inclusive",
+            "query_end_ns_exclusive",
         )
-    start = _require_int(row["window_start_ns"], "window_start_ns", 0)
-    query_start = _require_int(row["query_start_ns"], "query_start_ns", 0)
-    end = _require_int(row["window_end_ns"], "window_end_ns", 0)
+    ):
+        raise IntegrationError("assay window summary lacks frozen registry bounds")
+    start = _require_int(
+        row["warmup_start_ns_inclusive"], "warmup_start_ns_inclusive", 0
+    )
+    query_start = _require_int(
+        row["query_start_ns_inclusive"], "query_start_ns_inclusive", 0
+    )
+    end = _require_int(
+        row["query_end_ns_exclusive"], "query_end_ns_exclusive", 0
+    )
     if not start <= query_start < end:
         raise IntegrationError("window limits are not increasing")
     return start, query_start, end
@@ -678,11 +813,19 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
         window_summary.get("query_event_count"), "window query_event_count", 0
     ):
         raise IntegrationError("assay query count differs from manifest window summary")
+    recovered_sensor_rays = tuple(
+        _recompute_sensor_ray(row, bundle.calibration) for row in event_rows
+    )
     events = tuple(
         Event(
             _require_int(row.get("event_id"), "event_id", 0),
             _require_int(row.get("timestamp_ns"), "event timestamp", 0),
-            True,
+            transform_guard_valid=True,
+            causal_pose_index=_require_int(
+                row.get("causal_pose_source_index"),
+                "payload-bound causal pose index",
+                0,
+            ),
         )
         for row in event_rows
     )
@@ -739,6 +882,7 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
         end,
         event_rows,
         events,
+        recovered_sensor_rays,
         tuple(dataset_packets),
         tuple(oracle_packets),
         dataset_quaternions,
@@ -849,8 +993,7 @@ def _shadow_for_record(
         if len(selected) != 2:
             if not occurrence:
                 raise IntegrationError(
-                    "UPSTREAM_DELAYED_RAW_SHADOW_ARITY_UNREPRESENTABLE: "
-                    "authoritative offline bracket lacks a left pose"
+                    "authoritative delayed shadow lacks an occurrence-left pose"
                 )
             left_id = occurrence[-1][0]
             packet_by_id = {
@@ -867,8 +1010,7 @@ def _shadow_for_record(
             )
             if left_packet is None or right_packet is None:
                 raise IntegrationError(
-                    "UPSTREAM_DELAYED_RAW_SHADOW_ARITY_UNREPRESENTABLE: "
-                    "authoritative offline bracket is unavailable"
+                    "authoritative delayed offline bracket is unavailable"
                 )
             selected = (
                 (
@@ -942,6 +1084,8 @@ def _full_cycle_evidence(result: SimulationResult) -> Mapping[str, Any]:
         "transform_pipeline_cycles": result.transform_pipeline_cycles,
         "dataset_pose_arrival_assumption": result.dataset_pose_arrival_assumption,
         "arm_disposition_label": result.arm_disposition_label,
+        "synthetic_test_mode": result.synthetic_test_mode,
+        "all_event_pose_indices_verified": result.all_event_pose_indices_verified,
         "pose_ring_entries": result.pose_ring_entries,
         "pose_ring_state_bits": result.pose_ring_state_bits,
         "pose_ring_accounting": result.pose_ring_accounting.to_mapping(),
@@ -1163,6 +1307,21 @@ def build_all_arm_window(
             )
         except CycleModelError as exc:
             raise IntegrationError("cycle model rejected assay inputs for %s" % arm.value) from exc
+        if result.synthetic_test_mode:
+            raise IntegrationError("integration cycle result used synthetic test mode")
+        if arm is not Arm.ORACLE_1KHZ:
+            if not result.all_event_pose_indices_verified:
+                raise IntegrationError("cycle result did not verify every event pose index")
+            for event, cycle_receipt in zip(inputs.events, result.cycle_receipts):
+                if (
+                    not cycle_receipt.causal_pose_index_applicable
+                    or not cycle_receipt.causal_pose_index_verified
+                    or cycle_receipt.event_causal_pose_index
+                    != event.causal_pose_index
+                ):
+                    raise IntegrationError(
+                        "cycle receipt does not prove the payload-bound pose index"
+                    )
         converted = tuple(_convert_record(record) for record in result.records)
         if arm is not Arm.ORACLE_1KHZ:
             _validate_assay_snapshot_projection(bundle, inputs, converted)
@@ -1172,7 +1331,6 @@ def build_all_arm_window(
                 or cycle_receipt.admission_lane != event_row.get("presentation_lane")
             ):
                 raise IntegrationError(
-                    "UPSTREAM_CYCLEMODEL_INGRESS_SCHEDULE_MISMATCH: "
                     "cycle admission differs from assay presentation"
                 )
         simulations[arm] = result
@@ -1180,9 +1338,7 @@ def build_all_arm_window(
 
     ray_events = []  # type: List[RayEvent]
     for index, event_row in enumerate(inputs.event_rows):
-        sensor_ray = event_row.get("sensor_ray")
-        if not isinstance(sensor_ray, list):
-            raise IntegrationError("assay event sensor_ray must be an array")
+        recovered_sensor_ray = inputs.sensor_rays[index]
         shadows = []  # type: List[ShadowRay]
         for arm in Arm:
             quaternions = (
@@ -1193,7 +1349,7 @@ def build_all_arm_window(
             shadows.append(
                 _shadow_for_record(
                     converted_by_arm[arm][index],
-                    sensor_ray,
+                    recovered_sensor_ray,
                     quaternions,
                     inputs.dataset_poses if arm is Arm.DELAYED_EXACT else (),
                 )
@@ -1204,7 +1360,7 @@ def build_all_arm_window(
             inputs.events[index].timestamp_ns,
             _require_int(event_row.get("polarity"), "event polarity", 0),
             event_row.get("is_query") is True,
-            tuple(float(value) for value in sensor_ray),
+            recovered_sensor_ray,
             tuple(shadows),
         ))
     ray_values = tuple(ray_events)

@@ -8,6 +8,12 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from benchmarks.redred_mc_wtb_stage4_assay import generate_score_free_inputs
+from benchmarks.redred_mc_wtb_stage4_assay.source import (
+    Calibration,
+    EventSample,
+    sensor_ray,
+)
 from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_json_bytes,
     canonical_sha256,
@@ -22,6 +28,9 @@ from benchmarks.redred_mc_wtb_stage4_integration import (
     load_assay_bundle,
 )
 from benchmarks.redred_mc_wtb_stage4_scoring import ScoreBoundaryEvidence
+from tests.redred_mc_wtb_stage4_assay.test_generator import (
+    build_fixture as build_assay_source_fixture,
+)
 
 
 HASH_A = "1" * 64
@@ -92,6 +101,19 @@ def artifact(path, rows):
 
 
 def build_artifacts(root, *, include_limits=True, signed_history=True):
+    calibration = Calibration(
+        240,
+        180,
+        100.0,
+        100.0,
+        120.0,
+        90.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
     q0 = (0.0, 0.0, 0.0, 1.0)
     q1 = (0.0, 0.0, math.sin(0.01), math.cos(0.01))
     q2 = (0.0, 0.0, math.sin(0.02), math.cos(0.02))
@@ -119,11 +141,13 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
         "slerp_denominator_ns": 2,
         "pose_value_sha256": pose_hash(oracle_pose_id, START, q1),
     }]
+    oracle[0]["packet_sha256"] = canonical_sha256(oracle[0])
     oracle_schedule = [{
         "window_id": WINDOW,
         "oracle_pose_id": oracle_pose_id,
         "effective_timestamp_ns": START,
         "pose_value_sha256": oracle[0]["pose_value_sha256"],
+        "packet_sha256": oracle[0]["packet_sha256"],
         "effective_cycle": 0,
         "commit_cycle": 1,
         "visible_cycle": 2,
@@ -174,14 +198,17 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
     for ordinal, spec in enumerate(event_specs):
         event_id, delta, is_query, occurrence, lane, presentation, presentation_lane = spec
         batch_id = batch_for_ordinal[ordinal]
+        x = 120 + ordinal
+        y = 90
+        event_sample = EventSample(event_id, START + delta, x, y, ordinal & 1)
         events.append({
             "window_id": WINDOW,
             "event_id": event_id,
             "timestamp_ns": START + delta,
-            "x": 120 + ordinal,
-            "y": 90,
+            "x": x,
+            "y": y,
             "polarity": ordinal & 1,
-            "sensor_ray": [0.0, 0.0, 1.0],
+            "sensor_ray": list(sensor_ray(event_sample, calibration)),
             "is_query": is_query,
             "window_event_ordinal": ordinal,
             "occurrence_cycle": occurrence,
@@ -192,7 +219,9 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
             "occurrence_batch_size": batch_sizes[ordinal],
             "occurrence_pose_snapshot_sha256": snapshot_by_batch[batch_id]["pose_snapshot_sha256"],
             "causal_pose_source_index": 11,
-            "payload_hex": pack_event(event_id, ordinal, START + delta, 120 + ordinal, 90, ordinal & 1, 11),
+            "payload_hex": pack_event(
+                event_id, ordinal, START + delta, x, y, ordinal & 1, 11
+            ),
             "presentation_cycle": presentation,
             "presentation_lane": presentation_lane,
             "serializer_queue_cycles": presentation - occurrence,
@@ -240,6 +269,21 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
             "groundtruth.txt_sha256": HASH_B,
             "calib.txt_sha256": HASH_C,
         },
+        "calibration_model": {
+            "schema": "redred.mc_wtb.stage4_calibration_authority/v1",
+            "source_path": "calib.txt",
+            "source_sha256": HASH_C,
+            "sensor_ray_generator_rule": (
+                "radtan_inverse_newton_then_normalized_sensor_ray"
+            ),
+            "model": {
+                name: getattr(calibration, name)
+                for name in (
+                    "width", "height", "fx", "fy", "cx", "cy",
+                    "k1", "k2", "p1", "p2", "k3",
+                )
+            },
+        },
         "dataset_pose_packet_stream": {
             "path": "stage4_dataset_pose_packets.jsonl",
             "sha256": artifacts["stage4_dataset_pose_packets.jsonl"]["sha256"],
@@ -254,6 +298,12 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
             "path": "oracle_resampled_groundtruth_1khz.jsonl",
             "sha256": artifacts["oracle_resampled_groundtruth_1khz.jsonl"]["sha256"],
             "record_count": len(oracle),
+            "packet_sha256_rule": (
+                "canonical_sha256_of_record_without_packet_sha256"
+            ),
+            "ordered_packet_sha256": canonical_sha256(
+                [row["packet_sha256"] for row in oracle]
+            ),
         },
         "oracle_window_schedule_stream": {
             "path": "stage4_oracle_window_schedule.jsonl",
@@ -263,6 +313,8 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
         "generator_code_sha256": {"fixture.py": HASH_A},
         "runtime": {"identity_sha256": HASH_B, "python_executable_sha256": HASH_C},
     }
+    calibration_body = authority["calibration_model"]
+    calibration_body["authority_sha256"] = canonical_sha256(calibration_body)
     authority["binding_sha256"] = canonical_sha256(authority)
     contract = load_comparison_contract()
     window = {
@@ -272,9 +324,9 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
     }
     if include_limits:
         window.update(
-            window_start_ns=START,
-            query_start_ns=START + 15,
-            window_end_ns=END,
+            warmup_start_ns_inclusive=START,
+            query_start_ns_inclusive=START + 15,
+            query_end_ns_exclusive=END,
         )
     manifest = {
         "schema": "redred.mc_wtb.stage4_score_free_inputs/v2",
@@ -299,6 +351,21 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
             "events_sha256": HASH_A,
             "groundtruth_sha256": HASH_B,
             "calibration_sha256": HASH_C,
+        },
+        "event_inputs": {
+            "ray_model": "radtan_inverse_newton_then_normalized_sensor_ray",
+            "calibration_authority_sha256": authority["calibration_model"][
+                "authority_sha256"
+            ],
+            "selected_event_count": len(events),
+            "occurrence_batch_count": len(batches),
+            "ordered_selected_event_ids_sha256": canonical_sha256(
+                [row["event_id"] for row in events]
+            ),
+            "ordered_query_event_ids_sha256": canonical_sha256(
+                [row["event_id"] for row in events if row["is_query"]]
+            ),
+            "ordered_102bit_records_sha256": hashlib.sha256(ordered_raw).hexdigest(),
         },
         "windows": [window],
         "artifacts": artifacts,
@@ -350,15 +417,57 @@ class IntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(IntegrationError, "pose value hash differs"):
                 load_assay_bundle(root, expected_manifest_sha256=expected)
 
-    def test_window_limits_remain_a_named_fail_closed_boundary(self):
+    def test_oracle_packet_hash_is_recomputed_after_stream_reseal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build_artifacts(root)
+            oracle_path = root / "oracle_resampled_groundtruth_1khz.jsonl"
+            rows = [json.loads(line) for line in oracle_path.read_text().splitlines()]
+            rows[0]["before_source_pose_id"] -= 1
+            write_jsonl(oracle_path, rows)
+            manifest_path = root / "stage4_input_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            oracle_artifact = artifact(oracle_path, rows)
+            manifest["artifacts"][oracle_path.name] = oracle_artifact
+            authority = manifest["authoritative_input_binding"]
+            authority["oracle_pose_stream"]["sha256"] = oracle_artifact["sha256"]
+            authority_body = dict(authority)
+            authority_body.pop("binding_sha256")
+            authority["binding_sha256"] = canonical_sha256(authority_body)
+            manifest_bytes = canonical_json_bytes(manifest)
+            manifest_path.write_bytes(manifest_bytes)
+            expected = hashlib.sha256(manifest_bytes).hexdigest()
+            with self.assertRaisesRegex(
+                IntegrationError, "oracle pose packet canonical hash differs"
+            ):
+                load_assay_bundle(root, expected_manifest_sha256=expected)
+
+    def test_window_registry_bounds_are_required(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             expected = build_artifacts(root, include_limits=False)
             bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
             with self.assertRaisesRegex(
-                IntegrationError, "UPSTREAM_WINDOW_LIMITS_NOT_SERIALIZED"
+                IntegrationError, "window summary lacks frozen registry bounds"
             ):
                 build_window_cycle_inputs(bundle, WINDOW)
+
+    def test_calibration_recovery_rejects_resealed_sensor_ray_tamper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build_artifacts(root)
+            events_path = root / "stage4_events.jsonl"
+            rows = [json.loads(line) for line in events_path.read_text().splitlines()]
+            rows[0]["sensor_ray"][0] += 0.001
+            write_jsonl(events_path, rows)
+            manifest_path = root / "stage4_input_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["artifacts"][events_path.name] = artifact(events_path, rows)
+            manifest_bytes = canonical_json_bytes(manifest)
+            manifest_path.write_bytes(manifest_bytes)
+            expected = hashlib.sha256(manifest_bytes).hexdigest()
+            with self.assertRaisesRegex(IntegrationError, "calibration recovery"):
+                load_assay_bundle(root, expected_manifest_sha256=expected)
 
     def test_four_arm_signed_same_cycle_inputs_are_fully_sealed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -394,6 +503,19 @@ class IntegrationTests(unittest.TestCase):
                     sealed.simulation.cycle_receipts_sha256,
                     sealed.manifest.cycle_receipts_sha256,
                 )
+                if sealed.arm is not Arm.ORACLE_1KHZ:
+                    self.assertTrue(
+                        sealed.simulation.all_event_pose_indices_verified
+                    )
+                    self.assertTrue(all(
+                        row.causal_pose_index_applicable
+                        and row.causal_pose_index_verified
+                        and row.event_causal_pose_index
+                        == inputs.events[index].causal_pose_index
+                        for index, row in enumerate(
+                            sealed.simulation.cycle_receipts
+                        )
+                    ))
                 self.assertEqual(sealed.accounting.incremental_state_bits, 108_799)
                 self.assertEqual(
                     sealed.accounting.pose_bandwidth_bits_per_second, 192_000
@@ -506,7 +628,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertNotIn("score_window(", source)
         self.assertNotIn("EventLoss", source)
 
-    def test_delayed_raw_shadow_uses_offline_bracket_or_named_blocker(self):
+    def test_delayed_raw_shadow_uses_scorer_supported_offline_bracket(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             expected = build_artifacts(root)
@@ -569,13 +691,45 @@ class IntegrationTests(unittest.TestCase):
                 )
             with self.assertRaisesRegex(
                 IntegrationError,
-                "UPSTREAM_DELAYED_RAW_SHADOW_ARITY_UNREPRESENTABLE",
+                "authoritative delayed offline bracket is unavailable",
             ):
                 integration._shadow_for_record(
                     record,
                     inputs.event_rows[0]["sensor_ray"],
                     inputs.dataset_quaternions,
                 )
+
+    def test_actual_generated_assay_fixture_builds_all_four_arms(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset = root / "dataset"
+            dataset.mkdir()
+            pins = build_assay_source_fixture(dataset)
+            output = root / "assay"
+            generated = generate_score_free_inputs(
+                dataset,
+                output,
+                source_pins=pins,
+                fixture_label="stage4_integration_end_to_end_fixture_v1",
+            )
+            manifest_path = output / "stage4_input_manifest.json"
+            expected = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            bundle = load_assay_bundle(
+                output, expected_manifest_sha256=expected
+            )
+            window_id = generated["windows"][0]["window_id"]
+            integrated = build_all_arm_window(bundle, window_id)
+            self.assertEqual(set(integrated), set(Arm))
+            self.assertTrue(all(
+                sealed.query_projection_sha256
+                == sealed.receipt.decision_records_sha256
+                for sealed in integrated.values()
+            ))
+            self.assertTrue(all(
+                sealed.simulation.all_event_pose_indices_verified
+                for arm, sealed in integrated.items()
+                if arm is not Arm.ORACLE_1KHZ
+            ))
 
 
 if __name__ == "__main__":

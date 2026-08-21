@@ -176,6 +176,7 @@ class GeneratorTests(unittest.TestCase):
                     arm=Arm.ZOH_FRESHNESS,
                     events=tuple(events),
                     poses=(),
+                    synthetic_test_mode=True,
                 )
 
                 self.assertEqual(
