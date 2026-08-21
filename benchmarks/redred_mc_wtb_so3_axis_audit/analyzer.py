@@ -20,6 +20,10 @@ Vector3 = Tuple[float, float, float]
 _NANOSECONDS_PER_SECOND = 1_000_000_000.0
 _ROTATION_ZERO_EPSILON = 1.0e-15
 _EIGEN_RELATIVE_TOLERANCE = 1.0e-12
+_EIGEN_CONVERGENCE_RELATIVE_TOLERANCE = 1.0e-15
+_EIGEN_RESIDUAL_RELATIVE_TOLERANCE = 1.0e-12
+_EIGEN_MAX_ITERATIONS = 64
+_DEFAULT_DIRECTIONAL_PI_MARGIN_RAD = 1.0e-6
 
 
 class SO3AxisAuditError(ValueError):
@@ -193,6 +197,8 @@ class RotationStep:
     angular_velocity_xyz_rad_s: Vector3
     angular_speed_rad_s: float
     stationary: bool
+    directional_valid: bool
+    directional_unavailable_reason: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -215,28 +221,47 @@ class AxisMotionAnalysis:
     peak_angular_speed_rad_s: float
     dominant_axis_xyz: Optional[Vector3]
     axis_coherence: Optional[float]
-    signed_dominant_rotation_rad: float
-    positive_dominant_rotation_rad: float
-    negative_dominant_rotation_rad: float
-    direction_reversal_count: int
+    maximum_physical_angular_speed_rad_s: Optional[float]
+    directional_pi_margin_rad: float
+    directional_metrics_available: bool
+    directional_metrics_unavailable_reason: Optional[str]
+    signed_dominant_rotation_rad: Optional[float]
+    positive_dominant_rotation_rad: Optional[float]
+    negative_dominant_rotation_rad: Optional[float]
+    direction_reversal_count: Optional[int]
     xyz_absolute_rotation_rad: Vector3
 
 
 def _symmetric_eigensystem(
     matrix: Sequence[Sequence[float]],
-) -> Tuple[Tuple[float, Vector3], ...]:
-    """Return descending eigenpairs of a real symmetric 3x3 matrix."""
+) -> Optional[Tuple[Tuple[float, Vector3, float], ...]]:
+    """Return certified descending eigenpairs of a symmetric 3x3 matrix.
 
-    values = [list(row) for row in matrix]
+    The third element of every eigenpair is ``||A v - lambda v||_2``.  A
+    non-converged or numerically unresolved solve returns ``None`` instead of
+    exposing a coordinate-axis artifact as a physical dominant axis.
+    """
+
+    original = tuple(tuple(float(value) for value in row) for row in matrix)
+    values = [list(row) for row in original]
     vectors = [[1.0 if row == column else 0.0 for column in range(3)] for row in range(3)]
-    scale = max(1.0, sum(abs(values[index][index]) for index in range(3)))
-    for _ in range(32):
+    scale = math.sqrt(math.fsum(
+        original[row][column] * original[row][column]
+        for row in range(3)
+        for column in range(3)
+    ))
+    if not math.isfinite(scale):
+        return None
+    convergence_limit = _EIGEN_CONVERGENCE_RELATIVE_TOLERANCE * scale
+    converged = scale == 0.0
+    for _ in range(_EIGEN_MAX_ITERATIONS):
         row, column = max(
             ((0, 1), (0, 2), (1, 2)),
             key=lambda pair: abs(values[pair[0]][pair[1]]),
         )
         off_diagonal = values[row][column]
-        if abs(off_diagonal) <= 1.0e-15 * scale:
+        if abs(off_diagonal) <= convergence_limit:
+            converged = True
             break
         tau = (values[column][column] - values[row][row]) / (2.0 * off_diagonal)
         tangent = math.copysign(
@@ -263,13 +288,27 @@ def _symmetric_eigensystem(
             vectors[other][row] = cosine * old_or - sine * old_oc
             vectors[other][column] = sine * old_or + cosine * old_oc
 
+    if not converged:
+        return None
+
     eigenpairs = []
     for index in range(3):
         vector = tuple(vectors[row][index] for row in range(3))
         norm = math.sqrt(math.fsum(component * component for component in vector))
-        eigenpairs.append(
-            (values[index][index], tuple(component / norm for component in vector))
+        if not math.isfinite(norm) or norm <= 0.0:
+            return None
+        unit = tuple(component / norm for component in vector)
+        projected = tuple(
+            math.fsum(original[row][column] * unit[column] for column in range(3))
+            for row in range(3)
         )
+        eigenvalue = math.fsum(unit[row] * projected[row] for row in range(3))
+        residual = math.sqrt(math.fsum(
+            (projected[row] - eigenvalue * unit[row]) ** 2 for row in range(3)
+        ))
+        if not math.isfinite(eigenvalue) or not math.isfinite(residual):
+            return None
+        eigenpairs.append((eigenvalue, unit, residual))
     eigenpairs.sort(key=lambda pair: pair[0], reverse=True)
     return tuple(eigenpairs)  # type: ignore[return-value]
 
@@ -290,9 +329,19 @@ def _dominant_axis(
                     step.angle_rad * step.axis_xyz[row] * step.axis_xyz[column]
                 )
     eigenpairs = _symmetric_eigensystem(tensor)
-    largest, axis = eigenpairs[0]
+    if eigenpairs is None:
+        return None, None
+    largest, axis, largest_residual = eigenpairs[0]
     coherence = min(1.0, max(0.0, largest / total_weight))
-    if largest - eigenpairs[1][0] <= _EIGEN_RELATIVE_TOLERANCE * total_weight:
+    second, _, second_residual = eigenpairs[1]
+    residual_limit = _EIGEN_RESIDUAL_RELATIVE_TOLERANCE * total_weight
+    if max(pair[2] for pair in eigenpairs) > residual_limit:
+        return None, coherence
+    numerical_gap_uncertainty = 4.0 * (largest_residual + second_residual)
+    if largest - second <= max(
+        _EIGEN_RELATIVE_TOLERANCE * total_weight,
+        numerical_gap_uncertainty,
+    ):
         return None, coherence
 
     resultant = tuple(
@@ -315,6 +364,8 @@ def analyze_axis_motion(
     *,
     frame: RotationFrame = RotationFrame.BODY,
     stationary_threshold_rad: float = 1.0e-9,
+    maximum_physical_angular_speed_rad_s: Optional[float] = None,
+    directional_pi_margin_rad: float = _DEFAULT_DIRECTIONAL_PI_MARGIN_RAD,
 ) -> AxisMotionAnalysis:
     """Analyze adjacent pose motion without consuming any performance score.
 
@@ -322,14 +373,31 @@ def analyze_axis_motion(
     ``axis_coherence`` is its largest tensor eigenvalue divided by total moving
     path angle: 1.0 means perfectly axial motion.  If the two largest
     eigenvalues tie, there is no unique dominant axis and the field is ``None``.
-    Directional totals and reversals are evaluated only after orienting that
-    axis deterministically.
+    Directional totals and reversals require a caller-supplied physical angular
+    speed bound.  For every interval, ``bound * duration`` must remain
+    strictly below ``pi - directional_pi_margin_rad`` and must cover the
+    observed principal step.  This cadence proof prevents a principal log from
+    silently aliasing a greater-than-pi physical step.  Missing or failed proof
+    leaves every signed/reversal field explicitly unavailable.
     """
 
     selected_frame = _frame(frame)
     threshold = _finite_number(stationary_threshold_rad, "stationary_threshold_rad")
     if threshold < 0.0 or threshold > math.pi:
         raise SO3AxisAuditError("stationary_threshold_rad must lie in [0, pi]")
+    pi_margin = _finite_number(directional_pi_margin_rad, "directional_pi_margin_rad")
+    if pi_margin <= 0.0 or pi_margin >= math.pi:
+        raise SO3AxisAuditError("directional_pi_margin_rad must lie in (0, pi)")
+    speed_bound = None
+    if maximum_physical_angular_speed_rad_s is not None:
+        speed_bound = _finite_number(
+            maximum_physical_angular_speed_rad_s,
+            "maximum_physical_angular_speed_rad_s",
+        )
+        if speed_bound <= 0.0:
+            raise SO3AxisAuditError(
+                "maximum_physical_angular_speed_rad_s must be positive"
+            )
     source = tuple(samples)
     if not source:
         raise SO3AxisAuditError("samples must contain at least one PoseSample")
@@ -347,6 +415,19 @@ def analyze_axis_motion(
         vector, angle, axis = _rotation_vector(delta)
         seconds = float(duration_ns) / _NANOSECONDS_PER_SECOND
         velocity = tuple(component / seconds for component in vector)
+        directional_valid = False
+        directional_reason = "PHYSICAL_SPEED_BOUND_NOT_PROVIDED"
+        if speed_bound is not None:
+            maximum_physical_step = speed_bound * seconds
+            if angle >= math.pi - pi_margin:
+                directional_reason = "STEP_AT_OR_NEAR_PI"
+            elif maximum_physical_step >= math.pi - pi_margin:
+                directional_reason = "CADENCE_DOES_NOT_PROVE_SUB_PI_STEP"
+            elif angle > maximum_physical_step + _ROTATION_ZERO_EPSILON:
+                directional_reason = "OBSERVED_STEP_EXCEEDS_PHYSICAL_SPEED_BOUND"
+            else:
+                directional_valid = True
+                directional_reason = None
         steps.append(
             RotationStep(
                 before.timestamp_ns,
@@ -358,6 +439,8 @@ def analyze_axis_motion(
                 velocity,  # type: ignore[arg-type]
                 angle / seconds,
                 angle <= threshold,
+                directional_valid,
+                directional_reason,
             )
         )
 
@@ -389,12 +472,22 @@ def analyze_axis_motion(
     peak_speed = max((step.angular_speed_rad_s for step in step_tuple), default=0.0)
     dominant_axis, coherence = _dominant_axis(step_tuple)
 
-    signed_rotation = 0.0
-    positive_rotation = 0.0
-    negative_rotation = 0.0
-    reversals = 0
-    previous_sign = 0
-    if dominant_axis is not None:
+    signed_rotation = None  # type: Optional[float]
+    positive_rotation = None  # type: Optional[float]
+    negative_rotation = None  # type: Optional[float]
+    reversals = None  # type: Optional[int]
+    directional_reason = None  # type: Optional[str]
+    if dominant_axis is None:
+        directional_reason = "NO_UNIQUE_DOMINANT_AXIS"
+    elif speed_bound is None:
+        directional_reason = "PHYSICAL_SPEED_BOUND_NOT_PROVIDED"
+    elif any(not step.directional_valid for step in step_tuple):
+        directional_reason = next(
+            step.directional_unavailable_reason
+            for step in step_tuple
+            if not step.directional_valid
+        )
+    else:
         projections = tuple(
             math.fsum(
                 component * direction
@@ -406,6 +499,8 @@ def analyze_axis_motion(
         signed_rotation = math.fsum(projections)
         positive_rotation = math.fsum(value for value in projections if value > threshold)
         negative_rotation = math.fsum(-value for value in projections if value < -threshold)
+        reversals = 0
+        previous_sign = 0
         for value in projections:
             sign = 1 if value > threshold else -1 if value < -threshold else 0
             if sign:
@@ -435,6 +530,10 @@ def analyze_axis_motion(
         peak_speed,
         dominant_axis,
         coherence,
+        speed_bound,
+        pi_margin,
+        directional_reason is None,
+        directional_reason,
         signed_rotation,
         positive_rotation,
         negative_rotation,

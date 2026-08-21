@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import math
 import unittest
+from unittest import mock
 
+from benchmarks.redred_mc_wtb_so3_axis_audit import analyzer as analyzer_module
 from benchmarks.redred_mc_wtb_so3_axis_audit import (
     PoseSample,
     RotationFrame,
@@ -74,7 +76,11 @@ class AxisMotionAnalysisTests(unittest.TestCase):
             PoseSample(index * 1_000_000_000, axis_rotation((0, 0, 1), degrees))
             for index, degrees in enumerate((0.0, 10.0, 30.0, 20.0, 0.0))
         )
-        result = analyze_axis_motion(poses, frame=RotationFrame.WORLD)
+        result = analyze_axis_motion(
+            poses,
+            frame=RotationFrame.WORLD,
+            maximum_physical_angular_speed_rad_s=math.radians(60.0),
+        )
 
         self.assertEqual(result.sample_count, 5)
         self.assertEqual(result.interval_count, 4)
@@ -83,6 +89,9 @@ class AxisMotionAnalysisTests(unittest.TestCase):
         self.assertAlmostEqual(result.net_angle_rad, 0.0)
         assert_vector(self, result.dominant_axis_xyz, (0.0, 0.0, 1.0))
         self.assertAlmostEqual(result.axis_coherence, 1.0)
+        self.assertTrue(result.directional_metrics_available)
+        self.assertIsNone(result.directional_metrics_unavailable_reason)
+        self.assertTrue(all(step.directional_valid for step in result.steps))
         self.assertAlmostEqual(result.positive_dominant_rotation_rad, math.radians(30.0))
         self.assertAlmostEqual(result.negative_dominant_rotation_rad, math.radians(30.0))
         self.assertAlmostEqual(result.signed_dominant_rotation_rad, 0.0)
@@ -116,7 +125,142 @@ class AxisMotionAnalysisTests(unittest.TestCase):
         result = analyze_axis_motion(poses, frame=RotationFrame.BODY)
         self.assertIsNone(result.dominant_axis_xyz)
         self.assertAlmostEqual(result.axis_coherence, 0.5)
-        self.assertEqual(result.direction_reversal_count, 0)
+        self.assertFalse(result.directional_metrics_available)
+        self.assertEqual(
+            result.directional_metrics_unavailable_reason,
+            "NO_UNIQUE_DOMINANT_AXIS",
+        )
+        self.assertIsNone(result.direction_reversal_count)
+
+    def test_small_tensor_off_diagonal_is_not_discarded_by_unit_scale_floor(self):
+        base = 5.0e-4
+        diagonal_gap = 2.0e-15
+        off_diagonal = 9.0e-16
+        expected_angle = 0.5 * math.atan2(2.0 * off_diagonal, diagonal_gap)
+        eigen_gap_half = 0.5 * math.sqrt(
+            diagonal_gap * diagonal_gap + 4.0 * off_diagonal * off_diagonal
+        )
+        mean = base + diagonal_gap / 2.0
+        first_weight = mean + eigen_gap_half
+        second_weight = mean - eigen_gap_half
+        first_axis = (math.cos(expected_angle), math.sin(expected_angle), 0.0)
+        second_axis = (-math.sin(expected_angle), math.cos(expected_angle), 0.0)
+        first_step = axis_rotation(first_axis, math.degrees(first_weight))
+        second_step = axis_rotation(second_axis, math.degrees(second_weight))
+        poses = (
+            PoseSample(0, IDENTITY),
+            PoseSample(1, first_step),
+            PoseSample(2, multiply(second_step, first_step)),
+        )
+
+        result = analyze_axis_motion(
+            poses,
+            frame=RotationFrame.WORLD,
+            stationary_threshold_rad=0.0,
+        )
+
+        self.assertIsNotNone(result.dominant_axis_xyz)
+        assert_vector(self, result.dominant_axis_xyz, first_axis, places=4)
+
+    def test_uncertified_eigenpair_residual_makes_axis_unavailable(self):
+        poses = (
+            PoseSample(0, IDENTITY),
+            PoseSample(1, axis_rotation((1, 0, 0), 10.0)),
+        )
+        uncertified = (
+            (1.0, (1.0, 0.0, 0.0), 1.0),
+            (0.0, (0.0, 1.0, 0.0), 1.0),
+            (0.0, (0.0, 0.0, 1.0), 1.0),
+        )
+        with mock.patch.object(
+            analyzer_module, "_symmetric_eigensystem", return_value=uncertified
+        ):
+            result = analyze_axis_motion(poses)
+        self.assertIsNone(result.dominant_axis_xyz)
+        self.assertFalse(result.directional_metrics_available)
+        self.assertEqual(
+            result.directional_metrics_unavailable_reason,
+            "NO_UNIQUE_DOMINANT_AXIS",
+        )
+
+    def test_half_turn_direction_and_reversal_are_unavailable(self):
+        poses = tuple(
+            PoseSample(index, axis_rotation((0, 0, 1), degrees))
+            for index, degrees in enumerate((0.0, 180.0, 360.0))
+        )
+        result = analyze_axis_motion(
+            poses,
+            frame=RotationFrame.WORLD,
+            stationary_threshold_rad=0.0,
+            maximum_physical_angular_speed_rad_s=math.pi,
+        )
+
+        assert_vector(self, result.dominant_axis_xyz, (0.0, 0.0, 1.0))
+        self.assertFalse(result.directional_metrics_available)
+        self.assertEqual(
+            result.directional_metrics_unavailable_reason,
+            "STEP_AT_OR_NEAR_PI",
+        )
+        self.assertTrue(all(not step.directional_valid for step in result.steps))
+        self.assertIsNone(result.signed_dominant_rotation_rad)
+        self.assertIsNone(result.positive_dominant_rotation_rad)
+        self.assertIsNone(result.negative_dominant_rotation_rad)
+        self.assertIsNone(result.direction_reversal_count)
+
+    def test_direction_requires_bound_and_cadence_proof(self):
+        poses = (
+            PoseSample(0, IDENTITY),
+            PoseSample(10_000_000_000, axis_rotation((0, 0, 1), 10.0)),
+        )
+        missing = analyze_axis_motion(poses, frame=RotationFrame.WORLD)
+        self.assertEqual(
+            missing.directional_metrics_unavailable_reason,
+            "PHYSICAL_SPEED_BOUND_NOT_PROVIDED",
+        )
+        sparse = analyze_axis_motion(
+            poses,
+            frame=RotationFrame.WORLD,
+            maximum_physical_angular_speed_rad_s=math.radians(30.0),
+        )
+        self.assertEqual(
+            sparse.directional_metrics_unavailable_reason,
+            "CADENCE_DOES_NOT_PROVE_SUB_PI_STEP",
+        )
+        self.assertFalse(sparse.steps[0].directional_valid)
+
+    def test_stationary_looking_gap_still_requires_cadence_proof(self):
+        poses = (
+            PoseSample(0, IDENTITY),
+            PoseSample(10_000_000_000, IDENTITY),
+            PoseSample(11_000_000_000, axis_rotation((0, 0, 1), 10.0)),
+        )
+        result = analyze_axis_motion(
+            poses,
+            frame=RotationFrame.WORLD,
+            maximum_physical_angular_speed_rad_s=math.radians(30.0),
+        )
+        assert_vector(self, result.dominant_axis_xyz, (0.0, 0.0, 1.0))
+        self.assertTrue(result.steps[0].stationary)
+        self.assertFalse(result.steps[0].directional_valid)
+        self.assertEqual(
+            result.directional_metrics_unavailable_reason,
+            "CADENCE_DOES_NOT_PROVE_SUB_PI_STEP",
+        )
+
+    def test_observed_step_must_not_exceed_physical_speed_bound(self):
+        poses = (
+            PoseSample(0, IDENTITY),
+            PoseSample(1_000_000_000, axis_rotation((1, 0, 0), 30.0)),
+        )
+        result = analyze_axis_motion(
+            poses,
+            maximum_physical_angular_speed_rad_s=math.radians(20.0),
+        )
+        self.assertEqual(
+            result.directional_metrics_unavailable_reason,
+            "OBSERVED_STEP_EXCEEDS_PHYSICAL_SPEED_BOUND",
+        )
+        self.assertFalse(result.steps[0].directional_valid)
 
     def test_noncommuting_path_sum_is_not_mislabeled_as_net_rotation(self):
         x_step = axis_rotation((1, 0, 0), 90.0)
@@ -155,6 +299,15 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(SO3AxisAuditError, r"\[0, pi\]"):
             analyze_axis_motion(
                 (PoseSample(0, IDENTITY),), stationary_threshold_rad=-1.0
+            )
+        with self.assertRaisesRegex(SO3AxisAuditError, "must be positive"):
+            analyze_axis_motion(
+                (PoseSample(0, IDENTITY),),
+                maximum_physical_angular_speed_rad_s=0.0,
+            )
+        with self.assertRaisesRegex(SO3AxisAuditError, r"\(0, pi\)"):
+            analyze_axis_motion(
+                (PoseSample(0, IDENTITY),), directional_pi_margin_rad=0.0
             )
 
 
