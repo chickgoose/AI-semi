@@ -49,18 +49,26 @@ the event.
   when queueing delays execution. Re-reading a newer pose at dequeue/transform
   time is a causality violation. Only `delayed_exact` may bind a later right
   bracket, and its receipt must label that use noncausal-at-occurrence.
-- Accounting boundary: two event lanes, one-cycle transform pipeline, 102-bit
-  event records, 192-bit pose packets, and at most 1,024 buffered events.
+- Accounting boundary: six raw ingress lanes, two downstream event lanes, a
+  one-cycle transform pipeline, 102-bit event records, 192-bit pose packets,
+  and at most 1,024 delayed events.
   These are cycle/state accounting constants, not measured physical results.
-- The source presents at most two records per cycle in stable event-ID order.
-  An equal-timestamp cluster has one occurrence-cycle pose snapshot even when
-  service spans cycles. Any source serialization/storage before this boundary
-  is an explicit external system cost and cannot change the occurrence
-  snapshot.
+- The source may present up to six records in one occurrence cycle, matching
+  the existing occurrence-preserving baseline. A charged six-entry ingress
+  capture takes the complete batch atomically, binds its occurrence pose
+  snapshot/pose index, and presents records in stable event-ID order at at most
+  two per cycle. An equal-timestamp cluster keeps one snapshot even when this
+  service spans cycles. More than six is source overrun and fails promotion;
+  no external serialization/storage is assumed for free. The frozen 24-window
+  development traffic has a measured pre-score maximum burst of five.
 - The comparison sink is always ready. Each lane has initiation interval one;
-  up to two ingress admissions and two ordered retirements may occur in the
-  same cycle. Visible pose state is sampled first, ready heads retire second,
-  then new records are admitted. A one-cycle transform may not reorder lanes.
+  up to six raw captures, two staging departures/arm admissions, and two
+  ordered retirements may occur in the same cycle. Visible pose state and the
+  raw batch are captured first, ready arm heads retire second, then up to two
+  staged records enter the arm. A one-cycle transform may not reorder lanes.
+  Common ingress-serialization latency is included in occurrence-to-retire
+  latency for every arm and subtracted event-by-event from policy-added
+  latency through the always-bypass baseline.
 - Dataset poses are assumed to arrive at their recorded timestamp for this
   development model. The assumption must remain explicit in every receipt.
 
@@ -102,7 +110,8 @@ is strictly less than zero. At exactly zero, retain those canonical signs.
 This makes the 180-degree tie invariant to either input's `q` versus `-q`
 encoding.
 
-The 1,024 entries include the complete delayed holding queue and its bypass
+The six ingress entries and the 1,024 delayed entries are separate, charged
+state. The 1,024 entries include the complete delayed holding queue and bypass
 state. When full and new records arrive, up to two oldest heads are forced to
 ordered raw bypass and retired before the new records are admitted. Newer raw
 records may never bypass an older head. With the frozen always-ready sink this

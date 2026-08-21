@@ -24,7 +24,7 @@ class ContractTests(unittest.TestCase):
     def test_frozen_contract_and_existing_registry_validate(self) -> None:
         self.assertEqual(
             self.contract.canonical_sha256,
-            "f6350c8fe24a2ee36d988aedaba265ef2a81f19539bd2cb0a4b70b0765d9d1bd",
+            "0ab09821dd4334371dad7d2436b8173f40469c2ffc6fa4744f50ed1463322670",
         )
         receipt = validate_existing_registry(self.contract)
         self.assertEqual(receipt.window_count, 24)
