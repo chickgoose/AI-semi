@@ -699,6 +699,83 @@ def _neutral_input_mapping(
     }
 
 
+def _require_integrity_equal(
+    observed: object, expected: object, where: str
+) -> None:
+    if observed != expected:
+        raise CurrentCAVEvaluationError("%s differs from retained-input replay" % where)
+
+
+def _compare_replayed_evaluation(
+    observed: CAVRegistryEvaluation,
+    replayed: CAVRegistryEvaluation,
+) -> None:
+    _require_integrity_equal(
+        len(observed.windows), len(replayed.windows), "window count"
+    )
+    for supplied, expected in zip(observed.windows, replayed.windows):
+        window_id = supplied.registry.window_id
+        _require_integrity_equal(
+            supplied.registry, expected.registry, "%s registry" % window_id
+        )
+        # SimulationResult equality covers every occurrence/query decision,
+        # receipt, cycle, pose identity, and cycle-model hash.
+        _require_integrity_equal(
+            supplied.simulation,
+            expected.simulation,
+            "%s decisions and cycle evidence" % window_id,
+        )
+        # CAVEventEvaluation equality covers all three losses, both reference
+        # IDs, enable/waste decisions, and occurrence/added latency per event.
+        _require_integrity_equal(
+            supplied.query_events,
+            expected.query_events,
+            "%s query event outputs" % window_id,
+        )
+        _require_integrity_equal(
+            supplied.query_decisions_sha256,
+            expected.query_decisions_sha256,
+            "%s query decision hash" % window_id,
+        )
+        for field in (
+            "accepted_events",
+            "enabled_events",
+            "quality_waste_events",
+            "sensor_loss_sum",
+            "policy_loss_sum",
+            "all_event_effect",
+            "positive_window",
+            "enable_rate",
+            "quality_waste_rate",
+            "occurrence_latency",
+            "added_latency",
+        ):
+            _require_integrity_equal(
+                getattr(supplied, field),
+                getattr(expected, field),
+                "%s %s" % (window_id, field),
+            )
+    for field in (
+        "registry_sha256",
+        "neutral_input_sha256",
+        "query_events",
+        "accepted_events",
+        "enabled_events",
+        "quality_waste_events",
+        "all_event_effect",
+        "positive_windows",
+        "enable_rate",
+        "quality_waste_rate",
+        "occurrence_latency",
+        "added_latency",
+    ):
+        _require_integrity_equal(
+            getattr(observed, field),
+            getattr(replayed, field),
+            "aggregate %s" % field,
+        )
+
+
 def verify_current_cav_evaluation_integrity(
     evaluation: CAVRegistryEvaluation,
 ) -> str:
@@ -758,6 +835,18 @@ def verify_current_cav_evaluation_integrity(
     )
     if evaluation.neutral_input_sha256 != expected_input_sha256:
         raise CurrentCAVEvaluationError("neutral input digest differs")
+    replayed = _evaluate_current_cav_registry_core(
+        tuple(window.registry for window in evaluation.windows),
+        {
+            window.registry.window_id: window.input_events
+            for window in evaluation.windows
+        },
+        {
+            window.registry.window_id: window.input_poses
+            for window in evaluation.windows
+        },
+    )
+    _compare_replayed_evaluation(evaluation, replayed)
     return expected_input_sha256
 
 
@@ -898,13 +987,11 @@ def evaluate_current_cav_window(
     return result
 
 
-def evaluate_current_cav_registry(
+def _evaluate_current_cav_registry_core(
     registry: Sequence[NeutralRegistryWindow],
     event_streams: Mapping[str, Sequence[NeutralEventInput]],
     pose_streams: Mapping[str, Sequence[NeutralPoseInput]],
 ) -> CAVRegistryEvaluation:
-    """Evaluate an ordered neutral registry without accepting selector data."""
-
     windows = tuple(_validate_registry_window(row) for row in registry)
     if not windows:
         raise CurrentCAVEvaluationError("registry must contain neutral windows")
@@ -941,6 +1028,15 @@ def evaluate_current_cav_registry(
         canonical_sha256(_neutral_input_mapping(results)),
         results,
     )
-    verify_current_cav_evaluation_integrity(result)
     _ = result.all_event_effect
     return result
+
+
+def evaluate_current_cav_registry(
+    registry: Sequence[NeutralRegistryWindow],
+    event_streams: Mapping[str, Sequence[NeutralEventInput]],
+    pose_streams: Mapping[str, Sequence[NeutralPoseInput]],
+) -> CAVRegistryEvaluation:
+    """Evaluate an ordered neutral registry without accepting selector data."""
+
+    return _evaluate_current_cav_registry_core(registry, event_streams, pose_streams)

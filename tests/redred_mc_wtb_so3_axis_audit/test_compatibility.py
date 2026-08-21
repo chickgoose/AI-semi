@@ -16,7 +16,10 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.compatibility import (
 )
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     CAVRegistryEvaluation,
+    CurrentCAVEvaluationError,
+    NeutralEventInput,
     NeutralRegistryWindow,
+    canonical_event_content_sha256,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 
@@ -24,6 +27,24 @@ from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 ASSAY_DIR = Path("/tmp/mcwtb-stage4-official-assay-20260821-v3")
 SEAL_DIR = Path("/tmp/mcwtb-stage4-official-seal-20260822-v1")
 RESULT_PATH = Path("/tmp/mcwtb-stage4-official-score-20260822-v1.json")
+
+
+def neutral_input_sha256(windows):
+    registry_mapping = [window.registry.to_mapping() for window in windows]
+    return canonical_sha256({
+        "schema": "redred.mc_wtb.current_cav_neutral_inputs/v1",
+        "registry": registry_mapping,
+        "windows": [
+            {
+                "window_id": window.registry.window_id,
+                "events": [
+                    event.to_content_mapping() for event in window.input_events
+                ],
+                "poses": [pose.to_content_mapping() for pose in window.input_poses],
+            }
+            for window in windows
+        ],
+    })
 
 
 @unittest.skipUnless(
@@ -84,6 +105,59 @@ class Original24CompatibilityTests(unittest.TestCase):
                 result_path=RESULT_PATH,
             )
 
+    def test_rebound_event_input_with_stale_outputs_fails_replay(self):
+        original_window = self.evaluation.windows[0]
+        event_index = next(
+            index
+            for index, event in enumerate(original_window.input_events)
+            if event.is_query
+        )
+        original_event = original_window.input_events[event_index]
+        changed_ray = tuple(-component for component in original_event.sensor_ray)
+        changed_event_digest = canonical_event_content_sha256(
+            original_event.event_id,
+            original_event.timestamp_ns,
+            original_event.polarity,
+            original_event.is_query,
+            changed_ray,
+            original_event.causal_pose_source_index,
+            original_event.transform_guard_valid,
+        )
+        changed_event = NeutralEventInput(
+            original_event.event_id,
+            original_event.timestamp_ns,
+            original_event.polarity,
+            original_event.is_query,
+            changed_ray,
+            original_event.causal_pose_source_index,
+            changed_event_digest,
+            original_event.transform_guard_valid,
+        )
+        changed_events = (
+            original_window.input_events[:event_index]
+            + (changed_event,)
+            + original_window.input_events[event_index + 1:]
+        )
+        changed_window = replace(original_window, input_events=changed_events)
+        changed_windows = (changed_window,) + self.evaluation.windows[1:]
+        mutated = CAVRegistryEvaluation(
+            self.evaluation.registry_sha256,
+            neutral_input_sha256(changed_windows),
+            changed_windows,
+        )
+
+        with self.assertRaises(Original24CompatibilityError) as raised:
+            verify_original_24_compatibility(
+                mutated,
+                seal_dir=SEAL_DIR,
+                result_path=RESULT_PATH,
+            )
+        self.assertRegex(str(raised.exception), "neutral evaluation integrity")
+        self.assertIsInstance(raised.exception.__cause__, CurrentCAVEvaluationError)
+        self.assertRegex(
+            str(raised.exception.__cause__), "query event outputs.*retained-input replay"
+        )
+
     def test_campaign_window_bounds_are_exact(self):
         original_window = self.evaluation.windows[0]
         registry = original_window.registry
@@ -96,30 +170,14 @@ class Original24CompatibilityTests(unittest.TestCase):
         changed_window = replace(original_window, registry=changed_registry)
         changed_windows = (changed_window,) + self.evaluation.windows[1:]
         registry_mapping = [window.registry.to_mapping() for window in changed_windows]
-        neutral_input_mapping = {
-            "schema": "redred.mc_wtb.current_cav_neutral_inputs/v1",
-            "registry": registry_mapping,
-            "windows": [
-                {
-                    "window_id": window.registry.window_id,
-                    "events": [
-                        event.to_content_mapping() for event in window.input_events
-                    ],
-                    "poses": [
-                        pose.to_content_mapping() for pose in window.input_poses
-                    ],
-                }
-                for window in changed_windows
-            ],
-        }
         forged = CAVRegistryEvaluation(
             canonical_sha256(registry_mapping),
-            canonical_sha256(neutral_input_mapping),
+            neutral_input_sha256(changed_windows),
             changed_windows,
         )
         with self.assertRaisesRegex(
             Original24CompatibilityError,
-            "campaign registry digest|registry bounds",
+            "neutral evaluation integrity|campaign registry digest|registry bounds",
         ):
             verify_original_24_compatibility(
                 forged,
