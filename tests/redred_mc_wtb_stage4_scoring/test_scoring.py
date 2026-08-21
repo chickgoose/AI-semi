@@ -731,7 +731,9 @@ class MetricRuleTests(unittest.TestCase):
 
     def test_positive_window_threshold_is_strict(self):
         self.assertFalse(is_positive_window(1.0e-6))
-        self.assertTrue(is_positive_window(math.nextafter(1.0e-6, math.inf)))
+        self.assertTrue(
+            is_positive_window(float.fromhex("0x1.0c6f7a0b5ed8ep-20"))
+        )
         base = EventLoss(1, 1.0, 0.5, 1.0, False, False, 0, 0, 1, 0)
         equal = WindowMetrics(
             "w", ARM, HASH, HASH, HASH, (base,), 1, 0, 0, 0,
