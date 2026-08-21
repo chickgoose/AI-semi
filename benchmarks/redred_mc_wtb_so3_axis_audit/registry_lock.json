@@ -1,11 +1,11 @@
 {
   "schema": "redred.mc_wtb_so3_axis_audit.registry_lock/v1",
   "source_lock_sha256": "0e0dbb17db4d170de650729fe9ad1cd3f18d20c1bddcd577c84999fcde045a4c",
-  "selector_py_sha256": "f0e99620701286c80a59df163606439cde5e89edc4bfad01a16a49018ddef23b",
+  "selector_py_sha256": "c6dfd995f095a9b5c3bb5319a004a44db9af095605ff62e536f49c782f4ff76b",
   "historical_exclusions_sha256": "68c088d4fdaac2f61db016b837cbfa1391c2ff0f481ea1ea5ddd771955debb7b",
   "historical_pose_halo_sha256": "048e6b0eed6a880d039f54a7bac75b110ca1dc594382c6eabb50eaa3d90bb599",
   "historical_pose_support_indices_sha256": "28265aa82efa09da1ca1323b7738a1facf9e0eb64d96f6f58b05fa53651403bb",
   "historical_ledger_sha256": "b2c1e739a39443eb8cece286c805ce3cceff13d356847a97fdbb45a794486369",
-  "production_registry_sha256": "fccb93c900b0076b8c028cffee94821adcb7c9677b41e210d80c91cda4d72ada",
+  "production_registry_sha256": "4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d",
   "window_count": 108
 }

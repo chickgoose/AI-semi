@@ -50,12 +50,15 @@ DEFAULT_SOURCE_LOCK = _PACKAGE / "source_lock.json"
 DEFAULT_EXCLUSIONS = _PACKAGE / "historical_exclusions.json"
 DEFAULT_HISTORICAL_POSE_HALO = _PACKAGE / "historical_pose_halo.json"
 DEFAULT_REGISTRY_LOCK = _PACKAGE / "registry_lock.json"
-_SHA_RE = re.compile(r"[0-9a-f]{64}\Z")
-_TIME_RE = re.compile(rb"(0|[1-9][0-9]*)\.([0-9]{9})\Z")
-_INT_RE = re.compile(rb"0|[1-9][0-9]*\Z")
-_DECIMAL_RE = re.compile(rb"-?(?:0|[1-9][0-9]*)\.[0-9]+\Z")
+_SHA_RE = r"[0-9a-f]{64}\Z"
+_TIME_RE = rb"(0|[1-9][0-9]*)\.([0-9]{9})\Z"
+_INT_RE = rb"0|[1-9][0-9]*\Z"
+_DECIMAL_RE = rb"-?(?:0|[1-9][0-9]*)\.[0-9]+\Z"
 _FORBIDDEN_INPUT_TOKENS = ("score", "loss", "quality", "metric", "arm_result")
-_FORBIDDEN_DIRECT_CALLS = frozenset(("__import__", "eval", "exec", "compile"))
+_FORBIDDEN_AST_IDENTIFIERS = frozenset((
+    "__import__", "__builtins__", "eval", "exec", "compile", "globals",
+    "locals", "getattr", "vars",
+))
 _ALLOWED_IMPORTS = {
     "__future__", "ast", "bisect", "dataclasses", "decimal", "hashlib",
     "json", "math", "pathlib", "re", "typing",
@@ -93,6 +96,14 @@ class _Candidate:
         return self.axis, self.sign, self.motion_bin
 
 
+def _candidate_rank_key(candidate: _Candidate) -> Tuple[str, str]:
+    return candidate.rank_sha256, candidate.candidate_id
+
+
+def _candidate_start_key(candidate: _Candidate) -> int:
+    return candidate.query_start_ns
+
+
 def _canonical(value: object) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
                        allow_nan=False) + "\n").encode("ascii")
@@ -105,7 +116,10 @@ def _sha_bytes(value: bytes) -> str:
 def _sha_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
+        while True:
+            block = stream.read(1024 * 1024)
+            if not block:
+                break
             digest.update(block)
     return digest.hexdigest()
 
@@ -131,12 +145,15 @@ def _reject_score_like(value: object, where: str = "input") -> None:
             _reject_score_like(child, "%s[%d]" % (where, index))
 
 
+def _reject_json_constant(text: str) -> object:
+    raise SelectorError("non-finite JSON number: %s" % text)
+
+
 def _load_json(path: Path) -> Tuple[Mapping[str, object], str]:
     raw = path.read_bytes()
     try:
         value = json.loads(raw.decode("ascii"), object_pairs_hook=_pairs,
-                           parse_constant=lambda text: (_ for _ in ()).throw(
-                               SelectorError("non-finite JSON number: %s" % text)))
+                           parse_constant=_reject_json_constant)
     except SelectorError:
         raise
     except (UnicodeError, json.JSONDecodeError, ValueError) as error:
@@ -160,7 +177,7 @@ def _integer(value: object, where: str, minimum: int = 0) -> int:
 
 
 def _digest(value: object, where: str) -> str:
-    if not isinstance(value, str) or _SHA_RE.fullmatch(value) is None:
+    if not isinstance(value, str) or re.fullmatch(_SHA_RE, value) is None:
         raise SelectorError("%s must be a lowercase SHA-256" % where)
     return value
 
@@ -173,9 +190,26 @@ def audit_score_free_imports(source_text: str) -> None:
     except SyntaxError as error:
         raise SelectorError("selector source is not valid Python") from error
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id in _FORBIDDEN_DIRECT_CALLS):
-            raise SelectorError("direct dynamic import or code-loading call is forbidden")
+        if isinstance(node, ast.Lambda):
+            raise SelectorError("lambda-based dynamic loading aliases are forbidden")
+        identifiers: Tuple[str, ...] = ()
+        if isinstance(node, ast.Name):
+            identifiers = (node.id,)
+        elif isinstance(node, ast.Attribute):
+            identifiers = (node.attr,)
+        elif isinstance(node, ast.arg):
+            identifiers = (node.arg,)
+        elif isinstance(node, ast.alias):
+            identifiers = tuple(
+                value for value in (node.name.rsplit(".", 1)[-1], node.asname)
+                if value is not None
+            )
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            identifiers = (node.name,)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            identifiers = tuple(node.names)
+        if _FORBIDDEN_AST_IDENTIFIERS.intersection(identifiers):
+            raise SelectorError("dynamic import or code-loading identifier is forbidden")
         if isinstance(node, ast.Import):
             roots = [alias.name.split(".", 1)[0] for alias in node.names]
             if any(root not in _ALLOWED_IMPORTS for root in roots):
@@ -281,7 +315,7 @@ def _halo(path: Path, poses_sha256: str) -> Tuple[frozenset[int], str]:
 
 
 def _timestamp(raw: bytes, where: str) -> int:
-    match = _TIME_RE.fullmatch(raw)
+    match = re.fullmatch(_TIME_RE, raw)
     if match is None:
         raise SelectorError("%s timestamp must have nine fractional digits" % where)
     return int(match.group(1)) * 1_000_000_000 + int(match.group(2))
@@ -306,7 +340,7 @@ def _read_poses(path: Path, lock: Mapping[str, object]) -> Tuple[_Pose, ...]:
             if timestamp <= previous:
                 raise SelectorError("pose timestamps must be strictly increasing")
             previous = timestamp
-            if any(_DECIMAL_RE.fullmatch(value) is None for value in fields[1:]):
+            if any(re.fullmatch(_DECIMAL_RE, value) is None for value in fields[1:]):
                 raise SelectorError("pose source contains a noncanonical decimal")
             quaternion = tuple(float(value) for value in fields[4:8])
             result.append(_Pose(index, PoseSample(timestamp, quaternion)))
@@ -322,7 +356,7 @@ def _read_calibration(path: Path, lock: Mapping[str, object]) -> Tuple[float, fl
     if len(rows) != 1 or not rows[0].endswith(b"\n"):
         raise SelectorError("calibration must contain exactly one LF-terminated row")
     fields = rows[0][:-1].split(b" ")
-    if len(fields) != 9 or any(_DECIMAL_RE.fullmatch(value) is None for value in fields):
+    if len(fields) != 9 or any(re.fullmatch(_DECIMAL_RE, value) is None for value in fields):
         raise SelectorError("calibration format differs")
     fx, fy = float(fields[0]), float(fields[1])
     if not math.isfinite(fx) or not math.isfinite(fy) or fx <= 0.0 or fy <= 0.0:
@@ -415,7 +449,7 @@ def _candidate(query_start: int, poses: Sequence[_Pose], times: Sequence[int], f
     if norm <= 0.0:
         return None
     absolute = tuple(abs(value) for value in vector)
-    axis_index = max(range(3), key=lambda index: (absolute[index], -index))
+    axis_index = absolute.index(max(absolute))
     purity = absolute[axis_index] / norm
     if purity < PURITY_MINIMUM:
         return None
@@ -452,7 +486,7 @@ def _select_candidates(candidates: Sequence[_Candidate]) -> Tuple[_Candidate, ..
     for row in candidates:
         by_cell.setdefault(row.cell, []).append(row)
     for rows in by_cell.values():
-        rows.sort(key=lambda item: (item.rank_sha256, item.candidate_id))
+        rows.sort(key=_candidate_rank_key)
     selected: List[_Candidate] = []
     selected_support = set()
     signed_cells = (("X", "NEGATIVE"), ("X", "POSITIVE"),
@@ -479,7 +513,7 @@ def _select_candidates(candidates: Sequence[_Candidate]) -> Tuple[_Candidate, ..
                 selected_support.update(chosen.pose_support_indices)
     if len(selected) != EXPECTED_WINDOW_COUNT:
         raise SelectorError("selected cohort count mismatch")
-    return tuple(sorted(selected, key=lambda item: item.query_start_ns))
+    return tuple(sorted(selected, key=_candidate_start_key))
 
 
 def _event_evidence(path: Path, lock: Mapping[str, object], query_starts: Sequence[int]) -> Dict[int, Mapping[str, object]]:
@@ -496,7 +530,8 @@ def _event_evidence(path: Path, lock: Mapping[str, object], query_starts: Sequen
             count += 1
             fields = raw.rstrip(b"\n").split(b" ")
             if (not raw.endswith(b"\n") or len(fields) != 4 or raw[:-1].count(b" ") != 3
-                    or _INT_RE.fullmatch(fields[1]) is None or _INT_RE.fullmatch(fields[2]) is None
+                    or re.fullmatch(_INT_RE, fields[1]) is None
+                    or re.fullmatch(_INT_RE, fields[2]) is None
                     or fields[3] not in (b"0", b"1")):
                 raise SelectorError("event source format differs at line %d" % count)
             timestamp = _timestamp(fields[0], "event")

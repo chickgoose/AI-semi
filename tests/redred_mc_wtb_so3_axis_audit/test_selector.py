@@ -343,6 +343,25 @@ class SelectorTests(unittest.TestCase):
                     SelectorError, "dynamic import or code-loading"):
                 audit_score_free_imports(call + "\n")
 
+    def test_indirect_dynamic_loading_aliases_fail(self):
+        mutations = (
+            ("alias assignment",
+             "loader = __import__\nloader('scoring')\n",
+             "dynamic import or code-loading"),
+            ("lambda forwarding",
+             "forward = lambda loader, name: loader(name)\n"
+             "forward(__import__, 'scoring')\n",
+             "lambda"),
+            ("getattr builtins import",
+             "loader = getattr(__builtins__, '__import__')\n"
+             "loader('scoring')\n",
+             "dynamic import or code-loading"),
+        )
+        for label, source, message in mutations:
+            with self.subTest(label=label), self.assertRaisesRegex(
+                    SelectorError, message):
+                audit_score_free_imports(source)
+
     def test_reversed_resealed_registry_fails_order_binding(self):
         changed = copy.deepcopy(self.fixture.select())
         changed["windows"].reverse()
