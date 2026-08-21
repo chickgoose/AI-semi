@@ -9,6 +9,7 @@ from benchmarks.redred_mc_wtb_pose_recovery import (
     interpolate_committed_bracket,
     normalize_quaternion_xyzw,
     recover_causal_cav,
+    resample_oracle_groundtruth_1khz,
     resample_counterfactual_1khz,
     shortest_arc_slerp_xyzw,
 )
@@ -145,7 +146,8 @@ class CausalRecoveryTests(unittest.TestCase):
         fresh = recover_causal_cav(pose, 1_500_000, 5)
         self.assertIs(fresh.mode, RecoveryMode.ZOH)
         self.assertEqual(fresh.used_commit_cycles, (4,))
-        self.assertEqual(pose[0].availability_cycle, 4)
+        self.assertEqual(pose[0].availability_cycle, 5)
+        self.assertEqual(pose[0].visible_cycle, 5)
         stale = recover_causal_cav(pose, 2_000_001, 5)
         self.assertIs(stale.mode, RecoveryMode.BYPASS)
 
@@ -181,6 +183,29 @@ class CounterfactualResamplingTests(unittest.TestCase):
         incomplete = (PoseSample(1_000_000, 1, z_rotation(45.0)),)
         with self.assertRaisesRegex(GeometryError, "closed truth bracket"):
             resample_counterfactual_1khz(incomplete, 0, 1_000_000, 0)
+
+    def test_oracle_grid_is_global_phase_and_frozen_timing(self):
+        truth = (
+            PoseSample(0, 1, Q_IDENTITY),
+            PoseSample(3_000_000, 2, z_rotation(90.0)),
+        )
+        stream = resample_oracle_groundtruth_1khz(
+            truth, 250_000, 2_500_000, 0
+        )
+        self.assertEqual(
+            tuple(sample.measurement_timestamp_ns for sample in stream),
+            (1_000_000, 2_000_000),
+        )
+        with self.assertRaisesRegex(GeometryError, "requires"):
+            resample_oracle_groundtruth_1khz(
+                truth, 0, 2_000_000, 0, commit_delay_cycles=2
+            )
+
+    def test_unsigned_widths_fail_closed(self):
+        with self.assertRaisesRegex(GeometryError, "must be an integer in"):
+            PoseSample((1 << 64), 0, Q_IDENTITY)
+        with self.assertRaisesRegex(GeometryError, "visible cycle"):
+            PoseSample(0, (1 << 64) - 1, Q_IDENTITY).visible_cycle
 
 
 if __name__ == "__main__":

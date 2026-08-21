@@ -10,6 +10,7 @@ from .geometry import (
     interpolate_committed_bracket,
     normalize_quaternion_xyzw,
     recover_causal_cav,
+    resample_oracle_groundtruth_1khz,
     resample_counterfactual_1khz,
     shortest_arc_slerp_xyzw,
 )
@@ -24,6 +25,7 @@ __all__ = (
     "interpolate_committed_bracket",
     "normalize_quaternion_xyzw",
     "recover_causal_cav",
+    "resample_oracle_groundtruth_1khz",
     "resample_counterfactual_1khz",
     "shortest_arc_slerp_xyzw",
 )

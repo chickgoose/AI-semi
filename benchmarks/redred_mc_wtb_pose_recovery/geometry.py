@@ -21,6 +21,7 @@ DEFAULT_CAV_MAX_HORIZON_NS = 5_000_000
 DEFAULT_ZOH_MAX_AGE_NS = 1_000_000
 DEFAULT_RESAMPLE_CADENCE_NS = 1_000_000
 DEFAULT_CLOCK_PERIOD_PS = 6_500
+UINT64_MAX = (1 << 64) - 1
 
 
 class GeometryError(ValueError):
@@ -35,9 +36,18 @@ class RecoveryMode(Enum):
     BYPASS = "sensor_fixed_bypass"
 
 
-def _integer(value: object, name: str, minimum: int = 0) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise GeometryError("%s must be an integer >= %d" % (name, minimum))
+def _integer(
+    value: object, name: str, minimum: int = 0, maximum: int = UINT64_MAX
+) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < minimum
+        or value > maximum
+    ):
+        raise GeometryError(
+            "%s must be an integer in [%d,%d]" % (name, minimum, maximum)
+        )
     return value
 
 
@@ -205,9 +215,15 @@ class PoseSample:
 
     @property
     def availability_cycle(self) -> int:
-        """Alias emphasizing that commit makes the measurement available."""
+        """First event cycle that may observe this committed pose."""
 
-        return self.commit_cycle
+        if self.commit_cycle == UINT64_MAX:
+            raise GeometryError("pose visible cycle overflows unsigned 64 bits")
+        return self.commit_cycle + 1
+
+    @property
+    def visible_cycle(self) -> int:
+        return self.availability_cycle
 
 
 @dataclass(frozen=True)
@@ -312,24 +328,28 @@ def recover_causal_cav(
         interval = latest.measurement_timestamp_ns - previous.measurement_timestamp_ns
         horizon_limit = min(maximum_horizon, interval)
         if age <= horizon_limit:
-            predicted = extrapolate_constant_angular_velocity(
-                previous.quaternion_xyzw,
-                latest.quaternion_xyzw,
-                interval,
-                age,
-            )
-            return RecoveryDecision(
-                RecoveryMode.CAV,
-                predicted,
-                timestamp,
-                cycle,
-                (previous.measurement_timestamp_ns, latest.measurement_timestamp_ns),
-                (previous.commit_cycle, latest.commit_cycle),
-                age,
-                interval,
-                horizon_limit,
-                "guarded_constant_angular_velocity",
-            )
+            try:
+                predicted = extrapolate_constant_angular_velocity(
+                    previous.quaternion_xyzw,
+                    latest.quaternion_xyzw,
+                    interval,
+                    age,
+                )
+            except (GeometryError, OverflowError, ValueError):
+                predicted = None
+            if predicted is not None:
+                return RecoveryDecision(
+                    RecoveryMode.CAV,
+                    predicted,
+                    timestamp,
+                    cycle,
+                    (previous.measurement_timestamp_ns, latest.measurement_timestamp_ns),
+                    (previous.commit_cycle, latest.commit_cycle),
+                    age,
+                    interval,
+                    horizon_limit,
+                    "guarded_constant_angular_velocity",
+                )
 
     if age <= maximum_zoh_age:
         return RecoveryDecision(
@@ -385,7 +405,7 @@ def _truth_orientation_at(
     )
 
 
-def resample_counterfactual_1khz(
+def resample_oracle_groundtruth_1khz(
     truth_samples: Sequence[PoseSample],
     start_timestamp_ns: int,
     end_timestamp_ns: int,
@@ -393,7 +413,7 @@ def resample_counterfactual_1khz(
     commit_delay_cycles: int = 1,
     clock_period_ps: int = DEFAULT_CLOCK_PERIOD_PS,
 ) -> Tuple[PoseSample, ...]:
-    """Create the deterministic counterfactual upstream 1 kHz pose stream.
+    """Create the deterministic global-phase oracle 1 kHz pose stream.
 
     Truth bracket availability is intentionally not used: this function models
     a separately supplied upstream interface, not causal recovery from the
@@ -409,12 +429,18 @@ def resample_counterfactual_1khz(
     origin = _integer(cycle_origin_timestamp_ns, "cycle_origin_timestamp_ns")
     delay = _integer(commit_delay_cycles, "commit_delay_cycles")
     period_ps = _integer(clock_period_ps, "clock_period_ps", 1)
+    if delay != 1 or period_ps != DEFAULT_CLOCK_PERIOD_PS:
+        raise GeometryError("oracle stream requires one-cycle delay and 6.5 ns clock")
     if end <= start:
         raise GeometryError("resample interval must be non-empty")
 
     timestamps = tuple(sample.measurement_timestamp_ns for sample in source)
     result = []
-    timestamp = start
+    timestamp = (
+        (start + DEFAULT_RESAMPLE_CADENCE_NS - 1)
+        // DEFAULT_RESAMPLE_CADENCE_NS
+        * DEFAULT_RESAMPLE_CADENCE_NS
+    )
     while timestamp < end:
         effective_cycle = _cycle_at_or_after_timestamp(timestamp, origin, period_ps)
         result.append(PoseSample(
@@ -424,3 +450,23 @@ def resample_counterfactual_1khz(
         ))
         timestamp += DEFAULT_RESAMPLE_CADENCE_NS
     return tuple(result)
+
+
+def resample_counterfactual_1khz(
+    truth_samples: Sequence[PoseSample],
+    start_timestamp_ns: int,
+    end_timestamp_ns: int,
+    cycle_origin_timestamp_ns: int,
+    commit_delay_cycles: int = 1,
+    clock_period_ps: int = DEFAULT_CLOCK_PERIOD_PS,
+) -> Tuple[PoseSample, ...]:
+    """Compatibility alias for the explicitly oracle-labeled generator."""
+
+    return resample_oracle_groundtruth_1khz(
+        truth_samples,
+        start_timestamp_ns,
+        end_timestamp_ns,
+        cycle_origin_timestamp_ns,
+        commit_delay_cycles,
+        clock_period_ps,
+    )
