@@ -29,15 +29,16 @@ fixed accounting metadata.
   burst is five. The serializer serves stable event-ID order at two records
   per cycle, and every member retains its occurrence-edge snapshot even when
   it exits staging later.
-- In normal integration mode, every dataset-arm `Event` must carry its 14-bit
-  `causal_pose_index`, and it must equal the latest pose in the occurrence-edge
-  snapshot. Missing or corrupted bindings fail closed. Tests that intentionally
-  synthesize events without this ingress field must opt into
+- Any present `Event.causal_pose_index` must fit the frozen 14-bit payload. In
+  normal integration mode, every dataset-arm event must carry it, and it must
+  equal the latest pose in the occurrence-edge snapshot. Missing or corrupted
+  bindings fail closed. Tests that intentionally synthesize events without it
+  must opt into
   `synthetic_test_mode=True`; the result-level
   `all_event_pose_indices_verified` and per-event cycle receipt state disclose
-  whether every applicable binding was verified. The oracle arm does not use
-  this dataset index; its cycle receipt marks the field not applicable and its
-  packet identity is checked against the global 1 kHz schedule instead.
+  whether every applicable binding was verified. Oracle events require this
+  dataset-only field to be `None`; their cycle receipts mark it not applicable,
+  and oracle packet identity is checked against the global 1 kHz schedule.
 - Common serializer residence is included in occurrence-to-retire latency.
   `SimulationResult.common_serializer_cycles` and the matching
   `always_bypass_retire_cycles` make it explicit; policy-added latency is
@@ -65,7 +66,12 @@ right-bracket reference becomes live at transform launch and likewise remains
 live through retirement. An invalid delayed right packet inspected to choose
 `invalid_pose` is also a live internal ring reference from inspection through
 that raw retirement, even though receipt-v2 correctly keeps it out of
-`used_pose_*`.
+`used_pose_*`. Cycle evidence also lists every precise failed check in frozen
+order: `left_value_invalid`, `right_value_invalid`,
+`left_arithmetic_invalid`, `right_arithmetic_invalid`, then
+`transform_guard_invalid`. Thus `invalid_pose` never ambiguously attributes a
+guard failure to the inspected right packet, and simultaneous failures are all
+preserved.
 
 `SimulationResult.pose_ring_entries` and `pose_ring_state_bits` expose the
 fixed charge directly. `pose_ring_accounting` additionally exposes writes,
@@ -115,8 +121,8 @@ It binds serializer admission cycle/lane, optional transform launch
 cycle/lane, retirement cycle/lane, FIFO occupancy immediately before and
 after admission and retirement, disposition/reason, and the corresponding
 decision-record digest. It also binds event-index verification and any invalid
-right-packet inspection cycle/provenance. Raw delayed bypass has no launch
-cycle or lane.
+right-packet inspection cycle/provenance plus exact failure-cause codes. Raw
+delayed bypass has no launch cycle or lane.
 
 The pose generators and quaternion interpolation math remain upstream of this
 cycle/packet-selection boundary. `PosePacket.oracle_1khz` validates the frozen

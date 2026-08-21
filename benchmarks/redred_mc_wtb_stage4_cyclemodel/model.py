@@ -61,6 +61,14 @@ ARM_LABELS = {
 DELAYED_RAW_REASONS = frozenset(
     ("deadline_timeout", "fifo_full_forced_bypass", "invalid_pose", "missing_bracket")
 )
+INVALID_POSE_FAILURE_CAUSE_ORDER = (
+    "left_value_invalid",
+    "right_value_invalid",
+    "left_arithmetic_invalid",
+    "right_arithmetic_invalid",
+    "transform_guard_invalid",
+)
+INVALID_POSE_FAILURE_CAUSES = frozenset(INVALID_POSE_FAILURE_CAUSE_ORDER)
 
 
 class PoseSource(str, Enum):
@@ -158,6 +166,8 @@ class Event:
             raise CycleModelError("transform_guard_valid must be bool")
         if self.causal_pose_index is not None:
             _nonnegative_int(self.causal_pose_index, "causal_pose_index")
+            if self.causal_pose_index >= CAUSAL_POSE_INDEX_LIMIT:
+                raise CycleModelError("causal_pose_index exceeds 14 bits")
 
 
 @dataclass(frozen=True)
@@ -305,6 +315,7 @@ class CycleReceipt:
     inspected_pose_timestamps_ns: Tuple[int, ...]
     inspected_pose_commit_cycles: Tuple[int, ...]
     inspected_pose_sha256: Tuple[str, ...]
+    inspection_failure_causes: Tuple[str, ...]
     decision_record_sha256: str
 
     def to_mapping(self) -> Dict[str, Any]:
@@ -338,6 +349,7 @@ class CycleReceipt:
                 self.inspected_pose_commit_cycles
             ),
             "inspected_pose_sha256": list(self.inspected_pose_sha256),
+            "inspection_failure_causes": list(self.inspection_failure_causes),
             "decision_record_sha256": self.decision_record_sha256,
         }
 
@@ -481,6 +493,7 @@ class _EventState:
     reason: Optional[str] = None
     inspection_cycle: Optional[int] = None
     inspected: Tuple[PosePacket, ...] = ()
+    inspection_failure_causes: Tuple[str, ...] = ()
 
 
 def _canonical_sha256(value: Any) -> str:
@@ -592,6 +605,10 @@ def _validate_and_prepare(
         expected_pose_index = visible[-1].pose_id if visible else None
         pose_index_applicable = arm is not Arm.ORACLE_1KHZ
         if not pose_index_applicable:
+            if event.causal_pose_index is not None:
+                raise CycleModelError(
+                    "oracle event causal_pose_index must be None"
+                )
             pose_index_verified = False
         elif event.causal_pose_index is None:
             if not synthetic_test_mode:
@@ -600,8 +617,6 @@ def _validate_and_prepare(
                 )
             pose_index_verified = False
         else:
-            if event.causal_pose_index >= CAUSAL_POSE_INDEX_LIMIT:
-                raise CycleModelError("dataset causal_pose_index exceeds 14 bits")
             if expected_pose_index is None:
                 raise CycleModelError(
                     "causal_pose_index has no visible occurrence pose"
@@ -812,14 +827,37 @@ def _first_right_pose(
     return None
 
 
+def _invalid_pose_causes(
+    state: _EventState, left: PosePacket, right: PosePacket
+) -> Tuple[str, ...]:
+    causes = []  # type: List[str]
+    if not left.value_valid:
+        causes.append("left_value_invalid")
+    if not right.value_valid:
+        causes.append("right_value_invalid")
+    if not left.arithmetic_valid:
+        causes.append("left_arithmetic_invalid")
+    if not right.arithmetic_valid:
+        causes.append("right_arithmetic_invalid")
+    if not state.event.transform_guard_valid:
+        causes.append("transform_guard_invalid")
+    return tuple(causes)
+
+
 def _delayed_status(
     state: _EventState,
     poses: Tuple[PosePacket, ...],
     cycle: int,
-) -> Tuple[str, Tuple[PosePacket, ...], str, Tuple[PosePacket, ...]]:
+) -> Tuple[
+    str,
+    Tuple[PosePacket, ...],
+    str,
+    Tuple[PosePacket, ...],
+    Tuple[str, ...],
+]:
     left = state.occurrence_snapshot[-1:] if state.occurrence_snapshot else ()
     if not left:
-        return "raw", (), "missing_bracket", ()
+        return "raw", (), "missing_bracket", (), ()
     right = _first_right_pose(state, poses)
     if right is not None and right.commit_cycle < cycle:
         selected = (left[0], right)
@@ -830,13 +868,16 @@ def _delayed_status(
             and right.arithmetic_valid
             and state.event.transform_guard_valid
         ):
-            return "correct", selected, "bracket_interpolation", ()
-        return "raw", left, "invalid_pose", (right,)
+            return "correct", selected, "bracket_interpolation", (), ()
+        causes = _invalid_pose_causes(state, left[0], right)
+        if not causes:
+            raise CycleModelError("invalid delayed pose has no failing guard")
+        return "raw", left, "invalid_pose", (right,), causes
     if state.deadline_cycle is None:
         raise CycleModelError("delayed event has no deadline")
     if cycle >= state.deadline_cycle:
-        return "raw", left, "deadline_timeout", ()
-    return "wait", left, "waiting_for_right_bracket", ()
+        return "raw", left, "deadline_timeout", (), ()
+    return "wait", left, "waiting_for_right_bracket", (), ()
 
 
 def _pop_raw_head(
@@ -916,7 +957,7 @@ def _run_delayed(
             inflight = []
 
         while queue and retirements < EVENT_LANES:
-            status, selected, reason, inspected = _delayed_status(
+            status, selected, reason, inspected, failure_causes = _delayed_status(
                 queue[0], poses, cycle
             )
             if status != "raw":
@@ -924,6 +965,7 @@ def _run_delayed(
             if inspected:
                 queue[0].inspection_cycle = cycle
                 queue[0].inspected = inspected
+                queue[0].inspection_failure_causes = failure_causes
             _pop_raw_head(
                 queue,
                 records,
@@ -973,7 +1015,7 @@ def _run_delayed(
         for launch_lane, state in enumerate(queue[:EVENT_LANES]):
             if state.inflight:
                 break
-            status, selected, reason, _inspected = _delayed_status(
+            status, selected, reason, _inspected, _failure_causes = _delayed_status(
                 state, poses, cycle
             )
             if status != "correct":
@@ -1094,6 +1136,12 @@ def _make_cycle_receipts(
         if state.launch_lane is not None and not 0 <= state.launch_lane < EVENT_LANES:
             raise CycleModelError("launch lane is outside the two-lane pipeline")
         if state.inspected:
+            if not state.occurrence_snapshot:
+                raise CycleModelError("inspected right pose has no causal left pose")
+            left = state.occurrence_snapshot[-1]
+            expected_causes = _invalid_pose_causes(
+                state, left, state.inspected[0]
+            )
             if (
                 state.inspection_cycle is None
                 or record.disposition != "raw_bypass"
@@ -1101,10 +1149,19 @@ def _make_cycle_receipts(
                 or len(state.inspected) != 1
                 or state.inspected[0].commit_cycle >= state.inspection_cycle
                 or state.inspection_cycle > record.retire_cycle
+                or not state.inspection_failure_causes
+                or state.inspection_failure_causes != expected_causes
+                or any(
+                    cause not in INVALID_POSE_FAILURE_CAUSES
+                    for cause in state.inspection_failure_causes
+                )
             ):
                 raise CycleModelError("invalid-pose inspection evidence is inconsistent")
-        elif state.inspection_cycle is not None:
-            raise CycleModelError("inspection cycle has no inspected pose")
+        elif (
+            state.inspection_cycle is not None
+            or state.inspection_failure_causes
+        ):
+            raise CycleModelError("inspection metadata has no inspected pose")
         receipts.append(
             CycleReceipt(
                 window_id=window_id,
@@ -1132,6 +1189,7 @@ def _make_cycle_receipts(
                 inspected_pose_timestamps_ns=inspected[1],
                 inspected_pose_commit_cycles=inspected[2],
                 inspected_pose_sha256=inspected[3],
+                inspection_failure_causes=state.inspection_failure_causes,
                 decision_record_sha256=record.canonical_sha256(),
             )
         )

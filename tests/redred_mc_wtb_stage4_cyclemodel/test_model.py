@@ -529,26 +529,20 @@ class ContractAndRecordTests(unittest.TestCase):
         self.assertEqual(pose_ring_slot(oracle_id), oracle_id % 16)
         self.assertTrue(result.all_event_pose_indices_verified)
 
-        ignored_dataset_index = run_cycle_model(
-            window_id=WINDOW,
-            window_start_ns=window_start,
-            arm=Arm.ORACLE_1KHZ,
-            events=[
-                Event(
-                    1,
-                    window_start,
-                    causal_pose_index=CAUSAL_POSE_INDEX_LIMIT + 99,
-                )
-            ],
-            poses=[oracle],
-        )
-        self.assertEqual(
-            ignored_dataset_index.records[0].used_pose_ids,
-            (oracle_id,),
-        )
-        self.assertFalse(
-            ignored_dataset_index.cycle_receipts[0].causal_pose_index_applicable
-        )
+        with self.assertRaisesRegex(CycleModelError, "must be None"):
+            run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=window_start,
+                arm=Arm.ORACLE_1KHZ,
+                events=[Event(1, window_start, causal_pose_index=1)],
+                poses=[oracle],
+            )
+        with self.assertRaisesRegex(CycleModelError, "14 bits"):
+            Event(
+                1,
+                window_start,
+                causal_pose_index=CAUSAL_POSE_INDEX_LIMIT,
+            )
         wrong_id = PosePacket.oracle_1khz(
             oracle_id + 1, pose_timestamp, window_start, SHA_A
         )
@@ -595,7 +589,110 @@ class ContractAndRecordTests(unittest.TestCase):
         self.assertEqual(cycle_receipt.inspection_cycle, 4)
         self.assertEqual(cycle_receipt.inspected_pose_ids, (1,))
         self.assertEqual(cycle_receipt.inspected_pose_commit_cycles, (3,))
+        self.assertEqual(
+            cycle_receipt.inspection_failure_causes,
+            ("right_value_invalid",),
+        )
+        self.assertEqual(
+            cycle_receipt.to_mapping()["inspection_failure_causes"],
+            ["right_value_invalid"],
+        )
         self.assertEqual(result.pose_ring_accounting.live_reference_checks, 2)
+
+    def test_invalid_pose_evidence_names_each_failing_guard(self):
+        cases = (
+            (
+                "left_value_invalid",
+                dataset_pose(0, 0, value_valid=False),
+                dataset_pose(1, 14),
+                True,
+            ),
+            (
+                "right_value_invalid",
+                dataset_pose(0, 0),
+                dataset_pose(1, 14, value_valid=False),
+                True,
+            ),
+            (
+                "left_arithmetic_invalid",
+                dataset_pose(0, 0, arithmetic_valid=False),
+                dataset_pose(1, 14),
+                True,
+            ),
+            (
+                "right_arithmetic_invalid",
+                dataset_pose(0, 0),
+                dataset_pose(1, 14, arithmetic_valid=False),
+                True,
+            ),
+            (
+                "transform_guard_invalid",
+                dataset_pose(0, 0),
+                dataset_pose(1, 14),
+                False,
+            ),
+        )
+        for expected_cause, left, right, guard_valid in cases:
+            with self.subTest(expected_cause=expected_cause):
+                result = run_cycle_model(
+                    window_id=WINDOW,
+                    window_start_ns=START,
+                    arm=Arm.DELAYED_EXACT,
+                    events=[
+                        Event(
+                            7,
+                            13,
+                            transform_guard_valid=guard_valid,
+                            causal_pose_index=0,
+                        )
+                    ],
+                    poses=[left, right],
+                )
+                cycle_receipt = result.cycle_receipts[0]
+                self.assertEqual(
+                    cycle_receipt.inspection_failure_causes,
+                    (expected_cause,),
+                )
+                self.assertEqual(cycle_receipt.inspected_pose_ids, (1,))
+                self.assertEqual(result.records[0].used_pose_ids, (0,))
+
+        all_failed = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=START,
+            arm=Arm.DELAYED_EXACT,
+            events=[
+                Event(
+                    7,
+                    13,
+                    transform_guard_valid=False,
+                    causal_pose_index=0,
+                )
+            ],
+            poses=[
+                dataset_pose(
+                    0,
+                    0,
+                    value_valid=False,
+                    arithmetic_valid=False,
+                ),
+                dataset_pose(
+                    1,
+                    14,
+                    value_valid=False,
+                    arithmetic_valid=False,
+                ),
+            ],
+        )
+        self.assertEqual(
+            all_failed.cycle_receipts[0].inspection_failure_causes,
+            (
+                "left_value_invalid",
+                "right_value_invalid",
+                "left_arithmetic_invalid",
+                "right_arithmetic_invalid",
+                "transform_guard_invalid",
+            ),
+        )
 
     def test_invalid_right_same_cycle_overwrite_precedes_release(self):
         with self.assertRaises(PoseRingSafetyError) as raised:
