@@ -2,7 +2,7 @@
   "schema": "redred.mc_wtb.stage4_comparison_contract/v1",
   "status": "refrozen_after_prescore_red_team_no_arm_score_opened",
   "normative_markdown": "docs/MC_WTB_STAGE4_COMPARISON_CONTRACT_20260821.md",
-  "normative_markdown_sha256": "e128a9dd8f158440def0f6d1ff3e09cf2da8c3d633cc1ce02f20accfc118c100",
+  "normative_markdown_sha256": "d6d4d111620202709c7f785f1d65c893b05418cf0de7091f17ca6d812721970d",
   "checkpoint_commit": "7791e21a8415b0b5dd2c76cc6ea83698c7427d71",
   "development_only": true,
   "registry": {

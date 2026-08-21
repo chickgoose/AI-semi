@@ -95,9 +95,12 @@ The common baseline is sensor-fixed all-bypass.
 
 Quaternion interpolation/extrapolation uses shortest-arc sign alignment and a
 normalized result. Translation is excluded because the current world-ray
-metric depends only on rotation. Negate the second endpoint only when the dot
-product is strictly less than zero. At exactly zero, retain the original sign;
-this is the canonical tie rule.
+metric depends only on rotation. First canonicalize each endpoint by making
+the sign of its largest-absolute component positive, breaking magnitude ties
+in `x,y,z,w` order. Then negate the second endpoint only when the dot product
+is strictly less than zero. At exactly zero, retain those canonical signs.
+This makes the 180-degree tie invariant to either input's `q` versus `-q`
+encoding.
 
 The 1,024 entries include the complete delayed holding queue and its bypass
 state. When full and new records arrive, up to two oldest heads are forced to
@@ -160,6 +163,13 @@ uses its sensor-bank loss; an enabled event uses its arm-world-bank loss. Every
 query event must have both losses available or the arm is a protocol failure;
 no unavailable event is removed from the denominator. Each bank retains the
 same polarity separation, age, capacity, ordering, and equal-timestamp rule.
+For a causal arm that runtime-bypasses solely because its age/horizon gate
+fails, its score-only world shadow uses the latest occurrence-snapshot ZOH
+orientation without an age limit. `causal_cav` uses CAV inside its frozen
+horizon and this shadow ZOH outside it. The delayed shadow uses its declared
+committed right bracket. The oracle-1kHz shadow uses its serialized packet
+prefix. Absence of even one required past pose/bracket/packet is a protocol
+failure, not permission to remove the event.
 
 All loss sums use Python binary64 `math.fsum` in increasing event-ID order. A
 zero or non-finite sensor denominator is a protocol failure. A window counts
