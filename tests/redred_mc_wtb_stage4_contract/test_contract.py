@@ -24,7 +24,7 @@ class ContractTests(unittest.TestCase):
     def test_frozen_contract_and_existing_registry_validate(self) -> None:
         self.assertEqual(
             self.contract.canonical_sha256,
-            "15d04f1b8c4561290dcde752d128deb6d8cf003102d75b9638cb566c8f71549f",
+            "209ced8816834612439aa33c5589d1da0ed217cc065660218e683774a8172a67",
         )
         receipt = validate_existing_registry(self.contract)
         self.assertEqual(receipt.window_count, 24)
@@ -201,7 +201,16 @@ class ContractTests(unittest.TestCase):
                     "authoritative_no_pressure_replay_value": (
                         "exact_observed_peak_buffer_entries"
                     ),
-                    "no_pressure_replay_may_change_bounded_decisions": False,
+                    "no_pressure_replay_decisions_may_differ_after_bounded_pressure": (
+                        True
+                    ),
+                    "no_pressure_replay_decisions_scope": (
+                        "counterfactual_diagnostic_evidence_only"
+                    ),
+                    "no_pressure_replay_may_alter_or_replace_bounded_decisions_or_receipts": (
+                        False
+                    ),
+                    "bounded_decisions_and_receipts_remain_authoritative": True,
                     "missing_nonterminating_unbounded_or_nonconserving_replay": (
                         "protocol_failure"
                     ),

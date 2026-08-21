@@ -187,20 +187,35 @@ _EXPECTED_EVENT_RECORD_IDENTITY = {
     "mismatch_collision_or_span_violation": "fail_closed_before_scoring",
 }
 _EXPECTED_FIFO_MINIMUM_ZERO_LOSS_RULE = {
+    "legacy_field_semantics": (
+        "minimum_depth_avoiding_fifo_full_forced_bypass_not_accepted_event_loss"
+    ),
     "bounded_peak_authoritative_if": (
         "fifo_full_forced_bypass_count_is_zero_and_full_conservation_holds"
     ),
     "authoritative_bounded_value": "observed_peak_buffer_entries",
     "bounded_peak_authoritative_if_any_fifo_full_forced_bypass": False,
-    "otherwise": (
-        "fail_closed_unless_separate_score_free_unbounded_depth_replay_proves_depth"
-    ),
-    "unbounded_depth_replay_method": (
+    "required_replay_if": "fifo_full_forced_bypass_count_is_nonzero",
+    "no_pressure_replay_method": (
         "same_arrivals_ordering_service_deadline_and_retirement_without_fifo_pressure_action"
     ),
-    "unbounded_depth_replay_may_change_bounded_decisions": False,
-    "nontermination_unbounded_growth_or_unaccounted_event": "hard_stop",
-    "proven_depth_above_bounded_entries": "hard_stop",
+    "no_pressure_replay_validity": "finite_and_full_conservation_required",
+    "authoritative_no_pressure_replay_value": (
+        "exact_observed_peak_buffer_entries"
+    ),
+    "no_pressure_replay_decisions_may_differ_after_bounded_pressure": True,
+    "no_pressure_replay_decisions_scope": (
+        "counterfactual_diagnostic_evidence_only"
+    ),
+    "no_pressure_replay_may_alter_or_replace_bounded_decisions_or_receipts": False,
+    "bounded_decisions_and_receipts_remain_authoritative": True,
+    "missing_nonterminating_unbounded_or_nonconserving_replay": (
+        "protocol_failure"
+    ),
+    "proven_depth_above_bounded_entries_evidence_valid": True,
+    "proven_depth_above_bounded_entries_disposition": "STOP",
+    "proven_depth_above_bounded_entries_reason": "fixed_cost_bound_violation",
+    "proven_depth_above_bounded_entries_protocol_failure": False,
 }
 _CALIBRATION_FIELDS = (
     "width",

@@ -297,8 +297,14 @@ authoritative. In that case a separate score-free no-pressure replay must use
 the same arrivals, ordering, service, deadline, and retirement rules, but omit
 the 1,024-entry pressure action. If and only if that replay terminates and
 fully conserves every input event, its exact observed peak buffer occupancy is
-the authoritative `minimum_zero_loss_buffer_entries`. The diagnostic cannot
-alter bounded-run decisions.
+the authoritative `minimum_zero_loss_buffer_entries`. Because the pressure
+action is omitted, replay decisions after bounded pressure may validly differ
+from the bounded decisions, including where the bounded run emitted
+`fifo_full_forced_bypass`. Those replay decisions are counterfactual
+diagnostic evidence only. They may never alter or replace the bounded
+decisions or receipts, which remain authoritative for bounded-run event
+outcomes, reason classification, retirement accounting, and scoring; only the
+validated replay peak is imported as the minimum-depth value.
 
 `minimum_zero_loss_buffer_entries` is a legacy field name: it means the
 minimum depth that avoids `fifo_full_forced_bypass` for the same trace and
