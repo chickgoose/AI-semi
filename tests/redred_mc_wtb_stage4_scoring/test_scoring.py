@@ -29,6 +29,9 @@ from benchmarks.redred_mc_wtb_stage4_scoring import (
 )
 from benchmarks.redred_mc_wtb_stage4_contract.receipt import DECISION_ARMS
 from benchmarks.redred_mc_wtb_stage4_contract.receipt import ARM_LABELS
+from benchmarks.redred_mc_wtb_stage4_scoring.scoring import (
+    _validate_shadow_provenance,
+)
 
 
 HASH = "1" * 64
@@ -95,6 +98,61 @@ def decision(event_id, timestamp, occurrence, retire, enabled, arm=ARM):
         disposition="corrected_world_ray" if enabled else "raw_bypass",
         disposition_reason="fresh_pose" if enabled else "freshness_veto",
         queue_cycles=retire - occurrence,
+    )
+
+
+def delayed_record(*, enabled, occurrence=True):
+    occurrence_ids = (10, 11) if occurrence else ()
+    occurrence_timestamps = (50, 100) if occurrence else ()
+    occurrence_commits = (0, 1) if occurrence else ()
+    occurrence_hashes = ("a" * 64, "b" * 64) if occurrence else ()
+    if enabled:
+        used_ids = (11, 12)
+        used_timestamps = (100, 200)
+        used_commits = (1, 20)
+        used_hashes = ("b" * 64, "c" * 64)
+    else:
+        used_ids = (11,) if occurrence else ()
+        used_timestamps = (100,) if occurrence else ()
+        used_commits = (1,) if occurrence else ()
+        used_hashes = ("b" * 64,) if occurrence else ()
+    return DecisionRecord(
+        window_id=WINDOW,
+        event_id=70,
+        event_timestamp_ns=150,
+        arm="delayed_exact",
+        arm_semantic_label=ARM_LABELS["delayed_exact"],
+        occurrence_cycle=3,
+        retire_cycle=30 if enabled else 10,
+        occurrence_pose_ids=occurrence_ids,
+        occurrence_pose_timestamps_ns=occurrence_timestamps,
+        occurrence_pose_commit_cycles=occurrence_commits,
+        occurrence_pose_sha256=occurrence_hashes,
+        used_pose_ids=used_ids,
+        used_pose_timestamps_ns=used_timestamps,
+        used_pose_commit_cycles=used_commits,
+        used_pose_sha256=used_hashes,
+        intentional_future_pose_use=enabled,
+        pose_age_ns=-50 if enabled else (50 if occurrence else None),
+        disposition="corrected_world_ray" if enabled else "raw_bypass",
+        disposition_reason=(
+            "bracket_interpolation" if enabled else "deadline_timeout"
+        ),
+        queue_cycles=27 if enabled else 7,
+    )
+
+
+def delayed_event(delayed):
+    by_arm = dict((row.arm, row) for row in shadows(ray(20)))
+    by_arm["delayed_exact"] = delayed
+    return RayEvent(
+        WINDOW,
+        70,
+        150,
+        0,
+        True,
+        ray(10),
+        tuple(by_arm[arm] for arm in sorted(DECISION_ARMS)),
     )
 
 
@@ -312,6 +370,98 @@ class FrameSafeWindowTests(unittest.TestCase):
         self.assertEqual(before_window.pose_commit_cycles, (-1,))
         with self.assertRaisesRegex(ScoringError, "signed integer"):
             shadow(ARM, ray(0), "occurrence_zoh", commits=(True,))
+
+    def test_delayed_raw_bypass_accepts_sealed_score_only_bracket(self):
+        record = delayed_record(enabled=False)
+        score_only = shadow(
+            "delayed_exact",
+            ray(20),
+            "delayed_slerp",
+            (11, 12),
+            (100, 200),
+            (1, 40),
+            ("b" * 64, "c" * 64),
+        )
+        event = delayed_event(score_only)
+        before = record.to_mapping()
+
+        _validate_shadow_provenance(event, record)
+
+        self.assertEqual(record.to_mapping(), before)
+        self.assertNotEqual(score_only.provenance_rows(), tuple(zip(
+            record.used_pose_ids,
+            record.used_pose_timestamps_ns,
+            record.used_pose_commit_cycles,
+            record.used_pose_sha256,
+        )))
+
+    def test_delayed_shadow_requires_authoritative_complete_ordered_bracket(self):
+        record = delayed_record(enabled=False)
+        bad_shadows = (
+            (
+                shadow(
+                    "delayed_exact", ray(20), "delayed_slerp",
+                    (10, 12), (50, 200), (0, 40), ("a" * 64, "c" * 64),
+                ),
+                "latest occurrence pose",
+            ),
+            (
+                shadow(
+                    "delayed_exact", ray(20), "delayed_slerp",
+                    (11, 12), (100, 150), (1, 40), ("b" * 64, "c" * 64),
+                ),
+                "strict right bracket",
+            ),
+            (
+                shadow(
+                    "delayed_exact", ray(20), "delayed_slerp",
+                    (11, 12), (100, 200), (1, 40), ("b" * 64, "b" * 64),
+                ),
+                "distinct pose hashes",
+            ),
+        )
+        for delayed, message in bad_shadows:
+            with self.subTest(message=message), self.assertRaisesRegex(
+                ScoringError, message
+            ):
+                _validate_shadow_provenance(delayed_event(delayed), record)
+
+        with self.assertRaisesRegex(ScoringError, "wrong pose arity"):
+            shadow(
+                "delayed_exact", ray(20), "delayed_slerp",
+                (11,), (100,), (1,), ("b" * 64,),
+            )
+        with self.assertRaisesRegex(ScoringError, "IDs must be strictly increasing"):
+            shadow(
+                "delayed_exact", ray(20), "delayed_slerp",
+                (12, 11), (100, 200), (1, 40), ("b" * 64, "c" * 64),
+            )
+        with self.assertRaisesRegex(
+            ScoringError, "timestamps must be strictly increasing"
+        ):
+            shadow(
+                "delayed_exact", ray(20), "delayed_slerp",
+                (11, 12), (200, 100), (1, 40), ("b" * 64, "c" * 64),
+            )
+        no_left = delayed_record(enabled=False, occurrence=False)
+        complete = shadow(
+            "delayed_exact", ray(20), "delayed_slerp",
+            (11, 12), (100, 200), (1, 40), ("b" * 64, "c" * 64),
+        )
+        with self.assertRaisesRegex(ScoringError, "latest occurrence pose"):
+            _validate_shadow_provenance(delayed_event(complete), no_left)
+
+    def test_corrected_delayed_shadow_still_equals_runtime_used_pose(self):
+        record = delayed_record(enabled=True)
+        matching = shadow(
+            "delayed_exact", ray(20), "delayed_slerp",
+            (11, 12), (100, 200), (1, 20), ("b" * 64, "c" * 64),
+        )
+        _validate_shadow_provenance(delayed_event(matching), record)
+
+        distinct = replace(matching, pose_commit_cycles=(1, 21))
+        with self.assertRaisesRegex(ScoringError, "runtime used pose"):
+            _validate_shadow_provenance(delayed_event(distinct), record)
 
     def test_equal_timestamp_cluster_scores_before_insert_and_separates_polarity(self):
         records = (

@@ -65,8 +65,16 @@ occurrence snapshot and the transform to be `occurrence_zoh`, without applying
 the runtime age gate. An enabled CAV shadow is accepted only from the two
 latest occurrence-snapshot poses and only inside the frozen horizon. Delayed
 and oracle shadows are similarly bound to their declared bracket and
-serialized packet prefix. These score-only shadows cannot change the receipt
-decision and are inserted for every event regardless of its gate outcome.
+serialized packet prefix. A `delayed_exact` raw bypass may carry a later,
+score-only `delayed_slerp` bracket that differs from the runtime `used_pose`:
+it must contain exactly two pre-frozen authoritative rows, its left row must
+equal the latest occurrence-snapshot pose, and it must satisfy
+`left_timestamp <= event_timestamp < right_timestamp`, strictly increasing
+pose IDs/timestamps, and distinct aligned pose hashes. Corrected delayed events
+still require the shadow bracket to equal runtime `used_pose` exactly. Missing
+or unordered bracket provenance is a protocol failure. These score-only
+shadows cannot change the receipt decision and are inserted for every event
+regardless of its gate outcome.
 
 Loss totals use binary64 `math.fsum` in increasing event-ID order. Window
 positivity is strictly `R_window > 1e-6`. Enabled world-loss ties count as

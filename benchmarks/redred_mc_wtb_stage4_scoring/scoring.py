@@ -789,6 +789,34 @@ def _latest_occurrence_zoh(
         raise ScoringError("causal shadow pose is future at occurrence")
 
 
+def _validate_delayed_shadow(
+    event: RayEvent,
+    record: DecisionRecord,
+    shadow: ShadowRay,
+    occurrence: Tuple[Tuple[int, int, int, str], ...],
+    used: Tuple[Tuple[int, int, int, str], ...],
+) -> None:
+    rows = shadow.provenance_rows()
+    if shadow.transform != "delayed_slerp" or len(rows) != 2:
+        raise ScoringError("delayed shadow lacks an authoritative left/right bracket")
+    if not occurrence:
+        raise ScoringError("delayed shadow lacks the latest occurrence pose")
+    left, right = rows
+    if left != occurrence[-1]:
+        raise ScoringError("delayed shadow left pose is not the latest occurrence pose")
+    if not (left[1] <= event.timestamp_ns < right[1]):
+        raise ScoringError("delayed shadow lacks a strict right bracket")
+    if not (left[0] < right[0] and left[1] < right[1]):
+        raise ScoringError("delayed shadow provenance rows are not strictly ordered")
+    if left[3] == right[3]:
+        raise ScoringError("delayed shadow provenance requires distinct pose hashes")
+    if (
+        record.disposition == "corrected_world_ray"
+        and rows != used
+    ):
+        raise ScoringError("corrected delayed shadow differs from runtime used pose")
+
+
 def _validate_shadow_provenance(
     event: RayEvent, record: DecisionRecord
 ) -> None:
@@ -835,8 +863,7 @@ def _validate_shadow_provenance(
             raise ScoringError("causal CAV shadow used CAV outside the frozen horizon")
         return
     if record.arm == "delayed_exact":
-        if shadow.transform != "delayed_slerp" or shadow.provenance_rows() != used:
-            raise ScoringError("delayed shadow differs from its declared right bracket")
+        _validate_delayed_shadow(event, record, shadow, occurrence, used)
         return
     if record.arm == "oracle_resampled_groundtruth_1khz":
         if not occurrence:
