@@ -51,6 +51,12 @@ def _nonnegative_int(value: object, name: str) -> int:
     return value
 
 
+def _integer(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ScoringError("%s must be a signed integer" % name)
+    return value
+
+
 def _finite_nonnegative(value: object, name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ScoringError("%s must be a finite non-negative number" % name)
@@ -120,12 +126,12 @@ class ShadowRay:
             raise ScoringError("shadow pose provenance is missing or misaligned")
         if len(self.pose_ids) > 2:
             raise ScoringError("shadow pose provenance exceeds two poses")
-        if any(
-            isinstance(value, bool) or not isinstance(value, int) or value < 0
-            for group in groups[:3]
-            for value in group
-        ):
-            raise ScoringError("shadow pose provenance contains an invalid integer")
+        for value in self.pose_ids:
+            _nonnegative_int(value, "shadow pose ID")
+        for value in self.pose_timestamps_ns:
+            _nonnegative_int(value, "shadow pose timestamp")
+        for value in self.pose_commit_cycles:
+            _integer(value, "shadow pose commit cycle")
         if any(
             type(value) is not str or _SHA256.fullmatch(value) is None
             for value in self.pose_sha256
@@ -241,6 +247,10 @@ class ScoreInputManifest:
     decision_receipt_sha256: str
     score_free_accounting_sha256: str
     ray_events_sha256: str
+    assay_authoritative_input_manifest_sha256: str
+    full_cycle_result_sha256: str
+    cycle_receipts_sha256: str
+    query_projection_sha256: str
     artifact_sha256: Tuple[Tuple[str, str], ...]
 
     def __post_init__(self) -> None:
@@ -252,6 +262,10 @@ class ScoreInputManifest:
             self.decision_receipt_sha256,
             self.score_free_accounting_sha256,
             self.ray_events_sha256,
+            self.assay_authoritative_input_manifest_sha256,
+            self.full_cycle_result_sha256,
+            self.cycle_receipts_sha256,
+            self.query_projection_sha256,
         ):
             if type(value) is not str or _SHA256.fullmatch(value) is None:
                 raise ScoringError("manifest input digest is invalid")
@@ -276,17 +290,52 @@ class ScoreInputManifest:
 
     def to_mapping(self) -> Mapping[str, object]:
         return {
-            "schema": "redred.mc_wtb.stage4_score_input_manifest/v1",
+            "schema": "redred.mc_wtb.stage4_score_input_manifest/v2",
             "window_id": self.window_id,
             "arm": self.arm,
             "decision_receipt_sha256": self.decision_receipt_sha256,
             "score_free_accounting_sha256": self.score_free_accounting_sha256,
             "ray_events_sha256": self.ray_events_sha256,
+            "assay_authoritative_input_manifest_sha256": (
+                self.assay_authoritative_input_manifest_sha256
+            ),
+            "full_cycle_result_sha256": self.full_cycle_result_sha256,
+            "cycle_receipts_sha256": self.cycle_receipts_sha256,
+            "query_projection_sha256": self.query_projection_sha256,
             "artifact_sha256": dict(self.artifact_sha256),
         }
 
     def canonical_sha256(self) -> str:
         return canonical_sha256(self.to_mapping())
+
+
+@dataclass(frozen=True)
+class ScoreBoundaryEvidence:
+    """Observed pre-score digests supplied independently of the frozen manifest."""
+
+    assay_authoritative_input_manifest_sha256: str
+    full_cycle_result_sha256: str
+    cycle_receipts_sha256: str
+    query_projection_sha256: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "assay_authoritative_input_manifest_sha256",
+            "full_cycle_result_sha256",
+            "cycle_receipts_sha256",
+            "query_projection_sha256",
+        ):
+            value = getattr(self, name)
+            if type(value) is not str or _SHA256.fullmatch(value) is None:
+                raise ScoringError("boundary evidence %s is invalid" % name)
+
+    def digest_tuple(self) -> Tuple[str, str, str, str]:
+        return (
+            self.assay_authoritative_input_manifest_sha256,
+            self.full_cycle_result_sha256,
+            self.cycle_receipts_sha256,
+            self.query_projection_sha256,
+        )
 
 
 @dataclass(frozen=True)
@@ -609,12 +658,13 @@ class WindowMetrics:
         )
 
 
-def _verify_prescore_binding(
+def verify_prescore_binding(
     contract: ComparisonContract,
     receipt: DecisionReceipt,
     records: Tuple[DecisionRecord, ...],
     accounting: ScoreFreeAccounting,
     manifest: ScoreInputManifest,
+    boundary_evidence: ScoreBoundaryEvidence,
     expected_manifest_sha256: str,
     expected_receipt_sha256: str,
     expected_accounting_sha256: str,
@@ -627,6 +677,8 @@ def _verify_prescore_binding(
         raise ScoringError("receipt must be a DecisionReceipt")
     if not isinstance(manifest, ScoreInputManifest):
         raise ScoringError("manifest must be immutable ScoreInputManifest")
+    if not isinstance(boundary_evidence, ScoreBoundaryEvidence):
+        raise ScoringError("boundary evidence must be immutable ScoreBoundaryEvidence")
     if _SHA256.fullmatch(expected_manifest_sha256 or "") is None or (
         manifest.canonical_sha256() != expected_manifest_sha256
     ):
@@ -645,6 +697,13 @@ def _verify_prescore_binding(
         raise ScoringError("receipt contract digest differs")
     if receipt.registry_sha256 != contract.registry["sha256"]:
         raise ScoringError("receipt registry digest differs")
+    expected_sink_mode = "always_ready" if contract.timing["sink_always_ready"] else None
+    if receipt.sink_mode != expected_sink_mode:
+        raise ScoringError("receipt sink mode differs from the frozen contract")
+    if receipt.dataset_pose_arrival_assumption != contract.timing[
+        "dataset_pose_arrival_assumption"
+    ]:
+        raise ScoringError("receipt pose arrival assumption differs")
     artifacts = dict(manifest.artifact_sha256)
     if artifacts["protocol"] != contract.canonical_sha256:
         raise ScoringError("manifest protocol digest differs")
@@ -657,6 +716,16 @@ def _verify_prescore_binding(
         or manifest.score_free_accounting_sha256 != expected_accounting_sha256
     ):
         raise ScoringError("manifest identity/input binding differs")
+    manifest_evidence = (
+        manifest.assay_authoritative_input_manifest_sha256,
+        manifest.full_cycle_result_sha256,
+        manifest.cycle_receipts_sha256,
+        manifest.query_projection_sha256,
+    )
+    if boundary_evidence.digest_tuple() != manifest_evidence:
+        raise ScoringError("full-stream boundary evidence differs before scoring")
+    if manifest.query_projection_sha256 != receipt.decision_records_sha256:
+        raise ScoringError("query projection differs from the sealed decision receipt")
     if any(not isinstance(record, DecisionRecord) for record in records):
         raise ScoringError("scoring accepts immutable DecisionRecord values only")
     record_digest = canonical_sha256([record.to_mapping() for record in records])
@@ -842,6 +911,7 @@ def score_window(
     ray_events: Sequence[RayEvent],
     accounting: ScoreFreeAccounting,
     manifest: ScoreInputManifest,
+    boundary_evidence: ScoreBoundaryEvidence,
     *,
     expected_manifest_sha256: str,
     expected_receipt_sha256: str,
@@ -852,12 +922,13 @@ def score_window(
     """Join losses only after validating immutable score-free receipt digests."""
 
     records = tuple(decision_records)
-    _verify_prescore_binding(
+    verify_prescore_binding(
         contract,
         receipt,
         records,
         accounting,
         manifest,
+        boundary_evidence,
         expected_manifest_sha256,
         expected_receipt_sha256,
         expected_accounting_sha256,

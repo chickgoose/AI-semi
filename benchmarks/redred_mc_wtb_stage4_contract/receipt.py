@@ -7,7 +7,12 @@ from dataclasses import dataclass
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from .contract import ComparisonContract, canonical_json_bytes, canonical_sha256
+from .contract import (
+    EXPECTED_CANONICAL_SHA256,
+    ComparisonContract,
+    canonical_json_bytes,
+    canonical_sha256,
+)
 
 
 class ReceiptError(ValueError):
@@ -32,6 +37,11 @@ ARM_LABELS = {
 DELAYED_RAW_REASONS = frozenset(
     ("deadline_timeout", "fifo_full_forced_bypass", "invalid_pose", "missing_bracket")
 )
+EXPECTED_REGISTRY_SHA256 = (
+    "19df5788d3300ef9e6169165ed1dc68806a08f4e4af73eb4a52aebc9b642f62f"
+)
+DATASET_POSE_ARRIVAL_ASSUMPTION = "arrival_equals_recorded_timestamp"
+SINK_MODE = "always_ready"
 _REASON = re.compile(r"[a-z][a-z0-9_]*\Z")
 _DECISION_FIELDS = frozenset(
     (
@@ -61,6 +71,14 @@ _DECISION_FIELDS = frozenset(
 
 def _is_nonnegative_int(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value >= 0
+
+
+def _is_int(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int)
+
+
+def _is_sha256(value: Any) -> bool:
+    return type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
 def _reject_score_or_loss_fields(value: Any, where: str = "decision") -> None:
@@ -144,8 +162,8 @@ class DecisionRecord:
                 raise ReceiptError("%s pose IDs must be non-negative integers" % name)
             if any(not _is_nonnegative_int(value) for value in timestamps):
                 raise ReceiptError("%s pose timestamps must be non-negative integers" % name)
-            if any(not _is_nonnegative_int(value) for value in commits):
-                raise ReceiptError("%s pose commit cycles must be non-negative integers" % name)
+            if any(not _is_int(value) for value in commits):
+                raise ReceiptError("%s pose commit cycles must be signed integers" % name)
             if any(
                 type(value) is not str
                 or re.fullmatch(r"[0-9a-f]{64}", value) is None
@@ -310,7 +328,30 @@ class DecisionReceipt:
     retired_records: int
     ordered_event_ids_sha256: str
     decision_records_sha256: str
-    sink_mode: str = "always_ready"
+    sink_mode: str = SINK_MODE
+
+    def __post_init__(self) -> None:
+        if self.comparison_contract_sha256 != EXPECTED_CANONICAL_SHA256:
+            raise ReceiptError("receipt comparison contract hash is not current")
+        if self.registry_sha256 != EXPECTED_REGISTRY_SHA256:
+            raise ReceiptError("receipt registry hash is not frozen")
+        for name in ("ordered_event_ids_sha256", "decision_records_sha256"):
+            if not _is_sha256(getattr(self, name)):
+                raise ReceiptError("receipt %s is not lowercase SHA-256" % name)
+        if self.dataset_pose_arrival_assumption != DATASET_POSE_ARRIVAL_ASSUMPTION:
+            raise ReceiptError("receipt pose arrival assumption is not frozen")
+        if type(self.window_id) is not str or not self.window_id:
+            raise ReceiptError("receipt window_id must be a non-empty string")
+        if type(self.arm) is not str or self.arm not in DECISION_ARMS:
+            raise ReceiptError("receipt arm is not frozen")
+        if not _is_nonnegative_int(self.expected_events):
+            raise ReceiptError("receipt expected_events must be a non-negative integer")
+        if not _is_nonnegative_int(self.retired_records):
+            raise ReceiptError("receipt retired_records must be a non-negative integer")
+        if self.expected_events != self.retired_records:
+            raise ReceiptError("receipt accepted/retired counts differ")
+        if self.sink_mode != SINK_MODE:
+            raise ReceiptError("receipt sink_mode must be always_ready")
 
     def to_mapping(self) -> Dict[str, Any]:
         return {

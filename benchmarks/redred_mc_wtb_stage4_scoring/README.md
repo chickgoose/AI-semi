@@ -17,11 +17,22 @@ or computing a loss, it verifies:
 - the canonical digest of the exact immutable decision records;
 - a canonical digest of `ScoreFreeAccounting`.
 
+Manifest schema v2 additionally binds the authoritative assay input manifest,
+the complete warmup-plus-query cycle result, the complete cycle-receipt stream,
+and the query projection. The independently supplied `ScoreBoundaryEvidence`
+must match all four values, and the query projection must equal the decision
+receipt's record digest. Consequently, retaining the same query receipt while
+substituting warmup inputs or cycle history changes a required pre-score hash.
+
 The manifest binds the decision-receipt digest, accounting digest, exact
 ray/provenance stream, and the protocol, registry, arm-parameter, generator,
 cycle-model, scorer, source, and runtime artifact classes. A changed ray or
 shadow provenance after the manifest is frozen is rejected before either
 causal bank runs.
+
+Pose provenance commit cycles are signed relative-window cycles. Negative
+cycles are allowed for pre-window history; causal visibility comparisons remain
+strict and reject same-edge or later commits.
 
 The accounting object classifies attempted corrections, freshness vetoes,
 invalid-pose bypasses, operational waste, baseline retirement cycles, and

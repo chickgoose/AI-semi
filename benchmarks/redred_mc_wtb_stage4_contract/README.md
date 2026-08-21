@@ -43,6 +43,14 @@ exceed occurrence-to-retirement latency. Multiple records may retire on one
 cycle, but retirement cycles and event order may never move backwards. Receipt
 schema v2 also stamps the frozen `always_ready` sink mode.
 
+Pose commit cycles are signed relative-window cycles so packets visible before
+window cycle zero remain representable. Visibility is still strict: every
+occurrence-snapshot commit must be less than the event occurrence cycle, and a
+corrected delayed right bracket must commit strictly before retirement.
+`DecisionReceipt` construction itself rejects a stale contract/registry hash,
+noncanonical content hashes, inconsistent counts, an unknown arm, a changed
+arrival assumption, or any sink mode other than `always_ready`.
+
 Use `load_comparison_contract()` followed by `validate_existing_registry()`
 before generating decisions. Then call `validate_decision_records()` once per
 window and arm before any separate scoring process sees the receipt hash.

@@ -5,6 +5,7 @@ from .scoring import (
     EventLoss,
     LatencySummary,
     RayEvent,
+    ScoreBoundaryEvidence,
     ScoreInputManifest,
     ScoreFreeAccounting,
     ShadowRay,
@@ -15,6 +16,7 @@ from .scoring import (
     is_positive_window,
     nearest_rank_latency,
     score_window,
+    verify_prescore_binding,
     validate_complete_comparison,
 )
 
@@ -23,6 +25,7 @@ __all__ = (
     "EventLoss",
     "LatencySummary",
     "RayEvent",
+    "ScoreBoundaryEvidence",
     "ScoreInputManifest",
     "ScoreFreeAccounting",
     "ShadowRay",
@@ -33,5 +36,6 @@ __all__ = (
     "is_positive_window",
     "nearest_rank_latency",
     "score_window",
+    "verify_prescore_binding",
     "validate_complete_comparison",
 )

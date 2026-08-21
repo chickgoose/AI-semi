@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 import unittest
 
 from benchmarks.redred_mc_wtb_stage4_contract import (
     DecisionRecord,
+    DecisionReceipt,
     ReceiptError,
     canonical_sha256,
     load_comparison_contract,
@@ -127,6 +129,20 @@ class ReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptError, "different lengths"):
             DecisionRecord.from_mapping(malformed)
 
+    def test_relative_pose_commit_cycles_may_be_negative_but_must_be_visible(self) -> None:
+        before_window = copy.deepcopy(self.rows[0])
+        before_window["occurrence_pose_commit_cycles"] = [-2, -1]
+        before_window["used_pose_commit_cycles"] = [-2, -1]
+        parsed = DecisionRecord.from_mapping(before_window)
+        self.assertEqual(parsed.occurrence_pose_commit_cycles, (-2, -1))
+        self.assertEqual(parsed.used_pose_commit_cycles, (-2, -1))
+
+        same_edge = copy.deepcopy(before_window)
+        same_edge["occurrence_pose_commit_cycles"][-1] = same_edge["occurrence_cycle"]
+        same_edge["used_pose_commit_cycles"][-1] = same_edge["occurrence_cycle"]
+        with self.assertRaisesRegex(ReceiptError, "not visible before"):
+            DecisionRecord.from_mapping(same_edge)
+
     def test_boolean_identity_and_nonstring_arm_fail_closed(self) -> None:
         boolean_id = copy.deepcopy(self.rows[0])
         boolean_id["event_id"] = True
@@ -175,6 +191,33 @@ class ReceiptTests(unittest.TestCase):
             delayed["disposition_reason"] = reason
             parsed = DecisionRecord.from_mapping(delayed)
             self.assertFalse(parsed.intentional_future_pose_use)
+
+    def test_direct_receipt_construction_validates_v2_semantics(self) -> None:
+        receipt = self.validate(self.rows)
+        self.assertIsInstance(
+            DecisionReceipt(**{
+                name: getattr(receipt, name)
+                for name in DecisionReceipt.__dataclass_fields__
+            }),
+            DecisionReceipt,
+        )
+        cases = (
+            ({"comparison_contract_sha256": "0" * 64}, "contract hash"),
+            ({"registry_sha256": "0" * 64}, "registry hash"),
+            ({"ordered_event_ids_sha256": "bad"}, "ordered_event_ids"),
+            ({"decision_records_sha256": "A" * 64}, "decision_records"),
+            ({"expected_events": True}, "expected_events"),
+            ({"retired_records": -1}, "retired_records"),
+            ({"retired_records": receipt.retired_records - 1}, "counts differ"),
+            ({"arm": "unknown"}, "arm"),
+            ({"sink_mode": "backpressured"}, "sink_mode"),
+            ({"dataset_pose_arrival_assumption": "late"}, "arrival assumption"),
+        )
+        for changes, message in cases:
+            with self.subTest(changes=changes), self.assertRaisesRegex(
+                ReceiptError, message
+            ):
+                replace(receipt, **changes)
 
 
 if __name__ == "__main__":

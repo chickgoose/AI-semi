@@ -13,6 +13,7 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
 from benchmarks.redred_mc_wtb_stage4_scoring import (
     EventLoss,
     RayEvent,
+    ScoreBoundaryEvidence,
     ScoreInputManifest,
     ScoreFreeAccounting,
     ScoringError,
@@ -24,6 +25,7 @@ from benchmarks.redred_mc_wtb_stage4_scoring import (
     nearest_rank_latency,
     score_window,
     validate_complete_comparison,
+    verify_prescore_binding,
 )
 from benchmarks.redred_mc_wtb_stage4_contract.receipt import DECISION_ARMS
 from benchmarks.redred_mc_wtb_stage4_contract.receipt import ARM_LABELS
@@ -144,9 +146,19 @@ def sealed_inputs(
         receipt.canonical_sha256(),
         accounting.canonical_sha256(),
         canonical_sha256([event.to_mapping() for event in events]),
+        "3" * 64,
+        "4" * 64,
+        "5" * 64,
+        receipt.decision_records_sha256,
         tuple(artifacts.items()),
     )
-    return receipt, accounting, manifest
+    evidence = ScoreBoundaryEvidence(
+        manifest.assay_authoritative_input_manifest_sha256,
+        manifest.full_cycle_result_sha256,
+        manifest.cycle_receipts_sha256,
+        manifest.query_projection_sha256,
+    )
+    return receipt, accounting, manifest, evidence
 
 
 class FrameSafeWindowTests(unittest.TestCase):
@@ -154,7 +166,7 @@ class FrameSafeWindowTests(unittest.TestCase):
         self.contract = load_comparison_contract()
 
     def score(self, records, events, **categories):
-        receipt, accounting, manifest = sealed_inputs(
+        receipt, accounting, manifest, evidence = sealed_inputs(
             self.contract, records, events, **categories
         )
         return score_window(
@@ -164,6 +176,7 @@ class FrameSafeWindowTests(unittest.TestCase):
             tuple(events),
             accounting,
             manifest,
+            evidence,
             expected_manifest_sha256=manifest.canonical_sha256(),
             expected_receipt_sha256=receipt.canonical_sha256(),
             expected_accounting_sha256=accounting.canonical_sha256(),
@@ -175,7 +188,7 @@ class FrameSafeWindowTests(unittest.TestCase):
             RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
             RayEvent(WINDOW, 10, 100, 0, True, ray(1), shadows(ray(1))),
         )
-        receipt, accounting, manifest = sealed_inputs(
+        receipt, accounting, manifest, evidence = sealed_inputs(
             self.contract, records, valid_events
         )
         with self.assertRaisesRegex(ScoringError, "receipt digest"):
@@ -186,6 +199,7 @@ class FrameSafeWindowTests(unittest.TestCase):
                 (object(),),
                 accounting,
                 manifest,
+                evidence,
                 expected_manifest_sha256=manifest.canonical_sha256(),
                 expected_receipt_sha256="0" * 64,
                 expected_accounting_sha256=accounting.canonical_sha256(),
@@ -197,7 +211,7 @@ class FrameSafeWindowTests(unittest.TestCase):
             RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
             RayEvent(WINDOW, 11, 100, 0, True, ray(1), shadows(ray(1))),
         )
-        receipt, accounting, manifest = sealed_inputs(
+        receipt, accounting, manifest, evidence = sealed_inputs(
             self.contract, records, events
         )
         with self.assertRaisesRegex(ScoringError, "manifest digest"):
@@ -208,13 +222,14 @@ class FrameSafeWindowTests(unittest.TestCase):
                 (object(),),
                 accounting,
                 manifest,
+                evidence,
                 expected_manifest_sha256="0" * 64,
                 expected_receipt_sha256=receipt.canonical_sha256(),
                 expected_accounting_sha256=accounting.canonical_sha256(),
             )
         mutated_events = (
-            events[0],
-            RayEvent(WINDOW, 11, 100, 0, True, ray(2), shadows(ray(2))),
+            RayEvent(WINDOW, 1, 0, 0, False, ray(2), shadows(ray(2))),
+            events[1],
         )
         with self.assertRaisesRegex(ScoringError, "pre-frozen manifest"):
             score_window(
@@ -224,10 +239,79 @@ class FrameSafeWindowTests(unittest.TestCase):
                 mutated_events,
                 accounting,
                 manifest,
+                evidence,
                 expected_manifest_sha256=manifest.canonical_sha256(),
                 expected_receipt_sha256=receipt.canonical_sha256(),
                 expected_accounting_sha256=accounting.canonical_sha256(),
             )
+
+    def test_full_stream_boundary_digests_precede_loss_join(self):
+        records = (decision(12, 100, 3, 4, True),)
+        events = (
+            RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
+            RayEvent(WINDOW, 12, 100, 0, True, ray(1), shadows(ray(1))),
+        )
+        receipt, accounting, manifest, evidence = sealed_inputs(
+            self.contract, records, events
+        )
+        expected = {
+            "expected_manifest_sha256": manifest.canonical_sha256(),
+            "expected_receipt_sha256": receipt.canonical_sha256(),
+            "expected_accounting_sha256": accounting.canonical_sha256(),
+        }
+        verify_prescore_binding(
+            self.contract,
+            receipt,
+            records,
+            accounting,
+            manifest,
+            evidence,
+            **expected
+        )
+        for field, value in (
+            ("assay_authoritative_input_manifest_sha256", "6" * 64),
+            ("full_cycle_result_sha256", "7" * 64),
+            ("cycle_receipts_sha256", "8" * 64),
+            ("query_projection_sha256", "9" * 64),
+        ):
+            with self.subTest(field=field), self.assertRaisesRegex(
+                ScoringError, "full-stream boundary"
+            ):
+                verify_prescore_binding(
+                    self.contract,
+                    receipt,
+                    records,
+                    accounting,
+                    manifest,
+                    replace(evidence, **{field: value}),
+                    **expected
+                )
+
+        wrong_projection = replace(manifest, query_projection_sha256="a" * 64)
+        wrong_evidence = replace(evidence, query_projection_sha256="a" * 64)
+        with self.assertRaisesRegex(ScoringError, "query projection"):
+            verify_prescore_binding(
+                self.contract,
+                receipt,
+                records,
+                accounting,
+                wrong_projection,
+                wrong_evidence,
+                expected_manifest_sha256=wrong_projection.canonical_sha256(),
+                expected_receipt_sha256=receipt.canonical_sha256(),
+                expected_accounting_sha256=accounting.canonical_sha256(),
+            )
+
+    def test_shadow_commit_cycles_allow_signed_relative_time(self):
+        before_window = shadow(
+            ARM,
+            ray(0),
+            "occurrence_zoh",
+            commits=(-1,),
+        )
+        self.assertEqual(before_window.pose_commit_cycles, (-1,))
+        with self.assertRaisesRegex(ScoringError, "signed integer"):
+            shadow(ARM, ray(0), "occurrence_zoh", commits=(True,))
 
     def test_equal_timestamp_cluster_scores_before_insert_and_separates_polarity(self):
         records = (
@@ -355,7 +439,9 @@ class FrameSafeWindowTests(unittest.TestCase):
             RayEvent(WINDOW, 60, 100, 0, True, ray(10), shadows(ray(5))),
             RayEvent(WINDOW, 61, 200, 0, True, ray(20), shadows(ray(10))),
         )
-        receipt, accounting, manifest = sealed_inputs(self.contract, records, events)
+        receipt, accounting, manifest, evidence = sealed_inputs(
+            self.contract, records, events
+        )
         with self.assertRaisesRegex(ScoringError, "not exhaustive"):
             score_window(
                 self.contract,
@@ -364,6 +450,7 @@ class FrameSafeWindowTests(unittest.TestCase):
                 events,
                 accounting,
                 manifest,
+                evidence,
                 expected_manifest_sha256=manifest.canonical_sha256(),
                 expected_receipt_sha256=receipt.canonical_sha256(),
                 expected_accounting_sha256=accounting.canonical_sha256(),
