@@ -1,0 +1,45 @@
+{
+  "schema": "redred.mc_wtb_so3_axis_audit.historical_exclusions/v1",
+  "documents": [
+    {
+      "path": "benchmarks/redred_mc_wtb_causal_reference/stage3_development_result.json",
+      "sha256": "875ee90040561317710f044aea46528bcfb0b90577a51d421ce9508073f1bb70"
+    },
+    {
+      "path": "benchmarks/redred_uzh_mc_wtb_motion_v3/cohorts.json",
+      "sha256": "5a24829fdaaaec679e8ef82ac435158ee0225af5b644d3056895e7fcc94acef4"
+    },
+    {
+      "path": "benchmarks/redred_uzh_mc_wtb_motion/paret_preregistered.json",
+      "sha256": "2d564d92460b86e7aaaadfe4c4118d3d42310520e31c9af4c1f581cd16f1f548"
+    }
+  ],
+  "intervals": [
+    {"id": "historical_005321", "start_ns_inclusive": 5320000000, "end_ns_exclusive": 5322000000},
+    {"id": "historical_007321", "start_ns_inclusive": 7320000000, "end_ns_exclusive": 7322000000},
+    {"id": "historical_009321", "start_ns_inclusive": 9320000000, "end_ns_exclusive": 9322000000},
+    {"id": "historical_011321", "start_ns_inclusive": 11320000000, "end_ns_exclusive": 11322000000},
+    {"id": "historical_013321", "start_ns_inclusive": 13320000000, "end_ns_exclusive": 13322000000},
+    {"id": "historical_015321", "start_ns_inclusive": 15320000000, "end_ns_exclusive": 15322000000},
+    {"id": "historical_017321", "start_ns_inclusive": 17320000000, "end_ns_exclusive": 17322000000},
+    {"id": "historical_019321", "start_ns_inclusive": 19320000000, "end_ns_exclusive": 19322000000},
+    {"id": "historical_021321", "start_ns_inclusive": 21320000000, "end_ns_exclusive": 21322000000},
+    {"id": "historical_023321", "start_ns_inclusive": 23320000000, "end_ns_exclusive": 23322000000},
+    {"id": "historical_025321", "start_ns_inclusive": 25320000000, "end_ns_exclusive": 25322000000},
+    {"id": "historical_027321", "start_ns_inclusive": 27320000000, "end_ns_exclusive": 27322000000},
+    {"id": "historical_029321", "start_ns_inclusive": 29320000000, "end_ns_exclusive": 29322000000},
+    {"id": "historical_031321", "start_ns_inclusive": 31320000000, "end_ns_exclusive": 31322000000},
+    {"id": "historical_033321", "start_ns_inclusive": 33320000000, "end_ns_exclusive": 33322000000},
+    {"id": "historical_035321", "start_ns_inclusive": 35320000000, "end_ns_exclusive": 35322000000},
+    {"id": "historical_037321", "start_ns_inclusive": 37320000000, "end_ns_exclusive": 37322000000},
+    {"id": "historical_039321", "start_ns_inclusive": 39320000000, "end_ns_exclusive": 39322000000},
+    {"id": "historical_041321", "start_ns_inclusive": 41320750000, "end_ns_exclusive": 41322000000},
+    {"id": "historical_043321", "start_ns_inclusive": 43320750000, "end_ns_exclusive": 43322000000},
+    {"id": "historical_045321", "start_ns_inclusive": 45320000000, "end_ns_exclusive": 45322000000},
+    {"id": "historical_047321", "start_ns_inclusive": 47320000000, "end_ns_exclusive": 47322000000},
+    {"id": "historical_049321", "start_ns_inclusive": 49320000000, "end_ns_exclusive": 49322000000},
+    {"id": "historical_051321", "start_ns_inclusive": 51320000000, "end_ns_exclusive": 51322000000},
+    {"id": "historical_053321", "start_ns_inclusive": 53320000000, "end_ns_exclusive": 53322000000},
+    {"id": "historical_055321", "start_ns_inclusive": 55320000000, "end_ns_exclusive": 55322000000}
+  ]
+}

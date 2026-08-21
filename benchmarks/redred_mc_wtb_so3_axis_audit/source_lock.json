@@ -1,0 +1,24 @@
+{
+  "schema": "redred.mc_wtb_so3_axis_audit.source_lock/v1",
+  "sequence": "UZH DAVIS shapes_rotation",
+  "members": {
+    "events": {
+      "filename": "events.txt",
+      "size_bytes": 509907771,
+      "line_count": 23126288,
+      "sha256": "d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda"
+    },
+    "poses": {
+      "filename": "groundtruth.txt",
+      "size_bytes": 1379205,
+      "line_count": 11883,
+      "sha256": "bb62c320a51c1be412e17065eb86cfffa9041841290d439c23e447f1991aabdb"
+    },
+    "calibration": {
+      "filename": "calib.txt",
+      "size_bytes": 128,
+      "line_count": 1,
+      "sha256": "ab797c55a990c03656fbddac2473d3eace2a22f87fea4ca3b0497862b50545cd"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "redred.mc_wtb_so3_axis_audit.registry_lock/v1",
+  "source_lock_sha256": "0e0dbb17db4d170de650729fe9ad1cd3f18d20c1bddcd577c84999fcde045a4c",
+  "selector_py_sha256": "be90a6447f83cb1a6688eebaa67ff13d8c8be692c26d191d1573b2f802cc5071",
+  "historical_exclusions_sha256": "68c088d4fdaac2f61db016b837cbfa1391c2ff0f481ea1ea5ddd771955debb7b",
+  "historical_pose_halo_sha256": "048e6b0eed6a880d039f54a7bac75b110ca1dc594382c6eabb50eaa3d90bb599",
+  "historical_pose_support_indices_sha256": "28265aa82efa09da1ca1323b7738a1facf9e0eb64d96f6f58b05fa53651403bb",
+  "historical_ledger_sha256": "b2c1e739a39443eb8cece286c805ce3cceff13d356847a97fdbb45a794486369",
+  "production_registry_sha256": "db34585d6e897688b844b56a64826ede4211b6b4ecca88a38a2563a7a1203f5f",
+  "window_count": 108
+}
