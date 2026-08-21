@@ -74,6 +74,31 @@ _ASSAY_FILES = (
     _ORACLE_POSES,
     _ORACLE_SCHEDULE,
 )
+_ASSAY_EVENT_RECORD_FIELDS = frozenset(
+    (
+        "window_id",
+        "event_id",
+        "timestamp_ns",
+        "x",
+        "y",
+        "polarity",
+        "sensor_ray",
+        "is_query",
+        "window_event_ordinal",
+        "occurrence_cycle",
+        "equal_timestamp_cluster_id",
+        "equal_timestamp_cluster_size",
+        "occurrence_batch_id",
+        "occurrence_lane",
+        "occurrence_batch_size",
+        "occurrence_pose_snapshot_sha256",
+        "causal_pose_source_index",
+        "payload_hex",
+        "presentation_cycle",
+        "presentation_lane",
+        "serializer_queue_cycles",
+    )
+)
 _REASON_ALIASES = {
     "missing_left_pose": "missing_bracket",
     "invalid_bracket": "invalid_pose",
@@ -109,20 +134,37 @@ _ARM_CATEGORY_REASONS = {
 }
 
 _STATE_COMPONENTS_BITS = (
-    ("delayed_fifo_1024x102_payload", 1024 * 102),
-    ("ingress_staging_6x102_payload", 6 * 102),
-    ("pose_ring_16x192_payload", 16 * 192),
-    ("fifo_read_write_pointers_and_count", 31),
-    ("ingress_count_and_cursor", 6),
-    ("pose_ring_pointer_and_valid", 9),
-    ("pose_ring_16x11_live_references", 16 * 11),
-    ("two_lane_102bit_pipeline", 2 * 102),
-    ("pose_ingress_register", 192),
-    ("global_cycle_counter", 21),
-    ("status_counters", 28),
+    ("delayed_fifo_payload", 1024 * 102),
+    ("ingress_capture_payload", 6 * 102),
+    ("pose_ring_payload", 16 * 192),
+    ("delayed_fifo_pointers_and_occupancy", 31),
+    ("ingress_serializer_count_and_cursor", 6),
+    ("pose_ring_write_pointer_and_valid_count", 9),
+    ("pose_ring_live_reference_counters", 16 * 11),
+    ("transform_pipeline_payload", 2 * 102),
+    ("atomic_pose_ingress_staging", 192),
+    ("global_cycle_and_deadline_counter", 21),
+    ("expected_and_retired_receipt_counters", 28),
 )
 _CONSERVATIVE_INCREMENTAL_STATE_BITS = 108_799
 _CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND = 192_000
+_EVENT_RECORD_BITS = 102
+_EXPECTED_FIFO_MINIMUM_ZERO_LOSS_RULE = {
+    "bounded_peak_authoritative_if": (
+        "fifo_full_forced_bypass_count_is_zero_and_full_conservation_holds"
+    ),
+    "authoritative_bounded_value": "observed_peak_buffer_entries",
+    "bounded_peak_authoritative_if_any_fifo_full_forced_bypass": False,
+    "otherwise": (
+        "fail_closed_unless_separate_score_free_unbounded_depth_replay_proves_depth"
+    ),
+    "unbounded_depth_replay_method": (
+        "same_arrivals_ordering_service_deadline_and_retirement_without_fifo_pressure_action"
+    ),
+    "unbounded_depth_replay_may_change_bounded_decisions": False,
+    "nontermination_unbounded_growth_or_unaccounted_event": "hard_stop",
+    "proven_depth_above_bounded_entries": "hard_stop",
+}
 _CALIBRATION_FIELDS = (
     "width",
     "height",
@@ -241,6 +283,119 @@ def _validate_payload(row: Mapping[str, Any]) -> None:
         value >>= width
     if value:
         raise IntegrationError("event payload has trailing bits")
+
+
+def _validate_event_record_shape(row: Mapping[str, Any]) -> None:
+    actual = frozenset(row)
+    if actual != _ASSAY_EVENT_RECORD_FIELDS:
+        missing = sorted(_ASSAY_EVENT_RECORD_FIELDS - actual)
+        extra = sorted(actual - _ASSAY_EVENT_RECORD_FIELDS)
+        raise IntegrationError(
+            "assay event record field set differs: missing=%r extra=%r"
+            % (missing, extra)
+        )
+    if type(row["is_query"]) is not bool:
+        raise IntegrationError("assay event is_query must be an exact bool")
+
+
+def _validate_score_free_accounting_contract(value: Any) -> Mapping[str, Any]:
+    accounting = _require_mapping(value, "contract.score_free_accounting")
+    if accounting.get("schema") != "redred.mc_wtb.stage4_score_free_accounting/v1":
+        raise IntegrationError("score-free accounting schema differs")
+
+    corrected = _require_mapping(
+        accounting.get("corrected_reason_allowlist_by_arm"),
+        "score-free corrected reason taxonomy",
+    )
+    raw = _require_mapping(
+        accounting.get("raw_reason_classification_by_arm"),
+        "score-free raw reason taxonomy",
+    )
+    arm_names = frozenset(arm.value for arm in Arm)
+    if frozenset(corrected) != arm_names or frozenset(raw) != arm_names:
+        raise IntegrationError("score-free accounting arm taxonomy differs")
+    category_labels = {
+        "freshness": "freshness_veto",
+        "invalid": "invalid_pose_bypass",
+        "operational": "operational_waste",
+    }
+    for arm, policy in _ARM_CATEGORY_REASONS.items():
+        corrected_reasons = corrected[arm.value]
+        if not isinstance(corrected_reasons, list) or frozenset(
+            corrected_reasons
+        ) != policy["corrected"]:
+            raise IntegrationError("score-free corrected reason taxonomy differs")
+        expected_raw = {}
+        for implementation_name, contract_name in category_labels.items():
+            expected_raw.update(
+                (reason, contract_name) for reason in policy[implementation_name]
+            )
+        if dict(_require_mapping(raw[arm.value], "score-free raw arm taxonomy")) != expected_raw:
+            raise IntegrationError("score-free raw reason taxonomy differs")
+    if (
+        accounting.get("corrected_disposition") != "corrected_world_ray"
+        or accounting.get("corrected_disposition_classification")
+        != ["attempted_correction"]
+        or accounting.get("unknown_arm_disposition_reason") != "protocol_failure"
+    ):
+        raise IntegrationError("score-free disposition taxonomy differs")
+
+    state = _require_mapping(
+        accounting.get("common_state_envelope"),
+        "score-free common state envelope",
+    )
+    if (
+        state.get("components_bits") != dict(_STATE_COMPONENTS_BITS)
+        or state.get("component_count") != len(_STATE_COMPONENTS_BITS)
+        or state.get("incremental_state_bits")
+        != _CONSERVATIVE_INCREMENTAL_STATE_BITS
+        or sum(value for _, value in _STATE_COMPONENTS_BITS)
+        != _CONSERVATIVE_INCREMENTAL_STATE_BITS
+    ):
+        raise IntegrationError("score-free 11-component state accounting differs")
+
+    pose = _require_mapping(
+        accounting.get("pose_interface"), "score-free pose interface"
+    )
+    if (
+        pose.get("packet_bits") != 192
+        or pose.get("packets_per_second") != 1000
+        or pose.get("pose_bandwidth_bits_per_second")
+        != _CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND
+    ):
+        raise IntegrationError("score-free pose bandwidth accounting differs")
+
+    event_bandwidth = _require_mapping(
+        accounting.get("query_event_bandwidth"),
+        "score-free event bandwidth",
+    )
+    residence = _require_mapping(
+        accounting.get("residence_bit_cycles"),
+        "score-free residence bit-cycles",
+    )
+    if (
+        event_bandwidth.get("record_bits") != _EVENT_RECORD_BITS
+        or residence.get("record_bits") != _EVENT_RECORD_BITS
+        or residence.get("buffer_bit_cycles_rule")
+        != "102*(sum_all_events(admission_cycle-occurrence_cycle)+indicator_arm_is_delayed_exact*sum_all_events(retire_cycle-admission_cycle))"
+    ):
+        raise IntegrationError("score-free 102-bit event accounting differs")
+
+    fifo = _require_mapping(accounting.get("delayed_fifo"), "score-free delayed FIFO")
+    minimum_rule = _require_mapping(
+        fifo.get("minimum_zero_loss_buffer_entries"),
+        "score-free delayed FIFO conditional rule",
+    )
+    if (
+        fifo.get("bounded_entries") != 1024
+        or fifo.get("full_action") != "oldest_eligible_head_ordered_raw_bypass"
+        or fifo.get("full_reason") != "fifo_full_forced_bypass"
+        or fifo.get("full_classification") != "operational_waste"
+        or fifo.get("external_or_unbounded_overflow_queue_allowed") is not False
+        or dict(minimum_rule) != _EXPECTED_FIFO_MINIMUM_ZERO_LOSS_RULE
+    ):
+        raise IntegrationError("score-free delayed FIFO conditional rule differs")
+    return accounting
 
 
 @dataclass(frozen=True)
@@ -462,6 +617,9 @@ def load_assay_bundle(
     if manifest.get("schema") != "redred.mc_wtb.stage4_score_free_inputs/v2":
         raise IntegrationError("assay manifest schema is not v2")
     contract = load_comparison_contract()
+    _validate_score_free_accounting_contract(
+        contract.as_dict().get("score_free_accounting")
+    )
     if manifest.get("comparison_contract_sha256") != contract.canonical_sha256:
         raise IntegrationError("assay manifest contract hash differs")
     registry = _require_mapping(manifest.get("registry"), "manifest.registry")
@@ -542,6 +700,7 @@ def load_assay_bundle(
     ) or authority.get("runtime") != generator_runtime.get("runtime"):
         raise IntegrationError("generator/runtime authority binding differs")
     for row in loaded[_EVENTS]:
+        _validate_event_record_shape(row)
         _validate_payload(row)
         _recompute_sensor_ray(row, calibration)
         timestamp_ns = _require_int(row.get("timestamp_ns"), "event timestamp", 0)
@@ -799,6 +958,7 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
     if not event_rows:
         raise IntegrationError("window has no assay events")
     for row in event_rows:
+        _validate_event_record_shape(row)
         timestamp_ns = _require_int(row.get("timestamp_ns"), "event timestamp", 0)
         if not start <= timestamp_ns < end:
             raise IntegrationError("assay event lies outside serialized window limits")
@@ -1102,6 +1262,9 @@ def _derive_accounting(
     result: SimulationResult,
     converted: Sequence[DecisionRecord],
 ) -> Tuple[ScoreFreeAccounting, ScoreFreeAccountingEvidence]:
+    accounting_contract = _validate_score_free_accounting_contract(
+        load_comparison_contract().as_dict().get("score_free_accounting")
+    )
     if len(converted) != len(result.records) or tuple(
         record.event_id for record in converted
     ) != tuple(record.event_id for record in result.records):
@@ -1154,10 +1317,15 @@ def _derive_accounting(
     buffer_bit_cycles = result.event_record_bits * (
         serializer_entry_cycles + delayed_fifo_entry_cycles
     )
-    if sum(value for _, value in _STATE_COMPONENTS_BITS) != (
-        _CONSERVATIVE_INCREMENTAL_STATE_BITS
+    fifo_contract = _require_mapping(
+        accounting_contract.get("delayed_fifo"), "score-free delayed FIFO"
+    )
+    if (
+        result.event_record_bits != _EVENT_RECORD_BITS
+        or result.pose_packet_bits != 192
+        or result.buffer_entries != fifo_contract["bounded_entries"]
     ):
-        raise IntegrationError("fixed state component accounting does not conserve")
+        raise IntegrationError("cycle-model hardware accounting differs from contract")
     attempted_ids = set(corrected + operational)
     attempted = tuple(
         result.records[index].event_id

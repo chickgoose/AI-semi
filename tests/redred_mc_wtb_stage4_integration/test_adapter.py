@@ -100,6 +100,17 @@ def artifact(path, rows):
     }
 
 
+def reseal_artifact_and_manifest(root, name, rows):
+    path = root / name
+    write_jsonl(path, rows)
+    manifest_path = root / "stage4_input_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][name] = artifact(path, rows)
+    manifest_bytes = canonical_json_bytes(manifest)
+    manifest_path.write_bytes(manifest_bytes)
+    return hashlib.sha256(manifest_bytes).hexdigest()
+
+
 def build_artifacts(root, *, include_limits=True, signed_history=True):
     calibration = Calibration(
         240,
@@ -391,6 +402,70 @@ class IntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(IntegrationError, "artifact hash"):
                 load_assay_bundle(root, expected_manifest_sha256=expected)
 
+    def test_loader_requires_exact_event_fields_and_exact_bool_query_label(self):
+        cases = (
+            ("extra_field", 0, "event record field set differs"),
+            ("is_query", 1, "is_query must be an exact bool"),
+        )
+        for field, value, message in cases:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                build_artifacts(root)
+                event_path = root / "stage4_events.jsonl"
+                rows = [json.loads(line) for line in event_path.read_text().splitlines()]
+                rows[0][field] = value
+                expected = reseal_artifact_and_manifest(
+                    root, "stage4_events.jsonl", rows
+                )
+                with self.assertRaisesRegex(IntegrationError, message):
+                    load_assay_bundle(root, expected_manifest_sha256=expected)
+
+    def test_runtime_contract_accounting_validation_is_fail_closed(self):
+        frozen = load_comparison_contract().as_dict()["score_free_accounting"]
+        self.assertIs(
+            integration._validate_score_free_accounting_contract(frozen), frozen
+        )
+        mutations = (
+            (
+                ("raw_reason_classification_by_arm", "delayed_exact", "invalid_pose"),
+                "invalid_pose_bypass",
+                "reason taxonomy",
+            ),
+            (
+                ("common_state_envelope", "components_bits", "delayed_fifo_payload"),
+                104447,
+                "11-component state",
+            ),
+            (
+                ("pose_interface", "pose_bandwidth_bits_per_second"),
+                191999,
+                "pose bandwidth",
+            ),
+            (
+                ("query_event_bandwidth", "record_bits"),
+                101,
+                "102-bit event",
+            ),
+            (
+                (
+                    "delayed_fifo",
+                    "minimum_zero_loss_buffer_entries",
+                    "bounded_peak_authoritative_if_any_fifo_full_forced_bypass",
+                ),
+                True,
+                "FIFO conditional rule",
+            ),
+        )
+        for path, value, message in mutations:
+            with self.subTest(path=path):
+                changed = json.loads(json.dumps(frozen))
+                target = changed
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = value
+                with self.assertRaisesRegex(IntegrationError, message):
+                    integration._validate_score_free_accounting_contract(changed)
+
     def test_pose_value_is_recomputed_after_outer_hashes_are_resealed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -532,14 +607,26 @@ class IntegrationTests(unittest.TestCase):
                 self.assertEqual(accounting_evidence["state_total_bits"], 108_799)
                 state_components = accounting_evidence["state_components_bits"]
                 self.assertEqual(len(state_components), 11)
-                self.assertEqual(state_components["fifo_read_write_pointers_and_count"], 31)
-                self.assertEqual(state_components["ingress_count_and_cursor"], 6)
-                self.assertEqual(state_components["pose_ring_pointer_and_valid"], 9)
-                self.assertEqual(state_components["pose_ring_16x11_live_references"], 176)
-                self.assertEqual(state_components["two_lane_102bit_pipeline"], 204)
-                self.assertEqual(state_components["pose_ingress_register"], 192)
-                self.assertEqual(state_components["global_cycle_counter"], 21)
-                self.assertEqual(state_components["status_counters"], 28)
+                self.assertEqual(
+                    state_components["delayed_fifo_pointers_and_occupancy"], 31
+                )
+                self.assertEqual(
+                    state_components["ingress_serializer_count_and_cursor"], 6
+                )
+                self.assertEqual(
+                    state_components["pose_ring_write_pointer_and_valid_count"], 9
+                )
+                self.assertEqual(
+                    state_components["pose_ring_live_reference_counters"], 176
+                )
+                self.assertEqual(state_components["transform_pipeline_payload"], 204)
+                self.assertEqual(state_components["atomic_pose_ingress_staging"], 192)
+                self.assertEqual(
+                    state_components["global_cycle_and_deadline_counter"], 21
+                )
+                self.assertEqual(
+                    state_components["expected_and_retired_receipt_counters"], 28
+                )
                 self.assertEqual(
                     accounting_evidence["pose_bandwidth_total_bps"], 192_000
                 )
