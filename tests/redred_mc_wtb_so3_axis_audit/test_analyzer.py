@@ -71,7 +71,7 @@ class RelativeRotationTests(unittest.TestCase):
 
 
 class AxisMotionAnalysisTests(unittest.TestCase):
-    def test_axial_back_and_forth_motion_reports_path_and_reversal(self):
+    def test_axial_back_and_forth_reports_sampled_step_reversal(self):
         poses = tuple(
             PoseSample(index * 1_000_000_000, axis_rotation((0, 0, 1), degrees))
             for index, degrees in enumerate((0.0, 10.0, 30.0, 20.0, 0.0))
@@ -89,13 +89,15 @@ class AxisMotionAnalysisTests(unittest.TestCase):
         self.assertAlmostEqual(result.net_angle_rad, 0.0)
         assert_vector(self, result.dominant_axis_xyz, (0.0, 0.0, 1.0))
         self.assertAlmostEqual(result.axis_coherence, 1.0)
+        self.assertEqual(result.dominant_axis_status, "UNIQUE")
+        self.assertIsNone(result.dominant_axis_unavailable_reason)
         self.assertTrue(result.directional_metrics_available)
         self.assertIsNone(result.directional_metrics_unavailable_reason)
         self.assertTrue(all(step.directional_valid for step in result.steps))
         self.assertAlmostEqual(result.positive_dominant_rotation_rad, math.radians(30.0))
         self.assertAlmostEqual(result.negative_dominant_rotation_rad, math.radians(30.0))
         self.assertAlmostEqual(result.signed_dominant_rotation_rad, 0.0)
-        self.assertEqual(result.direction_reversal_count, 1)
+        self.assertEqual(result.sampled_step_direction_reversal_count, 1)
 
     def test_speed_statistics_are_time_weighted_and_stationary_is_explicit(self):
         poses = (
@@ -125,12 +127,17 @@ class AxisMotionAnalysisTests(unittest.TestCase):
         result = analyze_axis_motion(poses, frame=RotationFrame.BODY)
         self.assertIsNone(result.dominant_axis_xyz)
         self.assertAlmostEqual(result.axis_coherence, 0.5)
+        self.assertEqual(result.dominant_axis_status, "NON_UNIQUE_EIGENGAP")
+        self.assertEqual(
+            result.dominant_axis_unavailable_reason,
+            "NON_UNIQUE_EIGENGAP",
+        )
         self.assertFalse(result.directional_metrics_available)
         self.assertEqual(
             result.directional_metrics_unavailable_reason,
-            "NO_UNIQUE_DOMINANT_AXIS",
+            "DOMINANT_AXIS_NON_UNIQUE_EIGENGAP",
         )
-        self.assertIsNone(result.direction_reversal_count)
+        self.assertIsNone(result.sampled_step_direction_reversal_count)
 
     def test_small_tensor_off_diagonal_is_not_discarded_by_unit_scale_floor(self):
         base = 5.0e-4
@@ -161,6 +168,8 @@ class AxisMotionAnalysisTests(unittest.TestCase):
 
         self.assertIsNotNone(result.dominant_axis_xyz)
         assert_vector(self, result.dominant_axis_xyz, first_axis, places=4)
+        self.assertEqual(result.dominant_axis_status, "UNIQUE")
+        self.assertIsNone(result.dominant_axis_unavailable_reason)
 
     def test_uncertified_eigenpair_residual_makes_axis_unavailable(self):
         poses = (
@@ -173,14 +182,47 @@ class AxisMotionAnalysisTests(unittest.TestCase):
             (0.0, (0.0, 0.0, 1.0), 1.0),
         )
         with mock.patch.object(
-            analyzer_module, "_symmetric_eigensystem", return_value=uncertified
+            analyzer_module,
+            "_symmetric_eigensystem",
+            return_value=(uncertified, "CONVERGED"),
         ):
             result = analyze_axis_motion(poses)
         self.assertIsNone(result.dominant_axis_xyz)
+        self.assertEqual(result.dominant_axis_status, "EIGEN_RESIDUAL_FAILED")
+        self.assertEqual(
+            result.dominant_axis_unavailable_reason,
+            "EIGEN_RESIDUAL_FAILED",
+        )
         self.assertFalse(result.directional_metrics_available)
         self.assertEqual(
             result.directional_metrics_unavailable_reason,
-            "NO_UNIQUE_DOMINANT_AXIS",
+            "DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED",
+        )
+
+    def test_nonconverged_eigensolver_does_not_masquerade_as_mixed_motion(self):
+        poses = (
+            PoseSample(0, IDENTITY),
+            PoseSample(1, axis_rotation((1, 0, 0), 10.0)),
+        )
+        with mock.patch.object(
+            analyzer_module,
+            "_EIGEN_MAX_ITERATIONS",
+            0,
+        ):
+            result = analyze_axis_motion(poses)
+        self.assertIsNone(result.dominant_axis_xyz)
+        self.assertIsNone(result.axis_coherence)
+        self.assertEqual(
+            result.dominant_axis_status,
+            "EIGENSOLVER_NONCONVERGED",
+        )
+        self.assertEqual(
+            result.dominant_axis_unavailable_reason,
+            "EIGENSOLVER_NONCONVERGED",
+        )
+        self.assertEqual(
+            result.directional_metrics_unavailable_reason,
+            "DOMINANT_AXIS_EIGENSOLVER_NONCONVERGED",
         )
 
     def test_half_turn_direction_and_reversal_are_unavailable(self):
@@ -205,7 +247,7 @@ class AxisMotionAnalysisTests(unittest.TestCase):
         self.assertIsNone(result.signed_dominant_rotation_rad)
         self.assertIsNone(result.positive_dominant_rotation_rad)
         self.assertIsNone(result.negative_dominant_rotation_rad)
-        self.assertIsNone(result.direction_reversal_count)
+        self.assertIsNone(result.sampled_step_direction_reversal_count)
 
     def test_direction_requires_bound_and_cadence_proof(self):
         poses = (
@@ -282,9 +324,31 @@ class AxisMotionAnalysisTests(unittest.TestCase):
         self.assertEqual(result.total_path_angle_rad, 0.0)
         self.assertIsNone(result.dominant_axis_xyz)
         self.assertIsNone(result.axis_coherence)
+        self.assertEqual(result.dominant_axis_status, "NO_MOVING_INTERVALS")
+        self.assertEqual(
+            result.dominant_axis_unavailable_reason,
+            "NO_MOVING_INTERVALS",
+        )
+        self.assertEqual(
+            result.directional_metrics_unavailable_reason,
+            "DOMINANT_AXIS_NO_MOVING_INTERVALS",
+        )
 
 
 class ContractTests(unittest.TestCase):
+    def test_dominant_axis_status_vocabulary_is_exact_and_frozen(self):
+        self.assertIsInstance(analyzer_module.DOMINANT_AXIS_STATUSES, frozenset)
+        self.assertEqual(
+            analyzer_module.DOMINANT_AXIS_STATUSES,
+            frozenset((
+                "NO_MOVING_INTERVALS",
+                "NON_UNIQUE_EIGENGAP",
+                "EIGENSOLVER_NONCONVERGED",
+                "EIGEN_RESIDUAL_FAILED",
+                "UNIQUE",
+            )),
+        )
+
     def test_invalid_pose_and_stream_inputs_fail_closed(self):
         with self.assertRaisesRegex(SO3AxisAuditError, "nonzero"):
             PoseSample(0, (0.0, 0.0, 0.0, 0.0))

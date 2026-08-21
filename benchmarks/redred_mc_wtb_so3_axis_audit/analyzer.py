@@ -25,6 +25,21 @@ _EIGEN_RESIDUAL_RELATIVE_TOLERANCE = 1.0e-12
 _EIGEN_MAX_ITERATIONS = 64
 _DEFAULT_DIRECTIONAL_PI_MARGIN_RAD = 1.0e-6
 
+DOMINANT_AXIS_NO_MOVING_INTERVALS = "NO_MOVING_INTERVALS"
+DOMINANT_AXIS_NON_UNIQUE_EIGENGAP = "NON_UNIQUE_EIGENGAP"
+DOMINANT_AXIS_EIGENSOLVER_NONCONVERGED = "EIGENSOLVER_NONCONVERGED"
+DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED = "EIGEN_RESIDUAL_FAILED"
+DOMINANT_AXIS_UNIQUE = "UNIQUE"
+DOMINANT_AXIS_STATUSES = frozenset((
+    DOMINANT_AXIS_NO_MOVING_INTERVALS,
+    DOMINANT_AXIS_NON_UNIQUE_EIGENGAP,
+    DOMINANT_AXIS_EIGENSOLVER_NONCONVERGED,
+    DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED,
+    DOMINANT_AXIS_UNIQUE,
+))
+
+_EIGENSOLVE_CONVERGED = "CONVERGED"
+
 
 class SO3AxisAuditError(ValueError):
     """The pose stream or analyzer configuration is invalid."""
@@ -203,7 +218,18 @@ class RotationStep:
 
 @dataclass(frozen=True)
 class AxisMotionAnalysis:
-    """Aggregate path, endpoint, speed, axis, and reversal diagnostics."""
+    """Aggregate path, endpoint, speed, axis, and sampled-step diagnostics.
+
+    ``dominant_axis_status`` is exactly one member of
+    ``DOMINANT_AXIS_STATUSES``.  ``dominant_axis_unavailable_reason`` is
+    ``None`` only for ``UNIQUE`` and otherwise repeats the exact failure or
+    non-uniqueness token so numerical failure cannot masquerade as mixed
+    motion.
+
+    ``sampled_step_direction_reversal_count`` counts sign transitions only
+    between the retained sampled principal-log steps.  Even when available it
+    makes no claim about reversals hidden inside a sampling interval.
+    """
 
     frame: RotationFrame
     sample_count: int
@@ -221,6 +247,8 @@ class AxisMotionAnalysis:
     peak_angular_speed_rad_s: float
     dominant_axis_xyz: Optional[Vector3]
     axis_coherence: Optional[float]
+    dominant_axis_status: str
+    dominant_axis_unavailable_reason: Optional[str]
     maximum_physical_angular_speed_rad_s: Optional[float]
     directional_pi_margin_rad: float
     directional_metrics_available: bool
@@ -228,18 +256,19 @@ class AxisMotionAnalysis:
     signed_dominant_rotation_rad: Optional[float]
     positive_dominant_rotation_rad: Optional[float]
     negative_dominant_rotation_rad: Optional[float]
-    direction_reversal_count: Optional[int]
+    sampled_step_direction_reversal_count: Optional[int]
     xyz_absolute_rotation_rad: Vector3
 
 
 def _symmetric_eigensystem(
     matrix: Sequence[Sequence[float]],
-) -> Optional[Tuple[Tuple[float, Vector3, float], ...]]:
+) -> Tuple[Optional[Tuple[Tuple[float, Vector3, float], ...]], str]:
     """Return certified descending eigenpairs of a symmetric 3x3 matrix.
 
     The third element of every eigenpair is ``||A v - lambda v||_2``.  A
-    non-converged or numerically unresolved solve returns ``None`` instead of
-    exposing a coordinate-axis artifact as a physical dominant axis.
+    non-converged or numerically unresolved solve returns ``None`` with an
+    exact failure token instead of exposing a coordinate-axis artifact as a
+    physical dominant axis.
     """
 
     original = tuple(tuple(float(value) for value in row) for row in matrix)
@@ -251,7 +280,7 @@ def _symmetric_eigensystem(
         for column in range(3)
     ))
     if not math.isfinite(scale):
-        return None
+        return None, DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED
     convergence_limit = _EIGEN_CONVERGENCE_RELATIVE_TOLERANCE * scale
     converged = scale == 0.0
     for _ in range(_EIGEN_MAX_ITERATIONS):
@@ -289,14 +318,14 @@ def _symmetric_eigensystem(
             vectors[other][column] = sine * old_or + cosine * old_oc
 
     if not converged:
-        return None
+        return None, DOMINANT_AXIS_EIGENSOLVER_NONCONVERGED
 
     eigenpairs = []
     for index in range(3):
         vector = tuple(vectors[row][index] for row in range(3))
         norm = math.sqrt(math.fsum(component * component for component in vector))
         if not math.isfinite(norm) or norm <= 0.0:
-            return None
+            return None, DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED
         unit = tuple(component / norm for component in vector)
         projected = tuple(
             math.fsum(original[row][column] * unit[column] for column in range(3))
@@ -307,19 +336,24 @@ def _symmetric_eigensystem(
             (projected[row] - eigenvalue * unit[row]) ** 2 for row in range(3)
         ))
         if not math.isfinite(eigenvalue) or not math.isfinite(residual):
-            return None
+            return None, DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED
         eigenpairs.append((eigenvalue, unit, residual))
     eigenpairs.sort(key=lambda pair: pair[0], reverse=True)
-    return tuple(eigenpairs)  # type: ignore[return-value]
+    return tuple(eigenpairs), _EIGENSOLVE_CONVERGED  # type: ignore[return-value]
 
 
 def _dominant_axis(
     steps: Sequence[RotationStep],
-) -> Tuple[Optional[Vector3], Optional[float]]:
+) -> Tuple[Optional[Vector3], Optional[float], str, Optional[str]]:
     moving = tuple(step for step in steps if not step.stationary and step.axis_xyz is not None)
     total_weight = math.fsum(step.angle_rad for step in moving)
     if total_weight <= 0.0:
-        return None, None
+        return (
+            None,
+            None,
+            DOMINANT_AXIS_NO_MOVING_INTERVALS,
+            DOMINANT_AXIS_NO_MOVING_INTERVALS,
+        )
     tensor = [[0.0 for _ in range(3)] for _ in range(3)]
     for step in moving:
         assert step.axis_xyz is not None
@@ -328,21 +362,31 @@ def _dominant_axis(
                 tensor[row][column] += (
                     step.angle_rad * step.axis_xyz[row] * step.axis_xyz[column]
                 )
-    eigenpairs = _symmetric_eigensystem(tensor)
+    eigenpairs, solve_status = _symmetric_eigensystem(tensor)
     if eigenpairs is None:
-        return None, None
+        return None, None, solve_status, solve_status
     largest, axis, largest_residual = eigenpairs[0]
     coherence = min(1.0, max(0.0, largest / total_weight))
     second, _, second_residual = eigenpairs[1]
     residual_limit = _EIGEN_RESIDUAL_RELATIVE_TOLERANCE * total_weight
     if max(pair[2] for pair in eigenpairs) > residual_limit:
-        return None, coherence
+        return (
+            None,
+            coherence,
+            DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED,
+            DOMINANT_AXIS_EIGEN_RESIDUAL_FAILED,
+        )
     numerical_gap_uncertainty = 4.0 * (largest_residual + second_residual)
     if largest - second <= max(
         _EIGEN_RELATIVE_TOLERANCE * total_weight,
         numerical_gap_uncertainty,
     ):
-        return None, coherence
+        return (
+            None,
+            coherence,
+            DOMINANT_AXIS_NON_UNIQUE_EIGENGAP,
+            DOMINANT_AXIS_NON_UNIQUE_EIGENGAP,
+        )
 
     resultant = tuple(
         math.fsum(step.rotation_vector_rad[index] for step in moving)
@@ -356,7 +400,7 @@ def _dominant_axis(
         pivot = max(range(3), key=lambda index: (abs(axis[index]), -index))
         if axis[pivot] < 0.0:
             axis = tuple(-component for component in axis)  # type: ignore[assignment]
-    return axis, coherence
+    return axis, coherence, DOMINANT_AXIS_UNIQUE, None
 
 
 def analyze_axis_motion(
@@ -373,12 +417,15 @@ def analyze_axis_motion(
     ``axis_coherence`` is its largest tensor eigenvalue divided by total moving
     path angle: 1.0 means perfectly axial motion.  If the two largest
     eigenvalues tie, there is no unique dominant axis and the field is ``None``.
-    Directional totals and reversals require a caller-supplied physical angular
-    speed bound.  For every interval, ``bound * duration`` must remain
-    strictly below ``pi - directional_pi_margin_rad`` and must cover the
-    observed principal step.  This cadence proof prevents a principal log from
-    silently aliasing a greater-than-pi physical step.  Missing or failed proof
-    leaves every signed/reversal field explicitly unavailable.
+    Directional totals and the sampled-step direction-reversal count require a
+    caller-supplied physical angular speed bound.  For every interval,
+    ``bound * duration`` must remain strictly below
+    ``pi - directional_pi_margin_rad`` and must cover the observed principal
+    step.  This cadence proof prevents a principal log from silently aliasing
+    a greater-than-pi physical step.  Missing or failed proof leaves every
+    signed/reversal field explicitly unavailable.  The available count still
+    describes only sign changes between sampled principal-log steps; it never
+    claims to observe a reversal within an interval.
     """
 
     selected_frame = _frame(frame)
@@ -470,15 +517,20 @@ def analyze_axis_motion(
         mean_speed = 0.0
         rms_speed = 0.0
     peak_speed = max((step.angular_speed_rad_s for step in step_tuple), default=0.0)
-    dominant_axis, coherence = _dominant_axis(step_tuple)
+    (
+        dominant_axis,
+        coherence,
+        dominant_axis_status,
+        dominant_axis_reason,
+    ) = _dominant_axis(step_tuple)
 
     signed_rotation = None  # type: Optional[float]
     positive_rotation = None  # type: Optional[float]
     negative_rotation = None  # type: Optional[float]
     reversals = None  # type: Optional[int]
     directional_reason = None  # type: Optional[str]
-    if dominant_axis is None:
-        directional_reason = "NO_UNIQUE_DOMINANT_AXIS"
+    if dominant_axis_status != DOMINANT_AXIS_UNIQUE:
+        directional_reason = "DOMINANT_AXIS_%s" % dominant_axis_status
     elif speed_bound is None:
         directional_reason = "PHYSICAL_SPEED_BOUND_NOT_PROVIDED"
     elif any(not step.directional_valid for step in step_tuple):
@@ -530,6 +582,8 @@ def analyze_axis_motion(
         peak_speed,
         dominant_axis,
         coherence,
+        dominant_axis_status,
+        dominant_axis_reason,
         speed_bound,
         pi_margin,
         directional_reason is None,
