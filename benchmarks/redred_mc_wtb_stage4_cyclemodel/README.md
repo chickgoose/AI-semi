@@ -14,7 +14,11 @@ fixed accounting metadata.
 ## Frozen timing
 
 - `timestamp_to_cycle(t, start)` computes
-  `ceil((t - start) * 1000 / 6500)` using integer `divmod` arithmetic.
+  `ceil((t - start) * 1000 / 6500)` using exact integer arithmetic and rejects
+  an event timestamp before the window start. `pose_timestamp_to_cycle`
+  applies the same ceiling to a signed difference, so committed pose history
+  before the event window has negative relative cycles. Pose timestamps remain
+  nonnegative; only their window-relative commit cycles may be signed.
 - Dataset packets commit on their timestamp cycle and become visible only
   when `commit_cycle < event_cycle`; oracle packets commit one cycle after
   their global-phase 1 kHz effective timestamp and likewise become visible on
@@ -36,6 +40,27 @@ fixed accounting metadata.
   state. Every causal selection or bypass traverses the one-cycle transform
   pipeline without lane reordering.
 
+## Charged pose ring
+
+All pose packets are replayed into an immutable-while-referenced 16-entry by
+192-bit circular ring. The charge is exactly 3,072 state bits; provenance
+hashes are verification evidence and are not counted as hardware state. A
+stable commit-order write pointer assigns packet ordinal `n` to slot `n % 16`.
+An event's occurrence-snapshot references become live before pose writes on
+that occurrence cycle and remain live through its retirement phase. A delayed
+right-bracket reference becomes live at transform launch and likewise remains
+live through retirement.
+
+`SimulationResult.pose_ring_entries` and `pose_ring_state_bits` expose the
+fixed charge directly. `pose_ring_accounting` additionally exposes writes,
+safe overwrites, peak occupancy, peak live references, reference checks, and
+zero successful-run failures, with a deterministic evidence digest. An
+attempted overwrite of a live slot, or resolution of a reference that is no
+longer resident, raises `PoseRingSafetyError`; its immutable
+`PoseRingFailureEvidence` binds the reason, signed cycle, slot, involved pose
+IDs, live event IDs, partial accounting, fixed ring charge, and its own
+deterministic digest. No decision result is returned on this fail-closed path.
+
 `zoh_freshness` and the oracle interface use the inclusive 1 ms age gate.
 `causal_cav` selects the two occurrence-snapshot poses only when pose values,
 arithmetic, and the event guard are valid and
@@ -54,16 +79,20 @@ up to two records, and launches only a consecutive ready head prefix.
 The deadline is
 `occurrence_cycle + ceil(6_000_000 * 1000 / 6500)`. A right bracket committing
 at `D-1` is visible at `D` and may launch; a packet committing at `D` or later
-is too late. Timeout, invalid bracket, missing left pose, and full pressure all
-produce explicit ordered `raw_bypass` records. No path drops or flushes an
+is too late. The receipt-v2 raw reason tokens are exactly `deadline_timeout`,
+`fifo_full_forced_bypass`, `invalid_pose`, and `missing_bracket`. These cases
+all produce explicit ordered `raw_bypass` records. No path drops or flushes an
 event.
 
 A corrected delayed record is accepted only when its used-pose pair is the
 occurrence-snapshot left pose plus the first strict right bracket; it declares
 `intentional_future_pose_use=true`. Timeout, full-pressure, invalid-bracket,
 and missing-left raw bypasses declare false and never list a future pose as
-used. The arm remains `delayed_exact` with result label
-`DIAGNOSTIC_UPPER_BOUND` for both corrected and raw dispositions.
+used. The arm remains `delayed_exact` with semantic label
+`DIAGNOSTIC_UPPER_BOUND` for both corrected and raw dispositions. Both causal
+arms use receipt-v2 label `CAUSAL_CANDIDATE`; the oracle uses
+`INTERFACE_VALUE_ONLY`. Every `DecisionRecord` and `CycleReceipt` carries this
+exact label, and the result-level label is identical.
 
 `CycleReceipt` supplements the base decision fields without weakening them.
 It binds serializer admission cycle/lane, optional transform launch

@@ -25,6 +25,8 @@ BUFFER_ENTRIES = 1_024
 EVENT_RECORD_BITS = 102
 CAUSAL_POSE_INDEX_BITS = 14
 POSE_PACKET_BITS = 192
+POSE_RING_ENTRIES = 16
+POSE_RING_STATE_BITS = POSE_RING_ENTRIES * POSE_PACKET_BITS
 ZOH_MAX_AGE_NS = 1_000_000
 CAV_MAX_HORIZON_NS = 5_000_000
 DELAYED_DEADLINE_NS = 6_000_000
@@ -48,6 +50,17 @@ class Arm(str, Enum):
     ORACLE_1KHZ = "oracle_resampled_groundtruth_1khz"
 
 
+ARM_LABELS = {
+    Arm.ZOH_FRESHNESS.value: "CAUSAL_CANDIDATE",
+    Arm.CAUSAL_CAV.value: "CAUSAL_CANDIDATE",
+    Arm.DELAYED_EXACT.value: "DIAGNOSTIC_UPPER_BOUND",
+    Arm.ORACLE_1KHZ.value: "INTERFACE_VALUE_ONLY",
+}
+DELAYED_RAW_REASONS = frozenset(
+    ("deadline_timeout", "fifo_full_forced_bypass", "invalid_pose", "missing_bracket")
+)
+
+
 class PoseSource(str, Enum):
     DATASET = "dataset"
     ORACLE_1KHZ = "oracle_resampled_groundtruth_1khz"
@@ -56,6 +69,12 @@ class PoseSource(str, Enum):
 def _nonnegative_int(value: Any, where: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise CycleModelError("%s must be a non-negative integer" % where)
+    return value
+
+
+def _integer(value: Any, where: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CycleModelError("%s must be an integer" % where)
     return value
 
 
@@ -82,6 +101,16 @@ def ceil_div(numerator: int, denominator: int) -> int:
     return quotient + (1 if remainder else 0)
 
 
+def signed_ceil_div(numerator: int, denominator: int) -> int:
+    """Return exact mathematical ceiling division with a signed numerator."""
+
+    numerator = _integer(numerator, "numerator")
+    denominator = _nonnegative_int(denominator, "denominator")
+    if denominator == 0:
+        raise CycleModelError("denominator must be positive")
+    return -((-numerator) // denominator)
+
+
 def timestamp_to_cycle(timestamp_ns: int, window_start_ns: int) -> int:
     """Map an integer timestamp with the frozen 6.5 ns ceiling rule."""
 
@@ -90,6 +119,17 @@ def timestamp_to_cycle(timestamp_ns: int, window_start_ns: int) -> int:
     if timestamp_ns < window_start_ns:
         raise CycleModelError("timestamp precedes window_start_ns")
     return ceil_div(
+        (timestamp_ns - window_start_ns) * PICOSECONDS_PER_NANOSECOND,
+        CLOCK_PERIOD_PS,
+    )
+
+
+def pose_timestamp_to_cycle(timestamp_ns: int, window_start_ns: int) -> int:
+    """Map a pose timestamp to a signed cycle relative to the event window."""
+
+    timestamp_ns = _nonnegative_int(timestamp_ns, "timestamp_ns")
+    window_start_ns = _nonnegative_int(window_start_ns, "window_start_ns")
+    return signed_ceil_div(
         (timestamp_ns - window_start_ns) * PICOSECONDS_PER_NANOSECOND,
         CLOCK_PERIOD_PS,
     )
@@ -121,7 +161,7 @@ class PosePacket:
     def __post_init__(self) -> None:
         _nonnegative_int(self.pose_id, "pose_id")
         _nonnegative_int(self.timestamp_ns, "pose timestamp_ns")
-        _nonnegative_int(self.commit_cycle, "pose commit_cycle")
+        _integer(self.commit_cycle, "pose commit_cycle")
         if not isinstance(self.source, PoseSource):
             raise CycleModelError("pose source must be PoseSource")
         _sha256(self.pose_sha256, "pose_sha256")
@@ -143,7 +183,7 @@ class PosePacket:
         return cls(
             pose_id=pose_id,
             timestamp_ns=timestamp_ns,
-            commit_cycle=timestamp_to_cycle(timestamp_ns, window_start_ns),
+            commit_cycle=pose_timestamp_to_cycle(timestamp_ns, window_start_ns),
             source=PoseSource.DATASET,
             pose_sha256=pose_sha256,
             value_valid=value_valid,
@@ -163,7 +203,7 @@ class PosePacket:
         return cls(
             pose_id=pose_id,
             timestamp_ns=timestamp_ns,
-            commit_cycle=timestamp_to_cycle(timestamp_ns, window_start_ns) + 1,
+            commit_cycle=pose_timestamp_to_cycle(timestamp_ns, window_start_ns) + 1,
             source=PoseSource.ORACLE_1KHZ,
             pose_sha256=pose_sha256,
             value_valid=value_valid,
@@ -177,6 +217,7 @@ class DecisionRecord:
     event_id: int
     event_timestamp_ns: int
     arm: str
+    arm_semantic_label: str
     occurrence_cycle: int
     retire_cycle: int
     occurrence_pose_ids: Tuple[int, ...]
@@ -199,6 +240,7 @@ class DecisionRecord:
             "event_id": self.event_id,
             "event_timestamp_ns": self.event_timestamp_ns,
             "arm": self.arm,
+            "arm_semantic_label": self.arm_semantic_label,
             "occurrence_cycle": self.occurrence_cycle,
             "retire_cycle": self.retire_cycle,
             "occurrence_pose_ids": list(self.occurrence_pose_ids),
@@ -229,6 +271,7 @@ class CycleReceipt:
     window_id: str
     event_id: int
     arm: str
+    arm_semantic_label: str
     occurrence_cycle: int
     admission_cycle: int
     admission_lane: int
@@ -249,6 +292,7 @@ class CycleReceipt:
             "window_id": self.window_id,
             "event_id": self.event_id,
             "arm": self.arm,
+            "arm_semantic_label": self.arm_semantic_label,
             "occurrence_cycle": self.occurrence_cycle,
             "admission_cycle": self.admission_cycle,
             "admission_lane": self.admission_lane,
@@ -292,6 +336,92 @@ class SimulationResult:
     transform_pipeline_cycles: int
     dataset_pose_arrival_assumption: str
     arm_disposition_label: str
+    pose_ring_entries: int
+    pose_ring_state_bits: int
+    pose_ring_accounting: "PoseRingAccounting"
+    pose_ring_accounting_sha256: str
+
+
+@dataclass(frozen=True)
+class PoseRingAccounting:
+    entries: int
+    entry_bits: int
+    state_bits: int
+    writes: int
+    safe_overwrites: int
+    peak_occupied_entries: int
+    peak_live_references: int
+    live_reference_checks: int
+    failures: int
+
+    def to_mapping(self) -> Dict[str, Any]:
+        return {
+            "entries": self.entries,
+            "entry_bits": self.entry_bits,
+            "state_bits": self.state_bits,
+            "writes": self.writes,
+            "safe_overwrites": self.safe_overwrites,
+            "peak_occupied_entries": self.peak_occupied_entries,
+            "peak_live_references": self.peak_live_references,
+            "live_reference_checks": self.live_reference_checks,
+            "failures": self.failures,
+        }
+
+    def canonical_sha256(self) -> str:
+        return _canonical_sha256(self.to_mapping())
+
+
+@dataclass(frozen=True)
+class PoseRingFailureEvidence:
+    reason: str
+    cycle: int
+    ring_slot: int
+    incoming_pose_id: Optional[int]
+    resident_pose_id: Optional[int]
+    referenced_pose_id: Optional[int]
+    live_event_ids: Tuple[int, ...]
+    writes_completed: int
+    safe_overwrites: int
+    occupied_entries: int
+    live_reference_count: int
+
+    def to_mapping(self) -> Dict[str, Any]:
+        return {
+            "schema": "redred.mc_wtb.stage4_pose_ring_failure/v1",
+            "reason": self.reason,
+            "cycle": self.cycle,
+            "ring_slot": self.ring_slot,
+            "incoming_pose_id": self.incoming_pose_id,
+            "resident_pose_id": self.resident_pose_id,
+            "referenced_pose_id": self.referenced_pose_id,
+            "live_event_ids": list(self.live_event_ids),
+            "writes_completed": self.writes_completed,
+            "safe_overwrites": self.safe_overwrites,
+            "occupied_entries": self.occupied_entries,
+            "live_reference_count": self.live_reference_count,
+            "pose_ring_entries": POSE_RING_ENTRIES,
+            "pose_ring_entry_bits": POSE_PACKET_BITS,
+            "pose_ring_state_bits": POSE_RING_STATE_BITS,
+        }
+
+    def canonical_sha256(self) -> str:
+        return _canonical_sha256(self.to_mapping())
+
+
+class PoseRingSafetyError(CycleModelError):
+    """A ring access would overwrite or resolve a live reference incorrectly."""
+
+    def __init__(self, evidence: PoseRingFailureEvidence) -> None:
+        self.evidence = evidence
+        super().__init__(
+            "%s at cycle %d ring slot %d (evidence %s)"
+            % (
+                evidence.reason,
+                evidence.cycle,
+                evidence.ring_slot,
+                evidence.canonical_sha256(),
+            )
+        )
 
 
 @dataclass
@@ -378,7 +508,9 @@ def _validate_and_prepare(
     for pose in pose_values:
         if pose.source is not expected_source:
             raise CycleModelError("pose source does not match the selected arm")
-        timestamp_cycle = timestamp_to_cycle(pose.timestamp_ns, window_start_ns)
+        timestamp_cycle = pose_timestamp_to_cycle(
+            pose.timestamp_ns, window_start_ns
+        )
         expected_commit = timestamp_cycle + (
             1 if pose.source is PoseSource.ORACLE_1KHZ else 0
         )
@@ -477,6 +609,7 @@ def _make_record(
         event_id=state.event.event_id,
         event_timestamp_ns=state.event.timestamp_ns,
         arm=arm.value,
+        arm_semantic_label=ARM_LABELS[arm.value],
         occurrence_cycle=state.occurrence_cycle,
         retire_cycle=retire_cycle,
         occurrence_pose_ids=occurrence[0],
@@ -613,7 +746,7 @@ def _delayed_status(
 ) -> Tuple[str, Tuple[PosePacket, ...], str]:
     left = state.occurrence_snapshot[-1:] if state.occurrence_snapshot else ()
     if not left:
-        return "raw", (), "missing_left_pose"
+        return "raw", (), "missing_bracket"
     right = _first_right_pose(state, poses)
     if right is not None and right.commit_cycle < cycle:
         selected = (left[0], right)
@@ -625,7 +758,7 @@ def _delayed_status(
             and state.event.transform_guard_valid
         ):
             return "correct", selected, "bracket_interpolation"
-        return "raw", left, "invalid_bracket"
+        return "raw", left, "invalid_pose"
     if state.deadline_cycle is None:
         raise CycleModelError("delayed event has no deadline")
     if cycle >= state.deadline_cycle:
@@ -742,7 +875,7 @@ def _run_delayed(
                 window_id,
                 cycle,
                 left,
-                "full_pressure_oldest_bypass",
+                "fifo_full_forced_bypass",
                 retirements,
             )
             retirements += 1
@@ -824,12 +957,6 @@ def _validate_delayed_dispositions(
     poses: Tuple[PosePacket, ...],
     records: List[DecisionRecord],
 ) -> None:
-    raw_reasons = {
-        "deadline_timeout",
-        "full_pressure_oldest_bypass",
-        "invalid_bracket",
-        "missing_left_pose",
-    }
     for state, record in zip(states, records):
         if record.arm != Arm.DELAYED_EXACT.value:
             raise CycleModelError("delayed record lost its diagnostic arm identity")
@@ -849,7 +976,7 @@ def _validate_delayed_dispositions(
                     "corrected delayed record lacks the first strict right bracket"
                 )
         else:
-            if record.disposition_reason not in raw_reasons:
+            if record.disposition_reason not in DELAYED_RAW_REASONS:
                 raise CycleModelError("delayed raw bypass lacks an explicit reason")
             if record.intentional_future_pose_use or any(
                 timestamp > record.event_timestamp_ns
@@ -890,6 +1017,7 @@ def _make_cycle_receipts(
                 window_id=window_id,
                 event_id=state.event.event_id,
                 arm=arm.value,
+                arm_semantic_label=ARM_LABELS[arm.value],
                 occurrence_cycle=state.occurrence_cycle,
                 admission_cycle=state.accept_cycle,
                 admission_lane=state.admission_lane,
@@ -907,6 +1035,145 @@ def _make_cycle_receipts(
             )
         )
     return tuple(receipts)
+
+
+def _verify_pose_ring(
+    states: List[_EventState],
+    poses: Tuple[PosePacket, ...],
+    records: List[DecisionRecord],
+) -> PoseRingAccounting:
+    """Replay the charged ring and fail before any live entry can be replaced.
+
+    Slots are assigned in stable packet-commit order through a modulo-16 write
+    pointer. References begin before writes on their start cycle and remain
+    live through the retire phase of their end cycle.
+    """
+
+    pose_by_id = {pose.pose_id: pose for pose in poses}
+    slot_by_pose_id = {
+        pose.pose_id: ordinal % POSE_RING_ENTRIES
+        for ordinal, pose in enumerate(poses)
+    }
+    writes_by_cycle = {}  # type: Dict[int, List[Tuple[int, PosePacket]]]
+    for ordinal, pose in enumerate(poses):
+        writes_by_cycle.setdefault(pose.commit_cycle, []).append((ordinal, pose))
+
+    starts_by_cycle = {}  # type: Dict[int, List[Tuple[int, int, int]]]
+    releases_by_cycle = {}  # type: Dict[int, List[Tuple[int, int]]]
+    for state, record in zip(states, records):
+        references = {}  # type: Dict[int, int]
+        for pose in state.occurrence_snapshot:
+            references[pose.pose_id] = state.occurrence_cycle
+        occurrence_ids = set(references)
+        for pose_id in record.used_pose_ids:
+            if pose_id not in occurrence_ids:
+                if state.launch_cycle is None:
+                    raise CycleModelError(
+                        "a non-occurrence pose has no transform launch cycle"
+                    )
+                references[pose_id] = state.launch_cycle
+        for pose_id, start_cycle in references.items():
+            if pose_id not in pose_by_id:
+                raise CycleModelError("event references an unknown pose ID")
+            starts_by_cycle.setdefault(start_cycle, []).append(
+                (state.event.event_id, pose_id, record.retire_cycle)
+            )
+            releases_by_cycle.setdefault(record.retire_cycle, []).append(
+                (state.event.event_id, pose_id)
+            )
+
+    resident = [None] * POSE_RING_ENTRIES  # type: List[Optional[int]]
+    active = {}  # type: Dict[int, List[int]]
+    writes_completed = 0
+    safe_overwrites = 0
+    peak_occupied = 0
+    peak_live = 0
+    reference_checks = 0
+
+    def fail(
+        reason: str,
+        cycle: int,
+        slot: int,
+        incoming_pose_id: Optional[int],
+        referenced_pose_id: Optional[int],
+    ) -> None:
+        resident_pose_id = resident[slot]
+        live_ids = tuple(sorted(active.get(resident_pose_id, ())))
+        raise PoseRingSafetyError(
+            PoseRingFailureEvidence(
+                reason=reason,
+                cycle=cycle,
+                ring_slot=slot,
+                incoming_pose_id=incoming_pose_id,
+                resident_pose_id=resident_pose_id,
+                referenced_pose_id=referenced_pose_id,
+                live_event_ids=live_ids,
+                writes_completed=writes_completed,
+                safe_overwrites=safe_overwrites,
+                occupied_entries=sum(value is not None for value in resident),
+                live_reference_count=sum(len(values) for values in active.values()),
+            )
+        )
+
+    cycles = sorted(
+        set(writes_by_cycle) | set(starts_by_cycle) | set(releases_by_cycle)
+    )
+    for cycle in cycles:
+        for event_id, pose_id, _end_cycle in sorted(starts_by_cycle.get(cycle, ())):
+            slot = slot_by_pose_id[pose_id]
+            reference_checks += 1
+            if resident[slot] != pose_id:
+                fail(
+                    "referenced_pose_not_resident",
+                    cycle,
+                    slot,
+                    None,
+                    pose_id,
+                )
+            active.setdefault(pose_id, []).append(event_id)
+        peak_live = max(peak_live, sum(len(values) for values in active.values()))
+
+        for ordinal, pose in writes_by_cycle.get(cycle, ()):
+            slot = ordinal % POSE_RING_ENTRIES
+            resident_pose_id = resident[slot]
+            if resident_pose_id is not None and active.get(resident_pose_id):
+                fail(
+                    "live_reference_overwrite",
+                    cycle,
+                    slot,
+                    pose.pose_id,
+                    None,
+                )
+            if resident_pose_id is not None:
+                safe_overwrites += 1
+            resident[slot] = pose.pose_id
+            writes_completed += 1
+            peak_occupied = max(
+                peak_occupied,
+                sum(value is not None for value in resident),
+            )
+
+        for event_id, pose_id in sorted(releases_by_cycle.get(cycle, ())):
+            live_ids = active.get(pose_id)
+            if live_ids is None or event_id not in live_ids:
+                raise CycleModelError("pose-ring reference release was not live")
+            live_ids.remove(event_id)
+            if not live_ids:
+                del active[pose_id]
+
+    if active:
+        raise CycleModelError("pose-ring references remained live after retirement")
+    return PoseRingAccounting(
+        entries=POSE_RING_ENTRIES,
+        entry_bits=POSE_PACKET_BITS,
+        state_bits=POSE_RING_STATE_BITS,
+        writes=writes_completed,
+        safe_overwrites=safe_overwrites,
+        peak_occupied_entries=peak_occupied,
+        peak_live_references=peak_live,
+        live_reference_checks=reference_checks,
+        failures=0,
+    )
 
 
 def run_cycle_model(
@@ -933,6 +1200,7 @@ def run_cycle_model(
     if arm is Arm.DELAYED_EXACT:
         _validate_delayed_dispositions(states, checked_poses, records)
     cycle_receipts = _make_cycle_receipts(window_id, arm, states, records)
+    pose_ring_accounting = _verify_pose_ring(states, checked_poses, records)
     serializer_cycles = []  # type: List[int]
     baseline_retire_cycles = []  # type: List[int]
     policy_added_cycles = []  # type: List[int]
@@ -945,13 +1213,7 @@ def run_cycle_model(
         baseline_retire_cycles.append(baseline_retire_cycle)
         policy_added_cycles.append(record.retire_cycle - baseline_retire_cycle)
     mapping = [record.to_mapping() for record in records]
-    label = (
-        "DIAGNOSTIC_UPPER_BOUND"
-        if arm is Arm.DELAYED_EXACT
-        else "INTERFACE_VALUE_ONLY"
-        if arm is Arm.ORACLE_1KHZ
-        else "CAUSAL_COMPARISON_ARM"
-    )
+    label = ARM_LABELS[arm.value]
     return SimulationResult(
         window_id=window_id,
         arm=arm,
@@ -976,4 +1238,8 @@ def run_cycle_model(
         transform_pipeline_cycles=TRANSFORM_PIPELINE_CYCLES,
         dataset_pose_arrival_assumption=DATASET_POSE_ARRIVAL_ASSUMPTION,
         arm_disposition_label=label,
+        pose_ring_entries=POSE_RING_ENTRIES,
+        pose_ring_state_bits=POSE_RING_STATE_BITS,
+        pose_ring_accounting=pose_ring_accounting,
+        pose_ring_accounting_sha256=pose_ring_accounting.canonical_sha256(),
     )

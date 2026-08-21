@@ -4,19 +4,30 @@ from dataclasses import replace
 import unittest
 
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    ARM_LABELS,
     BUFFER_ENTRIES,
     CAUSAL_POSE_INDEX_BITS,
     DELAYED_DEADLINE_CYCLES,
     INGRESS_STAGING_ENTRIES,
+    POSE_RING_ENTRIES,
+    POSE_RING_STATE_BITS,
     RAW_INGRESS_LANES,
     Arm,
     CycleModelError,
     Event,
     PosePacket,
+    PoseRingSafetyError,
     PoseSource,
     ceil_div,
+    pose_timestamp_to_cycle,
     run_cycle_model,
+    signed_ceil_div,
     timestamp_to_cycle,
+)
+from benchmarks.redred_mc_wtb_stage4_contract.receipt import (
+    ARM_LABELS as RECEIPT_ARM_LABELS,
+    DELAYED_RAW_REASONS as RECEIPT_DELAYED_RAW_REASONS,
+    DecisionRecord as ReceiptDecisionRecord,
 )
 
 
@@ -69,6 +80,31 @@ class IntegerTimingTests(unittest.TestCase):
         self.assertEqual(timestamp_to_cycle(14, 0), 3)
         self.assertEqual(ceil_div(6_000_000 * 1_000, 6_500), 923_077)
         self.assertEqual(DELAYED_DEADLINE_CYCLES, 923_077)
+
+    def test_pose_cycles_allow_signed_pre_window_history_only(self):
+        self.assertEqual(pose_timestamp_to_cycle(80, 100), -3)
+        self.assertEqual(pose_timestamp_to_cycle(90, 100), -1)
+        self.assertEqual(signed_ceil_div(-20_000, 6_500), -3)
+        self.assertEqual(signed_ceil_div(-10_000, 6_500), -1)
+        with self.assertRaisesRegex(CycleModelError, "precedes window"):
+            timestamp_to_cycle(90, 100)
+
+        poses = [
+            PosePacket.dataset(10, 80, 100, SHA_A),
+            PosePacket.dataset(11, 90, 100, SHA_B),
+        ]
+        result = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=100,
+            arm=Arm.CAUSAL_CAV,
+            events=[Event(1, 100)],
+            poses=poses,
+        )
+        record = result.records[0]
+        self.assertEqual(record.occurrence_cycle, 0)
+        self.assertEqual(record.occurrence_pose_commit_cycles, (-3, -1))
+        self.assertEqual(record.used_pose_ids, (10, 11))
+        self.assertEqual(record.retire_cycle, 1)
 
     def test_integer_api_rejects_bool_negative_and_pre_window_time(self):
         with self.assertRaises(CycleModelError):
@@ -244,7 +280,7 @@ class DelayedArmTests(unittest.TestCase):
         )
         self.assertEqual(
             [record.disposition_reason for record in result.records[:2]],
-            ["full_pressure_oldest_bypass", "full_pressure_oldest_bypass"],
+            ["fifo_full_forced_bypass", "fifo_full_forced_bypass"],
         )
         self.assertFalse(result.records[0].intentional_future_pose_use)
         self.assertFalse(result.records[1].intentional_future_pose_use)
@@ -278,7 +314,7 @@ class DelayedArmTests(unittest.TestCase):
         self.assertEqual(len(result.records), 1)
         self.assertEqual(result.records[0].event_id, 7)
         self.assertEqual(result.records[0].disposition, "raw_bypass")
-        self.assertEqual(result.records[0].disposition_reason, "missing_left_pose")
+        self.assertEqual(result.records[0].disposition_reason, "missing_bracket")
 
     def test_invalid_right_bracket_raw_bypass_records_no_future_pose_use(self):
         result = simulate(
@@ -288,7 +324,7 @@ class DelayedArmTests(unittest.TestCase):
         )
         record = result.records[0]
         self.assertEqual(record.disposition, "raw_bypass")
-        self.assertEqual(record.disposition_reason, "invalid_bracket")
+        self.assertEqual(record.disposition_reason, "invalid_pose")
         self.assertEqual(record.used_pose_ids, (10,))
         self.assertFalse(record.intentional_future_pose_use)
         self.assertTrue(
@@ -357,6 +393,89 @@ class ContractAndRecordTests(unittest.TestCase):
                 self.assertEqual(result.peak_ingress_staging_occupancy, 0)
                 self.assertEqual(result.raw_ingress_lanes, 6)
                 self.assertEqual(result.ingress_staging_entries, 6)
+                self.assertEqual(result.pose_ring_entries, 16)
+                self.assertEqual(result.pose_ring_state_bits, 16 * 192)
+                self.assertEqual(result.pose_ring_accounting.entries, 16)
+                self.assertEqual(result.pose_ring_accounting.entry_bits, 192)
+                self.assertEqual(
+                    result.pose_ring_accounting.state_bits,
+                    POSE_RING_STATE_BITS,
+                )
+                self.assertEqual(result.pose_ring_accounting.failures, 0)
+                self.assertEqual(
+                    result.pose_ring_accounting_sha256,
+                    result.pose_ring_accounting.canonical_sha256(),
+                )
+
+    def test_arm_labels_and_delayed_reasons_match_receipt_v2_exactly(self):
+        self.assertEqual(ARM_LABELS, RECEIPT_ARM_LABELS)
+        cases = (
+            (
+                Arm.ZOH_FRESHNESS,
+                [Event(1, 13)],
+                [dataset_pose(10, 0)],
+            ),
+            (Arm.DELAYED_EXACT, [Event(1, 0)], []),
+            (
+                Arm.CAUSAL_CAV,
+                [Event(1, 13)],
+                [dataset_pose(10, 0)],
+            ),
+            (
+                Arm.ORACLE_1KHZ,
+                [Event(1, 13)],
+                [PosePacket.oracle_1khz(10, 0, START, SHA_A)],
+            ),
+        )
+        for arm, events, poses in cases:
+            with self.subTest(arm=arm.value):
+                result = simulate(arm, events, poses)
+                record = result.records[0]
+                self.assertEqual(record.arm_semantic_label, RECEIPT_ARM_LABELS[arm.value])
+                self.assertEqual(result.arm_disposition_label, RECEIPT_ARM_LABELS[arm.value])
+                parsed = ReceiptDecisionRecord.from_mapping(record.to_mapping())
+                self.assertEqual(parsed.arm_semantic_label, record.arm_semantic_label)
+        self.assertEqual(
+            {
+                "deadline_timeout",
+                "fifo_full_forced_bypass",
+                "invalid_pose",
+                "missing_bracket",
+            },
+            set(RECEIPT_DELAYED_RAW_REASONS),
+        )
+
+    def test_pose_ring_charges_safe_overwrite_without_live_events(self):
+        poses = [dataset_pose(index, index) for index in range(17)]
+        result = simulate(Arm.ZOH_FRESHNESS, [], poses)
+        accounting = result.pose_ring_accounting
+        self.assertEqual(accounting.entries, POSE_RING_ENTRIES)
+        self.assertEqual(accounting.state_bits, 16 * 192)
+        self.assertEqual(accounting.writes, 17)
+        self.assertEqual(accounting.safe_overwrites, 1)
+        self.assertEqual(accounting.peak_occupied_entries, 16)
+        self.assertEqual(accounting.live_reference_checks, 0)
+
+    def test_pose_ring_live_reference_overwrite_fails_closed_with_evidence(self):
+        poses = [dataset_pose(index, 6 + index) for index in range(17)]
+        events = [Event(index, 13) for index in range(6)]
+        with self.assertRaises(PoseRingSafetyError) as raised:
+            simulate(Arm.ZOH_FRESHNESS, events, poses)
+        evidence = raised.exception.evidence
+        self.assertEqual(evidence.reason, "live_reference_overwrite")
+        self.assertEqual(evidence.cycle, 4)
+        self.assertEqual(evidence.ring_slot, 0)
+        self.assertEqual(evidence.incoming_pose_id, 16)
+        self.assertEqual(evidence.resident_pose_id, 0)
+        self.assertEqual(evidence.live_event_ids, (2, 3, 4, 5))
+        self.assertEqual(evidence.writes_completed, 16)
+        self.assertEqual(evidence.occupied_entries, 16)
+        self.assertEqual(evidence.live_reference_count, 4)
+        self.assertEqual(len(evidence.canonical_sha256()), 64)
+        self.assertEqual(
+            evidence.to_mapping()["pose_ring_state_bits"],
+            POSE_RING_STATE_BITS,
+        )
 
     def test_decision_record_digest_is_deterministic_and_score_free(self):
         events = [Event(1, 13)]
