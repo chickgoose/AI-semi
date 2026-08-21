@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import hashlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -121,26 +122,32 @@ def pressure_fixture():
         manifest=MappingValue(manifest_mapping),
         delayed_unbounded_diagnostic=diagnostic,
     )
-    return sealed, diagnostic
+    return sealed, diagnostic, inputs
 
 
 class SealingTests(unittest.TestCase):
     def test_delayed_diagnostic_is_a_separate_observed_leaf(self):
-        sealed, _diagnostic = pressure_fixture()
+        sealed, _diagnostic, inputs = pressure_fixture()
+        authoritative = sealing._authoritative_window_inputs(inputs)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            leaf = "windows/w0/arms/delayed_exact"
+            leaf = "windows/%s/arms/delayed_exact" % inputs.window_id
             sealing._write_leaf_inputs(root, leaf, sealed)
             files = {}
-            binding = sealing._observe_leaf(
-                root,
-                leaf,
-                sealed,
-                ASSAY_SHA,
-                RAY_SHA,
-                len(sealed.query_records),
-                files,
-            )
+            with mock.patch(
+                "benchmarks.redred_mc_wtb_stage4_scoring.scoring.score_window"
+            ) as score_window:
+                binding = sealing._observe_leaf(
+                    root,
+                    leaf,
+                    sealed,
+                    ASSAY_SHA,
+                    RAY_SHA,
+                    len(sealed.query_records),
+                    authoritative,
+                    files,
+                )
+            score_window.assert_not_called()
 
             diagnostic_relative = "%s/%s" % (
                 leaf, sealing._DELAYED_DIAGNOSTIC_FILE
@@ -198,6 +205,10 @@ class SealingTests(unittest.TestCase):
             })
             self.assertNotIn("diagnostic", canonical_json_bytes(boundary).decode("ascii"))
             self.assertEqual(
+                hashlib.sha256(boundary_path.read_bytes()).hexdigest(),
+                "e465c981a5a0c6122a093f1d7ab853984f3ce477ccb6017a5c98d199c60ed35b",
+            )
+            self.assertEqual(
                 binding["delayed_unbounded_depth_diagnostic"][
                     "bounded_full_cycle_result_sha256"
                 ],
@@ -210,65 +221,39 @@ class SealingTests(unittest.TestCase):
                 boundary["cycle_receipts_sha256"],
             )
 
-            arms = {}
-            for arm in Arm:
-                arm_leaf = root / "windows" / "w0" / "arms" / arm.value
-                arm_leaf.mkdir(parents=True, exist_ok=True)
-                receipt_path = arm_leaf / "cycle-receipts.json"
-                if not receipt_path.exists():
-                    receipt_path.write_bytes(canonical_json_bytes([]))
-                arms[arm.value] = {
-                    "delayed_unbounded_depth_diagnostic": (
-                        binding["delayed_unbounded_depth_diagnostic"]
-                        if arm is Arm.DELAYED_EXACT
-                        else None
-                    )
-                }
             window_mapping = {
                 "window_id": diagnostic_binding["window_id"],
-                "warmup_start_ns_inclusive": diagnostic_binding[
-                    "window_start_ns"
-                ],
-                "arms": arms,
+                "ray_events_sha256": RAY_SHA,
+                "query_event_count": len(sealed.query_records),
             }
-            window_relative = "windows/w0/window-seal.json"
-            window_path = root / window_relative
-            window_path.write_bytes(canonical_json_bytes(window_mapping))
-            files[window_relative] = sealing._observe_file(
-                root, window_relative, kind="object", record_count=1
+            sealing._verify_reopened_leaf(
+                root,
+                files,
+                window_mapping,
+                Arm.DELAYED_EXACT.value,
+                binding,
+                authoritative,
+                ASSAY_SHA,
             )
-            campaign = {
-                "assay_manifest_sha256": ASSAY_SHA,
-                "files": files,
-                "windows": [{
-                    "path": window_relative,
-                    "sha256": hashlib.sha256(window_path.read_bytes()).hexdigest(),
-                }],
-            }
-            sealing._verify_delayed_diagnostic_links(root, campaign)
-            mutant = deepcopy(campaign)
-            mutant["windows"] = list(mutant["windows"])
-            mutated_window = deepcopy(window_mapping)
-            mutated_window["arms"][Arm.DELAYED_EXACT.value][
-                "delayed_unbounded_depth_diagnostic"
-            ]["bounded_cycle_receipts_sha256"] = "e" * 64
-            window_path.write_bytes(canonical_json_bytes(mutated_window))
-            mutant["windows"][0]["sha256"] = hashlib.sha256(
-                window_path.read_bytes()
-            ).hexdigest()
-            mutant["files"][window_relative]["sha256"] = mutant["windows"][0][
-                "sha256"
-            ]
-            mutant["files"][window_relative]["size_bytes"] = len(
-                window_path.read_bytes()
-            )
+            mutant = deepcopy(binding)
+            mutant["delayed_unbounded_depth_diagnostic"][
+                "bounded_cycle_receipts_sha256"
+            ] = "e" * 64
             with self.assertRaisesRegex(
                 sealing.SealingError, "bounded-evidence binding"
             ):
-                sealing._verify_delayed_diagnostic_links(root, mutant)
+                sealing._verify_reopened_leaf(
+                    root,
+                    files,
+                    window_mapping,
+                    Arm.DELAYED_EXACT.value,
+                    mutant,
+                    authoritative,
+                    ASSAY_SHA,
+                )
 
     def test_independent_replay_rejects_resealed_peak_mutant(self):
-        _sealed, diagnostic = pressure_fixture()
+        _sealed, diagnostic, _inputs = pressure_fixture()
         mutant = deepcopy(diagnostic.to_mapping())
         mutant["peak_fifo_depth"] += 1
         body = dict(mutant)
@@ -288,7 +273,7 @@ class SealingTests(unittest.TestCase):
                 )
 
     def test_v3_config_and_progress_mutants_fail_closed(self):
-        _sealed, diagnostic = pressure_fixture()
+        _sealed, diagnostic, _inputs = pressure_fixture()
         for field, value, expected in (
             ("termination_proven", False, "progress or queue proof differs"),
             (
@@ -321,11 +306,300 @@ class SealingTests(unittest.TestCase):
             sealing._validate_delayed_diagnostic_mapping(mutant, "config")
 
     def test_diagnostic_hash_is_body_hash_not_file_hash(self):
-        _sealed, diagnostic = pressure_fixture()
+        _sealed, diagnostic, _inputs = pressure_fixture()
         mapping = diagnostic.to_mapping()
         payload = canonical_json_bytes(mapping)
         self.assertEqual(mapping["evidence_sha256"], diagnostic.evidence_sha256)
         self.assertNotEqual(hashlib.sha256(payload).hexdigest(), diagnostic.evidence_sha256)
+
+    def test_stable_observer_rejects_symlink_hardlink_and_toctou(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outside = root.parent / (root.name + "-outside.json")
+            outside.write_bytes(canonical_json_bytes({"value": 1}))
+            try:
+                (root / "symlink.json").symlink_to(outside)
+                with self.assertRaisesRegex(sealing.SealingError, "regular file|unsafe"):
+                    sealing._observe_file(
+                        root, "symlink.json", kind="object", record_count=1
+                    )
+
+                target = root / "target.json"
+                target.write_bytes(canonical_json_bytes({"value": 1}))
+                os.link(str(target), str(root / "hardlink.json"))
+                with self.assertRaisesRegex(sealing.SealingError, "hard-linked"):
+                    sealing._observe_file(
+                        root, "target.json", kind="object", record_count=1
+                    )
+
+                target.unlink()
+                (root / "hardlink.json").unlink()
+                race = root / "race.json"
+                race.write_bytes(canonical_json_bytes({"value": 1}))
+                real_read = sealing.os.read
+                mutated = [False]
+
+                def racing_read(descriptor, size):
+                    payload = real_read(descriptor, size)
+                    if payload and not mutated[0]:
+                        mutated[0] = True
+                        race.write_bytes(canonical_json_bytes({"value": 2}))
+                    return payload
+
+                with mock.patch.object(sealing.os, "read", side_effect=racing_read):
+                    with self.assertRaisesRegex(sealing.SealingError, "changed while reading"):
+                        sealing._observe_file(
+                            root, "race.json", kind="object", record_count=1
+                        )
+            finally:
+                if outside.exists():
+                    outside.unlink()
+
+    def test_record_count_is_exact_int_not_bool(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "object.json").write_bytes(canonical_json_bytes({"x": 1}))
+            with self.assertRaisesRegex(sealing.SealingError, "record_count"):
+                sealing._observe_file(
+                    root, "object.json", kind="object", record_count=True
+                )
+
+    def test_duplicate_window_and_missing_arm_mutations_fail_closed(self):
+        frozen = (
+            {
+                "window_id": "w0",
+                "warmup_start_ns_inclusive": 0,
+                "query_start_ns_inclusive": 1,
+                "query_end_ns_exclusive": 2,
+            },
+            {
+                "window_id": "w1",
+                "warmup_start_ns_inclusive": 3,
+                "query_start_ns_inclusive": 4,
+                "query_end_ns_exclusive": 5,
+            },
+        )
+        authoritative = {
+            "schema": "redred.mc_wtb.stage4_authoritative_window_cycle_inputs/v1",
+            "window_id": "w0",
+            "window_start_ns": 0,
+            "input_events_sha256": HASH_A,
+            "input_poses_sha256": HASH_B,
+            "input_event_ids_sha256": "c" * 64,
+            "input_count": 1,
+            "input_pose_count": 1,
+        }
+        arm_binding = {
+            "score_input_manifest_path": "unused",
+            "score_input_manifest_sha256": HASH_A,
+            "score_boundary_evidence_path": "unused",
+            "score_boundary_evidence_sha256": HASH_B,
+            "delayed_unbounded_depth_diagnostic": None,
+        }
+        window = {
+            "schema": "redred.mc_wtb.stage4_score_free_window_seal/v1",
+            "window_id": "w0",
+            "warmup_start_ns_inclusive": 0,
+            "query_start_ns_inclusive": 1,
+            "query_end_ns_exclusive": 2,
+            "selected_event_count": 1,
+            "query_event_count": 1,
+            "ordered_query_event_ids_sha256": "d" * 64,
+            "ray_events_path": "windows/w0/ray-events.json",
+            "ray_events_sha256": "e" * 64,
+            "authoritative_cycle_inputs": authoritative,
+            "arms": dict((arm.value, arm_binding) for arm in Arm),
+        }
+        pointer = {
+            "window_id": "w0",
+            "path": "windows/w0/window-seal.json",
+            "sha256": "f" * 64,
+        }
+        campaign = {
+            "assay_manifest_sha256": ASSAY_SHA,
+            "windows": [pointer, deepcopy(pointer)],
+            "files": {
+                pointer["path"]: {
+                    "sha256": pointer["sha256"],
+                    "kind": "object",
+                    "record_count": 1,
+                },
+                window["ray_events_path"]: {
+                    "sha256": window["ray_events_sha256"],
+                    "kind": "array",
+                    "record_count": 1,
+                },
+            },
+        }
+        with mock.patch.object(sealing, "window_registry", return_value=frozen), mock.patch.object(
+            sealing, "_read_indexed_json", return_value=(window, b"window")
+        ), mock.patch.object(sealing, "_verify_reopened_leaf", return_value=()):
+            with self.assertRaisesRegex(sealing.SealingError, "exact and unique"):
+                sealing._verify_delayed_diagnostic_links(Path("unused"), campaign)
+
+        one_window = deepcopy(window)
+        del one_window["arms"][Arm.ORACLE_1KHZ.value]
+        one_campaign = dict(campaign)
+        one_campaign["windows"] = [pointer]
+        with mock.patch.object(sealing, "window_registry", return_value=frozen[:1]), mock.patch.object(
+            sealing, "_read_indexed_json", return_value=(one_window, b"window")
+        ):
+            with self.assertRaisesRegex(sealing.SealingError, "exactly four arms"):
+                sealing._verify_delayed_diagnostic_links(Path("unused"), one_campaign)
+
+    def test_unindexed_regular_file_is_rejected_by_full_tree_observer(self):
+        contract = sealing.load_comparison_contract()
+        frozen = tuple(sealing.window_registry())
+        ids = [row["window_id"] for row in frozen]
+        campaign = {
+            "schema": "redred.mc_wtb.stage4_score_free_campaign_seal/v1",
+            "content_class": "SCORE_FREE_OBSERVER_EVIDENCE_ONLY",
+            "assay_manifest_sha256": ASSAY_SHA,
+            "assay_authority_sha256": HASH_A,
+            "assay_closure_sha256": HASH_B,
+            "comparison_contract_sha256": contract.canonical_sha256,
+            "registry_sha256": contract.registry["sha256"],
+            "window_count": len(frozen),
+            "arm_count": len(tuple(Arm)),
+            "arm_window_count": len(frozen) * len(tuple(Arm)),
+            "window_order": ids,
+            "arm_order": [arm.value for arm in Arm],
+            "windows": [
+                {
+                    "window_id": window_id,
+                    "path": "windows/%s/window-seal.json" % window_id,
+                    "sha256": HASH_A,
+                }
+                for window_id in ids
+            ],
+            "files": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload = canonical_json_bytes(campaign)
+            (root / "stage4-score-free-seal-manifest.json").write_bytes(payload)
+            unindexed = root / "unindexed.json"
+            unindexed.write_bytes(canonical_json_bytes({"x": 1}))
+            with self.assertRaisesRegex(sealing.SealingError, "unindexed"):
+                sealing.verify_score_free_seal(
+                    root,
+                    expected_seal_manifest_sha256=hashlib.sha256(payload).hexdigest(),
+                )
+            unindexed.unlink()
+            outside = root.parent / (root.name + "-unindexed-target.json")
+            outside.write_bytes(canonical_json_bytes({"x": 1}))
+            try:
+                (root / "unindexed-symlink.json").symlink_to(outside)
+                with self.assertRaisesRegex(sealing.SealingError, "symlink"):
+                    sealing.verify_score_free_seal(
+                        root,
+                        expected_seal_manifest_sha256=hashlib.sha256(payload).hexdigest(),
+                    )
+            finally:
+                if outside.exists():
+                    outside.unlink()
+
+    def test_authoritative_input_hash_count_and_time_mutations_fail(self):
+        sealed, _diagnostic, inputs = pressure_fixture()
+        authoritative = sealing._authoritative_window_inputs(inputs)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            leaf = "windows/%s/arms/delayed_exact" % inputs.window_id
+            sealing._write_leaf_inputs(root, leaf, sealed)
+            files = {}
+            binding = sealing._observe_leaf(
+                root, leaf, sealed, ASSAY_SHA, RAY_SHA,
+                len(sealed.query_records), authoritative, files,
+            )
+            window = {
+                "window_id": inputs.window_id,
+                "ray_events_sha256": RAY_SHA,
+                "query_event_count": len(sealed.query_records),
+            }
+            mutations = (
+                ("input_events_sha256", "e" * 64),
+                ("input_poses_sha256", "f" * 64),
+                ("input_event_ids_sha256", "0" * 64),
+                ("input_count", authoritative["input_count"] + 1),
+                ("input_pose_count", authoritative["input_pose_count"] + 1),
+                ("window_start_ns", authoritative["window_start_ns"] + 1),
+            )
+            for field, value in mutations:
+                with self.subTest(field=field):
+                    mutant = dict(authoritative)
+                    mutant[field] = value
+                    with self.assertRaisesRegex(
+                        sealing.SealingError, "authoritative"
+                    ):
+                        sealing._verify_reopened_leaf(
+                            root, files, window, Arm.DELAYED_EXACT.value,
+                            binding, mutant, ASSAY_SHA,
+                        )
+
+    def test_minimum_depth_and_bounded_pressure_mutations_fail(self):
+        sealed, _diagnostic, inputs = pressure_fixture()
+        authoritative = sealing._authoritative_window_inputs(inputs)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            leaf = "windows/%s/arms/delayed_exact" % inputs.window_id
+            sealing._write_leaf_inputs(root, leaf, sealed)
+            files = {}
+            binding = sealing._observe_leaf(
+                root, leaf, sealed, ASSAY_SHA, RAY_SHA,
+                len(sealed.query_records), authoritative, files,
+            )
+            window = {
+                "window_id": inputs.window_id,
+                "ray_events_sha256": RAY_SHA,
+                "query_event_count": len(sealed.query_records),
+            }
+            accounting_path = "%s/score-free-accounting-evidence.json" % leaf
+            original_accounting = sealed.accounting_evidence.to_mapping()
+            cases = (
+                ("basis", "bounded_peak_no_full_pressure"),
+                ("bounded_peak_buffer_entries", 1023),
+                ("fifo_full_forced_bypass_event_ids", []),
+                ("bounded_decision_records_sha256", "e" * 64),
+                ("bounded_cycle_receipts_sha256", "f" * 64),
+                ("unbounded_diagnostic_evidence_sha256", "0" * 64),
+            )
+            for field, value in cases:
+                with self.subTest(field=field):
+                    mutant = deepcopy(original_accounting)
+                    mutant["minimum_depth_evidence"][field] = value
+                    mutant["minimum_depth_evidence_sha256"] = canonical_sha256(
+                        mutant["minimum_depth_evidence"]
+                    )
+                    (root / accounting_path).write_bytes(canonical_json_bytes(mutant))
+                    files[accounting_path] = sealing._observe_file(
+                        root, accounting_path, kind="object", record_count=1
+                    )
+                    with self.assertRaisesRegex(
+                        sealing.SealingError, "minimum-depth"
+                    ):
+                        sealing._verify_reopened_leaf(
+                            root, files, window, Arm.DELAYED_EXACT.value,
+                            binding, authoritative, ASSAY_SHA,
+                        )
+
+            (root / accounting_path).write_bytes(
+                canonical_json_bytes(original_accounting)
+            )
+            files[accounting_path] = sealing._observe_file(
+                root, accounting_path, kind="object", record_count=1
+            )
+            full_path = "%s/full-cycle-result.json" % leaf
+            full = deepcopy(adapter._full_cycle_evidence(sealed.simulation))
+            full["peak_buffer_occupancy"] -= 1
+            (root / full_path).write_bytes(canonical_json_bytes(full))
+            files[full_path] = sealing._observe_file(
+                root, full_path, kind="object", record_count=1
+            )
+            with self.assertRaisesRegex(sealing.SealingError, "peak"):
+                sealing._verify_reopened_leaf(
+                    root, files, window, Arm.DELAYED_EXACT.value,
+                    binding, authoritative, ASSAY_SHA,
+                )
 
     def test_runner_adds_diagnostic_only_after_explicit_pressure_signal(self):
         inputs = SimpleNamespace(

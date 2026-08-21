@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import tempfile
 from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
 
@@ -38,6 +39,29 @@ class SealResult:
     output_dir: Path
     manifest: Mapping[str, Any]
     manifest_sha256: str
+
+
+@dataclass(frozen=True)
+class _FileIdentity:
+    device: int
+    inode: int
+    mode: int
+    links: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+
+    @classmethod
+    def from_stat(cls, value: os.stat_result) -> "_FileIdentity":
+        return cls(
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_nlink,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
 
 
 _ASSAY_MANIFEST = "stage4_input_manifest.json"
@@ -217,19 +241,129 @@ def _decode_json(payload: bytes, where: str) -> Any:
     return value
 
 
+def _safe_relative(relative: str, where: str) -> Tuple[str, ...]:
+    if type(relative) is not str or not relative:
+        raise SealingError("%s path must be non-empty text" % where)
+    path = Path(relative)
+    if (
+        path.is_absolute()
+        or any(part in ("", ".", "..") for part in path.parts)
+        or str(path) != relative
+    ):
+        raise SealingError("%s path is not canonical and root-relative" % where)
+    return path.parts
+
+
+def _directory_fd(path: Path, where: str) -> int:
+    absolute = Path(os.path.abspath(str(path)))
+    parts = absolute.parts
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(parts[0], flags)
+    except OSError as exc:
+        raise SealingError("cannot open %s root safely" % where) from exc
+    try:
+        for part in parts[1:]:
+            try:
+                child = os.open(part, flags, dir_fd=descriptor)
+            except OSError as exc:
+                raise SealingError(
+                    "%s root contains a symlink or unsafe component" % where
+                ) from exc
+            os.close(descriptor)
+            descriptor = child
+        if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise SealingError("%s root must be a directory" % where)
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _stable_regular_file(root: Path, relative: str, where: str) -> bytes:
+    """Read one root-contained, single-link regular file through stable FDs."""
+
+    parts = _safe_relative(relative, where)
+    descriptors = []  # type: List[int]
+    try:
+        directory = _directory_fd(Path(root), where)
+        descriptors.append(directory)
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
+            os, "O_NOFOLLOW", 0
+        )
+        for part in parts[:-1]:
+            try:
+                child = os.open(part, directory_flags, dir_fd=directory)
+            except OSError as exc:
+                raise SealingError("%s traverses an unsafe directory" % where) from exc
+            child_stat = os.fstat(child)
+            if not stat.S_ISDIR(child_stat.st_mode):
+                os.close(child)
+                raise SealingError("%s traverses a non-directory" % where)
+            descriptors.append(child)
+            directory = child
+
+        try:
+            before_stat = os.stat(parts[-1], dir_fd=directory, follow_symlinks=False)
+        except OSError as exc:
+            raise SealingError("cannot inspect %s" % where) from exc
+        before = _FileIdentity.from_stat(before_stat)
+        if not stat.S_ISREG(before.mode):
+            raise SealingError("%s must be a regular file, not a symlink" % where)
+        if before.links != 1:
+            raise SealingError("%s must not be a hard-linked file" % where)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(parts[-1], flags, dir_fd=directory)
+        except OSError as exc:
+            raise SealingError("cannot open %s safely" % where) from exc
+        descriptors.append(descriptor)
+        opened = _FileIdentity.from_stat(os.fstat(descriptor))
+        if opened != before:
+            raise SealingError("%s changed while opening" % where)
+
+        chunks = []  # type: List[bytes]
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        payload = b"".join(chunks)
+        after_fd = _FileIdentity.from_stat(os.fstat(descriptor))
+        try:
+            after_path = _FileIdentity.from_stat(
+                os.stat(parts[-1], dir_fd=directory, follow_symlinks=False)
+            )
+        except OSError as exc:
+            raise SealingError("%s changed after reading" % where) from exc
+        if before != after_fd or before != after_path or len(payload) != before.size:
+            raise SealingError("%s changed while reading" % where)
+        return payload
+    finally:
+        for descriptor in reversed(descriptors):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _read_json_at(root: Path, relative: str) -> Tuple[Any, bytes]:
+    payload = _stable_regular_file(root, relative, relative)
+    return _decode_json(payload, relative), payload
+
+
 def _read_json(path: Path) -> Tuple[Any, bytes]:
-    try:
-        payload = path.read_bytes()
-    except OSError as exc:
-        raise SealingError("cannot read %s" % path.name) from exc
-    return _decode_json(payload, str(path)), payload
+    path = Path(path)
+    if not path.name:
+        raise SealingError("JSON path has no file name")
+    return _read_json_at(path.parent, path.name)
 
 
-def _read_jsonl(path: Path) -> Tuple[Tuple[Mapping[str, Any], ...], bytes]:
-    try:
-        payload = path.read_bytes()
-    except OSError as exc:
-        raise SealingError("cannot read %s" % path.name) from exc
+def _read_jsonl_at(
+    root: Path, relative: str
+) -> Tuple[Tuple[Mapping[str, Any], ...], bytes]:
+    payload = _stable_regular_file(root, relative, relative)
+    path = Path(relative)
     if payload and not payload.endswith(b"\n"):
         raise SealingError("%s lacks its final newline" % path.name)
     records = []  # type: List[Mapping[str, Any]]
@@ -239,6 +373,99 @@ def _read_jsonl(path: Path) -> Tuple[Tuple[Mapping[str, Any], ...], bytes]:
             raise SealingError("%s contains a non-object record" % path.name)
         records.append(value)
     return tuple(records), payload
+
+
+def _read_jsonl(path: Path) -> Tuple[Tuple[Mapping[str, Any], ...], bytes]:
+    path = Path(path)
+    if not path.name:
+        raise SealingError("JSONL path has no file name")
+    return _read_jsonl_at(path.parent, path.name)
+
+
+def _inventory_regular_files(root: Path) -> Tuple[str, ...]:
+    """Return every regular file and reject aliases or special entries."""
+
+    root_fd = _directory_fd(Path(root), "seal inventory")
+    found = []  # type: List[str]
+
+    def visit(directory_fd: int, prefix: str) -> None:
+        try:
+            with os.scandir(directory_fd) as iterator:
+                entries = sorted(iterator, key=lambda row: row.name)
+        except OSError as exc:
+            raise SealingError("cannot enumerate sealed file tree") from exc
+        for entry in entries:
+            relative = entry.name if not prefix else "%s/%s" % (prefix, entry.name)
+            try:
+                info = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise SealingError("cannot inspect sealed entry: %s" % relative) from exc
+            if stat.S_ISLNK(info.st_mode):
+                raise SealingError("sealed tree contains a symlink: %s" % relative)
+            if stat.S_ISDIR(info.st_mode):
+                flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
+                    os, "O_NOFOLLOW", 0
+                )
+                try:
+                    child = os.open(entry.name, flags, dir_fd=directory_fd)
+                except OSError as exc:
+                    raise SealingError(
+                        "sealed directory changed while inventorying: %s" % relative
+                    ) from exc
+                try:
+                    if _FileIdentity.from_stat(os.fstat(child)) != _FileIdentity.from_stat(
+                        info
+                    ):
+                        raise SealingError(
+                            "sealed directory changed while inventorying: %s" % relative
+                        )
+                    visit(child, relative)
+                finally:
+                    os.close(child)
+            elif stat.S_ISREG(info.st_mode):
+                if info.st_nlink != 1:
+                    raise SealingError(
+                        "sealed tree contains a hard-linked file: %s" % relative
+                    )
+                found.append(relative)
+            else:
+                raise SealingError("sealed tree contains a special file: %s" % relative)
+
+    try:
+        visit(root_fd, "")
+    finally:
+        os.close(root_fd)
+    return tuple(found)
+
+
+def _read_indexed_json(
+    root: Path,
+    relative: str,
+    files: Mapping[str, Any],
+    where: str,
+) -> Tuple[Any, bytes]:
+    entry = _require_mapping(files.get(relative), "%s file index entry" % where)
+    value, payload = _read_json_at(root, relative)
+    if (
+        _sha256(payload) != _require_sha(entry.get("sha256"), "%s file hash" % where)
+        or len(payload) != _require_int(
+            entry.get("size_bytes"), "%s file size" % where
+        )
+    ):
+        raise SealingError("%s changed after file observation" % where)
+    return value, payload
+
+
+def _require_index_shape(
+    files: Mapping[str, Any], relative: str, kind: str, count: int
+) -> None:
+    entry = _require_mapping(files.get(relative), "required file index entry")
+    if (
+        entry.get("kind") != kind
+        or _require_int(entry.get("record_count"), "%s record_count" % relative)
+        != count
+    ):
+        raise SealingError("sealed file kind or record count differs: %s" % relative)
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -263,8 +490,8 @@ def _observe_file(
     kind: str,
     record_count: int,
 ) -> Mapping[str, Any]:
-    path = root / relative
-    value, payload = _read_json(path)
+    record_count = _require_int(record_count, "%s record_count" % relative)
+    value, payload = _read_json_at(root, relative)
     if kind == "array":
         if not isinstance(value, list) or len(value) != record_count:
             raise SealingError("%s array count differs" % relative)
@@ -494,7 +721,7 @@ def _observe_assay(
     assay_dir: Path, expected_manifest_sha256: str
 ) -> Tuple[Mapping[str, Any], Mapping[str, Any], Tuple[Mapping[str, Any], ...]]:
     expected = _require_sha(expected_manifest_sha256, "expected assay manifest")
-    manifest_value, manifest_payload = _read_json(assay_dir / _ASSAY_MANIFEST)
+    manifest_value, manifest_payload = _read_json_at(assay_dir, _ASSAY_MANIFEST)
     if not isinstance(manifest_value, Mapping):
         raise SealingError("assay manifest must be an object")
     manifest = manifest_value
@@ -537,8 +764,11 @@ def _observe_assay(
         ):
             if summary.get(field) != frozen[field]:
                 raise SealingError("assay window registry projection differs")
-    if sum(int(row.get("query_event_count", -1)) for row in windows) != int(
-        contract.registry["query_event_count"]
+    if sum(
+        _require_int(row.get("query_event_count"), "assay window query_event_count")
+        for row in windows
+    ) != _require_int(
+        contract.registry["query_event_count"], "contract query_event_count"
     ):
         raise SealingError("assay window query counts do not conserve")
 
@@ -548,8 +778,11 @@ def _observe_assay(
     records = {}  # type: Dict[str, Tuple[Mapping[str, Any], ...]]
     stream_seals = {}  # type: Dict[str, Mapping[str, Any]]
     for name in _ASSAY_STREAMS:
-        rows, payload = _read_jsonl(assay_dir / name)
+        rows, payload = _read_jsonl_at(assay_dir, name)
         artifact = artifacts.get(name)
+        if isinstance(artifact, Mapping):
+            _require_int(artifact.get("record_count"), "%s record_count" % name)
+            _require_int(artifact.get("size_bytes"), "%s size_bytes" % name)
         if not isinstance(artifact, Mapping) or artifact != {
             "path": name,
             "sha256": _sha256(payload),
@@ -591,8 +824,8 @@ def _observe_assay(
         raise SealingError("calibration source binding differs")
 
     events = records["stage4_events.jsonl"]
-    if sum(row.get("is_query") is True for row in events) != int(
-        contract.registry["query_event_count"]
+    if sum(row.get("is_query") is True for row in events) != _require_int(
+        contract.registry["query_event_count"], "contract query_event_count"
     ):
         raise SealingError("assay query event count differs")
     ray_projection = {
@@ -664,6 +897,257 @@ def _full_cycle_mapping(sealed: Any) -> Mapping[str, Any]:
     return value
 
 
+_AUTHORITATIVE_INPUT_FIELDS = frozenset((
+    "schema",
+    "window_id",
+    "window_start_ns",
+    "input_events_sha256",
+    "input_poses_sha256",
+    "input_event_ids_sha256",
+    "input_count",
+    "input_pose_count",
+))
+_MINIMUM_DEPTH_FIELDS = frozenset((
+    "basis",
+    "bounded_peak_buffer_entries",
+    "fifo_full_forced_bypass_event_ids",
+    "minimum_zero_loss_buffer_entries",
+    "bounded_decision_records_sha256",
+    "bounded_cycle_receipts_sha256",
+    "unbounded_diagnostic_evidence_sha256",
+    "unbounded_diagnostic_config_sha256",
+    "unbounded_diagnostic_decision_records_sha256",
+    "unbounded_diagnostic_cycle_receipts_sha256",
+))
+
+
+def _event_input_mapping(event: Event) -> Mapping[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "timestamp_ns": event.timestamp_ns,
+        "transform_guard_valid": event.transform_guard_valid,
+        "causal_pose_index": event.causal_pose_index,
+    }
+
+
+def _pose_input_mapping(pose: PosePacket) -> Mapping[str, Any]:
+    return {
+        "pose_id": pose.pose_id,
+        "timestamp_ns": pose.timestamp_ns,
+        "commit_cycle": pose.commit_cycle,
+        "source": pose.source.value,
+        "pose_sha256": pose.pose_sha256,
+        "value_valid": pose.value_valid,
+        "arithmetic_valid": pose.arithmetic_valid,
+    }
+
+
+def _authoritative_window_inputs(inputs: Any) -> Mapping[str, Any]:
+    events = tuple(inputs.events)
+    poses = tuple(inputs.dataset_poses)
+    return {
+        "schema": "redred.mc_wtb.stage4_authoritative_window_cycle_inputs/v1",
+        "window_id": inputs.window_id,
+        "window_start_ns": inputs.window_start_ns,
+        "input_events_sha256": canonical_sha256(
+            [_event_input_mapping(event) for event in events]
+        ),
+        "input_poses_sha256": canonical_sha256(
+            [_pose_input_mapping(pose) for pose in poses]
+        ),
+        "input_event_ids_sha256": canonical_sha256(
+            [event.event_id for event in events]
+        ),
+        "input_count": len(events),
+        "input_pose_count": len(poses),
+    }
+
+
+def _validate_authoritative_window_inputs(
+    value: Any, window_id: str, window_start_ns: int
+) -> Mapping[str, Any]:
+    binding = _require_mapping(value, "authoritative window cycle inputs")
+    if frozenset(binding) != _AUTHORITATIVE_INPUT_FIELDS:
+        raise SealingError("authoritative window input field set differs")
+    expected_identity = {
+        "schema": "redred.mc_wtb.stage4_authoritative_window_cycle_inputs/v1",
+        "window_id": window_id,
+        "window_start_ns": window_start_ns,
+    }
+    if any(binding.get(name) != expected for name, expected in expected_identity.items()):
+        raise SealingError("authoritative window input identity differs")
+    for name in (
+        "input_events_sha256",
+        "input_poses_sha256",
+        "input_event_ids_sha256",
+    ):
+        _require_sha(binding.get(name), "authoritative %s" % name)
+    _require_int(binding.get("input_count"), "authoritative input_count")
+    _require_int(binding.get("input_pose_count"), "authoritative input_pose_count")
+    _require_int(binding.get("window_start_ns"), "authoritative window_start_ns")
+    return binding
+
+
+def _derive_bounded_depth_evidence(
+    full_cycle: Mapping[str, Any], receipts: Sequence[Mapping[str, Any]]
+) -> Mapping[str, Any]:
+    records = _require_array(
+        full_cycle.get("decision_records"), "bounded full-cycle decision records"
+    )
+    embedded_receipts = _require_array(
+        full_cycle.get("cycle_receipts"), "bounded full-cycle receipts"
+    )
+    receipt_values = [dict(row) for row in receipts]
+    if embedded_receipts != receipt_values or len(records) != len(receipt_values):
+        raise SealingError("bounded full-cycle arrays do not conserve")
+    decision_sha256 = _require_sha(
+        full_cycle.get("decision_records_sha256"), "bounded decision records hash"
+    )
+    receipt_sha256 = _require_sha(
+        full_cycle.get("cycle_receipts_sha256"), "bounded cycle receipts hash"
+    )
+    if (
+        canonical_sha256(records) != decision_sha256
+        or canonical_sha256(receipt_values) != receipt_sha256
+    ):
+        raise SealingError("bounded decision or receipt stream hash differs")
+
+    pressure_ids = []  # type: List[int]
+    peak = 0
+    seen_ids = set()
+    for index, (record_value, receipt) in enumerate(zip(records, receipt_values)):
+        record = _require_mapping(record_value, "bounded record[%d]" % index)
+        event_id = _require_int(receipt.get("event_id"), "bounded receipt event_id")
+        if event_id in seen_ids or record.get("event_id") != event_id:
+            raise SealingError("bounded record/receipt event IDs differ")
+        seen_ids.add(event_id)
+        if (
+            receipt.get("disposition") != record.get("disposition")
+            or receipt.get("disposition_reason") != record.get("disposition_reason")
+            or receipt.get("decision_record_sha256") != canonical_sha256(record)
+        ):
+            raise SealingError("bounded record/receipt disposition binding differs")
+        occupancies = tuple(
+            _require_int(receipt.get(name), "bounded receipt %s" % name)
+            for name in (
+                "fifo_occupancy_before_admission",
+                "fifo_occupancy_after_admission",
+                "fifo_occupancy_before_retire",
+                "fifo_occupancy_after_retire",
+            )
+        )
+        peak = max(peak, occupancies[1], occupancies[2])
+        if receipt.get("disposition_reason") == "fifo_full_forced_bypass":
+            pressure_ids.append(event_id)
+    bounded_peak = _require_int(
+        full_cycle.get("peak_buffer_occupancy"), "bounded peak buffer occupancy"
+    )
+    if peak != bounded_peak:
+        raise SealingError("bounded receipt-derived peak differs")
+    return {
+        "bounded_peak_buffer_entries": bounded_peak,
+        "fifo_full_forced_bypass_event_ids": tuple(pressure_ids),
+        "bounded_decision_records_sha256": decision_sha256,
+        "bounded_cycle_receipts_sha256": receipt_sha256,
+    }
+
+
+def _validate_minimum_depth_accounting(
+    accounting_evidence: Mapping[str, Any],
+    bounded: Mapping[str, Any],
+    diagnostic: Any,
+) -> None:
+    minimum = _require_mapping(
+        accounting_evidence.get("minimum_depth_evidence"),
+        "accounting minimum-depth evidence",
+    )
+    if frozenset(minimum) != _MINIMUM_DEPTH_FIELDS:
+        raise SealingError("minimum-depth accounting field set differs")
+    if accounting_evidence.get("minimum_depth_evidence_sha256") != canonical_sha256(
+        minimum
+    ):
+        raise SealingError("minimum-depth accounting hash differs")
+    pressure_ids = list(bounded["fifo_full_forced_bypass_event_ids"])
+    expected = {
+        "bounded_peak_buffer_entries": bounded["bounded_peak_buffer_entries"],
+        "fifo_full_forced_bypass_event_ids": pressure_ids,
+        "bounded_decision_records_sha256": bounded[
+            "bounded_decision_records_sha256"
+        ],
+        "bounded_cycle_receipts_sha256": bounded[
+            "bounded_cycle_receipts_sha256"
+        ],
+    }
+    if diagnostic is None:
+        expected.update({
+            "basis": "bounded_peak_no_full_pressure",
+            "minimum_zero_loss_buffer_entries": bounded[
+                "bounded_peak_buffer_entries"
+            ],
+            "unbounded_diagnostic_evidence_sha256": None,
+            "unbounded_diagnostic_config_sha256": None,
+            "unbounded_diagnostic_decision_records_sha256": None,
+            "unbounded_diagnostic_cycle_receipts_sha256": None,
+        })
+        if pressure_ids:
+            raise SealingError("bounded pressure lacks its unbounded diagnostic")
+    else:
+        entry = _require_mapping(diagnostic, "delayed diagnostic file entry")
+        expected.update({
+            "basis": "independent_no_pressure_replay_peak",
+            "minimum_zero_loss_buffer_entries": entry["peak_fifo_depth"],
+            "unbounded_diagnostic_evidence_sha256": entry["evidence_sha256"],
+            "unbounded_diagnostic_config_sha256": entry[
+                "config_identity_sha256"
+            ],
+            "unbounded_diagnostic_decision_records_sha256": entry[
+                "decision_records_sha256"
+            ],
+            "unbounded_diagnostic_cycle_receipts_sha256": entry[
+                "cycle_receipts_sha256"
+            ],
+        })
+        if not pressure_ids:
+            raise SealingError("unbounded diagnostic is attached without bounded pressure")
+    if dict(minimum) != expected:
+        raise SealingError("minimum-depth accounting binding differs")
+
+
+def _validate_accounting_totals(
+    accounting: Mapping[str, Any],
+    accounting_evidence: Mapping[str, Any],
+    bounded: Mapping[str, Any],
+    diagnostic: Any,
+    window_id: str,
+    arm_name: str,
+) -> None:
+    if (
+        accounting.get("window_id") != window_id
+        or accounting.get("arm") != arm_name
+        or accounting_evidence.get("window_id") != window_id
+        or accounting_evidence.get("arm") != arm_name
+    ):
+        raise SealingError("score-free accounting leaf identity differs")
+    expected_minimum = (
+        bounded["bounded_peak_buffer_entries"]
+        if diagnostic is None
+        else diagnostic["peak_fifo_depth"]
+    )
+    if (
+        _require_int(accounting.get("peak_buffer_entries"), "accounting bounded peak")
+        != bounded["bounded_peak_buffer_entries"]
+        or _require_int(
+            accounting.get("minimum_zero_loss_buffer_entries"),
+            "accounting minimum depth",
+        )
+        != expected_minimum
+    ):
+        raise SealingError("score-free accounting bounded or minimum depth differs")
+    _validate_minimum_depth_accounting(
+        accounting_evidence, bounded, diagnostic
+    )
+
+
 def _write_leaf_inputs(
     output_root: Path,
     relative_root: str,
@@ -724,30 +1208,16 @@ def _observe_delayed_diagnostic(
     bounded_full_cycle: Mapping[str, Any],
     bounded_receipts: Sequence[Mapping[str, Any]],
     accounting_evidence: Mapping[str, Any],
+    authoritative_inputs: Mapping[str, Any],
     files: Dict[str, Mapping[str, Any]],
 ) -> Any:
     diagnostic = sealed.delayed_unbounded_diagnostic
-    bounded_full = any(
-        row.get("disposition_reason") == "fifo_full_forced_bypass"
-        for row in bounded_receipts
+    bounded = _derive_bounded_depth_evidence(
+        bounded_full_cycle, bounded_receipts
     )
-    minimum_depth = _require_mapping(
-        accounting_evidence.get("minimum_depth_evidence"),
-        "accounting minimum-depth evidence",
-    )
+    bounded_full = bool(bounded["fifo_full_forced_bypass_event_ids"])
     if diagnostic is None:
-        if bounded_full:
-            raise SealingError("bounded pressure lacks its unbounded diagnostic")
-        if minimum_depth.get("basis") != "bounded_peak_no_full_pressure" or any(
-            minimum_depth.get(name) is not None
-            for name in (
-                "unbounded_diagnostic_evidence_sha256",
-                "unbounded_diagnostic_config_sha256",
-                "unbounded_diagnostic_decision_records_sha256",
-                "unbounded_diagnostic_cycle_receipts_sha256",
-            )
-        ):
-            raise SealingError("accounting names an absent unbounded diagnostic")
+        _validate_minimum_depth_accounting(accounting_evidence, bounded, None)
         return None
     if sealed.arm is not Arm.DELAYED_EXACT or not bounded_full:
         raise SealingError("unbounded diagnostic is outside a pressured delayed leaf")
@@ -760,7 +1230,9 @@ def _observe_delayed_diagnostic(
         record_count=1,
     )
     files[relative] = entry
-    diagnostic_value, _ = _read_json(output_root / relative)
+    diagnostic_value, _ = _read_indexed_json(
+        output_root, relative, files, "delayed diagnostic"
+    )
     diagnostic_mapping = _require_mapping(
         diagnostic_value, "delayed diagnostic leaf"
     )
@@ -771,29 +1243,28 @@ def _observe_delayed_diagnostic(
         tuple(_require_mapping(row, "diagnostic receipt") for row in diagnostic_receipts)
     ):
         raise SealingError("bounded and unbounded admission schedules differ")
-    expected_accounting = {
-        "basis": "independent_no_pressure_replay_peak",
-        "bounded_decision_records_sha256": _require_sha(
-            bounded_full_cycle.get("decision_records_sha256"),
-            "bounded decision records hash",
-        ),
-        "bounded_cycle_receipts_sha256": observed["cycle-receipts.json"][
-            "sha256"
-        ],
-        "unbounded_diagnostic_evidence_sha256": entry["evidence_sha256"],
-        "unbounded_diagnostic_config_sha256": entry[
-            "config_identity_sha256"
-        ],
-        "unbounded_diagnostic_decision_records_sha256": entry[
-            "decision_records_sha256"
-        ],
-        "unbounded_diagnostic_cycle_receipts_sha256": entry[
-            "cycle_receipts_sha256"
-        ],
-        "minimum_zero_loss_buffer_entries": entry["peak_fifo_depth"],
-    }
-    if any(minimum_depth.get(name) != value for name, value in expected_accounting.items()):
-        raise SealingError("accounting and unbounded diagnostic bindings differ")
+    for diagnostic_name, authoritative_name in (
+        ("input_events_sha256", "input_events_sha256"),
+        ("input_poses_sha256", "input_poses_sha256"),
+        ("input_event_ids_sha256", "input_event_ids_sha256"),
+        ("input_count", "input_count"),
+        ("input_pose_count", "input_pose_count"),
+        ("window_id", "window_id"),
+        ("window_start_ns", "window_start_ns"),
+    ):
+        if entry[diagnostic_name] != authoritative_inputs[authoritative_name]:
+            raise SealingError(
+                "diagnostic differs from authoritative window inputs"
+            )
+    if entry["retired_count"] != authoritative_inputs["input_count"]:
+        raise SealingError("diagnostic retired count differs from authoritative input")
+    if entry["peak_fifo_depth"] <= bounded["bounded_peak_buffer_entries"]:
+        raise SealingError("diagnostic peak is not pressure-revealing")
+    if observed["cycle-receipts.json"]["sha256"] != bounded[
+        "bounded_cycle_receipts_sha256"
+    ]:
+        raise SealingError("bounded receipt file hash differs from receipt stream")
+    _validate_minimum_depth_accounting(accounting_evidence, bounded, entry)
     return {
         "path": relative,
         "sha256": entry["sha256"],
@@ -848,6 +1319,7 @@ def _observe_leaf(
     assay_manifest_sha256: str,
     ray_events_sha256: str,
     expected_query_count: int,
+    authoritative_inputs: Mapping[str, Any],
     files: Dict[str, Mapping[str, Any]],
 ) -> Mapping[str, Any]:
     if len(sealed.query_records) != expected_query_count:
@@ -875,14 +1347,41 @@ def _observe_leaf(
         files[relative] = entry
         observed[name] = entry
 
-    full_value, _ = _read_json(output_root / relative_root / "full-cycle-result.json")
-    cycle_value, _ = _read_json(output_root / relative_root / "cycle-receipts.json")
-    query_value, _ = _read_json(
-        output_root / relative_root / "query-decision-records.json"
+    full_value, _ = _read_indexed_json(
+        output_root,
+        "%s/full-cycle-result.json" % relative_root,
+        files,
+        "bounded full-cycle result",
     )
-    receipt_value, _ = _read_json(output_root / relative_root / "decision-receipt.json")
-    accounting_evidence_value, _ = _read_json(
-        output_root / relative_root / "score-free-accounting-evidence.json"
+    cycle_value, _ = _read_indexed_json(
+        output_root,
+        "%s/cycle-receipts.json" % relative_root,
+        files,
+        "bounded cycle receipts",
+    )
+    query_value, _ = _read_indexed_json(
+        output_root,
+        "%s/query-decision-records.json" % relative_root,
+        files,
+        "query decisions",
+    )
+    receipt_value, _ = _read_indexed_json(
+        output_root,
+        "%s/decision-receipt.json" % relative_root,
+        files,
+        "decision receipt",
+    )
+    accounting_value, _ = _read_indexed_json(
+        output_root,
+        "%s/score-free-accounting.json" % relative_root,
+        files,
+        "score-free accounting",
+    )
+    accounting_evidence_value, _ = _read_indexed_json(
+        output_root,
+        "%s/score-free-accounting-evidence.json" % relative_root,
+        files,
+        "score-free accounting evidence",
     )
     manifest_mapping = dict(_to_mapping(sealed.manifest, "score input manifest"))
     boundary = {
@@ -919,8 +1418,14 @@ def _observe_leaf(
         or not isinstance(receipt_value, Mapping)
         or receipt_value.get("decision_records_sha256")
         != observed["query-decision-records.json"]["sha256"]
-        or receipt_value.get("expected_events") != len(query_value)
-        or receipt_value.get("retired_records") != len(query_value)
+        or _require_int(
+            receipt_value.get("expected_events"), "receipt expected_events"
+        )
+        != len(query_value)
+        or _require_int(
+            receipt_value.get("retired_records"), "receipt retired_records"
+        )
+        != len(query_value)
     ):
         raise SealingError("receipt or cycle evidence differs from observed arrays")
 
@@ -944,7 +1449,23 @@ def _observe_leaf(
         _require_mapping(full_value, "bounded full-cycle result"),
         tuple(_require_mapping(row, "bounded cycle receipt") for row in cycle_value),
         _require_mapping(accounting_evidence_value, "accounting evidence"),
+        authoritative_inputs,
         files,
+    )
+    bounded = _derive_bounded_depth_evidence(
+        _require_mapping(full_value, "bounded full-cycle result"),
+        tuple(_require_mapping(row, "bounded cycle receipt") for row in cycle_value),
+    )
+    diagnostic_entry = None
+    if diagnostic_binding is not None:
+        diagnostic_entry = files[diagnostic_binding["path"]]
+    _validate_accounting_totals(
+        _require_mapping(accounting_value, "score-free accounting"),
+        _require_mapping(accounting_evidence_value, "accounting evidence"),
+        bounded,
+        diagnostic_entry,
+        sealed.simulation.window_id,
+        sealed.arm.value,
     )
     return {
         "score_input_manifest_path": "%s/score-input-manifest.json" % relative_root,
@@ -960,263 +1481,420 @@ def _observe_leaf(
     }
 
 
-def _verify_seal_tree(root: Path, expected_manifest_sha256: str) -> Mapping[str, Any]:
-    expected = _require_sha(expected_manifest_sha256, "expected campaign seal")
-    value, payload = _read_json(root / "stage4-score-free-seal-manifest.json")
-    if not isinstance(value, Mapping) or _sha256(payload) != expected:
-        raise SealingError("campaign seal differs from its expected root")
-    files = value.get("files")
-    if not isinstance(files, Mapping):
-        raise SealingError("campaign seal file index is absent")
-    windows = value.get("windows")
+_CAMPAIGN_FIELDS = frozenset((
+    "schema",
+    "content_class",
+    "assay_manifest_sha256",
+    "assay_authority_sha256",
+    "assay_closure_sha256",
+    "comparison_contract_sha256",
+    "registry_sha256",
+    "window_count",
+    "arm_count",
+    "arm_window_count",
+    "window_order",
+    "arm_order",
+    "windows",
+    "files",
+))
+_WINDOW_FIELDS = frozenset((
+    "schema",
+    "window_id",
+    "warmup_start_ns_inclusive",
+    "query_start_ns_inclusive",
+    "query_end_ns_exclusive",
+    "selected_event_count",
+    "query_event_count",
+    "ordered_query_event_ids_sha256",
+    "ray_events_path",
+    "ray_events_sha256",
+    "authoritative_cycle_inputs",
+    "arms",
+))
+_ARM_BINDING_FIELDS = frozenset((
+    "score_input_manifest_path",
+    "score_input_manifest_sha256",
+    "score_boundary_evidence_path",
+    "score_boundary_evidence_sha256",
+    "delayed_unbounded_depth_diagnostic",
+))
+_DIAGNOSTIC_BINDING_FIELDS = frozenset((
+    "path", "sha256", "schema", "evidence_sha256", "config_schema",
+    "config_identity_sha256", "termination_guard_rule", "queue_bound_rule",
+    "input_events_sha256", "input_poses_sha256", "input_event_ids_sha256",
+    "retired_event_ids_sha256", "input_count", "input_pose_count",
+    "retired_count", "exact_once_ordered_conservation",
+    "no_full_pressure_reasons", "termination_proven",
+    "queue_never_exceeded_input_count", "simulation_iterations",
+    "termination_iteration_bound", "decision_records_sha256",
+    "cycle_receipts_sha256", "peak_fifo_depth",
+    "peak_ingress_staging_occupancy", "pose_ring_accounting_sha256",
+    "window_id", "window_start_ns",
+    "assay_authoritative_input_manifest_sha256",
+    "bounded_full_cycle_result_sha256", "bounded_cycle_receipts_sha256",
+))
+
+
+def _verify_reopened_leaf(
+    root: Path,
+    files: Mapping[str, Any],
+    window: Mapping[str, Any],
+    arm_name: str,
+    arm_binding: Mapping[str, Any],
+    authoritative_inputs: Mapping[str, Any],
+    assay_sha256: str,
+) -> Tuple[str, ...]:
+    if frozenset(arm_binding) != _ARM_BINDING_FIELDS:
+        raise SealingError("window arm binding field set differs")
+    window_root = "windows/%s" % window["window_id"]
+    leaf_root = "%s/arms/%s" % (window_root, arm_name)
+    required = tuple("%s/%s" % (leaf_root, name) for name in _LEAF_FILES)
+    for relative in required:
+        _require_mapping(files.get(relative), "required leaf file index entry")
+
+    values = {}  # type: Dict[str, Any]
+    for name in _LEAF_FILES:
+        relative = "%s/%s" % (leaf_root, name)
+        values[name] = _read_indexed_json(
+            root, relative, files, "%s %s" % (arm_name, name)
+        )[0]
+    full = _require_mapping(values["full-cycle-result.json"], "bounded full cycle")
+    receipts = tuple(
+        _require_mapping(row, "bounded receipt")
+        for row in _require_array(values["cycle-receipts.json"], "bounded receipts")
+    )
+    query = _require_array(values["query-decision-records.json"], "query decisions")
+    receipt = _require_mapping(values["decision-receipt.json"], "decision receipt")
+    accounting_totals = _require_mapping(
+        values["score-free-accounting.json"], "score-free accounting"
+    )
+    accounting_evidence = _require_mapping(
+        values["score-free-accounting-evidence.json"], "accounting evidence"
+    )
+    for name in _LEAF_FILES:
+        relative = "%s/%s" % (leaf_root, name)
+        if name in ("cycle-receipts.json", "query-decision-records.json"):
+            expected_count = len(receipts) if name == "cycle-receipts.json" else len(query)
+            _require_index_shape(files, relative, "array", expected_count)
+        else:
+            _require_index_shape(files, relative, "object", 1)
+    bounded = _derive_bounded_depth_evidence(full, receipts)
+    if full.get("window_id") != window["window_id"] or full.get("arm") != arm_name:
+        raise SealingError("bounded full-cycle leaf identity differs")
+    query_sha256 = canonical_sha256(query)
     if (
-        not isinstance(windows, list)
-        or len(windows) != 24
-        or value.get("window_count") != 24
-        or value.get("arm_count") != len(_ARM_ORDER)
-        or value.get("arm_window_count") != 24 * len(_ARM_ORDER)
+        receipt.get("decision_records_sha256") != query_sha256
+        or _require_int(receipt.get("expected_events"), "receipt expected_events")
+        != len(query)
+        or _require_int(receipt.get("retired_records"), "receipt retired_records")
+        != len(query)
+        or len(query)
+        != _require_int(window.get("query_event_count"), "window query_event_count")
     ):
-        raise SealingError("campaign does not close the frozen 24-by-4 matrix")
-    for relative, expected_entry in files.items():
-        if (
-            type(relative) is not str
-            or Path(relative).is_absolute()
-            or ".." in Path(relative).parts
-            or not isinstance(expected_entry, Mapping)
-        ):
-            raise SealingError("campaign seal contains an unsafe file entry")
-        observed = _observe_file(
-            root,
-            relative,
-            kind=str(expected_entry.get("kind")),
-            record_count=int(expected_entry.get("record_count", -1)),
+        raise SealingError("decision receipt does not conserve query projection")
+
+    boundary_path = "%s/score-boundary-evidence.json" % leaf_root
+    manifest_path = "%s/score-input-manifest.json" % leaf_root
+    if (
+        arm_binding.get("score_boundary_evidence_path") != boundary_path
+        or arm_binding.get("score_boundary_evidence_sha256")
+        != files[boundary_path]["sha256"]
+        or arm_binding.get("score_input_manifest_path") != manifest_path
+        or arm_binding.get("score_input_manifest_sha256")
+        != files[manifest_path]["sha256"]
+    ):
+        raise SealingError("window arm leaf pointer differs")
+    expected_boundary = {
+        "schema": "redred.mc_wtb.stage4_score_boundary_evidence/v1",
+        "assay_authoritative_input_manifest_sha256": assay_sha256,
+        "full_cycle_result_sha256": files[
+            "%s/full-cycle-result.json" % leaf_root
+        ]["sha256"],
+        "cycle_receipts_sha256": files[
+            "%s/cycle-receipts.json" % leaf_root
+        ]["sha256"],
+        "query_projection_sha256": query_sha256,
+    }
+    if values["score-boundary-evidence.json"] != expected_boundary:
+        raise SealingError("bounded score-boundary bytes differ")
+    manifest = _require_mapping(values["score-input-manifest.json"], "score manifest")
+    expected_manifest_links = {
+        "assay_authoritative_input_manifest_sha256": assay_sha256,
+        "full_cycle_result_sha256": expected_boundary["full_cycle_result_sha256"],
+        "cycle_receipts_sha256": expected_boundary["cycle_receipts_sha256"],
+        "query_projection_sha256": query_sha256,
+        "decision_receipt_sha256": files[
+            "%s/decision-receipt.json" % leaf_root
+        ]["sha256"],
+        "score_free_accounting_sha256": files[
+            "%s/score-free-accounting.json" % leaf_root
+        ]["sha256"],
+        "ray_events_sha256": window["ray_events_sha256"],
+    }
+    if any(manifest.get(name) != expected for name, expected in expected_manifest_links.items()):
+        raise SealingError("score manifest differs from independently observed files")
+
+    diagnostic_binding = arm_binding["delayed_unbounded_depth_diagnostic"]
+    pressure_ids = bounded["fifo_full_forced_bypass_event_ids"]
+    if arm_name != Arm.DELAYED_EXACT.value:
+        if diagnostic_binding is not None or pressure_ids:
+            raise SealingError("diagnostic or FIFO pressure appears on a non-delayed arm")
+        _validate_accounting_totals(
+            accounting_totals,
+            accounting_evidence,
+            bounded,
+            None,
+            window["window_id"],
+            arm_name,
         )
-        if observed != expected_entry:
-            raise SealingError("sealed artifact differs: %s" % relative)
-    _verify_delayed_diagnostic_links(root, value)
-    return value
+        return required
+    if diagnostic_binding is None:
+        _validate_accounting_totals(
+            accounting_totals,
+            accounting_evidence,
+            bounded,
+            None,
+            window["window_id"],
+            arm_name,
+        )
+        return required
+
+    binding = _require_mapping(diagnostic_binding, "delayed diagnostic binding")
+    if frozenset(binding) != _DIAGNOSTIC_BINDING_FIELDS or not pressure_ids:
+        raise SealingError("delayed diagnostic binding shape or pressure differs")
+    diagnostic_path = "%s/%s" % (leaf_root, _DELAYED_DIAGNOSTIC_FILE)
+    if binding.get("path") != diagnostic_path:
+        raise SealingError("delayed diagnostic path differs")
+    entry = _require_mapping(files.get(diagnostic_path), "diagnostic file index entry")
+    for name in _DIAGNOSTIC_BINDING_FIELDS - frozenset((
+        "path", "assay_authoritative_input_manifest_sha256",
+        "bounded_full_cycle_result_sha256", "bounded_cycle_receipts_sha256",
+    )):
+        if binding.get(name) != entry.get(name):
+            raise SealingError("diagnostic outer binding differs")
+    if (
+        binding.get("assay_authoritative_input_manifest_sha256") != assay_sha256
+        or binding.get("bounded_full_cycle_result_sha256")
+        != expected_boundary["full_cycle_result_sha256"]
+        or binding.get("bounded_cycle_receipts_sha256")
+        != expected_boundary["cycle_receipts_sha256"]
+    ):
+        raise SealingError("diagnostic bounded-evidence binding differs")
+    for name in (
+        "input_events_sha256", "input_poses_sha256", "input_event_ids_sha256",
+        "input_count", "input_pose_count", "window_id", "window_start_ns",
+    ):
+        if binding.get(name) != authoritative_inputs.get(name):
+            raise SealingError("diagnostic authoritative input binding differs")
+    if (
+        binding.get("retired_count") != authoritative_inputs["input_count"]
+        or binding.get("peak_fifo_depth") <= bounded["bounded_peak_buffer_entries"]
+    ):
+        raise SealingError("diagnostic conservation or pressure depth differs")
+    diagnostic_value, _ = _read_indexed_json(
+        root, diagnostic_path, files, "delayed diagnostic"
+    )
+    diagnostic_receipts = tuple(
+        _require_mapping(row, "diagnostic receipt")
+        for row in _require_array(
+            _require_mapping(diagnostic_value, "diagnostic evidence").get(
+                "cycle_receipts"
+            ),
+            "diagnostic receipts",
+        )
+    )
+    if _admission_projection(receipts) != _admission_projection(diagnostic_receipts):
+        raise SealingError("sealed diagnostic admission binding differs")
+    _require_index_shape(files, diagnostic_path, _DELAYED_DIAGNOSTIC_KIND, 1)
+    _validate_accounting_totals(
+        accounting_totals,
+        accounting_evidence,
+        bounded,
+        entry,
+        window["window_id"],
+        arm_name,
+    )
+    return required + (diagnostic_path,)
 
 
 def _verify_delayed_diagnostic_links(
     root: Path, campaign: Mapping[str, Any]
-) -> None:
-    """Verify the outer diagnostic link without widening bounded boundaries."""
+) -> Tuple[str, ...]:
+    """Verify all distinct leaves and the separated diagnostic links."""
 
     files = _require_mapping(campaign.get("files"), "campaign file index")
-    windows = _require_array(campaign.get("windows"), "campaign windows")
+    pointers = _require_array(campaign.get("windows"), "campaign windows")
+    frozen_windows = tuple(window_registry())
     assay_sha256 = _require_sha(
         campaign.get("assay_manifest_sha256"), "campaign assay manifest hash"
     )
-    expected_binding_fields = frozenset((
-        "path",
-        "sha256",
-        "schema",
-        "evidence_sha256",
-        "config_schema",
-        "config_identity_sha256",
-        "termination_guard_rule",
-        "queue_bound_rule",
-        "input_events_sha256",
-        "input_poses_sha256",
-        "input_event_ids_sha256",
-        "retired_event_ids_sha256",
-        "input_count",
-        "input_pose_count",
-        "retired_count",
-        "exact_once_ordered_conservation",
-        "no_full_pressure_reasons",
-        "termination_proven",
-        "queue_never_exceeded_input_count",
-        "simulation_iterations",
-        "termination_iteration_bound",
-        "decision_records_sha256",
-        "cycle_receipts_sha256",
-        "peak_fifo_depth",
-        "peak_ingress_staging_occupancy",
-        "pose_ring_accounting_sha256",
-        "window_id",
-        "window_start_ns",
-        "assay_authoritative_input_manifest_sha256",
-        "bounded_full_cycle_result_sha256",
-        "bounded_cycle_receipts_sha256",
-    ))
-    for pointer_value in windows:
+    required = {"assay-closure.json"}
+    seen_paths = set()
+    for pointer_value, frozen in zip(pointers, frozen_windows):
         pointer = _require_mapping(pointer_value, "campaign window pointer")
-        relative = pointer.get("path")
-        if (
-            type(relative) is not str
-            or Path(relative).is_absolute()
-            or ".." in Path(relative).parts
+        expected_relative = "windows/%s/window-seal.json" % frozen["window_id"]
+        if frozenset(pointer) != frozenset(("window_id", "path", "sha256")) or (
+            pointer.get("window_id") != frozen["window_id"]
+            or pointer.get("path") != expected_relative
+            or expected_relative in seen_paths
         ):
-            raise SealingError("campaign window path is unsafe")
-        indexed_window = _require_mapping(
-            files.get(relative), "window seal file index entry"
-        )
-        if indexed_window.get("sha256") != pointer.get("sha256"):
+            raise SealingError("campaign window pointers are not exact and unique")
+        seen_paths.add(expected_relative)
+        indexed = _require_mapping(files.get(expected_relative), "window file index")
+        if pointer.get("sha256") != indexed.get("sha256"):
             raise SealingError("window pointer differs from file index")
-        window, payload = _read_json(root / relative)
-        window_mapping = _require_mapping(window, "window seal")
-        if _sha256(payload) != pointer.get("sha256"):
-            raise SealingError("window pointer hash differs")
-        arms = _require_mapping(window_mapping.get("arms"), "window arm seals")
-        if set(arms) != set(_ARM_ORDER):
-            raise SealingError("window seal does not contain all four arms")
-        window_root = str(Path(relative).parent)
+        window_value, _ = _read_indexed_json(
+            root, expected_relative, files, "window seal"
+        )
+        window = _require_mapping(window_value, "window seal")
+        if frozenset(window) != _WINDOW_FIELDS:
+            raise SealingError("window seal field set differs")
+        if (
+            window.get("schema") != "redred.mc_wtb.stage4_score_free_window_seal/v1"
+            or window.get("window_id") != frozen["window_id"]
+            or any(
+                window.get(name) != frozen[name]
+                for name in (
+                    "warmup_start_ns_inclusive",
+                    "query_start_ns_inclusive",
+                    "query_end_ns_exclusive",
+                )
+            )
+        ):
+            raise SealingError("window seal differs from frozen registry")
+        selected_count = _require_int(
+            window.get("selected_event_count"), "window selected_event_count"
+        )
+        _require_int(window.get("query_event_count"), "window query_event_count")
+        _require_sha(
+            window.get("ordered_query_event_ids_sha256"),
+            "window ordered query event IDs",
+        )
+        authoritative = _validate_authoritative_window_inputs(
+            window.get("authoritative_cycle_inputs"),
+            frozen["window_id"],
+            frozen["warmup_start_ns_inclusive"],
+        )
+        if authoritative["input_count"] != selected_count:
+            raise SealingError("authoritative event count differs from window seal")
+        ray_path = "windows/%s/ray-events.json" % frozen["window_id"]
+        if (
+            window.get("ray_events_path") != ray_path
+            or window.get("ray_events_sha256")
+            != _require_mapping(files.get(ray_path), "ray file index").get("sha256")
+            or files[ray_path].get("record_count") != selected_count
+        ):
+            raise SealingError("window ray binding differs")
+        _require_index_shape(files, expected_relative, "object", 1)
+        _require_index_shape(files, ray_path, "array", selected_count)
+        arms = _require_mapping(window.get("arms"), "window arms")
+        if frozenset(arms) != frozenset(_ARM_ORDER):
+            raise SealingError("window does not contain exactly four arms")
+        required.update((expected_relative, ray_path))
         for arm_name in _ARM_ORDER:
-            arm_binding = _require_mapping(arms[arm_name], "window arm seal")
-            if "delayed_unbounded_depth_diagnostic" not in arm_binding:
-                raise SealingError("window arm seal lacks diagnostic disposition")
-            diagnostic_binding = arm_binding.get(
-                "delayed_unbounded_depth_diagnostic"
-            )
-            leaf_root = "%s/arms/%s" % (window_root, arm_name)
-            bounded_receipts_value, _ = _read_json(
-                root / leaf_root / "cycle-receipts.json"
-            )
-            bounded_receipts = tuple(
-                _require_mapping(row, "bounded receipt")
-                for row in _require_array(
-                    bounded_receipts_value, "bounded cycle receipts"
-                )
-            )
-            bounded_full = any(
-                row.get("disposition_reason") == "fifo_full_forced_bypass"
-                for row in bounded_receipts
-            )
-            if arm_name != Arm.DELAYED_EXACT.value:
-                if diagnostic_binding is not None:
-                    raise SealingError("diagnostic is bound to a non-delayed arm")
-                continue
-            if diagnostic_binding is None:
-                if bounded_full:
-                    raise SealingError("pressured delayed seal lacks a diagnostic")
-                accounting_value, _ = _read_json(
-                    root / leaf_root / "score-free-accounting-evidence.json"
-                )
-                minimum_depth = _require_mapping(
-                    _require_mapping(
-                        accounting_value, "accounting evidence"
-                    ).get("minimum_depth_evidence"),
-                    "accounting minimum-depth evidence",
-                )
-                if minimum_depth.get("basis") != "bounded_peak_no_full_pressure" or any(
-                    minimum_depth.get(name) is not None
-                    for name in (
-                        "unbounded_diagnostic_evidence_sha256",
-                        "unbounded_diagnostic_config_sha256",
-                        "unbounded_diagnostic_decision_records_sha256",
-                        "unbounded_diagnostic_cycle_receipts_sha256",
-                    )
-                ):
-                    raise SealingError("unpressured delayed accounting names a diagnostic")
-                continue
-            binding = _require_mapping(
-                diagnostic_binding, "delayed diagnostic binding"
-            )
-            if frozenset(binding) != expected_binding_fields or not bounded_full:
-                raise SealingError("delayed diagnostic binding shape differs")
-            diagnostic_path = binding.get("path")
-            expected_path = "%s/%s" % (leaf_root, _DELAYED_DIAGNOSTIC_FILE)
-            if diagnostic_path != expected_path:
-                raise SealingError("delayed diagnostic path differs")
-            if (
-                binding.get("window_id") != window_mapping.get("window_id")
-                or binding.get("window_start_ns")
-                != window_mapping.get("warmup_start_ns_inclusive")
-            ):
-                raise SealingError("delayed diagnostic window binding differs")
-            diagnostic_entry = _require_mapping(
-                files.get(expected_path), "diagnostic file index entry"
-            )
-            for name in (
-                "sha256",
-                "schema",
-                "evidence_sha256",
-                "config_schema",
-                "config_identity_sha256",
-                "termination_guard_rule",
-                "queue_bound_rule",
-                "input_events_sha256",
-                "input_poses_sha256",
-                "input_event_ids_sha256",
-                "retired_event_ids_sha256",
-                "input_count",
-                "input_pose_count",
-                "retired_count",
-                "exact_once_ordered_conservation",
-                "no_full_pressure_reasons",
-                "termination_proven",
-                "queue_never_exceeded_input_count",
-                "simulation_iterations",
-                "termination_iteration_bound",
-                "decision_records_sha256",
-                "cycle_receipts_sha256",
-                "peak_fifo_depth",
-                "peak_ingress_staging_occupancy",
-                "pose_ring_accounting_sha256",
-                "window_id",
-                "window_start_ns",
-            ):
-                if binding.get(name) != diagnostic_entry.get(name):
-                    raise SealingError("diagnostic outer binding differs")
-            if binding.get("assay_authoritative_input_manifest_sha256") != assay_sha256:
-                raise SealingError("diagnostic assay binding differs")
-            bounded_full_path = "%s/full-cycle-result.json" % leaf_root
-            bounded_receipt_path = "%s/cycle-receipts.json" % leaf_root
-            if (
-                binding.get("bounded_full_cycle_result_sha256")
-                != _require_mapping(files.get(bounded_full_path), "bounded result index").get(
-                    "sha256"
-                )
-                or binding.get("bounded_cycle_receipts_sha256")
-                != _require_mapping(files.get(bounded_receipt_path), "bounded receipt index").get(
-                    "sha256"
-                )
-            ):
-                raise SealingError("diagnostic bounded-evidence binding differs")
-            diagnostic_value, _ = _read_json(root / expected_path)
-            diagnostic_receipts = tuple(
-                _require_mapping(row, "diagnostic receipt")
-                for row in _require_array(
-                    _require_mapping(
-                        diagnostic_value, "diagnostic evidence"
-                    ).get("cycle_receipts"),
-                    "diagnostic receipts",
-                )
-            )
-            if _admission_projection(bounded_receipts) != _admission_projection(
-                diagnostic_receipts
-            ):
-                raise SealingError("sealed diagnostic admission binding differs")
-            accounting_value, _ = _read_json(
-                root / leaf_root / "score-free-accounting-evidence.json"
-            )
-            minimum_depth = _require_mapping(
-                _require_mapping(accounting_value, "accounting evidence").get(
-                    "minimum_depth_evidence"
-                ),
-                "accounting minimum-depth evidence",
-            )
-            expected_accounting = {
-                "unbounded_diagnostic_evidence_sha256": binding[
-                    "evidence_sha256"
-                ],
-                "unbounded_diagnostic_config_sha256": binding[
-                    "config_identity_sha256"
-                ],
-                "unbounded_diagnostic_decision_records_sha256": binding[
-                    "decision_records_sha256"
-                ],
-                "unbounded_diagnostic_cycle_receipts_sha256": binding[
-                    "cycle_receipts_sha256"
-                ],
-                "minimum_zero_loss_buffer_entries": binding["peak_fifo_depth"],
-            }
-            if any(
-                minimum_depth.get(name) != expected
-                for name, expected in expected_accounting.items()
-            ):
-                raise SealingError("sealed accounting diagnostic link differs")
+            required.update(_verify_reopened_leaf(
+                root,
+                files,
+                window,
+                arm_name,
+                _require_mapping(arms[arm_name], "window arm binding"),
+                authoritative,
+                assay_sha256,
+            ))
+    if len(seen_paths) != len(frozen_windows):
+        raise SealingError("campaign window pointers are incomplete")
+    return tuple(sorted(required))
+
+
+def _verify_seal_tree(root: Path, expected_manifest_sha256: str) -> Mapping[str, Any]:
+    expected = _require_sha(expected_manifest_sha256, "expected campaign seal")
+    manifest_name = "stage4-score-free-seal-manifest.json"
+    value, payload = _read_json_at(root, manifest_name)
+    campaign = _require_mapping(value, "campaign seal")
+    if _sha256(payload) != expected:
+        raise SealingError("campaign seal differs from its expected root")
+    if frozenset(campaign) != _CAMPAIGN_FIELDS:
+        raise SealingError("campaign seal field set differs")
+    contract = load_comparison_contract()
+    frozen_windows = tuple(window_registry())
+    frozen_ids = [row["window_id"] for row in frozen_windows]
+    if (
+        campaign.get("schema") != "redred.mc_wtb.stage4_score_free_campaign_seal/v1"
+        or campaign.get("content_class") != "SCORE_FREE_OBSERVER_EVIDENCE_ONLY"
+        or campaign.get("comparison_contract_sha256") != contract.canonical_sha256
+        or campaign.get("registry_sha256") != contract.registry["sha256"]
+        or _require_int(campaign.get("window_count"), "campaign window_count")
+        != len(frozen_windows)
+        or _require_int(campaign.get("arm_count"), "campaign arm_count")
+        != len(_ARM_ORDER)
+        or _require_int(
+            campaign.get("arm_window_count"), "campaign arm_window_count"
+        )
+        != len(frozen_windows) * len(_ARM_ORDER)
+        or campaign.get("window_order") != frozen_ids
+        or campaign.get("arm_order") != list(_ARM_ORDER)
+    ):
+        raise SealingError("campaign does not close the frozen 24-by-4 matrix")
+    windows = _require_array(campaign.get("windows"), "campaign windows")
+    if len(windows) != len(frozen_windows):
+        raise SealingError("campaign window pointer count differs")
+    files = _require_mapping(campaign.get("files"), "campaign file index")
+    expected_inventory = set(files)
+    expected_inventory.add(manifest_name)
+    before_inventory = set(_inventory_regular_files(root))
+    if before_inventory != expected_inventory:
+        raise SealingError("sealed tree contains an unindexed or missing file")
+    for relative, expected_entry_value in files.items():
+        _safe_relative(relative, "campaign file index")
+        expected_entry = _require_mapping(
+            expected_entry_value, "campaign file index entry"
+        )
+        kind = expected_entry.get("kind")
+        if type(kind) is not str:
+            raise SealingError("sealed artifact kind must be text")
+        record_count = _require_int(
+            expected_entry.get("record_count"), "sealed artifact record_count"
+        )
+        observed = _observe_file(
+            root, relative, kind=kind, record_count=record_count
+        )
+        if observed != expected_entry:
+            raise SealingError("sealed artifact differs: %s" % relative)
+
+    closure_value, _ = _read_indexed_json(
+        root, "assay-closure.json", files, "assay closure"
+    )
+    _require_index_shape(files, "assay-closure.json", "object", 1)
+    closure = _require_mapping(closure_value, "assay closure")
+    if (
+        closure.get("schema") != "redred.mc_wtb.stage4_score_free_assay_closure/v1"
+        or closure.get("assay_manifest_sha256")
+        != _require_sha(campaign.get("assay_manifest_sha256"), "campaign assay hash")
+        or closure.get("assay_authority_sha256")
+        != _require_sha(campaign.get("assay_authority_sha256"), "campaign authority hash")
+        or closure.get("comparison_contract_sha256") != contract.canonical_sha256
+        or closure.get("registry_sha256") != contract.registry["sha256"]
+        or campaign.get("assay_closure_sha256")
+        != files["assay-closure.json"]["sha256"]
+    ):
+        raise SealingError("campaign assay closure binding differs")
+    required_files = set(_verify_delayed_diagnostic_links(root, campaign))
+    if set(files) != required_files:
+        raise SealingError("campaign file roster does not exactly close all leaves")
+    if set(_inventory_regular_files(root)) != expected_inventory:
+        raise SealingError("sealed tree changed during verification")
+    for relative, entry_value in files.items():
+        entry = _require_mapping(entry_value, "final sealed file index entry")
+        final_payload = _stable_regular_file(root, relative, "final %s" % relative)
+        if (
+            _sha256(final_payload) != entry["sha256"]
+            or len(final_payload) != entry["size_bytes"]
+        ):
+            raise SealingError("sealed file changed during verification: %s" % relative)
+    final_value, final_payload = _read_json_at(root, manifest_name)
+    if final_value != campaign or final_payload != payload:
+        raise SealingError("campaign manifest changed during verification")
+    return campaign
 
 
 def verify_score_free_seal(
@@ -1286,6 +1964,20 @@ def seal_official_score_free(
         window_roots = []  # type: List[Mapping[str, Any]]
         for summary in window_summaries:
             window_id = str(summary["window_id"])
+            authoritative_inputs = _authoritative_window_inputs(
+                integration_adapter.build_window_cycle_inputs(bundle, window_id)
+            )
+            _validate_authoritative_window_inputs(
+                authoritative_inputs,
+                window_id,
+                int(summary["warmup_start_ns_inclusive"]),
+            )
+            if authoritative_inputs["input_count"] != int(
+                summary["selected_event_count"]
+            ):
+                raise SealingError(
+                    "authoritative event count differs from the window summary"
+                )
             integrated = _build_window_with_required_diagnostic(bundle, window_id)
             if set(integrated) != set(Arm):
                 raise SealingError("window does not contain all four arms")
@@ -1323,6 +2015,7 @@ def seal_official_score_free(
                     expected_assay_manifest_sha256,
                     str(ray_sha256),
                     int(summary["query_event_count"]),
+                    authoritative_inputs,
                     files,
                 )
             window_seal = {
@@ -1340,6 +2033,7 @@ def seal_official_score_free(
                 ],
                 "ray_events_path": ray_relative,
                 "ray_events_sha256": ray_sha256,
+                "authoritative_cycle_inputs": authoritative_inputs,
                 "arms": arms,
             }
             window_seal_relative = "%s/window-seal.json" % window_root
