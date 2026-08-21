@@ -24,7 +24,7 @@ class ContractTests(unittest.TestCase):
     def test_frozen_contract_and_existing_registry_validate(self) -> None:
         self.assertEqual(
             self.contract.canonical_sha256,
-            "a95eab8d29196175bb05e3b705f65ce8f0304929f69fece3ed71c974148bf631",
+            "15d04f1b8c4561290dcde752d128deb6d8cf003102d75b9638cb566c8f71549f",
         )
         receipt = validate_existing_registry(self.contract)
         self.assertEqual(receipt.window_count, 24)
@@ -176,6 +176,10 @@ class ContractTests(unittest.TestCase):
                 "full_classification": "operational_waste",
                 "external_or_unbounded_overflow_queue_allowed": False,
                 "minimum_zero_loss_buffer_entries": {
+                    "legacy_field_semantics": (
+                        "minimum_depth_avoiding_fifo_full_forced_bypass_not_"
+                        "accepted_event_loss"
+                    ),
                     "bounded_peak_authoritative_if": (
                         "fifo_full_forced_bypass_count_is_zero_and_full_"
                         "conservation_holds"
@@ -184,19 +188,29 @@ class ContractTests(unittest.TestCase):
                     "bounded_peak_authoritative_if_any_fifo_full_forced_bypass": (
                         False
                     ),
-                    "otherwise": (
-                        "fail_closed_unless_separate_score_free_unbounded_depth_"
-                        "replay_proves_depth"
+                    "required_replay_if": (
+                        "fifo_full_forced_bypass_count_is_nonzero"
                     ),
-                    "unbounded_depth_replay_method": (
+                    "no_pressure_replay_method": (
                         "same_arrivals_ordering_service_deadline_and_retirement_"
                         "without_fifo_pressure_action"
                     ),
-                    "unbounded_depth_replay_may_change_bounded_decisions": False,
-                    "nontermination_unbounded_growth_or_unaccounted_event": (
-                        "hard_stop"
+                    "no_pressure_replay_validity": (
+                        "finite_and_full_conservation_required"
                     ),
-                    "proven_depth_above_bounded_entries": "hard_stop",
+                    "authoritative_no_pressure_replay_value": (
+                        "exact_observed_peak_buffer_entries"
+                    ),
+                    "no_pressure_replay_may_change_bounded_decisions": False,
+                    "missing_nonterminating_unbounded_or_nonconserving_replay": (
+                        "protocol_failure"
+                    ),
+                    "proven_depth_above_bounded_entries_evidence_valid": True,
+                    "proven_depth_above_bounded_entries_disposition": "STOP",
+                    "proven_depth_above_bounded_entries_reason": (
+                        "fixed_cost_bound_violation"
+                    ),
+                    "proven_depth_above_bounded_entries_protocol_failure": False,
                 },
             },
         )

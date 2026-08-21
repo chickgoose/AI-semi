@@ -293,12 +293,21 @@ For the same trace and service rules, when the bounded run has zero
 `fifo_full_forced_bypass` records and full event conservation, its observed
 peak buffer occupancy is the exact `minimum_zero_loss_buffer_entries`. If even
 one `fifo_full_forced_bypass` occurs, the bounded peak is clipped and is not
-authoritative. That case fails closed unless a separate score-free unbounded-
-depth diagnostic replay with the same arrivals, ordering, service, deadline,
-and retirement rules, but without the 1,024-entry pressure action, proves the
-required depth. The diagnostic cannot alter bounded-run decisions. A
-nonterminating/unbounded diagnostic, any inability to account every input
-event, or a proven depth above 1,024 is a hard stop.
+authoritative. In that case a separate score-free no-pressure replay must use
+the same arrivals, ordering, service, deadline, and retirement rules, but omit
+the 1,024-entry pressure action. If and only if that replay terminates and
+fully conserves every input event, its exact observed peak buffer occupancy is
+the authoritative `minimum_zero_loss_buffer_entries`. The diagnostic cannot
+alter bounded-run decisions.
+
+`minimum_zero_loss_buffer_entries` is a legacy field name: it means the
+minimum depth that avoids `fifo_full_forced_bypass` for the same trace and
+service, not absence of accepted-event loss. Accepted-event conservation is a
+separate mandatory invariant. A finite, conserving no-pressure replay that
+proves a depth above 1,024 remains valid score-free evidence and produces
+comparison disposition `STOP` for a fixed-cost-bound violation; it is not a
+protocol abort. A missing, nonterminating, unbounded-growth, or nonconserving
+required replay is instead a protocol failure and cannot proceed to scoring.
 
 Every arm is conservatively charged the same common logical-state envelope:
 
