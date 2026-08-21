@@ -199,6 +199,106 @@ uses attempted corrections; quality waste uses enabled events after loss join,
 with ties counted as waste. Zero attempted/enabled denominators fail their
 corresponding GO coverage test rather than producing a favorable zero.
 
+### Score-free reason classification and conservative accounting
+
+All classifications and modeled costs below are derived and hash-sealed before
+any ray loss or arm score is read. Classification may use only the arm,
+disposition, disposition reason, query membership, cycle receipts, and frozen
+accounting constants. Unknown arm/disposition/reason combinations fail the
+protocol rather than entering a favorable default bucket.
+
+Let `Q` be the accepted query-event IDs in the sealed query projection. The
+attempted-correction, freshness-veto, invalid-pose-bypass, and operational-waste
+sets contain IDs from `Q` only. Every query record with disposition
+`corrected_world_ray` is an attempted correction. Operational waste is also an
+attempted correction, so
+
+`attempted = corrected_query_events union operational_waste`.
+
+The three raw-bypass sets are pairwise disjoint and exactly exhaust
+`Q - corrected_query_events`. The frozen arm-aware mapping is:
+
+| Arm | Disposition/reason | Score-free classification |
+| --- | --- | --- |
+| `zoh_freshness` | `corrected_world_ray` / `fresh_zoh` | attempted correction |
+| `zoh_freshness` | `raw_bypass` / `stale_pose` | freshness veto |
+| `zoh_freshness` | `raw_bypass` / `no_occurrence_pose` or `invalid_pose` | invalid-pose bypass |
+| `causal_cav` | `corrected_world_ray` / `causal_cav` or `fresh_zoh_fallback` | attempted correction |
+| `causal_cav` | `raw_bypass` / `stale_pose` | freshness veto |
+| `causal_cav` | `raw_bypass` / `no_occurrence_pose` or `invalid_pose` | invalid-pose bypass |
+| `delayed_exact` | `corrected_world_ray` / `bracket_interpolation` | attempted correction |
+| `delayed_exact` | `raw_bypass` / `deadline_timeout`, `fifo_full_forced_bypass`, or `invalid_pose` | operational waste and attempted correction |
+| `delayed_exact` | `raw_bypass` / `missing_bracket` | invalid-pose bypass |
+| `oracle_resampled_groundtruth_1khz` | `corrected_world_ray` / `oracle_fresh_zoh` | attempted correction |
+| `oracle_resampled_groundtruth_1khz` | `raw_bypass` / `stale_pose` | freshness veto |
+| `oracle_resampled_groundtruth_1khz` | `raw_bypass` / `no_occurrence_pose` or `invalid_pose` | invalid-pose bypass |
+
+`stale_pose` is freshness rather than invalid because a valid latest pose and
+its age exist. `no_occurrence_pose` is invalid because no pose timestamp exists
+from which an age can be computed. In `delayed_exact`, `missing_bracket` means
+the required occurrence-snapshot left pose is missing. The current
+`invalid_pose` token conservatively covers an invalid left or right endpoint,
+invalid quaternion arithmetic, or a failed transform guard; the whole token is
+operational waste so an invalid right bracket cannot be reclassified after
+scores are visible.
+
+Enable, freshness-veto, and invalid-pose-bypass rates divide their query-only
+numerators by `|Q|`. Operational-waste rate divides operational waste by
+attempted corrections. A zero attempted denominator fails its GO coverage test.
+Per-window event bandwidth is also query-only and uses exact ceiling arithmetic:
+
+`event_bandwidth_bits_per_second =
+ceil_integer(102 * |Q| * 1_000_000_000 /
+(query_end_ns_exclusive - query_start_ns_inclusive))`.
+
+Residence accounting uses every accepted event in the full cycle result,
+including warm-up and query events. Require
+`occurrence_cycle <= admission_cycle <= retire_cycle`. For the selected
+arm/window, with `A` denoting all accepted event receipts, freeze:
+
+`buffer_bit_cycles = 102 * (
+sum_A(admission_cycle - occurrence_cycle) +
+I[arm == delayed_exact] * sum_A(retire_cycle - admission_cycle))`.
+
+Thus common ingress residence is charged for every arm, while post-admission
+FIFO residence is charged only to `delayed_exact`. Intervals are half-open in
+cycles. Bit-cycles are a residence metric and are not added to static state.
+
+The modeled delayed FIFO is exactly 1,024 entries. At full occupancy it forces
+the oldest eligible head to ordered `raw_bypass` with reason
+`fifo_full_forced_bypass`; no external or unbounded overflow queue is allowed.
+`minimum_zero_loss_buffer_entries` may be obtained only from a separate
+score-free diagnostic replay with the same arrivals, ordering, service,
+deadline, and retirement rules but without the 1,024-entry pressure action. It
+cannot alter bounded-run decisions. A nonterminating/unbounded diagnostic, a
+depth above 1,024, or any inability to account every input event fails closed.
+
+Every arm is conservatively charged the same common logical-state envelope:
+
+| Component | Bits |
+| --- | ---: |
+| 1,024 x 102-bit delayed FIFO payload | 104,448 |
+| 6 x 102-bit ingress capture payload | 612 |
+| 16 x 192-bit pose ring payload | 3,072 |
+| delayed FIFO read/write pointers and occupancy | 31 |
+| ingress serializer count and cursor | 6 |
+| pose-ring write pointer and valid count | 9 |
+| 16 x 11-bit pose live-reference counters | 176 |
+| 2 x 102-bit transform pipeline payload | 204 |
+| atomic pose-ingress staging | 192 |
+| global cycle/deadline counter | 21 |
+| expected and retired receipt counters | 28 |
+| **Conservative common total** | **108,799** |
+
+The 11-bit live-reference width covers at most 1,032 simultaneous references:
+1,024 delayed, six ingress, and two pipeline records. The 14-bit causal pose
+index is already inside each 102-bit event record. Receipt, packet, artifact,
+and provenance hashes are verification-only and contribute zero logical
+hardware-state bits. Every arm is conservatively charged a 192-bit pose
+interface at 1,000 packets/s, or exactly 192,000 bit/s. These state and rate
+figures are logical comparison accounting only, not synthesis, mapped-area,
+timing, power, routing, or other PPA evidence.
+
 Latency percentiles use nearest rank on per-event integer cycle deltas, sorted
 by `(latency_cycles,event_id)`. Added latency is each policy retirement cycle
 minus that event's always-bypass baseline retirement cycle, not a difference
