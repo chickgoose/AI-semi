@@ -87,6 +87,18 @@ def _validate_dataset_pose_packet_stream(
             raise AssayInputError("dataset pose packet visibility is not one cycle after commit")
 
 
+def _validate_oracle_pose_packet_stream(
+    packets: Sequence[Mapping[str, Any]], expected_sha256: str
+) -> None:
+    if hashlib.sha256(_jsonl_bytes(packets)).hexdigest() != expected_sha256:
+        raise AssayInputError("oracle pose packet stream hash differs from its authority")
+    for packet in packets:
+        packet_body = dict(packet)
+        packet_hash = packet_body.pop("packet_sha256", None)
+        if packet_hash != canonical_sha256(packet_body):
+            raise AssayInputError("oracle pose packet hash differs from its canonical record")
+
+
 def _extract_events(
     events_path: Path,
     rows: Sequence[Mapping[str, Any]],
@@ -293,6 +305,9 @@ def _extract_events(
         summaries.append(
             {
                 "window_id": window_id,
+                "warmup_start_ns_inclusive": window_start,
+                "query_start_ns_inclusive": query_start,
+                "query_end_ns_exclusive": int(row["query_end_ns_exclusive"]),
                 "selected_event_count": len(events),
                 "query_event_count": len(query_ids),
                 "ordered_query_event_ids_sha256": canonical_sha256(query_ids),
@@ -513,33 +528,35 @@ def _oracle_packets(
             denominator,
         )
         oracle_id = (timestamp_ns - origin_ns) // cadence_ns
-        packets.append(
-            {
-                "oracle_pose_id": oracle_id,
-                "effective_timestamp_ns": timestamp_ns,
-                "quaternion_xyzw": list(quaternion),
-                "before_source_pose_id": before.pose_id,
-                "before_timestamp_ns": before.timestamp_ns,
-                "after_source_pose_id": after.pose_id,
-                "after_timestamp_ns": after.timestamp_ns,
-                "slerp_numerator_ns": numerator,
-                "slerp_denominator_ns": denominator,
-                "pose_value_sha256": _pose_value_sha256(
-                    oracle_id, timestamp_ns, quaternion
-                ),
-            }
-        )
+        packet = {
+            "oracle_pose_id": oracle_id,
+            "effective_timestamp_ns": timestamp_ns,
+            "quaternion_xyzw": list(quaternion),
+            "before_source_pose_id": before.pose_id,
+            "before_timestamp_ns": before.timestamp_ns,
+            "after_source_pose_id": after.pose_id,
+            "after_timestamp_ns": after.timestamp_ns,
+            "slerp_numerator_ns": numerator,
+            "slerp_denominator_ns": denominator,
+            "pose_value_sha256": _pose_value_sha256(
+                oracle_id, timestamp_ns, quaternion
+            ),
+        }
+        packet["packet_sha256"] = canonical_sha256(packet)
+        packets.append(packet)
     return packets
 
 
 def _oracle_schedule(
     packets: Sequence[Mapping[str, Any]],
+    packet_stream_sha256: str,
     rows: Sequence[Mapping[str, Any]],
     clock_period_ps: int,
     cadence_ns: int,
     commit_delay_cycles: int,
     visibility_delay_cycles: int,
 ) -> List[Dict[str, Any]]:
+    _validate_oracle_pose_packet_stream(packets, packet_stream_sha256)
     schedule = []  # type: List[Dict[str, Any]]
     for row in rows:
         window_start = int(row["warmup_start_ns_inclusive"])
@@ -558,6 +575,7 @@ def _oracle_schedule(
                         "oracle_pose_id": packet["oracle_pose_id"],
                         "effective_timestamp_ns": timestamp_ns,
                         "pose_value_sha256": packet["pose_value_sha256"],
+                        "packet_sha256": packet["packet_sha256"],
                         "effective_cycle": effective_cycle,
                         "commit_cycle": commit_cycle,
                         "visible_cycle": commit_cycle + visibility_delay_cycles,
@@ -689,8 +707,11 @@ def generate_score_free_inputs(
         int(oracle_contract["cadence_ns"]),
         int(oracle_contract["cadence_origin_ns"]),
     )
+    oracle_pose_payload = _jsonl_bytes(oracle_packets)
+    oracle_pose_stream_sha256 = hashlib.sha256(oracle_pose_payload).hexdigest()
     oracle_schedule = _oracle_schedule(
         oracle_packets,
+        oracle_pose_stream_sha256,
         rows,
         int(timing["clock_period_ps"]),
         int(oracle_contract["cadence_ns"]),
@@ -703,7 +724,7 @@ def generate_score_free_inputs(
         OCCURRENCE_BATCHES_FILE: _jsonl_bytes(occurrence_batches),
         POSE_SNAPSHOTS_FILE: _jsonl_bytes(occurrence_snapshots),
         DATASET_POSES_FILE: dataset_pose_payload,
-        ORACLE_POSES_FILE: _jsonl_bytes(oracle_packets),
+        ORACLE_POSES_FILE: oracle_pose_payload,
         ORACLE_SCHEDULE_FILE: _jsonl_bytes(oracle_schedule),
     }
     artifacts = {
@@ -767,6 +788,10 @@ def generate_score_free_inputs(
             "path": ORACLE_POSES_FILE,
             "sha256": artifacts[ORACLE_POSES_FILE]["sha256"],
             "record_count": len(oracle_packets),
+            "packet_sha256_rule": "canonical_sha256_of_record_without_packet_sha256",
+            "ordered_packet_sha256": canonical_sha256(
+                [packet["packet_sha256"] for packet in oracle_packets]
+            ),
         },
         "oracle_window_schedule_stream": {
             "path": ORACLE_SCHEDULE_FILE,
@@ -884,6 +909,9 @@ def generate_score_free_inputs(
             ],
             "ordered_pose_ids_sha256": canonical_sha256(
                 [packet["oracle_pose_id"] for packet in oracle_packets]
+            ),
+            "ordered_packet_sha256": canonical_sha256(
+                [packet["packet_sha256"] for packet in oracle_packets]
             ),
         },
         "windows": window_summaries,

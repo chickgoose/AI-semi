@@ -9,6 +9,9 @@ The generator:
 - validates `events.txt`, `groundtruth.txt`, and `calib.txt` hashes before
   parsing, plus the event byte and line counts;
 - validates the frozen comparison contract and existing 24-window registry;
+- copies the registry's exact inclusive warmup start, inclusive query start,
+  and exclusive query end into every manifest window summary, so downstream
+  integration never reconstructs window bounds;
 - preserves global source event IDs and emits timestamp, pixel, polarity,
   normalized sensor ray, query membership, equal-timestamp cluster identity,
   and exact integer occurrence cycle;
@@ -36,13 +39,17 @@ The generator:
   one identical snapshot hash;
 - constructs the counterfactual oracle stream on the global phase
   `t = 0 mod 1,000,000 ns`, using only two source brackets, the frozen
-  shortest-arc rule, and explicit bracket provenance;
+  shortest-arc rule, and explicit bracket provenance. Every oracle packet has
+  a canonical `packet_sha256` over the packet without that field; the stream
+  and each packet are verified before scheduling, and schedule records carry
+  the exact packet hash they consume;
 - serializes each stream as canonical JSONL and records its SHA-256, count, and
   byte size in a canonical manifest. The manifest also has one canonical
   binding over the ordered 26-hex-digit 102-bit records, raw event,
   calibration and ground-truth hashes, dataset-pose and occurrence-snapshot
   streams, oracle packet/schedule streams, generator dependency hashes, and
-  Python runtime identity/executable hashes.
+  Python runtime identity/executable hashes. Oracle authority additionally
+  binds the canonical hash of the ordered packet-hash sequence.
 
 The forbidden interval may be scanned by whole-file hashing/parsing but cannot
 appear in any selected event, dataset pose packet, oracle packet, or schedule.

@@ -220,6 +220,55 @@ class GeneratorTests(unittest.TestCase):
                 [mutated], mutated_stream_hash
             )
 
+        oracle_packet = {
+            "oracle_pose_id": 11,
+            "effective_timestamp_ns": 11_000_000,
+            "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+            "before_source_pose_id": 20,
+            "before_timestamp_ns": 10_500_000,
+            "after_source_pose_id": 21,
+            "after_timestamp_ns": 11_500_000,
+            "slerp_numerator_ns": 500_000,
+            "slerp_denominator_ns": 1_000_000,
+            "pose_value_sha256": "2" * 64,
+        }
+        oracle_packet["packet_sha256"] = canonical_sha256(oracle_packet)
+        oracle_stream_hash = hashlib.sha256(
+            generator_module._jsonl_bytes([oracle_packet])
+        ).hexdigest()
+        generator_module._validate_oracle_pose_packet_stream(
+            [oracle_packet], oracle_stream_hash
+        )
+        with self.assertRaisesRegex(AssayInputError, "oracle pose packet stream hash"):
+            generator_module._validate_oracle_pose_packet_stream(
+                [oracle_packet], "0" * 64
+            )
+        mutated_oracle = dict(oracle_packet)
+        mutated_oracle["before_source_pose_id"] = 19
+        mutated_oracle_stream_hash = hashlib.sha256(
+            generator_module._jsonl_bytes([mutated_oracle])
+        ).hexdigest()
+        with self.assertRaisesRegex(AssayInputError, "oracle pose packet hash"):
+            generator_module._validate_oracle_pose_packet_stream(
+                [mutated_oracle], mutated_oracle_stream_hash
+            )
+        with self.assertRaisesRegex(AssayInputError, "oracle pose packet hash"):
+            generator_module._oracle_schedule(
+                [mutated_oracle],
+                mutated_oracle_stream_hash,
+                [
+                    {
+                        "window_id": "fixture",
+                        "warmup_start_ns_inclusive": 10_000_000,
+                        "query_end_ns_exclusive": 12_000_000,
+                    }
+                ],
+                6_500,
+                1_000_000,
+                1,
+                1,
+            )
+
     def test_fixture_generation_is_deterministic_score_free_and_excludes_forbidden(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -245,6 +294,18 @@ class GeneratorTests(unittest.TestCase):
             self.assertEqual(manifest["staging_serializer"]["entries"], 6)
             self.assertEqual(manifest["staging_serializer"]["payload_state_bits"], 612)
             self.assertLessEqual(manifest["staging_serializer"]["peak_occupancy"], 6)
+            summaries_by_id = {
+                summary["window_id"]: summary for summary in manifest["windows"]
+            }
+            self.assertEqual(len(summaries_by_id), len(tuple(window_registry())))
+            for registry_row in window_registry():
+                summary = summaries_by_id[registry_row["window_id"]]
+                for bound in (
+                    "warmup_start_ns_inclusive",
+                    "query_start_ns_inclusive",
+                    "query_end_ns_exclusive",
+                ):
+                    self.assertEqual(summary[bound], registry_row[bound])
             binding = manifest["authoritative_input_binding"]
             binding_body = dict(binding)
             binding_hash = binding_body.pop("binding_sha256")
@@ -401,6 +462,12 @@ class GeneratorTests(unittest.TestCase):
 
             oracle = jsonl(first / "oracle_resampled_groundtruth_1khz.jsonl")
             self.assertTrue(oracle)
+            oracle_by_id = {}
+            for packet in oracle:
+                packet_body = dict(packet)
+                packet_hash = packet_body.pop("packet_sha256")
+                self.assertEqual(packet_hash, canonical_sha256(packet_body))
+                oracle_by_id[packet["oracle_pose_id"]] = packet
             self.assertTrue(
                 all(packet["effective_timestamp_ns"] % 1_000_000 == 0 for packet in oracle)
             )
@@ -415,6 +482,13 @@ class GeneratorTests(unittest.TestCase):
             schedule = jsonl(first / "stage4_oracle_window_schedule.jsonl")
             self.assertTrue(all(row["commit_cycle"] == row["effective_cycle"] + 1 for row in schedule))
             self.assertTrue(all(row["visible_cycle"] == row["commit_cycle"] + 1 for row in schedule))
+            self.assertTrue(
+                all(
+                    row["packet_sha256"]
+                    == oracle_by_id[row["oracle_pose_id"]]["packet_sha256"]
+                    for row in schedule
+                )
+            )
 
             ordered_payload = b"".join(
                 (record["payload_hex"] + "\n").encode("ascii") for record in events
@@ -443,6 +517,23 @@ class GeneratorTests(unittest.TestCase):
             ):
                 stream = binding[key]
                 self.assertEqual(stream["sha256"], sha256(first / stream["path"]))
+            ordered_oracle_packet_sha256 = canonical_sha256(
+                [packet["packet_sha256"] for packet in oracle]
+            )
+            self.assertEqual(
+                binding["oracle_pose_stream"]["packet_sha256_rule"],
+                "canonical_sha256_of_record_without_packet_sha256",
+            )
+            self.assertEqual(
+                binding["oracle_pose_stream"]["ordered_packet_sha256"],
+                ordered_oracle_packet_sha256,
+            )
+            self.assertEqual(
+                manifest["oracle_resampled_groundtruth_1khz"][
+                    "ordered_packet_sha256"
+                ],
+                ordered_oracle_packet_sha256,
+            )
             for relative, digest in binding["generator_code_sha256"].items():
                 if relative == "generator.py":
                     path = Path(generator_module.__file__)
