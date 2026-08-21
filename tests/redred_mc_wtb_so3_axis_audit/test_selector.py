@@ -134,7 +134,7 @@ class SyntheticSource:
 
     def select(self):
         with self.frozen_fixture_authority():
-            return select_full_source(
+            return selector_module._select_full_source_unlocked(
                 self.root, source_lock_path=self.source_lock,
                 exclusions_path=self.exclusions,
                 historical_pose_halo_path=self.halo,
@@ -142,7 +142,7 @@ class SyntheticSource:
 
     def verify(self, registry):
         with self.frozen_fixture_authority():
-            verify_registry(
+            selector_module._verify_registry_unlocked(
                 registry, dataset_directory=self.root,
                 source_lock_path=self.source_lock,
                 exclusions_path=self.exclusions,
@@ -201,7 +201,8 @@ class SelectorTests(unittest.TestCase):
                         candidates.append(selector_module._Candidate(
                             "fixture/%d" % serial, start, (0.1, 0.0, 0.0),
                             1.0, 0.1, axis, sign, motion_bin,
-                            support, support, "%064x" % rank_index,
+                            support, support, support, support,
+                            "%064x" % rank_index,
                         ))
                         serial += 1
         selected = selector_module._select_candidates(candidates)
@@ -252,6 +253,32 @@ class SelectorTests(unittest.TestCase):
         reseal(changed)
         with self.assertRaisesRegex(SelectorError, "pose support"):
             self.fixture.verify(changed)
+
+    def test_oracle_pose_support_mutation_fails(self):
+        changed = copy.deepcopy(self.fixture.select())
+        changed["windows"][0]["oracle_pose_support_indices"].pop()
+        reseal(changed)
+        with self.assertRaisesRegex(SelectorError, "pose support"):
+            self.fixture.verify(changed)
+
+    def test_oracle_support_adds_source_bracket_beyond_dataset_deadline(self):
+        timestamps = (0, 5, 10, 15, 20, 21, 29)
+        poses = []
+        for index, milliseconds in enumerate(timestamps):
+            quaternion = ((0.0, 0.0, 0.0, 1.0) if milliseconds <= 20 else
+                          quaternion_step(0, 1, 0.2))
+            sample = selector_module.PoseSample(
+                milliseconds * 1_000_000, quaternion)
+            poses.append(selector_module._Pose(index, sample))
+        candidate = selector_module._candidate(
+            20_000_000, tuple(poses),
+            tuple(row.sample.timestamp_ns for row in poses), 1.0, (),
+            frozenset(), ("a" * 64, "b" * 64, "c" * 64))
+        self.assertIsNotNone(candidate)
+        assert candidate is not None
+        self.assertIn(6, candidate.oracle_pose_support_indices)
+        self.assertNotIn(6, candidate.dataset_pose_support_indices)
+        self.assertIn(6, candidate.pose_support_indices)
 
     def test_empty_complete_halo_cannot_weaken_frozen_digest(self):
         halo = json.loads(self.fixture.halo.read_text())
@@ -322,6 +349,22 @@ class SelectorTests(unittest.TestCase):
         reseal(changed)
         with self.assertRaisesRegex(SelectorError, "ordered candidate IDs"):
             self.fixture.verify(changed)
+
+    def test_monkeypatched_self_audit_cannot_reauthorize_registry(self):
+        changed = copy.deepcopy(self.fixture.select())
+        fake_selector_sha = "0" * 64
+        changed["bindings"]["selector_py_sha256"] = fake_selector_sha
+        reseal(changed)
+        with self.fixture.frozen_fixture_authority(), mock.patch.object(
+                selector_module, "_audit_self", return_value=fake_selector_sha):
+            with self.assertRaisesRegex(SelectorError,
+                                        "production selector authority"):
+                verify_registry(
+                    changed, dataset_directory=self.fixture.root,
+                    source_lock_path=self.fixture.source_lock,
+                    exclusions_path=self.fixture.exclusions,
+                    historical_pose_halo_path=self.fixture.halo,
+                )
 
     def test_committed_historical_locks_are_exact(self):
         exclusions = json.loads(DEFAULT_EXCLUSIONS.read_text())

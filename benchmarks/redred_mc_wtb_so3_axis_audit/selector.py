@@ -49,6 +49,7 @@ _PACKAGE = Path(__file__).resolve().parent
 DEFAULT_SOURCE_LOCK = _PACKAGE / "source_lock.json"
 DEFAULT_EXCLUSIONS = _PACKAGE / "historical_exclusions.json"
 DEFAULT_HISTORICAL_POSE_HALO = _PACKAGE / "historical_pose_halo.json"
+DEFAULT_REGISTRY_LOCK = _PACKAGE / "registry_lock.json"
 _SHA_RE = re.compile(r"[0-9a-f]{64}\Z")
 _TIME_RE = re.compile(rb"(0|[1-9][0-9]*)\.([0-9]{9})\Z")
 _INT_RE = re.compile(rb"0|[1-9][0-9]*\Z")
@@ -82,6 +83,8 @@ class _Candidate:
     sign: str
     motion_bin: str
     axis_pose_support_indices: Tuple[int, ...]
+    oracle_pose_support_indices: Tuple[int, ...]
+    dataset_pose_support_indices: Tuple[int, ...]
     pose_support_indices: Tuple[int, ...]
     rank_sha256: str
 
@@ -370,6 +373,24 @@ def _overlaps(start: int, end: int, intervals: Sequence[Tuple[int, int]]) -> boo
     return any(max(start, left) < min(end, right) for left, right in intervals)
 
 
+def _oracle_pose_support(times: Sequence[int], query_start: int) -> Optional[Tuple[int, ...]]:
+    warmup_start = query_start - WARMUP_NS
+    query_end = query_start + QUERY_NS
+    first_tick = (warmup_start // 1_000_000) * 1_000_000 - 1_000_000
+    last_tick = (query_end // 1_000_000) * 1_000_000
+    if first_tick < 0:
+        return None
+    support = set()
+    for tick in range(first_tick, last_tick + 1, 1_000_000):
+        after = bisect.bisect_right(times, tick)
+        before_or_equal = after - 1
+        if before_or_equal < 0 or after >= len(times):
+            return None
+        support.add(before_or_equal)
+        support.add(after)
+    return tuple(sorted(support))
+
+
 def _candidate(query_start: int, poses: Sequence[_Pose], times: Sequence[int], focal: float,
                forbidden_intervals: Sequence[Tuple[int, int]], forbidden_support: frozenset[int],
                source_sha256s: Sequence[str]) -> Optional[_Candidate]:
@@ -382,7 +403,11 @@ def _candidate(query_start: int, poses: Sequence[_Pose], times: Sequence[int], f
     if history_end < 3:
         return None
     support_end = bisect.bisect_right(times, query_start + QUERY_NS + DELAYED_DEADLINE_NS)
-    support = tuple(row.index for row in poses[history_end - 3:support_end])
+    dataset_support = tuple(row.index for row in poses[history_end - 3:support_end])
+    oracle_support = _oracle_pose_support(times, query_start)
+    if oracle_support is None:
+        return None
+    support = tuple(sorted(set(dataset_support) | set(oracle_support)))
     if set(support) & forbidden_support:
         return None
     vector = relative_rotation_vector(before, after, frame=RotationFrame.BODY)
@@ -402,7 +427,8 @@ def _candidate(query_start: int, poses: Sequence[_Pose], times: Sequence[int], f
     rank_material = "\n".join((RANK_SEED, *source_sha256s, candidate_id)) + "\n"
     rank = _sha_bytes(rank_material.encode("ascii"))
     return _Candidate(candidate_id, query_start, vector, purity, proxy, axis, sign,
-                      motion_bin, axis_support, support, rank)
+                      motion_bin, axis_support, oracle_support, dataset_support,
+                      support, rank)
 
 
 def _geometric_candidates(poses: Sequence[_Pose], focal: float,
@@ -518,10 +544,11 @@ def _contract_mapping() -> Mapping[str, object]:
         "rank_material": "seed+LF+events_sha256+LF+poses_sha256+LF+calibration_sha256+LF+candidate_id+LF",
         "selection_schedule": "six_rounds_each_LOW_then_MID_then_HIGH_each_X-,X+,Y-,Y+,Z-,Z+_first_conflict_free_cell_rank",
         "minimum_start_separation_ns": MINIMUM_START_SEPARATION_NS,
+        "pose_support": "union(dataset_history3_through_query_end_plus_6ms,oracle_1kHz_source_brackets_from_floor(warmup_start)-1ms_through_floor(query_end)_origin_zero)",
     }
 
 
-def select_full_source(
+def _select_full_source_unlocked(
     dataset_directory: Path,
     *,
     source_lock_path: Path = DEFAULT_SOURCE_LOCK,
@@ -570,6 +597,8 @@ def select_full_source(
             "purity": row.purity,
             "motion_proxy": row.motion_proxy,
             "axis_pose_support_indices": list(row.axis_pose_support_indices),
+            "oracle_pose_support_indices": list(row.oracle_pose_support_indices),
+            "dataset_pose_support_indices": list(row.dataset_pose_support_indices),
             "pose_support_indices": list(row.pose_support_indices),
             "warmup_event_ids": warmup_ids,
             "query_event_ids": query_ids,
@@ -593,15 +622,17 @@ def select_full_source(
         "windows": windows,
     }
     registry["registry_sha256"] = _sha_bytes(_canonical(registry))
-    verify_registry(registry, exclusions_path=Path(exclusions_path),
-                    historical_pose_halo_path=Path(historical_pose_halo_path),
-                    source_lock_path=Path(source_lock_path), dataset_directory=root)
+    _verify_registry_unlocked(
+        registry, exclusions_path=Path(exclusions_path),
+        historical_pose_halo_path=Path(historical_pose_halo_path),
+        source_lock_path=Path(source_lock_path), dataset_directory=root,
+    )
     return registry
 
 
-def verify_registry(registry: Mapping[str, object], *, exclusions_path: Path,
-                    historical_pose_halo_path: Path, source_lock_path: Path,
-                    dataset_directory: Path) -> None:
+def _verify_registry_unlocked(registry: Mapping[str, object], *, exclusions_path: Path,
+                              historical_pose_halo_path: Path, source_lock_path: Path,
+                              dataset_directory: Path) -> None:
     """Fail closed on registry hashes, quotas, overlap, or shared identities."""
 
     _reject_score_like(registry, "registry")
@@ -669,7 +700,8 @@ def verify_registry(registry: Mapping[str, object], *, exclusions_path: Path,
         _exact(row, {"candidate_id", "query_start_ns", "warmup_start_ns",
                      "query_end_ns_exclusive", "axis", "sign", "motion_bin",
                      "rotation_vector_rad", "purity", "motion_proxy",
-                     "axis_pose_support_indices", "pose_support_indices",
+                     "axis_pose_support_indices", "oracle_pose_support_indices",
+                     "dataset_pose_support_indices", "pose_support_indices",
                      "warmup_event_ids", "query_event_ids",
                      "warmup_event_ids_sha256", "query_event_ids_sha256",
                      "selected_raw_event_lines_sha256", "rank_sha256"}, "window")
@@ -691,6 +723,8 @@ def verify_registry(registry: Mapping[str, object], *, exclusions_path: Path,
                 or row.get("purity") != expected.purity
                 or row.get("motion_proxy") != expected.motion_proxy
                 or row.get("axis_pose_support_indices") != list(expected.axis_pose_support_indices)
+                or row.get("oracle_pose_support_indices") != list(expected.oracle_pose_support_indices)
+                or row.get("dataset_pose_support_indices") != list(expected.dataset_pose_support_indices)
                 or row.get("pose_support_indices") != list(expected.pose_support_indices)):
             raise SelectorError("registry motion or pose support differs from source")
         rank_material = "\n".join((RANK_SEED, *source_sha256s, candidate_id)) + "\n"
@@ -727,6 +761,67 @@ def verify_registry(registry: Mapping[str, object], *, exclusions_path: Path,
     ordered = sorted(starts)
     if len(ordered) != len(set(ordered)) or any(right - left < MINIMUM_START_SEPARATION_NS for left, right in zip(ordered, ordered[1:])):
         raise SelectorError("registry windows overlap or violate start separation")
+
+
+def _verify_production_authority(registry: Mapping[str, object]) -> None:
+    lock, _ = _load_json(DEFAULT_REGISTRY_LOCK)
+    _exact(lock, {"schema", "source_lock_sha256", "selector_py_sha256",
+                  "historical_exclusions_sha256", "historical_pose_halo_sha256",
+                  "historical_pose_support_indices_sha256", "historical_ledger_sha256",
+                  "production_registry_sha256", "window_count"}, "registry lock")
+    if lock["schema"] != "redred.mc_wtb_so3_axis_audit.registry_lock/v1":
+        raise SelectorError("production registry lock schema differs")
+    actual_selector_sha = _sha_file(Path(__file__))
+    audited_selector_sha = _audit_self()
+    bindings = registry.get("bindings")
+    if (actual_selector_sha != lock["selector_py_sha256"]
+            or audited_selector_sha != actual_selector_sha
+            or not isinstance(bindings, Mapping)
+            or bindings.get("selector_py_sha256") != actual_selector_sha):
+        raise SelectorError("production selector authority differs from committed lock")
+    if (lock["source_lock_sha256"] != OFFICIAL_SOURCE_LOCK_SHA256
+            or lock["historical_exclusions_sha256"] != OFFICIAL_EXCLUSIONS_SHA256
+            or lock["historical_pose_halo_sha256"]
+            != _sha_file(DEFAULT_HISTORICAL_POSE_HALO)
+            or lock["historical_pose_support_indices_sha256"]
+            != EXPECTED_HISTORICAL_POSE_IDS_SHA256
+            or lock["historical_ledger_sha256"] != HISTORICAL_LEDGER_SHA256
+            or lock["window_count"] != EXPECTED_WINDOW_COUNT):
+        raise SelectorError("production input authority differs from committed lock")
+    if (registry.get("registry_sha256") != lock["production_registry_sha256"]
+            or registry.get("window_count") != lock["window_count"]):
+        raise SelectorError("production registry SHA/order differs from committed lock")
+
+
+def select_full_source(
+    dataset_directory: Path,
+    *,
+    source_lock_path: Path = DEFAULT_SOURCE_LOCK,
+    exclusions_path: Path = DEFAULT_EXCLUSIONS,
+    historical_pose_halo_path: Path = DEFAULT_HISTORICAL_POSE_HALO,
+) -> Mapping[str, object]:
+    """Select only the committed, production-authorized full-source cohort."""
+
+    registry = _select_full_source_unlocked(
+        dataset_directory, source_lock_path=source_lock_path,
+        exclusions_path=exclusions_path,
+        historical_pose_halo_path=historical_pose_halo_path,
+    )
+    _verify_production_authority(registry)
+    return registry
+
+
+def verify_registry(registry: Mapping[str, object], *, exclusions_path: Path,
+                    historical_pose_halo_path: Path, source_lock_path: Path,
+                    dataset_directory: Path) -> None:
+    """Verify structure and the committed production selector/registry authority."""
+
+    _verify_registry_unlocked(
+        registry, exclusions_path=exclusions_path,
+        historical_pose_halo_path=historical_pose_halo_path,
+        source_lock_path=source_lock_path, dataset_directory=dataset_directory,
+    )
+    _verify_production_authority(registry)
 
 
 __all__ = ["SelectorError", "audit_score_free_imports", "select_full_source", "verify_registry"]
