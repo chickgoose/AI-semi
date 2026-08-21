@@ -125,6 +125,74 @@ def pressure_fixture():
     return sealed, diagnostic, inputs
 
 
+def no_pressure_fixture():
+    window_id = "synthetic-sealing-no-pressure"
+    events = (
+        Event(0, timestamp_for_cycle(2), causal_pose_index=0),
+        Event(1, timestamp_for_cycle(3), causal_pose_index=0),
+    )
+    poses = (
+        PosePacket.dataset(0, 0, 0, HASH_A),
+        PosePacket.dataset(1, timestamp_for_cycle(10), 0, HASH_B),
+    )
+    bounded = run_cycle_model(
+        window_id=window_id,
+        window_start_ns=0,
+        arm=Arm.DELAYED_EXACT,
+        events=events,
+        poses=poses,
+        synthetic_test_mode=False,
+    )
+    inputs = adapter.WindowCycleInputs(
+        window_id,
+        0,
+        0,
+        timestamp_for_cycle(11),
+        tuple({"is_query": True} for _ in events),
+        events,
+        tuple((0.0, 0.0, 1.0) for _ in events),
+        poses,
+        (),
+        {},
+        {},
+    )
+    converted = tuple(adapter._convert_record(record) for record in bounded.records)
+    accounting, accounting_evidence = adapter._derive_accounting(
+        inputs, bounded, converted, None
+    )
+    full_cycle = adapter._full_cycle_evidence(bounded)
+    receipt_mapping = {
+        "decision_records_sha256": canonical_sha256(
+            [record.to_mapping() for record in converted]
+        ),
+        "expected_events": len(converted),
+        "retired_records": len(converted),
+    }
+    manifest_mapping = {
+        "assay_authoritative_input_manifest_sha256": ASSAY_SHA,
+        "full_cycle_result_sha256": canonical_sha256(full_cycle),
+        "cycle_receipts_sha256": canonical_sha256(
+            [receipt.to_mapping() for receipt in bounded.cycle_receipts]
+        ),
+        "query_projection_sha256": canonical_sha256(
+            [record.to_mapping() for record in converted]
+        ),
+        "decision_receipt_sha256": canonical_sha256(receipt_mapping),
+        "score_free_accounting_sha256": canonical_sha256(accounting.to_mapping()),
+        "ray_events_sha256": RAY_SHA,
+    }
+    return SimpleNamespace(
+        arm=Arm.DELAYED_EXACT,
+        simulation=bounded,
+        query_records=converted,
+        receipt=MappingValue(receipt_mapping),
+        accounting=MappingValue(accounting.to_mapping()),
+        accounting_evidence=accounting_evidence,
+        manifest=MappingValue(manifest_mapping),
+        delayed_unbounded_diagnostic=None,
+    ), inputs
+
+
 class SealingTests(unittest.TestCase):
     def test_delayed_diagnostic_is_a_separate_observed_leaf(self):
         sealed, _diagnostic, inputs = pressure_fixture()
@@ -627,6 +695,103 @@ class SealingTests(unittest.TestCase):
                 sealing._verify_reopened_leaf(
                     root, files, window, Arm.DELAYED_EXACT.value,
                     binding, authoritative, ASSAY_SHA,
+                )
+
+    def test_resealed_no_pressure_1025_entry_bounded_fifo_fails(self):
+        sealed, inputs = no_pressure_fixture()
+        authoritative = sealing._authoritative_window_inputs(inputs)
+        self.assertNotIn(
+            "fifo_full_forced_bypass",
+            [record.disposition_reason for record in sealed.query_records],
+        )
+        base_full = adapter._full_cycle_evidence(sealed.simulation)
+        base_receipts = [
+            receipt.to_mapping() for receipt in sealed.simulation.cycle_receipts
+        ]
+        for field in (
+            "fifo_occupancy_before_admission",
+            "fifo_occupancy_after_admission",
+            "fifo_occupancy_before_retire",
+            "fifo_occupancy_after_retire",
+        ):
+            with self.subTest(occupancy=field):
+                mutant_receipts = deepcopy(base_receipts)
+                mutant_receipts[0][field] = 1025
+                mutant_full = deepcopy(base_full)
+                mutant_full["cycle_receipts"] = mutant_receipts
+                mutant_full["cycle_receipts_sha256"] = canonical_sha256(
+                    mutant_receipts
+                )
+                with self.assertRaisesRegex(sealing.SealingError, "capacity"):
+                    sealing._derive_bounded_depth_evidence(
+                        mutant_full, mutant_receipts
+                    )
+        peak_mutant = deepcopy(base_full)
+        peak_mutant["peak_buffer_occupancy"] = 1025
+        with self.assertRaisesRegex(sealing.SealingError, "peak.*capacity"):
+            sealing._derive_bounded_depth_evidence(peak_mutant, base_receipts)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            leaf = "windows/%s/arms/delayed_exact" % inputs.window_id
+            sealing._write_leaf_inputs(root, leaf, sealed)
+            files = {}
+            binding = sealing._observe_leaf(
+                root,
+                leaf,
+                sealed,
+                ASSAY_SHA,
+                RAY_SHA,
+                len(sealed.query_records),
+                authoritative,
+                files,
+            )
+            window = {
+                "window_id": inputs.window_id,
+                "ray_events_sha256": RAY_SHA,
+                "query_event_count": len(sealed.query_records),
+            }
+
+            full_path = "%s/full-cycle-result.json" % leaf
+            full = sealing._read_json_at(root, full_path)[0]
+            full["buffer_entries"] = 1025
+            (root / full_path).write_bytes(canonical_json_bytes(full))
+            files[full_path] = sealing._observe_file(
+                root, full_path, kind="object", record_count=1
+            )
+
+            boundary_path = "%s/score-boundary-evidence.json" % leaf
+            boundary = sealing._read_json_at(root, boundary_path)[0]
+            boundary["full_cycle_result_sha256"] = files[full_path]["sha256"]
+            (root / boundary_path).write_bytes(canonical_json_bytes(boundary))
+            files[boundary_path] = sealing._observe_file(
+                root, boundary_path, kind="object", record_count=1
+            )
+
+            manifest_path = "%s/score-input-manifest.json" % leaf
+            manifest = sealing._read_json_at(root, manifest_path)[0]
+            manifest["full_cycle_result_sha256"] = files[full_path]["sha256"]
+            (root / manifest_path).write_bytes(canonical_json_bytes(manifest))
+            files[manifest_path] = sealing._observe_file(
+                root, manifest_path, kind="object", record_count=1
+            )
+
+            resealed_binding = deepcopy(binding)
+            resealed_binding["score_boundary_evidence_sha256"] = files[
+                boundary_path
+            ]["sha256"]
+            resealed_binding["score_input_manifest_sha256"] = files[manifest_path][
+                "sha256"
+            ]
+            with self.assertRaisesRegex(sealing.SealingError, "buffer_entries"):
+                sealing._verify_reopened_leaf(
+                    root,
+                    files,
+                    window,
+                    Arm.DELAYED_EXACT.value,
+                    resealed_binding,
+                    authoritative,
+                    ASSAY_SHA,
                 )
 
     def test_runner_adds_diagnostic_only_after_explicit_pressure_signal(self):

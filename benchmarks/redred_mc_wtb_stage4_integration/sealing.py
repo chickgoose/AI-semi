@@ -1006,6 +1006,24 @@ def _validate_authoritative_window_inputs(
 def _derive_bounded_depth_evidence(
     full_cycle: Mapping[str, Any], receipts: Sequence[Mapping[str, Any]]
 ) -> Mapping[str, Any]:
+    contract_document = load_comparison_contract().as_dict()
+    score_free_accounting = _require_mapping(
+        contract_document.get("score_free_accounting"),
+        "comparison contract score-free accounting",
+    )
+    delayed_fifo = _require_mapping(
+        score_free_accounting.get("delayed_fifo"),
+        "comparison contract delayed FIFO",
+    )
+    bounded_entries = _require_int(
+        delayed_fifo.get("bounded_entries"),
+        "comparison contract delayed FIFO bounded_entries",
+    )
+    if (
+        _require_int(full_cycle.get("buffer_entries"), "bounded buffer_entries")
+        != bounded_entries
+    ):
+        raise SealingError("bounded buffer_entries differs from frozen contract")
     records = _require_array(
         full_cycle.get("decision_records"), "bounded full-cycle decision records"
     )
@@ -1051,12 +1069,16 @@ def _derive_bounded_depth_evidence(
                 "fifo_occupancy_after_retire",
             )
         )
-        peak = max(peak, occupancies[1], occupancies[2])
+        if any(occupancy > bounded_entries for occupancy in occupancies):
+            raise SealingError("bounded receipt occupancy exceeds FIFO capacity")
+        peak = max((peak,) + occupancies)
         if receipt.get("disposition_reason") == "fifo_full_forced_bypass":
             pressure_ids.append(event_id)
     bounded_peak = _require_int(
         full_cycle.get("peak_buffer_occupancy"), "bounded peak buffer occupancy"
     )
+    if bounded_peak > bounded_entries:
+        raise SealingError("bounded receipt-derived peak exceeds FIFO capacity")
     if peak != bounded_peak:
         raise SealingError("bounded receipt-derived peak differs")
     return {
