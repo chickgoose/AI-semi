@@ -18,6 +18,15 @@ qualifier. It first determines whether a usable occurrence-time orientation
 can be produced. A later integration must place this result before the
 qualifier and preserve its exact-once epoch drain/commit behavior.
 
+The comparison arms are event-level pose-delivery models, not permission to
+change the committed representation route per event. In the hardware wrapper,
+an epoch-start freshness decision conservatively covers the full epoch and is
+combined with the motion qualifier before the route request is committed.
+Per-event pose snapshots may update corrected coordinates within that frozen
+route. Any per-event recovery failure takes the existing explicit raw-escape
+disposition in order; it does not silently change the epoch route or discard
+the event.
+
 ## Frozen source and timing
 
 - Source: hash-pinned UZH `shapes_rotation` events, ground truth, and camera
@@ -29,9 +38,17 @@ qualifier and preserve its exact-once epoch drain/commit behavior.
 - Forbidden interval: `[43_320_750_000, 43_322_000_000)` ns. It may be read
   only as part of whole-file hashing/parsing; it may not enter selection,
   decisions, an arm, or scoring.
-- Clock period: 6.5 ns. `cycle(t) = ceil((t-window_start)/6.5 ns)`.
+- Clock period: 6.5 ns. With integer-nanosecond source timestamps,
+  `cycle(t) = ceil((t-window_start)*1000/6500)` using integer arithmetic.
 - Same-edge ordering: an event reads pre-edge pose state; a pose committed on
   that edge becomes usable on the next cycle.
+- Causal-pose snapshot: at each event occurrence edge, copy the IDs,
+  timestamps, commit cycles, values, and hashes of the eligible pre-edge pose
+  state into that event's score-free decision record. `zoh_freshness`,
+  `causal_cav`, and `supplied_pose_1khz` must transform from this snapshot even
+  when queueing delays execution. Re-reading a newer pose at dequeue/transform
+  time is a causality violation. Only `delayed_exact` may bind a later right
+  bracket, and its receipt must label that use noncausal-at-occurrence.
 - Accounting boundary: two event lanes, one-cycle transform pipeline, 102-bit
   event records, 192-bit pose packets, and at most 1,024 buffered events.
   These are cycle/state accounting constants, not measured physical results.

@@ -11,7 +11,10 @@
   },
   "timing": {
     "clock_period_ps": 6500,
+    "timestamp_to_cycle_rule": "ceil_integer((timestamp_ns-window_start_ns)*1000/6500)",
     "same_edge_pose_visible_to_event": false,
+    "causal_pose_snapshot_at_event_occurrence_required": true,
+    "pose_reread_at_dequeue_forbidden": true,
     "event_lanes": 2,
     "transform_pipeline_cycles": 1,
     "event_record_bits": 102,
@@ -21,7 +24,12 @@
   },
   "arms": {
     "zoh_freshness": {"max_pose_age_ns": 1000000},
-    "delayed_exact": {"deadline_ns": 6000000, "ordered": true},
+    "delayed_exact": {
+      "deadline_ns": 6000000,
+      "ordered": true,
+      "later_right_bracket_allowed": true,
+      "label": "noncausal_at_occurrence"
+    },
     "causal_cav": {
       "max_horizon_ns": 5000000,
       "max_horizon_pose_intervals": 1,
