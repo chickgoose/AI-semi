@@ -24,6 +24,21 @@ from benchmarks.redred_mc_wtb_stage4_contract.receipt import DECISION_ARMS
 Ray = Tuple[float, float, float]
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _NUMERIC_DISPOSITIONS = frozenset(("GO_NUMERIC", "HOLD", "STOP"))
+_SHADOW_TRANSFORMS = frozenset(
+    ("occurrence_zoh", "occurrence_cav", "delayed_slerp", "oracle_prefix")
+)
+_MANIFEST_ARTIFACTS = frozenset(
+    (
+        "protocol",
+        "registry",
+        "arm_parameters",
+        "generator",
+        "cycle_model",
+        "scorer",
+        "sources",
+        "runtime",
+    )
+)
 
 
 class ScoringError(ValueError):
@@ -76,6 +91,82 @@ def _checked_id_tuple(value: object, name: str) -> Tuple[int, ...]:
 
 
 @dataclass(frozen=True)
+class ShadowRay:
+    """A deterministic arm shadow and its score-free pose provenance."""
+
+    arm: str
+    ray: Ray
+    transform: str
+    pose_ids: Tuple[int, ...]
+    pose_timestamps_ns: Tuple[int, ...]
+    pose_commit_cycles: Tuple[int, ...]
+    pose_sha256: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.arm) is not str or self.arm not in DECISION_ARMS:
+            raise ScoringError("shadow arm is not frozen")
+        object.__setattr__(self, "ray", _checked_ray(self.ray, "shadow ray"))
+        if type(self.transform) is not str or self.transform not in _SHADOW_TRANSFORMS:
+            raise ScoringError("shadow transform is not frozen")
+        groups = (
+            self.pose_ids,
+            self.pose_timestamps_ns,
+            self.pose_commit_cycles,
+            self.pose_sha256,
+        )
+        if not all(type(group) is tuple for group in groups):
+            raise ScoringError("shadow pose provenance must use immutable tuples")
+        if len(set(len(group) for group in groups)) != 1 or not self.pose_ids:
+            raise ScoringError("shadow pose provenance is missing or misaligned")
+        if len(self.pose_ids) > 2:
+            raise ScoringError("shadow pose provenance exceeds two poses")
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for group in groups[:3]
+            for value in group
+        ):
+            raise ScoringError("shadow pose provenance contains an invalid integer")
+        if any(
+            type(value) is not str or _SHA256.fullmatch(value) is None
+            for value in self.pose_sha256
+        ):
+            raise ScoringError("shadow pose provenance contains an invalid digest")
+        if any(right <= left for left, right in zip(self.pose_ids, self.pose_ids[1:])):
+            raise ScoringError("shadow pose IDs must be strictly increasing")
+        if any(
+            right <= left
+            for left, right in zip(
+                self.pose_timestamps_ns, self.pose_timestamps_ns[1:]
+            )
+        ):
+            raise ScoringError("shadow pose timestamps must be strictly increasing")
+        required_poses = (
+            2 if self.transform in ("occurrence_cav", "delayed_slerp") else 1
+        )
+        if len(self.pose_ids) != required_poses:
+            raise ScoringError("shadow transform has the wrong pose arity")
+
+    def provenance_rows(self) -> Tuple[Tuple[int, int, int, str], ...]:
+        return tuple(zip(
+            self.pose_ids,
+            self.pose_timestamps_ns,
+            self.pose_commit_cycles,
+            self.pose_sha256,
+        ))
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return {
+            "arm": self.arm,
+            "ray": list(self.ray),
+            "transform": self.transform,
+            "pose_ids": list(self.pose_ids),
+            "pose_timestamps_ns": list(self.pose_timestamps_ns),
+            "pose_commit_cycles": list(self.pose_commit_cycles),
+            "pose_sha256": list(self.pose_sha256),
+        }
+
+
+@dataclass(frozen=True)
 class RayEvent:
     """One sensor-frame ray plus a deterministic world shadow for every arm."""
 
@@ -85,7 +176,7 @@ class RayEvent:
     polarity: int
     is_query: bool
     sensor_ray: Ray
-    world_shadow_rays: Tuple[Tuple[str, Ray], ...]
+    world_shadow_rays: Tuple[ShadowRay, ...]
 
     def __post_init__(self) -> None:
         if type(self.window_id) is not str or not self.window_id:
@@ -104,19 +195,98 @@ class RayEvent:
         checked = []
         names = []
         for index, row in enumerate(self.world_shadow_rays):
-            if type(row) is not tuple or len(row) != 2 or type(row[0]) is not str:
-                raise ScoringError("world shadow row %d is invalid" % index)
-            names.append(row[0])
-            checked.append((row[0], _checked_ray(row[1], "world_shadow_rays[%d]" % index)))
+            if not isinstance(row, ShadowRay):
+                raise ScoringError(
+                    "world shadow row %d is not immutable ShadowRay" % index
+                )
+            names.append(row.arm)
+            checked.append(row)
         if len(set(names)) != len(names) or set(names) != set(DECISION_ARMS):
             raise ScoringError("every event requires exactly one shadow ray for every arm")
-        object.__setattr__(self, "world_shadow_rays", tuple(sorted(checked)))
+        object.__setattr__(
+            self,
+            "world_shadow_rays",
+            tuple(sorted(checked, key=lambda row: row.arm)),
+        )
+
+    def world_shadow(self, arm: str) -> ShadowRay:
+        for shadow in self.world_shadow_rays:
+            if shadow.arm == arm:
+                return shadow
+        raise ScoringError("arm world shadow is missing")
 
     def world_ray(self, arm: str) -> Ray:
-        for name, ray in self.world_shadow_rays:
-            if name == arm:
-                return ray
-        raise ScoringError("arm world shadow is missing")
+        return self.world_shadow(arm).ray
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return {
+            "window_id": self.window_id,
+            "event_id": self.event_id,
+            "timestamp_ns": self.timestamp_ns,
+            "polarity": self.polarity,
+            "is_query": self.is_query,
+            "sensor_ray": list(self.sensor_ray),
+            "world_shadow_rays": [
+                shadow.to_mapping() for shadow in self.world_shadow_rays
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class ScoreInputManifest:
+    """Pre-frozen binding of score-free inputs and execution artifacts."""
+
+    window_id: str
+    arm: str
+    decision_receipt_sha256: str
+    score_free_accounting_sha256: str
+    ray_events_sha256: str
+    artifact_sha256: Tuple[Tuple[str, str], ...]
+
+    def __post_init__(self) -> None:
+        if type(self.window_id) is not str or not self.window_id:
+            raise ScoringError("manifest window_id must be a non-empty string")
+        if type(self.arm) is not str or self.arm not in DECISION_ARMS:
+            raise ScoringError("manifest arm is not frozen")
+        for value in (
+            self.decision_receipt_sha256,
+            self.score_free_accounting_sha256,
+            self.ray_events_sha256,
+        ):
+            if type(value) is not str or _SHA256.fullmatch(value) is None:
+                raise ScoringError("manifest input digest is invalid")
+        if type(self.artifact_sha256) is not tuple:
+            raise ScoringError("manifest artifacts must be an immutable tuple")
+        checked = []
+        names = []
+        for index, row in enumerate(self.artifact_sha256):
+            if (
+                type(row) is not tuple
+                or len(row) != 2
+                or type(row[0]) is not str
+                or type(row[1]) is not str
+                or _SHA256.fullmatch(row[1]) is None
+            ):
+                raise ScoringError("manifest artifact row %d is invalid" % index)
+            names.append(row[0])
+            checked.append(row)
+        if len(set(names)) != len(names) or set(names) != set(_MANIFEST_ARTIFACTS):
+            raise ScoringError("manifest does not bind every frozen artifact class")
+        object.__setattr__(self, "artifact_sha256", tuple(sorted(checked)))
+
+    def to_mapping(self) -> Mapping[str, object]:
+        return {
+            "schema": "redred.mc_wtb.stage4_score_input_manifest/v1",
+            "window_id": self.window_id,
+            "arm": self.arm,
+            "decision_receipt_sha256": self.decision_receipt_sha256,
+            "score_free_accounting_sha256": self.score_free_accounting_sha256,
+            "ray_events_sha256": self.ray_events_sha256,
+            "artifact_sha256": dict(self.artifact_sha256),
+        }
+
+    def canonical_sha256(self) -> str:
+        return canonical_sha256(self.to_mapping())
 
 
 @dataclass(frozen=True)
@@ -300,6 +470,7 @@ def is_positive_window(effect: float) -> bool:
 class WindowMetrics:
     window_id: str
     arm: str
+    manifest_sha256: str
     receipt_sha256: str
     accounting_sha256: str
     event_losses: Tuple[EventLoss, ...]
@@ -323,9 +494,14 @@ class WindowMetrics:
             raise ScoringError("metrics window_id is invalid")
         if self.arm not in DECISION_ARMS:
             raise ScoringError("metrics arm is invalid")
-        if _SHA256.fullmatch(self.receipt_sha256) is None or _SHA256.fullmatch(
-            self.accounting_sha256
-        ) is None:
+        if any(
+            _SHA256.fullmatch(value) is None
+            for value in (
+                self.manifest_sha256,
+                self.receipt_sha256,
+                self.accounting_sha256,
+            )
+        ):
             raise ScoringError("metrics digest is invalid")
         if type(self.event_losses) is not tuple or not self.event_losses:
             raise ScoringError("window must contain immutable event losses")
@@ -438,6 +614,8 @@ def _verify_prescore_binding(
     receipt: DecisionReceipt,
     records: Tuple[DecisionRecord, ...],
     accounting: ScoreFreeAccounting,
+    manifest: ScoreInputManifest,
+    expected_manifest_sha256: str,
     expected_receipt_sha256: str,
     expected_accounting_sha256: str,
 ) -> None:
@@ -447,6 +625,12 @@ def _verify_prescore_binding(
         raise ScoringError("contract must be a validated ComparisonContract")
     if not isinstance(receipt, DecisionReceipt):
         raise ScoringError("receipt must be a DecisionReceipt")
+    if not isinstance(manifest, ScoreInputManifest):
+        raise ScoringError("manifest must be immutable ScoreInputManifest")
+    if _SHA256.fullmatch(expected_manifest_sha256 or "") is None or (
+        manifest.canonical_sha256() != expected_manifest_sha256
+    ):
+        raise ScoringError("score input manifest digest differs before scoring")
     if _SHA256.fullmatch(expected_receipt_sha256 or "") is None or (
         receipt.canonical_sha256() != expected_receipt_sha256
     ):
@@ -461,6 +645,18 @@ def _verify_prescore_binding(
         raise ScoringError("receipt contract digest differs")
     if receipt.registry_sha256 != contract.registry["sha256"]:
         raise ScoringError("receipt registry digest differs")
+    artifacts = dict(manifest.artifact_sha256)
+    if artifacts["protocol"] != contract.canonical_sha256:
+        raise ScoringError("manifest protocol digest differs")
+    if artifacts["registry"] != contract.registry["sha256"]:
+        raise ScoringError("manifest registry digest differs")
+    if (
+        manifest.window_id != receipt.window_id
+        or manifest.arm != receipt.arm
+        or manifest.decision_receipt_sha256 != expected_receipt_sha256
+        or manifest.score_free_accounting_sha256 != expected_accounting_sha256
+    ):
+        raise ScoringError("manifest identity/input binding differs")
     if any(not isinstance(record, DecisionRecord) for record in records):
         raise ScoringError("scoring accepts immutable DecisionRecord values only")
     record_digest = canonical_sha256([record.to_mapping() for record in records])
@@ -491,6 +687,118 @@ def _validate_rays(
     if len(set(ids)) != len(ids):
         raise ScoringError("ray event IDs are duplicated")
     return tuple(events)
+
+
+def _pose_rows(
+    ids: Tuple[int, ...],
+    timestamps: Tuple[int, ...],
+    commits: Tuple[int, ...],
+    hashes: Tuple[str, ...],
+) -> Tuple[Tuple[int, int, int, str], ...]:
+    return tuple(zip(ids, timestamps, commits, hashes))
+
+
+def _latest_occurrence_zoh(
+    event: RayEvent, record: DecisionRecord, shadow: ShadowRay
+) -> None:
+    occurrence = _pose_rows(
+        record.occurrence_pose_ids,
+        record.occurrence_pose_timestamps_ns,
+        record.occurrence_pose_commit_cycles,
+        record.occurrence_pose_sha256,
+    )
+    if not occurrence:
+        raise ScoringError("causal shadow lacks an occurrence-snapshot pose")
+    if (
+        shadow.transform != "occurrence_zoh"
+        or shadow.provenance_rows() != occurrence[-1:]
+    ):
+        raise ScoringError(
+            "causal bypass shadow must use latest occurrence-snapshot ZOH"
+        )
+    if shadow.pose_timestamps_ns[-1] > event.timestamp_ns:
+        raise ScoringError("causal shadow pose is future at occurrence")
+
+
+def _validate_shadow_provenance(
+    event: RayEvent, record: DecisionRecord
+) -> None:
+    shadow = event.world_shadow(record.arm)
+    occurrence = _pose_rows(
+        record.occurrence_pose_ids,
+        record.occurrence_pose_timestamps_ns,
+        record.occurrence_pose_commit_cycles,
+        record.occurrence_pose_sha256,
+    )
+    used = _pose_rows(
+        record.used_pose_ids,
+        record.used_pose_timestamps_ns,
+        record.used_pose_commit_cycles,
+        record.used_pose_sha256,
+    )
+
+    if record.arm == "zoh_freshness":
+        _latest_occurrence_zoh(event, record, shadow)
+        if (
+            record.disposition == "corrected_world_ray"
+            and used != shadow.provenance_rows()
+        ):
+            raise ScoringError("enabled ZOH shadow differs from the used occurrence pose")
+        return
+    if record.arm == "causal_cav":
+        if record.disposition == "raw_bypass" or shadow.transform == "occurrence_zoh":
+            _latest_occurrence_zoh(event, record, shadow)
+            if (
+                record.disposition == "corrected_world_ray"
+                and used != shadow.provenance_rows()
+            ):
+                raise ScoringError("enabled ZOH fallback differs from its used pose")
+            return
+        if shadow.transform != "occurrence_cav" or len(occurrence) < 2:
+            raise ScoringError("causal CAV shadow lacks its occurrence-snapshot pair")
+        if shadow.provenance_rows() != occurrence[-2:]:
+            raise ScoringError("causal CAV shadow rereads pose state after occurrence")
+        if used != shadow.provenance_rows():
+            raise ScoringError("enabled CAV shadow differs from its used pose pair")
+        age_ns = event.timestamp_ns - shadow.pose_timestamps_ns[-1]
+        interval_ns = shadow.pose_timestamps_ns[-1] - shadow.pose_timestamps_ns[-2]
+        if age_ns < 0 or age_ns > min(5_000_000, interval_ns):
+            raise ScoringError("causal CAV shadow used CAV outside the frozen horizon")
+        return
+    if record.arm == "delayed_exact":
+        if shadow.transform != "delayed_slerp" or shadow.provenance_rows() != used:
+            raise ScoringError("delayed shadow differs from its declared right bracket")
+        return
+    if record.arm == "oracle_resampled_groundtruth_1khz":
+        if not occurrence:
+            raise ScoringError("oracle shadow lacks a serialized packet prefix")
+        if (
+            shadow.transform != "oracle_prefix"
+            or shadow.provenance_rows() != occurrence[-1:]
+        ):
+            raise ScoringError("oracle shadow differs from its serialized packet prefix")
+        if (
+            record.disposition == "corrected_world_ray"
+            and used != shadow.provenance_rows()
+        ):
+            raise ScoringError("enabled oracle shadow differs from its used packet")
+        return
+    raise ScoringError("shadow arm is not frozen")
+
+
+def _validate_warmup_shadow_shapes(events: Sequence[RayEvent]) -> None:
+    allowed = {
+        "zoh_freshness": frozenset(("occurrence_zoh",)),
+        "causal_cav": frozenset(("occurrence_zoh", "occurrence_cav")),
+        "delayed_exact": frozenset(("delayed_slerp",)),
+        "oracle_resampled_groundtruth_1khz": frozenset(("oracle_prefix",)),
+    }
+    for event in events:
+        if event.is_query:
+            continue
+        for shadow in event.world_shadow_rays:
+            if shadow.transform not in allowed[shadow.arm]:
+                raise ScoringError("warm-up shadow transform does not match its arm")
 
 
 def _validate_accounting_partition(
@@ -533,7 +841,9 @@ def score_window(
     decision_records: Sequence[DecisionRecord],
     ray_events: Sequence[RayEvent],
     accounting: ScoreFreeAccounting,
+    manifest: ScoreInputManifest,
     *,
+    expected_manifest_sha256: str,
     expected_receipt_sha256: str,
     expected_accounting_sha256: str,
     bank_capacity_per_polarity: int = 256,
@@ -547,10 +857,18 @@ def score_window(
         receipt,
         records,
         accounting,
+        manifest,
+        expected_manifest_sha256,
         expected_receipt_sha256,
         expected_accounting_sha256,
     )
     events = _validate_rays(ray_events, receipt.window_id)
+    if (
+        canonical_sha256([event.to_mapping() for event in events])
+        != manifest.ray_events_sha256
+    ):
+        raise ScoringError("ray/provenance inputs differ from pre-frozen manifest")
+    _validate_warmup_shadow_shapes(events)
     query = tuple(event for event in events if event.is_query)
     if not query:
         raise ScoringError("window contains no query events")
@@ -563,6 +881,7 @@ def score_window(
     for event in query:
         if decisions[event.event_id].event_timestamp_ns != event.timestamp_ns:
             raise ScoringError("decision and ray timestamps differ")
+        _validate_shadow_provenance(event, decisions[event.event_id])
     baseline = _validate_accounting_partition(accounting, query_ids, decisions)
 
     config = CausalReferenceConfig(bank_capacity_per_polarity, bank_max_age_ns)
@@ -585,6 +904,14 @@ def score_window(
     )
     sensor_by_id = dict((score.event_id, score) for score in sensor_scores)
     world_by_id = dict((score.event_id, score) for score in world_scores)
+    event_ids = tuple(event.event_id for event in events)
+    if (
+        len(sensor_scores) != len(events)
+        or len(world_scores) != len(events)
+        or set(sensor_by_id) != set(event_ids)
+        or set(world_by_id) != set(event_ids)
+    ):
+        raise ScoringError("missing event loss is a protocol failure")
 
     joined = []
     for event in query:
@@ -621,6 +948,7 @@ def score_window(
     return WindowMetrics(
         receipt.window_id,
         receipt.arm,
+        expected_manifest_sha256,
         expected_receipt_sha256,
         expected_accounting_sha256,
         tuple(joined),

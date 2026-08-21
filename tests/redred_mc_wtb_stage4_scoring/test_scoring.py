@@ -6,14 +6,17 @@ import unittest
 
 from benchmarks.redred_mc_wtb_stage4_contract import (
     DecisionRecord,
+    canonical_sha256,
     load_comparison_contract,
     validate_decision_records,
 )
 from benchmarks.redred_mc_wtb_stage4_scoring import (
     EventLoss,
     RayEvent,
+    ScoreInputManifest,
     ScoreFreeAccounting,
     ScoringError,
+    ShadowRay,
     WindowMetrics,
     aggregate_arm,
     finalize_disposition,
@@ -36,8 +39,36 @@ def ray(degrees):
     return (math.cos(angle), math.sin(angle), 0.0)
 
 
-def shadows(value):
-    return tuple((arm, value) for arm in sorted(DECISION_ARMS))
+def shadow(
+    arm,
+    value,
+    transform,
+    ids=(1,),
+    timestamps=(0,),
+    commits=(0,),
+    hashes=(HASH,),
+):
+    return ShadowRay(arm, value, transform, ids, timestamps, commits, hashes)
+
+
+def shadows(value, *, cav=None):
+    by_arm = {
+        "zoh_freshness": shadow("zoh_freshness", value, "occurrence_zoh"),
+        "causal_cav": cav or shadow("causal_cav", value, "occurrence_zoh"),
+        "delayed_exact": shadow(
+            "delayed_exact",
+            value,
+            "delayed_slerp",
+            (1, 2),
+            (0, 1),
+            (0, 1),
+            (HASH, "2" * 64),
+        ),
+        "oracle_resampled_groundtruth_1khz": shadow(
+            "oracle_resampled_groundtruth_1khz", value, "oracle_prefix"
+        ),
+    }
+    return tuple(by_arm[arm] for arm in sorted(DECISION_ARMS))
 
 
 def decision(event_id, timestamp, occurrence, retire, enabled, arm=ARM):
@@ -65,7 +96,9 @@ def decision(event_id, timestamp, occurrence, retire, enabled, arm=ARM):
     )
 
 
-def sealed_inputs(contract, records, *, freshness=(), invalid=(), operational=()):
+def sealed_inputs(
+    contract, records, events, *, freshness=(), invalid=(), operational=()
+):
     ids = tuple(record.event_id for record in records)
     receipt = validate_decision_records(
         contract,
@@ -93,7 +126,27 @@ def sealed_inputs(contract, records, *, freshness=(), invalid=(), operational=()
         102_000,
         1_024,
     )
-    return receipt, accounting
+    artifacts = dict((name, HASH) for name in (
+        "protocol",
+        "registry",
+        "arm_parameters",
+        "generator",
+        "cycle_model",
+        "scorer",
+        "sources",
+        "runtime",
+    ))
+    artifacts["protocol"] = contract.canonical_sha256
+    artifacts["registry"] = contract.registry["sha256"]
+    manifest = ScoreInputManifest(
+        WINDOW,
+        records[0].arm,
+        receipt.canonical_sha256(),
+        accounting.canonical_sha256(),
+        canonical_sha256([event.to_mapping() for event in events]),
+        tuple(artifacts.items()),
+    )
+    return receipt, accounting, manifest
 
 
 class FrameSafeWindowTests(unittest.TestCase):
@@ -101,20 +154,30 @@ class FrameSafeWindowTests(unittest.TestCase):
         self.contract = load_comparison_contract()
 
     def score(self, records, events, **categories):
-        receipt, accounting = sealed_inputs(self.contract, records, **categories)
+        receipt, accounting, manifest = sealed_inputs(
+            self.contract, records, events, **categories
+        )
         return score_window(
             self.contract,
             receipt,
             tuple(records),
             tuple(events),
             accounting,
+            manifest,
+            expected_manifest_sha256=manifest.canonical_sha256(),
             expected_receipt_sha256=receipt.canonical_sha256(),
             expected_accounting_sha256=accounting.canonical_sha256(),
         )
 
     def test_receipt_digest_is_checked_before_any_ray_validation(self):
         records = (decision(10, 100, 3, 4, True),)
-        receipt, accounting = sealed_inputs(self.contract, records)
+        valid_events = (
+            RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
+            RayEvent(WINDOW, 10, 100, 0, True, ray(1), shadows(ray(1))),
+        )
+        receipt, accounting, manifest = sealed_inputs(
+            self.contract, records, valid_events
+        )
         with self.assertRaisesRegex(ScoringError, "receipt digest"):
             score_window(
                 self.contract,
@@ -122,7 +185,47 @@ class FrameSafeWindowTests(unittest.TestCase):
                 records,
                 (object(),),
                 accounting,
+                manifest,
+                expected_manifest_sha256=manifest.canonical_sha256(),
                 expected_receipt_sha256="0" * 64,
+                expected_accounting_sha256=accounting.canonical_sha256(),
+            )
+
+    def test_manifest_digest_is_checked_before_any_ray_or_loss_join(self):
+        records = (decision(11, 100, 3, 4, True),)
+        events = (
+            RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
+            RayEvent(WINDOW, 11, 100, 0, True, ray(1), shadows(ray(1))),
+        )
+        receipt, accounting, manifest = sealed_inputs(
+            self.contract, records, events
+        )
+        with self.assertRaisesRegex(ScoringError, "manifest digest"):
+            score_window(
+                self.contract,
+                receipt,
+                records,
+                (object(),),
+                accounting,
+                manifest,
+                expected_manifest_sha256="0" * 64,
+                expected_receipt_sha256=receipt.canonical_sha256(),
+                expected_accounting_sha256=accounting.canonical_sha256(),
+            )
+        mutated_events = (
+            events[0],
+            RayEvent(WINDOW, 11, 100, 0, True, ray(2), shadows(ray(2))),
+        )
+        with self.assertRaisesRegex(ScoringError, "pre-frozen manifest"):
+            score_window(
+                self.contract,
+                receipt,
+                records,
+                mutated_events,
+                accounting,
+                manifest,
+                expected_manifest_sha256=manifest.canonical_sha256(),
+                expected_receipt_sha256=receipt.canonical_sha256(),
                 expected_accounting_sha256=accounting.canonical_sha256(),
             )
 
@@ -179,11 +282,67 @@ class FrameSafeWindowTests(unittest.TestCase):
 
     def test_missing_query_reference_and_incomplete_arm_shadow_fail(self):
         with self.assertRaisesRegex(ScoringError, "every arm"):
-            RayEvent(WINDOW, 1, 0, 0, False, ray(0), ((ARM, ray(0)),))
+            RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))[:-1])
         records = (decision(50, 100, 3, 4, True),)
         events = (RayEvent(WINDOW, 50, 100, 1, True, ray(0), shadows(ray(90))),)
         with self.assertRaisesRegex(ScoringError, "sensor reference"):
             self.score(records, events)
+
+    def test_cav_bypass_shadow_is_latest_occurrence_zoh_outside_horizon(self):
+        record = DecisionRecord(
+            WINDOW,
+            55,
+            1_000,
+            "causal_cav",
+            3,
+            4,
+            (1, 2),
+            (0, 100),
+            (0, 1),
+            (HASH, "2" * 64),
+            (2,),
+            (100,),
+            (1,),
+            ("2" * 64,),
+            False,
+            900,
+            "raw_bypass",
+            "freshness_veto",
+            1,
+        )
+        warmup = RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0)))
+        bad_cav = shadow(
+            "causal_cav",
+            ray(20),
+            "occurrence_cav",
+            (1, 2),
+            (0, 100),
+            (0, 1),
+            (HASH, "2" * 64),
+        )
+        bad = (
+            warmup,
+            RayEvent(WINDOW, 55, 1_000, 0, True, ray(10), shadows(ray(20), cav=bad_cav)),
+        )
+        with self.assertRaisesRegex(ScoringError, "latest occurrence-snapshot ZOH"):
+            self.score((record,), bad, freshness=(55,))
+
+        latest_zoh = shadow(
+            "causal_cav",
+            ray(20),
+            "occurrence_zoh",
+            (2,),
+            (100,),
+            (1,),
+            ("2" * 64,),
+        )
+        good = (
+            warmup,
+            RayEvent(WINDOW, 55, 1_000, 0, True, ray(10), shadows(ray(20), cav=latest_zoh)),
+        )
+        metrics = self.score((record,), good, freshness=(55,))
+        self.assertEqual(metrics.accepted_events, 1)
+        self.assertEqual(metrics.enabled_events, 0)
 
     def test_score_free_rate_partition_is_exhaustive(self):
         records = (
@@ -195,7 +354,7 @@ class FrameSafeWindowTests(unittest.TestCase):
             RayEvent(WINDOW, 60, 100, 0, True, ray(10), shadows(ray(5))),
             RayEvent(WINDOW, 61, 200, 0, True, ray(20), shadows(ray(10))),
         )
-        receipt, accounting = sealed_inputs(self.contract, records)
+        receipt, accounting, manifest = sealed_inputs(self.contract, records, events)
         with self.assertRaisesRegex(ScoringError, "not exhaustive"):
             score_window(
                 self.contract,
@@ -203,6 +362,8 @@ class FrameSafeWindowTests(unittest.TestCase):
                 records,
                 events,
                 accounting,
+                manifest,
+                expected_manifest_sha256=manifest.canonical_sha256(),
                 expected_receipt_sha256=receipt.canonical_sha256(),
                 expected_accounting_sha256=accounting.canonical_sha256(),
             )
@@ -222,7 +383,7 @@ class MetricRuleTests(unittest.TestCase):
         self.assertTrue(is_positive_window(math.nextafter(1.0e-6, math.inf)))
         base = EventLoss(1, 1.0, 0.5, 1.0, False, False, 0, 0, 1, 0)
         equal = WindowMetrics(
-            "w", ARM, HASH, HASH, (base,), 1, 0, 0, 0,
+            "w", ARM, HASH, HASH, HASH, (base,), 1, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         )
         self.assertFalse(equal.positive_window)
@@ -243,7 +404,7 @@ class MetricRuleTests(unittest.TestCase):
             EventLoss(2, epsilon, 0.0, epsilon, False, False, 0, 0, 1, 0),
         )
         metrics = WindowMetrics(
-            "w", ARM, HASH, HASH, rows, 3, 0, 0, 0,
+            "w", ARM, HASH, HASH, HASH, rows, 3, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         )
         self.assertEqual(metrics.sensor_loss_sum, math.fsum((1.0, epsilon, epsilon)))
@@ -283,6 +444,7 @@ class MetricRuleTests(unittest.TestCase):
             windows.append(WindowMetrics(
                 "w%02d" % index,
                 ARM,
+                HASH,
                 HASH,
                 HASH,
                 tuple(losses),

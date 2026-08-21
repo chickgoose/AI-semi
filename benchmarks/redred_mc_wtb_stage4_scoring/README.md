@@ -7,12 +7,21 @@ poses, read UZH data, score a holdout, or authorize RTL/PPA claims.
 ## Score-after-receipt boundary
 
 `score_window` accepts frozen `DecisionRecord` objects and a validated
-`DecisionReceipt`. Before inspecting a ray or computing a loss, it verifies:
+`DecisionReceipt`. It also requires an immutable `ScoreInputManifest` and the
+manifest digest frozen by the caller before scoring. Before inspecting a ray
+or computing a loss, it verifies:
 
+- the caller-supplied canonical score-input manifest SHA-256;
 - the caller-supplied canonical receipt SHA-256;
 - the receipt's contract and registry digests;
 - the canonical digest of the exact immutable decision records;
 - a canonical digest of `ScoreFreeAccounting`.
+
+The manifest binds the decision-receipt digest, accounting digest, exact
+ray/provenance stream, and the protocol, registry, arm-parameter, generator,
+cycle-model, scorer, source, and runtime artifact classes. A changed ray or
+shadow provenance after the manifest is frozen is rejected before either
+causal bank runs.
 
 The accounting object classifies attempted corrections, freshness vetoes,
 invalid-pose bypasses, operational waste, baseline retirement cycles, and
@@ -23,8 +32,10 @@ are visible.
 ## Frame and density safety
 
 Every `RayEvent` contains a sensor-frame ray and exactly one deterministic
-world-shadow ray for every frozen arm. One causal bank is built solely from all
-sensor rays and a separate bank solely from all selected-arm world shadows.
+`ShadowRay` for every frozen arm. Each shadow carries its transform kind and
+pose IDs, measurement timestamps, commit cycles, and hashes. One causal bank
+is built solely from all sensor rays and a separate bank solely from all
+selected-arm world shadows.
 Both banks:
 
 - are separated by polarity;
@@ -35,7 +46,16 @@ Both banks:
 A bypassed event takes its sensor loss, while an enabled event takes its world
 loss. The bypassed event's world shadow still enters the world bank, preventing
 the gate from changing later reference density. Missing query loss in either
-frame fails closed.
+frame fails closed; it never removes an event from the denominator.
+
+For `zoh_freshness` and any runtime-bypassed `causal_cav` event, the scorer
+requires the shadow provenance to be exactly the latest pose in the immutable
+occurrence snapshot and the transform to be `occurrence_zoh`, without applying
+the runtime age gate. An enabled CAV shadow is accepted only from the two
+latest occurrence-snapshot poses and only inside the frozen horizon. Delayed
+and oracle shadows are similarly bound to their declared bracket and
+serialized packet prefix. These score-only shadows cannot change the receipt
+decision and are inserted for every event regardless of its gate outcome.
 
 Loss totals use binary64 `math.fsum` in increasing event-ID order. Window
 positivity is strictly `R_window > 1e-6`. Enabled world-loss ties count as
