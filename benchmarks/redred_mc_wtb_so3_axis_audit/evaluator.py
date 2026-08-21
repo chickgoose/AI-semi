@@ -49,6 +49,25 @@ _REGISTRY_FIELDS = frozenset((
     "query_start_ns_inclusive",
     "query_end_ns_exclusive",
 ))
+_EVENT_FIELDS = frozenset((
+    "event_id",
+    "timestamp_ns",
+    "polarity",
+    "is_query",
+    "sensor_ray",
+    "causal_pose_source_index",
+    "event_content_sha256",
+    "transform_guard_valid",
+))
+_POSE_FIELDS = frozenset((
+    "pose_id",
+    "timestamp_ns",
+    "commit_cycle",
+    "quaternion_xyzw",
+    "pose_sha256",
+    "value_valid",
+    "arithmetic_valid",
+))
 _REFERENCE_CAPACITY_PER_POLARITY = 256
 _REFERENCE_MAX_AGE_NS = 2_000_000
 _POSITIVE_WINDOW_THRESHOLD = 1.0e-6
@@ -56,6 +75,22 @@ _POSITIVE_WINDOW_THRESHOLD = 1.0e-6
 
 class CurrentCAVEvaluationError(ValueError):
     """The neutral input or current-CAV evaluation contract failed."""
+
+
+def _exact_dataclass(
+    value: object,
+    expected_type: type,
+    expected_fields: frozenset,
+    where: str,
+) -> None:
+    if type(value) is not expected_type:
+        raise CurrentCAVEvaluationError("%s must have its exact dataclass type" % where)
+    try:
+        actual_fields = frozenset(vars(value))
+    except TypeError as exc:
+        raise CurrentCAVEvaluationError("%s has no dataclass field mapping" % where) from exc
+    if actual_fields != expected_fields:
+        raise CurrentCAVEvaluationError("%s dataclass field set differs" % where)
 
 
 def _nonnegative_int(value: object, where: str) -> int:
@@ -109,9 +144,47 @@ def _unit_ray(value: object, where: str) -> Ray:
 def _quaternion(value: object, where: str) -> QuaternionXYZW:
     result = _finite_tuple(value, 4, where)
     norm = math.sqrt(math.fsum(component * component for component in result))
-    if not math.isfinite(norm) or norm <= 0.0:
-        raise CurrentCAVEvaluationError("%s must have nonzero finite norm" % where)
-    return tuple(component / norm for component in result)  # type: ignore[return-value]
+    if not math.isfinite(norm) or abs(norm - 1.0) > 1.0e-9:
+        raise CurrentCAVEvaluationError("%s must be a unit quaternion" % where)
+    # Preserve the hash-bound serialized values.  Frozen geometry normalizes
+    # internally before every quaternion operation.
+    return result  # type: ignore[return-value]
+
+
+def canonical_event_content_sha256(
+    event_id: int,
+    timestamp_ns: int,
+    polarity: int,
+    is_query: bool,
+    sensor_ray: Sequence[float],
+    causal_pose_source_index: int,
+    transform_guard_valid: bool = True,
+) -> str:
+    """Bind every evaluator-visible event value, including the sensor ray."""
+
+    return canonical_sha256({
+        "event_id": event_id,
+        "timestamp_ns": timestamp_ns,
+        "polarity": polarity,
+        "is_query": is_query,
+        "sensor_ray": list(sensor_ray),
+        "causal_pose_source_index": causal_pose_source_index,
+        "transform_guard_valid": transform_guard_valid,
+    })
+
+
+def canonical_pose_value_sha256(
+    pose_id: int,
+    timestamp_ns: int,
+    quaternion_xyzw: Sequence[float],
+) -> str:
+    """Return the frozen pose-value identity used by the Stage-4 assay."""
+
+    return canonical_sha256({
+        "pose_id": pose_id,
+        "timestamp_ns": timestamp_ns,
+        "quaternion_xyzw": list(quaternion_xyzw),
+    })
 
 
 @dataclass(frozen=True)
@@ -124,6 +197,7 @@ class NeutralRegistryWindow:
     query_end_ns_exclusive: int
 
     def __post_init__(self) -> None:
+        _exact_dataclass(self, NeutralRegistryWindow, _REGISTRY_FIELDS, "registry")
         object.__setattr__(self, "window_id", _nonempty_text(self.window_id, "window_id"))
         for field in (
             "warmup_start_ns_inclusive",
@@ -187,9 +261,11 @@ class NeutralEventInput:
     is_query: bool
     sensor_ray: Ray
     causal_pose_source_index: int
+    event_content_sha256: str
     transform_guard_valid: bool = True
 
     def __post_init__(self) -> None:
+        _exact_dataclass(self, NeutralEventInput, _EVENT_FIELDS, "event")
         object.__setattr__(self, "event_id", _nonnegative_int(self.event_id, "event_id"))
         object.__setattr__(
             self, "timestamp_ns", _nonnegative_int(self.timestamp_ns, "event timestamp")
@@ -206,6 +282,30 @@ class NeutralEventInput:
         )
         if type(self.transform_guard_valid) is not bool:
             raise CurrentCAVEvaluationError("transform_guard_valid must be bool")
+        supplied = _sha256(self.event_content_sha256, "event content digest")
+        expected = canonical_event_content_sha256(
+            self.event_id,
+            self.timestamp_ns,
+            self.polarity,
+            self.is_query,
+            self.sensor_ray,
+            self.causal_pose_source_index,
+            self.transform_guard_valid,
+        )
+        if supplied != expected:
+            raise CurrentCAVEvaluationError("event content digest differs")
+
+    def to_content_mapping(self) -> Mapping[str, object]:
+        return {
+            "event_id": self.event_id,
+            "timestamp_ns": self.timestamp_ns,
+            "polarity": self.polarity,
+            "is_query": self.is_query,
+            "sensor_ray": list(self.sensor_ray),
+            "causal_pose_source_index": self.causal_pose_source_index,
+            "event_content_sha256": self.event_content_sha256,
+            "transform_guard_valid": self.transform_guard_valid,
+        }
 
 
 @dataclass(frozen=True)
@@ -221,6 +321,7 @@ class NeutralPoseInput:
     arithmetic_valid: bool = True
 
     def __post_init__(self) -> None:
+        _exact_dataclass(self, NeutralPoseInput, _POSE_FIELDS, "pose")
         object.__setattr__(self, "pose_id", _nonnegative_int(self.pose_id, "pose_id"))
         object.__setattr__(
             self, "timestamp_ns", _nonnegative_int(self.timestamp_ns, "pose timestamp")
@@ -232,6 +333,22 @@ class NeutralPoseInput:
         object.__setattr__(self, "pose_sha256", _sha256(self.pose_sha256, "pose digest"))
         if type(self.value_valid) is not bool or type(self.arithmetic_valid) is not bool:
             raise CurrentCAVEvaluationError("pose validity flags must be bool")
+        expected = canonical_pose_value_sha256(
+            self.pose_id, self.timestamp_ns, self.quaternion_xyzw
+        )
+        if self.pose_sha256 != expected:
+            raise CurrentCAVEvaluationError("pose content digest differs")
+
+    def to_content_mapping(self) -> Mapping[str, object]:
+        return {
+            "pose_id": self.pose_id,
+            "timestamp_ns": self.timestamp_ns,
+            "commit_cycle": self.commit_cycle,
+            "quaternion_xyzw": list(self.quaternion_xyzw),
+            "pose_sha256": self.pose_sha256,
+            "value_valid": self.value_valid,
+            "arithmetic_valid": self.arithmetic_valid,
+        }
 
 
 @dataclass(frozen=True)
@@ -389,6 +506,7 @@ class CAVWindowEvaluation:
 @dataclass(frozen=True)
 class CAVRegistryEvaluation:
     registry_sha256: str
+    neutral_input_sha256: str
     windows: Tuple[CAVWindowEvaluation, ...]
 
     @property
@@ -479,6 +597,74 @@ def _world_shadow(
     return rotate_sensor_ray_to_world(quaternion, sensor_ray)
 
 
+def _validate_registry_window(value: object) -> NeutralRegistryWindow:
+    _exact_dataclass(value, NeutralRegistryWindow, _REGISTRY_FIELDS, "registry")
+    window = value  # type: ignore[assignment]
+    _nonempty_text(window.window_id, "window_id")
+    start = _nonnegative_int(
+        window.warmup_start_ns_inclusive, "warmup_start_ns_inclusive"
+    )
+    query = _nonnegative_int(
+        window.query_start_ns_inclusive, "query_start_ns_inclusive"
+    )
+    end = _nonnegative_int(
+        window.query_end_ns_exclusive, "query_end_ns_exclusive"
+    )
+    if not start < query < end:
+        raise CurrentCAVEvaluationError("neutral registry bounds are not increasing")
+    return window
+
+
+def _validate_event_input(value: object) -> NeutralEventInput:
+    _exact_dataclass(value, NeutralEventInput, _EVENT_FIELDS, "event")
+    event = value  # type: ignore[assignment]
+    _nonnegative_int(event.event_id, "event_id")
+    _nonnegative_int(event.timestamp_ns, "event timestamp")
+    if isinstance(event.polarity, bool) or event.polarity not in (0, 1):
+        raise CurrentCAVEvaluationError("event polarity must be integer zero or one")
+    if type(event.is_query) is not bool or type(event.transform_guard_valid) is not bool:
+        raise CurrentCAVEvaluationError("event flags must be exact bools")
+    if type(event.sensor_ray) is not tuple:
+        raise CurrentCAVEvaluationError("sensor ray must retain its canonical tuple type")
+    sensor_ray = _unit_ray(event.sensor_ray, "sensor ray")
+    _nonnegative_int(event.causal_pose_source_index, "causal pose source index")
+    _sha256(event.event_content_sha256, "event content digest")
+    expected = canonical_event_content_sha256(
+        event.event_id,
+        event.timestamp_ns,
+        event.polarity,
+        event.is_query,
+        sensor_ray,
+        event.causal_pose_source_index,
+        event.transform_guard_valid,
+    )
+    if event.event_content_sha256 != expected:
+        raise CurrentCAVEvaluationError("event content digest differs")
+    return event
+
+
+def _validate_pose_input(value: object) -> NeutralPoseInput:
+    _exact_dataclass(value, NeutralPoseInput, _POSE_FIELDS, "pose")
+    pose = value  # type: ignore[assignment]
+    _nonnegative_int(pose.pose_id, "pose_id")
+    _nonnegative_int(pose.timestamp_ns, "pose timestamp")
+    _signed_int(pose.commit_cycle, "commit cycle")
+    if type(pose.quaternion_xyzw) is not tuple:
+        raise CurrentCAVEvaluationError(
+            "pose quaternion must retain its canonical tuple type"
+        )
+    quaternion = _quaternion(pose.quaternion_xyzw, "pose quaternion")
+    _sha256(pose.pose_sha256, "pose digest")
+    if type(pose.value_valid) is not bool or type(pose.arithmetic_valid) is not bool:
+        raise CurrentCAVEvaluationError("pose validity flags must be bool")
+    expected = canonical_pose_value_sha256(
+        pose.pose_id, pose.timestamp_ns, quaternion
+    )
+    if pose.pose_sha256 != expected:
+        raise CurrentCAVEvaluationError("pose content digest differs")
+    return pose
+
+
 def evaluate_current_cav_window(
     registry: NeutralRegistryWindow,
     events: Sequence[NeutralEventInput],
@@ -486,14 +672,13 @@ def evaluate_current_cav_window(
 ) -> CAVWindowEvaluation:
     """Evaluate one neutral window with frozen CAV and two causal banks."""
 
-    if not isinstance(registry, NeutralRegistryWindow):
-        raise CurrentCAVEvaluationError("registry must be NeutralRegistryWindow")
-    event_values = tuple(events)
-    pose_values = tuple(poses)
-    if not event_values or any(not isinstance(row, NeutralEventInput) for row in event_values):
-        raise CurrentCAVEvaluationError("event stream must contain NeutralEventInput")
-    if not pose_values or any(not isinstance(row, NeutralPoseInput) for row in pose_values):
-        raise CurrentCAVEvaluationError("pose stream must contain NeutralPoseInput")
+    registry = _validate_registry_window(registry)
+    event_values = tuple(_validate_event_input(row) for row in events)
+    pose_values = tuple(_validate_pose_input(row) for row in poses)
+    if not event_values:
+        raise CurrentCAVEvaluationError("event stream must not be empty")
+    if not pose_values:
+        raise CurrentCAVEvaluationError("pose stream must not be empty")
     for event in event_values:
         if not (
             registry.warmup_start_ns_inclusive
@@ -622,16 +807,28 @@ def evaluate_current_cav_registry(
 ) -> CAVRegistryEvaluation:
     """Evaluate an ordered neutral registry without accepting selector data."""
 
-    windows = tuple(registry)
-    if not windows or any(not isinstance(row, NeutralRegistryWindow) for row in windows):
+    windows = tuple(_validate_registry_window(row) for row in registry)
+    if not windows:
         raise CurrentCAVEvaluationError("registry must contain neutral windows")
     identifiers = tuple(window.window_id for window in windows)
     expected = set(identifiers)
     if set(event_streams) != expected or set(pose_streams) != expected:
         raise CurrentCAVEvaluationError("stream window IDs differ from neutral registry")
+    checked_events = {
+        window.window_id: tuple(
+            _validate_event_input(row) for row in event_streams[window.window_id]
+        )
+        for window in windows
+    }
+    checked_poses = {
+        window.window_id: tuple(
+            _validate_pose_input(row) for row in pose_streams[window.window_id]
+        )
+        for window in windows
+    }
     results = tuple(
         evaluate_current_cav_window(
-            window, event_streams[window.window_id], pose_streams[window.window_id]
+            window, checked_events[window.window_id], checked_poses[window.window_id]
         )
         for window in windows
     )
@@ -640,8 +837,29 @@ def evaluate_current_cav_registry(
     )
     if len(set(event_ids)) != len(event_ids):
         raise CurrentCAVEvaluationError("query event IDs repeat across registry windows")
+    registry_mapping = [window.to_mapping() for window in windows]
+    neutral_input_mapping = {
+        "schema": "redred.mc_wtb.current_cav_neutral_inputs/v1",
+        "registry": registry_mapping,
+        "windows": [
+            {
+                "window_id": window.window_id,
+                "events": [
+                    event.to_content_mapping()
+                    for event in checked_events[window.window_id]
+                ],
+                "poses": [
+                    pose.to_content_mapping()
+                    for pose in checked_poses[window.window_id]
+                ],
+            }
+            for window in windows
+        ],
+    }
     result = CAVRegistryEvaluation(
-        canonical_sha256([window.to_mapping() for window in windows]), results
+        canonical_sha256(registry_mapping),
+        canonical_sha256(neutral_input_mapping),
+        results,
     )
     _ = result.all_event_effect
     return result
