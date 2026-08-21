@@ -78,6 +78,7 @@ _ASSAY_EVENT_RECORD_FIELDS = frozenset(
     (
         "window_id",
         "event_id",
+        "event_sequence_tag",
         "timestamp_ns",
         "x",
         "y",
@@ -149,6 +150,9 @@ _STATE_COMPONENTS_BITS = (
 _CONSERVATIVE_INCREMENTAL_STATE_BITS = 108_799
 _CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND = 192_000
 _EVENT_RECORD_BITS = 102
+_EVENT_SEQUENCE_TAG_BITS = 24
+_EVENT_SEQUENCE_TAG_MODULUS = 1 << _EVENT_SEQUENCE_TAG_BITS
+_MAXIMUM_SIMULTANEOUS_LIVE_REFERENCES = 1032
 _EXPECTED_FIFO_MINIMUM_ZERO_LOSS_RULE = {
     "bounded_peak_authoritative_if": (
         "fifo_full_forced_bypass_count_is_zero_and_full_conservation_holds"
@@ -268,7 +272,7 @@ def _validate_payload(row: Mapping[str, Any]) -> None:
     if value >= 1 << 102:
         raise IntegrationError("event payload exceeds 102 bits")
     fields = (
-        ("event_id", 24),
+        ("event_sequence_tag", _EVENT_SEQUENCE_TAG_BITS),
         ("window_event_ordinal", 11),
         ("timestamp_ns", 36),
         ("x", 8),
@@ -283,6 +287,28 @@ def _validate_payload(row: Mapping[str, Any]) -> None:
         value >>= width
     if value:
         raise IntegrationError("event payload has trailing bits")
+
+
+def _validate_window_event_tags(rows: Sequence[Mapping[str, Any]]) -> None:
+    seen = {}  # type: Dict[Tuple[str, int], int]
+    for row in rows:
+        window_id = row.get("window_id")
+        if type(window_id) is not str:
+            raise IntegrationError("assay event window_id must be an exact string")
+        event_id = _require_int(row.get("event_id"), "event.event_id", 0)
+        tag = _require_int(
+            row.get("event_sequence_tag"), "event.event_sequence_tag", 0
+        )
+        if tag >= _EVENT_SEQUENCE_TAG_MODULUS:
+            raise IntegrationError("event_sequence_tag exceeds 24 bits")
+        if tag != event_id % _EVENT_SEQUENCE_TAG_MODULUS:
+            raise IntegrationError("event_sequence_tag differs from event_id modulo 2^24")
+        key = (window_id, tag)
+        if key in seen:
+            raise IntegrationError(
+                "event_sequence_tag is not unique within its window"
+            )
+        seen[key] = event_id
 
 
 def _validate_event_record_shape(row: Mapping[str, Any]) -> None:
@@ -349,6 +375,12 @@ def _validate_score_free_accounting_contract(value: Any) -> Mapping[str, Any]:
         or state.get("component_count") != len(_STATE_COMPONENTS_BITS)
         or state.get("incremental_state_bits")
         != _CONSERVATIVE_INCREMENTAL_STATE_BITS
+        or state.get("live_reference_counter_entries") != 16
+        or state.get("live_reference_counter_width_bits") != 11
+        or state.get("maximum_simultaneous_live_references")
+        != _MAXIMUM_SIMULTANEOUS_LIVE_REFERENCES
+        or _MAXIMUM_SIMULTANEOUS_LIVE_REFERENCES
+        >= _EVENT_SEQUENCE_TAG_MODULUS
         or sum(value for _, value in _STATE_COMPONENTS_BITS)
         != _CONSERVATIVE_INCREMENTAL_STATE_BITS
     ):
@@ -706,6 +738,7 @@ def load_assay_bundle(
         timestamp_ns = _require_int(row.get("timestamp_ns"), "event timestamp", 0)
         if forbidden[0] <= timestamp_ns < forbidden[1]:
             raise IntegrationError("forbidden event reached assay inputs")
+    _validate_window_event_tags(loaded[_EVENTS])
     event_ids = tuple(_require_int(row.get("event_id"), "event_id", 0) for row in loaded[_EVENTS])
     if any(right <= left for left, right in zip(event_ids, event_ids[1:])):
         raise IntegrationError("assay event IDs are not globally ordered")
@@ -959,11 +992,13 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
         raise IntegrationError("window has no assay events")
     for row in event_rows:
         _validate_event_record_shape(row)
+        _validate_payload(row)
         timestamp_ns = _require_int(row.get("timestamp_ns"), "event timestamp", 0)
         if not start <= timestamp_ns < end:
             raise IntegrationError("assay event lies outside serialized window limits")
         if (row.get("is_query") is True) != (query_start <= timestamp_ns < end):
             raise IntegrationError("assay query label differs from serialized query interval")
+    _validate_window_event_tags(event_rows)
     window_summary = next(
         row
         for row in bundle.manifest["windows"]
@@ -1257,6 +1292,28 @@ def _ceil_rate(records: int, bits: int, duration_ns: int) -> int:
     return (records * bits * 1_000_000_000 + duration_ns - 1) // duration_ns
 
 
+def _validate_maximum_live_tag_scope(
+    result: SimulationResult, maximum_live: int
+) -> None:
+    deltas = {}  # type: Dict[int, int]
+    for receipt in result.cycle_receipts:
+        if receipt.retire_cycle < receipt.occurrence_cycle:
+            raise IntegrationError("cycle receipt has negative live tag interval")
+        deltas[receipt.occurrence_cycle] = deltas.get(receipt.occurrence_cycle, 0) + 1
+        deltas[receipt.retire_cycle] = deltas.get(receipt.retire_cycle, 0) - 1
+    live = 0
+    peak = 0
+    for cycle in sorted(deltas):
+        live += deltas[cycle]
+        if live < 0:
+            raise IntegrationError("cycle receipt live tag scope underflowed")
+        peak = max(peak, live)
+    if live != 0:
+        raise IntegrationError("cycle receipt live tag scope does not conserve")
+    if peak > maximum_live:
+        raise IntegrationError("event_sequence_tag maximum live scope exceeded")
+
+
 def _derive_accounting(
     inputs: WindowCycleInputs,
     result: SimulationResult,
@@ -1320,12 +1377,19 @@ def _derive_accounting(
     fifo_contract = _require_mapping(
         accounting_contract.get("delayed_fifo"), "score-free delayed FIFO"
     )
+    state_contract = _require_mapping(
+        accounting_contract.get("common_state_envelope"),
+        "score-free common state envelope",
+    )
     if (
         result.event_record_bits != _EVENT_RECORD_BITS
         or result.pose_packet_bits != 192
         or result.buffer_entries != fifo_contract["bounded_entries"]
     ):
         raise IntegrationError("cycle-model hardware accounting differs from contract")
+    _validate_maximum_live_tag_scope(
+        result, int(state_contract["maximum_simultaneous_live_references"])
+    )
     attempted_ids = set(corrected + operational)
     attempted = tuple(
         result.records[index].event_id

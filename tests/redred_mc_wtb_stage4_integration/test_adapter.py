@@ -69,7 +69,7 @@ def packet(pose_id, delta_ns, quaternion):
 
 def pack_event(event_id, ordinal, timestamp_ns, x, y, polarity, pose_id):
     fields = (
-        (event_id, 24),
+        (event_id % (1 << 24), 24),
         (ordinal, 11),
         (timestamp_ns, 36),
         (x, 8),
@@ -111,7 +111,9 @@ def reseal_artifact_and_manifest(root, name, rows):
     return hashlib.sha256(manifest_bytes).hexdigest()
 
 
-def build_artifacts(root, *, include_limits=True, signed_history=True):
+def build_artifacts(
+    root, *, include_limits=True, signed_history=True, event_id_offset=0
+):
     calibration = Calibration(
         240,
         180,
@@ -165,10 +167,10 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
     }]
 
     event_specs = (
-        (100, 12, False, 2, 0, 2, 0),
-        (101, 12, False, 2, 1, 2, 1),
-        (102, 18, True, 3, 0, 3, 0),
-        (103, 25, True, 4, 0, 4, 0),
+        (event_id_offset + 100, 12, False, 2, 0, 2, 0),
+        (event_id_offset + 101, 12, False, 2, 1, 2, 1),
+        (event_id_offset + 102, 18, True, 3, 0, 3, 0),
+        (event_id_offset + 103, 25, True, 4, 0, 4, 0),
     )
     snapshots = []
     snapshot_by_batch = {}
@@ -215,6 +217,7 @@ def build_artifacts(root, *, include_limits=True, signed_history=True):
         events.append({
             "window_id": WINDOW,
             "event_id": event_id,
+            "event_sequence_tag": event_id % (1 << 24),
             "timestamp_ns": START + delta,
             "x": x,
             "y": y,
@@ -406,6 +409,7 @@ class IntegrationTests(unittest.TestCase):
         cases = (
             ("extra_field", 0, "event record field set differs"),
             ("is_query", 1, "is_query must be an exact bool"),
+            ("event_sequence_tag", True, "must be an integer"),
         )
         for field, value, message in cases:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
@@ -419,6 +423,47 @@ class IntegrationTests(unittest.TestCase):
                 )
                 with self.assertRaisesRegex(IntegrationError, message):
                     load_assay_bundle(root, expected_manifest_sha256=expected)
+
+    def test_payload_tag_wrap_retains_full_event_ids_in_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            offset = 1 << 24
+            expected = build_artifacts(root, event_id_offset=offset)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
+            self.assertEqual(
+                tuple(row["event_sequence_tag"] for row in bundle.events),
+                (100, 101, 102, 103),
+            )
+            inputs = build_window_cycle_inputs(bundle, WINDOW)
+            integrated = build_all_arm_window(bundle, WINDOW)
+            self.assertEqual(
+                tuple(event.event_id for event in inputs.events),
+                tuple(offset + value for value in (100, 101, 102, 103)),
+            )
+            for sealed in integrated.values():
+                self.assertEqual(
+                    tuple(record.event_id for record in sealed.query_records),
+                    (offset + 102, offset + 103),
+                )
+
+    def test_window_rejects_duplicate_sequence_tags_after_bundle_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = build_artifacts(root)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
+            rows = list(bundle.events)
+            duplicate = dict(rows[1])
+            duplicate["event_id"] = (1 << 24) + rows[0]["event_sequence_tag"]
+            duplicate["event_sequence_tag"] = rows[0]["event_sequence_tag"]
+            payload = int(duplicate["payload_hex"], 16)
+            duplicate["payload_hex"] = "%026x" % (
+                (payload & ~((1 << 24) - 1)) | duplicate["event_sequence_tag"]
+            )
+            rows[1] = duplicate
+            with self.assertRaisesRegex(
+                IntegrationError, "not unique within its window"
+            ):
+                build_window_cycle_inputs(replace(bundle, events=tuple(rows)), WINDOW)
 
     def test_runtime_contract_accounting_validation_is_fail_closed(self):
         frozen = load_comparison_contract().as_dict()["score_free_accounting"]
@@ -434,6 +479,11 @@ class IntegrationTests(unittest.TestCase):
             (
                 ("common_state_envelope", "components_bits", "delayed_fifo_payload"),
                 104447,
+                "11-component state",
+            ),
+            (
+                ("common_state_envelope", "maximum_simultaneous_live_references"),
+                1033,
                 "11-component state",
             ),
             (
@@ -830,8 +880,15 @@ class IntegrationTests(unittest.TestCase):
                 source_pins=pins,
                 fixture_label="stage4_integration_end_to_end_fixture_v1",
             )
-            manifest_path = output / "stage4_input_manifest.json"
-            expected = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            event_path = output / "stage4_events.jsonl"
+            event_rows = [
+                json.loads(line) for line in event_path.read_text().splitlines()
+            ]
+            for row in event_rows:
+                row["event_sequence_tag"] = row["event_id"] % (1 << 24)
+            expected = reseal_artifact_and_manifest(
+                output, "stage4_events.jsonl", event_rows
+            )
             bundle = load_assay_bundle(
                 output, expected_manifest_sha256=expected
             )
