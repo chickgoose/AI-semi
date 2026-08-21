@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import hashlib
+import math
 from pathlib import Path
 import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -26,8 +27,8 @@ from .source import (
     SourcePins,
     canonicalize_quaternion,
     iter_event_samples,
-    load_calibration,
     load_pose_samples,
+    parse_calibration_bytes,
     sensor_ray,
     shortest_arc_slerp,
     validate_sources,
@@ -51,6 +52,63 @@ STAGING_SERIALIZER_ENTRIES = 6
 EVENT_PAYLOAD_BITS = 102
 POSE_INDEX_BITS = 14
 DEV_MAX_EXACT_TIMESTAMP_BURST = 5
+SENSOR_RAY_GENERATOR_RULE = "radtan_inverse_newton_then_normalized_sensor_ray"
+CALIBRATION_FIELDS = (
+    "width",
+    "height",
+    "fx",
+    "fy",
+    "cx",
+    "cy",
+    "k1",
+    "k2",
+    "p1",
+    "p2",
+    "k3",
+)
+EVENT_RECORD_FIELDS = frozenset(
+    (
+        "window_id",
+        "event_id",
+        "timestamp_ns",
+        "x",
+        "y",
+        "polarity",
+        "sensor_ray",
+        "is_query",
+        "window_event_ordinal",
+        "occurrence_cycle",
+        "equal_timestamp_cluster_id",
+        "equal_timestamp_cluster_size",
+        "occurrence_batch_id",
+        "occurrence_lane",
+        "occurrence_batch_size",
+        "occurrence_pose_snapshot_sha256",
+        "causal_pose_source_index",
+        "payload_hex",
+        "presentation_cycle",
+        "presentation_lane",
+        "serializer_queue_cycles",
+    )
+)
+EVENT_INTEGER_FIELDS = (
+    "event_id",
+    "timestamp_ns",
+    "x",
+    "y",
+    "polarity",
+    "window_event_ordinal",
+    "occurrence_cycle",
+    "equal_timestamp_cluster_id",
+    "equal_timestamp_cluster_size",
+    "occurrence_batch_id",
+    "occurrence_lane",
+    "occurrence_batch_size",
+    "causal_pose_source_index",
+    "presentation_cycle",
+    "presentation_lane",
+    "serializer_queue_cycles",
+)
 
 
 def timestamp_to_cycle(timestamp_ns: int, window_start_ns: int, clock_period_ps: int) -> int:
@@ -97,6 +155,105 @@ def _validate_oracle_pose_packet_stream(
         packet_hash = packet_body.pop("packet_sha256", None)
         if packet_hash != canonical_sha256(packet_body):
             raise AssayInputError("oracle pose packet hash differs from its canonical record")
+
+
+def _calibration_authority(
+    calibration: Calibration, calibration_source_sha256: str
+) -> Dict[str, Any]:
+    authority = {
+        "schema": "redred.mc_wtb.stage4_calibration_authority/v1",
+        "source_path": "calib.txt",
+        "source_sha256": calibration_source_sha256,
+        "sensor_ray_generator_rule": SENSOR_RAY_GENERATOR_RULE,
+        "model": {
+            field: getattr(calibration, field) for field in CALIBRATION_FIELDS
+        },
+    }
+    authority["authority_sha256"] = canonical_sha256(authority)
+    return authority
+
+
+def _validate_calibration_authority(
+    authority: Mapping[str, Any],
+    expected_calibration: Calibration,
+    expected_source_sha256: str,
+) -> Calibration:
+    authority_body = dict(authority)
+    authority_sha256 = authority_body.pop("authority_sha256", None)
+    if authority_sha256 != canonical_sha256(authority_body):
+        raise AssayInputError("calibration authority hash differs from its canonical object")
+    expected = _calibration_authority(
+        expected_calibration, expected_source_sha256
+    )
+    expected.pop("authority_sha256")
+    if canonical_json_bytes(authority_body) != canonical_json_bytes(expected):
+        raise AssayInputError("calibration authority differs from the parsed source model")
+    model = authority_body["model"]
+    return Calibration(**{field: model[field] for field in CALIBRATION_FIELDS})
+
+
+def _validate_sensor_ray_records(
+    records: Sequence[Mapping[str, Any]],
+    calibration_authority: Mapping[str, Any],
+    expected_calibration: Calibration,
+    expected_source_sha256: str,
+) -> None:
+    calibration = _validate_calibration_authority(
+        calibration_authority, expected_calibration, expected_source_sha256
+    )
+    event_id_mask = (1 << 24) - 1
+    timestamp_mask = (1 << 36) - 1
+    pixel_mask = (1 << 8) - 1
+    for record in records:
+        if set(record) != EVENT_RECORD_FIELDS:
+            raise AssayInputError("event record has missing or unexpected fields")
+        if type(record["window_id"]) is not str or type(record["is_query"]) is not bool:
+            raise AssayInputError("event record identifier or query flag has the wrong type")
+        if any(type(record[field]) is not int for field in EVENT_INTEGER_FIELDS):
+            raise AssayInputError("event integer field must be an exact int, not bool")
+        snapshot_sha256 = record["occurrence_pose_snapshot_sha256"]
+        if (
+            type(snapshot_sha256) is not str
+            or len(snapshot_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in snapshot_sha256)
+        ):
+            raise AssayInputError("event snapshot authority is not a lowercase SHA-256")
+        ray = record["sensor_ray"]
+        if (
+            type(ray) is not list
+            or len(ray) != 3
+            or any(type(component) is not float or not math.isfinite(component) for component in ray)
+        ):
+            raise AssayInputError("sensor ray components must be exact finite floats, not bool")
+        payload_hex = record.get("payload_hex")
+        if type(payload_hex) is not str or len(payload_hex) != 26:
+            raise AssayInputError("event payload is not canonical 102-bit hex")
+        try:
+            payload = int(payload_hex, 16)
+        except ValueError as exc:
+            raise AssayInputError("event payload is not canonical 102-bit hex") from exc
+        if payload_hex != "%026x" % payload or payload >= 1 << EVENT_PAYLOAD_BITS:
+            raise AssayInputError("event payload is not canonical 102-bit hex")
+        event = EventSample(
+            event_id=payload & event_id_mask,
+            timestamp_ns=(payload >> 35) & timestamp_mask,
+            x=(payload >> 71) & pixel_mask,
+            y=(payload >> 79) & pixel_mask,
+            polarity=(payload >> 87) & 1,
+        )
+        payload_fields = {
+            "event_id": event.event_id,
+            "window_event_ordinal": (payload >> 24) & ((1 << 11) - 1),
+            "timestamp_ns": event.timestamp_ns,
+            "x": event.x,
+            "y": event.y,
+            "polarity": event.polarity,
+            "causal_pose_source_index": (payload >> 88) & ((1 << POSE_INDEX_BITS) - 1),
+        }
+        if any(record[field] != value for field, value in payload_fields.items()):
+            raise AssayInputError("event field differs from its payload-bound value")
+        if ray != list(sensor_ray(event, calibration)):
+            raise AssayInputError("sensor ray differs from payload-bound calibration recovery")
 
 
 def _extract_events(
@@ -645,7 +802,7 @@ def generate_score_free_inputs(
         contract = load_comparison_contract()
         registry_validation = validate_existing_registry(contract)
         sources = validate_sources(Path(dataset_dir), source_pins)
-        calibration = load_calibration(sources.calibration_path)
+        calibration = parse_calibration_bytes(sources.calibration_bytes)
         poses = load_pose_samples(sources.groundtruth_path)
     except (SourceInputError, ValueError) as exc:
         if isinstance(exc, AssayInputError):
@@ -665,6 +822,9 @@ def generate_score_free_inputs(
     ):
         raise AssayInputError("assay ingress constants differ from frozen contract")
     rows = tuple(window_registry())
+    calibration_authority = _calibration_authority(
+        calibration, sources.calibration_sha256
+    )
     forbidden_values = document["registry"]["forbidden_interval_ns"]
     forbidden = (int(forbidden_values[0]), int(forbidden_values[1]))
     dataset_packets = _dataset_pose_packets(
@@ -698,6 +858,12 @@ def generate_score_free_inputs(
         raise AssayInputError("event input generation failed") from exc
     if query_count != document["registry"]["query_event_count"]:
         raise AssayInputError("query event count differs from frozen contract")
+    _validate_sensor_ray_records(
+        event_records,
+        calibration_authority,
+        calibration,
+        sources.calibration_sha256,
+    )
 
     oracle_contract = arms["oracle_resampled_groundtruth_1khz"]
     oracle_packets = _oracle_packets(
@@ -772,8 +938,9 @@ def generate_score_free_inputs(
         "raw_source_streams": {
             "events.txt_sha256": source_pins.events_sha256,
             "groundtruth.txt_sha256": source_pins.groundtruth_sha256,
-            "calib.txt_sha256": source_pins.calibration_sha256,
+            "calib.txt_sha256": sources.calibration_sha256,
         },
+        "calibration_model": calibration_authority,
         "dataset_pose_packet_stream": {
             "path": DATASET_POSES_FILE,
             "sha256": artifacts[DATASET_POSES_FILE]["sha256"],
@@ -828,13 +995,16 @@ def generate_score_free_inputs(
             "sequence": "UZH_DAVIS_shapes_rotation",
             "events_sha256": source_pins.events_sha256,
             "groundtruth_sha256": source_pins.groundtruth_sha256,
-            "calibration_sha256": source_pins.calibration_sha256,
+            "calibration_sha256": sources.calibration_sha256,
             "events_size_bytes": source_pins.events_size_bytes,
             "events_line_count": source_pins.events_line_count,
             "validation": "whole_file_hashes_before_parsing",
         },
         "event_inputs": {
-            "ray_model": "radtan_inverse_newton_then_normalized_sensor_ray",
+            "ray_model": SENSOR_RAY_GENERATOR_RULE,
+            "calibration_authority_sha256": calibration_authority[
+                "authority_sha256"
+            ],
             "selected_event_count": len(event_records),
             "occurrence_batch_count": len(occurrence_batches),
             "ordered_selected_event_ids_sha256": canonical_sha256(

@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from benchmarks.redred_mc_wtb_stage4_assay import generator as generator_module
 from benchmarks.redred_mc_wtb_causal_reference.development import window_registry
@@ -23,6 +24,12 @@ from benchmarks.redred_mc_wtb_stage4_assay import (
     generate_score_free_inputs,
     shortest_arc_slerp,
     timestamp_to_cycle,
+)
+from benchmarks.redred_mc_wtb_stage4_assay.source import (
+    Calibration,
+    EventSample,
+    load_calibration,
+    sensor_ray,
 )
 
 
@@ -310,6 +317,39 @@ class GeneratorTests(unittest.TestCase):
             binding_body = dict(binding)
             binding_hash = binding_body.pop("binding_sha256")
             self.assertEqual(binding_hash, canonical_sha256(binding_body))
+            calibration_authority = binding["calibration_model"]
+            calibration_body = dict(calibration_authority)
+            calibration_hash = calibration_body.pop("authority_sha256")
+            self.assertEqual(calibration_hash, canonical_sha256(calibration_body))
+            self.assertEqual(calibration_body["source_path"], "calib.txt")
+            self.assertEqual(calibration_body["source_sha256"], pins.calibration_sha256)
+            self.assertEqual(
+                calibration_body["sensor_ray_generator_rule"],
+                "radtan_inverse_newton_then_normalized_sensor_ray",
+            )
+            self.assertEqual(
+                tuple(calibration_body["model"]),
+                (
+                    "width",
+                    "height",
+                    "fx",
+                    "fy",
+                    "cx",
+                    "cy",
+                    "k1",
+                    "k2",
+                    "p1",
+                    "p2",
+                    "k3",
+                ),
+            )
+            parsed_calibration = load_calibration(dataset / "calib.txt")
+            authority_calibration = Calibration(**calibration_body["model"])
+            self.assertEqual(authority_calibration, parsed_calibration)
+            self.assertEqual(
+                manifest["event_inputs"]["calibration_authority_sha256"],
+                calibration_hash,
+            )
             for name, artifact in manifest["artifacts"].items():
                 self.assertEqual(sha256(first / name), artifact["sha256"])
                 self.assertEqual((first / name).read_bytes(), (second / name).read_bytes())
@@ -334,6 +374,141 @@ class GeneratorTests(unittest.TestCase):
                     math.sqrt(sum(value * value for value in record["sensor_ray"])), 1.0
                 )
             self.assertEqual(events[0]["sensor_ray"], [0.0, 0.0, 1.0])
+            for record in events:
+                payload = int(record["payload_hex"], 16)
+                payload_event = EventSample(
+                    event_id=payload & ((1 << 24) - 1),
+                    timestamp_ns=(payload >> 35) & ((1 << 36) - 1),
+                    x=(payload >> 71) & ((1 << 8) - 1),
+                    y=(payload >> 79) & ((1 << 8) - 1),
+                    polarity=(payload >> 87) & 1,
+                )
+                self.assertEqual(record["x"], payload_event.x)
+                self.assertEqual(record["y"], payload_event.y)
+                self.assertEqual(
+                    record["sensor_ray"],
+                    list(sensor_ray(payload_event, authority_calibration)),
+                )
+
+            mutated_events = list(events)
+            mutated_event = dict(mutated_events[0])
+            mutated_event["sensor_ray"] = list(mutated_event["sensor_ray"])
+            mutated_event["sensor_ray"][0] += 0.001
+            mutated_events[0] = mutated_event
+            with self.assertRaisesRegex(AssayInputError, "sensor ray differs"):
+                generator_module._validate_sensor_ray_records(
+                    mutated_events,
+                    calibration_authority,
+                    parsed_calibration,
+                    pins.calibration_sha256,
+                )
+
+            for field, bool_alias in (("x", True), ("polarity", False)):
+                with self.subTest(bool_alias_field=field):
+                    bool_events = list(events)
+                    bool_event = dict(bool_events[0])
+                    bool_event[field] = bool_alias
+                    bool_events[0] = bool_event
+                    with self.assertRaisesRegex(AssayInputError, "exact int, not bool"):
+                        generator_module._validate_sensor_ray_records(
+                            bool_events,
+                            calibration_authority,
+                            parsed_calibration,
+                            pins.calibration_sha256,
+                        )
+
+            for invalid_component in (True, 0, float("inf")):
+                with self.subTest(invalid_ray_component=invalid_component):
+                    invalid_ray_events = list(events)
+                    invalid_ray_event = dict(invalid_ray_events[0])
+                    invalid_ray_event["sensor_ray"] = list(
+                        invalid_ray_event["sensor_ray"]
+                    )
+                    invalid_ray_event["sensor_ray"][0] = invalid_component
+                    invalid_ray_events[0] = invalid_ray_event
+                    with self.assertRaisesRegex(
+                        AssayInputError, "finite floats, not bool"
+                    ):
+                        generator_module._validate_sensor_ray_records(
+                            invalid_ray_events,
+                            calibration_authority,
+                            parsed_calibration,
+                            pins.calibration_sha256,
+                        )
+
+            bool_payload_events = list(events)
+            bool_payload_event = dict(bool_payload_events[0])
+            bool_payload_event["payload_hex"] = True
+            bool_payload_events[0] = bool_payload_event
+            with self.assertRaisesRegex(AssayInputError, "canonical 102-bit hex"):
+                generator_module._validate_sensor_ray_records(
+                    bool_payload_events,
+                    calibration_authority,
+                    parsed_calibration,
+                    pins.calibration_sha256,
+                )
+
+            payload_mismatch_events = list(events)
+            payload_mismatch_event = dict(payload_mismatch_events[0])
+            payload_mismatch_event["payload_hex"] = "%026x" % (
+                int(payload_mismatch_event["payload_hex"], 16) ^ (1 << 71)
+            )
+            payload_mismatch_events[0] = payload_mismatch_event
+            with self.assertRaisesRegex(AssayInputError, "payload-bound value"):
+                generator_module._validate_sensor_ray_records(
+                    payload_mismatch_events,
+                    calibration_authority,
+                    parsed_calibration,
+                    pins.calibration_sha256,
+                )
+
+            for unexpected_field in ("score", "decision", "quality"):
+                with self.subTest(unexpected_field=unexpected_field):
+                    unexpected_events = list(events)
+                    unexpected_event = dict(unexpected_events[0])
+                    unexpected_event[unexpected_field] = 0.0
+                    unexpected_events[0] = unexpected_event
+                    with self.assertRaisesRegex(AssayInputError, "unexpected fields"):
+                        generator_module._validate_sensor_ray_records(
+                            unexpected_events,
+                            calibration_authority,
+                            parsed_calibration,
+                            pins.calibration_sha256,
+                        )
+
+            mutated_calibration_authority = json.loads(
+                json.dumps(calibration_authority)
+            )
+            mutated_calibration_authority["model"]["fx"] += 1.0
+            mutated_calibration_body = dict(mutated_calibration_authority)
+            mutated_calibration_body.pop("authority_sha256")
+            mutated_calibration_authority["authority_sha256"] = canonical_sha256(
+                mutated_calibration_body
+            )
+            with self.assertRaisesRegex(AssayInputError, "parsed source model"):
+                generator_module._validate_sensor_ray_records(
+                    events,
+                    mutated_calibration_authority,
+                    parsed_calibration,
+                    pins.calibration_sha256,
+                )
+
+            substituted_source_authority = json.loads(
+                json.dumps(calibration_authority)
+            )
+            substituted_source_authority["source_sha256"] = "0" * 64
+            substituted_source_body = dict(substituted_source_authority)
+            substituted_source_body.pop("authority_sha256")
+            substituted_source_authority["authority_sha256"] = canonical_sha256(
+                substituted_source_body
+            )
+            with self.assertRaisesRegex(AssayInputError, "parsed source model"):
+                generator_module._validate_sensor_ray_records(
+                    events,
+                    substituted_source_authority,
+                    parsed_calibration,
+                    pins.calibration_sha256,
+                )
 
             batches = jsonl(first / "stage4_occurrence_batches.jsonl")
             snapshots = jsonl(first / "stage4_occurrence_pose_snapshots.jsonl")
@@ -550,11 +725,87 @@ class GeneratorTests(unittest.TestCase):
                 sha256(Path(sys.executable).resolve()),
             )
 
-            forbidden_words = ("loss", "score", "result")
+            forbidden_output_fields = {
+                "loss",
+                "losses",
+                "score",
+                "scores",
+                "result",
+                "results",
+                "decision",
+                "decisions",
+                "quality",
+                "qualities",
+                "ranking",
+                "disposition",
+            }
+
+            def assert_no_forbidden_output_fields(value) -> None:
+                if isinstance(value, dict):
+                    for key, child in value.items():
+                        self.assertNotIn(key.lower(), forbidden_output_fields)
+                        assert_no_forbidden_output_fields(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        assert_no_forbidden_output_fields(child)
+
             for path in first.iterdir():
-                text = path.read_text(encoding="ascii").lower()
-                if path.name != "stage4_input_manifest.json":
-                    self.assertTrue(all(word not in text for word in forbidden_words))
+                if path.name == "stage4_input_manifest.json":
+                    content = json.loads(path.read_text(encoding="ascii"))
+                else:
+                    content = jsonl(path)
+                assert_no_forbidden_output_fields(content)
+
+    def test_calibration_hash_and_parse_share_one_immutable_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dataset = root / "dataset"
+            dataset.mkdir()
+            pins = build_fixture(dataset)
+            original_validate_sources = generator_module.validate_sources
+            captured_sources = []
+
+            def capture_then_replace(dataset_dir, source_pins):
+                sources = original_validate_sources(dataset_dir, source_pins)
+                captured_sources.append(sources)
+                (Path(dataset_dir) / "calib.txt").write_bytes(b"mutated after capture\n")
+                return sources
+
+            with mock.patch.object(
+                generator_module,
+                "validate_sources",
+                side_effect=capture_then_replace,
+            ):
+                manifest = generate_score_free_inputs(
+                    dataset,
+                    root / "output",
+                    source_pins=pins,
+                    fixture_label="calibration_capture_fixture_v1",
+                )
+            authority = manifest["authoritative_input_binding"]["calibration_model"]
+            self.assertEqual(len(captured_sources), 1)
+            captured = captured_sources[0]
+            self.assertIs(type(captured.calibration_bytes), bytes)
+            captured_sha256 = hashlib.sha256(captured.calibration_bytes).hexdigest()
+            self.assertEqual(captured.calibration_sha256, captured_sha256)
+            self.assertEqual(authority["source_sha256"], captured_sha256)
+            self.assertEqual(captured_sha256, pins.calibration_sha256)
+            self.assertEqual(
+                authority["model"],
+                {
+                    "width": 240,
+                    "height": 180,
+                    "fx": 100.0,
+                    "fy": 100.0,
+                    "cx": 120.0,
+                    "cy": 90.0,
+                    "k1": 0.0,
+                    "k2": 0.0,
+                    "p1": 0.0,
+                    "p2": 0.0,
+                    "k3": 0.0,
+                },
+            )
 
     def test_hash_mutation_fails_before_output_and_nonofficial_pins_need_label(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -63,6 +63,8 @@ class ValidatedSources:
     events_path: Path
     groundtruth_path: Path
     calibration_path: Path
+    calibration_bytes: bytes
+    calibration_sha256: str
     pins: SourcePins
 
 
@@ -129,10 +131,15 @@ def validate_sources(dataset_dir: Path, pins: SourcePins = OFFICIAL_SOURCE_PINS)
     for path in (events, groundtruth, calibration):
         if not path.is_file():
             raise SourceInputError("missing source: %s" % path.name)
+    try:
+        calibration_bytes = calibration.read_bytes()
+    except OSError as exc:
+        raise SourceInputError("cannot read source: calib.txt") from exc
+    calibration_sha256 = hashlib.sha256(calibration_bytes).hexdigest()
     actual = {
         "events.txt": _sha256(events),
         "groundtruth.txt": _sha256(groundtruth),
-        "calib.txt": _sha256(calibration),
+        "calib.txt": calibration_sha256,
     }
     expected = {
         "events.txt": pins.events_sha256,
@@ -144,7 +151,14 @@ def validate_sources(dataset_dir: Path, pins: SourcePins = OFFICIAL_SOURCE_PINS)
             raise SourceInputError("source hash mismatch: %s" % name)
     if events.stat().st_size != pins.events_size_bytes:
         raise SourceInputError("events.txt size differs from its source pin")
-    return ValidatedSources(events, groundtruth, calibration, pins)
+    return ValidatedSources(
+        events,
+        groundtruth,
+        calibration,
+        calibration_bytes,
+        calibration_sha256,
+        pins,
+    )
 
 
 def _seconds_text_to_ns(text: str, where: str) -> int:
@@ -161,15 +175,25 @@ def _seconds_text_to_ns(text: str, where: str) -> int:
     return timestamp
 
 
-def load_calibration(path: Path) -> Calibration:
+def parse_calibration_bytes(payload: bytes) -> Calibration:
+    if type(payload) is not bytes:
+        raise SourceInputError("calibration payload must be immutable bytes")
     try:
-        tokens = Path(path).read_text(encoding="ascii").split()
+        tokens = payload.decode("ascii").split()
         values = tuple(float(token) for token in tokens)
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (UnicodeError, ValueError) as exc:
         raise SourceInputError("cannot parse calib.txt") from exc
     if len(values) != 9:
         raise SourceInputError("calib.txt must contain exactly nine values")
     return Calibration(240, 180, *values)
+
+
+def load_calibration(path: Path) -> Calibration:
+    try:
+        payload = Path(path).read_bytes()
+    except OSError as exc:
+        raise SourceInputError("cannot parse calib.txt") from exc
+    return parse_calibration_bytes(payload)
 
 
 def _normalize_quaternion(values: Sequence[float]) -> Tuple[float, float, float, float]:

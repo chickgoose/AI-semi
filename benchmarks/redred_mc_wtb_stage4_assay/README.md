@@ -7,7 +7,17 @@ quality computation.
 The generator:
 
 - validates `events.txt`, `groundtruth.txt`, and `calib.txt` hashes before
-  parsing, plus the event byte and line counts;
+  parsing, plus the event byte and line counts. Calibration bytes are captured
+  once, hashed, and parsed from that same immutable buffer, eliminating a
+  hash-to-parse file-reopen gap;
+- serializes the exact parsed calibration fields (`width`, `height`, `fx`,
+  `fy`, `cx`, `cy`, `k1`, `k2`, `p1`, `p2`, and `k3`) as a canonical
+  self-hashed authority object. Its hash covers the `calib.txt` source hash
+  and frozen sensor-ray generator rule. Every emitted ray is verified from
+  the pixel coordinates in its packed 102-bit payload against that authority.
+  Event validation admits only the exact frozen field set, exact integer
+  payload fields (never Boolean aliases), and three finite floating-point ray
+  components; unexpected decision-output fields fail closed;
 - validates the frozen comparison contract and existing 24-window registry;
 - copies the registry's exact inclusive warmup start, inclusive query start,
   and exclusive query end into every manifest window summary, so downstream
@@ -46,10 +56,11 @@ The generator:
 - serializes each stream as canonical JSONL and records its SHA-256, count, and
   byte size in a canonical manifest. The manifest also has one canonical
   binding over the ordered 26-hex-digit 102-bit records, raw event,
-  calibration and ground-truth hashes, dataset-pose and occurrence-snapshot
-  streams, oracle packet/schedule streams, generator dependency hashes, and
-  Python runtime identity/executable hashes. Oracle authority additionally
-  binds the canonical hash of the ordered packet-hash sequence.
+  calibration and ground-truth hashes, the parsed calibration authority,
+  dataset-pose and occurrence-snapshot streams, oracle packet/schedule
+  streams, generator dependency hashes, and Python runtime
+  identity/executable hashes. Oracle authority additionally binds the
+  canonical hash of the ordered packet-hash sequence.
 
 The forbidden interval may be scanned by whole-file hashing/parsing but cannot
 appear in any selected event, dataset pose packet, oracle packet, or schedule.
