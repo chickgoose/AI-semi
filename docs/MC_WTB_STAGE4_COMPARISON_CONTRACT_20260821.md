@@ -69,6 +69,13 @@ the event.
   Common ingress-serialization latency is included in occurrence-to-retire
   latency for every arm and subtracted event-by-event from policy-added
   latency through the always-bypass baseline.
+- A charged immutable 16-entry x 192-bit pose ring retains packet values. The
+  14-bit causal-pose index already inside each 102-bit event record binds the
+  referenced packet; hashes remain off-model verification data. A ring entry
+  may not be overwritten while any ingress, arm, or delayed event references
+  it. Imminent overwrite fails closed instead of changing an event's pose.
+  Sixteen entries cover the 6 ms delayed deadline at the frozen <=0.25 Mbit/s
+  pose-bandwidth gate with explicit margin.
 - Dataset poses are assumed to arrive at their recorded timestamp for this
   development model. The assumption must remain explicit in every receipt.
 

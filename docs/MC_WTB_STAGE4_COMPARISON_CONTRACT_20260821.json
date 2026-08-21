@@ -2,7 +2,7 @@
   "schema": "redred.mc_wtb.stage4_comparison_contract/v1",
   "status": "refrozen_after_prescore_red_team_no_arm_score_opened",
   "normative_markdown": "docs/MC_WTB_STAGE4_COMPARISON_CONTRACT_20260821.md",
-  "normative_markdown_sha256": "b369850786905cc5be630e2babdff74c2e902e6ce6f58f0db2d8aaa6c772c6ee",
+  "normative_markdown_sha256": "85f9e941b10de136844fa891a5a27ef98e5a9eeb5fdca8c436dd9bd91ebea002",
   "checkpoint_commit": "7791e21a8415b0b5dd2c76cc6ea83698c7427d71",
   "development_only": true,
   "registry": {
@@ -30,6 +30,10 @@
     "transform_pipeline_cycles": 1,
     "event_record_bits": 102,
     "pose_packet_bits": 192,
+    "pose_ring_entries": 16,
+    "pose_ring_overwrite_with_live_reference": "fail_closed",
+    "event_record_includes_causal_pose_index_bits": 14,
+    "verification_hashes_charged_as_hardware_state": false,
     "buffer_entries": 1024,
     "dataset_pose_arrival_assumption": "arrival_equals_recorded_timestamp"
   },
