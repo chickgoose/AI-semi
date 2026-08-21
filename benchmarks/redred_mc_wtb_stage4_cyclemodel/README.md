@@ -144,6 +144,9 @@ bounded run's decisions.
 
 The returned frozen `DelayedUnboundedDiagnosticEvidence` contains:
 
+- the exact immutable validated `Event` and `PosePacket` sequences,
+  `window_start_ns`, and canonical input-stream hashes, including unused pose
+  packets and event guards that do not change a disposition;
 - every ordered input and retired event ID plus their canonical hashes and
   counts;
 - every `DecisionRecord` and `CycleReceipt`, their independent stream hashes,
@@ -157,9 +160,14 @@ The returned frozen `DelayedUnboundedDiagnosticEvidence` contains:
 - a deterministic `evidence_sha256` property over the complete canonical
   evidence body.
 
-`evidence.validate()` fails closed on altered IDs, counts, ordering, config,
-decision or receipt bindings, peak depth, latency cardinality, pose-ring hash,
-or any full-pressure reason. Below 1,024 entries, native tests require byte-for-
+`evidence.validate()` fails closed on altered input events, pose packets,
+window timebase, IDs, counts, ordering, config, decision or receipt bindings,
+peak depth, latency cardinality, pose-ring hash, or any full-pressure reason.
+It also deterministically replays the embedded validated inputs and requires
+exact equality of decisions, cycle receipts, FIFO/staging peaks, and pose-ring
+accounting, so recomputing an input subhash cannot legitimize inconsistent
+retirement evidence.
+Below 1,024 entries, native tests require byte-for-
 byte equality with the bounded decisions and receipts and pin pre-extension
 bounded hashes. Above 1,024, tests require identical admissions but no pressure
 bypass, exact ordered retirement, and the observed unbounded peak.

@@ -38,7 +38,7 @@ DELAYED_DEADLINE_CYCLES = (
 ) // CLOCK_PERIOD_PS
 DATASET_POSE_ARRIVAL_ASSUMPTION = "arrival_equals_recorded_timestamp"
 DELAYED_UNBOUNDED_DIAGNOSTIC_SCHEMA = (
-    "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v1"
+    "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v2"
 )
 DELAYED_UNBOUNDED_CONFIG_SCHEMA = (
     "redred.mc_wtb.stage4_delayed_unbounded_depth_config/v1"
@@ -510,15 +510,21 @@ class DelayedUnboundedDiagnosticEvidence:
 
     schema: str
     window_id: str
+    window_start_ns: int
     arm: Arm
     arm_semantic_label: str
     config: DelayedUnboundedDiagnosticConfig
     config_identity_sha256: str
+    input_events: Tuple[Event, ...]
+    input_poses: Tuple[PosePacket, ...]
+    input_events_sha256: str
+    input_poses_sha256: str
     input_event_ids: Tuple[int, ...]
     retired_event_ids: Tuple[int, ...]
     input_event_ids_sha256: str
     retired_event_ids_sha256: str
     input_count: int
+    input_pose_count: int
     retired_count: int
     exact_once_ordered_conservation: bool
     no_full_pressure_reasons: bool
@@ -540,15 +546,25 @@ class DelayedUnboundedDiagnosticEvidence:
         return {
             "schema": self.schema,
             "window_id": self.window_id,
+            "window_start_ns": self.window_start_ns,
             "arm": self.arm.value,
             "arm_semantic_label": self.arm_semantic_label,
             "config": self.config.to_mapping(),
             "config_identity_sha256": self.config_identity_sha256,
+            "input_events": [
+                _event_input_mapping(event) for event in self.input_events
+            ],
+            "input_poses": [
+                _pose_input_mapping(pose) for pose in self.input_poses
+            ],
+            "input_events_sha256": self.input_events_sha256,
+            "input_poses_sha256": self.input_poses_sha256,
             "input_event_ids": list(self.input_event_ids),
             "retired_event_ids": list(self.retired_event_ids),
             "input_event_ids_sha256": self.input_event_ids_sha256,
             "retired_event_ids_sha256": self.retired_event_ids_sha256,
             "input_count": self.input_count,
+            "input_pose_count": self.input_pose_count,
             "retired_count": self.retired_count,
             "exact_once_ordered_conservation": (
                 self.exact_once_ordered_conservation
@@ -590,6 +606,48 @@ class DelayedUnboundedDiagnosticEvidence:
 
     def validate(self) -> None:
         _nonempty_text(self.window_id, "unbounded diagnostic window_id")
+        _nonnegative_int(
+            self.window_start_ns, "unbounded diagnostic window_start_ns"
+        )
+        tuple_fields = (
+            ("input_events", self.input_events),
+            ("input_poses", self.input_poses),
+            ("input_event_ids", self.input_event_ids),
+            ("retired_event_ids", self.retired_event_ids),
+            ("records", self.records),
+            ("cycle_receipts", self.cycle_receipts),
+            ("common_serializer_cycles", self.common_serializer_cycles),
+            (
+                "always_bypass_retire_cycles",
+                self.always_bypass_retire_cycles,
+            ),
+            (
+                "policy_added_latency_cycles",
+                self.policy_added_latency_cycles,
+            ),
+        )
+        if any(type(value) is not tuple for _name, value in tuple_fields):
+            raise CycleModelError("unbounded diagnostic evidence is not immutable")
+        for name, value in (
+            ("input_count", self.input_count),
+            ("input_pose_count", self.input_pose_count),
+            ("retired_count", self.retired_count),
+            ("peak_fifo_depth", self.peak_fifo_depth),
+            (
+                "peak_ingress_staging_occupancy",
+                self.peak_ingress_staging_occupancy,
+            ),
+        ):
+            _nonnegative_int(value, "unbounded diagnostic %s" % name)
+        if any(not isinstance(record, DecisionRecord) for record in self.records):
+            raise CycleModelError("unbounded diagnostic decision record differs")
+        if any(
+            not isinstance(receipt, CycleReceipt)
+            for receipt in self.cycle_receipts
+        ):
+            raise CycleModelError("unbounded diagnostic cycle receipt differs")
+        if not isinstance(self.pose_ring_accounting, PoseRingAccounting):
+            raise CycleModelError("unbounded diagnostic pose-ring evidence differs")
         if self.schema != DELAYED_UNBOUNDED_DIAGNOSTIC_SCHEMA:
             raise CycleModelError("unbounded diagnostic schema differs")
         if self.arm is not Arm.DELAYED_EXACT or self.arm_semantic_label != ARM_LABELS[
@@ -601,6 +659,56 @@ class DelayedUnboundedDiagnosticEvidence:
             raise CycleModelError("unbounded diagnostic config differs")
         if self.config_identity_sha256 != expected_config.canonical_sha256():
             raise CycleModelError("unbounded diagnostic config identity differs")
+        if any(not isinstance(event, Event) for event in self.input_events):
+            raise CycleModelError("unbounded diagnostic input event differs")
+        if any(not isinstance(pose, PosePacket) for pose in self.input_poses):
+            raise CycleModelError("unbounded diagnostic input pose differs")
+        if self.input_events_sha256 != _canonical_sha256(
+            [_event_input_mapping(event) for event in self.input_events]
+        ):
+            raise CycleModelError("unbounded diagnostic input event hash differs")
+        if self.input_poses_sha256 != _canonical_sha256(
+            [_pose_input_mapping(pose) for pose in self.input_poses]
+        ):
+            raise CycleModelError("unbounded diagnostic input pose hash differs")
+        checked_states, checked_poses = _validate_and_prepare(
+            self.window_start_ns,
+            Arm.DELAYED_EXACT,
+            self.input_events,
+            self.input_poses,
+            self.synthetic_test_mode,
+        )
+        checked_event_ids = tuple(
+            state.event.event_id for state in checked_states
+        )
+        if checked_poses != self.input_poses:
+            raise CycleModelError("unbounded diagnostic validated poses differ")
+        replay_records, replay_peak, replay_peak_staging = (
+            _run_delayed_unbounded(
+                self.window_id, checked_states, checked_poses
+            )
+        )
+        _validate_conservation(checked_states, replay_records)
+        _validate_delayed_dispositions(
+            checked_states, checked_poses, replay_records
+        )
+        replay_receipts = _make_cycle_receipts(
+            self.window_id,
+            Arm.DELAYED_EXACT,
+            checked_states,
+            replay_records,
+        )
+        replay_pose_ring_accounting = _verify_pose_ring(
+            checked_states, checked_poses, replay_records
+        )
+        if (
+            tuple(replay_records) != self.records
+            or replay_receipts != self.cycle_receipts
+            or replay_peak != self.peak_fifo_depth
+            or replay_peak_staging != self.peak_ingress_staging_occupancy
+            or replay_pose_ring_accounting != self.pose_ring_accounting
+        ):
+            raise CycleModelError("unbounded diagnostic replay evidence differs")
         if self.input_event_ids_sha256 != _canonical_sha256(
             list(self.input_event_ids)
         ):
@@ -613,6 +721,9 @@ class DelayedUnboundedDiagnosticEvidence:
         receipt_ids = tuple(receipt.event_id for receipt in self.cycle_receipts)
         if (
             self.input_count != len(self.input_event_ids)
+            or self.input_count != len(self.input_events)
+            or self.input_pose_count != len(self.input_poses)
+            or self.input_event_ids != checked_event_ids
             or self.retired_count != len(self.retired_event_ids)
             or record_ids != self.retired_event_ids
             or receipt_ids != self.retired_event_ids
@@ -824,6 +935,27 @@ def _canonical_sha256(value: Any) -> str:
         + "\n"
     ).encode("ascii")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _event_input_mapping(event: Event) -> Dict[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "timestamp_ns": event.timestamp_ns,
+        "transform_guard_valid": event.transform_guard_valid,
+        "causal_pose_index": event.causal_pose_index,
+    }
+
+
+def _pose_input_mapping(pose: PosePacket) -> Dict[str, Any]:
+    return {
+        "pose_id": pose.pose_id,
+        "timestamp_ns": pose.timestamp_ns,
+        "commit_cycle": pose.commit_cycle,
+        "source": pose.source.value,
+        "pose_sha256": pose.pose_sha256,
+        "value_valid": pose.value_valid,
+        "arithmetic_valid": pose.arithmetic_valid,
+    }
 
 
 def _validate_and_prepare(
@@ -1929,15 +2061,25 @@ def run_delayed_unbounded_diagnostic(
     evidence = DelayedUnboundedDiagnosticEvidence(
         schema=DELAYED_UNBOUNDED_DIAGNOSTIC_SCHEMA,
         window_id=window_id,
+        window_start_ns=window_start_ns,
         arm=Arm.DELAYED_EXACT,
         arm_semantic_label=ARM_LABELS[Arm.DELAYED_EXACT.value],
         config=config,
         config_identity_sha256=config.canonical_sha256(),
+        input_events=tuple(state.event for state in states),
+        input_poses=checked_poses,
+        input_events_sha256=_canonical_sha256(
+            [_event_input_mapping(state.event) for state in states]
+        ),
+        input_poses_sha256=_canonical_sha256(
+            [_pose_input_mapping(pose) for pose in checked_poses]
+        ),
         input_event_ids=input_event_ids,
         retired_event_ids=retired_event_ids,
         input_event_ids_sha256=_canonical_sha256(list(input_event_ids)),
         retired_event_ids_sha256=_canonical_sha256(list(retired_event_ids)),
         input_count=len(input_event_ids),
+        input_pose_count=len(checked_poses),
         retired_count=len(retired_event_ids),
         exact_once_ordered_conservation=input_event_ids == retired_event_ids,
         no_full_pressure_reasons=True,

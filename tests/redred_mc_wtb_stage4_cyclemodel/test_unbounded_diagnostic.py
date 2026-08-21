@@ -111,6 +111,12 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
             "37a4d297d0a8c19105e0b33d685ece145124a86bbe7fcd4f027242e23b602c83",
         )
         self.assert_equivalent_below_pressure(bounded_result, evidence)
+        self.assertEqual(evidence.window_start_ns, START)
+        self.assertEqual(evidence.input_events, tuple(events))
+        self.assertEqual(evidence.input_poses, tuple(poses))
+        self.assertEqual(evidence.input_pose_count, 2)
+        self.assertEqual(len(evidence.input_events_sha256), 64)
+        self.assertEqual(len(evidence.input_poses_sha256), 64)
         self.assertEqual(evidence.input_event_ids, (7,))
         self.assertEqual(evidence.retired_event_ids, (7,))
         self.assertTrue(evidence.exact_once_ordered_conservation)
@@ -221,6 +227,21 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
             replace(evidence, retired_event_ids=(8,)),
             replace(evidence, peak_fifo_depth=2),
             replace(evidence, no_full_pressure_reasons=False),
+            replace(evidence, input_count=True),
+            replace(evidence, window_start_ns=1),
+            replace(
+                evidence,
+                input_events=(
+                    replace(evidence.input_events[0], transform_guard_valid=False),
+                ),
+            ),
+            replace(
+                evidence,
+                input_poses=(
+                    replace(evidence.input_poses[0], pose_sha256=SHA_B),
+                    evidence.input_poses[1],
+                ),
+            ),
             replace(
                 evidence,
                 config=replace(evidence.config, event_lanes=1),
@@ -233,6 +254,14 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
                 self.assertNotEqual(mutation.evidence_sha256, evidence.evidence_sha256)
                 with self.assertRaises(CycleModelError):
                     mutation.validate()
+
+        mutable_container_mutation = replace(evidence, input_event_ids=[7])
+        self.assertEqual(
+            mutable_container_mutation.evidence_sha256,
+            evidence.evidence_sha256,
+        )
+        with self.assertRaisesRegex(CycleModelError, "not immutable"):
+            mutable_container_mutation.validate()
 
         pressure_record = replace(
             evidence.records[0],
@@ -247,6 +276,63 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
         pressure_mutation = replace(evidence, records=(pressure_record,))
         with self.assertRaises(CycleModelError):
             pressure_mutation.validate()
+
+        guard_false_evidence = unbounded(
+            [Event(7, 13, transform_guard_valid=False, causal_pose_index=0)],
+            list(evidence.input_poses),
+        )
+        coherent_input_mutation = replace(
+            evidence,
+            input_events=guard_false_evidence.input_events,
+            input_events_sha256=guard_false_evidence.input_events_sha256,
+        )
+        with self.assertRaisesRegex(CycleModelError, "replay evidence differs"):
+            coherent_input_mutation.validate()
+
+    def test_unused_pose_guard_and_window_start_are_evidence_bound(self):
+        occurrence_cycle = 2
+        deadline = occurrence_cycle + DELAYED_DEADLINE_CYCLES
+        event = Event(7, 13, causal_pose_index=0)
+        late_pose = dataset_pose(1, timestamp_for_cycle(deadline))
+        base = unbounded([event], [dataset_pose(0, 0), late_pose])
+        pose_mutated = unbounded(
+            [event],
+            [
+                dataset_pose(0, 0),
+                replace(late_pose, pose_sha256=SHA_A, value_valid=False),
+            ],
+        )
+        guard_mutated = unbounded(
+            [replace(event, transform_guard_valid=False)],
+            [dataset_pose(0, 0), late_pose],
+        )
+        different_start = run_delayed_unbounded_diagnostic(
+            window_id=WINDOW,
+            window_start_ns=1,
+            events=[],
+            poses=[],
+            synthetic_test_mode=True,
+        )
+        zero_start = unbounded([], [])
+
+        self.assertEqual(base.records[0].disposition_reason, "deadline_timeout")
+        self.assertEqual(
+            base.decision_records_sha256,
+            pose_mutated.decision_records_sha256,
+        )
+        self.assertEqual(
+            base.decision_records_sha256,
+            guard_mutated.decision_records_sha256,
+        )
+        self.assertNotEqual(base.input_poses_sha256, pose_mutated.input_poses_sha256)
+        self.assertNotEqual(base.input_events_sha256, guard_mutated.input_events_sha256)
+        self.assertNotEqual(base.evidence_sha256, pose_mutated.evidence_sha256)
+        self.assertNotEqual(base.evidence_sha256, guard_mutated.evidence_sha256)
+        self.assertNotEqual(zero_start.evidence_sha256, different_start.evidence_sha256)
+        base.validate()
+        pose_mutated.validate()
+        guard_mutated.validate()
+        different_start.validate()
 
     def test_input_mutation_changes_decision_and_evidence_hashes(self):
         poses = [dataset_pose(0, 0), dataset_pose(1, 14)]
