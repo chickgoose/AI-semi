@@ -40,11 +40,13 @@ from benchmarks.redred_mc_wtb_stage4_contract.receipt import ARM_LABELS
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Arm,
     CycleModelError,
+    DelayedUnboundedDiagnosticEvidence,
     Event,
     PosePacket,
     PoseSource,
     SimulationResult,
     run_cycle_model,
+    run_delayed_unbounded_diagnostic,
 )
 from benchmarks.redred_mc_wtb_stage4_scoring import (
     RayEvent,
@@ -686,6 +688,7 @@ class IntegratedArmWindow:
     full_cycle_evidence_sha256: str
     cycle_receipts_sha256: str
     query_projection_sha256: str
+    delayed_unbounded_diagnostic: Optional[DelayedUnboundedDiagnosticEvidence]
 
 
 @dataclass(frozen=True)
@@ -702,6 +705,47 @@ class ScoreFreeAccountingEvidence:
     buffer_entry_cycle_components: Tuple[Tuple[str, int], ...]
     buffer_bit_cycles: int
     pose_ring_accounting_sha256: str
+    minimum_depth_basis: str
+    bounded_peak_buffer_entries: int
+    fifo_full_forced_bypass_event_ids: Tuple[int, ...]
+    minimum_zero_loss_buffer_entries: int
+    bounded_decision_records_sha256: str
+    bounded_cycle_receipts_sha256: str
+    unbounded_diagnostic_evidence_sha256: Optional[str]
+    unbounded_diagnostic_config_sha256: Optional[str]
+    unbounded_diagnostic_decision_records_sha256: Optional[str]
+    unbounded_diagnostic_cycle_receipts_sha256: Optional[str]
+
+    def minimum_depth_mapping(self) -> Mapping[str, Any]:
+        return {
+            "basis": self.minimum_depth_basis,
+            "bounded_peak_buffer_entries": self.bounded_peak_buffer_entries,
+            "fifo_full_forced_bypass_event_ids": list(
+                self.fifo_full_forced_bypass_event_ids
+            ),
+            "minimum_zero_loss_buffer_entries": (
+                self.minimum_zero_loss_buffer_entries
+            ),
+            "bounded_decision_records_sha256": (
+                self.bounded_decision_records_sha256
+            ),
+            "bounded_cycle_receipts_sha256": self.bounded_cycle_receipts_sha256,
+            "unbounded_diagnostic_evidence_sha256": (
+                self.unbounded_diagnostic_evidence_sha256
+            ),
+            "unbounded_diagnostic_config_sha256": (
+                self.unbounded_diagnostic_config_sha256
+            ),
+            "unbounded_diagnostic_decision_records_sha256": (
+                self.unbounded_diagnostic_decision_records_sha256
+            ),
+            "unbounded_diagnostic_cycle_receipts_sha256": (
+                self.unbounded_diagnostic_cycle_receipts_sha256
+            ),
+        }
+
+    def minimum_depth_evidence_sha256(self) -> str:
+        return canonical_sha256(self.minimum_depth_mapping())
 
     def to_mapping(self) -> Mapping[str, Any]:
         return {
@@ -728,6 +772,10 @@ class ScoreFreeAccountingEvidence:
             ),
             "buffer_bit_cycles": self.buffer_bit_cycles,
             "pose_ring_accounting_sha256": self.pose_ring_accounting_sha256,
+            "minimum_depth_evidence": self.minimum_depth_mapping(),
+            "minimum_depth_evidence_sha256": (
+                self.minimum_depth_evidence_sha256()
+            ),
         }
 
     def canonical_sha256(self) -> str:
@@ -1543,10 +1591,90 @@ def _validate_live_event_id_scope(
         raise IntegrationError("event_sequence_tag maximum live count exceeded")
 
 
+def _validate_unbounded_depth_diagnostic(
+    inputs: WindowCycleInputs,
+    bounded: SimulationResult,
+    diagnostic: Any,
+    fifo_contract: Mapping[str, Any],
+    identity_contract: Mapping[str, Any],
+) -> DelayedUnboundedDiagnosticEvidence:
+    if not isinstance(diagnostic, DelayedUnboundedDiagnosticEvidence):
+        raise IntegrationError(
+            "UNBOUNDED_REPLAY_REQUIRED_FOR_MINIMUM_ZERO_LOSS_DEPTH: "
+            "independent delayed diagnostic is absent or has the wrong type"
+        )
+    if bounded.arm is not Arm.DELAYED_EXACT:
+        raise IntegrationError("unbounded delayed diagnostic cannot bind another arm")
+    try:
+        diagnostic.validate()
+    except CycleModelError as exc:
+        raise IntegrationError("unbounded delayed diagnostic is invalid") from exc
+    expected_ids = tuple(event.event_id for event in inputs.events)
+    if (
+        diagnostic.window_id != inputs.window_id
+        or diagnostic.input_event_ids != expected_ids
+        or diagnostic.synthetic_test_mode != bounded.synthetic_test_mode
+        or diagnostic.config.removed_bounded_fifo_entries
+        != fifo_contract.get("bounded_entries")
+        or diagnostic.config.removed_pressure_reason
+        != fifo_contract.get("full_reason")
+        or diagnostic.config.event_record_bits != _EVENT_RECORD_BITS
+    ):
+        raise IntegrationError("unbounded delayed diagnostic input binding differs")
+
+    bounded_admissions = tuple(
+        (
+            receipt.event_id,
+            receipt.occurrence_cycle,
+            receipt.admission_cycle,
+            receipt.admission_lane,
+        )
+        for receipt in bounded.cycle_receipts
+    )
+    diagnostic_admissions = tuple(
+        (
+            receipt.event_id,
+            receipt.occurrence_cycle,
+            receipt.admission_cycle,
+            receipt.admission_lane,
+        )
+        for receipt in diagnostic.cycle_receipts
+    )
+    if diagnostic_admissions != bounded_admissions:
+        raise IntegrationError("unbounded delayed diagnostic admission schedule differs")
+
+    try:
+        independently_recomputed = run_delayed_unbounded_diagnostic(
+            window_id=inputs.window_id,
+            window_start_ns=inputs.window_start_ns,
+            events=inputs.events,
+            poses=inputs.dataset_poses,
+            synthetic_test_mode=bounded.synthetic_test_mode,
+        )
+    except CycleModelError as exc:
+        raise IntegrationError("independent unbounded replay did not terminate validly") from exc
+    if (
+        diagnostic.evidence_sha256 != independently_recomputed.evidence_sha256
+        or diagnostic.to_mapping() != independently_recomputed.to_mapping()
+    ):
+        raise IntegrationError("unbounded delayed diagnostic recomputation differs")
+    if diagnostic.peak_fifo_depth <= bounded.peak_buffer_occupancy:
+        raise IntegrationError("unbounded delayed diagnostic peak is not pressure-revealing")
+    _validate_live_event_id_scope(
+        diagnostic,  # type: ignore[arg-type]
+        max(diagnostic.input_count, 1),
+        int(identity_contract["serial_number_half_range"]),
+    )
+    return diagnostic
+
+
 def _derive_accounting(
     inputs: WindowCycleInputs,
     result: SimulationResult,
     converted: Sequence[DecisionRecord],
+    delayed_unbounded_diagnostic: Optional[
+        DelayedUnboundedDiagnosticEvidence
+    ] = None,
 ) -> Tuple[ScoreFreeAccounting, ScoreFreeAccountingEvidence]:
     contract = load_comparison_contract()
     identity_contract = _validate_event_record_identity_contract(contract.timing)
@@ -1557,6 +1685,10 @@ def _derive_accounting(
         record.event_id for record in converted
     ) != tuple(record.event_id for record in result.records):
         raise IntegrationError("receipt-v2 conversion differs from full cycle result")
+    if tuple(receipt.event_id for receipt in result.cycle_receipts) != tuple(
+        record.event_id for record in result.records
+    ):
+        raise IntegrationError("bounded cycle receipts do not fully conserve records")
     query_indexes = tuple(
         index for index, row in enumerate(inputs.event_rows) if row.get("is_query") is True
     )
@@ -1628,14 +1760,36 @@ def _derive_accounting(
     event_bandwidth = _ceil_rate(
         len(query_indexes), result.event_record_bits, query_duration
     )
-    if any(
-        result.records[index].disposition_reason == "fifo_full_forced_bypass"
-        for index in range(len(result.records))
-    ):
-        raise IntegrationError(
-            "UNBOUNDED_REPLAY_REQUIRED_FOR_MINIMUM_ZERO_LOSS_DEPTH: "
-            "full-pressure bypass prevents a bounded-peak claim"
+    full_pressure_event_ids = tuple(
+        record.event_id
+        for record in result.records
+        if record.disposition_reason == "fifo_full_forced_bypass"
+    )
+    if full_pressure_event_ids:
+        diagnostic = _validate_unbounded_depth_diagnostic(
+            inputs,
+            result,
+            delayed_unbounded_diagnostic,
+            fifo_contract,
+            identity_contract,
         )
+        minimum_depth = diagnostic.peak_fifo_depth
+        minimum_depth_basis = "independent_no_pressure_replay_peak"
+        diagnostic_evidence_sha256 = diagnostic.evidence_sha256
+        diagnostic_config_sha256 = diagnostic.config_identity_sha256
+        diagnostic_decisions_sha256 = diagnostic.decision_records_sha256
+        diagnostic_receipts_sha256 = diagnostic.cycle_receipts_sha256
+    else:
+        if delayed_unbounded_diagnostic is not None:
+            raise IntegrationError(
+                "unbounded delayed diagnostic is forbidden without full pressure"
+            )
+        minimum_depth = result.peak_buffer_occupancy
+        minimum_depth_basis = "bounded_peak_no_full_pressure"
+        diagnostic_evidence_sha256 = None
+        diagnostic_config_sha256 = None
+        diagnostic_decisions_sha256 = None
+        diagnostic_receipts_sha256 = None
     accounting = ScoreFreeAccounting(
         inputs.window_id,
         result.arm.value,
@@ -1645,7 +1799,7 @@ def _derive_accounting(
         tuple(invalid),
         tuple(operational),
         result.peak_buffer_occupancy,
-        result.peak_buffer_occupancy,
+        minimum_depth,
         buffer_bit_cycles,
         _CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND,
         event_bandwidth,
@@ -1687,12 +1841,25 @@ def _derive_accounting(
         ),
         buffer_bit_cycles,
         result.pose_ring_accounting_sha256,
+        minimum_depth_basis,
+        result.peak_buffer_occupancy,
+        full_pressure_event_ids,
+        minimum_depth,
+        result.decision_records_sha256,
+        result.cycle_receipts_sha256,
+        diagnostic_evidence_sha256,
+        diagnostic_config_sha256,
+        diagnostic_decisions_sha256,
+        diagnostic_receipts_sha256,
     )
     if (
         sum(value for _, value in evidence.state_components_bits)
         != accounting.incremental_state_bits
         or sum(value for _, value in evidence.pose_bandwidth_components_bps)
         != accounting.pose_bandwidth_bits_per_second
+        or evidence.bounded_peak_buffer_entries != accounting.peak_buffer_entries
+        or evidence.minimum_zero_loss_buffer_entries
+        != accounting.minimum_zero_loss_buffer_entries
     ):
         raise IntegrationError("score-free accounting evidence differs from totals")
     return accounting, evidence
@@ -1703,6 +1870,7 @@ def _artifact_bindings(
     arm: Arm,
     full_cycle_evidence_sha256: str,
     accounting_evidence_sha256: str,
+    minimum_depth_evidence_sha256: str,
 ) -> Tuple[Tuple[str, str], ...]:
     contract = load_comparison_contract()
     package_root = Path(__file__).resolve().parents[1]
@@ -1727,6 +1895,7 @@ def _artifact_bindings(
         ),
         "full_cycle_evidence_sha256": full_cycle_evidence_sha256,
         "score_free_accounting_evidence_sha256": accounting_evidence_sha256,
+        "minimum_depth_evidence_sha256": minimum_depth_evidence_sha256,
     }
     source_binding = {
         "source": source,
@@ -1749,7 +1918,12 @@ def _artifact_bindings(
 
 
 def build_all_arm_window(
-    bundle: AssayBundle, window_id: str
+    bundle: AssayBundle,
+    window_id: str,
+    *,
+    delayed_unbounded_diagnostic: Optional[
+        DelayedUnboundedDiagnosticEvidence
+    ] = None,
 ) -> Mapping[Arm, IntegratedArmWindow]:
     """Run all four score-free arms and seal their query projections."""
 
@@ -1861,7 +2035,14 @@ def build_all_arm_window(
             expected_arm=arm.value,
         )
         accounting, accounting_evidence = _derive_accounting(
-            inputs, result, converted
+            inputs,
+            result,
+            converted,
+            delayed_unbounded_diagnostic=(
+                delayed_unbounded_diagnostic
+                if arm is Arm.DELAYED_EXACT
+                else None
+            ),
         )
         evidence_hash = canonical_sha256(_full_cycle_evidence(result))
         query_projection_sha256 = receipt.decision_records_sha256
@@ -1880,6 +2061,7 @@ def build_all_arm_window(
                 arm,
                 evidence_hash,
                 accounting_evidence.canonical_sha256(),
+                accounting_evidence.minimum_depth_evidence_sha256(),
             ),
         )
         boundary_evidence = ScoreBoundaryEvidence(
@@ -1901,5 +2083,10 @@ def build_all_arm_window(
             evidence_hash,
             result.cycle_receipts_sha256,
             query_projection_sha256,
+            (
+                delayed_unbounded_diagnostic
+                if arm is Arm.DELAYED_EXACT
+                else None
+            ),
         )
     return integrated

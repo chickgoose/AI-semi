@@ -19,7 +19,13 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_sha256,
     load_comparison_contract,
 )
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import Arm, run_cycle_model
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    Arm,
+    Event,
+    PosePacket,
+    run_cycle_model,
+    run_delayed_unbounded_diagnostic,
+)
 from benchmarks.redred_mc_wtb_stage4_integration import adapter as integration
 from benchmarks.redred_mc_wtb_stage4_integration import (
     IntegrationError,
@@ -827,6 +833,18 @@ class IntegrationTests(unittest.TestCase):
                     ))
                 self.assertEqual(sealed.accounting.incremental_state_bits, 108_799)
                 self.assertEqual(
+                    sealed.accounting.minimum_zero_loss_buffer_entries,
+                    sealed.accounting.peak_buffer_entries,
+                )
+                self.assertEqual(
+                    sealed.accounting_evidence.minimum_depth_basis,
+                    "bounded_peak_no_full_pressure",
+                )
+                self.assertIsNone(
+                    sealed.accounting_evidence.unbounded_diagnostic_evidence_sha256
+                )
+                self.assertIsNone(sealed.delayed_unbounded_diagnostic)
+                self.assertEqual(
                     sealed.accounting.pose_bandwidth_bits_per_second, 192_000
                 )
 
@@ -936,6 +954,9 @@ class IntegrationTests(unittest.TestCase):
                         "score_free_accounting_evidence_sha256": (
                             sealed.accounting_evidence.canonical_sha256()
                         ),
+                        "minimum_depth_evidence_sha256": (
+                            sealed.accounting_evidence.minimum_depth_evidence_sha256()
+                        ),
                     }),
                 )
             self.assertTrue(all(
@@ -1043,6 +1064,100 @@ class IntegrationTests(unittest.TestCase):
                     inputs.event_rows[0]["sensor_ray"],
                     inputs.dataset_quaternions,
                 )
+
+    def test_pressure_uses_independently_recomputed_unbounded_depth_only(self):
+        window_id = "synthetic-unbounded-integration-window"
+        window_start = 0
+
+        def timestamp_for_cycle(cycle):
+            return (cycle * 6_500) // 1_000
+
+        events = []
+        event_id = 0
+        for cycle in range(2, 515):
+            timestamp_ns = timestamp_for_cycle(cycle)
+            events.extend((
+                Event(event_id, timestamp_ns, causal_pose_index=0),
+                Event(event_id + 1, timestamp_ns, causal_pose_index=0),
+            ))
+            event_id += 2
+        poses = (
+            PosePacket.dataset(0, 0, window_start, HASH_A),
+            PosePacket.dataset(
+                1, timestamp_for_cycle(2_000), window_start, HASH_B
+            ),
+        )
+        bounded = run_cycle_model(
+            window_id=window_id,
+            window_start_ns=window_start,
+            arm=Arm.DELAYED_EXACT,
+            events=tuple(events),
+            poses=poses,
+            synthetic_test_mode=True,
+        )
+        diagnostic = run_delayed_unbounded_diagnostic(
+            window_id=window_id,
+            window_start_ns=window_start,
+            events=tuple(events),
+            poses=poses,
+            synthetic_test_mode=True,
+        )
+        inputs = integration.WindowCycleInputs(
+            window_id,
+            window_start,
+            window_start,
+            timestamp_for_cycle(2_001),
+            tuple({"is_query": True} for _ in events),
+            tuple(events),
+            tuple((0.0, 0.0, 1.0) for _ in events),
+            poses,
+            (),
+            {},
+            {},
+        )
+        converted = tuple(
+            integration._convert_record(record) for record in bounded.records
+        )
+        bounded_record_hash = bounded.decision_records_sha256
+        bounded_receipt_hash = bounded.cycle_receipts_sha256
+
+        with self.assertRaisesRegex(
+            IntegrationError,
+            "UNBOUNDED_REPLAY_REQUIRED_FOR_MINIMUM_ZERO_LOSS_DEPTH",
+        ):
+            integration._derive_accounting(inputs, bounded, converted)
+
+        accounting, evidence = integration._derive_accounting(
+            inputs, bounded, converted, diagnostic
+        )
+        self.assertEqual(bounded.decision_records_sha256, bounded_record_hash)
+        self.assertEqual(bounded.cycle_receipts_sha256, bounded_receipt_hash)
+        self.assertEqual(accounting.peak_buffer_entries, 1_024)
+        self.assertEqual(accounting.minimum_zero_loss_buffer_entries, 1_026)
+        self.assertEqual(accounting.operational_waste_event_ids, (0, 1))
+        self.assertEqual(evidence.minimum_depth_basis, "independent_no_pressure_replay_peak")
+        self.assertEqual(evidence.bounded_peak_buffer_entries, 1_024)
+        self.assertEqual(evidence.fifo_full_forced_bypass_event_ids, (0, 1))
+        self.assertEqual(evidence.minimum_zero_loss_buffer_entries, 1_026)
+        self.assertEqual(evidence.bounded_decision_records_sha256, bounded_record_hash)
+        self.assertEqual(evidence.bounded_cycle_receipts_sha256, bounded_receipt_hash)
+        self.assertEqual(
+            evidence.unbounded_diagnostic_evidence_sha256,
+            diagnostic.evidence_sha256,
+        )
+        self.assertEqual(
+            evidence.unbounded_diagnostic_cycle_receipts_sha256,
+            diagnostic.cycle_receipts_sha256,
+        )
+        self.assertNotEqual(
+            diagnostic.decision_records_sha256, bounded.decision_records_sha256
+        )
+
+        invalid = replace(diagnostic, peak_fifo_depth=diagnostic.peak_fifo_depth + 1)
+        with self.assertRaisesRegex(
+            IntegrationError, "unbounded delayed diagnostic is invalid"
+        ):
+            integration._derive_accounting(inputs, bounded, converted, invalid)
 
     def test_actual_generated_assay_fixture_builds_all_four_arms(self):
         with tempfile.TemporaryDirectory() as directory:
