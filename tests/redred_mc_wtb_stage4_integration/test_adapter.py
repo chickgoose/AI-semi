@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
+import json
 import math
 from pathlib import Path
 import tempfile
@@ -10,7 +12,6 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_json_bytes,
     canonical_sha256,
     load_comparison_contract,
-    validate_decision_records,
 )
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import Arm, run_cycle_model
 from benchmarks.redred_mc_wtb_stage4_integration import adapter as integration
@@ -20,7 +21,7 @@ from benchmarks.redred_mc_wtb_stage4_integration import (
     build_window_cycle_inputs,
     load_assay_bundle,
 )
-from benchmarks.redred_mc_wtb_stage4_scoring import RayEvent, ScoreInputManifest
+from benchmarks.redred_mc_wtb_stage4_scoring import ScoreBoundaryEvidence
 
 
 HASH_A = "1" * 64
@@ -90,26 +91,17 @@ def artifact(path, rows):
     }
 
 
-def build_artifacts(root, *, include_limits=True, signed_history=False):
+def build_artifacts(root, *, include_limits=True, signed_history=True):
     q0 = (0.0, 0.0, 0.0, 1.0)
     q1 = (0.0, 0.0, math.sin(0.01), math.cos(0.01))
     q2 = (0.0, 0.0, math.sin(0.02), math.cos(0.02))
     q3 = (0.0, 0.0, math.sin(0.03), math.cos(0.03))
     dataset = [
-        packet(10, 0, q0),
+        packet(10, -7 if signed_history else 0, q0),
         packet(11, 6, q1),
         packet(12, 20, q2),
         packet(13, 30, q3),
     ]
-    if signed_history:
-        dataset[0] = dict(dataset[0])
-        dataset[0]["timestamp_ns"] = START - 6
-        dataset[0]["arrival_cycle"] = -1
-        dataset[0]["commit_cycle"] = -1
-        dataset[0]["visible_cycle"] = 0
-        body = dict(dataset[0])
-        body.pop("packet_sha256")
-        dataset[0]["packet_sha256"] = canonical_sha256(body)
     dataset_path = root / "stage4_dataset_pose_packets.jsonl"
     write_jsonl(dataset_path, dataset)
     dataset_stream_hash = hashlib.sha256(dataset_path.read_bytes()).hexdigest()
@@ -138,10 +130,10 @@ def build_artifacts(root, *, include_limits=True, signed_history=False):
     }]
 
     event_specs = (
-        (100, 12, False, 2, 0, 3, 0),
-        (101, 12, False, 2, 1, 3, 1),
-        (102, 18, True, 3, 0, 4, 0),
-        (103, 25, True, 4, 0, 5, 0),
+        (100, 12, False, 2, 0, 2, 0),
+        (101, 12, False, 2, 1, 2, 1),
+        (102, 18, True, 3, 0, 3, 0),
+        (103, 25, True, 4, 0, 4, 0),
     )
     snapshots = []
     snapshot_by_batch = {}
@@ -279,7 +271,11 @@ def build_artifacts(root, *, include_limits=True, signed_history=False):
         "query_event_count": 2,
     }
     if include_limits:
-        window.update(window_start_ns=START, window_end_ns=END)
+        window.update(
+            window_start_ns=START,
+            query_start_ns=START + 15,
+            window_end_ns=END,
+        )
     manifest = {
         "schema": "redred.mc_wtb.stage4_score_free_inputs/v2",
         "content_class": "DECISION_INPUTS_ONLY_NO_ARM_TRANSFORMS",
@@ -307,159 +303,270 @@ def build_artifacts(root, *, include_limits=True, signed_history=False):
         "windows": [window],
         "artifacts": artifacts,
     }
-    (root / "stage4_input_manifest.json").write_bytes(canonical_json_bytes(manifest))
-    return events
+    manifest_bytes = canonical_json_bytes(manifest)
+    (root / "stage4_input_manifest.json").write_bytes(manifest_bytes)
+    return hashlib.sha256(manifest_bytes).hexdigest()
 
 
 class IntegrationTests(unittest.TestCase):
     def test_loader_closes_every_fixture_artifact_and_rejects_tamper(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            build_artifacts(root)
-            bundle = load_assay_bundle(root)
+            expected = build_artifacts(root)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
             self.assertEqual(len(bundle.events), 4)
             self.assertEqual(len(bundle.snapshots), 3)
+            self.assertEqual(bundle.manifest_sha256, expected)
+            with self.assertRaisesRegex(IntegrationError, "caller seal"):
+                load_assay_bundle(root, expected_manifest_sha256="0" * 64)
             with (root / "stage4_events.jsonl").open("ab") as stream:
                 stream.write(b" ")
             with self.assertRaisesRegex(IntegrationError, "artifact hash"):
-                load_assay_bundle(root)
+                load_assay_bundle(root, expected_manifest_sha256=expected)
 
-    def test_anticipated_window_limits_and_signed_history_fail_closed(self):
+    def test_pose_value_is_recomputed_after_outer_hashes_are_resealed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            build_artifacts(root, include_limits=False)
-            bundle = load_assay_bundle(root)
+            build_artifacts(root)
+            pose_path = root / "stage4_dataset_pose_packets.jsonl"
+            rows = [json.loads(line) for line in pose_path.read_text().splitlines()]
+            rows[0]["quaternion_xyzw"] = [0.0, 0.0, 0.1, 0.995]
+            body = dict(rows[0])
+            body.pop("packet_sha256")
+            rows[0]["packet_sha256"] = canonical_sha256(body)
+            write_jsonl(pose_path, rows)
+            manifest_path = root / "stage4_input_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            pose_artifact = artifact(pose_path, rows)
+            manifest["artifacts"][pose_path.name] = pose_artifact
+            authority = manifest["authoritative_input_binding"]
+            authority["dataset_pose_packet_stream"]["sha256"] = pose_artifact["sha256"]
+            authority_body = dict(authority)
+            authority_body.pop("binding_sha256")
+            authority["binding_sha256"] = canonical_sha256(authority_body)
+            manifest_bytes = canonical_json_bytes(manifest)
+            manifest_path.write_bytes(manifest_bytes)
+            expected = hashlib.sha256(manifest_bytes).hexdigest()
+            with self.assertRaisesRegex(IntegrationError, "pose value hash differs"):
+                load_assay_bundle(root, expected_manifest_sha256=expected)
+
+    def test_window_limits_remain_a_named_fail_closed_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = build_artifacts(root, include_limits=False)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
             with self.assertRaisesRegex(
                 IntegrationError, "UPSTREAM_WINDOW_LIMITS_NOT_SERIALIZED"
             ):
                 build_window_cycle_inputs(bundle, WINDOW)
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            build_artifacts(root, signed_history=True)
-            bundle = load_assay_bundle(root)
-            with self.assertRaisesRegex(
-                IntegrationError, "UPSTREAM_SIGNED_HISTORY_CYCLE_UNSUPPORTED"
-            ):
-                build_window_cycle_inputs(bundle, WINDOW)
 
-    def test_four_arm_components_build_receipt_accounting_shadows_and_manifest(self):
+    def test_four_arm_signed_same_cycle_inputs_are_fully_sealed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            build_artifacts(root)
-            bundle = load_assay_bundle(root)
+            expected = build_artifacts(root)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
             inputs = build_window_cycle_inputs(bundle, WINDOW)
-            results = {}
-            converted = {}
-            for arm in Arm:
-                poses = inputs.oracle_poses if arm is Arm.ORACLE_1KHZ else inputs.dataset_poses
-                result = run_cycle_model(
-                    window_id=WINDOW,
-                    window_start_ns=START,
-                    arm=arm,
-                    events=inputs.events,
-                    poses=poses,
-                )
-                results[arm] = result
-                converted[arm] = tuple(integration._convert_record(row) for row in result.records)
-                if arm is not Arm.ORACLE_1KHZ:
-                    integration._validate_assay_snapshot_projection(
-                        bundle, inputs, converted[arm]
-                    )
-
-            ray_events = []
-            for index, event_row in enumerate(inputs.event_rows):
-                shadows = []
-                for arm in Arm:
-                    quaternions = (
-                        inputs.oracle_quaternions
-                        if arm is Arm.ORACLE_1KHZ
-                        else inputs.dataset_quaternions
-                    )
-                    shadows.append(integration._shadow_for_record(
-                        converted[arm][index], event_row["sensor_ray"], quaternions
-                    ))
-                ray_events.append(RayEvent(
-                    WINDOW,
-                    event_row["event_id"],
-                    event_row["timestamp_ns"],
-                    event_row["polarity"],
-                    event_row["is_query"],
-                    tuple(event_row["sensor_ray"]),
-                    tuple(shadows),
-                ))
-            ray_digest = canonical_sha256([row.to_mapping() for row in ray_events])
-            query_indexes = (2, 3)
-            query_ids = (102, 103)
-            contract = load_comparison_contract()
-            for arm in Arm:
-                query_records = tuple(converted[arm][index] for index in query_indexes)
-                receipt = validate_decision_records(
-                    contract,
-                    query_ids,
-                    query_records,
-                    expected_window_id=WINDOW,
-                    expected_arm=arm.value,
-                )
-                accounting = integration._derive_accounting(
-                    inputs, results[arm], converted[arm]
-                )
-                evidence_hash = canonical_sha256(
-                    integration._full_cycle_evidence(results[arm])
-                )
-                manifest = ScoreInputManifest(
-                    WINDOW,
-                    arm.value,
-                    receipt.canonical_sha256(),
-                    accounting.canonical_sha256(),
-                    ray_digest,
-                    integration._artifact_bindings(bundle, arm, evidence_hash),
-                )
-                self.assertEqual(receipt.expected_events, 2)
-                self.assertEqual(receipt.retired_records, 2)
+            self.assertLess(inputs.dataset_poses[0].commit_cycle, 0)
+            integrated = build_all_arm_window(bundle, WINDOW)
+            self.assertEqual(set(integrated), set(Arm))
+            for sealed in integrated.values():
+                self.assertEqual(sealed.receipt.expected_events, 2)
+                self.assertEqual(sealed.receipt.retired_records, 2)
                 self.assertEqual(
-                    tuple(row[0] for row in accounting.baseline_retire_cycles),
-                    query_ids,
+                    sealed.query_projection_sha256,
+                    sealed.receipt.decision_records_sha256,
                 )
-                self.assertEqual(manifest.ray_events_sha256, ray_digest)
-                self.assertRegex(manifest.canonical_sha256(), r"^[0-9a-f]{64}$")
-                self.assertRegex(evidence_hash, r"^[0-9a-f]{64}$")
-            self.assertTrue(
-                all(
-                    abs(math.sqrt(sum(value * value for value in shadow.ray)) - 1.0)
-                    < 1.0e-12
-                    for event in ray_events
-                    for shadow in event.world_shadow_rays
+                self.assertEqual(
+                    sealed.manifest.query_projection_sha256,
+                    sealed.receipt.decision_records_sha256,
                 )
-            )
+                self.assertIsInstance(sealed.boundary_evidence, ScoreBoundaryEvidence)
+                self.assertEqual(
+                    sealed.boundary_evidence.digest_tuple(),
+                    (
+                        sealed.manifest.assay_authoritative_input_manifest_sha256,
+                        sealed.manifest.full_cycle_result_sha256,
+                        sealed.manifest.cycle_receipts_sha256,
+                        sealed.manifest.query_projection_sha256,
+                    ),
+                )
+                self.assertEqual(
+                    sealed.simulation.cycle_receipts_sha256,
+                    sealed.manifest.cycle_receipts_sha256,
+                )
+                self.assertEqual(sealed.accounting.incremental_state_bits, 108_799)
+                self.assertEqual(
+                    sealed.accounting.pose_bandwidth_bits_per_second, 192_000
+                )
+                accounting_evidence = sealed.accounting_evidence.to_mapping()
+                self.assertEqual(accounting_evidence["state_total_bits"], 108_799)
+                state_components = accounting_evidence["state_components_bits"]
+                self.assertEqual(len(state_components), 11)
+                self.assertEqual(state_components["fifo_read_write_pointers_and_count"], 31)
+                self.assertEqual(state_components["ingress_count_and_cursor"], 6)
+                self.assertEqual(state_components["pose_ring_pointer_and_valid"], 9)
+                self.assertEqual(state_components["pose_ring_16x11_live_references"], 176)
+                self.assertEqual(state_components["two_lane_102bit_pipeline"], 204)
+                self.assertEqual(state_components["pose_ingress_register"], 192)
+                self.assertEqual(state_components["global_cycle_counter"], 21)
+                self.assertEqual(state_components["status_counters"], 28)
+                self.assertEqual(
+                    accounting_evidence["pose_bandwidth_total_bps"], 192_000
+                )
+                expected_event_rate = (
+                    2 * 102 * 1_000_000_000 + (END - (START + 15)) - 1
+                ) // (END - (START + 15))
+                self.assertEqual(
+                    sealed.accounting.event_bandwidth_bits_per_second,
+                    expected_event_rate,
+                )
+                receipts = sealed.simulation.cycle_receipts
+                serializer_cycles = sum(
+                    row.admission_cycle - row.occurrence_cycle for row in receipts
+                )
+                fifo_cycles = (
+                    sum(row.retire_cycle - row.admission_cycle for row in receipts)
+                    if sealed.arm is Arm.DELAYED_EXACT
+                    else 0
+                )
+                self.assertEqual(
+                    sealed.accounting.buffer_bit_cycles,
+                    102 * (serializer_cycles + fifo_cycles),
+                )
+                self.assertEqual(
+                    accounting_evidence["pose_ring_accounting_sha256"],
+                    sealed.simulation.pose_ring_accounting_sha256,
+                )
+                self.assertEqual(
+                    tuple(
+                        receipt.admission_cycle
+                        for receipt in sealed.simulation.cycle_receipts
+                    ),
+                    tuple(row["presentation_cycle"] for row in inputs.event_rows),
+                )
+                self.assertEqual(
+                    sealed.full_cycle_evidence_sha256,
+                    canonical_sha256(integration._full_cycle_evidence(sealed.simulation)),
+                )
+                full_cycle = integration._full_cycle_evidence(sealed.simulation)
+                self.assertEqual(
+                    full_cycle["pose_ring_accounting_sha256"],
+                    sealed.simulation.pose_ring_accounting_sha256,
+                )
+                self.assertEqual(
+                    full_cycle["cycle_receipts_sha256"],
+                    sealed.simulation.cycle_receipts_sha256,
+                )
+                self.assertEqual(
+                    dict(sealed.manifest.artifact_sha256)["sources"],
+                    canonical_sha256({
+                        "source": bundle.manifest["source"],
+                        "assay_manifest_sha256": bundle.manifest_sha256,
+                        "assay_authority_sha256": bundle.authority_sha256,
+                    }),
+                )
+                package_root = Path(integration.__file__).resolve().parents[1]
+                self.assertEqual(
+                    dict(sealed.manifest.artifact_sha256)["generator"],
+                    canonical_sha256({
+                        "assay_generator_code_sha256": bundle.manifest[
+                            "generator_runtime"
+                        ]["generator_code_sha256"],
+                        "integration_adapter_py_sha256": integration._sha256_file(
+                            Path(integration.__file__).resolve()
+                        ),
+                        "pose_recovery_geometry_py_sha256": integration._sha256_file(
+                            package_root / "redred_mc_wtb_pose_recovery" / "geometry.py"
+                        ),
+                    }),
+                )
+                self.assertEqual(
+                    dict(sealed.manifest.artifact_sha256)["cycle_model"],
+                    canonical_sha256({
+                        "model_py_sha256": integration._sha256_file(
+                            package_root / "redred_mc_wtb_stage4_cyclemodel" / "model.py"
+                        ),
+                        "full_cycle_evidence_sha256": (
+                            sealed.full_cycle_evidence_sha256
+                        ),
+                        "score_free_accounting_evidence_sha256": (
+                            sealed.accounting_evidence.canonical_sha256()
+                        ),
+                    }),
+                )
+            self.assertTrue(all(
+                abs(math.sqrt(sum(value * value for value in shadow.ray)) - 1.0)
+                < 1.0e-12
+                for sealed in integrated.values()
+                for event in sealed.ray_events
+                for shadow in event.world_shadow_rays
+            ))
 
-    def test_current_cycle_ingress_mismatch_is_named_and_no_scorer_is_called(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            build_artifacts(root)
-            bundle = load_assay_bundle(root)
-            with self.assertRaisesRegex(
-                IntegrationError, "UPSTREAM_CYCLEMODEL_INGRESS_SCHEDULE_MISMATCH"
-            ):
-                build_all_arm_window(bundle, WINDOW)
         source = Path(integration.__file__).read_text(encoding="utf-8")
         self.assertNotIn("score_window(", source)
         self.assertNotIn("EventLoss", source)
 
-    def test_delayed_raw_shadow_arity_fails_closed(self):
+    def test_delayed_raw_shadow_uses_offline_bracket_or_named_blocker(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            build_artifacts(root)
-            bundle = load_assay_bundle(root)
+            expected = build_artifacts(root)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
             inputs = build_window_cycle_inputs(bundle, WINDOW)
             result = run_cycle_model(
                 window_id=WINDOW,
                 window_start_ns=START,
                 arm=Arm.DELAYED_EXACT,
-                events=inputs.events,
-                poses=inputs.dataset_poses[:2],
+                events=(replace(inputs.events[0], transform_guard_valid=False),),
+                poses=inputs.dataset_poses,
             )
             record = integration._convert_record(result.records[0])
             self.assertEqual(record.disposition, "raw_bypass")
+            shadow = integration._shadow_for_record(
+                record,
+                inputs.event_rows[0]["sensor_ray"],
+                inputs.dataset_quaternions,
+                inputs.dataset_poses,
+            )
+            self.assertEqual(shadow.transform, "delayed_slerp")
+            self.assertEqual(len(shadow.pose_ids), 2)
+            single_inputs = replace(
+                inputs,
+                event_rows=(dict(inputs.event_rows[2], is_query=True),),
+                events=(replace(inputs.events[2], transform_guard_valid=False),),
+            )
+            invalid_result = run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=START,
+                arm=Arm.DELAYED_EXACT,
+                events=single_inputs.events,
+                poses=inputs.dataset_poses,
+            )
+            invalid_converted = tuple(
+                integration._convert_record(row) for row in invalid_result.records
+            )
+            accounting, evidence = integration._derive_accounting(
+                single_inputs, invalid_result, invalid_converted
+            )
+            self.assertEqual(accounting.operational_waste_event_ids, (102,))
+            self.assertEqual(accounting.attempted_correction_event_ids, (102,))
+            self.assertEqual(accounting.invalid_pose_bypass_event_ids, ())
+            self.assertIn(
+                "invalid_pose",
+                dict(evidence.category_reason_policy)["operational"],
+            )
+
+            forced_record = replace(
+                invalid_result.records[0],
+                disposition_reason="fifo_full_forced_bypass",
+            )
+            forced_result = replace(invalid_result, records=(forced_record,))
+            with self.assertRaisesRegex(
+                IntegrationError,
+                "UNBOUNDED_REPLAY_REQUIRED_FOR_MINIMUM_ZERO_LOSS_DEPTH",
+            ):
+                integration._derive_accounting(
+                    single_inputs, forced_result, invalid_converted
+                )
             with self.assertRaisesRegex(
                 IntegrationError,
                 "UPSTREAM_DELAYED_RAW_SHADOW_ARITY_UNREPRESENTABLE",

@@ -15,11 +15,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from benchmarks.redred_mc_wtb_pose_recovery import (
+    GeometryError,
     PoseSample as RecoveryPoseSample,
     RecoveryMode,
     interpolate_committed_bracket,
-    normalize_quaternion_xyzw,
     recover_causal_cav,
+    rotate_sensor_ray_to_world,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import (
     DecisionReceipt,
@@ -41,10 +42,13 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
 )
 from benchmarks.redred_mc_wtb_stage4_scoring import (
     RayEvent,
+    ScoreBoundaryEvidence,
     ScoreFreeAccounting,
     ScoreInputManifest,
     ShadowRay,
 )
+
+
 class IntegrationError(ValueError):
     """Assay provenance or a score-free integration invariant failed."""
 
@@ -69,9 +73,50 @@ _REASON_ALIASES = {
     "invalid_bracket": "invalid_pose",
     "full_pressure_oldest_bypass": "fifo_full_forced_bypass",
 }
-_FRESHNESS_REASONS = frozenset(("no_occurrence_pose", "stale_pose"))
-_INVALID_REASONS = frozenset(("invalid_pose", "invalid_bracket", "missing_left_pose"))
-_OPERATIONAL_REASONS = frozenset(("deadline_timeout", "full_pressure_oldest_bypass"))
+_ARM_CATEGORY_REASONS = {
+    Arm.ZOH_FRESHNESS: {
+        "corrected": frozenset(("fresh_zoh",)),
+        "freshness": frozenset(("no_occurrence_pose", "stale_pose")),
+        "invalid": frozenset(("invalid_pose",)),
+        "operational": frozenset(),
+    },
+    Arm.CAUSAL_CAV: {
+        "corrected": frozenset(("causal_cav", "fresh_zoh_fallback")),
+        "freshness": frozenset(("no_occurrence_pose", "stale_pose")),
+        "invalid": frozenset(("invalid_pose",)),
+        "operational": frozenset(),
+    },
+    Arm.DELAYED_EXACT: {
+        "corrected": frozenset(("bracket_interpolation",)),
+        "freshness": frozenset(),
+        "invalid": frozenset(("missing_bracket",)),
+        "operational": frozenset(
+            ("deadline_timeout", "fifo_full_forced_bypass", "invalid_pose")
+        ),
+    },
+    Arm.ORACLE_1KHZ: {
+        "corrected": frozenset(("oracle_fresh_zoh",)),
+        "freshness": frozenset(("no_occurrence_pose", "stale_pose")),
+        "invalid": frozenset(("invalid_pose",)),
+        "operational": frozenset(),
+    },
+}
+
+_STATE_COMPONENTS_BITS = (
+    ("delayed_fifo_1024x102_payload", 1024 * 102),
+    ("ingress_staging_6x102_payload", 6 * 102),
+    ("pose_ring_16x192_payload", 16 * 192),
+    ("fifo_read_write_pointers_and_count", 31),
+    ("ingress_count_and_cursor", 6),
+    ("pose_ring_pointer_and_valid", 9),
+    ("pose_ring_16x11_live_references", 16 * 11),
+    ("two_lane_102bit_pipeline", 2 * 102),
+    ("pose_ingress_register", 192),
+    ("global_cycle_counter", 21),
+    ("status_counters", 28),
+)
+_CONSERVATIVE_INCREMENTAL_STATE_BITS = 108_799
+_CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND = 192_000
 
 
 def _duplicate_rejecting_object(pairs: Sequence[Tuple[str, Any]]) -> Dict[str, Any]:
@@ -182,6 +227,8 @@ def _validate_payload(row: Mapping[str, Any]) -> None:
 class AssayBundle:
     root: Path
     manifest: Mapping[str, Any]
+    manifest_sha256: str
+    authority_sha256: str
     events: Tuple[Mapping[str, Any], ...]
     batches: Tuple[Mapping[str, Any], ...]
     snapshots: Tuple[Mapping[str, Any], ...]
@@ -194,6 +241,7 @@ class AssayBundle:
 class WindowCycleInputs:
     window_id: str
     window_start_ns: int
+    query_start_ns: int
     window_end_ns: int
     event_rows: Tuple[Mapping[str, Any], ...]
     events: Tuple[Event, ...]
@@ -210,13 +258,87 @@ class IntegratedArmWindow:
     query_records: Tuple[DecisionRecord, ...]
     receipt: DecisionReceipt
     accounting: ScoreFreeAccounting
+    accounting_evidence: "ScoreFreeAccountingEvidence"
     ray_events: Tuple[RayEvent, ...]
     manifest: ScoreInputManifest
+    boundary_evidence: ScoreBoundaryEvidence
     full_cycle_evidence_sha256: str
+    cycle_receipts_sha256: str
     query_projection_sha256: str
 
 
-def load_assay_bundle(root: Path) -> AssayBundle:
+@dataclass(frozen=True)
+class ScoreFreeAccountingEvidence:
+    """Auditable score-free derivation of categories and fixed hardware costs."""
+
+    window_id: str
+    arm: str
+    category_reason_policy: Tuple[Tuple[str, Tuple[str, ...]], ...]
+    category_event_ids: Tuple[Tuple[str, Tuple[int, ...]], ...]
+    state_components_bits: Tuple[Tuple[str, int], ...]
+    pose_bandwidth_components_bps: Tuple[Tuple[str, int], ...]
+    event_bandwidth_basis: Tuple[Tuple[str, int], ...]
+    buffer_entry_cycle_components: Tuple[Tuple[str, int], ...]
+    buffer_bit_cycles: int
+    pose_ring_accounting_sha256: str
+
+    def to_mapping(self) -> Mapping[str, Any]:
+        return {
+            "schema": "redred.mc_wtb.stage4_score_free_accounting_evidence/v1",
+            "window_id": self.window_id,
+            "arm": self.arm,
+            "category_reason_policy": {
+                name: list(values) for name, values in self.category_reason_policy
+            },
+            "category_event_ids": {
+                name: list(values) for name, values in self.category_event_ids
+            },
+            "state_components_bits": dict(self.state_components_bits),
+            "state_total_bits": sum(value for _, value in self.state_components_bits),
+            "pose_bandwidth_components_bps": dict(
+                self.pose_bandwidth_components_bps
+            ),
+            "pose_bandwidth_total_bps": sum(
+                value for _, value in self.pose_bandwidth_components_bps
+            ),
+            "event_bandwidth_basis": dict(self.event_bandwidth_basis),
+            "buffer_entry_cycle_components": dict(
+                self.buffer_entry_cycle_components
+            ),
+            "buffer_bit_cycles": self.buffer_bit_cycles,
+            "pose_ring_accounting_sha256": self.pose_ring_accounting_sha256,
+        }
+
+    def canonical_sha256(self) -> str:
+        return canonical_sha256(self.to_mapping())
+
+
+def _pose_value_sha256(
+    pose_id: int, timestamp_ns: int, quaternion: Sequence[float]
+) -> str:
+    return canonical_sha256({
+        "pose_id": pose_id,
+        "timestamp_ns": timestamp_ns,
+        "quaternion_xyzw": list(quaternion),
+    })
+
+
+def _validate_pose_value(
+    row: Mapping[str, Any], id_field: str, timestamp_field: str, where: str
+) -> None:
+    pose_id = _require_int(row.get(id_field), "%s pose ID" % where, 0)
+    timestamp_ns = _require_int(
+        row.get(timestamp_field), "%s timestamp" % where, 0
+    )
+    quaternion = _quaternion(row.get("quaternion_xyzw"), "%s quaternion" % where)
+    supplied = _require_sha(row.get("pose_value_sha256"), "%s pose value" % where)
+    if supplied != _pose_value_sha256(pose_id, timestamp_ns, quaternion):
+        raise IntegrationError("%s pose value hash differs" % where)
+
+
+def load_assay_bundle(
+    root: Path, *, expected_manifest_sha256: str
+) -> AssayBundle:
     """Load and cryptographically close one score-free assay directory."""
 
     directory = Path(root)
@@ -228,6 +350,12 @@ def load_assay_bundle(root: Path) -> AssayBundle:
     manifest = _decode_json(manifest_raw, _MANIFEST)
     if canonical_json_bytes(manifest) != manifest_raw:
         raise IntegrationError("assay manifest is not canonical")
+    expected_manifest = _require_sha(
+        expected_manifest_sha256, "expected canonical assay manifest"
+    )
+    manifest_sha256 = _sha256_bytes(manifest_raw)
+    if manifest_sha256 != expected_manifest:
+        raise IntegrationError("canonical assay manifest hash differs from caller seal")
     if manifest.get("schema") != "redred.mc_wtb.stage4_score_free_inputs/v2":
         raise IntegrationError("assay manifest schema is not v2")
     contract = load_comparison_contract()
@@ -236,6 +364,9 @@ def load_assay_bundle(root: Path) -> AssayBundle:
     registry = _require_mapping(manifest.get("registry"), "manifest.registry")
     if registry.get("sha256") != contract.registry["sha256"]:
         raise IntegrationError("assay manifest registry hash differs")
+    if registry.get("forbidden_interval_selected_records") != 0:
+        raise IntegrationError("assay manifest reports forbidden selected records")
+    forbidden = tuple(contract.registry["forbidden_interval_ns"])
 
     artifacts = _require_mapping(manifest.get("artifacts"), "manifest.artifacts")
     loaded = {}  # type: Dict[str, Tuple[Mapping[str, Any], ...]]
@@ -306,18 +437,176 @@ def load_assay_bundle(root: Path) -> AssayBundle:
         raise IntegrationError("generator/runtime authority binding differs")
     for row in loaded[_EVENTS]:
         _validate_payload(row)
+        timestamp_ns = _require_int(row.get("timestamp_ns"), "event timestamp", 0)
+        if forbidden[0] <= timestamp_ns < forbidden[1]:
+            raise IntegrationError("forbidden event reached assay inputs")
     event_ids = tuple(_require_int(row.get("event_id"), "event_id", 0) for row in loaded[_EVENTS])
     if any(right <= left for left, right in zip(event_ids, event_ids[1:])):
         raise IntegrationError("assay event IDs are not globally ordered")
 
+    dataset_by_key = {}  # type: Dict[Tuple[str, int], Mapping[str, Any]]
     for packet in loaded[_DATASET_POSES]:
+        _validate_pose_value(
+            packet, "source_pose_id", "timestamp_ns", "dataset packet"
+        )
         body = dict(packet)
         packet_hash = _require_sha(body.pop("packet_sha256", None), "pose packet hash")
         if canonical_sha256(body) != packet_hash:
             raise IntegrationError("dataset pose packet canonical hash differs")
+        commit_cycle = _require_int(packet.get("commit_cycle"), "pose commit cycle")
+        if (
+            packet.get("arrival_cycle") != commit_cycle
+            or packet.get("visible_cycle") != commit_cycle + 1
+        ):
+            raise IntegrationError("dataset pose packet timing semantics differ")
+        if forbidden[0] <= int(packet["timestamp_ns"]) < forbidden[1]:
+            raise IntegrationError("forbidden dataset pose reached assay inputs")
+        key = (
+            str(packet.get("window_id")),
+            _require_int(packet.get("source_pose_id"), "source_pose_id", 0),
+        )
+        if key in dataset_by_key:
+            raise IntegrationError("dataset pose packet identity is duplicated")
+        dataset_by_key[key] = packet
+
+    dataset_stream_sha256 = _require_sha(
+        artifacts[_DATASET_POSES].get("sha256"), "dataset stream hash"
+    )
+    snapshots_by_key = {}  # type: Dict[Tuple[str, int], Mapping[str, Any]]
+    for snapshot in loaded[_SNAPSHOTS]:
+        snapshot_body = dict(snapshot)
+        snapshot_hash = _require_sha(
+            snapshot_body.pop("pose_snapshot_sha256", None), "pose snapshot hash"
+        )
+        if canonical_sha256(snapshot_body) != snapshot_hash:
+            raise IntegrationError("occurrence PoseSnapshot canonical hash differs")
+        if snapshot.get("dataset_pose_packet_stream_sha256") != dataset_stream_sha256:
+            raise IntegrationError("occurrence PoseSnapshot dataset authority differs")
+        window_id = snapshot.get("window_id")
+        batch_id = _require_int(
+            snapshot.get("occurrence_batch_id"), "snapshot batch ID", 0
+        )
+        key = (str(window_id), batch_id)
+        if key in snapshots_by_key:
+            raise IntegrationError("occurrence PoseSnapshot identity is duplicated")
+        pose_packets = snapshot.get("pose_packets")
+        if not isinstance(pose_packets, list) or len(pose_packets) != 2:
+            raise IntegrationError("occurrence PoseSnapshot must contain two packets")
+        occurrence_cycle = _require_int(
+            snapshot.get("occurrence_cycle"), "snapshot occurrence cycle", 0
+        )
+        eligible = tuple(
+            packet
+            for (packet_window, _), packet in dataset_by_key.items()
+            if packet_window == str(window_id)
+            and _require_int(packet.get("commit_cycle"), "packet commit cycle")
+            < occurrence_cycle
+        )
+        if len(eligible) < 2 or tuple(
+            packet.get("source_pose_id") for packet in eligible[-2:]
+        ) != tuple(pose.get("source_pose_id") for pose in pose_packets):
+            raise IntegrationError(
+                "occurrence PoseSnapshot is not the true latest pre-edge pair"
+            )
+        for ordinal, pose in enumerate(pose_packets):
+            pose_row = _require_mapping(pose, "snapshot pose packet")
+            _validate_pose_value(
+                pose_row,
+                "source_pose_id",
+                "timestamp_ns",
+                "snapshot packet",
+            )
+            source_key = (
+                str(window_id),
+                _require_int(
+                    pose_row.get("source_pose_id"), "snapshot source_pose_id", 0
+                ),
+            )
+            source_packet = _require_mapping(
+                dataset_by_key.get(source_key), "snapshot source packet"
+            )
+            expected_subset = {
+                name: source_packet.get(name)
+                for name in (
+                    "source_pose_id",
+                    "timestamp_ns",
+                    "quaternion_xyzw",
+                    "pose_value_sha256",
+                    "packet_sha256",
+                    "commit_cycle",
+                    "visible_cycle",
+                )
+            }
+            if dict(pose_row) != expected_subset:
+                raise IntegrationError(
+                    "snapshot packet %d differs from dataset authority" % ordinal
+                )
+        snapshots_by_key[key] = snapshot
+
+    cluster_snapshots = {}  # type: Dict[Tuple[str, int], str]
+    for event in loaded[_EVENTS]:
+        event_key = (
+            str(event.get("window_id")),
+            _require_int(event.get("occurrence_batch_id"), "event batch ID", 0),
+        )
+        snapshot = _require_mapping(
+            snapshots_by_key.get(event_key), "event occurrence PoseSnapshot"
+        )
+        event_snapshot_hash = _require_sha(
+            event.get("occurrence_pose_snapshot_sha256"), "event snapshot hash"
+        )
+        if event_snapshot_hash != snapshot.get("pose_snapshot_sha256"):
+            raise IntegrationError("event occurrence PoseSnapshot hash differs")
+        cluster_key = (
+            str(event.get("window_id")),
+            _require_int(event.get("timestamp_ns"), "event timestamp", 0),
+        )
+        prior = cluster_snapshots.setdefault(cluster_key, event_snapshot_hash)
+        if prior != event_snapshot_hash:
+            raise IntegrationError("equal-timestamp cluster has multiple snapshots")
+
+    oracle_by_id = {}  # type: Dict[int, Mapping[str, Any]]
+    for packet in loaded[_ORACLE_POSES]:
+        _validate_pose_value(
+            packet,
+            "oracle_pose_id",
+            "effective_timestamp_ns",
+            "oracle packet",
+        )
+        pose_id = _require_int(packet.get("oracle_pose_id"), "oracle_pose_id", 0)
+        if pose_id in oracle_by_id:
+            raise IntegrationError("oracle pose identity is duplicated")
+        if (
+            forbidden[0]
+            <= int(packet["effective_timestamp_ns"])
+            < forbidden[1]
+        ):
+            raise IntegrationError("forbidden oracle pose reached assay inputs")
+        oracle_by_id[pose_id] = packet
+    for schedule in loaded[_ORACLE_SCHEDULE]:
+        pose_id = _require_int(
+            schedule.get("oracle_pose_id"), "oracle schedule pose ID", 0
+        )
+        packet = _require_mapping(oracle_by_id.get(pose_id), "oracle schedule packet")
+        if (
+            schedule.get("effective_timestamp_ns")
+            != packet.get("effective_timestamp_ns")
+            or schedule.get("pose_value_sha256") != packet.get("pose_value_sha256")
+        ):
+            raise IntegrationError("oracle schedule differs from pose packet authority")
+        effective_cycle = _require_int(
+            schedule.get("effective_cycle"), "oracle effective cycle"
+        )
+        if (
+            schedule.get("commit_cycle") != effective_cycle + 1
+            or schedule.get("visible_cycle") != effective_cycle + 2
+        ):
+            raise IntegrationError("oracle schedule timing semantics differ")
     return AssayBundle(
         directory,
         manifest,
+        manifest_sha256,
+        supplied_binding,
         loaded[_EVENTS],
         loaded[_BATCHES],
         loaded[_SNAPSHOTS],
@@ -339,7 +628,9 @@ def _quaternion(value: Any, where: str) -> Tuple[float, float, float, float]:
     return result  # type: ignore[return-value]
 
 
-def _window_limits(manifest: Mapping[str, Any], window_id: str) -> Tuple[int, int]:
+def _window_limits(
+    manifest: Mapping[str, Any], window_id: str
+) -> Tuple[int, int, int]:
     windows = manifest.get("windows")
     if not isinstance(windows, list):
         raise IntegrationError("manifest windows must be an array")
@@ -347,15 +638,20 @@ def _window_limits(manifest: Mapping[str, Any], window_id: str) -> Tuple[int, in
     if len(matches) != 1:
         raise IntegrationError("window summary is absent or duplicated")
     row = matches[0]
-    if "window_start_ns" not in row or "window_end_ns" not in row:
+    if any(
+        name not in row
+        for name in ("window_start_ns", "query_start_ns", "window_end_ns")
+    ):
         raise IntegrationError(
-            "UPSTREAM_WINDOW_LIMITS_NOT_SERIALIZED: window_start_ns/window_end_ns are required"
+            "UPSTREAM_WINDOW_LIMITS_NOT_SERIALIZED: "
+            "window_start_ns/query_start_ns/window_end_ns are required"
         )
     start = _require_int(row["window_start_ns"], "window_start_ns", 0)
+    query_start = _require_int(row["query_start_ns"], "query_start_ns", 0)
     end = _require_int(row["window_end_ns"], "window_end_ns", 0)
-    if end <= start:
+    if not start <= query_start < end:
         raise IntegrationError("window limits are not increasing")
-    return start, end
+    return start, query_start, end
 
 
 def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycleInputs:
@@ -363,10 +659,25 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
 
     if not isinstance(bundle, AssayBundle):
         raise IntegrationError("bundle must be a validated AssayBundle")
-    start, end = _window_limits(bundle.manifest, window_id)
+    start, query_start, end = _window_limits(bundle.manifest, window_id)
     event_rows = tuple(row for row in bundle.events if row.get("window_id") == window_id)
     if not event_rows:
         raise IntegrationError("window has no assay events")
+    for row in event_rows:
+        timestamp_ns = _require_int(row.get("timestamp_ns"), "event timestamp", 0)
+        if not start <= timestamp_ns < end:
+            raise IntegrationError("assay event lies outside serialized window limits")
+        if (row.get("is_query") is True) != (query_start <= timestamp_ns < end):
+            raise IntegrationError("assay query label differs from serialized query interval")
+    window_summary = next(
+        row
+        for row in bundle.manifest["windows"]
+        if isinstance(row, Mapping) and row.get("window_id") == window_id
+    )
+    if sum(row.get("is_query") is True for row in event_rows) != _require_int(
+        window_summary.get("query_event_count"), "window query_event_count", 0
+    ):
+        raise IntegrationError("assay query count differs from manifest window summary")
     events = tuple(
         Event(
             _require_int(row.get("event_id"), "event_id", 0),
@@ -393,11 +704,6 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
                 _require_sha(row.get("pose_value_sha256"), "pose value hash"),
             ))
         except CycleModelError as exc:
-            if commit < 0:
-                raise IntegrationError(
-                    "UPSTREAM_SIGNED_HISTORY_CYCLE_UNSUPPORTED: "
-                    "cycle PosePacket rejects pre-window commits"
-                ) from exc
             raise IntegrationError("dataset pose cannot enter cycle model") from exc
 
     oracle_values = dict(
@@ -425,15 +731,11 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
                 _require_sha(schedule.get("pose_value_sha256"), "oracle pose hash"),
             ))
         except CycleModelError as exc:
-            if commit < 0:
-                raise IntegrationError(
-                    "UPSTREAM_SIGNED_HISTORY_CYCLE_UNSUPPORTED: "
-                    "cycle PosePacket rejects pre-window oracle commits"
-                ) from exc
             raise IntegrationError("oracle pose cannot enter cycle model") from exc
     return WindowCycleInputs(
         window_id,
         start,
+        query_start,
         end,
         event_rows,
         events,
@@ -453,11 +755,6 @@ def _convert_record(record: Any) -> DecisionRecord:
     try:
         return DecisionRecord.from_mapping(mapping)
     except Exception as exc:
-        if any(value < 0 for value in mapping["occurrence_pose_commit_cycles"]):
-            raise IntegrationError(
-                "UPSTREAM_SIGNED_HISTORY_CYCLE_UNSUPPORTED: "
-                "receipt v2 rejects pre-window commits"
-            ) from exc
         raise IntegrationError("cycle decision cannot satisfy receipt v2") from exc
 
 
@@ -504,29 +801,10 @@ def _validate_assay_snapshot_projection(
 def _normalized_world_ray(
     sensor_ray: Sequence[float], quaternion: Sequence[float]
 ) -> Tuple[float, float, float]:
-    if not isinstance(sensor_ray, (tuple, list)) or len(sensor_ray) != 3:
-        raise IntegrationError("sensor ray must contain three components")
     try:
-        vector = tuple(float(component) for component in sensor_ray)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise IntegrationError("sensor ray contains a non-numeric component") from exc
-    x, y, z, w = normalize_quaternion_xyzw(quaternion)
-    vx, vy, vz = vector
-    cross_x = y * vz - z * vy
-    cross_y = z * vx - x * vz
-    cross_z = x * vy - y * vx
-    second_x = y * cross_z - z * cross_y
-    second_y = z * cross_x - x * cross_z
-    second_z = x * cross_y - y * cross_x
-    rotated = (
-        vx + 2.0 * (w * cross_x + second_x),
-        vy + 2.0 * (w * cross_y + second_y),
-        vz + 2.0 * (w * cross_z + second_z),
-    )
-    norm = math.sqrt(math.fsum(component * component for component in rotated))
-    if not math.isfinite(norm) or norm <= 0.0:
-        raise IntegrationError("world ray is zero or non-finite")
-    return tuple(component / norm for component in rotated)  # type: ignore[return-value]
+        return rotate_sensor_ray_to_world(quaternion, sensor_ray)
+    except GeometryError as exc:
+        raise IntegrationError("reviewed world-ray rotation rejected input") from exc
 
 
 def _pose_rows(record: DecisionRecord, used: bool) -> Tuple[Tuple[int, int, int, str], ...]:
@@ -549,6 +827,7 @@ def _shadow_for_record(
     record: DecisionRecord,
     sensor_ray: Sequence[float],
     quaternions: Mapping[int, Tuple[float, float, float, float]],
+    authoritative_pose_packets: Sequence[PosePacket] = (),
 ) -> ShadowRay:
     occurrence = _pose_rows(record, False)
     used = _pose_rows(record, True)
@@ -566,19 +845,53 @@ def _shadow_for_record(
         quaternion = recovery.quaternion_xyzw
         transform = "occurrence_cav"
     elif record.arm == Arm.DELAYED_EXACT.value:
-        if len(used) != 2:
-            raise IntegrationError(
-                "UPSTREAM_DELAYED_RAW_SHADOW_ARITY_UNREPRESENTABLE: delayed_slerp requires two poses"
+        selected = used
+        if len(selected) != 2:
+            if not occurrence:
+                raise IntegrationError(
+                    "UPSTREAM_DELAYED_RAW_SHADOW_ARITY_UNREPRESENTABLE: "
+                    "authoritative offline bracket lacks a left pose"
+                )
+            left_id = occurrence[-1][0]
+            packet_by_id = {
+                packet.pose_id: packet for packet in authoritative_pose_packets
+            }
+            left_packet = packet_by_id.get(left_id)
+            right_packet = next(
+                (
+                    packet
+                    for packet in authoritative_pose_packets
+                    if packet.timestamp_ns > record.event_timestamp_ns
+                ),
+                None,
             )
-        left, right = used
+            if left_packet is None or right_packet is None:
+                raise IntegrationError(
+                    "UPSTREAM_DELAYED_RAW_SHADOW_ARITY_UNREPRESENTABLE: "
+                    "authoritative offline bracket is unavailable"
+                )
+            selected = (
+                (
+                    left_packet.pose_id,
+                    left_packet.timestamp_ns,
+                    left_packet.commit_cycle,
+                    left_packet.pose_sha256,
+                ),
+                (
+                    right_packet.pose_id,
+                    right_packet.timestamp_ns,
+                    right_packet.commit_cycle,
+                    right_packet.pose_sha256,
+                ),
+            )
+        left, right = selected
         bracket = interpolate_committed_bracket(
             RecoveryPoseSample(left[1], left[2], quaternions[left[0]]),
             RecoveryPoseSample(right[1], right[2], quaternions[right[0]]),
             record.event_timestamp_ns,
-            record.retire_cycle,
+            max(record.retire_cycle, right[2] + 1),
         )
         quaternion = bracket.quaternion_xyzw
-        selected = used
         transform = "delayed_slerp"
     else:
         if not occurrence:
@@ -605,6 +918,7 @@ def _shadow_for_record(
 
 def _full_cycle_evidence(result: SimulationResult) -> Mapping[str, Any]:
     return {
+        "schema": "redred.mc_wtb.stage4_full_cycle_result_evidence/v1",
         "window_id": result.window_id,
         "arm": result.arm.value,
         "decision_records": [record.to_mapping() for record in result.records],
@@ -620,9 +934,18 @@ def _full_cycle_evidence(result: SimulationResult) -> Mapping[str, Any]:
         "ingress_staging_entries": result.ingress_staging_entries,
         "buffer_entries": result.buffer_entries,
         "event_record_bits": result.event_record_bits,
+        "causal_pose_index_bits_in_event_record": (
+            result.causal_pose_index_bits_in_event_record
+        ),
         "pose_packet_bits": result.pose_packet_bits,
         "event_lanes": result.event_lanes,
         "transform_pipeline_cycles": result.transform_pipeline_cycles,
+        "dataset_pose_arrival_assumption": result.dataset_pose_arrival_assumption,
+        "arm_disposition_label": result.arm_disposition_label,
+        "pose_ring_entries": result.pose_ring_entries,
+        "pose_ring_state_bits": result.pose_ring_state_bits,
+        "pose_ring_accounting": result.pose_ring_accounting.to_mapping(),
+        "pose_ring_accounting_sha256": result.pose_ring_accounting_sha256,
     }
 
 
@@ -634,7 +957,11 @@ def _derive_accounting(
     inputs: WindowCycleInputs,
     result: SimulationResult,
     converted: Sequence[DecisionRecord],
-) -> ScoreFreeAccounting:
+) -> Tuple[ScoreFreeAccounting, ScoreFreeAccountingEvidence]:
+    if len(converted) != len(result.records) or tuple(
+        record.event_id for record in converted
+    ) != tuple(record.event_id for record in result.records):
+        raise IntegrationError("receipt-v2 conversion differs from full cycle result")
     query_indexes = tuple(
         index for index, row in enumerate(inputs.event_rows) if row.get("is_query") is True
     )
@@ -642,15 +969,20 @@ def _derive_accounting(
     freshness = []  # type: List[int]
     invalid = []  # type: List[int]
     operational = []  # type: List[int]
+    policy = _ARM_CATEGORY_REASONS[result.arm]
+    corrected = []  # type: List[int]
     for index in query_indexes:
         original = result.records[index]
         if original.disposition == "corrected_world_ray":
+            if original.disposition_reason not in policy["corrected"]:
+                raise IntegrationError("corrected disposition reason is not arm-frozen")
+            corrected.append(original.event_id)
             continue
-        elif original.disposition_reason in _FRESHNESS_REASONS:
+        elif original.disposition_reason in policy["freshness"]:
             freshness.append(original.event_id)
-        elif original.disposition_reason in _INVALID_REASONS:
+        elif original.disposition_reason in policy["invalid"]:
             invalid.append(original.event_id)
-        elif original.disposition_reason in _OPERATIONAL_REASONS:
+        elif original.disposition_reason in policy["operational"]:
             operational.append(original.event_id)
         else:
             raise IntegrationError("raw disposition lacks a frozen accounting category")
@@ -660,26 +992,46 @@ def _derive_accounting(
     )
     if tuple(record.event_id for record in query_records) != tuple(row[0] for row in baseline):
         raise IntegrationError("query accounting projection differs from cycle evidence")
-    duration = inputs.window_end_ns - inputs.window_start_ns
-    pose_count = len(inputs.oracle_poses) if result.arm is Arm.ORACLE_1KHZ else len(inputs.dataset_poses)
-    buffer_bit_cycles = sum(
-        max(0, receipt.retire_cycle - receipt.admission_cycle) * result.event_record_bits
+    query_duration = inputs.window_end_ns - inputs.query_start_ns
+    serializer_entry_cycles = sum(
+        receipt.admission_cycle - receipt.occurrence_cycle
         for receipt in result.cycle_receipts
     )
-    contract = load_comparison_contract()
-    pose_ring_entries = int(contract.timing["pose_ring_entries"])
-    incremental_state = (
-        result.ingress_staging_entries * result.event_record_bits
-        + result.peak_buffer_occupancy * result.event_record_bits
-        + pose_ring_entries * result.pose_packet_bits
+    delayed_fifo_entry_cycles = (
+        sum(
+            receipt.retire_cycle - receipt.admission_cycle
+            for receipt in result.cycle_receipts
+        )
+        if result.arm is Arm.DELAYED_EXACT
+        else 0
     )
+    if serializer_entry_cycles < 0 or delayed_fifo_entry_cycles < 0:
+        raise IntegrationError("cycle evidence contains negative residency")
+    buffer_bit_cycles = result.event_record_bits * (
+        serializer_entry_cycles + delayed_fifo_entry_cycles
+    )
+    if sum(value for _, value in _STATE_COMPONENTS_BITS) != (
+        _CONSERVATIVE_INCREMENTAL_STATE_BITS
+    ):
+        raise IntegrationError("fixed state component accounting does not conserve")
+    attempted_ids = set(corrected + operational)
     attempted = tuple(
         result.records[index].event_id
         for index in query_indexes
-        if result.records[index].disposition == "corrected_world_ray"
-        or result.records[index].disposition_reason in _OPERATIONAL_REASONS
+        if result.records[index].event_id in attempted_ids
     )
-    return ScoreFreeAccounting(
+    event_bandwidth = _ceil_rate(
+        len(query_indexes), result.event_record_bits, query_duration
+    )
+    if any(
+        result.records[index].disposition_reason == "fifo_full_forced_bypass"
+        for index in range(len(result.records))
+    ):
+        raise IntegrationError(
+            "UNBOUNDED_REPLAY_REQUIRED_FOR_MINIMUM_ZERO_LOSS_DEPTH: "
+            "full-pressure bypass prevents a bounded-peak claim"
+        )
+    accounting = ScoreFreeAccounting(
         inputs.window_id,
         result.arm.value,
         baseline,
@@ -690,20 +1042,62 @@ def _derive_accounting(
         result.peak_buffer_occupancy,
         result.peak_buffer_occupancy,
         buffer_bit_cycles,
-        _ceil_rate(pose_count, result.pose_packet_bits, duration),
-        _ceil_rate(len(inputs.events), result.event_record_bits, duration),
-        incremental_state,
+        _CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND,
+        event_bandwidth,
+        _CONSERVATIVE_INCREMENTAL_STATE_BITS,
         0,
         0,
         0,
         0,
     )
+    category_reason_policy = tuple(
+        (
+            name,
+            tuple(sorted(policy[name])),
+        )
+        for name in ("corrected", "freshness", "invalid", "operational")
+    )
+    category_event_ids = (
+        ("attempted_correction", attempted),
+        ("freshness_veto", tuple(freshness)),
+        ("invalid_pose_bypass", tuple(invalid)),
+        ("operational_waste", tuple(operational)),
+    )
+    evidence = ScoreFreeAccountingEvidence(
+        inputs.window_id,
+        result.arm.value,
+        category_reason_policy,
+        category_event_ids,
+        _STATE_COMPONENTS_BITS,
+        (("global_1khz_pose_interface_1000x192", 1_000 * 192),),
+        (
+            ("query_event_count", len(query_indexes)),
+            ("event_record_bits", result.event_record_bits),
+            ("query_interval_ns", query_duration),
+            ("integer_ceiling_rate_bps", event_bandwidth),
+        ),
+        (
+            ("serializer_admission_minus_occurrence", serializer_entry_cycles),
+            ("delayed_fifo_retire_minus_admission", delayed_fifo_entry_cycles),
+        ),
+        buffer_bit_cycles,
+        result.pose_ring_accounting_sha256,
+    )
+    if (
+        sum(value for _, value in evidence.state_components_bits)
+        != accounting.incremental_state_bits
+        or sum(value for _, value in evidence.pose_bandwidth_components_bps)
+        != accounting.pose_bandwidth_bits_per_second
+    ):
+        raise IntegrationError("score-free accounting evidence differs from totals")
+    return accounting, evidence
 
 
 def _artifact_bindings(
     bundle: AssayBundle,
     arm: Arm,
     full_cycle_evidence_sha256: str,
+    accounting_evidence_sha256: str,
 ) -> Tuple[Tuple[str, str], ...]:
     contract = load_comparison_contract()
     package_root = Path(__file__).resolve().parents[1]
@@ -715,22 +1109,35 @@ def _artifact_bindings(
     )
     runtime = _require_mapping(assay_runtime.get("runtime"), "runtime binding")
     source = _require_mapping(bundle.manifest.get("source"), "manifest.source")
+    integration_code = {
+        "assay_generator_code_sha256": generator_code,
+        "integration_adapter_py_sha256": _sha256_file(Path(__file__).resolve()),
+        "pose_recovery_geometry_py_sha256": _sha256_file(
+            package_root / "redred_mc_wtb_pose_recovery" / "geometry.py"
+        ),
+    }
     cycle_binding = {
         "model_py_sha256": _sha256_file(
             package_root / "redred_mc_wtb_stage4_cyclemodel" / "model.py"
         ),
         "full_cycle_evidence_sha256": full_cycle_evidence_sha256,
+        "score_free_accounting_evidence_sha256": accounting_evidence_sha256,
+    }
+    source_binding = {
+        "source": source,
+        "assay_manifest_sha256": bundle.manifest_sha256,
+        "assay_authority_sha256": bundle.authority_sha256,
     }
     bindings = {
         "protocol": contract.canonical_sha256,
         "registry": contract.registry["sha256"],
         "arm_parameters": canonical_sha256(contract.arms[arm.value]),
-        "generator": canonical_sha256(generator_code),
+        "generator": canonical_sha256(integration_code),
         "cycle_model": canonical_sha256(cycle_binding),
         "scorer": _sha256_file(
             package_root / "redred_mc_wtb_stage4_scoring" / "scoring.py"
         ),
-        "sources": canonical_sha256(source),
+        "sources": canonical_sha256(source_binding),
         "runtime": canonical_sha256(runtime),
     }
     return tuple(bindings.items())
@@ -784,7 +1191,12 @@ def build_all_arm_window(
                 else inputs.dataset_quaternions
             )
             shadows.append(
-                _shadow_for_record(converted_by_arm[arm][index], sensor_ray, quaternions)
+                _shadow_for_record(
+                    converted_by_arm[arm][index],
+                    sensor_ray,
+                    quaternions,
+                    inputs.dataset_poses if arm is Arm.DELAYED_EXACT else (),
+                )
             )
         ray_events.append(RayEvent(
             window_id,
@@ -817,33 +1229,46 @@ def build_all_arm_window(
             expected_window_id=window_id,
             expected_arm=arm.value,
         )
-        accounting = _derive_accounting(inputs, result, converted)
-        evidence_hash = canonical_sha256(_full_cycle_evidence(result))
-        manifest = ScoreInputManifest(
-            window_id,
-            arm.value,
-            receipt.canonical_sha256(),
-            accounting.canonical_sha256(),
-            ray_digest,
-            _artifact_bindings(bundle, arm, evidence_hash),
+        accounting, accounting_evidence = _derive_accounting(
+            inputs, result, converted
         )
-        projection_hash = canonical_sha256({
-            "full_cycle_evidence_sha256": evidence_hash,
-            "query_event_ids": list(query_ids),
-            "decision_receipt_sha256": receipt.canonical_sha256(),
-            "score_free_accounting_sha256": accounting.canonical_sha256(),
-            "ray_events_sha256": ray_digest,
-            "score_input_manifest_sha256": manifest.canonical_sha256(),
-        })
+        evidence_hash = canonical_sha256(_full_cycle_evidence(result))
+        query_projection_sha256 = receipt.decision_records_sha256
+        manifest = ScoreInputManifest(
+            window_id=window_id,
+            arm=arm.value,
+            decision_receipt_sha256=receipt.canonical_sha256(),
+            score_free_accounting_sha256=accounting.canonical_sha256(),
+            ray_events_sha256=ray_digest,
+            assay_authoritative_input_manifest_sha256=bundle.manifest_sha256,
+            full_cycle_result_sha256=evidence_hash,
+            cycle_receipts_sha256=result.cycle_receipts_sha256,
+            query_projection_sha256=query_projection_sha256,
+            artifact_sha256=_artifact_bindings(
+                bundle,
+                arm,
+                evidence_hash,
+                accounting_evidence.canonical_sha256(),
+            ),
+        )
+        boundary_evidence = ScoreBoundaryEvidence(
+            assay_authoritative_input_manifest_sha256=bundle.manifest_sha256,
+            full_cycle_result_sha256=evidence_hash,
+            cycle_receipts_sha256=result.cycle_receipts_sha256,
+            query_projection_sha256=query_projection_sha256,
+        )
         integrated[arm] = IntegratedArmWindow(
             arm,
             result,
             query_records,
             receipt,
             accounting,
+            accounting_evidence,
             ray_values,
             manifest,
+            boundary_evidence,
             evidence_hash,
-            projection_hash,
+            result.cycle_receipts_sha256,
+            query_projection_sha256,
         )
     return integrated
