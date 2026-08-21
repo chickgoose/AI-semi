@@ -1,6 +1,8 @@
 {
   "schema": "redred.mc_wtb.stage4_comparison_contract/v1",
-  "status": "frozen_before_arm_scoring",
+  "status": "refrozen_after_prescore_red_team_no_arm_score_opened",
+  "normative_markdown": "docs/MC_WTB_STAGE4_COMPARISON_CONTRACT_20260821.md",
+  "normative_markdown_sha256": "e128a9dd8f158440def0f6d1ff3e09cf2da8c3d633cc1ce02f20accfc118c100",
   "checkpoint_commit": "7791e21a8415b0b5dd2c76cc6ea83698c7427d71",
   "development_only": true,
   "registry": {
@@ -15,7 +17,12 @@
     "same_edge_pose_visible_to_event": false,
     "causal_pose_snapshot_at_event_occurrence_required": true,
     "pose_reread_at_dequeue_forbidden": true,
+    "equal_timestamp_cluster_snapshot_atomic": true,
     "event_lanes": 2,
+    "event_lane_initiation_interval_cycles": 1,
+    "maximum_retirements_per_cycle": 2,
+    "sink_always_ready": true,
+    "cycle_priority": ["sample_visible_pose_state", "retire_ready_heads", "admit_new_events"],
     "transform_pipeline_cycles": 1,
     "event_record_bits": 102,
     "pose_packet_bits": 192,
@@ -28,21 +35,30 @@
       "deadline_ns": 6000000,
       "ordered": true,
       "later_right_bracket_allowed": true,
-      "label": "noncausal_at_occurrence"
+      "deadline_pose_commit_edge_visible": false,
+      "full_queue_action": "force_oldest_head_ordered_raw_bypass_before_admission",
+      "label": "DIAGNOSTIC_UPPER_BOUND",
+      "go_to_epoch_integration_allowed": false
     },
     "causal_cav": {
       "max_horizon_ns": 5000000,
       "max_horizon_pose_intervals": 1,
       "zoh_fallback_max_age_ns": 1000000
     },
-    "supplied_pose_1khz": {
+    "oracle_resampled_groundtruth_1khz": {
       "cadence_ns": 1000000,
+      "cadence_origin_ns": 0,
+      "generator": "shortest_arc_slerp_only_with_two_source_brackets",
+      "interface_width_bits": 192,
       "commit_delay_cycles": 1,
+      "visibility_delay_after_commit_cycles": 1,
       "max_pose_age_ns": 1000000,
-      "counterfactual_upstream_interface": true
+      "counterfactual_upstream_interface": true,
+      "label": "INTERFACE_VALUE_ONLY",
+      "go_to_epoch_integration_allowed": false
     }
   },
-  "go_to_rtl": {
+  "go_to_epoch_integration": {
     "minimum_r_all_fraction": 0.01,
     "minimum_positive_windows": 18,
     "minimum_enable_rate": 0.10,
@@ -53,6 +69,26 @@
     "maximum_buffer_entries": 1024,
     "maximum_pose_bandwidth_bits_per_second": 250000,
     "maximum_incremental_state_bits": 131072
+  },
+  "scoring": {
+    "reference_model": "separate_score_only_sensor_and_arm_world_shadow_banks_updated_by_every_event",
+    "mixed_coordinate_bank_forbidden": true,
+    "arm_gate_may_change_reference_density": false,
+    "missing_query_loss_is_protocol_failure": true,
+    "sum_method": "python_binary64_math_fsum_in_event_id_order",
+    "minimum_positive_window_fraction_exclusive": 0.000001,
+    "zero_or_nonfinite_sensor_denominator": "protocol_failure",
+    "positive_window_rule_is_statistical_claim": false,
+    "rate_weighting": "aggregate_event_weighted",
+    "quality_waste_ties_are_waste": true,
+    "latency_percentile": "nearest_rank_sorted_by_latency_cycles_then_event_id",
+    "added_latency": "per_event_policy_retire_cycle_minus_baseline_retire_cycle",
+    "p99_scope": "aggregate_and_every_window"
+  },
+  "promotion": {
+    "direct_rtl_go_authorized": false,
+    "production_motion_qualifier_profile_frozen": false,
+    "epoch_interlock_schedule_in_assay": false
   },
   "score_blind_decision_receipt_required": true,
   "score_all_arms_once": true,
