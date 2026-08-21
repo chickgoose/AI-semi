@@ -64,8 +64,79 @@ _DELAYED_DIAGNOSTIC_FILE = "delayed-unbounded-depth-diagnostic.json"
 _DELAYED_DIAGNOSTIC_KIND = "delayed_unbounded_depth_diagnostic"
 _REPLAY_REQUIRED = "UNBOUNDED_REPLAY_REQUIRED_FOR_MINIMUM_ZERO_LOSS_DEPTH"
 _DIAGNOSTIC_SCHEMA = (
-    "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v2"
+    "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v3"
 )
+_DIAGNOSTIC_CONFIG = {
+    "schema": "redred.mc_wtb.stage4_delayed_unbounded_depth_config/v2",
+    "arm": "delayed_exact",
+    "arm_semantic_label": "DIAGNOSTIC_UPPER_BOUND",
+    "clock_period_ps": 6500,
+    "timestamp_to_cycle_rule": (
+        "ceil((timestamp_ns-window_start_ns)*1000/6500)"
+    ),
+    "raw_ingress_lanes": 6,
+    "ingress_staging_entries": 6,
+    "ingress_order": "atomic_capture_then_stable_event_id_two_per_cycle",
+    "event_lanes": 2,
+    "transform_pipeline_cycles": 1,
+    "delayed_deadline_ns": 6_000_000,
+    "delayed_deadline_cycles": 923_077,
+    "pose_visibility_rule": (
+        "commit_cycle_strictly_less_than_observation_cycle"
+    ),
+    "cycle_priority": (
+        "visible_pose_then_ordered_retire_then_atomic_capture_then_"
+        "stable_admit_then_consecutive_ready_head_launch"
+    ),
+    "fifo_policy": "unbounded_remove_only_fifo_full_pressure_action",
+    "removed_bounded_fifo_entries": 1_024,
+    "removed_pressure_reason": "fifo_full_forced_bypass",
+    "termination_guard_rule": "iterations<=10*input_count+2*pose_count+32",
+    "queue_bound_rule": "fifo_occupancy<=input_event_count_at_all_times",
+    "event_record_bits": 102,
+    "pose_ring_entries": 16,
+    "pose_ring_state_bits": 3_072,
+}
+_DIAGNOSTIC_FIELDS = frozenset((
+    "schema",
+    "window_id",
+    "window_start_ns",
+    "arm",
+    "arm_semantic_label",
+    "config",
+    "config_identity_sha256",
+    "input_events",
+    "input_poses",
+    "input_events_sha256",
+    "input_poses_sha256",
+    "input_event_ids",
+    "retired_event_ids",
+    "input_event_ids_sha256",
+    "retired_event_ids_sha256",
+    "input_count",
+    "input_pose_count",
+    "retired_count",
+    "exact_once_ordered_conservation",
+    "no_full_pressure_reasons",
+    "termination_proven",
+    "queue_never_exceeded_input_count",
+    "simulation_iterations",
+    "termination_iteration_bound",
+    "peak_fifo_depth",
+    "peak_ingress_staging_occupancy",
+    "records",
+    "decision_records_sha256",
+    "cycle_receipts",
+    "cycle_receipts_sha256",
+    "common_serializer_cycles",
+    "always_bypass_retire_cycles",
+    "policy_added_latency_cycles",
+    "synthetic_test_mode",
+    "all_event_pose_indices_verified",
+    "pose_ring_accounting",
+    "pose_ring_accounting_sha256",
+    "evidence_sha256",
+))
 _DIAGNOSTIC_EVENT_FIELDS = frozenset((
     "event_id",
     "timestamp_ns",
@@ -222,6 +293,8 @@ def _validate_delayed_diagnostic_mapping(
 ) -> Mapping[str, Any]:
     """Reconstruct and replay a diagnostic from independently read bytes."""
 
+    if frozenset(value) != _DIAGNOSTIC_FIELDS:
+        raise SealingError("%s has the wrong diagnostic field set" % where)
     if value.get("schema") != _DIAGNOSTIC_SCHEMA:
         raise SealingError("%s has the wrong diagnostic schema" % where)
     if value.get("arm") != Arm.DELAYED_EXACT.value:
@@ -230,6 +303,47 @@ def _validate_delayed_diagnostic_mapping(
         raise SealingError("%s has the wrong arm semantic label" % where)
     if _require_bool(value.get("synthetic_test_mode"), "diagnostic mode"):
         raise SealingError("official diagnostic used synthetic test mode")
+    config = _require_mapping(value.get("config"), "diagnostic config")
+    if dict(config) != _DIAGNOSTIC_CONFIG:
+        raise SealingError("%s has the wrong diagnostic config" % where)
+    config_identity_sha256 = _require_sha(
+        value.get("config_identity_sha256"), "diagnostic config hash"
+    )
+    if canonical_sha256(config) != config_identity_sha256:
+        raise SealingError("%s config hash differs" % where)
+
+    input_count = _require_int(value.get("input_count"), "diagnostic input count")
+    input_pose_count = _require_int(
+        value.get("input_pose_count"), "diagnostic input pose count"
+    )
+    retired_count = _require_int(
+        value.get("retired_count"), "diagnostic retired count"
+    )
+    simulation_iterations = _require_int(
+        value.get("simulation_iterations"), "diagnostic simulation iterations"
+    )
+    termination_iteration_bound = _require_int(
+        value.get("termination_iteration_bound"),
+        "diagnostic termination iteration bound",
+    )
+    peak_fifo_depth = _require_int(
+        value.get("peak_fifo_depth"), "diagnostic peak FIFO depth"
+    )
+    if (
+        not _require_bool(value.get("termination_proven"), "termination proof")
+        or not _require_bool(
+            value.get("queue_never_exceeded_input_count"), "queue bound proof"
+        )
+        or not _require_bool(
+            value.get("exact_once_ordered_conservation"), "conservation proof"
+        )
+        or not _require_bool(
+            value.get("no_full_pressure_reasons"), "no-pressure proof"
+        )
+        or simulation_iterations > termination_iteration_bound
+        or peak_fifo_depth > input_count
+    ):
+        raise SealingError("%s progress or queue proof differs" % where)
 
     supplied_evidence_sha256 = _require_sha(
         value.get("evidence_sha256"), "diagnostic evidence hash"
@@ -241,6 +355,8 @@ def _validate_delayed_diagnostic_mapping(
 
     event_values = _require_array(value.get("input_events"), "diagnostic events")
     pose_values = _require_array(value.get("input_poses"), "diagnostic poses")
+    if len(event_values) != input_count or len(pose_values) != input_pose_count:
+        raise SealingError("%s complete-input counts differ" % where)
     events = []  # type: List[Event]
     poses = []  # type: List[PosePacket]
     try:
@@ -297,24 +413,47 @@ def _validate_delayed_diagnostic_mapping(
     if replay.to_mapping() != dict(value):
         raise SealingError("%s differs from independent replay" % where)
     return {
+        "schema": _DIAGNOSTIC_SCHEMA,
         "evidence_sha256": supplied_evidence_sha256,
-        "config_identity_sha256": _require_sha(
-            value.get("config_identity_sha256"), "diagnostic config hash"
-        ),
+        "config_schema": config["schema"],
+        "config_identity_sha256": config_identity_sha256,
+        "termination_guard_rule": config["termination_guard_rule"],
+        "queue_bound_rule": config["queue_bound_rule"],
         "input_events_sha256": _require_sha(
             value.get("input_events_sha256"), "diagnostic input event hash"
         ),
         "input_poses_sha256": _require_sha(
             value.get("input_poses_sha256"), "diagnostic input pose hash"
         ),
+        "input_event_ids_sha256": _require_sha(
+            value.get("input_event_ids_sha256"), "diagnostic input ID hash"
+        ),
+        "retired_event_ids_sha256": _require_sha(
+            value.get("retired_event_ids_sha256"), "diagnostic retired ID hash"
+        ),
+        "input_count": input_count,
+        "input_pose_count": input_pose_count,
+        "retired_count": retired_count,
+        "exact_once_ordered_conservation": True,
+        "no_full_pressure_reasons": True,
+        "termination_proven": True,
+        "queue_never_exceeded_input_count": True,
+        "simulation_iterations": simulation_iterations,
+        "termination_iteration_bound": termination_iteration_bound,
         "decision_records_sha256": _require_sha(
             value.get("decision_records_sha256"), "diagnostic decision hash"
         ),
         "cycle_receipts_sha256": _require_sha(
             value.get("cycle_receipts_sha256"), "diagnostic receipt hash"
         ),
-        "peak_fifo_depth": _require_int(
-            value.get("peak_fifo_depth"), "diagnostic peak FIFO depth"
+        "peak_fifo_depth": peak_fifo_depth,
+        "peak_ingress_staging_occupancy": _require_int(
+            value.get("peak_ingress_staging_occupancy"),
+            "diagnostic peak ingress staging occupancy",
+        ),
+        "pose_ring_accounting_sha256": _require_sha(
+            value.get("pose_ring_accounting_sha256"),
+            "diagnostic pose-ring accounting hash",
         ),
         "window_id": value.get("window_id"),
         "window_start_ns": value.get("window_start_ns"),
@@ -658,13 +797,40 @@ def _observe_delayed_diagnostic(
     return {
         "path": relative,
         "sha256": entry["sha256"],
+        "schema": entry["schema"],
         "evidence_sha256": entry["evidence_sha256"],
+        "config_schema": entry["config_schema"],
         "config_identity_sha256": entry["config_identity_sha256"],
+        "termination_guard_rule": entry["termination_guard_rule"],
+        "queue_bound_rule": entry["queue_bound_rule"],
         "input_events_sha256": entry["input_events_sha256"],
         "input_poses_sha256": entry["input_poses_sha256"],
+        "input_event_ids_sha256": entry["input_event_ids_sha256"],
+        "retired_event_ids_sha256": entry["retired_event_ids_sha256"],
+        "input_count": entry["input_count"],
+        "input_pose_count": entry["input_pose_count"],
+        "retired_count": entry["retired_count"],
+        "exact_once_ordered_conservation": entry[
+            "exact_once_ordered_conservation"
+        ],
+        "no_full_pressure_reasons": entry["no_full_pressure_reasons"],
+        "termination_proven": entry["termination_proven"],
+        "queue_never_exceeded_input_count": entry[
+            "queue_never_exceeded_input_count"
+        ],
+        "simulation_iterations": entry["simulation_iterations"],
+        "termination_iteration_bound": entry["termination_iteration_bound"],
         "decision_records_sha256": entry["decision_records_sha256"],
         "cycle_receipts_sha256": entry["cycle_receipts_sha256"],
         "peak_fifo_depth": entry["peak_fifo_depth"],
+        "peak_ingress_staging_occupancy": entry[
+            "peak_ingress_staging_occupancy"
+        ],
+        "pose_ring_accounting_sha256": entry[
+            "pose_ring_accounting_sha256"
+        ],
+        "window_id": entry["window_id"],
+        "window_start_ns": entry["window_start_ns"],
         "assay_authoritative_input_manifest_sha256": assay_manifest_sha256,
         "bounded_full_cycle_result_sha256": observed["full-cycle-result.json"][
             "sha256"
@@ -844,13 +1010,32 @@ def _verify_delayed_diagnostic_links(
     expected_binding_fields = frozenset((
         "path",
         "sha256",
+        "schema",
         "evidence_sha256",
+        "config_schema",
         "config_identity_sha256",
+        "termination_guard_rule",
+        "queue_bound_rule",
         "input_events_sha256",
         "input_poses_sha256",
+        "input_event_ids_sha256",
+        "retired_event_ids_sha256",
+        "input_count",
+        "input_pose_count",
+        "retired_count",
+        "exact_once_ordered_conservation",
+        "no_full_pressure_reasons",
+        "termination_proven",
+        "queue_never_exceeded_input_count",
+        "simulation_iterations",
+        "termination_iteration_bound",
         "decision_records_sha256",
         "cycle_receipts_sha256",
         "peak_fifo_depth",
+        "peak_ingress_staging_occupancy",
+        "pose_ring_accounting_sha256",
+        "window_id",
+        "window_start_ns",
         "assay_authoritative_input_manifest_sha256",
         "bounded_full_cycle_result_sha256",
         "bounded_cycle_receipts_sha256",
@@ -934,18 +1119,43 @@ def _verify_delayed_diagnostic_links(
             expected_path = "%s/%s" % (leaf_root, _DELAYED_DIAGNOSTIC_FILE)
             if diagnostic_path != expected_path:
                 raise SealingError("delayed diagnostic path differs")
+            if (
+                binding.get("window_id") != window_mapping.get("window_id")
+                or binding.get("window_start_ns")
+                != window_mapping.get("warmup_start_ns_inclusive")
+            ):
+                raise SealingError("delayed diagnostic window binding differs")
             diagnostic_entry = _require_mapping(
                 files.get(expected_path), "diagnostic file index entry"
             )
             for name in (
                 "sha256",
+                "schema",
                 "evidence_sha256",
+                "config_schema",
                 "config_identity_sha256",
+                "termination_guard_rule",
+                "queue_bound_rule",
                 "input_events_sha256",
                 "input_poses_sha256",
+                "input_event_ids_sha256",
+                "retired_event_ids_sha256",
+                "input_count",
+                "input_pose_count",
+                "retired_count",
+                "exact_once_ordered_conservation",
+                "no_full_pressure_reasons",
+                "termination_proven",
+                "queue_never_exceeded_input_count",
+                "simulation_iterations",
+                "termination_iteration_bound",
                 "decision_records_sha256",
                 "cycle_receipts_sha256",
                 "peak_fifo_depth",
+                "peak_ingress_staging_occupancy",
+                "pose_ring_accounting_sha256",
+                "window_id",
+                "window_start_ns",
             ):
                 if binding.get(name) != diagnostic_entry.get(name):
                     raise SealingError("diagnostic outer binding differs")

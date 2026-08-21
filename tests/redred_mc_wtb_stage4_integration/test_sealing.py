@@ -153,6 +153,40 @@ class SealingTests(unittest.TestCase):
                 binding["delayed_unbounded_depth_diagnostic"]["path"],
                 diagnostic_relative,
             )
+            diagnostic_binding = binding[
+                "delayed_unbounded_depth_diagnostic"
+            ]
+            self.assertEqual(
+                diagnostic_binding["schema"],
+                "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v3",
+            )
+            self.assertEqual(
+                diagnostic_binding["config_schema"],
+                "redred.mc_wtb.stage4_delayed_unbounded_depth_config/v2",
+            )
+            self.assertEqual(
+                diagnostic_binding["termination_guard_rule"],
+                "iterations<=10*input_count+2*pose_count+32",
+            )
+            self.assertEqual(
+                diagnostic_binding["queue_bound_rule"],
+                "fifo_occupancy<=input_event_count_at_all_times",
+            )
+            self.assertTrue(diagnostic_binding["termination_proven"])
+            self.assertTrue(
+                diagnostic_binding["queue_never_exceeded_input_count"]
+            )
+            self.assertTrue(
+                diagnostic_binding["exact_once_ordered_conservation"]
+            )
+            self.assertLessEqual(
+                diagnostic_binding["simulation_iterations"],
+                diagnostic_binding["termination_iteration_bound"],
+            )
+            self.assertEqual(
+                diagnostic_binding["input_count"],
+                diagnostic_binding["retired_count"],
+            )
             boundary_path = root / leaf / "score-boundary-evidence.json"
             boundary = sealing._read_json(boundary_path)[0]
             self.assertEqual(set(boundary), {
@@ -190,7 +224,13 @@ class SealingTests(unittest.TestCase):
                         else None
                     )
                 }
-            window_mapping = {"arms": arms}
+            window_mapping = {
+                "window_id": diagnostic_binding["window_id"],
+                "warmup_start_ns_inclusive": diagnostic_binding[
+                    "window_start_ns"
+                ],
+                "arms": arms,
+            }
             window_relative = "windows/w0/window-seal.json"
             window_path = root / window_relative
             window_path.write_bytes(canonical_json_bytes(window_mapping))
@@ -238,7 +278,7 @@ class SealingTests(unittest.TestCase):
             path = Path(directory) / "mutant.json"
             path.write_bytes(canonical_json_bytes(mutant))
             with self.assertRaisesRegex(
-                sealing.SealingError, "cannot be independently replayed|independent replay"
+                sealing.SealingError, "progress or queue proof differs"
             ):
                 sealing._observe_file(
                     path.parent,
@@ -246,6 +286,39 @@ class SealingTests(unittest.TestCase):
                     kind=sealing._DELAYED_DIAGNOSTIC_KIND,
                     record_count=1,
                 )
+
+    def test_v3_config_and_progress_mutants_fail_closed(self):
+        _sealed, diagnostic = pressure_fixture()
+        for field, value, expected in (
+            ("termination_proven", False, "progress or queue proof differs"),
+            (
+                "queue_never_exceeded_input_count",
+                False,
+                "progress or queue proof differs",
+            ),
+            (
+                "simulation_iterations",
+                diagnostic.termination_iteration_bound + 1,
+                "progress or queue proof differs",
+            ),
+        ):
+            with self.subTest(field=field):
+                mutant = deepcopy(diagnostic.to_mapping())
+                mutant[field] = value
+                body = dict(mutant)
+                del body["evidence_sha256"]
+                mutant["evidence_sha256"] = canonical_sha256(body)
+                with self.assertRaisesRegex(sealing.SealingError, expected):
+                    sealing._validate_delayed_diagnostic_mapping(mutant, field)
+
+        mutant = deepcopy(diagnostic.to_mapping())
+        mutant["config"]["termination_guard_rule"] = "iterations_unbounded"
+        mutant["config_identity_sha256"] = canonical_sha256(mutant["config"])
+        body = dict(mutant)
+        del body["evidence_sha256"]
+        mutant["evidence_sha256"] = canonical_sha256(body)
+        with self.assertRaisesRegex(sealing.SealingError, "wrong diagnostic config"):
+            sealing._validate_delayed_diagnostic_mapping(mutant, "config")
 
     def test_diagnostic_hash_is_body_hash_not_file_hash(self):
         _sealed, diagnostic = pressure_fixture()
