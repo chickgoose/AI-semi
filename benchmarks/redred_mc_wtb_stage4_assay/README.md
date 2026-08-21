@@ -22,17 +22,20 @@ The generator:
 - copies the registry's exact inclusive warmup start, inclusive query start,
   and exclusive query end into every manifest window summary, so downstream
   integration never reconstructs window bounds;
-- preserves global source event IDs and emits timestamp, pixel, polarity,
-  normalized sensor ray, query membership, equal-timestamp cluster identity,
-  and exact integer occurrence cycle;
+- preserves full global source event IDs externally and emits an explicit
+  `event_sequence_tag = event_id mod 2^24`. Tags must be unique within each
+  selected window; wrap across different windows is legal. Records also emit
+  timestamp, pixel, polarity, normalized sensor ray, query membership,
+  equal-timestamp cluster identity, and exact integer occurrence cycle;
 - forms one atomic batch per occurrence cycle with up to six ingress lanes.
   Every member carries the same two-pose pre-edge snapshot hash, and the
   development exact-timestamp burst is fail-closed at the corrected bound of
   five;
 - packs the occurrence-baseline 102-bit payload, including a 14-bit causal
-  pose source index. Matching the existing occurrence baseline, the remaining
-  fields are a 24-bit dataset event index, 11-bit join sequence, 36-bit
-  timestamp, 8-bit x/y, and polarity;
+  pose source index. The least-significant 24 bits are the per-window-unique
+  `event_sequence_tag`, not the full source event ID; the remaining fields are
+  an 11-bit join sequence, 36-bit timestamp, 8-bit x/y, and polarity. The full
+  event ID remains in the external canonical record and ordered-ID hashes;
 - passes accepted batches through a charged six-entry staging serializer. It
   atomically captures the complete up-to-six batch first, charges occupancy,
   and then presents at most two stable-order records on that same cycle. The

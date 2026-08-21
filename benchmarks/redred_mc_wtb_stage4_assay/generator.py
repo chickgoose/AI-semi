@@ -50,6 +50,8 @@ OCCURRENCE_INGRESS_LANES = 6
 PRESENTATION_LANES = 2
 STAGING_SERIALIZER_ENTRIES = 6
 EVENT_PAYLOAD_BITS = 102
+EVENT_SEQUENCE_TAG_BITS = 24
+EVENT_SEQUENCE_TAG_LIMIT = 1 << EVENT_SEQUENCE_TAG_BITS
 POSE_INDEX_BITS = 14
 DEV_MAX_EXACT_TIMESTAMP_BURST = 5
 SENSOR_RAY_GENERATOR_RULE = "radtan_inverse_newton_then_normalized_sensor_ray"
@@ -70,6 +72,7 @@ EVENT_RECORD_FIELDS = frozenset(
     (
         "window_id",
         "event_id",
+        "event_sequence_tag",
         "timestamp_ns",
         "x",
         "y",
@@ -93,6 +96,7 @@ EVENT_RECORD_FIELDS = frozenset(
 )
 EVENT_INTEGER_FIELDS = (
     "event_id",
+    "event_sequence_tag",
     "timestamp_ns",
     "x",
     "y",
@@ -129,6 +133,12 @@ def timestamp_to_cycle(timestamp_ns: int, window_start_ns: int, clock_period_ps:
 
 def _in_forbidden(timestamp_ns: int, forbidden: Tuple[int, int]) -> bool:
     return forbidden[0] <= timestamp_ns < forbidden[1]
+
+
+def _event_sequence_tag(event_id: int) -> int:
+    if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id < 0:
+        raise AssayInputError("event_id must be a non-negative exact int")
+    return event_id % EVENT_SEQUENCE_TAG_LIMIT
 
 
 def _validate_dataset_pose_packet_stream(
@@ -201,9 +211,10 @@ def _validate_sensor_ray_records(
     calibration = _validate_calibration_authority(
         calibration_authority, expected_calibration, expected_source_sha256
     )
-    event_id_mask = (1 << 24) - 1
+    event_sequence_tag_mask = EVENT_SEQUENCE_TAG_LIMIT - 1
     timestamp_mask = (1 << 36) - 1
     pixel_mask = (1 << 8) - 1
+    tags_by_window = {}  # type: Dict[str, set]
     for record in records:
         if set(record) != EVENT_RECORD_FIELDS:
             raise AssayInputError("event record has missing or unexpected fields")
@@ -211,6 +222,15 @@ def _validate_sensor_ray_records(
             raise AssayInputError("event record identifier or query flag has the wrong type")
         if any(type(record[field]) is not int for field in EVENT_INTEGER_FIELDS):
             raise AssayInputError("event integer field must be an exact int, not bool")
+        expected_tag = _event_sequence_tag(record["event_id"])
+        if record["event_sequence_tag"] != expected_tag:
+            raise AssayInputError("event_sequence_tag differs from full event_id modulo 2^24")
+        if not 0 <= record["event_sequence_tag"] < EVENT_SEQUENCE_TAG_LIMIT:
+            raise AssayInputError("event_sequence_tag does not fit 24 bits")
+        window_tags = tags_by_window.setdefault(record["window_id"], set())
+        if record["event_sequence_tag"] in window_tags:
+            raise AssayInputError("event_sequence_tag is not unique within its window")
+        window_tags.add(record["event_sequence_tag"])
         snapshot_sha256 = record["occurrence_pose_snapshot_sha256"]
         if (
             type(snapshot_sha256) is not str
@@ -234,15 +254,16 @@ def _validate_sensor_ray_records(
             raise AssayInputError("event payload is not canonical 102-bit hex") from exc
         if payload_hex != "%026x" % payload or payload >= 1 << EVENT_PAYLOAD_BITS:
             raise AssayInputError("event payload is not canonical 102-bit hex")
+        unpacked_tag = payload & event_sequence_tag_mask
         event = EventSample(
-            event_id=payload & event_id_mask,
+            event_id=record["event_id"],
             timestamp_ns=(payload >> 35) & timestamp_mask,
             x=(payload >> 71) & pixel_mask,
             y=(payload >> 79) & pixel_mask,
             polarity=(payload >> 87) & 1,
         )
         payload_fields = {
-            "event_id": event.event_id,
+            "event_sequence_tag": unpacked_tag,
             "window_event_ordinal": (payload >> 24) & ((1 << 11) - 1),
             "timestamp_ns": event.timestamp_ns,
             "x": event.x,
@@ -314,6 +335,7 @@ def _extract_events(
         events = selected[window_id]
         query_ids = []  # type: List[int]
         window_records = []  # type: List[Dict[str, Any]]
+        window_event_sequence_tags = set()
         exact_clusters = {}  # type: Dict[int, Tuple[int, int]]
         index = 0
         while index < len(events):
@@ -329,6 +351,12 @@ def _extract_events(
                 raise AssayInputError("exact-timestamp burst exceeds the frozen development bound")
             exact_clusters[events[index].timestamp_ns] = (cluster_id, cluster_size)
             for event in events[index:cluster_end]:
+                event_sequence_tag = _event_sequence_tag(event.event_id)
+                if event_sequence_tag in window_event_sequence_tags:
+                    raise AssayInputError(
+                        "event_sequence_tag is not unique within its window"
+                    )
+                window_event_sequence_tags.add(event_sequence_tag)
                 is_query = event.timestamp_ns >= query_start
                 if is_query:
                     query_ids.append(event.event_id)
@@ -337,6 +365,7 @@ def _extract_events(
                     {
                         "window_id": window_id,
                         "event_id": event.event_id,
+                        "event_sequence_tag": event_sequence_tag,
                         "timestamp_ns": event.timestamp_ns,
                         "x": event.x,
                         "y": event.y,
@@ -503,7 +532,7 @@ def _pack_event_payload(record: Mapping[str, Any]) -> str:
     """Pack the corrected 102-bit occurrence payload, least-significant field first."""
 
     fields = (
-        (record["event_id"], 24, "dataset_event_index"),
+        (record["event_sequence_tag"], EVENT_SEQUENCE_TAG_BITS, "event_sequence_tag"),
         (record["window_event_ordinal"], 11, "join_sequence_index"),
         (record["timestamp_ns"], 36, "timestamp_ns"),
         (record["x"], 8, "x"),
@@ -1056,7 +1085,11 @@ def generate_score_free_inputs(
             ),
         },
         "event_payload_layout_lsb_first": [
-            {"field": "dataset_event_index", "source": "event_id", "bits": 24},
+            {
+                "field": "event_sequence_tag",
+                "source": "event_id_mod_2^24",
+                "bits": EVENT_SEQUENCE_TAG_BITS,
+            },
             {
                 "field": "join_sequence_index",
                 "source": "window_event_ordinal",

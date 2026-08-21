@@ -45,6 +45,41 @@ def jsonl(path: Path):
     return [json.loads(line) for line in path.read_text(encoding="ascii").splitlines()]
 
 
+def synthetic_event_record(
+    event_id: int,
+    window_id: str,
+    ordinal: int,
+    calibration: Calibration,
+):
+    timestamp_ns = 1_000_000 + ordinal
+    event = EventSample(event_id, timestamp_ns, 120, 90, ordinal & 1)
+    record = {
+        "window_id": window_id,
+        "event_id": event_id,
+        "event_sequence_tag": event_id % (1 << 24),
+        "timestamp_ns": timestamp_ns,
+        "x": event.x,
+        "y": event.y,
+        "polarity": event.polarity,
+        "sensor_ray": list(sensor_ray(event, calibration)),
+        "is_query": True,
+        "window_event_ordinal": ordinal,
+        "occurrence_cycle": ordinal,
+        "equal_timestamp_cluster_id": event_id,
+        "equal_timestamp_cluster_size": 1,
+        "occurrence_batch_id": ordinal,
+        "occurrence_lane": 0,
+        "occurrence_batch_size": 1,
+        "occurrence_pose_snapshot_sha256": "1" * 64,
+        "causal_pose_source_index": 7,
+        "presentation_cycle": ordinal,
+        "presentation_lane": 0,
+        "serializer_queue_cycles": 0,
+    }
+    record["payload_hex"] = generator_module._pack_event_payload(record)
+    return record
+
+
 def build_fixture(root: Path) -> SourcePins:
     rows = tuple(window_registry())
     event_lines = []
@@ -200,6 +235,92 @@ class GeneratorTests(unittest.TestCase):
                     [receipt.event_id for receipt in cycle_result.cycle_receipts],
                 )
 
+    def test_event_sequence_tag_boundaries_wrap_and_full_official_range_id(self) -> None:
+        calibration = Calibration(240, 180, 100.0, 100.0, 120.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        source_sha256 = "2" * 64
+        authority = generator_module._calibration_authority(
+            calibration, source_sha256
+        )
+        limit = 1 << 24
+        official_range_id = generator_module.OFFICIAL_SOURCE_PINS.events_line_count - 1
+        self.assertGreater(official_range_id, limit)
+        event_ids = (limit - 1, limit, limit + 1, official_range_id)
+        records = [
+            synthetic_event_record(event_id, "one-window", ordinal, calibration)
+            for ordinal, event_id in enumerate(event_ids)
+        ]
+
+        generator_module._validate_sensor_ray_records(
+            records, authority, calibration, source_sha256
+        )
+        self.assertEqual(
+            [record["event_sequence_tag"] for record in records],
+            [event_id % limit for event_id in event_ids],
+        )
+        self.assertEqual([record["event_id"] for record in records], list(event_ids))
+        for record in records:
+            self.assertEqual(
+                int(record["payload_hex"], 16) & (limit - 1),
+                record["event_sequence_tag"],
+            )
+            self.assertEqual(len(record["payload_hex"]), 26)
+            self.assertLess(int(record["payload_hex"], 16), 1 << 102)
+
+    def test_event_sequence_tag_mutations_and_exact_field_set_fail_closed(self) -> None:
+        calibration = Calibration(240, 180, 100.0, 100.0, 120.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        source_sha256 = "3" * 64
+        authority = generator_module._calibration_authority(
+            calibration, source_sha256
+        )
+        record = synthetic_event_record((1 << 24) + 9, "mutation-window", 0, calibration)
+
+        tag_only = dict(record)
+        tag_only["event_sequence_tag"] = 10
+        with self.assertRaisesRegex(AssayInputError, "full event_id modulo"):
+            generator_module._validate_sensor_ray_records(
+                [tag_only], authority, calibration, source_sha256
+            )
+
+        resealed = dict(tag_only)
+        resealed["payload_hex"] = generator_module._pack_event_payload(resealed)
+        with self.assertRaisesRegex(AssayInputError, "full event_id modulo"):
+            generator_module._validate_sensor_ray_records(
+                [resealed], authority, calibration, source_sha256
+            )
+
+        bool_tag = dict(record)
+        bool_tag["event_sequence_tag"] = True
+        with self.assertRaisesRegex(AssayInputError, "exact int, not bool"):
+            generator_module._validate_sensor_ray_records(
+                [bool_tag], authority, calibration, source_sha256
+            )
+
+        missing = dict(record)
+        missing.pop("event_sequence_tag")
+        with self.assertRaisesRegex(AssayInputError, "missing or unexpected fields"):
+            generator_module._validate_sensor_ray_records(
+                [missing], authority, calibration, source_sha256
+            )
+
+    def test_event_sequence_tag_uniqueness_is_per_window(self) -> None:
+        calibration = Calibration(240, 180, 100.0, 100.0, 120.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        source_sha256 = "4" * 64
+        authority = generator_module._calibration_authority(
+            calibration, source_sha256
+        )
+        first = synthetic_event_record(5, "window-a", 0, calibration)
+        wrapped = synthetic_event_record((1 << 24) + 5, "window-a", 1, calibration)
+        with self.assertRaisesRegex(AssayInputError, "unique within its window"):
+            generator_module._validate_sensor_ray_records(
+                [first, wrapped], authority, calibration, source_sha256
+            )
+
+        other_window = dict(wrapped)
+        other_window["window_id"] = "window-b"
+        generator_module._validate_sensor_ray_records(
+            [first, other_window], authority, calibration, source_sha256
+        )
+
     def test_pose_packet_stream_and_per_packet_hashes_fail_closed(self) -> None:
         packet = {
             "window_id": "fixture",
@@ -299,6 +420,14 @@ class GeneratorTests(unittest.TestCase):
             self.assertEqual(manifest["timing"]["occurrence_ingress_lanes"], 6)
             self.assertEqual(manifest["timing"]["presentation_lanes"], 2)
             self.assertEqual(manifest["timing"]["event_payload_pose_index_bits"], 14)
+            self.assertEqual(
+                manifest["event_payload_layout_lsb_first"][0],
+                {
+                    "field": "event_sequence_tag",
+                    "source": "event_id_mod_2^24",
+                    "bits": 24,
+                },
+            )
             self.assertEqual(manifest["staging_serializer"]["entries"], 6)
             self.assertEqual(manifest["staging_serializer"]["payload_state_bits"], 612)
             self.assertLessEqual(manifest["staging_serializer"]["peak_occupancy"], 6)
@@ -378,7 +507,7 @@ class GeneratorTests(unittest.TestCase):
             for record in events:
                 payload = int(record["payload_hex"], 16)
                 payload_event = EventSample(
-                    event_id=payload & ((1 << 24) - 1),
+                    event_id=record["event_id"],
                     timestamp_ns=(payload >> 35) & ((1 << 36) - 1),
                     x=(payload >> 71) & ((1 << 8) - 1),
                     y=(payload >> 79) & ((1 << 8) - 1),
@@ -528,7 +657,12 @@ class GeneratorTests(unittest.TestCase):
                     event["presentation_cycle"], event["occurrence_cycle"]
                 )
                 packed = int(event["payload_hex"], 16)
-                self.assertEqual(packed & ((1 << 24) - 1), event["event_id"])
+                self.assertEqual(
+                    packed & ((1 << 24) - 1), event["event_sequence_tag"]
+                )
+                self.assertEqual(
+                    event["event_sequence_tag"], event["event_id"] % (1 << 24)
+                )
                 self.assertEqual(
                     (packed >> 24) & ((1 << 11) - 1),
                     event["window_event_ordinal"],
