@@ -38,10 +38,10 @@ DELAYED_DEADLINE_CYCLES = (
 ) // CLOCK_PERIOD_PS
 DATASET_POSE_ARRIVAL_ASSUMPTION = "arrival_equals_recorded_timestamp"
 DELAYED_UNBOUNDED_DIAGNOSTIC_SCHEMA = (
-    "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v2"
+    "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v3"
 )
 DELAYED_UNBOUNDED_CONFIG_SCHEMA = (
-    "redred.mc_wtb.stage4_delayed_unbounded_depth_config/v1"
+    "redred.mc_wtb.stage4_delayed_unbounded_depth_config/v2"
 )
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -444,6 +444,8 @@ class DelayedUnboundedDiagnosticConfig:
     fifo_policy: str
     removed_bounded_fifo_entries: int
     removed_pressure_reason: str
+    termination_guard_rule: str
+    queue_bound_rule: str
     event_record_bits: int
     pose_ring_entries: int
     pose_ring_state_bits: int
@@ -467,6 +469,8 @@ class DelayedUnboundedDiagnosticConfig:
             "fifo_policy": self.fifo_policy,
             "removed_bounded_fifo_entries": self.removed_bounded_fifo_entries,
             "removed_pressure_reason": self.removed_pressure_reason,
+            "termination_guard_rule": self.termination_guard_rule,
+            "queue_bound_rule": self.queue_bound_rule,
             "event_record_bits": self.event_record_bits,
             "pose_ring_entries": self.pose_ring_entries,
             "pose_ring_state_bits": self.pose_ring_state_bits,
@@ -498,6 +502,8 @@ def _delayed_unbounded_config() -> DelayedUnboundedDiagnosticConfig:
         fifo_policy="unbounded_remove_only_fifo_full_pressure_action",
         removed_bounded_fifo_entries=BUFFER_ENTRIES,
         removed_pressure_reason="fifo_full_forced_bypass",
+        termination_guard_rule="iterations<=10*input_count+2*pose_count+32",
+        queue_bound_rule="fifo_occupancy<=input_event_count_at_all_times",
         event_record_bits=EVENT_RECORD_BITS,
         pose_ring_entries=POSE_RING_ENTRIES,
         pose_ring_state_bits=POSE_RING_STATE_BITS,
@@ -528,6 +534,10 @@ class DelayedUnboundedDiagnosticEvidence:
     retired_count: int
     exact_once_ordered_conservation: bool
     no_full_pressure_reasons: bool
+    termination_proven: bool
+    queue_never_exceeded_input_count: bool
+    simulation_iterations: int
+    termination_iteration_bound: int
     peak_fifo_depth: int
     peak_ingress_staging_occupancy: int
     records: Tuple[DecisionRecord, ...]
@@ -570,6 +580,12 @@ class DelayedUnboundedDiagnosticEvidence:
                 self.exact_once_ordered_conservation
             ),
             "no_full_pressure_reasons": self.no_full_pressure_reasons,
+            "termination_proven": self.termination_proven,
+            "queue_never_exceeded_input_count": (
+                self.queue_never_exceeded_input_count
+            ),
+            "simulation_iterations": self.simulation_iterations,
+            "termination_iteration_bound": self.termination_iteration_bound,
             "peak_fifo_depth": self.peak_fifo_depth,
             "peak_ingress_staging_occupancy": (
                 self.peak_ingress_staging_occupancy
@@ -632,6 +648,11 @@ class DelayedUnboundedDiagnosticEvidence:
             ("input_count", self.input_count),
             ("input_pose_count", self.input_pose_count),
             ("retired_count", self.retired_count),
+            ("simulation_iterations", self.simulation_iterations),
+            (
+                "termination_iteration_bound",
+                self.termination_iteration_bound,
+            ),
             ("peak_fifo_depth", self.peak_fifo_depth),
             (
                 "peak_ingress_staging_occupancy",
@@ -683,10 +704,13 @@ class DelayedUnboundedDiagnosticEvidence:
         )
         if checked_poses != self.input_poses:
             raise CycleModelError("unbounded diagnostic validated poses differ")
-        replay_records, replay_peak, replay_peak_staging = (
-            _run_delayed_unbounded(
-                self.window_id, checked_states, checked_poses
-            )
+        (
+            replay_records,
+            replay_peak,
+            replay_peak_staging,
+            replay_iterations,
+        ) = _run_delayed_unbounded(
+            self.window_id, checked_states, checked_poses
         )
         _validate_conservation(checked_states, replay_records)
         _validate_delayed_dispositions(
@@ -706,9 +730,23 @@ class DelayedUnboundedDiagnosticEvidence:
             or replay_receipts != self.cycle_receipts
             or replay_peak != self.peak_fifo_depth
             or replay_peak_staging != self.peak_ingress_staging_occupancy
+            or replay_iterations != self.simulation_iterations
             or replay_pose_ring_accounting != self.pose_ring_accounting
         ):
             raise CycleModelError("unbounded diagnostic replay evidence differs")
+        expected_iteration_bound = _unbounded_termination_iteration_bound(
+            len(self.input_events), len(self.input_poses)
+        )
+        if (
+            self.termination_iteration_bound != expected_iteration_bound
+            or self.simulation_iterations > self.termination_iteration_bound
+            or not self.termination_proven
+            or not self.queue_never_exceeded_input_count
+            or self.peak_fifo_depth > len(self.input_events)
+        ):
+            raise CycleModelError(
+                "unbounded diagnostic termination or queue proof differs"
+            )
         if self.input_event_ids_sha256 != _canonical_sha256(
             list(self.input_event_ids)
         ):
@@ -829,6 +867,8 @@ class DelayedUnboundedDiagnosticEvidence:
             != derived_pose_index_verification
             or type(self.exact_once_ordered_conservation) is not bool
             or type(self.no_full_pressure_reasons) is not bool
+            or type(self.termination_proven) is not bool
+            or type(self.queue_never_exceeded_input_count) is not bool
             or not 0
             <= self.peak_ingress_staging_occupancy
             <= INGRESS_STAGING_ENTRIES
@@ -1506,15 +1546,58 @@ def _run_delayed(
     return records, peak, peak_staging
 
 
+def _unbounded_termination_iteration_bound(
+    input_count: int, pose_count: int
+) -> int:
+    input_count = _nonnegative_int(input_count, "unbounded input_count")
+    pose_count = _nonnegative_int(pose_count, "unbounded pose_count")
+    return 10 * input_count + 2 * pose_count + 32
+
+
+def _unbounded_progress_signature(
+    records: Sequence[DecisionRecord],
+    next_event: int,
+    staging: Sequence[_EventState],
+    queue: Sequence[_EventState],
+    inflight: Sequence[_EventState],
+) -> Tuple[Any, ...]:
+    return (
+        len(records),
+        next_event,
+        tuple(state.event.event_id for state in staging),
+        tuple(
+            (state.event.event_id, state.inflight)
+            for state in queue
+        ),
+        tuple(state.event.event_id for state in inflight),
+    )
+
+
+def _assert_unbounded_progress(
+    previous_cycle: int,
+    cycle: int,
+    previous_signature: Tuple[Any, ...],
+    signature: Tuple[Any, ...],
+) -> None:
+    if cycle < previous_cycle:
+        raise CycleModelError("unbounded diagnostic cycle moved backwards")
+    if cycle == previous_cycle and signature == previous_signature:
+        raise CycleModelError("unbounded diagnostic made no deterministic progress")
+
+
 def _run_delayed_unbounded(
     window_id: str,
     states: List[_EventState],
     poses: Tuple[PosePacket, ...],
-) -> Tuple[List[DecisionRecord], int, int]:
+) -> Tuple[List[DecisionRecord], int, int, int]:
     """Replay delayed_exact with only the bounded FIFO pressure action removed."""
 
+    input_count = len(states)
+    iteration_bound = _unbounded_termination_iteration_bound(
+        input_count, len(poses)
+    )
     if not states:
-        return [], 0, 0
+        return [], 0, 0, 0
     records = []  # type: List[DecisionRecord]
     queue = []  # type: List[_EventState]
     staging = []  # type: List[_EventState]
@@ -1522,9 +1605,23 @@ def _run_delayed_unbounded(
     next_event = 0
     peak = 0
     peak_staging = 0
+    iterations = 0
     cycle = states[0].occurrence_cycle
 
     while len(records) < len(states):
+        iterations += 1
+        if iterations > iteration_bound:
+            raise CycleModelError(
+                "unbounded diagnostic termination guard exceeded"
+            )
+        if len(queue) > input_count:
+            raise CycleModelError(
+                "unbounded diagnostic FIFO exceeds input event count"
+            )
+        previous_cycle = cycle
+        previous_signature = _unbounded_progress_signature(
+            records, next_event, staging, queue, inflight
+        )
         retirements = 0
         if inflight:
             for expected in inflight:
@@ -1591,6 +1688,10 @@ def _run_delayed_unbounded(
             state.fifo_occupancy_before_admission = len(queue)
             queue.append(state)
             state.fifo_occupancy_after_admission = len(queue)
+        if len(queue) > input_count:
+            raise CycleModelError(
+                "unbounded diagnostic FIFO exceeds input event count"
+            )
         peak = max(peak, len(queue))
 
         launch = []  # type: List[_EventState]
@@ -1619,6 +1720,14 @@ def _run_delayed_unbounded(
             force_next_cycle = True
         if force_next_cycle:
             cycle += 1
+            _assert_unbounded_progress(
+                previous_cycle,
+                cycle,
+                previous_signature,
+                _unbounded_progress_signature(
+                    records, next_event, staging, queue, inflight
+                ),
+            )
             continue
 
         candidates = []  # type: List[int]
@@ -1637,7 +1746,19 @@ def _run_delayed_unbounded(
             cycle += 1
         else:
             cycle = min(future)
-    return records, peak, peak_staging
+        _assert_unbounded_progress(
+            previous_cycle,
+            cycle,
+            previous_signature,
+            _unbounded_progress_signature(
+                records, next_event, staging, queue, inflight
+            ),
+        )
+    if peak > input_count:
+        raise CycleModelError(
+            "unbounded diagnostic peak FIFO exceeds input event count"
+        )
+    return records, peak, peak_staging, iterations
 
 
 def _validate_conservation(
@@ -2020,7 +2141,7 @@ def run_delayed_unbounded_diagnostic(
         poses,
         synthetic_test_mode,
     )
-    records, peak, peak_staging = _run_delayed_unbounded(
+    records, peak, peak_staging, iterations = _run_delayed_unbounded(
         window_id, states, checked_poses
     )
     _validate_conservation(states, records)
@@ -2083,6 +2204,12 @@ def run_delayed_unbounded_diagnostic(
         retired_count=len(retired_event_ids),
         exact_once_ordered_conservation=input_event_ids == retired_event_ids,
         no_full_pressure_reasons=True,
+        termination_proven=True,
+        queue_never_exceeded_input_count=peak <= len(input_event_ids),
+        simulation_iterations=iterations,
+        termination_iteration_bound=_unbounded_termination_iteration_bound(
+            len(input_event_ids), len(checked_poses)
+        ),
         peak_fifo_depth=peak,
         peak_ingress_staging_occupancy=peak_staging,
         records=tuple(records),

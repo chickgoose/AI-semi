@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, replace
 import unittest
+from unittest.mock import patch
 
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import model as cyclemodel
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     BUFFER_ENTRIES,
     DELAYED_DEADLINE_CYCLES,
@@ -121,6 +123,12 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
         self.assertEqual(evidence.retired_event_ids, (7,))
         self.assertTrue(evidence.exact_once_ordered_conservation)
         self.assertTrue(evidence.no_full_pressure_reasons)
+        self.assertTrue(evidence.termination_proven)
+        self.assertTrue(evidence.queue_never_exceeded_input_count)
+        self.assertLessEqual(
+            evidence.simulation_iterations,
+            evidence.termination_iteration_bound,
+        )
         self.assertEqual(evidence.peak_fifo_depth, 1)
         self.assertEqual(len(evidence.config_identity_sha256), 64)
         self.assertEqual(len(evidence.evidence_sha256), 64)
@@ -190,6 +198,13 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
         self.assertEqual(evidence.retired_count, BUFFER_ENTRIES + 2)
         self.assertTrue(evidence.exact_once_ordered_conservation)
         self.assertTrue(evidence.no_full_pressure_reasons)
+        self.assertTrue(evidence.termination_proven)
+        self.assertTrue(evidence.queue_never_exceeded_input_count)
+        self.assertLessEqual(evidence.peak_fifo_depth, evidence.input_count)
+        self.assertEqual(
+            evidence.termination_iteration_bound,
+            10 * evidence.input_count + 2 * evidence.input_pose_count + 32,
+        )
         self.assertNotIn(
             "fifo_full_forced_bypass",
             [record.disposition_reason for record in evidence.records],
@@ -227,6 +242,12 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
             replace(evidence, retired_event_ids=(8,)),
             replace(evidence, peak_fifo_depth=2),
             replace(evidence, no_full_pressure_reasons=False),
+            replace(evidence, termination_proven=False),
+            replace(evidence, queue_never_exceeded_input_count=False),
+            replace(
+                evidence,
+                simulation_iterations=evidence.termination_iteration_bound + 1,
+            ),
             replace(evidence, input_count=True),
             replace(evidence, window_start_ns=1),
             replace(
@@ -288,6 +309,51 @@ class DelayedUnboundedDiagnosticTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(CycleModelError, "replay evidence differs"):
             coherent_input_mutation.validate()
+
+    def test_progress_and_termination_guards_fail_closed(self):
+        with self.assertRaisesRegex(CycleModelError, "no deterministic progress"):
+            cyclemodel._assert_unbounded_progress(7, 7, (1, 2), (1, 2))
+        with self.assertRaisesRegex(CycleModelError, "cycle moved backwards"):
+            cyclemodel._assert_unbounded_progress(7, 6, (1, 2), (1, 3))
+        with patch.object(
+            cyclemodel,
+            "_unbounded_termination_iteration_bound",
+            return_value=0,
+        ):
+            with self.assertRaisesRegex(CycleModelError, "termination guard"):
+                unbounded(
+                    [Event(7, 13, causal_pose_index=0)],
+                    [dataset_pose(0, 0), dataset_pose(1, 14)],
+                )
+
+    def test_cycle_evidence_remains_provenance_neutral(self):
+        evidence = unbounded(
+            [Event(7, 13, causal_pose_index=0)],
+            [dataset_pose(0, 0), dataset_pose(1, 14)],
+        )
+        keys = set()
+
+        def collect(value):
+            if isinstance(value, dict):
+                keys.update(value)
+                for child in value.values():
+                    collect(child)
+            elif isinstance(value, list):
+                for child in value:
+                    collect(child)
+
+        collect(evidence.to_mapping())
+        self.assertTrue(
+            {
+                "assay_sha256",
+                "comparison_contract_sha256",
+                "bounded_run_sha256",
+                "candidate_manifest_sha256",
+                "scorer_sha256",
+                "score",
+            }.isdisjoint(keys),
+            keys,
+        )
 
     def test_unused_pose_guard_and_window_start_are_evidence_bound(self):
         occurrence_cycle = 2

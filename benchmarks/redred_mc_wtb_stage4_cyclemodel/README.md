@@ -132,7 +132,11 @@ not generate or score them.
 ## Unbounded-depth diagnostic
 
 `run_delayed_unbounded_diagnostic(...)` is a separate, delayed-only,
-score-free replay used to establish the minimum zero-loss FIFO depth. It takes
+score-free replay used to establish the minimum capacity-pressure-free FIFO
+depth. The legacy phrase "zero-loss depth" means only that no event receives
+`fifo_full_forced_bypass` because of the 1,024-entry capacity. It does not
+claim zero metric loss, zero accepted-event loss, correction quality, or any
+scoring result. The diagnostic takes
 the same immutable `Event` and dataset `PosePacket` values as the bounded
 `delayed_exact` run and applies the same validation, six-record atomic ingress,
 stable two-per-cycle admission, strict pose visibility, deadline, ordered
@@ -152,6 +156,9 @@ The returned frozen `DelayedUnboundedDiagnosticEvidence` contains:
 - every `DecisionRecord` and `CycleReceipt`, their independent stream hashes,
   common serializer and policy-added latency accounting;
 - exact peak unbounded FIFO depth and peak ingress-staging occupancy;
+- deterministic simulation-iteration count and input-derived termination
+  bound, plus explicit termination and `FIFO occupancy <= input event count`
+  proofs;
 - the immutable `DelayedUnboundedDiagnosticConfig` and its identity hash,
   including timing, lane, deadline, visibility, priority, pipeline, and the
   one removed pressure action;
@@ -167,6 +174,16 @@ It also deterministically replays the embedded validated inputs and requires
 exact equality of decisions, cycle receipts, FIFO/staging peaks, and pose-ring
 accounting, so recomputing an input subhash cannot legitimize inconsistent
 retirement evidence.
+The replay fails closed if a cycle moves backwards, an iteration changes
+neither structural state nor time, its deterministic
+`10*input_count + 2*pose_count + 32` iteration bound is exceeded, or FIFO
+occupancy/peak exceeds the number of input events.
+
+Cycle evidence is intentionally provenance-neutral: it contains no assay,
+comparison-contract, bounded-run, candidate, or scorer hash. The integration
+sealer is responsible for binding this evidence to the authoritative assay,
+contract, and bounded-run identities.
+
 Below 1,024 entries, native tests require byte-for-
 byte equality with the bounded decisions and receipts and pin pre-extension
 bounded hashes. Above 1,024, tests require identical admissions but no pressure
