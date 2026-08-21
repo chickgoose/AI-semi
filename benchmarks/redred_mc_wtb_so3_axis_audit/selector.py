@@ -54,6 +54,7 @@ _TIME_RE = re.compile(rb"(0|[1-9][0-9]*)\.([0-9]{9})\Z")
 _INT_RE = re.compile(rb"0|[1-9][0-9]*\Z")
 _DECIMAL_RE = re.compile(rb"-?(?:0|[1-9][0-9]*)\.[0-9]+\Z")
 _FORBIDDEN_INPUT_TOKENS = ("score", "loss", "quality", "metric", "arm_result")
+_FORBIDDEN_DIRECT_CALLS = frozenset(("__import__", "eval", "exec", "compile"))
 _ALLOWED_IMPORTS = {
     "__future__", "ast", "bisect", "dataclasses", "decimal", "hashlib",
     "json", "math", "pathlib", "re", "typing",
@@ -169,6 +170,9 @@ def audit_score_free_imports(source_text: str) -> None:
     except SyntaxError as error:
         raise SelectorError("selector source is not valid Python") from error
     for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in _FORBIDDEN_DIRECT_CALLS):
+            raise SelectorError("direct dynamic import or code-loading call is forbidden")
         if isinstance(node, ast.Import):
             roots = [alias.name.split(".", 1)[0] for alias in node.names]
             if any(root not in _ALLOWED_IMPORTS for root in roots):
@@ -716,8 +720,10 @@ def verify_registry(registry: Mapping[str, object], *, exclusions_path: Path,
     expected_cells = {(axis, sign, motion_bin): QUOTA_PER_CELL for axis in ("X", "Y", "Z") for sign in ("NEGATIVE", "POSITIVE") for motion_bin in ("LOW", "MID", "HIGH")}
     if counts != expected_cells:
         raise SelectorError("registry signed axis-motion quota mismatch")
-    if set(expected_by_id) != {str(row["candidate_id"]) for row in windows}:
-        raise SelectorError("registry differs from frozen six-round selection")
+    expected_candidate_ids = tuple(row.candidate_id for row in expected_selected)
+    actual_candidate_ids = tuple(str(row["candidate_id"]) for row in windows)
+    if actual_candidate_ids != expected_candidate_ids:
+        raise SelectorError("registry ordered candidate IDs differ from frozen selection")
     ordered = sorted(starts)
     if len(ordered) != len(set(ordered)) or any(right - left < MINIMUM_START_SEPARATION_NS for left, right in zip(ordered, ordered[1:])):
         raise SelectorError("registry windows overlap or violate start separation")

@@ -310,6 +310,18 @@ class SelectorTests(unittest.TestCase):
         audit_score_free_imports("import math\n")
         with self.assertRaisesRegex(SelectorError, "import"):
             audit_score_free_imports("from benchmark.scoring import result\n")
+        for call in ("__import__('scoring')", "eval('1')", "exec('pass')",
+                     "compile('1', '<test>', 'eval')"):
+            with self.subTest(call=call), self.assertRaisesRegex(
+                    SelectorError, "dynamic import or code-loading"):
+                audit_score_free_imports(call + "\n")
+
+    def test_reversed_resealed_registry_fails_order_binding(self):
+        changed = copy.deepcopy(self.fixture.select())
+        changed["windows"].reverse()
+        reseal(changed)
+        with self.assertRaisesRegex(SelectorError, "ordered candidate IDs"):
+            self.fixture.verify(changed)
 
     def test_committed_historical_locks_are_exact(self):
         exclusions = json.loads(DEFAULT_EXCLUSIONS.read_text())
