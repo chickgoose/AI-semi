@@ -1205,6 +1205,7 @@ def aggregate_arm(
         or leakage != 0
         or latency_violation
         or peak_buffer > int(gates["maximum_buffer_entries"])
+        or minimum_buffer > int(gates["maximum_buffer_entries"])
         or pose_bandwidth > int(gates["maximum_pose_bandwidth_bits_per_second"])
         or state_bits > int(gates["maximum_incremental_state_bits"])
         or (operational_rate is not None and operational_rate > float(gates["maximum_operational_waste_rate"]))

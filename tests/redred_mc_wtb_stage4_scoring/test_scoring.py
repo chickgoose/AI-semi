@@ -721,6 +721,46 @@ class FrameSafeWindowTests(unittest.TestCase):
 
 
 class MetricRuleTests(unittest.TestCase):
+    def _normative_aggregate_windows(self):
+        contract = load_comparison_contract()
+        total = int(contract.registry["query_event_count"])
+        window_count = int(contract.registry["window_count"])
+        per_window, remainder = divmod(total, window_count)
+        windows = []
+        event_id = 0
+        for index in range(window_count):
+            count = per_window + (1 if index < remainder else 0)
+            losses = []
+            for _ in range(count):
+                losses.append(EventLoss(
+                    event_id, 1.0, 0.5, 0.5, True, False, 90_000 + index,
+                    80_000 + index, 1, 0,
+                ))
+                event_id += 1
+            windows.append(WindowMetrics(
+                "w%02d" % index,
+                ARM,
+                HASH,
+                HASH,
+                HASH,
+                tuple(losses),
+                0,
+                0,
+                count,
+                0,
+                0,
+                0,
+                0,
+                192_000,
+                102_000,
+                1_024,
+                0,
+                0,
+                0,
+                0,
+            ))
+        return contract, tuple(windows)
+
     def test_nearest_rank_sorts_by_latency_then_event_id(self):
         summary = nearest_rank_latency(((9, 4), (3, 1), (8, 3), (1, 2)))
         self.assertEqual(summary.mean_cycles, 2.5)
@@ -779,44 +819,8 @@ class MetricRuleTests(unittest.TestCase):
         self.assertEqual(finalize_disposition("delayed_exact", "STOP"), "STOP")
 
     def test_normative_aggregate_go_and_cost_stop(self):
-        contract = load_comparison_contract()
-        total = int(contract.registry["query_event_count"])
-        window_count = int(contract.registry["window_count"])
-        per_window, remainder = divmod(total, window_count)
-        windows = []
-        event_id = 0
-        for index in range(window_count):
-            count = per_window + (1 if index < remainder else 0)
-            losses = []
-            for _ in range(count):
-                losses.append(EventLoss(
-                    event_id, 1.0, 0.5, 0.5, True, False, 90_000 + index,
-                    80_000 + index, 1, 0,
-                ))
-                event_id += 1
-            windows.append(WindowMetrics(
-                "w%02d" % index,
-                ARM,
-                HASH,
-                HASH,
-                HASH,
-                tuple(losses),
-                0,
-                0,
-                count,
-                0,
-                0,
-                0,
-                0,
-                192_000,
-                102_000,
-                1_024,
-                0,
-                0,
-                0,
-                0,
-            ))
-        aggregate = aggregate_arm(contract, tuple(windows))
+        contract, windows = self._normative_aggregate_windows()
+        aggregate = aggregate_arm(contract, windows)
         self.assertEqual(aggregate.accepted_events, 8_914)
         self.assertEqual(aggregate.positive_windows, 24)
         self.assertEqual(aggregate.all_event_effect, 0.5)
@@ -841,6 +845,43 @@ class MetricRuleTests(unittest.TestCase):
             by_arm["oracle_resampled_groundtruth_1khz"], "INTERFACE_VALUE_ONLY"
         )
         self.assertEqual(by_arm["causal_cav"], "GO_TO_EPOCH_INTEGRATION")
+
+    def test_minimum_zero_loss_buffer_at_contract_limit_passes(self):
+        contract, windows = self._normative_aggregate_windows()
+        limit = int(
+            contract.as_dict()["go_to_epoch_integration"]["maximum_buffer_entries"]
+        )
+        self.assertEqual(limit, 1_024)
+        boundary = list(windows)
+        boundary[0] = replace(
+            boundary[0], minimum_zero_loss_buffer_entries=limit
+        )
+
+        aggregate = aggregate_arm(contract, tuple(boundary))
+
+        self.assertEqual(aggregate.peak_buffer_entries, 0)
+        self.assertEqual(aggregate.minimum_zero_loss_buffer_entries, 1_024)
+        self.assertEqual(aggregate.operational_waste_rate, 0.0)
+        self.assertEqual(aggregate.numeric_disposition, "GO_NUMERIC")
+        self.assertEqual(aggregate.final_disposition, "GO_TO_EPOCH_INTEGRATION")
+
+    def test_minimum_zero_loss_buffer_above_contract_limit_stops(self):
+        contract, windows = self._normative_aggregate_windows()
+        limit = int(
+            contract.as_dict()["go_to_epoch_integration"]["maximum_buffer_entries"]
+        )
+        above = list(windows)
+        above[0] = replace(
+            above[0], minimum_zero_loss_buffer_entries=limit + 1
+        )
+
+        aggregate = aggregate_arm(contract, tuple(above))
+
+        self.assertEqual(aggregate.peak_buffer_entries, 0)
+        self.assertEqual(aggregate.minimum_zero_loss_buffer_entries, 1_025)
+        self.assertEqual(aggregate.operational_waste_rate, 0.0)
+        self.assertEqual(aggregate.numeric_disposition, "STOP")
+        self.assertEqual(aggregate.final_disposition, "STOP")
 
 
 if __name__ == "__main__":
