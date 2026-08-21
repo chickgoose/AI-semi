@@ -516,10 +516,18 @@ class IntegrationTests(unittest.TestCase):
                             sealed.simulation.cycle_receipts
                         )
                     ))
+                else:
+                    self.assertTrue(all(
+                        not row.causal_pose_index_applicable
+                        and not row.causal_pose_index_verified
+                        and row.event_causal_pose_index is None
+                        for row in sealed.simulation.cycle_receipts
+                    ))
                 self.assertEqual(sealed.accounting.incremental_state_bits, 108_799)
                 self.assertEqual(
                     sealed.accounting.pose_bandwidth_bits_per_second, 192_000
                 )
+
                 accounting_evidence = sealed.accounting_evidence.to_mapping()
                 self.assertEqual(accounting_evidence["state_total_bits"], 108_799)
                 state_components = accounting_evidence["state_components_bits"]
@@ -627,6 +635,29 @@ class IntegrationTests(unittest.TestCase):
         source = Path(integration.__file__).read_text(encoding="utf-8")
         self.assertNotIn("score_window(", source)
         self.assertNotIn("EventLoss", source)
+
+    def test_accounting_reason_taxonomy_matches_refrozen_contract(self):
+        contract = load_comparison_contract()
+        accounting = contract.as_dict()["score_free_accounting"]
+        corrected = accounting["corrected_reason_allowlist_by_arm"]
+        raw = accounting["raw_reason_classification_by_arm"]
+        category_names = {
+            "freshness_veto": "freshness",
+            "invalid_pose_bypass": "invalid",
+            "operational_waste": "operational",
+        }
+        for arm in Arm:
+            policy = integration._ARM_CATEGORY_REASONS[arm]
+            self.assertEqual(policy["corrected"], frozenset(corrected[arm.value]))
+            for contract_name, implementation_name in category_names.items():
+                self.assertEqual(
+                    policy[implementation_name],
+                    frozenset(
+                        reason
+                        for reason, category in raw[arm.value].items()
+                        if category == contract_name
+                    ),
+                )
 
     def test_delayed_raw_shadow_uses_scorer_supported_offline_bracket(self):
         with tempfile.TemporaryDirectory() as directory:

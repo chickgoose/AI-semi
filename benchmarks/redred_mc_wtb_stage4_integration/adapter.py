@@ -82,14 +82,14 @@ _REASON_ALIASES = {
 _ARM_CATEGORY_REASONS = {
     Arm.ZOH_FRESHNESS: {
         "corrected": frozenset(("fresh_zoh",)),
-        "freshness": frozenset(("no_occurrence_pose", "stale_pose")),
-        "invalid": frozenset(("invalid_pose",)),
+        "freshness": frozenset(("stale_pose",)),
+        "invalid": frozenset(("no_occurrence_pose", "invalid_pose")),
         "operational": frozenset(),
     },
     Arm.CAUSAL_CAV: {
         "corrected": frozenset(("causal_cav", "fresh_zoh_fallback")),
-        "freshness": frozenset(("no_occurrence_pose", "stale_pose")),
-        "invalid": frozenset(("invalid_pose",)),
+        "freshness": frozenset(("stale_pose",)),
+        "invalid": frozenset(("no_occurrence_pose", "invalid_pose")),
         "operational": frozenset(),
     },
     Arm.DELAYED_EXACT: {
@@ -102,8 +102,8 @@ _ARM_CATEGORY_REASONS = {
     },
     Arm.ORACLE_1KHZ: {
         "corrected": frozenset(("oracle_fresh_zoh",)),
-        "freshness": frozenset(("no_occurrence_pose", "stale_pose")),
-        "invalid": frozenset(("invalid_pose",)),
+        "freshness": frozenset(("stale_pose",)),
+        "invalid": frozenset(("no_occurrence_pose", "invalid_pose")),
         "operational": frozenset(),
     },
 }
@@ -1297,12 +1297,26 @@ def build_all_arm_window(
     converted_by_arm = {}  # type: Dict[Arm, Tuple[DecisionRecord, ...]]
     for arm in Arm:
         poses = inputs.oracle_poses if arm is Arm.ORACLE_1KHZ else inputs.dataset_poses
+        arm_events = inputs.events
+        if arm is Arm.ORACLE_1KHZ:
+            # The physical 14-bit field is validated from the packed assay
+            # record, but oracle pose identity is independently selected by
+            # the global millisecond phase and must not consume that field.
+            arm_events = tuple(
+                Event(
+                    event.event_id,
+                    event.timestamp_ns,
+                    transform_guard_valid=event.transform_guard_valid,
+                    causal_pose_index=None,
+                )
+                for event in inputs.events
+            )
         try:
             result = run_cycle_model(
                 window_id=window_id,
                 window_start_ns=inputs.window_start_ns,
                 arm=arm,
-                events=inputs.events,
+                events=arm_events,
                 poses=poses,
             )
         except CycleModelError as exc:
