@@ -23,6 +23,7 @@ def record(event_id: int, occurrence: int, retire: int):
         "event_id": event_id,
         "event_timestamp_ns": 5_320_500_000,
         "arm": ARM,
+        "arm_semantic_label": "CAUSAL_CANDIDATE",
         "occurrence_cycle": occurrence,
         "retire_cycle": retire,
         "occurrence_pose_ids": [10, 11],
@@ -111,6 +112,7 @@ class ReceiptTests(unittest.TestCase):
     def test_pose_provenance_is_paired_ordered_and_pose_age_may_be_signed(self) -> None:
         delayed = record(101, 4, 8)
         delayed["arm"] = "delayed_exact"
+        delayed["arm_semantic_label"] = "DIAGNOSTIC_UPPER_BOUND"
         delayed["used_pose_ids"] = [11, 12]
         delayed["used_pose_timestamps_ns"] = [5_320_000_000, 5_321_000_000]
         delayed["used_pose_commit_cycles"] = [2, 5]
@@ -160,8 +162,19 @@ class ReceiptTests(unittest.TestCase):
 
         delayed_without_label = copy.deepcopy(self.rows[0])
         delayed_without_label["arm"] = "delayed_exact"
+        delayed_without_label["arm_semantic_label"] = "DIAGNOSTIC_UPPER_BOUND"
         with self.assertRaisesRegex(ReceiptError, "must declare"):
             DecisionRecord.from_mapping(delayed_without_label)
+
+    def test_delayed_timeout_and_full_bypass_need_no_future_pose(self) -> None:
+        for reason in ("deadline_timeout", "fifo_full_forced_bypass"):
+            delayed = record(101, 4, 8)
+            delayed["arm"] = "delayed_exact"
+            delayed["arm_semantic_label"] = "DIAGNOSTIC_UPPER_BOUND"
+            delayed["disposition"] = "raw_bypass"
+            delayed["disposition_reason"] = reason
+            parsed = DecisionRecord.from_mapping(delayed)
+            self.assertFalse(parsed.intentional_future_pose_use)
 
 
 if __name__ == "__main__":

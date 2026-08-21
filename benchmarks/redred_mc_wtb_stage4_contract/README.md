@@ -23,20 +23,25 @@ The registry encoding therefore matches the existing frozen registry hash.
 Decision records contain only:
 
 - window and event identity;
-- frozen arm name;
-- occurrence and retirement cycles;
-- pose IDs and timestamps available to the decision;
+- frozen arm name and semantic label;
+- event timestamp plus occurrence and retirement cycles;
+- occurrence-snapshot and actually-used pose IDs, timestamps, commit cycles,
+  and packet hashes;
+- explicit intentional-future-use marking for corrected `delayed_exact` only;
 - pose age, disposition/reason, and queue cycles.
 
 Any mapping field whose name contains `score` or `loss` is rejected before the
 record schema is interpreted. No extension field is accepted.
 
-`available_pose_ids` and `available_pose_timestamps_ns` are ordered oldest to
-newest and must have equal lengths. `pose_age_ns` is signed because the frozen
-`delayed_exact` diagnostic may bind a pose strictly after event occurrence.
-`queue_cycles` is non-negative and cannot exceed occurrence-to-retirement
-latency. Multiple records may retire on one cycle, but retirement cycles and
-event order may never move backwards.
+Each pose-provenance tuple is ordered oldest to newest and its ID, timestamp,
+commit-cycle, and SHA-256 arrays must have equal lengths. Causal used poses
+must be members of the pre-edge occurrence snapshot. `pose_age_ns` is signed
+because a corrected `delayed_exact` diagnostic may bind a pose strictly after
+event occurrence. A delayed timeout/full raw bypass uses no future pose and
+has an explicit frozen reason. `queue_cycles` is non-negative and cannot
+exceed occurrence-to-retirement latency. Multiple records may retire on one
+cycle, but retirement cycles and event order may never move backwards. Receipt
+schema v2 also stamps the frozen `always_ready` sink mode.
 
 Use `load_comparison_contract()` followed by `validate_existing_registry()`
 before generating decisions. Then call `validate_decision_records()` once per

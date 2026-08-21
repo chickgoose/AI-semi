@@ -23,6 +23,15 @@ DECISION_ARMS = frozenset(
     )
 )
 DISPOSITIONS = frozenset(("corrected_world_ray", "raw_bypass"))
+ARM_LABELS = {
+    "zoh_freshness": "CAUSAL_CANDIDATE",
+    "causal_cav": "CAUSAL_CANDIDATE",
+    "delayed_exact": "DIAGNOSTIC_UPPER_BOUND",
+    "oracle_resampled_groundtruth_1khz": "INTERFACE_VALUE_ONLY",
+}
+DELAYED_RAW_REASONS = frozenset(
+    ("deadline_timeout", "fifo_full_forced_bypass", "invalid_pose", "missing_bracket")
+)
 _REASON = re.compile(r"[a-z][a-z0-9_]*\Z")
 _DECISION_FIELDS = frozenset(
     (
@@ -30,6 +39,7 @@ _DECISION_FIELDS = frozenset(
         "event_id",
         "event_timestamp_ns",
         "arm",
+        "arm_semantic_label",
         "occurrence_cycle",
         "retire_cycle",
         "occurrence_pose_ids",
@@ -73,6 +83,7 @@ class DecisionRecord:
     event_id: int
     event_timestamp_ns: int
     arm: str
+    arm_semantic_label: str
     occurrence_cycle: int
     retire_cycle: int
     occurrence_pose_ids: Tuple[int, ...]
@@ -98,6 +109,8 @@ class DecisionRecord:
             raise ReceiptError("event_timestamp_ns must be a non-negative integer")
         if type(self.arm) is not str or self.arm not in DECISION_ARMS:
             raise ReceiptError("arm is not frozen by the comparison contract")
+        if self.arm_semantic_label != ARM_LABELS[self.arm]:
+            raise ReceiptError("arm_semantic_label differs from the frozen arm")
         if not _is_nonnegative_int(self.occurrence_cycle):
             raise ReceiptError("occurrence_cycle must be a non-negative integer")
         if not _is_nonnegative_int(self.retire_cycle):
@@ -165,16 +178,24 @@ class DecisionRecord:
             self.used_pose_sha256,
         ))
         if self.arm == "delayed_exact":
-            if not self.intentional_future_pose_use:
-                raise ReceiptError("delayed_exact must declare intentional future pose use")
-            if len(used_rows) != 2 or not (
-                self.used_pose_timestamps_ns[0]
-                <= self.event_timestamp_ns
-                < self.used_pose_timestamps_ns[1]
-            ):
-                raise ReceiptError("delayed_exact requires a strict right bracket")
-            if any(cycle >= self.retire_cycle for cycle in self.used_pose_commit_cycles):
-                raise ReceiptError("delayed pose is not visible before retirement")
+            if self.disposition == "corrected_world_ray":
+                if not self.intentional_future_pose_use:
+                    raise ReceiptError("corrected delayed_exact must declare future pose use")
+                if len(used_rows) != 2 or not (
+                    self.used_pose_timestamps_ns[0]
+                    <= self.event_timestamp_ns
+                    < self.used_pose_timestamps_ns[1]
+                ):
+                    raise ReceiptError("delayed_exact requires a strict right bracket")
+                if any(cycle >= self.retire_cycle for cycle in self.used_pose_commit_cycles):
+                    raise ReceiptError("delayed pose is not visible before retirement")
+            else:
+                if self.intentional_future_pose_use:
+                    raise ReceiptError("delayed raw bypass cannot claim future pose use")
+                if any(row not in occurrence_rows for row in used_rows):
+                    raise ReceiptError("delayed raw bypass used pose outside occurrence snapshot")
+                if self.disposition_reason not in DELAYED_RAW_REASONS:
+                    raise ReceiptError("delayed raw bypass reason is not frozen")
         else:
             if self.intentional_future_pose_use:
                 raise ReceiptError("causal arm cannot declare future pose use")
@@ -235,6 +256,7 @@ class DecisionRecord:
             event_id=value["event_id"],
             event_timestamp_ns=value["event_timestamp_ns"],
             arm=value["arm"],
+            arm_semantic_label=value["arm_semantic_label"],
             occurrence_cycle=value["occurrence_cycle"],
             retire_cycle=value["retire_cycle"],
             occurrence_pose_ids=tuple(value["occurrence_pose_ids"]),
@@ -258,6 +280,7 @@ class DecisionRecord:
             "event_id": self.event_id,
             "event_timestamp_ns": self.event_timestamp_ns,
             "arm": self.arm,
+            "arm_semantic_label": self.arm_semantic_label,
             "occurrence_cycle": self.occurrence_cycle,
             "retire_cycle": self.retire_cycle,
             "occurrence_pose_ids": list(self.occurrence_pose_ids),
@@ -287,10 +310,11 @@ class DecisionReceipt:
     retired_records: int
     ordered_event_ids_sha256: str
     decision_records_sha256: str
+    sink_mode: str = "always_ready"
 
     def to_mapping(self) -> Dict[str, Any]:
         return {
-            "schema": "redred.mc_wtb.stage4_decision_receipt/v1",
+            "schema": "redred.mc_wtb.stage4_decision_receipt/v2",
             "comparison_contract_sha256": self.comparison_contract_sha256,
             "registry_sha256": self.registry_sha256,
             "dataset_pose_arrival_assumption": self.dataset_pose_arrival_assumption,
@@ -300,6 +324,7 @@ class DecisionReceipt:
             "retired_records": self.retired_records,
             "ordered_event_ids_sha256": self.ordered_event_ids_sha256,
             "decision_records_sha256": self.decision_records_sha256,
+            "sink_mode": self.sink_mode,
             "conservation": {
                 "missing_events": 0,
                 "duplicate_events": 0,
