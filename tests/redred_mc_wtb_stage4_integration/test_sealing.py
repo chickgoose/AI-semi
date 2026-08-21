@@ -351,6 +351,26 @@ class SealingTests(unittest.TestCase):
                         sealing._observe_file(
                             root, "race.json", kind="object", record_count=1
                         )
+
+                fifo_race = root / "fifo-race.json"
+                fifo_race.write_bytes(canonical_json_bytes({"value": 1}))
+                real_open = sealing.os.open
+                replaced = [False]
+
+                def fifo_replacing_open(path, flags, *args, **kwargs):
+                    if path == fifo_race.name and not replaced[0]:
+                        replaced[0] = True
+                        fifo_race.unlink()
+                        os.mkfifo(str(fifo_race))
+                    return real_open(path, flags, *args, **kwargs)
+
+                with mock.patch.object(
+                    sealing.os, "open", side_effect=fifo_replacing_open
+                ):
+                    with self.assertRaisesRegex(sealing.SealingError, "changed while opening"):
+                        sealing._observe_file(
+                            root, fifo_race.name, kind="object", record_count=1
+                        )
             finally:
                 if outside.exists():
                     outside.unlink()
@@ -489,8 +509,16 @@ class SealingTests(unittest.TestCase):
             outside = root.parent / (root.name + "-unindexed-target.json")
             outside.write_bytes(canonical_json_bytes({"x": 1}))
             try:
-                (root / "unindexed-symlink.json").symlink_to(outside)
+                unindexed_symlink = root / "unindexed-symlink.json"
+                unindexed_symlink.symlink_to(outside)
                 with self.assertRaisesRegex(sealing.SealingError, "symlink"):
+                    sealing.verify_score_free_seal(
+                        root,
+                        expected_seal_manifest_sha256=hashlib.sha256(payload).hexdigest(),
+                    )
+                unindexed_symlink.unlink()
+                (root / "unindexed-empty-directory").mkdir()
+                with self.assertRaisesRegex(sealing.SealingError, "directory"):
                     sealing.verify_score_free_seal(
                         root,
                         expected_seal_manifest_sha256=hashlib.sha256(payload).hexdigest(),

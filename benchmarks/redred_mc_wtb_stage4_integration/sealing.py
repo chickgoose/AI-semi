@@ -10,7 +10,7 @@ from pathlib import Path
 import shutil
 import stat
 import tempfile
-from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
 from benchmarks.redred_mc_wtb_causal_reference.development import window_registry
 from benchmarks.redred_mc_wtb_stage4_contract import (
@@ -312,7 +312,11 @@ def _stable_regular_file(root: Path, relative: str, where: str) -> bytes:
             raise SealingError("%s must be a regular file, not a symlink" % where)
         if before.links != 1:
             raise SealingError("%s must not be a hard-linked file" % where)
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
         try:
             descriptor = os.open(parts[-1], flags, dir_fd=directory)
         except OSError as exc:
@@ -382,11 +386,12 @@ def _read_jsonl(path: Path) -> Tuple[Tuple[Mapping[str, Any], ...], bytes]:
     return _read_jsonl_at(path.parent, path.name)
 
 
-def _inventory_regular_files(root: Path) -> Tuple[str, ...]:
-    """Return every regular file and reject aliases or special entries."""
+def _inventory_seal_tree(root: Path) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """Return every regular file and directory; reject aliases and specials."""
 
     root_fd = _directory_fd(Path(root), "seal inventory")
-    found = []  # type: List[str]
+    found_files = []  # type: List[str]
+    found_directories = []  # type: List[str]
 
     def visit(directory_fd: int, prefix: str) -> None:
         try:
@@ -403,6 +408,7 @@ def _inventory_regular_files(root: Path) -> Tuple[str, ...]:
             if stat.S_ISLNK(info.st_mode):
                 raise SealingError("sealed tree contains a symlink: %s" % relative)
             if stat.S_ISDIR(info.st_mode):
+                found_directories.append(relative)
                 flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
                     os, "O_NOFOLLOW", 0
                 )
@@ -427,7 +433,7 @@ def _inventory_regular_files(root: Path) -> Tuple[str, ...]:
                     raise SealingError(
                         "sealed tree contains a hard-linked file: %s" % relative
                     )
-                found.append(relative)
+                found_files.append(relative)
             else:
                 raise SealingError("sealed tree contains a special file: %s" % relative)
 
@@ -435,7 +441,16 @@ def _inventory_regular_files(root: Path) -> Tuple[str, ...]:
         visit(root_fd, "")
     finally:
         os.close(root_fd)
-    return tuple(found)
+    return tuple(found_files), tuple(found_directories)
+
+
+def _indexed_directory_prefixes(paths: Iterable[str]) -> Tuple[str, ...]:
+    expected = set()  # type: Set[str]
+    for relative in paths:
+        parts = _safe_relative(relative, "campaign file index")
+        for length in range(1, len(parts)):
+            expected.add("/".join(parts[:length]))
+    return tuple(sorted(expected))
 
 
 def _read_indexed_json(
@@ -1841,9 +1856,12 @@ def _verify_seal_tree(root: Path, expected_manifest_sha256: str) -> Mapping[str,
     files = _require_mapping(campaign.get("files"), "campaign file index")
     expected_inventory = set(files)
     expected_inventory.add(manifest_name)
-    before_inventory = set(_inventory_regular_files(root))
-    if before_inventory != expected_inventory:
+    expected_directories = set(_indexed_directory_prefixes(files))
+    before_inventory, before_directories = _inventory_seal_tree(root)
+    if set(before_inventory) != expected_inventory:
         raise SealingError("sealed tree contains an unindexed or missing file")
+    if set(before_directories) != expected_directories:
+        raise SealingError("sealed tree contains an unindexed or missing directory")
     for relative, expected_entry_value in files.items():
         _safe_relative(relative, "campaign file index")
         expected_entry = _require_mapping(
@@ -1881,7 +1899,11 @@ def _verify_seal_tree(root: Path, expected_manifest_sha256: str) -> Mapping[str,
     required_files = set(_verify_delayed_diagnostic_links(root, campaign))
     if set(files) != required_files:
         raise SealingError("campaign file roster does not exactly close all leaves")
-    if set(_inventory_regular_files(root)) != expected_inventory:
+    after_inventory, after_directories = _inventory_seal_tree(root)
+    if (
+        set(after_inventory) != expected_inventory
+        or set(after_directories) != expected_directories
+    ):
         raise SealingError("sealed tree changed during verification")
     for relative, entry_value in files.items():
         entry = _require_mapping(entry_value, "final sealed file index entry")
