@@ -19,7 +19,7 @@ class ContractError(ValueError):
 
 
 CONTRACT_SCHEMA = "redred.mc_wtb.stage4_comparison_contract/v1"
-EXPECTED_CANONICAL_SHA256 = "f94206522f691720409ee3477539d1e3c75bab1a8b28f813162f2c233478aa0e"
+EXPECTED_CANONICAL_SHA256 = "d145ef342654069c442361f386d6b60fe2abff36d8fb7fa655dc1c0066921eba"
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONTRACT_PATH = (
     _REPOSITORY_ROOT

@@ -2,7 +2,7 @@
   "schema": "redred.mc_wtb.stage4_comparison_contract/v1",
   "status": "refrozen_after_prescore_red_team_no_arm_score_opened",
   "normative_markdown": "docs/MC_WTB_STAGE4_COMPARISON_CONTRACT_20260821.md",
-  "normative_markdown_sha256": "0f29f769922cd6d17a2213b2e53b44d4aea830ccf20f67bff78b787e3d5b7930",
+  "normative_markdown_sha256": "5bd584b6d6d45485d3ea89149c5e552cccf34b24dde63bb743c2dcb4d2ddd5a9",
   "checkpoint_commit": "7791e21a8415b0b5dd2c76cc6ea83698c7427d71",
   "development_only": true,
   "registry": {
@@ -136,10 +136,16 @@
       "full_reason": "fifo_full_forced_bypass",
       "full_classification": "operational_waste",
       "external_or_unbounded_overflow_queue_allowed": false,
-      "minimum_zero_loss_depth_method": "separate_score_free_same_timing_unbounded_depth_diagnostic_without_fifo_pressure_action",
-      "minimum_zero_loss_depth_may_change_bounded_decisions": false,
-      "nontermination_unbounded_growth_or_unaccounted_event": "protocol_failure",
-      "minimum_zero_loss_depth_above_bounded_entries": "hard_stop"
+      "minimum_zero_loss_buffer_entries": {
+        "bounded_peak_authoritative_if": "fifo_full_forced_bypass_count_is_zero_and_full_conservation_holds",
+        "authoritative_bounded_value": "observed_peak_buffer_entries",
+        "bounded_peak_authoritative_if_any_fifo_full_forced_bypass": false,
+        "otherwise": "fail_closed_unless_separate_score_free_unbounded_depth_replay_proves_depth",
+        "unbounded_depth_replay_method": "same_arrivals_ordering_service_deadline_and_retirement_without_fifo_pressure_action",
+        "unbounded_depth_replay_may_change_bounded_decisions": false,
+        "nontermination_unbounded_growth_or_unaccounted_event": "hard_stop",
+        "proven_depth_above_bounded_entries": "hard_stop"
+      }
     },
     "common_state_envelope": {
       "scope": "conservatively_charged_to_every_arm",

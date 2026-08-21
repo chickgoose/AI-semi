@@ -267,11 +267,16 @@ cycles. Bit-cycles are a residence metric and are not added to static state.
 The modeled delayed FIFO is exactly 1,024 entries. At full occupancy it forces
 the oldest eligible head to ordered `raw_bypass` with reason
 `fifo_full_forced_bypass`; no external or unbounded overflow queue is allowed.
-`minimum_zero_loss_buffer_entries` may be obtained only from a separate
-score-free diagnostic replay with the same arrivals, ordering, service,
-deadline, and retirement rules but without the 1,024-entry pressure action. It
-cannot alter bounded-run decisions. A nonterminating/unbounded diagnostic, a
-depth above 1,024, or any inability to account every input event fails closed.
+For the same trace and service rules, when the bounded run has zero
+`fifo_full_forced_bypass` records and full event conservation, its observed
+peak buffer occupancy is the exact `minimum_zero_loss_buffer_entries`. If even
+one `fifo_full_forced_bypass` occurs, the bounded peak is clipped and is not
+authoritative. That case fails closed unless a separate score-free unbounded-
+depth diagnostic replay with the same arrivals, ordering, service, deadline,
+and retirement rules, but without the 1,024-entry pressure action, proves the
+required depth. The diagnostic cannot alter bounded-run decisions. A
+nonterminating/unbounded diagnostic, any inability to account every input
+event, or a proven depth above 1,024 is a hard stop.
 
 Every arm is conservatively charged the same common logical-state envelope:
 

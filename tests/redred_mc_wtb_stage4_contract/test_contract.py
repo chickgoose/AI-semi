@@ -24,7 +24,7 @@ class ContractTests(unittest.TestCase):
     def test_frozen_contract_and_existing_registry_validate(self) -> None:
         self.assertEqual(
             self.contract.canonical_sha256,
-            "f94206522f691720409ee3477539d1e3c75bab1a8b28f813162f2c233478aa0e",
+            "d145ef342654069c442361f386d6b60fe2abff36d8fb7fa655dc1c0066921eba",
         )
         receipt = validate_existing_registry(self.contract)
         self.assertEqual(receipt.window_count, 24)
@@ -175,15 +175,29 @@ class ContractTests(unittest.TestCase):
                 "full_reason": "fifo_full_forced_bypass",
                 "full_classification": "operational_waste",
                 "external_or_unbounded_overflow_queue_allowed": False,
-                "minimum_zero_loss_depth_method": (
-                    "separate_score_free_same_timing_unbounded_depth_diagnostic_"
-                    "without_fifo_pressure_action"
-                ),
-                "minimum_zero_loss_depth_may_change_bounded_decisions": False,
-                "nontermination_unbounded_growth_or_unaccounted_event": (
-                    "protocol_failure"
-                ),
-                "minimum_zero_loss_depth_above_bounded_entries": "hard_stop",
+                "minimum_zero_loss_buffer_entries": {
+                    "bounded_peak_authoritative_if": (
+                        "fifo_full_forced_bypass_count_is_zero_and_full_"
+                        "conservation_holds"
+                    ),
+                    "authoritative_bounded_value": "observed_peak_buffer_entries",
+                    "bounded_peak_authoritative_if_any_fifo_full_forced_bypass": (
+                        False
+                    ),
+                    "otherwise": (
+                        "fail_closed_unless_separate_score_free_unbounded_depth_"
+                        "replay_proves_depth"
+                    ),
+                    "unbounded_depth_replay_method": (
+                        "same_arrivals_ordering_service_deadline_and_retirement_"
+                        "without_fifo_pressure_action"
+                    ),
+                    "unbounded_depth_replay_may_change_bounded_decisions": False,
+                    "nontermination_unbounded_growth_or_unaccounted_event": (
+                        "hard_stop"
+                    ),
+                    "proven_depth_above_bounded_entries": "hard_stop",
+                },
             },
         )
 
