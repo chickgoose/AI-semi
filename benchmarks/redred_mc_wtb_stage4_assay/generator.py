@@ -637,6 +637,15 @@ def generate_score_free_inputs(
     document = contract.as_dict()
     timing = document["timing"]
     arms = document["arms"]
+    if (
+        timing.get("raw_ingress_lanes") != OCCURRENCE_INGRESS_LANES
+        or timing.get("raw_ingress_capture_entries") != STAGING_SERIALIZER_ENTRIES
+        or timing.get("downstream_event_lanes") != PRESENTATION_LANES
+        or timing.get("event_record_bits") != EVENT_PAYLOAD_BITS
+        or timing.get("event_record_includes_causal_pose_index_bits")
+        != POSE_INDEX_BITS
+    ):
+        raise AssayInputError("assay ingress constants differ from frozen contract")
     rows = tuple(window_registry())
     forbidden_values = document["registry"]["forbidden_interval_ns"]
     forbidden = (int(forbidden_values[0]), int(forbidden_values[1]))
@@ -824,9 +833,9 @@ def generate_score_free_inputs(
             "prescore_input_boundary_correction": (
                 "raw_uzh_occurrence_baseline_6_lane_to_charged_2_lane_serializer_v1"
             ),
-            "superseded_contract_event_lanes": timing["event_lanes"],
-            "occurrence_ingress_lanes": OCCURRENCE_INGRESS_LANES,
-            "presentation_lanes": PRESENTATION_LANES,
+            "occurrence_ingress_lanes": timing["raw_ingress_lanes"],
+            "ingress_capture_entries": timing["raw_ingress_capture_entries"],
+            "presentation_lanes": timing["downstream_event_lanes"],
             "development_max_exact_timestamp_burst": DEV_MAX_EXACT_TIMESTAMP_BURST,
             "event_record_bits": EVENT_PAYLOAD_BITS,
             "event_payload_pose_index_bits": POSE_INDEX_BITS,
