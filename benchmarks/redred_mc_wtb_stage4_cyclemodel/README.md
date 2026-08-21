@@ -129,6 +129,41 @@ cycle/packet-selection boundary. `PosePacket.oracle_1khz` validates the frozen
 delivery schedule for already serialized, hash-bound oracle packets; it does
 not generate or score them.
 
+## Unbounded-depth diagnostic
+
+`run_delayed_unbounded_diagnostic(...)` is a separate, delayed-only,
+score-free replay used to establish the minimum zero-loss FIFO depth. It takes
+the same immutable `Event` and dataset `PosePacket` values as the bounded
+`delayed_exact` run and applies the same validation, six-record atomic ingress,
+stable two-per-cycle admission, strict pose visibility, deadline, ordered
+two-lane retirement, one-cycle transform pipeline, cycle receipts, and charged
+pose-ring verification. Its sole semantic difference is that it neither caps
+the delayed queue at 1,024 entries nor emits the bounded
+`fifo_full_forced_bypass` pressure action. It cannot change or supplement a
+bounded run's decisions.
+
+The returned frozen `DelayedUnboundedDiagnosticEvidence` contains:
+
+- every ordered input and retired event ID plus their canonical hashes and
+  counts;
+- every `DecisionRecord` and `CycleReceipt`, their independent stream hashes,
+  common serializer and policy-added latency accounting;
+- exact peak unbounded FIFO depth and peak ingress-staging occupancy;
+- the immutable `DelayedUnboundedDiagnosticConfig` and its identity hash,
+  including timing, lane, deadline, visibility, priority, pipeline, and the
+  one removed pressure action;
+- exact-once ordered conservation, an explicit no-full-pressure-reasons flag,
+  pose-index verification, and pose-ring accounting with its evidence hash;
+- a deterministic `evidence_sha256` property over the complete canonical
+  evidence body.
+
+`evidence.validate()` fails closed on altered IDs, counts, ordering, config,
+decision or receipt bindings, peak depth, latency cardinality, pose-ring hash,
+or any full-pressure reason. Below 1,024 entries, native tests require byte-for-
+byte equality with the bounded decisions and receipts and pin pre-extension
+bounded hashes. Above 1,024, tests require identical admissions but no pressure
+bypass, exact ordered retirement, and the observed unbounded peak.
+
 Run the focused suite from the repository root:
 
 ```sh

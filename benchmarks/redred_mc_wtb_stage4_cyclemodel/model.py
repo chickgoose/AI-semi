@@ -37,6 +37,12 @@ DELAYED_DEADLINE_CYCLES = (
     DELAYED_DEADLINE_NS * PICOSECONDS_PER_NANOSECOND + CLOCK_PERIOD_PS - 1
 ) // CLOCK_PERIOD_PS
 DATASET_POSE_ARRIVAL_ASSUMPTION = "arrival_equals_recorded_timestamp"
+DELAYED_UNBOUNDED_DIAGNOSTIC_SCHEMA = (
+    "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v1"
+)
+DELAYED_UNBOUNDED_CONFIG_SCHEMA = (
+    "redred.mc_wtb.stage4_delayed_unbounded_depth_config/v1"
+)
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -415,6 +421,316 @@ class PoseRingAccounting:
 
     def canonical_sha256(self) -> str:
         return _canonical_sha256(self.to_mapping())
+
+
+@dataclass(frozen=True)
+class DelayedUnboundedDiagnosticConfig:
+    """Frozen identity of the one permitted unbounded diagnostic variant."""
+
+    schema: str
+    arm: str
+    arm_semantic_label: str
+    clock_period_ps: int
+    timestamp_to_cycle_rule: str
+    raw_ingress_lanes: int
+    ingress_staging_entries: int
+    ingress_order: str
+    event_lanes: int
+    transform_pipeline_cycles: int
+    delayed_deadline_ns: int
+    delayed_deadline_cycles: int
+    pose_visibility_rule: str
+    cycle_priority: str
+    fifo_policy: str
+    removed_bounded_fifo_entries: int
+    removed_pressure_reason: str
+    event_record_bits: int
+    pose_ring_entries: int
+    pose_ring_state_bits: int
+
+    def to_mapping(self) -> Dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "arm": self.arm,
+            "arm_semantic_label": self.arm_semantic_label,
+            "clock_period_ps": self.clock_period_ps,
+            "timestamp_to_cycle_rule": self.timestamp_to_cycle_rule,
+            "raw_ingress_lanes": self.raw_ingress_lanes,
+            "ingress_staging_entries": self.ingress_staging_entries,
+            "ingress_order": self.ingress_order,
+            "event_lanes": self.event_lanes,
+            "transform_pipeline_cycles": self.transform_pipeline_cycles,
+            "delayed_deadline_ns": self.delayed_deadline_ns,
+            "delayed_deadline_cycles": self.delayed_deadline_cycles,
+            "pose_visibility_rule": self.pose_visibility_rule,
+            "cycle_priority": self.cycle_priority,
+            "fifo_policy": self.fifo_policy,
+            "removed_bounded_fifo_entries": self.removed_bounded_fifo_entries,
+            "removed_pressure_reason": self.removed_pressure_reason,
+            "event_record_bits": self.event_record_bits,
+            "pose_ring_entries": self.pose_ring_entries,
+            "pose_ring_state_bits": self.pose_ring_state_bits,
+        }
+
+    def canonical_sha256(self) -> str:
+        return _canonical_sha256(self.to_mapping())
+
+
+def _delayed_unbounded_config() -> DelayedUnboundedDiagnosticConfig:
+    return DelayedUnboundedDiagnosticConfig(
+        schema=DELAYED_UNBOUNDED_CONFIG_SCHEMA,
+        arm=Arm.DELAYED_EXACT.value,
+        arm_semantic_label=ARM_LABELS[Arm.DELAYED_EXACT.value],
+        clock_period_ps=CLOCK_PERIOD_PS,
+        timestamp_to_cycle_rule="ceil((timestamp_ns-window_start_ns)*1000/6500)",
+        raw_ingress_lanes=RAW_INGRESS_LANES,
+        ingress_staging_entries=INGRESS_STAGING_ENTRIES,
+        ingress_order="atomic_capture_then_stable_event_id_two_per_cycle",
+        event_lanes=EVENT_LANES,
+        transform_pipeline_cycles=TRANSFORM_PIPELINE_CYCLES,
+        delayed_deadline_ns=DELAYED_DEADLINE_NS,
+        delayed_deadline_cycles=DELAYED_DEADLINE_CYCLES,
+        pose_visibility_rule="commit_cycle_strictly_less_than_observation_cycle",
+        cycle_priority=(
+            "visible_pose_then_ordered_retire_then_atomic_capture_then_"
+            "stable_admit_then_consecutive_ready_head_launch"
+        ),
+        fifo_policy="unbounded_remove_only_fifo_full_pressure_action",
+        removed_bounded_fifo_entries=BUFFER_ENTRIES,
+        removed_pressure_reason="fifo_full_forced_bypass",
+        event_record_bits=EVENT_RECORD_BITS,
+        pose_ring_entries=POSE_RING_ENTRIES,
+        pose_ring_state_bits=POSE_RING_STATE_BITS,
+    )
+
+
+@dataclass(frozen=True)
+class DelayedUnboundedDiagnosticEvidence:
+    """Immutable, self-validating score-free unbounded-depth evidence."""
+
+    schema: str
+    window_id: str
+    arm: Arm
+    arm_semantic_label: str
+    config: DelayedUnboundedDiagnosticConfig
+    config_identity_sha256: str
+    input_event_ids: Tuple[int, ...]
+    retired_event_ids: Tuple[int, ...]
+    input_event_ids_sha256: str
+    retired_event_ids_sha256: str
+    input_count: int
+    retired_count: int
+    exact_once_ordered_conservation: bool
+    no_full_pressure_reasons: bool
+    peak_fifo_depth: int
+    peak_ingress_staging_occupancy: int
+    records: Tuple[DecisionRecord, ...]
+    decision_records_sha256: str
+    cycle_receipts: Tuple[CycleReceipt, ...]
+    cycle_receipts_sha256: str
+    common_serializer_cycles: Tuple[int, ...]
+    always_bypass_retire_cycles: Tuple[int, ...]
+    policy_added_latency_cycles: Tuple[int, ...]
+    synthetic_test_mode: bool
+    all_event_pose_indices_verified: bool
+    pose_ring_accounting: PoseRingAccounting
+    pose_ring_accounting_sha256: str
+
+    def _body_mapping(self) -> Dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "window_id": self.window_id,
+            "arm": self.arm.value,
+            "arm_semantic_label": self.arm_semantic_label,
+            "config": self.config.to_mapping(),
+            "config_identity_sha256": self.config_identity_sha256,
+            "input_event_ids": list(self.input_event_ids),
+            "retired_event_ids": list(self.retired_event_ids),
+            "input_event_ids_sha256": self.input_event_ids_sha256,
+            "retired_event_ids_sha256": self.retired_event_ids_sha256,
+            "input_count": self.input_count,
+            "retired_count": self.retired_count,
+            "exact_once_ordered_conservation": (
+                self.exact_once_ordered_conservation
+            ),
+            "no_full_pressure_reasons": self.no_full_pressure_reasons,
+            "peak_fifo_depth": self.peak_fifo_depth,
+            "peak_ingress_staging_occupancy": (
+                self.peak_ingress_staging_occupancy
+            ),
+            "records": [record.to_mapping() for record in self.records],
+            "decision_records_sha256": self.decision_records_sha256,
+            "cycle_receipts": [
+                receipt.to_mapping() for receipt in self.cycle_receipts
+            ],
+            "cycle_receipts_sha256": self.cycle_receipts_sha256,
+            "common_serializer_cycles": list(self.common_serializer_cycles),
+            "always_bypass_retire_cycles": list(
+                self.always_bypass_retire_cycles
+            ),
+            "policy_added_latency_cycles": list(
+                self.policy_added_latency_cycles
+            ),
+            "synthetic_test_mode": self.synthetic_test_mode,
+            "all_event_pose_indices_verified": (
+                self.all_event_pose_indices_verified
+            ),
+            "pose_ring_accounting": self.pose_ring_accounting.to_mapping(),
+            "pose_ring_accounting_sha256": self.pose_ring_accounting_sha256,
+        }
+
+    @property
+    def evidence_sha256(self) -> str:
+        return _canonical_sha256(self._body_mapping())
+
+    def to_mapping(self) -> Dict[str, Any]:
+        mapping = self._body_mapping()
+        mapping["evidence_sha256"] = self.evidence_sha256
+        return mapping
+
+    def validate(self) -> None:
+        _nonempty_text(self.window_id, "unbounded diagnostic window_id")
+        if self.schema != DELAYED_UNBOUNDED_DIAGNOSTIC_SCHEMA:
+            raise CycleModelError("unbounded diagnostic schema differs")
+        if self.arm is not Arm.DELAYED_EXACT or self.arm_semantic_label != ARM_LABELS[
+            Arm.DELAYED_EXACT.value
+        ]:
+            raise CycleModelError("unbounded diagnostic arm identity differs")
+        expected_config = _delayed_unbounded_config()
+        if self.config != expected_config:
+            raise CycleModelError("unbounded diagnostic config differs")
+        if self.config_identity_sha256 != expected_config.canonical_sha256():
+            raise CycleModelError("unbounded diagnostic config identity differs")
+        if self.input_event_ids_sha256 != _canonical_sha256(
+            list(self.input_event_ids)
+        ):
+            raise CycleModelError("unbounded diagnostic input ID hash differs")
+        if self.retired_event_ids_sha256 != _canonical_sha256(
+            list(self.retired_event_ids)
+        ):
+            raise CycleModelError("unbounded diagnostic retired ID hash differs")
+        record_ids = tuple(record.event_id for record in self.records)
+        receipt_ids = tuple(receipt.event_id for receipt in self.cycle_receipts)
+        if (
+            self.input_count != len(self.input_event_ids)
+            or self.retired_count != len(self.retired_event_ids)
+            or record_ids != self.retired_event_ids
+            or receipt_ids != self.retired_event_ids
+            or self.input_event_ids != self.retired_event_ids
+            or len(set(self.retired_event_ids)) != len(self.retired_event_ids)
+            or any(
+                right <= left
+                for left, right in zip(
+                    self.retired_event_ids, self.retired_event_ids[1:]
+                )
+            )
+            or not self.exact_once_ordered_conservation
+        ):
+            raise CycleModelError("unbounded diagnostic conservation differs")
+        expected_decisions_sha256 = _canonical_sha256(
+            [record.to_mapping() for record in self.records]
+        )
+        expected_receipts_sha256 = _canonical_sha256(
+            [receipt.to_mapping() for receipt in self.cycle_receipts]
+        )
+        if self.decision_records_sha256 != expected_decisions_sha256:
+            raise CycleModelError("unbounded diagnostic decision hash differs")
+        if self.cycle_receipts_sha256 != expected_receipts_sha256:
+            raise CycleModelError("unbounded diagnostic receipt hash differs")
+        for record, receipt in zip(self.records, self.cycle_receipts):
+            if (
+                record.window_id != self.window_id
+                or receipt.window_id != self.window_id
+                or record.arm != Arm.DELAYED_EXACT.value
+                or receipt.arm != Arm.DELAYED_EXACT.value
+                or record.arm_semantic_label != self.arm_semantic_label
+                or receipt.arm_semantic_label != self.arm_semantic_label
+                or receipt.decision_record_sha256 != record.canonical_sha256()
+                or receipt.disposition != record.disposition
+                or receipt.disposition_reason != record.disposition_reason
+                or receipt.occurrence_cycle != record.occurrence_cycle
+                or receipt.retire_cycle != record.retire_cycle
+            ):
+                raise CycleModelError("unbounded diagnostic receipt binding differs")
+        if any(
+            right.retire_cycle < left.retire_cycle
+            for left, right in zip(self.records, self.records[1:])
+        ) or any(
+            record.retire_cycle < record.occurrence_cycle
+            for record in self.records
+        ):
+            raise CycleModelError("unbounded diagnostic retirement order differs")
+        full_pressure_present = any(
+            record.disposition_reason == "fifo_full_forced_bypass"
+            for record in self.records
+        ) or any(
+            receipt.disposition_reason == "fifo_full_forced_bypass"
+            for receipt in self.cycle_receipts
+        )
+        if full_pressure_present or not self.no_full_pressure_reasons:
+            raise CycleModelError("unbounded diagnostic contains full-pressure reason")
+        derived_peak = max(
+            (
+                max(
+                    receipt.fifo_occupancy_after_admission,
+                    receipt.fifo_occupancy_before_retire,
+                )
+                for receipt in self.cycle_receipts
+            ),
+            default=0,
+        )
+        if self.peak_fifo_depth != derived_peak:
+            raise CycleModelError("unbounded diagnostic peak FIFO depth differs")
+        count = len(self.records)
+        if not (
+            len(self.common_serializer_cycles) == count
+            and len(self.always_bypass_retire_cycles) == count
+            and len(self.policy_added_latency_cycles) == count
+        ):
+            raise CycleModelError("unbounded diagnostic latency accounting differs")
+        expected_serializer_cycles = tuple(
+            receipt.admission_cycle - receipt.occurrence_cycle
+            for receipt in self.cycle_receipts
+        )
+        expected_baseline_cycles = tuple(
+            receipt.admission_cycle + TRANSFORM_PIPELINE_CYCLES
+            for receipt in self.cycle_receipts
+        )
+        expected_policy_cycles = tuple(
+            record.retire_cycle - baseline
+            for record, baseline in zip(self.records, expected_baseline_cycles)
+        )
+        if (
+            self.common_serializer_cycles != expected_serializer_cycles
+            or self.always_bypass_retire_cycles != expected_baseline_cycles
+            or self.policy_added_latency_cycles != expected_policy_cycles
+        ):
+            raise CycleModelError("unbounded diagnostic latency values differ")
+        derived_pose_index_verification = all(
+            not receipt.causal_pose_index_applicable
+            or receipt.causal_pose_index_verified
+            for receipt in self.cycle_receipts
+        )
+        if (
+            type(self.synthetic_test_mode) is not bool
+            or type(self.all_event_pose_indices_verified) is not bool
+            or self.all_event_pose_indices_verified
+            != derived_pose_index_verification
+            or type(self.exact_once_ordered_conservation) is not bool
+            or type(self.no_full_pressure_reasons) is not bool
+            or not 0
+            <= self.peak_ingress_staging_occupancy
+            <= INGRESS_STAGING_ENTRIES
+        ):
+            raise CycleModelError("unbounded diagnostic status evidence differs")
+        if (
+            self.pose_ring_accounting_sha256
+            != self.pose_ring_accounting.canonical_sha256()
+            or self.pose_ring_accounting.entries != POSE_RING_ENTRIES
+            or self.pose_ring_accounting.state_bits != POSE_RING_STATE_BITS
+            or self.pose_ring_accounting.failures != 0
+        ):
+            raise CycleModelError("unbounded diagnostic pose-ring hash differs")
 
 
 @dataclass(frozen=True)
@@ -1058,6 +1374,140 @@ def _run_delayed(
     return records, peak, peak_staging
 
 
+def _run_delayed_unbounded(
+    window_id: str,
+    states: List[_EventState],
+    poses: Tuple[PosePacket, ...],
+) -> Tuple[List[DecisionRecord], int, int]:
+    """Replay delayed_exact with only the bounded FIFO pressure action removed."""
+
+    if not states:
+        return [], 0, 0
+    records = []  # type: List[DecisionRecord]
+    queue = []  # type: List[_EventState]
+    staging = []  # type: List[_EventState]
+    inflight = []  # type: List[_EventState]
+    next_event = 0
+    peak = 0
+    peak_staging = 0
+    cycle = states[0].occurrence_cycle
+
+    while len(records) < len(states):
+        retirements = 0
+        if inflight:
+            for expected in inflight:
+                if not queue or queue[0] is not expected:
+                    raise CycleModelError("transform pipeline reordered the FIFO")
+                occupancy_before = len(queue)
+                state = queue.pop(0)
+                if state.launch_cycle is None:
+                    raise CycleModelError("launched delayed event has no cycle")
+                if state.accept_cycle is None:
+                    raise CycleModelError("launched delayed event was never admitted")
+                state.retire_lane = retirements
+                state.fifo_occupancy_before_retire = occupancy_before
+                state.fifo_occupancy_after_retire = len(queue)
+                records.append(
+                    _make_record(
+                        window_id,
+                        Arm.DELAYED_EXACT,
+                        state,
+                        cycle,
+                        state.selected,
+                        "corrected_world_ray",
+                        "bracket_interpolation",
+                        state.launch_cycle - state.accept_cycle,
+                    )
+                )
+                retirements += 1
+            inflight = []
+
+        while queue and retirements < EVENT_LANES:
+            status, selected, reason, inspected, failure_causes = _delayed_status(
+                queue[0], poses, cycle
+            )
+            if status != "raw":
+                break
+            if inspected:
+                queue[0].inspection_cycle = cycle
+                queue[0].inspected = inspected
+                queue[0].inspection_failure_causes = failure_causes
+            _pop_raw_head(
+                queue,
+                records,
+                window_id,
+                cycle,
+                selected,
+                reason,
+                retirements,
+            )
+            retirements += 1
+
+        next_event, staging_occupancy = _capture_occurrences(
+            states, next_event, cycle, staging
+        )
+        peak_staging = max(peak_staging, staging_occupancy)
+        incoming = staging[:EVENT_LANES]
+
+        # This is the sole semantic difference from _run_delayed: do not
+        # synthesize fifo_full_forced_bypass retirements and do not cap queue
+        # occupancy at BUFFER_ENTRIES. Admission order and rate are unchanged.
+        del staging[: len(incoming)]
+        for admission_lane, state in enumerate(incoming):
+            state.accept_cycle = cycle
+            state.admission_lane = admission_lane
+            state.fifo_occupancy_before_admission = len(queue)
+            queue.append(state)
+            state.fifo_occupancy_after_admission = len(queue)
+        peak = max(peak, len(queue))
+
+        launch = []  # type: List[_EventState]
+        for launch_lane, state in enumerate(queue[:EVENT_LANES]):
+            if state.inflight:
+                break
+            status, selected, reason, _inspected, _failure_causes = _delayed_status(
+                state, poses, cycle
+            )
+            if status != "correct":
+                break
+            state.inflight = True
+            state.launch_cycle = cycle
+            state.launch_lane = launch_lane
+            state.selected = selected
+            state.disposition = "corrected_world_ray"
+            state.reason = reason
+            launch.append(state)
+        inflight = launch
+
+        if len(records) == len(states):
+            break
+
+        force_next_cycle = bool(inflight or staging or incoming)
+        if retirements == EVENT_LANES and queue:
+            force_next_cycle = True
+        if force_next_cycle:
+            cycle += 1
+            continue
+
+        candidates = []  # type: List[int]
+        if next_event < len(states):
+            candidates.append(states[next_event].occurrence_cycle)
+        if queue:
+            head = queue[0]
+            if head.deadline_cycle is None:
+                raise CycleModelError("queued delayed event has no deadline")
+            candidates.append(head.deadline_cycle)
+            right = _first_right_pose(head, poses)
+            if right is not None:
+                candidates.append(right.commit_cycle + 1)
+        future = [candidate for candidate in candidates if candidate > cycle]
+        if not future:
+            cycle += 1
+        else:
+            cycle = min(future)
+    return records, peak, peak_staging
+
+
 def _validate_conservation(
     states: List[_EventState], records: List[DecisionRecord]
 ) -> None:
@@ -1412,3 +1862,105 @@ def run_cycle_model(
         pose_ring_accounting=pose_ring_accounting,
         pose_ring_accounting_sha256=pose_ring_accounting.canonical_sha256(),
     )
+
+
+def run_delayed_unbounded_diagnostic(
+    *,
+    window_id: str,
+    window_start_ns: int,
+    events: Sequence[Event],
+    poses: Sequence[PosePacket],
+    synthetic_test_mode: bool = False,
+) -> DelayedUnboundedDiagnosticEvidence:
+    """Run the delayed arm without its 1,024-entry full-pressure action.
+
+    This entry point is fixed to ``delayed_exact`` and is diagnostic evidence
+    only. It shares input validation, occurrence capture, two-lane service,
+    deadlines, pose visibility, receipts, and pose-ring safety with the
+    bounded model.
+    """
+
+    _nonempty_text(window_id, "window_id")
+    states, checked_poses = _validate_and_prepare(
+        window_start_ns,
+        Arm.DELAYED_EXACT,
+        events,
+        poses,
+        synthetic_test_mode,
+    )
+    records, peak, peak_staging = _run_delayed_unbounded(
+        window_id, states, checked_poses
+    )
+    _validate_conservation(states, records)
+    _validate_delayed_dispositions(states, checked_poses, records)
+    cycle_receipts = _make_cycle_receipts(
+        window_id, Arm.DELAYED_EXACT, states, records
+    )
+    pose_ring_accounting = _verify_pose_ring(states, checked_poses, records)
+
+    serializer_cycles = []  # type: List[int]
+    baseline_retire_cycles = []  # type: List[int]
+    policy_added_cycles = []  # type: List[int]
+    for state, record in zip(states, records):
+        if state.accept_cycle is None:
+            raise CycleModelError(
+                "unbounded diagnostic retired event has no serializer exit cycle"
+            )
+        serializer_cycle_count = state.accept_cycle - state.occurrence_cycle
+        baseline_retire_cycle = state.accept_cycle + TRANSFORM_PIPELINE_CYCLES
+        serializer_cycles.append(serializer_cycle_count)
+        baseline_retire_cycles.append(baseline_retire_cycle)
+        policy_added_cycles.append(record.retire_cycle - baseline_retire_cycle)
+
+    input_event_ids = tuple(state.event.event_id for state in states)
+    retired_event_ids = tuple(record.event_id for record in records)
+    full_pressure_present = any(
+        record.disposition_reason == "fifo_full_forced_bypass"
+        for record in records
+    ) or any(
+        receipt.disposition_reason == "fifo_full_forced_bypass"
+        for receipt in cycle_receipts
+    )
+    if full_pressure_present:
+        raise CycleModelError(
+            "unbounded diagnostic generated a forbidden full-pressure reason"
+        )
+    config = _delayed_unbounded_config()
+    evidence = DelayedUnboundedDiagnosticEvidence(
+        schema=DELAYED_UNBOUNDED_DIAGNOSTIC_SCHEMA,
+        window_id=window_id,
+        arm=Arm.DELAYED_EXACT,
+        arm_semantic_label=ARM_LABELS[Arm.DELAYED_EXACT.value],
+        config=config,
+        config_identity_sha256=config.canonical_sha256(),
+        input_event_ids=input_event_ids,
+        retired_event_ids=retired_event_ids,
+        input_event_ids_sha256=_canonical_sha256(list(input_event_ids)),
+        retired_event_ids_sha256=_canonical_sha256(list(retired_event_ids)),
+        input_count=len(input_event_ids),
+        retired_count=len(retired_event_ids),
+        exact_once_ordered_conservation=input_event_ids == retired_event_ids,
+        no_full_pressure_reasons=True,
+        peak_fifo_depth=peak,
+        peak_ingress_staging_occupancy=peak_staging,
+        records=tuple(records),
+        decision_records_sha256=_canonical_sha256(
+            [record.to_mapping() for record in records]
+        ),
+        cycle_receipts=cycle_receipts,
+        cycle_receipts_sha256=_canonical_sha256(
+            [receipt.to_mapping() for receipt in cycle_receipts]
+        ),
+        common_serializer_cycles=tuple(serializer_cycles),
+        always_bypass_retire_cycles=tuple(baseline_retire_cycles),
+        policy_added_latency_cycles=tuple(policy_added_cycles),
+        synthetic_test_mode=synthetic_test_mode,
+        all_event_pose_indices_verified=all(
+            not state.pose_index_applicable or state.pose_index_verified
+            for state in states
+        ),
+        pose_ring_accounting=pose_ring_accounting,
+        pose_ring_accounting_sha256=pose_ring_accounting.canonical_sha256(),
+    )
+    evidence.validate()
+    return evidence
