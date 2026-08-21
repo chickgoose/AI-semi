@@ -359,7 +359,7 @@ def _pack_event_payload(record: Mapping[str, Any]) -> str:
 def _schedule_staging_serializer(
     records: Sequence[Dict[str, Any]], batches: Sequence[Mapping[str, Any]]
 ) -> Mapping[str, int]:
-    """Drain two old entries, then atomically admit one up-to-six occurrence batch."""
+    """Atomically capture one up-to-six batch, then present two staged entries."""
 
     by_id = {record["event_id"]: record for record in records}
     queue = []  # type: List[int]
@@ -369,6 +369,11 @@ def _schedule_staging_serializer(
 
     def service_cycle(cycle: int, arriving: Sequence[int]) -> None:
         nonlocal peak, entry_cycles
+        if len(queue) + len(arriving) > STAGING_SERIALIZER_ENTRIES:
+            raise AssayInputError("six-entry staging serializer overflow")
+        queue.extend(arriving)
+        peak = max(peak, len(queue))
+        entry_cycles += len(queue)
         retiring = queue[:PRESENTATION_LANES]
         del queue[:len(retiring)]
         for lane, event_id in enumerate(retiring):
@@ -376,11 +381,6 @@ def _schedule_staging_serializer(
             record["presentation_cycle"] = cycle
             record["presentation_lane"] = lane
             record["serializer_queue_cycles"] = cycle - record["occurrence_cycle"]
-        if len(queue) + len(arriving) > STAGING_SERIALIZER_ENTRIES:
-            raise AssayInputError("six-entry staging serializer overflow")
-        queue.extend(arriving)
-        peak = max(peak, len(queue))
-        entry_cycles += len(queue)
 
     for batch in batches:
         occurrence_cycle = int(batch["occurrence_cycle"])
@@ -852,7 +852,7 @@ def generate_score_free_inputs(
             "payload_bits_per_entry": EVENT_PAYLOAD_BITS,
             "payload_state_bits": STAGING_SERIALIZER_ENTRIES * EVENT_PAYLOAD_BITS,
             "drain_records_per_cycle": PRESENTATION_LANES,
-            "cycle_order": "present_up_to_two_old_then_atomically_admit_occurrence_batch",
+            "cycle_order": "atomically_capture_occurrence_batch_then_present_up_to_two_staged",
             "overflow_action": "protocol_failure_no_external_buffer",
             "peak_occupancy": serializer_accounting["peak_staging_occupancy"],
             "entry_cycles": serializer_accounting["staging_entry_cycles"],

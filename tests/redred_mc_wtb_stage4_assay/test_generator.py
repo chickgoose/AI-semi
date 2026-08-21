@@ -11,6 +11,11 @@ import unittest
 from benchmarks.redred_mc_wtb_stage4_assay import generator as generator_module
 from benchmarks.redred_mc_wtb_causal_reference.development import window_registry
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    Arm,
+    Event,
+    run_cycle_model,
+)
 from benchmarks.redred_mc_wtb_stage4_assay import (
     AssayInputError,
     SourcePins,
@@ -131,6 +136,62 @@ class GeneratorTests(unittest.TestCase):
         with self.assertRaisesRegex(AssayInputError, "serializer overflow"):
             generator_module._schedule_staging_serializer(records, batches)
 
+    def test_serializer_cycles_and_lanes_equal_cyclemodel_admissions(self) -> None:
+        for batch_sizes in ((5,), (4, 2)):
+            with self.subTest(batch_sizes=batch_sizes):
+                records = []
+                batches = []
+                events = []
+                next_id = 100
+                for offset, size in enumerate(batch_sizes):
+                    cycle = 2 + offset
+                    timestamp_ns = (cycle * 6_500) // 1_000
+                    batch_ids = []
+                    for _ in range(size):
+                        batch_ids.append(next_id)
+                        records.append({
+                            "event_id": next_id,
+                            "occurrence_cycle": cycle,
+                        })
+                        events.append(Event(next_id, timestamp_ns))
+                        next_id += 1
+                    batches.append({
+                        "occurrence_cycle": cycle,
+                        "event_ids": batch_ids,
+                    })
+
+                accounting = generator_module._schedule_staging_serializer(
+                    records, batches
+                )
+                cycle_result = run_cycle_model(
+                    window_id="serializer-equivalence",
+                    window_start_ns=0,
+                    arm=Arm.ZOH_FRESHNESS,
+                    events=tuple(events),
+                    poses=(),
+                )
+
+                self.assertEqual(
+                    [record["presentation_cycle"] for record in records],
+                    [receipt.admission_cycle for receipt in cycle_result.cycle_receipts],
+                )
+                self.assertEqual(
+                    [record["presentation_lane"] for record in records],
+                    [receipt.admission_lane for receipt in cycle_result.cycle_receipts],
+                )
+                self.assertEqual(
+                    [record["serializer_queue_cycles"] for record in records],
+                    list(cycle_result.common_serializer_cycles),
+                )
+                self.assertEqual(
+                    accounting["peak_staging_occupancy"],
+                    cycle_result.peak_ingress_staging_occupancy,
+                )
+                self.assertEqual(
+                    [record["event_id"] for record in records],
+                    [receipt.event_id for receipt in cycle_result.cycle_receipts],
+                )
+
     def test_pose_packet_stream_and_per_packet_hashes_fail_closed(self) -> None:
         packet = {
             "window_id": "fixture",
@@ -227,7 +288,7 @@ class GeneratorTests(unittest.TestCase):
                     (event["window_id"], event["timestamp_ns"]), set()
                 ).add(event["occurrence_pose_snapshot_sha256"])
                 self.assertGreaterEqual(
-                    event["presentation_cycle"], event["occurrence_cycle"] + 1
+                    event["presentation_cycle"], event["occurrence_cycle"]
                 )
                 packed = int(event["payload_hex"], 16)
                 self.assertEqual(packed & ((1 << 24) - 1), event["event_id"])
@@ -251,7 +312,7 @@ class GeneratorTests(unittest.TestCase):
             five_members = by_batch[
                 (five_event_batch["window_id"], five_event_batch["occurrence_batch_id"])
             ]
-            first_presentation = five_event_batch["occurrence_cycle"] + 1
+            first_presentation = five_event_batch["occurrence_cycle"]
             self.assertEqual(
                 [member["presentation_cycle"] for member in five_members],
                 [first_presentation, first_presentation, first_presentation + 1,
@@ -260,6 +321,10 @@ class GeneratorTests(unittest.TestCase):
 
             dataset_poses = jsonl(first / "stage4_dataset_pose_packets.jsonl")
             self.assertTrue(all(packet["visible_cycle"] == packet["commit_cycle"] + 1 for packet in dataset_poses))
+            self.assertTrue(any(packet["commit_cycle"] < 0 for packet in dataset_poses))
+            self.assertTrue(
+                all(packet["arrival_cycle"] == packet["commit_cycle"] for packet in dataset_poses)
+            )
             self.assertTrue(
                 all(
                     not 43320750000 <= packet["timestamp_ns"] < 43322000000
@@ -357,6 +422,10 @@ class GeneratorTests(unittest.TestCase):
             ordered_binding = binding["ordered_102bit_occurrence_records"]
             self.assertEqual(
                 hashlib.sha256(ordered_payload).hexdigest(), ordered_binding["sha256"]
+            )
+            self.assertEqual(
+                manifest["staging_serializer"]["cycle_order"],
+                "atomically_capture_occurrence_batch_then_present_up_to_two_staged",
             )
             self.assertEqual(
                 binding["raw_source_streams"],

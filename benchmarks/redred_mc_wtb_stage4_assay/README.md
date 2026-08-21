@@ -21,10 +21,11 @@ The generator:
   fields are a 24-bit dataset event index, 11-bit join sequence, 36-bit
   timestamp, 8-bit x/y, and polarity;
 - passes accepted batches through a charged six-entry staging serializer. It
-  presents at most two stable-order records per cycle, starting no earlier
-  than the cycle after atomic capture. The manifest charges 612 payload-state
-  bits, peak occupancy, entry-cycles, and payload bit-cycles. Overflow is a
-  protocol failure; there is no implicit external queue;
+  atomically captures the complete up-to-six batch first, charges occupancy,
+  and then presents at most two stable-order records on that same cycle. The
+  manifest charges 612 payload-state bits, peak occupancy, entry-cycles, and
+  payload bit-cycles. Overflow is a protocol failure; there is no implicit
+  external queue;
 - emits normalized, deterministic-sign dataset pose packets with
   arrival/commit/visibility cycles and a canonical hash for every packet;
 - emits one authoritative occurrence `PoseSnapshot` per atomic batch. It is
