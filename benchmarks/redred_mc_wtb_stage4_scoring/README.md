@@ -8,21 +8,33 @@ poses, read UZH data, score a holdout, or authorize RTL/PPA claims.
 
 `score_window` accepts frozen `DecisionRecord` objects and a validated
 `DecisionReceipt`. It also requires an immutable `ScoreInputManifest` and the
-manifest digest frozen by the caller before scoring. Before inspecting a ray
-or computing a loss, it verifies:
+manifest digest frozen by the caller before scoring. The supplied
+`expected_manifest_sha256` is a trust anchor only when it comes from an
+independently frozen root; recomputing it from the candidate manifest at
+verification time does not establish provenance. Before inspecting a ray or
+computing a loss, it verifies:
 
 - the caller-supplied canonical score-input manifest SHA-256;
 - the caller-supplied canonical receipt SHA-256;
 - the receipt's contract and registry digests;
 - the canonical digest of the exact immutable decision records;
+- the canonical ordered event-ID projection recomputed from those records;
 - a canonical digest of `ScoreFreeAccounting`.
 
 Manifest schema v2 additionally binds the authoritative assay input manifest,
 the complete warmup-plus-query cycle result, the complete cycle-receipt stream,
-and the query projection. The independently supplied `ScoreBoundaryEvidence`
-must match all four values, and the query projection must equal the decision
-receipt's record digest. Consequently, retaining the same query receipt while
-substituting warmup inputs or cycle history changes a required pre-score hash.
+and the query projection. `ScoreBoundaryEvidence` contains digests observed
+from those artifacts, not values copied from the candidate manifest. It must
+match all four manifest values, and the query projection must equal the sealed
+decision-record projection. Consequently, retaining the same query receipt
+while substituting warmup inputs or cycle history changes a required pre-score
+hash.
+
+`verify_prescore_binding` has no ray-event input and therefore cannot by itself
+certify warmup/query `is_query` flags. `score_window` additionally verifies the
+pre-frozen complete ray stream, projects the events marked as query, and
+requires their canonical ordered IDs and exact order to match the receipt and
+decision records before either reference bank runs.
 
 The manifest binds the decision-receipt digest, accounting digest, exact
 ray/provenance stream, and the protocol, registry, arm-parameter, generator,

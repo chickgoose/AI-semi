@@ -311,7 +311,7 @@ class ScoreInputManifest:
 
 @dataclass(frozen=True)
 class ScoreBoundaryEvidence:
-    """Observed pre-score digests supplied independently of the frozen manifest."""
+    """Digests observed from artifacts, not copied from the candidate manifest."""
 
     assay_authoritative_input_manifest_sha256: str
     full_cycle_result_sha256: str
@@ -669,7 +669,15 @@ def verify_prescore_binding(
     expected_receipt_sha256: str,
     expected_accounting_sha256: str,
 ) -> None:
-    """Verify all score-free digests before any ray is inspected or loss joined."""
+    """Verify record-side score-free bindings before rays or losses are inspected.
+
+    ``expected_manifest_sha256`` is a trust anchor only when supplied from an
+    independently frozen root. ``boundary_evidence`` must be derived by
+    observing the named artifacts rather than by copying manifest fields.
+    This record-side verifier cannot certify ``RayEvent.is_query`` flags;
+    ``score_window`` additionally seals the ray stream and checks its query-ID
+    projection against the receipt before either causal bank runs.
+    """
 
     if not isinstance(contract, ComparisonContract):
         raise ScoringError("contract must be a validated ComparisonContract")
@@ -724,13 +732,18 @@ def verify_prescore_binding(
     )
     if boundary_evidence.digest_tuple() != manifest_evidence:
         raise ScoringError("full-stream boundary evidence differs before scoring")
-    if manifest.query_projection_sha256 != receipt.decision_records_sha256:
-        raise ScoringError("query projection differs from the sealed decision receipt")
     if any(not isinstance(record, DecisionRecord) for record in records):
         raise ScoringError("scoring accepts immutable DecisionRecord values only")
     record_digest = canonical_sha256([record.to_mapping() for record in records])
     if record_digest != receipt.decision_records_sha256:
         raise ScoringError("decision records differ from the sealed receipt")
+    ordered_event_ids_sha256 = canonical_sha256(
+        [record.event_id for record in records]
+    )
+    if ordered_event_ids_sha256 != receipt.ordered_event_ids_sha256:
+        raise ScoringError("ordered decision event IDs differ from the sealed receipt")
+    if manifest.query_projection_sha256 != record_digest:
+        raise ScoringError("query projection differs from the sealed decision records")
     if len(records) != receipt.expected_events or len(records) != receipt.retired_records:
         raise ScoringError("receipt decision conservation differs")
     if any(record.window_id != receipt.window_id for record in records):
@@ -946,7 +959,7 @@ def score_window(
     bank_capacity_per_polarity: int = 256,
     bank_max_age_ns: int = 2_000_000,
 ) -> WindowMetrics:
-    """Join losses only after validating immutable score-free receipt digests."""
+    """Validate the sealed ray/query projection, then join complete losses."""
 
     records = tuple(decision_records)
     verify_prescore_binding(

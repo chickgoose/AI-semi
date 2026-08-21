@@ -198,23 +198,27 @@ def sealed_inputs(
     ))
     artifacts["protocol"] = contract.canonical_sha256
     artifacts["registry"] = contract.registry["sha256"]
+    assay_manifest_digest = "3" * 64
+    full_cycle_result_digest = "4" * 64
+    cycle_receipts_digest = "5" * 64
+    query_projection_digest = receipt.decision_records_sha256
     manifest = ScoreInputManifest(
         WINDOW,
         records[0].arm,
         receipt.canonical_sha256(),
         accounting.canonical_sha256(),
         canonical_sha256([event.to_mapping() for event in events]),
-        "3" * 64,
-        "4" * 64,
-        "5" * 64,
-        receipt.decision_records_sha256,
+        assay_manifest_digest,
+        full_cycle_result_digest,
+        cycle_receipts_digest,
+        query_projection_digest,
         tuple(artifacts.items()),
     )
     evidence = ScoreBoundaryEvidence(
-        manifest.assay_authoritative_input_manifest_sha256,
-        manifest.full_cycle_result_sha256,
-        manifest.cycle_receipts_sha256,
-        manifest.query_projection_sha256,
+        assay_manifest_digest,
+        full_cycle_result_digest,
+        cycle_receipts_digest,
+        query_projection_digest,
     )
     return receipt, accounting, manifest, evidence
 
@@ -356,6 +360,115 @@ class FrameSafeWindowTests(unittest.TestCase):
                 wrong_projection,
                 wrong_evidence,
                 expected_manifest_sha256=wrong_projection.canonical_sha256(),
+                expected_receipt_sha256=receipt.canonical_sha256(),
+                expected_accounting_sha256=accounting.canonical_sha256(),
+            )
+
+    def test_forged_ordered_id_ledger_fails_after_dependent_rehashes(self):
+        records = (decision(13, 100, 3, 4, True),)
+        events = (
+            RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
+            RayEvent(WINDOW, 13, 100, 0, True, ray(1), shadows(ray(1))),
+        )
+        receipt, accounting, manifest, evidence = sealed_inputs(
+            self.contract, records, events
+        )
+        forged_receipt = replace(
+            receipt,
+            ordered_event_ids_sha256=canonical_sha256([999]),
+        )
+        forged_manifest = replace(
+            manifest,
+            decision_receipt_sha256=forged_receipt.canonical_sha256(),
+        )
+
+        with self.assertRaisesRegex(ScoringError, "ordered decision event IDs"):
+            verify_prescore_binding(
+                self.contract,
+                forged_receipt,
+                records,
+                accounting,
+                forged_manifest,
+                evidence,
+                expected_manifest_sha256=forged_manifest.canonical_sha256(),
+                expected_receipt_sha256=forged_receipt.canonical_sha256(),
+                expected_accounting_sha256=accounting.canonical_sha256(),
+            )
+
+    def test_paired_decision_projection_forgery_fails_against_records(self):
+        records = (decision(14, 100, 3, 4, True),)
+        events = (
+            RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
+            RayEvent(WINDOW, 14, 100, 0, True, ray(1), shadows(ray(1))),
+        )
+        receipt, accounting, manifest, evidence = sealed_inputs(
+            self.contract, records, events
+        )
+        forged_projection = "d" * 64
+        forged_receipt = replace(
+            receipt,
+            decision_records_sha256=forged_projection,
+        )
+        forged_manifest = replace(
+            manifest,
+            decision_receipt_sha256=forged_receipt.canonical_sha256(),
+            query_projection_sha256=forged_projection,
+        )
+        forged_evidence = replace(
+            evidence,
+            query_projection_sha256=forged_projection,
+        )
+
+        with self.assertRaisesRegex(ScoringError, "decision records differ"):
+            verify_prescore_binding(
+                self.contract,
+                forged_receipt,
+                records,
+                accounting,
+                forged_manifest,
+                forged_evidence,
+                expected_manifest_sha256=forged_manifest.canonical_sha256(),
+                expected_receipt_sha256=forged_receipt.canonical_sha256(),
+                expected_accounting_sha256=accounting.canonical_sha256(),
+            )
+
+    def test_paired_warmup_query_flag_mutation_fails_in_score_window(self):
+        records = (decision(15, 100, 3, 4, True),)
+        events = (
+            RayEvent(WINDOW, 1, 0, 0, False, ray(0), shadows(ray(0))),
+            RayEvent(WINDOW, 15, 100, 0, True, ray(1), shadows(ray(1))),
+        )
+        receipt, accounting, manifest, evidence = sealed_inputs(
+            self.contract, records, events
+        )
+        mutated_events = (replace(events[0], is_query=True), events[1])
+        mutated_manifest = replace(
+            manifest,
+            ray_events_sha256=canonical_sha256(
+                [event.to_mapping() for event in mutated_events]
+            ),
+        )
+        verify_prescore_binding(
+            self.contract,
+            receipt,
+            records,
+            accounting,
+            mutated_manifest,
+            evidence,
+            expected_manifest_sha256=mutated_manifest.canonical_sha256(),
+            expected_receipt_sha256=receipt.canonical_sha256(),
+            expected_accounting_sha256=accounting.canonical_sha256(),
+        )
+        with self.assertRaisesRegex(ScoringError, "query ray identity/order"):
+            score_window(
+                self.contract,
+                receipt,
+                records,
+                mutated_events,
+                accounting,
+                mutated_manifest,
+                evidence,
+                expected_manifest_sha256=mutated_manifest.canonical_sha256(),
                 expected_receipt_sha256=receipt.canonical_sha256(),
                 expected_accounting_sha256=accounting.canonical_sha256(),
             )
