@@ -1,0 +1,54 @@
+{
+  "schema": "redred.mc_wtb.stage4_comparison_contract/v1",
+  "status": "frozen_before_arm_scoring",
+  "checkpoint_commit": "7791e21a8415b0b5dd2c76cc6ea83698c7427d71",
+  "development_only": true,
+  "registry": {
+    "window_count": 24,
+    "query_event_count": 8914,
+    "sha256": "19df5788d3300ef9e6169165ed1dc68806a08f4e4af73eb4a52aebc9b642f62f",
+    "forbidden_interval_ns": [43320750000, 43322000000]
+  },
+  "timing": {
+    "clock_period_ps": 6500,
+    "same_edge_pose_visible_to_event": false,
+    "event_lanes": 2,
+    "transform_pipeline_cycles": 1,
+    "event_record_bits": 102,
+    "pose_packet_bits": 192,
+    "buffer_entries": 1024,
+    "dataset_pose_arrival_assumption": "arrival_equals_recorded_timestamp"
+  },
+  "arms": {
+    "zoh_freshness": {"max_pose_age_ns": 1000000},
+    "delayed_exact": {"deadline_ns": 6000000, "ordered": true},
+    "causal_cav": {
+      "max_horizon_ns": 5000000,
+      "max_horizon_pose_intervals": 1,
+      "zoh_fallback_max_age_ns": 1000000
+    },
+    "supplied_pose_1khz": {
+      "cadence_ns": 1000000,
+      "commit_delay_cycles": 1,
+      "max_pose_age_ns": 1000000,
+      "counterfactual_upstream_interface": true
+    }
+  },
+  "go_to_rtl": {
+    "minimum_r_all_fraction": 0.01,
+    "minimum_positive_windows": 18,
+    "minimum_enable_rate": 0.10,
+    "maximum_quality_waste_rate": 0.50,
+    "maximum_operational_waste_rate": 0.01,
+    "maximum_accepted_event_loss": 0,
+    "maximum_added_p99_latency_ns": 1000000,
+    "maximum_buffer_entries": 1024,
+    "maximum_pose_bandwidth_bits_per_second": 250000,
+    "maximum_incremental_state_bits": 131072
+  },
+  "score_blind_decision_receipt_required": true,
+  "score_all_arms_once": true,
+  "holdout_claim_authorized": false,
+  "rtl_or_ppa_claim_authorized": false,
+  "novelty_claim_authorized": false
+}
