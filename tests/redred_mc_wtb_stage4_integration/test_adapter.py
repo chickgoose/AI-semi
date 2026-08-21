@@ -111,35 +111,6 @@ def reseal_artifact_and_manifest(root, name, rows):
     return hashlib.sha256(manifest_bytes).hexdigest()
 
 
-def add_event_tag_evidence_and_reseal(root, rows):
-    path = root / "stage4_events.jsonl"
-    write_jsonl(path, rows)
-    manifest_path = root / "stage4_input_manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["artifacts"][path.name] = artifact(path, rows)
-    event_inputs = manifest["event_inputs"]
-    tags = [row["event_sequence_tag"] for row in rows]
-    event_inputs["selected_event_sequence_tag_count"] = len(tags)
-    event_inputs["selected_event_sequence_tags_globally_unique"] = True
-    event_inputs["ordered_selected_event_sequence_tags_sha256"] = canonical_sha256(
-        tags
-    )
-    for window in manifest["windows"]:
-        window_rows = [
-            row for row in rows if row["window_id"] == window["window_id"]
-        ]
-        event_ids = [row["event_id"] for row in window_rows]
-        window["source_event_id_min"] = min(event_ids)
-        window["source_event_id_max"] = max(event_ids)
-        window["source_event_id_span"] = max(event_ids) - min(event_ids)
-        window["ordered_event_sequence_tags_sha256"] = canonical_sha256(
-            [row["event_sequence_tag"] for row in window_rows]
-        )
-    manifest_bytes = canonical_json_bytes(manifest)
-    manifest_path.write_bytes(manifest_bytes)
-    return hashlib.sha256(manifest_bytes).hexdigest()
-
-
 def build_artifacts(
     root, *, include_limits=True, signed_history=True, event_id_offset=0
 ):
@@ -299,6 +270,18 @@ def build_artifacts(
         (name, artifact(root / name, rows)) for name, rows in rows_by_file.items()
     )
     ordered_raw = b"".join((row["payload_hex"] + "\n").encode("ascii") for row in events)
+    ordered_tags = [row["event_sequence_tag"] for row in events]
+    min_source_event_id = min(row["event_id"] for row in events)
+    max_source_event_id = max(row["event_id"] for row in events)
+    source_event_id_span = max_source_event_id - min_source_event_id
+    window_tag_evidence = [{
+        "window_id": WINDOW,
+        "min_source_event_id": min_source_event_id,
+        "max_source_event_id": max_source_event_id,
+        "source_event_id_span": source_event_id_span,
+        "ordered_event_sequence_tags_sha256": canonical_sha256(ordered_tags),
+    }]
+    window_tag_evidence_sha256 = canonical_sha256(window_tag_evidence)
     authority = {
         "schema": "redred.mc_wtb.stage4_authoritative_input_binding/v1",
         "ordered_102bit_occurrence_records": {
@@ -306,6 +289,18 @@ def build_artifacts(
             "record_count": len(events),
             "sha256": hashlib.sha256(ordered_raw).hexdigest(),
             "ordered_event_ids_sha256": canonical_sha256([row["event_id"] for row in events]),
+        },
+        "event_sequence_tags": {
+            "derivation": "event_id_mod_2^24",
+            "bits": 24,
+            "event_sequence_tag_count": len(ordered_tags),
+            "event_sequence_tags_globally_unique": True,
+            "ordered_event_sequence_tags_sha256": canonical_sha256(ordered_tags),
+            "window_reset_domains": True,
+            "window_source_event_id_span_limit_exclusive": 1 << 23,
+            "window_source_event_id_evidence_sha256": (
+                window_tag_evidence_sha256
+            ),
         },
         "raw_source_streams": {
             "events.txt_sha256": HASH_A,
@@ -364,15 +359,10 @@ def build_artifacts(
         "window_id": WINDOW,
         "selected_event_count": 4,
         "query_event_count": 2,
-        "source_event_id_min": min(row["event_id"] for row in events),
-        "source_event_id_max": max(row["event_id"] for row in events),
-        "source_event_id_span": (
-            max(row["event_id"] for row in events)
-            - min(row["event_id"] for row in events)
-        ),
-        "ordered_event_sequence_tags_sha256": canonical_sha256(
-            [row["event_sequence_tag"] for row in events]
-        ),
+        "min_source_event_id": min_source_event_id,
+        "max_source_event_id": max_source_event_id,
+        "source_event_id_span": source_event_id_span,
+        "ordered_event_sequence_tags_sha256": canonical_sha256(ordered_tags),
     }
     if include_limits:
         window.update(
@@ -410,10 +400,13 @@ def build_artifacts(
                 "authority_sha256"
             ],
             "selected_event_count": len(events),
-            "selected_event_sequence_tag_count": len(events),
-            "selected_event_sequence_tags_globally_unique": True,
-            "ordered_selected_event_sequence_tags_sha256": canonical_sha256(
-                [row["event_sequence_tag"] for row in events]
+            "event_sequence_tag_count": len(ordered_tags),
+            "event_sequence_tags_globally_unique": True,
+            "ordered_event_sequence_tags_sha256": canonical_sha256(ordered_tags),
+            "window_reset_domains": True,
+            "window_source_event_id_span_limit_exclusive": 1 << 23,
+            "window_source_event_id_evidence_sha256": (
+                window_tag_evidence_sha256
             ),
             "occurrence_batch_count": len(batches),
             "ordered_selected_event_ids_sha256": canonical_sha256(
@@ -551,17 +544,22 @@ class IntegrationTests(unittest.TestCase):
             bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
             mutations = (
                 (
-                    ("event_inputs", "selected_event_sequence_tag_count"),
+                    ("event_inputs", "event_sequence_tag_count"),
                     3,
                     "manifest-wide",
                 ),
                 (
                     (
                         "event_inputs",
-                        "ordered_selected_event_sequence_tags_sha256",
+                        "ordered_event_sequence_tags_sha256",
                     ),
                     "0" * 64,
                     "manifest-wide",
+                ),
+                (
+                    ("event_inputs", "window_source_event_id_evidence_sha256"),
+                    "0" * 64,
+                    "window event tag evidence hash",
                 ),
                 (
                     ("windows", 0, "source_event_id_span"),
@@ -572,6 +570,15 @@ class IntegrationTests(unittest.TestCase):
                     ("windows", 0, "ordered_event_sequence_tags_sha256"),
                     "0" * 64,
                     "per-window",
+                ),
+                (
+                    (
+                        "authoritative_input_binding",
+                        "event_sequence_tags",
+                        "ordered_event_sequence_tags_sha256",
+                    ),
+                    "0" * 64,
+                    "authoritative",
                 ),
             )
             for path, value, message in mutations:
@@ -672,6 +679,19 @@ class IntegrationTests(unittest.TestCase):
                 target[path[-1]] = value
                 with self.assertRaisesRegex(IntegrationError, message):
                     integration._validate_score_free_accounting_contract(changed)
+
+    def test_runtime_event_identity_contract_retains_36bit_timestamp(self):
+        timing = load_comparison_contract().as_dict()["timing"]
+        identity = integration._validate_event_record_identity_contract(timing)
+        self.assertEqual(identity["transport_sequence_tag_bits"], 24)
+        self.assertEqual(identity["serial_number_half_range"], 1 << 23)
+        self.assertEqual(identity["timestamp_bits"], 36)
+        changed = json.loads(json.dumps(timing))
+        changed["event_record_identity"]["timestamp_bits"] = 35
+        with self.assertRaisesRegex(
+            IntegrationError, "event record identity contract differs"
+        ):
+            integration._validate_event_record_identity_contract(changed)
 
     def test_pose_value_is_recomputed_after_outer_hashes_are_resealed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1037,13 +1057,8 @@ class IntegrationTests(unittest.TestCase):
                 source_pins=pins,
                 fixture_label="stage4_integration_end_to_end_fixture_v1",
             )
-            event_path = output / "stage4_events.jsonl"
-            event_rows = [
-                json.loads(line) for line in event_path.read_text().splitlines()
-            ]
-            for row in event_rows:
-                row["event_sequence_tag"] = row["event_id"] % (1 << 24)
-            expected = add_event_tag_evidence_and_reseal(output, event_rows)
+            manifest_path = output / "stage4_input_manifest.json"
+            expected = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
             bundle = load_assay_bundle(
                 output, expected_manifest_sha256=expected
             )

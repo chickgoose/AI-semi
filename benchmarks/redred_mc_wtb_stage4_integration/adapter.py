@@ -154,6 +154,38 @@ _EVENT_SEQUENCE_TAG_BITS = 24
 _EVENT_SEQUENCE_TAG_MODULUS = 1 << _EVENT_SEQUENCE_TAG_BITS
 _MAXIMUM_SIMULTANEOUS_LIVE_REFERENCES = 1032
 _SOURCE_EVENT_ID_SPAN_LIMIT = 1 << 23
+_EXPECTED_EVENT_RECORD_IDENTITY = {
+    "payload_field": "transport_sequence_tag_not_dataset_event_index",
+    "transport_sequence_tag_bits": 24,
+    "transport_sequence_tag_modulus": 1 << 24,
+    "transport_sequence_tag_rule": "source_event_id_modulo_2^24",
+    "independent_reset_domain": "each_independently_simulated_window",
+    "per_window_transport_sequence_tag_uniqueness_required": True,
+    "max_source_event_id_span_per_window_rule": (
+        "serialized_max_source_event_id_minus_min_source_event_id_strictly_less_than_2^23"
+    ),
+    "global_selected_transport_tags_unique": True,
+    "global_selected_transport_tag_scope": "frozen_24_window_assay_artifact",
+    "cross_window_source_event_id_range_used_as_live_span": False,
+    "full_source_event_id_scope": (
+        "score_free_artifacts_and_receipts_verification_only"
+    ),
+    "full_source_event_id_hardware_state_bits": 0,
+    "timestamp_bits": 36,
+    "timestamp_role": "retained_functional_motion_data",
+    "maximum_simultaneous_live_records": 1032,
+    "maximum_simultaneous_live_records_role": (
+        "capacity_fact_only_not_wrap_safety_evidence"
+    ),
+    "serial_number_half_range": 1 << 23,
+    "wrap_safety_source_event_id_span_rule": (
+        "every_simultaneously_live_or_replayable_set_max_source_event_id_minus_min_source_event_id_strictly_less_than_2^23"
+    ),
+    "cycle_observer_alias_policy": (
+        "verify_transport_tags_fail_closed_on_alias_and_never_use_full_source_event_ids_to_mask_collision"
+    ),
+    "mismatch_collision_or_span_violation": "fail_closed_before_scoring",
+}
 _EXPECTED_FIFO_MINIMUM_ZERO_LOSS_RULE = {
     "bounded_peak_authoritative_if": (
         "fifo_full_forced_bypass_count_is_zero_and_full_conservation_holds"
@@ -327,22 +359,30 @@ def _validate_event_tag_manifest_evidence(
         _require_int(row.get("event_sequence_tag"), "event.event_sequence_tag", 0)
         for row in rows
     ]
+    expected_tag_hash = canonical_sha256(tags)
     event_inputs = _require_mapping(manifest.get("event_inputs"), "event_inputs")
     if (
         _require_int(event_inputs.get("selected_event_count"), "selected_event_count", 0)
         != len(tags)
         or _require_int(
-            event_inputs.get("selected_event_sequence_tag_count"),
-            "selected_event_sequence_tag_count",
+            event_inputs.get("event_sequence_tag_count"),
+            "event_sequence_tag_count",
             0,
         )
         != len(tags)
-        or event_inputs.get("selected_event_sequence_tags_globally_unique") is not True
+        or event_inputs.get("event_sequence_tags_globally_unique") is not True
         or _require_sha(
-            event_inputs.get("ordered_selected_event_sequence_tags_sha256"),
+            event_inputs.get("ordered_event_sequence_tags_sha256"),
             "ordered selected event_sequence_tag hash",
         )
-        != canonical_sha256(tags)
+        != expected_tag_hash
+        or event_inputs.get("window_reset_domains") is not True
+        or _require_int(
+            event_inputs.get("window_source_event_id_span_limit_exclusive"),
+            "window source_event_id span limit",
+            1,
+        )
+        != _SOURCE_EVENT_ID_SPAN_LIMIT
     ):
         raise IntegrationError("manifest-wide event_sequence_tag evidence differs")
 
@@ -352,16 +392,24 @@ def _validate_event_tag_manifest_evidence(
     rows_by_window = {}  # type: Dict[str, List[Mapping[str, Any]]]
     for row in rows:
         rows_by_window.setdefault(str(row.get("window_id")), []).append(row)
+    manifest_window_ids = []  # type: List[str]
+    summaries_by_window = {}  # type: Dict[str, Mapping[str, Any]]
+    for summary in windows:
+        if not isinstance(summary, Mapping):
+            raise IntegrationError("manifest window summary must be an object")
+        window_id = summary.get("window_id")
+        if type(window_id) is not str:
+            raise IntegrationError("manifest window_id must be an exact string")
+        if window_id in summaries_by_window:
+            raise IntegrationError("event tag window summary is duplicated")
+        manifest_window_ids.append(window_id)
+        summaries_by_window[window_id] = summary
+    if tuple(manifest_window_ids) != tuple(rows_by_window):
+        raise IntegrationError("event tag window evidence population or order differs")
+
+    window_evidence = []  # type: List[Mapping[str, Any]]
     for window_id, window_rows in rows_by_window.items():
-        summaries = [
-            summary
-            for summary in windows
-            if isinstance(summary, Mapping)
-            and summary.get("window_id") == window_id
-        ]
-        if len(summaries) != 1:
-            raise IntegrationError("event tag window summary is absent or duplicated")
-        summary = summaries[0]
+        summary = summaries_by_window[window_id]
         event_ids = [
             _require_int(row.get("event_id"), "event.event_id", 0)
             for row in window_rows
@@ -383,13 +431,13 @@ def _validate_event_tag_manifest_evidence(
             )
             != len(window_rows)
             or _require_int(
-                summary.get("source_event_id_min"),
+                summary.get("min_source_event_id"),
                 "window source_event_id_min",
                 0,
             )
             != expected_min
             or _require_int(
-                summary.get("source_event_id_max"),
+                summary.get("max_source_event_id"),
                 "window source_event_id_max",
                 0,
             )
@@ -408,6 +456,41 @@ def _validate_event_tag_manifest_evidence(
             != canonical_sha256(window_tags)
         ):
             raise IntegrationError("per-window event_sequence_tag evidence differs")
+        window_evidence.append({
+            "window_id": window_id,
+            "min_source_event_id": expected_min,
+            "max_source_event_id": expected_max,
+            "source_event_id_span": expected_span,
+            "ordered_event_sequence_tags_sha256": canonical_sha256(window_tags),
+        })
+    expected_window_evidence_hash = canonical_sha256(window_evidence)
+    if _require_sha(
+        event_inputs.get("window_source_event_id_evidence_sha256"),
+        "window source_event_id evidence hash",
+    ) != expected_window_evidence_hash:
+        raise IntegrationError("manifest window event tag evidence hash differs")
+
+    authority = _require_mapping(
+        manifest.get("authoritative_input_binding"),
+        "manifest.authoritative_input_binding",
+    )
+    authority_tags = _require_mapping(
+        authority.get("event_sequence_tags"), "authority.event_sequence_tags"
+    )
+    expected_authority_tags = {
+        "derivation": "event_id_mod_2^24",
+        "bits": _EVENT_SEQUENCE_TAG_BITS,
+        "event_sequence_tag_count": len(tags),
+        "event_sequence_tags_globally_unique": True,
+        "ordered_event_sequence_tags_sha256": expected_tag_hash,
+        "window_reset_domains": True,
+        "window_source_event_id_span_limit_exclusive": (
+            _SOURCE_EVENT_ID_SPAN_LIMIT
+        ),
+        "window_source_event_id_evidence_sha256": expected_window_evidence_hash,
+    }
+    if dict(authority_tags) != expected_authority_tags:
+        raise IntegrationError("authoritative event_sequence_tag evidence differs")
 
 
 def _validate_event_record_shape(row: Mapping[str, Any]) -> None:
@@ -421,6 +504,20 @@ def _validate_event_record_shape(row: Mapping[str, Any]) -> None:
         )
     if type(row["is_query"]) is not bool:
         raise IntegrationError("assay event is_query must be an exact bool")
+
+
+def _validate_event_record_identity_contract(value: Any) -> Mapping[str, Any]:
+    timing = _require_mapping(value, "contract.timing")
+    identity = _require_mapping(
+        timing.get("event_record_identity"), "contract event record identity"
+    )
+    if (
+        dict(identity) != _EXPECTED_EVENT_RECORD_IDENTITY
+        or timing.get("event_record_bits") != _EVENT_RECORD_BITS
+        or timing.get("event_record_includes_causal_pose_index_bits") != 14
+    ):
+        raise IntegrationError("event record identity contract differs")
+    return identity
 
 
 def _validate_score_free_accounting_contract(value: Any) -> Mapping[str, Any]:
@@ -748,6 +845,7 @@ def load_assay_bundle(
     if manifest.get("schema") != "redred.mc_wtb.stage4_score_free_inputs/v2":
         raise IntegrationError("assay manifest schema is not v2")
     contract = load_comparison_contract()
+    _validate_event_record_identity_contract(contract.timing)
     _validate_score_free_accounting_contract(
         contract.as_dict().get("score_free_accounting")
     )
@@ -1435,8 +1533,10 @@ def _derive_accounting(
     result: SimulationResult,
     converted: Sequence[DecisionRecord],
 ) -> Tuple[ScoreFreeAccounting, ScoreFreeAccountingEvidence]:
+    contract = load_comparison_contract()
+    identity_contract = _validate_event_record_identity_contract(contract.timing)
     accounting_contract = _validate_score_free_accounting_contract(
-        load_comparison_contract().as_dict().get("score_free_accounting")
+        contract.as_dict().get("score_free_accounting")
     )
     if len(converted) != len(result.records) or tuple(
         record.event_id for record in converted
@@ -1493,10 +1593,6 @@ def _derive_accounting(
     fifo_contract = _require_mapping(
         accounting_contract.get("delayed_fifo"), "score-free delayed FIFO"
     )
-    state_contract = _require_mapping(
-        accounting_contract.get("common_state_envelope"),
-        "score-free common state envelope",
-    )
     if (
         result.event_record_bits != _EVENT_RECORD_BITS
         or result.pose_packet_bits != 192
@@ -1505,8 +1601,8 @@ def _derive_accounting(
         raise IntegrationError("cycle-model hardware accounting differs from contract")
     _validate_live_event_id_scope(
         result,
-        int(state_contract["maximum_simultaneous_live_references"]),
-        _SOURCE_EVENT_ID_SPAN_LIMIT,
+        int(identity_contract["maximum_simultaneous_live_records"]),
+        int(identity_contract["serial_number_half_range"]),
     )
     attempted_ids = set(corrected + operational)
     attempted = tuple(
