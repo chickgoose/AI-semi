@@ -111,6 +111,35 @@ def reseal_artifact_and_manifest(root, name, rows):
     return hashlib.sha256(manifest_bytes).hexdigest()
 
 
+def add_event_tag_evidence_and_reseal(root, rows):
+    path = root / "stage4_events.jsonl"
+    write_jsonl(path, rows)
+    manifest_path = root / "stage4_input_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][path.name] = artifact(path, rows)
+    event_inputs = manifest["event_inputs"]
+    tags = [row["event_sequence_tag"] for row in rows]
+    event_inputs["selected_event_sequence_tag_count"] = len(tags)
+    event_inputs["selected_event_sequence_tags_globally_unique"] = True
+    event_inputs["ordered_selected_event_sequence_tags_sha256"] = canonical_sha256(
+        tags
+    )
+    for window in manifest["windows"]:
+        window_rows = [
+            row for row in rows if row["window_id"] == window["window_id"]
+        ]
+        event_ids = [row["event_id"] for row in window_rows]
+        window["source_event_id_min"] = min(event_ids)
+        window["source_event_id_max"] = max(event_ids)
+        window["source_event_id_span"] = max(event_ids) - min(event_ids)
+        window["ordered_event_sequence_tags_sha256"] = canonical_sha256(
+            [row["event_sequence_tag"] for row in window_rows]
+        )
+    manifest_bytes = canonical_json_bytes(manifest)
+    manifest_path.write_bytes(manifest_bytes)
+    return hashlib.sha256(manifest_bytes).hexdigest()
+
+
 def build_artifacts(
     root, *, include_limits=True, signed_history=True, event_id_offset=0
 ):
@@ -335,6 +364,15 @@ def build_artifacts(
         "window_id": WINDOW,
         "selected_event_count": 4,
         "query_event_count": 2,
+        "source_event_id_min": min(row["event_id"] for row in events),
+        "source_event_id_max": max(row["event_id"] for row in events),
+        "source_event_id_span": (
+            max(row["event_id"] for row in events)
+            - min(row["event_id"] for row in events)
+        ),
+        "ordered_event_sequence_tags_sha256": canonical_sha256(
+            [row["event_sequence_tag"] for row in events]
+        ),
     }
     if include_limits:
         window.update(
@@ -372,6 +410,11 @@ def build_artifacts(
                 "authority_sha256"
             ],
             "selected_event_count": len(events),
+            "selected_event_sequence_tag_count": len(events),
+            "selected_event_sequence_tags_globally_unique": True,
+            "ordered_selected_event_sequence_tags_sha256": canonical_sha256(
+                [row["event_sequence_tag"] for row in events]
+            ),
             "occurrence_batch_count": len(batches),
             "ordered_selected_event_ids_sha256": canonical_sha256(
                 [row["event_id"] for row in events]
@@ -461,9 +504,123 @@ class IntegrationTests(unittest.TestCase):
             )
             rows[1] = duplicate
             with self.assertRaisesRegex(
-                IntegrationError, "not unique within its window"
+                IntegrationError, "not globally unique"
             ):
                 build_window_cycle_inputs(replace(bundle, events=tuple(rows)), WINDOW)
+
+    def test_selected_tags_reject_cross_window_collision_and_window_span(self):
+        first = {
+            "window_id": "window-a",
+            "event_id": 7,
+            "event_sequence_tag": 7,
+        }
+        cross_window_collision = {
+            "window_id": "window-b",
+            "event_id": (1 << 24) + 7,
+            "event_sequence_tag": 7,
+        }
+        with self.assertRaisesRegex(IntegrationError, "not globally unique"):
+            integration._validate_window_event_tags(
+                (first, cross_window_collision)
+            )
+
+        at_valid_boundary = (
+            first,
+            {
+                "window_id": "window-a",
+                "event_id": 7 + (1 << 23) - 1,
+                "event_sequence_tag": 7 + (1 << 23) - 1,
+            },
+        )
+        integration._validate_window_event_tags(at_valid_boundary)
+        over_boundary = (
+            first,
+            {
+                "window_id": "window-a",
+                "event_id": 7 + (1 << 23),
+                "event_sequence_tag": 7 + (1 << 23),
+            },
+        )
+        with self.assertRaisesRegex(IntegrationError, r"less than 2\^23"):
+            integration._validate_window_event_tags(over_boundary)
+
+    def test_manifest_tag_count_hash_and_window_bounds_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = build_artifacts(root)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
+            mutations = (
+                (
+                    ("event_inputs", "selected_event_sequence_tag_count"),
+                    3,
+                    "manifest-wide",
+                ),
+                (
+                    (
+                        "event_inputs",
+                        "ordered_selected_event_sequence_tags_sha256",
+                    ),
+                    "0" * 64,
+                    "manifest-wide",
+                ),
+                (
+                    ("windows", 0, "source_event_id_span"),
+                    1 << 23,
+                    "per-window",
+                ),
+                (
+                    ("windows", 0, "ordered_event_sequence_tags_sha256"),
+                    "0" * 64,
+                    "per-window",
+                ),
+            )
+            for path, value, message in mutations:
+                with self.subTest(path=path):
+                    manifest = json.loads(json.dumps(bundle.manifest))
+                    target = manifest
+                    for key in path[:-1]:
+                        target = target[key]
+                    target[path[-1]] = value
+                    with self.assertRaisesRegex(IntegrationError, message):
+                        build_window_cycle_inputs(
+                            replace(bundle, manifest=manifest), WINDOW
+                        )
+
+    def test_live_full_event_id_span_is_inclusive_and_count_is_separate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = build_artifacts(root)
+            bundle = load_assay_bundle(root, expected_manifest_sha256=expected)
+            inputs = build_window_cycle_inputs(bundle, WINDOW)
+            result = run_cycle_model(
+                window_id=WINDOW,
+                window_start_ns=START,
+                arm=Arm.ZOH_FRESHNESS,
+                events=inputs.events,
+                poses=inputs.dataset_poses,
+            )
+
+            def with_span(span):
+                event_ids = (0, span, 1, 2)
+                return replace(
+                    result,
+                    cycle_receipts=tuple(
+                        replace(receipt, event_id=event_ids[index])
+                        for index, receipt in enumerate(result.cycle_receipts)
+                    ),
+                )
+
+            integration._validate_live_event_id_scope(
+                with_span((1 << 23) - 1), 1032, 1 << 23
+            )
+            with self.assertRaisesRegex(IntegrationError, r"less than 2\^23"):
+                integration._validate_live_event_id_scope(
+                    with_span(1 << 23), 1032, 1 << 23
+                )
+            with self.assertRaisesRegex(IntegrationError, "maximum live count"):
+                integration._validate_live_event_id_scope(
+                    with_span((1 << 23) - 1), 1, 1 << 23
+                )
 
     def test_runtime_contract_accounting_validation_is_fail_closed(self):
         frozen = load_comparison_contract().as_dict()["score_free_accounting"]
@@ -886,9 +1043,7 @@ class IntegrationTests(unittest.TestCase):
             ]
             for row in event_rows:
                 row["event_sequence_tag"] = row["event_id"] % (1 << 24)
-            expected = reseal_artifact_and_manifest(
-                output, "stage4_events.jsonl", event_rows
-            )
+            expected = add_event_tag_evidence_and_reseal(output, event_rows)
             bundle = load_assay_bundle(
                 output, expected_manifest_sha256=expected
             )

@@ -153,6 +153,7 @@ _EVENT_RECORD_BITS = 102
 _EVENT_SEQUENCE_TAG_BITS = 24
 _EVENT_SEQUENCE_TAG_MODULUS = 1 << _EVENT_SEQUENCE_TAG_BITS
 _MAXIMUM_SIMULTANEOUS_LIVE_REFERENCES = 1032
+_SOURCE_EVENT_ID_SPAN_LIMIT = 1 << 23
 _EXPECTED_FIFO_MINIMUM_ZERO_LOSS_RULE = {
     "bounded_peak_authoritative_if": (
         "fifo_full_forced_bypass_count_is_zero_and_full_conservation_holds"
@@ -290,7 +291,8 @@ def _validate_payload(row: Mapping[str, Any]) -> None:
 
 
 def _validate_window_event_tags(rows: Sequence[Mapping[str, Any]]) -> None:
-    seen = {}  # type: Dict[Tuple[str, int], int]
+    seen = {}  # type: Dict[int, Tuple[str, int]]
+    ids_by_window = {}  # type: Dict[str, List[int]]
     for row in rows:
         window_id = row.get("window_id")
         if type(window_id) is not str:
@@ -303,12 +305,109 @@ def _validate_window_event_tags(rows: Sequence[Mapping[str, Any]]) -> None:
             raise IntegrationError("event_sequence_tag exceeds 24 bits")
         if tag != event_id % _EVENT_SEQUENCE_TAG_MODULUS:
             raise IntegrationError("event_sequence_tag differs from event_id modulo 2^24")
-        key = (window_id, tag)
-        if key in seen:
+        if tag in seen:
             raise IntegrationError(
-                "event_sequence_tag is not unique within its window"
+                "event_sequence_tag is not globally unique in selected assay events"
             )
-        seen[key] = event_id
+        seen[tag] = (window_id, event_id)
+        ids_by_window.setdefault(window_id, []).append(event_id)
+    for window_id, event_ids in ids_by_window.items():
+        source_span = max(event_ids) - min(event_ids)
+        if source_span >= _SOURCE_EVENT_ID_SPAN_LIMIT:
+            raise IntegrationError(
+                "window source_event_id_span must be less than 2^23: %s"
+                % window_id
+            )
+
+
+def _validate_event_tag_manifest_evidence(
+    rows: Sequence[Mapping[str, Any]], manifest: Mapping[str, Any]
+) -> None:
+    tags = [
+        _require_int(row.get("event_sequence_tag"), "event.event_sequence_tag", 0)
+        for row in rows
+    ]
+    event_inputs = _require_mapping(manifest.get("event_inputs"), "event_inputs")
+    if (
+        _require_int(event_inputs.get("selected_event_count"), "selected_event_count", 0)
+        != len(tags)
+        or _require_int(
+            event_inputs.get("selected_event_sequence_tag_count"),
+            "selected_event_sequence_tag_count",
+            0,
+        )
+        != len(tags)
+        or event_inputs.get("selected_event_sequence_tags_globally_unique") is not True
+        or _require_sha(
+            event_inputs.get("ordered_selected_event_sequence_tags_sha256"),
+            "ordered selected event_sequence_tag hash",
+        )
+        != canonical_sha256(tags)
+    ):
+        raise IntegrationError("manifest-wide event_sequence_tag evidence differs")
+
+    windows = manifest.get("windows")
+    if not isinstance(windows, list):
+        raise IntegrationError("manifest windows must be an array")
+    rows_by_window = {}  # type: Dict[str, List[Mapping[str, Any]]]
+    for row in rows:
+        rows_by_window.setdefault(str(row.get("window_id")), []).append(row)
+    for window_id, window_rows in rows_by_window.items():
+        summaries = [
+            summary
+            for summary in windows
+            if isinstance(summary, Mapping)
+            and summary.get("window_id") == window_id
+        ]
+        if len(summaries) != 1:
+            raise IntegrationError("event tag window summary is absent or duplicated")
+        summary = summaries[0]
+        event_ids = [
+            _require_int(row.get("event_id"), "event.event_id", 0)
+            for row in window_rows
+        ]
+        window_tags = [
+            _require_int(
+                row.get("event_sequence_tag"), "event.event_sequence_tag", 0
+            )
+            for row in window_rows
+        ]
+        expected_min = min(event_ids)
+        expected_max = max(event_ids)
+        expected_span = expected_max - expected_min
+        if (
+            _require_int(
+                summary.get("selected_event_count"),
+                "window selected_event_count",
+                0,
+            )
+            != len(window_rows)
+            or _require_int(
+                summary.get("source_event_id_min"),
+                "window source_event_id_min",
+                0,
+            )
+            != expected_min
+            or _require_int(
+                summary.get("source_event_id_max"),
+                "window source_event_id_max",
+                0,
+            )
+            != expected_max
+            or _require_int(
+                summary.get("source_event_id_span"),
+                "window source_event_id_span",
+                0,
+            )
+            != expected_span
+            or expected_span >= _SOURCE_EVENT_ID_SPAN_LIMIT
+            or _require_sha(
+                summary.get("ordered_event_sequence_tags_sha256"),
+                "window ordered event_sequence_tag hash",
+            )
+            != canonical_sha256(window_tags)
+        ):
+            raise IntegrationError("per-window event_sequence_tag evidence differs")
 
 
 def _validate_event_record_shape(row: Mapping[str, Any]) -> None:
@@ -739,6 +838,7 @@ def load_assay_bundle(
         if forbidden[0] <= timestamp_ns < forbidden[1]:
             raise IntegrationError("forbidden event reached assay inputs")
     _validate_window_event_tags(loaded[_EVENTS])
+    _validate_event_tag_manifest_evidence(loaded[_EVENTS], manifest)
     event_ids = tuple(_require_int(row.get("event_id"), "event_id", 0) for row in loaded[_EVENTS])
     if any(right <= left for left, right in zip(event_ids, event_ids[1:])):
         raise IntegrationError("assay event IDs are not globally ordered")
@@ -986,6 +1086,8 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
 
     if not isinstance(bundle, AssayBundle):
         raise IntegrationError("bundle must be a validated AssayBundle")
+    _validate_window_event_tags(bundle.events)
+    _validate_event_tag_manifest_evidence(bundle.events, bundle.manifest)
     start, query_start, end = _window_limits(bundle.manifest, window_id)
     event_rows = tuple(row for row in bundle.events if row.get("window_id") == window_id)
     if not event_rows:
@@ -998,7 +1100,6 @@ def build_window_cycle_inputs(bundle: AssayBundle, window_id: str) -> WindowCycl
             raise IntegrationError("assay event lies outside serialized window limits")
         if (row.get("is_query") is True) != (query_start <= timestamp_ns < end):
             raise IntegrationError("assay query label differs from serialized query interval")
-    _validate_window_event_tags(event_rows)
     window_summary = next(
         row
         for row in bundle.manifest["windows"]
@@ -1292,26 +1393,41 @@ def _ceil_rate(records: int, bits: int, duration_ns: int) -> int:
     return (records * bits * 1_000_000_000 + duration_ns - 1) // duration_ns
 
 
-def _validate_maximum_live_tag_scope(
-    result: SimulationResult, maximum_live: int
+def _validate_live_event_id_scope(
+    result: SimulationResult, maximum_live: int, source_id_span_limit: int
 ) -> None:
-    deltas = {}  # type: Dict[int, int]
+    occurrences = {}  # type: Dict[int, List[int]]
+    retirements = {}  # type: Dict[int, List[int]]
+    receipt_event_ids = set()
     for receipt in result.cycle_receipts:
         if receipt.retire_cycle < receipt.occurrence_cycle:
             raise IntegrationError("cycle receipt has negative live tag interval")
-        deltas[receipt.occurrence_cycle] = deltas.get(receipt.occurrence_cycle, 0) + 1
-        deltas[receipt.retire_cycle] = deltas.get(receipt.retire_cycle, 0) - 1
-    live = 0
+        if receipt.event_id in receipt_event_ids:
+            raise IntegrationError("cycle receipt repeats a full event_id")
+        receipt_event_ids.add(receipt.event_id)
+        occurrences.setdefault(receipt.occurrence_cycle, []).append(receipt.event_id)
+        retirements.setdefault(receipt.retire_cycle, []).append(receipt.event_id)
+    live_ids = set()  # type: set
     peak = 0
-    for cycle in sorted(deltas):
-        live += deltas[cycle]
-        if live < 0:
-            raise IntegrationError("cycle receipt live tag scope underflowed")
-        peak = max(peak, live)
-    if live != 0:
+    boundaries = sorted(set(occurrences) | set(retirements))
+    for cycle in boundaries:
+        for event_id in occurrences.get(cycle, ()):
+            if event_id in live_ids:
+                raise IntegrationError("live full event_id is duplicated")
+            live_ids.add(event_id)
+        peak = max(peak, len(live_ids))
+        if live_ids and max(live_ids) - min(live_ids) >= source_id_span_limit:
+            raise IntegrationError(
+                "live source_event_id span must be less than 2^23"
+            )
+        for event_id in retirements.get(cycle, ()):
+            if event_id not in live_ids:
+                raise IntegrationError("cycle receipt live tag scope underflowed")
+            live_ids.remove(event_id)
+    if live_ids:
         raise IntegrationError("cycle receipt live tag scope does not conserve")
     if peak > maximum_live:
-        raise IntegrationError("event_sequence_tag maximum live scope exceeded")
+        raise IntegrationError("event_sequence_tag maximum live count exceeded")
 
 
 def _derive_accounting(
@@ -1387,8 +1503,10 @@ def _derive_accounting(
         or result.buffer_entries != fifo_contract["bounded_entries"]
     ):
         raise IntegrationError("cycle-model hardware accounting differs from contract")
-    _validate_maximum_live_tag_scope(
-        result, int(state_contract["maximum_simultaneous_live_references"])
+    _validate_live_event_id_scope(
+        result,
+        int(state_contract["maximum_simultaneous_live_references"]),
+        _SOURCE_EVENT_ID_SPAN_LIMIT,
     )
     attempted_ids = set(corrected + operational)
     attempted = tuple(
