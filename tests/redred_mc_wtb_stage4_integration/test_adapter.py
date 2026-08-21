@@ -1050,7 +1050,7 @@ class IntegrationTests(unittest.TestCase):
             forced_result = replace(invalid_result, records=(forced_record,))
             with self.assertRaisesRegex(
                 IntegrationError,
-                "UNBOUNDED_REPLAY_REQUIRED_FOR_MINIMUM_ZERO_LOSS_DEPTH",
+                "bounded cycle result differs from authoritative recomputation",
             ):
                 integration._derive_accounting(
                     single_inputs, forced_result, invalid_converted
@@ -1101,6 +1101,10 @@ class IntegrationTests(unittest.TestCase):
             events=tuple(events),
             poses=poses,
             synthetic_test_mode=True,
+        )
+        self.assertEqual(
+            diagnostic.schema,
+            "redred.mc_wtb.stage4_delayed_unbounded_depth_diagnostic/v3",
         )
         inputs = integration.WindowCycleInputs(
             window_id,
@@ -1200,6 +1204,14 @@ class IntegrationTests(unittest.TestCase):
             poses=poses,
             synthetic_test_mode=True,
         )
+        self.assertNotEqual(
+            diagnostic.input_events_sha256,
+            timestamp_mutated.input_events_sha256,
+        )
+        self.assertEqual(
+            diagnostic.input_poses_sha256,
+            timestamp_mutated.input_poses_sha256,
+        )
         with self.assertRaisesRegex(
             IntegrationError, "admission schedule differs|recomputation differs"
         ):
@@ -1215,9 +1227,36 @@ class IntegrationTests(unittest.TestCase):
             poses=altered_poses,
             synthetic_test_mode=True,
         )
+        self.assertEqual(
+            diagnostic.input_events_sha256,
+            pose_mutated.input_events_sha256,
+        )
+        self.assertNotEqual(
+            diagnostic.input_poses_sha256,
+            pose_mutated.input_poses_sha256,
+        )
         with self.assertRaisesRegex(IntegrationError, "recomputation differs"):
             integration._derive_accounting(
                 inputs, bounded, converted, pose_mutated
+            )
+
+        timestamp_input_mutation = replace(
+            inputs, events=timestamp_mutated_events
+        )
+        with self.assertRaisesRegex(
+            IntegrationError,
+            "bounded cycle result differs from authoritative recomputation",
+        ):
+            integration._derive_accounting(
+                timestamp_input_mutation, bounded, converted, diagnostic
+            )
+        pose_input_mutation = replace(inputs, dataset_poses=altered_poses)
+        with self.assertRaisesRegex(
+            IntegrationError,
+            "bounded cycle result differs from authoritative recomputation",
+        ):
+            integration._derive_accounting(
+                pose_input_mutation, bounded, converted, diagnostic
             )
 
         pressure_free_events = tuple(
@@ -1233,6 +1272,29 @@ class IntegrationTests(unittest.TestCase):
             )
             for pose_id, cycle in enumerate(range(3, 518), 1)
         )
+        replacement_bounded = run_cycle_model(
+            window_id=window_id,
+            window_start_ns=window_start,
+            arm=Arm.DELAYED_EXACT,
+            events=pressure_free_events,
+            poses=tuple(pressure_free_poses),
+            synthetic_test_mode=True,
+        )
+        self.assertFalse(any(
+            record.disposition_reason == "fifo_full_forced_bypass"
+            for record in replacement_bounded.records
+        ))
+        replacement_converted = tuple(
+            integration._convert_record(record)
+            for record in replacement_bounded.records
+        )
+        with self.assertRaisesRegex(
+            IntegrationError,
+            "bounded cycle result differs from authoritative recomputation",
+        ):
+            integration._derive_accounting(
+                inputs, replacement_bounded, replacement_converted
+            )
         shallow_diagnostic = run_delayed_unbounded_diagnostic(
             window_id=window_id,
             window_start_ns=window_start,

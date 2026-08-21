@@ -1550,6 +1550,109 @@ def _full_cycle_evidence(result: SimulationResult) -> Mapping[str, Any]:
     }
 
 
+def _authoritative_bounded_result(
+    inputs: WindowCycleInputs, supplied: SimulationResult
+) -> SimulationResult:
+    """Re-run the bounded arm from the authoritative window inputs.
+
+    Accounting must not infer pressure from a caller-provided result, even if
+    that result's records, receipts, and hashes are internally consistent.
+    The supplied object remains the public evidence; this replay is only a
+    fail-closed equivalence check.
+    """
+
+    if not isinstance(supplied, SimulationResult) or not isinstance(
+        supplied.arm, Arm
+    ):
+        raise IntegrationError("bounded cycle result has the wrong type")
+    poses = (
+        inputs.oracle_poses
+        if supplied.arm is Arm.ORACLE_1KHZ
+        else inputs.dataset_poses
+    )
+    events = inputs.events
+    if supplied.arm is Arm.ORACLE_1KHZ:
+        events = tuple(
+            Event(
+                event.event_id,
+                event.timestamp_ns,
+                transform_guard_valid=event.transform_guard_valid,
+                causal_pose_index=None,
+            )
+            for event in inputs.events
+        )
+    try:
+        authoritative = run_cycle_model(
+            window_id=inputs.window_id,
+            window_start_ns=inputs.window_start_ns,
+            arm=supplied.arm,
+            events=events,
+            poses=poses,
+            synthetic_test_mode=supplied.synthetic_test_mode,
+        )
+    except CycleModelError as exc:
+        raise IntegrationError(
+            "authoritative bounded cycle recomputation failed"
+        ) from exc
+    supplied_bytes = canonical_json_bytes(_full_cycle_evidence(supplied))
+    authoritative_bytes = canonical_json_bytes(
+        _full_cycle_evidence(authoritative)
+    )
+    if supplied != authoritative or supplied_bytes != authoritative_bytes:
+        raise IntegrationError(
+            "bounded cycle result differs from authoritative recomputation"
+        )
+    return authoritative
+
+
+def _derive_bounded_fifo_evidence(
+    authoritative: SimulationResult,
+) -> Tuple[int, Tuple[int, ...]]:
+    """Derive bounded FIFO peak and pressure exclusively from receipts."""
+
+    if len(authoritative.records) != len(authoritative.cycle_receipts):
+        raise IntegrationError("bounded cycle receipts do not conserve records")
+    receipt_peak = 0
+    pressure_ids = []  # type: List[int]
+    record_pressure_ids = []  # type: List[int]
+    for record, receipt in zip(
+        authoritative.records, authoritative.cycle_receipts
+    ):
+        occupancies = (
+            receipt.fifo_occupancy_before_admission,
+            receipt.fifo_occupancy_after_admission,
+            receipt.fifo_occupancy_before_retire,
+            receipt.fifo_occupancy_after_retire,
+        )
+        if any(type(value) is not int or value < 0 for value in occupancies):
+            raise IntegrationError("bounded receipt FIFO occupancy is invalid")
+        if any(value > authoritative.buffer_entries for value in occupancies):
+            raise IntegrationError("bounded receipt exceeds bounded FIFO capacity")
+        receipt_peak = max(
+            receipt_peak,
+            receipt.fifo_occupancy_after_admission,
+            receipt.fifo_occupancy_before_retire,
+        )
+        if (
+            receipt.event_id != record.event_id
+            or receipt.disposition != record.disposition
+            or receipt.disposition_reason != record.disposition_reason
+            or receipt.decision_record_sha256 != record.canonical_sha256()
+        ):
+            raise IntegrationError(
+                "bounded receipt disposition binding differs from record"
+            )
+        if receipt.disposition_reason == "fifo_full_forced_bypass":
+            pressure_ids.append(receipt.event_id)
+        if record.disposition_reason == "fifo_full_forced_bypass":
+            record_pressure_ids.append(record.event_id)
+    if receipt_peak != authoritative.peak_buffer_occupancy:
+        raise IntegrationError("bounded receipt-derived peak occupancy differs")
+    if tuple(pressure_ids) != tuple(record_pressure_ids):
+        raise IntegrationError("bounded receipt-derived pressure reasons differ")
+    return receipt_peak, tuple(pressure_ids)
+
+
 def _ceil_rate(records: int, bits: int, duration_ns: int) -> int:
     return (records * bits * 1_000_000_000 + duration_ns - 1) // duration_ns
 
@@ -1681,6 +1784,10 @@ def _derive_accounting(
     accounting_contract = _validate_score_free_accounting_contract(
         contract.as_dict().get("score_free_accounting")
     )
+    authoritative_result = _authoritative_bounded_result(inputs, result)
+    bounded_peak, full_pressure_event_ids = _derive_bounded_fifo_evidence(
+        authoritative_result
+    )
     if len(converted) != len(result.records) or tuple(
         record.event_id for record in converted
     ) != tuple(record.event_id for record in result.records):
@@ -1760,11 +1867,6 @@ def _derive_accounting(
     event_bandwidth = _ceil_rate(
         len(query_indexes), result.event_record_bits, query_duration
     )
-    full_pressure_event_ids = tuple(
-        record.event_id
-        for record in result.records
-        if record.disposition_reason == "fifo_full_forced_bypass"
-    )
     if full_pressure_event_ids:
         diagnostic = _validate_unbounded_depth_diagnostic(
             inputs,
@@ -1784,7 +1886,7 @@ def _derive_accounting(
             raise IntegrationError(
                 "unbounded delayed diagnostic is forbidden without full pressure"
             )
-        minimum_depth = result.peak_buffer_occupancy
+        minimum_depth = bounded_peak
         minimum_depth_basis = "bounded_peak_no_full_pressure"
         diagnostic_evidence_sha256 = None
         diagnostic_config_sha256 = None
@@ -1798,7 +1900,7 @@ def _derive_accounting(
         tuple(freshness),
         tuple(invalid),
         tuple(operational),
-        result.peak_buffer_occupancy,
+        bounded_peak,
         minimum_depth,
         buffer_bit_cycles,
         _CONSERVATIVE_POSE_BANDWIDTH_BITS_PER_SECOND,
@@ -1842,7 +1944,7 @@ def _derive_accounting(
         buffer_bit_cycles,
         result.pose_ring_accounting_sha256,
         minimum_depth_basis,
-        result.peak_buffer_occupancy,
+        bounded_peak,
         full_pressure_event_ids,
         minimum_depth,
         result.decision_records_sha256,
