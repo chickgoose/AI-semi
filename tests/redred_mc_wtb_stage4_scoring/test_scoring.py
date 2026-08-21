@@ -23,6 +23,7 @@ from benchmarks.redred_mc_wtb_stage4_scoring import (
     validate_complete_comparison,
 )
 from benchmarks.redred_mc_wtb_stage4_contract.receipt import DECISION_ARMS
+from benchmarks.redred_mc_wtb_stage4_contract.receipt import ARM_LABELS
 
 
 HASH = "1" * 64
@@ -41,25 +42,26 @@ def shadows(value):
 
 def decision(event_id, timestamp, occurrence, retire, enabled, arm=ARM):
     return DecisionRecord(
-        WINDOW,
-        event_id,
-        timestamp,
-        arm,
-        occurrence,
-        retire,
-        (1,),
-        (0,),
-        (0,),
-        (HASH,),
-        (1,),
-        (0,),
-        (0,),
-        (HASH,),
-        False,
-        timestamp,
-        "corrected_world_ray" if enabled else "raw_bypass",
-        "fresh_pose" if enabled else "freshness_veto",
-        retire - occurrence,
+        window_id=WINDOW,
+        event_id=event_id,
+        event_timestamp_ns=timestamp,
+        arm=arm,
+        arm_semantic_label=ARM_LABELS[arm],
+        occurrence_cycle=occurrence,
+        retire_cycle=retire,
+        occurrence_pose_ids=(1,),
+        occurrence_pose_timestamps_ns=(0,),
+        occurrence_pose_commit_cycles=(0,),
+        occurrence_pose_sha256=(HASH,),
+        used_pose_ids=(1,),
+        used_pose_timestamps_ns=(0,),
+        used_pose_commit_cycles=(0,),
+        used_pose_sha256=(HASH,),
+        intentional_future_pose_use=False,
+        pose_age_ns=timestamp,
+        disposition="corrected_world_ray" if enabled else "raw_bypass",
+        disposition_reason="fresh_pose" if enabled else "freshness_veto",
+        queue_cycles=retire - occurrence,
     )
 
 
