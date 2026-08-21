@@ -11,19 +11,19 @@ import unittest
 from unittest import mock
 
 from benchmarks.redred_mc_wtb_stage4_contract import (
-    DecisionRecord,
     canonical_json_bytes,
     canonical_sha256,
     load_comparison_contract,
     validate_decision_records,
 )
-from benchmarks.redred_mc_wtb_stage4_contract.receipt import ARM_LABELS
+from benchmarks.redred_mc_wtb_causal_reference.development import window_registry
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import Arm, Event, run_cycle_model
+from benchmarks.redred_mc_wtb_stage4_integration import adapter, sealing
 from benchmarks.redred_mc_wtb_stage4_score_runner import runner
 from benchmarks.redred_mc_wtb_stage4_scoring.scoring import (
     ArmAggregate,
     EventLoss,
     LatencySummary,
-    ScoreFreeAccounting,
     ScoreInputManifest,
     WindowMetrics,
 )
@@ -67,48 +67,54 @@ def ray_shadow(arm):
     }
 
 
-def decision(window_id, arm, event_id):
-    reason = "deadline_timeout" if arm == "delayed_exact" else "stale_pose"
-    return DecisionRecord(
-        window_id=window_id,
-        event_id=event_id,
-        event_timestamp_ns=100,
-        arm=arm,
-        arm_semantic_label=ARM_LABELS[arm],
-        occurrence_cycle=1,
-        retire_cycle=2,
-        occurrence_pose_ids=(10,),
-        occurrence_pose_timestamps_ns=(0,),
-        occurrence_pose_commit_cycles=(0,),
-        occurrence_pose_sha256=(HASH_A,),
-        used_pose_ids=(10,),
-        used_pose_timestamps_ns=(0,),
-        used_pose_commit_cycles=(0,),
-        used_pose_sha256=(HASH_A,),
-        intentional_future_pose_use=False,
-        pose_age_ns=100,
-        disposition="raw_bypass",
-        disposition_reason=reason,
-        queue_cycles=0,
-    )
-
-
 class SyntheticSeal:
     def __init__(self, root):
         self.root = Path(root)
         self.contract = load_comparison_contract()
-        self.window_order = tuple("synthetic-window-%02d" % index for index in range(24))
+        self.window_rows = tuple(window_registry())
+        self.window_order = tuple(row["window_id"] for row in self.window_rows)
         self._build()
 
     def _build(self):
-        write_json(self.root / "assay-closure.json", {"synthetic": True})
+        write_json(self.root / "assay-closure.json", {
+            "schema": "redred.mc_wtb.stage4_score_free_assay_closure/v1",
+            "assay_manifest_sha256": ASSAY_SHA,
+            "assay_authority_sha256": AUTHORITY_SHA,
+            "comparison_contract_sha256": self.contract.canonical_sha256,
+            "registry_sha256": self.contract.registry["sha256"],
+        })
+        files = {
+            "assay-closure.json": sealing._observe_file(
+                self.root, "assay-closure.json", kind="object", record_count=1
+            )
+        }
         scorer_sha = sha256(Path(runner.scoring_module.__file__).read_bytes())
-        for window_index, window_id in enumerate(self.window_order):
+        for window_index, frozen in enumerate(self.window_rows):
+            window_id = frozen["window_id"]
             event_id = 100_000 + window_index
+            event = Event(
+                event_id,
+                frozen["query_start_ns_inclusive"],
+                causal_pose_index=None,
+            )
+            inputs = adapter.WindowCycleInputs(
+                window_id,
+                frozen["warmup_start_ns_inclusive"],
+                frozen["query_start_ns_inclusive"],
+                frozen["query_end_ns_exclusive"],
+                ({"is_query": True},),
+                (event,),
+                ((0.0, 0.0, 1.0),),
+                (),
+                (),
+                {},
+                {},
+            )
+            authoritative = sealing._authoritative_window_inputs(inputs)
             ray_values = [{
                 "window_id": window_id,
                 "event_id": event_id,
-                "timestamp_ns": 100,
+                "timestamp_ns": event.timestamp_ns,
                 "polarity": 0,
                 "is_query": True,
                 "sensor_ray": [0.0, 0.0, 1.0],
@@ -118,70 +124,40 @@ class SyntheticSeal:
             }]
             ray_relative = "windows/%s/ray-events.json" % window_id
             write_json(self.root / ray_relative, ray_values)
-            ray_sha = sha256((self.root / ray_relative).read_bytes())
+            files[ray_relative] = sealing._observe_file(
+                self.root, ray_relative, kind="array", record_count=1
+            )
+            ray_sha = files[ray_relative]["sha256"]
             arms = {}
-            for arm in runner._ARM_ORDER:
-                leaf = self.root / "windows" / window_id / "arms" / arm
-                record = decision(window_id, arm, event_id)
-                records = [record.to_mapping()]
+            for arm_value in runner._ARM_ORDER:
+                arm = Arm(arm_value)
+                result = run_cycle_model(
+                    window_id=window_id,
+                    window_start_ns=frozen["warmup_start_ns_inclusive"],
+                    arm=arm,
+                    events=(event,),
+                    poses=(),
+                    synthetic_test_mode=True,
+                )
+                records = tuple(adapter._convert_record(row) for row in result.records)
                 receipt = validate_decision_records(
                     self.contract,
                     [event_id],
-                    [record],
+                    records,
                     expected_window_id=window_id,
-                    expected_arm=arm,
+                    expected_arm=arm_value,
                 )
-                operational = (event_id,) if arm == "delayed_exact" else ()
-                freshness = () if arm == "delayed_exact" else (event_id,)
-                accounting = ScoreFreeAccounting(
-                    window_id,
-                    arm,
-                    ((event_id, 1),),
-                    operational,
-                    freshness,
-                    (),
-                    operational,
-                    1,
-                    1,
-                    102,
-                    192_000,
-                    102_000,
-                    108_799,
-                    0,
-                    0,
-                    0,
-                    0,
+                accounting, accounting_evidence = adapter._derive_accounting(
+                    inputs, result, records
                 )
-                write_json(leaf / "query-decision-records.json", records)
-                write_json(leaf / "decision-receipt.json", receipt.to_mapping())
-                write_json(leaf / "score-free-accounting.json", accounting.to_mapping())
-                write_json(leaf / "full-cycle-result.json", {"synthetic": True})
-                write_json(leaf / "cycle-receipts.json", [])
-                write_json(leaf / "score-free-accounting-evidence.json", {
-                    "minimum_depth_evidence": {
-                        "basis": "bounded_peak_no_full_pressure",
-                        "unbounded_diagnostic_evidence_sha256": None,
-                        "unbounded_diagnostic_config_sha256": None,
-                        "unbounded_diagnostic_decision_records_sha256": None,
-                        "unbounded_diagnostic_cycle_receipts_sha256": None,
-                    }
-                })
-                full_sha = sha256((leaf / "full-cycle-result.json").read_bytes())
-                cycles_sha = sha256((leaf / "cycle-receipts.json").read_bytes())
-                records_sha = sha256((leaf / "query-decision-records.json").read_bytes())
-                boundary = {
-                    "schema": runner._BOUNDARY_SCHEMA,
-                    "assay_authoritative_input_manifest_sha256": ASSAY_SHA,
-                    "full_cycle_result_sha256": full_sha,
-                    "cycle_receipts_sha256": cycles_sha,
-                    "query_projection_sha256": records_sha,
-                }
-                write_json(leaf / "score-boundary-evidence.json", boundary)
+                full_sha = canonical_sha256(adapter._full_cycle_evidence(result))
+                cycles_sha = result.cycle_receipts_sha256
+                records_sha = receipt.decision_records_sha256
                 manifest = ScoreInputManifest(
                     window_id,
-                    arm,
-                    sha256((leaf / "decision-receipt.json").read_bytes()),
-                    sha256((leaf / "score-free-accounting.json").read_bytes()),
+                    arm_value,
+                    receipt.canonical_sha256(),
+                    accounting.canonical_sha256(),
                     ray_sha,
                     ASSAY_SHA,
                     full_sha,
@@ -190,7 +166,9 @@ class SyntheticSeal:
                     tuple(sorted({
                         "protocol": self.contract.canonical_sha256,
                         "registry": self.contract.registry["sha256"],
-                        "arm_parameters": canonical_sha256(self.contract.arms[arm]),
+                        "arm_parameters": canonical_sha256(
+                            self.contract.arms[arm_value]
+                        ),
                         "generator": "1" * 64,
                         "cycle_model": "2" * 64,
                         "scorer": scorer_sha,
@@ -198,34 +176,46 @@ class SyntheticSeal:
                         "runtime": "4" * 64,
                     }.items())),
                 )
-                write_json(leaf / "score-input-manifest.json", manifest.to_mapping())
-                leaf_relative = "windows/%s/arms/%s" % (window_id, arm)
-                arms[arm] = {
-                    "score_input_manifest_path": "%s/score-input-manifest.json" % leaf_relative,
-                    "score_input_manifest_sha256": sha256(
-                        (leaf / "score-input-manifest.json").read_bytes()
-                    ),
-                    "score_boundary_evidence_path": (
-                        "%s/score-boundary-evidence.json" % leaf_relative
-                    ),
-                    "score_boundary_evidence_sha256": sha256(
-                        (leaf / "score-boundary-evidence.json").read_bytes()
-                    ),
-                    "delayed_unbounded_depth_diagnostic": None,
-                }
-            write_json(self.root / "windows" / window_id / "window-seal.json", {
+                sealed = SimpleNamespace(
+                    arm=arm,
+                    simulation=result,
+                    query_records=records,
+                    receipt=receipt,
+                    accounting=accounting,
+                    accounting_evidence=accounting_evidence,
+                    manifest=manifest,
+                    delayed_unbounded_diagnostic=None,
+                )
+                leaf_relative = "windows/%s/arms/%s" % (window_id, arm_value)
+                sealing._write_leaf_inputs(self.root, leaf_relative, sealed)
+                arms[arm_value] = sealing._observe_leaf(
+                    self.root,
+                    leaf_relative,
+                    sealed,
+                    ASSAY_SHA,
+                    ray_sha,
+                    1,
+                    authoritative,
+                    files,
+                )
+            window_relative = "windows/%s/window-seal.json" % window_id
+            write_json(self.root / window_relative, {
                 "schema": runner._WINDOW_SCHEMA,
                 "window_id": window_id,
-                "warmup_start_ns_inclusive": window_index * 1_000,
-                "query_start_ns_inclusive": window_index * 1_000,
-                "query_end_ns_exclusive": window_index * 1_000 + 1,
+                "warmup_start_ns_inclusive": frozen["warmup_start_ns_inclusive"],
+                "query_start_ns_inclusive": frozen["query_start_ns_inclusive"],
+                "query_end_ns_exclusive": frozen["query_end_ns_exclusive"],
                 "selected_event_count": 1,
                 "query_event_count": 1,
                 "ordered_query_event_ids_sha256": canonical_sha256([event_id]),
                 "ray_events_path": ray_relative,
                 "ray_events_sha256": ray_sha,
+                "authoritative_cycle_inputs": authoritative,
                 "arms": arms,
             })
+            files[window_relative] = sealing._observe_file(
+                self.root, window_relative, kind="object", record_count=1
+            )
         self.reseal()
 
     def reseal(self):
@@ -387,15 +377,6 @@ class ScoreRunnerTests(unittest.TestCase):
         )
         self.contract_patch.start()
         self.addCleanup(self.contract_patch.stop)
-        self.registry_patch = mock.patch.object(
-            runner,
-            "window_registry",
-            return_value=tuple(
-                {"window_id": window_id} for window_id in self.seal.window_order
-            ),
-        )
-        self.registry_patch.start()
-        self.addCleanup(self.registry_patch.stop)
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -463,6 +444,23 @@ class ScoreRunnerTests(unittest.TestCase):
             observed["input_bindings"]["causal_reference_py_sha256"],
             sha256(Path(runner.reference_module.__file__).read_bytes()),
         )
+        authoritative = [
+            json.loads(
+                (
+                    self.seal.root
+                    / "windows"
+                    / window_id
+                    / "window-seal.json"
+                ).read_text(encoding="ascii")
+            )["authoritative_cycle_inputs"]
+            for window_id in self.seal.window_order
+        ]
+        self.assertEqual(
+            observed["input_bindings"][
+                "authoritative_window_cycle_inputs_sha256"
+            ],
+            canonical_sha256(authoritative),
+        )
 
     def test_external_seal_mismatch_fails_before_scoring(self):
         with mock.patch.object(runner, "score_window") as score:
@@ -483,6 +481,18 @@ class ScoreRunnerTests(unittest.TestCase):
         ray.symlink_to(outside)
         with mock.patch.object(runner, "score_window") as score:
             with self.assertRaisesRegex(runner.ScoreRunnerError, "symlink"):
+                runner.run_official_score(
+                    self.seal.root,
+                    expected_global_seal_sha256=self.seal.global_sha256,
+                    output_path=self.output,
+                )
+        score.assert_not_called()
+        ray.unlink()
+        ray.write_bytes(outside.read_bytes())
+        ray.unlink()
+        os.link(str(outside), str(ray))
+        with mock.patch.object(runner, "score_window") as score:
+            with self.assertRaisesRegex(runner.ScoreRunnerError, "hard-linked"):
                 runner.run_official_score(
                     self.seal.root,
                     expected_global_seal_sha256=self.seal.global_sha256,
@@ -570,13 +580,39 @@ class ScoreRunnerTests(unittest.TestCase):
         write_json(campaign_path, campaign)
         external_sha = sha256(campaign_path.read_bytes())
         with mock.patch.object(runner, "score_window") as score:
-            with self.assertRaisesRegex(runner.ScoreRunnerError, "frozen registry"):
+            with self.assertRaisesRegex(runner.ScoreRunnerError, "frozen|24-by-4"):
                 runner.run_official_score(
                     self.seal.root,
                     expected_global_seal_sha256=external_sha,
                     output_path=self.output,
                 )
         score.assert_not_called()
+
+    def test_authoritative_window_binding_parser_is_exact(self):
+        window_path = (
+            self.seal.root
+            / "windows"
+            / self.seal.window_order[0]
+            / "window-seal.json"
+        )
+        window = json.loads(window_path.read_text(encoding="ascii"))
+        authoritative = window["authoritative_cycle_inputs"]
+        parsed = runner._parse_authoritative_inputs(
+            authoritative,
+            window_id=window["window_id"],
+            window_start_ns=window["warmup_start_ns_inclusive"],
+            selected_count=window["selected_event_count"],
+        )
+        self.assertEqual(parsed, authoritative)
+        mutant = dict(authoritative)
+        mutant["unexpected"] = 1
+        with self.assertRaisesRegex(runner.ScoreRunnerError, "fields differ"):
+            runner._parse_authoritative_inputs(
+                mutant,
+                window_id=window["window_id"],
+                window_start_ns=window["warmup_start_ns_inclusive"],
+                selected_count=window["selected_event_count"],
+            )
 
     def test_resealed_extra_receipt_field_fails_strict_reconstruction(self):
         window = self.seal.window_order[0]

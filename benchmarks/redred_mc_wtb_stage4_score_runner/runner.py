@@ -31,6 +31,7 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
     load_comparison_contract,
 )
 from benchmarks.redred_mc_wtb_stage4_integration.sealing import (
+    SealingError,
     verify_score_free_seal,
 )
 from benchmarks.redred_mc_wtb_stage4_scoring import scoring as scoring_module
@@ -67,6 +68,9 @@ _CAMPAIGN_SCHEMA = "redred.mc_wtb.stage4_score_free_campaign_seal/v1"
 _CAMPAIGN_CONTENT = "SCORE_FREE_OBSERVER_EVIDENCE_ONLY"
 _RESULT_SCHEMA = "redred.mc_wtb.stage4_official_score_result/v1"
 _WINDOW_SCHEMA = "redred.mc_wtb.stage4_score_free_window_seal/v1"
+_AUTHORITATIVE_INPUT_SCHEMA = (
+    "redred.mc_wtb.stage4_authoritative_window_cycle_inputs/v1"
+)
 _MANIFEST_SCHEMA = "redred.mc_wtb.stage4_score_input_manifest/v2"
 _BOUNDARY_SCHEMA = "redred.mc_wtb.stage4_score_boundary_evidence/v1"
 _RECEIPT_SCHEMA = "redred.mc_wtb.stage4_decision_receipt/v2"
@@ -126,7 +130,18 @@ _WINDOW_FIELDS = frozenset((
     "ordered_query_event_ids_sha256",
     "ray_events_path",
     "ray_events_sha256",
+    "authoritative_cycle_inputs",
     "arms",
+))
+_AUTHORITATIVE_INPUT_FIELDS = frozenset((
+    "schema",
+    "window_id",
+    "window_start_ns",
+    "input_events_sha256",
+    "input_poses_sha256",
+    "input_event_ids_sha256",
+    "input_count",
+    "input_pose_count",
 ))
 _ARM_BINDING_FIELDS = frozenset((
     "score_input_manifest_path",
@@ -160,6 +175,30 @@ class _Preflight:
     reference_sha256: str
     runner_sha256: str
     runtime: Mapping[str, Any]
+    authoritative_window_bindings: Tuple[Mapping[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class _FileIdentity:
+    device: int
+    inode: int
+    mode: int
+    links: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+
+    @classmethod
+    def from_stat(cls, value: os.stat_result) -> "_FileIdentity":
+        return cls(
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_nlink,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
 
 
 def _sha256(payload: bytes) -> str:
@@ -278,9 +317,15 @@ def _inventory(descriptor: int, prefix: str = "") -> Tuple[set, set]:
         raise ScoreRunnerError("cannot enumerate seal tree") from exc
     for entry in entries:
         relative = "%s/%s" % (prefix, entry.name) if prefix else entry.name
-        if entry.is_symlink():
+        try:
+            entry_info = entry.stat(follow_symlinks=False)
+        except OSError as exc:
+            raise ScoreRunnerError(
+                "cannot inspect sealed entry: %s" % relative
+            ) from exc
+        if stat.S_ISLNK(entry_info.st_mode):
             raise ScoreRunnerError("seal tree contains a symlink: %s" % relative)
-        if entry.is_dir(follow_symlinks=False):
+        if stat.S_ISDIR(entry_info.st_mode):
             directories.add(relative)
             flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
                 os, "O_NOFOLLOW", 0
@@ -292,12 +337,22 @@ def _inventory(descriptor: int, prefix: str = "") -> Tuple[set, set]:
                     "cannot open seal directory: %s" % relative
                 ) from exc
             try:
+                if _FileIdentity.from_stat(os.fstat(child)) != _FileIdentity.from_stat(
+                    entry_info
+                ):
+                    raise ScoreRunnerError(
+                        "seal directory changed while inventorying: %s" % relative
+                    )
                 child_files, child_directories = _inventory(child, relative)
             finally:
                 os.close(child)
             files.update(child_files)
             directories.update(child_directories)
-        elif entry.is_file(follow_symlinks=False):
+        elif stat.S_ISREG(entry_info.st_mode):
+            if entry_info.st_nlink != 1:
+                raise ScoreRunnerError(
+                    "seal tree contains a hard-linked file: %s" % relative
+                )
             files.add(relative)
         else:
             raise ScoreRunnerError(
@@ -319,28 +374,38 @@ def _read_at(root_descriptor: int, relative: str) -> bytes:
             )
             os.close(descriptor)
             descriptor = next_descriptor
+        try:
+            before = _FileIdentity.from_stat(
+                os.stat(parts[-1], dir_fd=descriptor, follow_symlinks=False)
+            )
+        except OSError as exc:
+            raise ScoreRunnerError(
+                "cannot inspect sealed file: %s" % relative
+            ) from exc
+        if not stat.S_ISREG(before.mode) or before.links != 1:
+            raise ScoreRunnerError(
+                "sealed path is not a single-link regular file: %s" % relative
+            )
         file_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         file_descriptor = os.open(parts[-1], file_flags, dir_fd=descriptor)
         try:
-            info = os.fstat(file_descriptor)
-            if not stat.S_ISREG(info.st_mode):
+            opened = _FileIdentity.from_stat(os.fstat(file_descriptor))
+            if opened != before:
                 raise ScoreRunnerError(
-                    "sealed path is not a regular file: %s" % relative
+                    "sealed file changed while opening: %s" % relative
                 )
             with os.fdopen(file_descriptor, "rb", closefd=False) as stream:
                 payload = stream.read()
-            after = os.fstat(file_descriptor)
-            if (
-                info.st_dev,
-                info.st_ino,
-                info.st_size,
-                info.st_mtime_ns,
-            ) != (
-                after.st_dev,
-                after.st_ino,
-                after.st_size,
-                after.st_mtime_ns,
-            ) or len(payload) != info.st_size:
+            after_fd = _FileIdentity.from_stat(os.fstat(file_descriptor))
+            try:
+                after_path = _FileIdentity.from_stat(
+                    os.stat(parts[-1], dir_fd=descriptor, follow_symlinks=False)
+                )
+            except OSError as exc:
+                raise ScoreRunnerError(
+                    "sealed file changed after reading: %s" % relative
+                ) from exc
+            if before != after_fd or before != after_path or len(payload) != before.size:
                 raise ScoreRunnerError(
                     "sealed file changed while being snapshotted: %s" % relative
                 )
@@ -410,11 +475,17 @@ def _copy_snapshot(
             target = snapshot / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
+        final_files, final_directories = _inventory(root_descriptor)
+        if final_files != expected_files or final_directories != expected_directories:
+            raise ScoreRunnerError("seal inventory changed while being snapshotted")
     finally:
         os.close(root_descriptor)
-    verify_score_free_seal(
-        snapshot, expected_seal_manifest_sha256=expected_root
-    )
+    try:
+        verify_score_free_seal(
+            snapshot, expected_seal_manifest_sha256=expected_root
+        )
+    except SealingError as exc:
+        raise ScoreRunnerError("hardened seal verification failed: %s" % exc) from exc
     return campaign
 
 
@@ -673,6 +744,35 @@ def _parse_boundary(value: Any, where: str) -> ScoreBoundaryEvidence:
     )
 
 
+def _parse_authoritative_inputs(
+    value: Any,
+    *,
+    window_id: str,
+    window_start_ns: int,
+    selected_count: int,
+) -> Mapping[str, Any]:
+    where = "window authoritative cycle inputs"
+    row = _require_mapping(value, where)
+    _exact_keys(row, _AUTHORITATIVE_INPUT_FIELDS, where)
+    if (
+        row["schema"] != _AUTHORITATIVE_INPUT_SCHEMA
+        or row["window_id"] != window_id
+        or _require_int(row["window_start_ns"], "%s.window_start_ns" % where)
+        != window_start_ns
+    ):
+        raise ScoreRunnerError("authoritative cycle input identity differs")
+    for field in (
+        "input_events_sha256",
+        "input_poses_sha256",
+        "input_event_ids_sha256",
+    ):
+        _require_sha(row[field], "%s.%s" % (where, field))
+    if _require_int(row["input_count"], "%s.input_count" % where) != selected_count:
+        raise ScoreRunnerError("authoritative event count differs from window seal")
+    _require_int(row["input_pose_count"], "%s.input_pose_count" % where)
+    return dict(row)
+
+
 def _file_sha(index: Mapping[str, Any], path: str, where: str) -> str:
     entry = _require_mapping(index.get(path), where)
     return _require_sha(entry.get("sha256"), "%s.sha256" % where)
@@ -688,9 +788,12 @@ def _preflight(snapshot: Path, campaign: Mapping[str, Any]) -> _Preflight:
     ):
         raise ScoreRunnerError("campaign contract or registry binding differs")
     if (
-        campaign["window_count"] != _EXPECTED_WINDOW_COUNT
-        or campaign["arm_count"] != len(_ARM_ORDER)
-        or campaign["arm_window_count"] != _EXPECTED_WINDOW_COUNT * len(_ARM_ORDER)
+        _require_int(campaign["window_count"], "campaign.window_count")
+        != _EXPECTED_WINDOW_COUNT
+        or _require_int(campaign["arm_count"], "campaign.arm_count")
+        != len(_ARM_ORDER)
+        or _require_int(campaign["arm_window_count"], "campaign.arm_window_count")
+        != _EXPECTED_WINDOW_COUNT * len(_ARM_ORDER)
         or tuple(campaign["arm_order"]) != _ARM_ORDER
     ):
         raise ScoreRunnerError("campaign is not the frozen 24-by-4 matrix")
@@ -700,9 +803,12 @@ def _preflight(snapshot: Path, campaign: Mapping[str, Any]) -> _Preflight:
     )
     if len(window_order) != _EXPECTED_WINDOW_COUNT or len(set(window_order)) != len(window_order):
         raise ScoreRunnerError("campaign window order is not 24 unique windows")
+    frozen_windows = tuple(window_registry())
+    if len(frozen_windows) != _EXPECTED_WINDOW_COUNT:
+        raise ScoreRunnerError("frozen registry does not contain exactly 24 windows")
     frozen_window_order = tuple(
         _require_text(row.get("window_id"), "frozen window registry ID")
-        for row in window_registry()
+        for row in frozen_windows
     )
     if window_order != frozen_window_order:
         raise ScoreRunnerError("campaign window order differs from the frozen registry")
@@ -714,9 +820,12 @@ def _preflight(snapshot: Path, campaign: Mapping[str, Any]) -> _Preflight:
     reference_sha = _hash_module_file(reference_module, "reference module")
     runner_sha = _sha256(Path(__file__).resolve().read_bytes())
     leaves = []  # type: List[_LeafInput]
+    authoritative_window_bindings = []  # type: List[Mapping[str, Any]]
     expected_indexed = {"assay-closure.json"}
     total_queries = 0
-    for position, (window_id, raw_pointer) in enumerate(zip(window_order, pointers)):
+    for position, (window_id, raw_pointer, frozen) in enumerate(
+        zip(window_order, pointers, frozen_windows)
+    ):
         pointer = _require_mapping(raw_pointer, "campaign.windows[%d]" % position)
         _exact_keys(pointer, ("window_id", "path", "sha256"), "campaign window pointer")
         window_path = "windows/%s/window-seal.json" % window_id
@@ -731,7 +840,19 @@ def _preflight(snapshot: Path, campaign: Mapping[str, Any]) -> _Preflight:
             _read_snapshot_json(snapshot, window_path), "window seal"
         )
         _exact_keys(window, _WINDOW_FIELDS, "window seal")
-        if window["schema"] != _WINDOW_SCHEMA or window["window_id"] != window_id:
+        if (
+            window["schema"] != _WINDOW_SCHEMA
+            or window["window_id"] != window_id
+            or any(
+                _require_int(window[field], "window.%s" % field)
+                != _require_int(frozen[field], "frozen registry.%s" % field)
+                for field in (
+                    "warmup_start_ns_inclusive",
+                    "query_start_ns_inclusive",
+                    "query_end_ns_exclusive",
+                )
+            )
+        ):
             raise ScoreRunnerError("window seal identity differs")
         query_count = _require_int(window["query_event_count"], "window query count", 1)
         selected_count = _require_int(
@@ -739,6 +860,13 @@ def _preflight(snapshot: Path, campaign: Mapping[str, Any]) -> _Preflight:
         )
         if selected_count < query_count:
             raise ScoreRunnerError("window selected count is below query count")
+        authoritative = _parse_authoritative_inputs(
+            window["authoritative_cycle_inputs"],
+            window_id=window_id,
+            window_start_ns=frozen["warmup_start_ns_inclusive"],
+            selected_count=selected_count,
+        )
+        authoritative_window_bindings.append(authoritative)
         total_queries += query_count
         ray_path = "windows/%s/ray-events.json" % window_id
         if (
@@ -857,6 +985,7 @@ def _preflight(snapshot: Path, campaign: Mapping[str, Any]) -> _Preflight:
         reference_sha,
         runner_sha,
         _runtime_identity(),
+        tuple(authoritative_window_bindings),
     )
 
 
@@ -1051,8 +1180,13 @@ def _execute_once(
         "input_bindings": {
             "global_seal_manifest_sha256": expected_global_seal_sha256,
             "assay_manifest_sha256": preflight.campaign["assay_manifest_sha256"],
+            "assay_authority_sha256": preflight.campaign["assay_authority_sha256"],
+            "assay_closure_sha256": preflight.campaign["assay_closure_sha256"],
             "comparison_contract_sha256": contract.canonical_sha256,
             "registry_sha256": contract.registry["sha256"],
+            "authoritative_window_cycle_inputs_sha256": canonical_sha256(
+                preflight.authoritative_window_bindings
+            ),
             "scorer_py_sha256": preflight.scorer_sha256,
             "causal_reference_py_sha256": preflight.reference_sha256,
             "score_runner_py_sha256": preflight.runner_sha256,
