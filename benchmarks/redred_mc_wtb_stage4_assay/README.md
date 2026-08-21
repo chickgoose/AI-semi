@@ -23,16 +23,21 @@ The generator:
   and exclusive query end into every manifest window summary, so downstream
   integration never reconstructs window bounds;
 - preserves full global source event IDs externally and emits an explicit
-  `event_sequence_tag = event_id mod 2^24`. Tags must be unique within each
-  selected window; wrap across different windows is legal. Records also emit
-  timestamp, pixel, polarity, normalized sensor ray, query membership,
-  equal-timestamp cluster identity, and exact integer occurrence cycle;
+  `event_sequence_tag = event_id mod 2^24`. Tags must be globally unique across
+  the complete selected 24-window artifact. Every window additionally records
+  its minimum and maximum selected source event ID, their exact difference,
+  and the ordered tag hash; the difference must be strictly less than `2^23`.
+  This range evidence is per window because windows are independent reset
+  domains—it is not inferred from event count or from the cross-window range.
+  Records also emit timestamp, pixel, polarity, normalized sensor ray, query
+  membership, equal-timestamp cluster identity, and exact integer occurrence
+  cycle;
 - forms one atomic batch per occurrence cycle with up to six ingress lanes.
   Every member carries the same two-pose pre-edge snapshot hash, and the
   development exact-timestamp burst is fail-closed at the corrected bound of
   five;
 - packs the occurrence-baseline 102-bit payload, including a 14-bit causal
-  pose source index. The least-significant 24 bits are the per-window-unique
+  pose source index. The least-significant 24 bits are the globally unique
   `event_sequence_tag`, not the full source event ID; the remaining fields are
   an 11-bit join sequence, 36-bit timestamp, 8-bit x/y, and polarity. The full
   event ID remains in the external canonical record and ordered-ID hashes;
@@ -63,7 +68,10 @@ The generator:
   dataset-pose and occurrence-snapshot streams, oracle packet/schedule
   streams, generator dependency hashes, and Python runtime
   identity/executable hashes. Oracle authority additionally binds the
-  canonical hash of the ordered packet-hash sequence.
+  canonical hash of the ordered packet-hash sequence. Event authority binds
+  the aggregate ordered tag hash, tag count, global-uniqueness result, the
+  exclusive `2^23` per-window source-ID-span limit, and a canonical hash of all
+  per-window range/tag evidence.
 
 The forbidden interval may be scanned by whole-file hashing/parsing but cannot
 appear in any selected event, dataset pose packet, oracle packet, or schedule.

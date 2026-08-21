@@ -302,7 +302,7 @@ class GeneratorTests(unittest.TestCase):
                 [missing], authority, calibration, source_sha256
             )
 
-    def test_event_sequence_tag_uniqueness_is_per_window(self) -> None:
+    def test_event_sequence_tag_uniqueness_is_global_across_windows(self) -> None:
         calibration = Calibration(240, 180, 100.0, 100.0, 120.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         source_sha256 = "4" * 64
         authority = generator_module._calibration_authority(
@@ -310,15 +310,48 @@ class GeneratorTests(unittest.TestCase):
         )
         first = synthetic_event_record(5, "window-a", 0, calibration)
         wrapped = synthetic_event_record((1 << 24) + 5, "window-a", 1, calibration)
-        with self.assertRaisesRegex(AssayInputError, "unique within its window"):
+        with self.assertRaisesRegex(AssayInputError, "globally unique"):
             generator_module._validate_sensor_ray_records(
                 [first, wrapped], authority, calibration, source_sha256
             )
 
         other_window = dict(wrapped)
         other_window["window_id"] = "window-b"
+        with self.assertRaisesRegex(AssayInputError, "globally unique"):
+            generator_module._validate_sensor_ray_records(
+                [first, other_window], authority, calibration, source_sha256
+            )
+
+    def test_window_source_event_id_span_is_range_based_and_strict(self) -> None:
+        calibration = Calibration(240, 180, 100.0, 100.0, 120.0, 90.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        source_sha256 = "5" * 64
+        authority = generator_module._calibration_authority(
+            calibration, source_sha256
+        )
+        limit = 1 << 23
+        below = [
+            synthetic_event_record(0, "window-a", 0, calibration),
+            synthetic_event_record(limit - 1, "window-a", 1, calibration),
+        ]
         generator_module._validate_sensor_ray_records(
-            [first, other_window], authority, calibration, source_sha256
+            below, authority, calibration, source_sha256
+        )
+
+        at_limit = [
+            synthetic_event_record(0, "window-a", 0, calibration),
+            synthetic_event_record(limit, "window-a", 1, calibration),
+        ]
+        with self.assertRaisesRegex(AssayInputError, r"less than 2\^23"):
+            generator_module._validate_sensor_ray_records(
+                at_limit, authority, calibration, source_sha256
+            )
+
+        independent_windows = [
+            synthetic_event_record(0, "window-a", 0, calibration),
+            synthetic_event_record(limit, "window-b", 0, calibration),
+        ]
+        generator_module._validate_sensor_ray_records(
+            independent_windows, authority, calibration, source_sha256
         )
 
     def test_pose_packet_stream_and_per_packet_hashes_fail_closed(self) -> None:
@@ -486,6 +519,74 @@ class GeneratorTests(unittest.TestCase):
 
             events = jsonl(first / "stage4_events.jsonl")
             self.assertEqual(sum(record["is_query"] for record in events), 8914)
+            ordered_tags = [record["event_sequence_tag"] for record in events]
+            ordered_tags_sha256 = canonical_sha256(ordered_tags)
+            self.assertEqual(len(ordered_tags), len(set(ordered_tags)))
+            event_tag_authority = binding["event_sequence_tags"]
+            self.assertEqual(event_tag_authority["derivation"], "event_id_mod_2^24")
+            self.assertEqual(event_tag_authority["bits"], 24)
+            self.assertEqual(
+                event_tag_authority["event_sequence_tag_count"], len(events)
+            )
+            self.assertIs(
+                event_tag_authority["event_sequence_tags_globally_unique"], True
+            )
+            self.assertEqual(
+                event_tag_authority["ordered_event_sequence_tags_sha256"],
+                ordered_tags_sha256,
+            )
+            self.assertIs(event_tag_authority["window_reset_domains"], True)
+            self.assertEqual(
+                event_tag_authority[
+                    "window_source_event_id_span_limit_exclusive"
+                ],
+                1 << 23,
+            )
+            event_inputs = manifest["event_inputs"]
+            for field in (
+                "event_sequence_tag_count",
+                "event_sequence_tags_globally_unique",
+                "ordered_event_sequence_tags_sha256",
+                "window_reset_domains",
+                "window_source_event_id_span_limit_exclusive",
+                "window_source_event_id_evidence_sha256",
+            ):
+                self.assertEqual(event_inputs[field], event_tag_authority[field])
+
+            events_by_window = {}
+            for event in events:
+                events_by_window.setdefault(event["window_id"], []).append(event)
+            window_evidence = []
+            for summary in manifest["windows"]:
+                members = events_by_window[summary["window_id"]]
+                source_event_ids = [member["event_id"] for member in members]
+                window_tags = [member["event_sequence_tag"] for member in members]
+                self.assertEqual(summary["min_source_event_id"], min(source_event_ids))
+                self.assertEqual(summary["max_source_event_id"], max(source_event_ids))
+                self.assertEqual(
+                    summary["source_event_id_span"],
+                    max(source_event_ids) - min(source_event_ids),
+                )
+                self.assertLess(summary["source_event_id_span"], 1 << 23)
+                self.assertEqual(
+                    summary["ordered_event_sequence_tags_sha256"],
+                    canonical_sha256(window_tags),
+                )
+                window_evidence.append(
+                    {
+                        "window_id": summary["window_id"],
+                        "min_source_event_id": summary["min_source_event_id"],
+                        "max_source_event_id": summary["max_source_event_id"],
+                        "source_event_id_span": summary["source_event_id_span"],
+                        "ordered_event_sequence_tags_sha256": summary[
+                            "ordered_event_sequence_tags_sha256"
+                        ],
+                    }
+                )
+            self.assertEqual(
+                event_tag_authority["window_source_event_id_evidence_sha256"],
+                canonical_sha256(window_evidence),
+            )
             self.assertTrue(all(0 <= record["presentation_lane"] < 2 for record in events))
             self.assertTrue(
                 any(

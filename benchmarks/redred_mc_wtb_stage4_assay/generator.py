@@ -52,6 +52,7 @@ STAGING_SERIALIZER_ENTRIES = 6
 EVENT_PAYLOAD_BITS = 102
 EVENT_SEQUENCE_TAG_BITS = 24
 EVENT_SEQUENCE_TAG_LIMIT = 1 << EVENT_SEQUENCE_TAG_BITS
+WINDOW_SOURCE_EVENT_ID_SPAN_LIMIT = 1 << 23
 POSE_INDEX_BITS = 14
 DEV_MAX_EXACT_TIMESTAMP_BURST = 5
 SENSOR_RAY_GENERATOR_RULE = "radtan_inverse_newton_then_normalized_sensor_ray"
@@ -214,7 +215,8 @@ def _validate_sensor_ray_records(
     event_sequence_tag_mask = EVENT_SEQUENCE_TAG_LIMIT - 1
     timestamp_mask = (1 << 36) - 1
     pixel_mask = (1 << 8) - 1
-    tags_by_window = {}  # type: Dict[str, set]
+    selected_tags = set()
+    event_ids_by_window = {}  # type: Dict[str, List[int]]
     for record in records:
         if set(record) != EVENT_RECORD_FIELDS:
             raise AssayInputError("event record has missing or unexpected fields")
@@ -227,10 +229,14 @@ def _validate_sensor_ray_records(
             raise AssayInputError("event_sequence_tag differs from full event_id modulo 2^24")
         if not 0 <= record["event_sequence_tag"] < EVENT_SEQUENCE_TAG_LIMIT:
             raise AssayInputError("event_sequence_tag does not fit 24 bits")
-        window_tags = tags_by_window.setdefault(record["window_id"], set())
-        if record["event_sequence_tag"] in window_tags:
-            raise AssayInputError("event_sequence_tag is not unique within its window")
-        window_tags.add(record["event_sequence_tag"])
+        if record["event_sequence_tag"] in selected_tags:
+            raise AssayInputError(
+                "event_sequence_tag is not globally unique in the selected artifact"
+            )
+        selected_tags.add(record["event_sequence_tag"])
+        event_ids_by_window.setdefault(record["window_id"], []).append(
+            record["event_id"]
+        )
         snapshot_sha256 = record["occurrence_pose_snapshot_sha256"]
         if (
             type(snapshot_sha256) is not str
@@ -275,6 +281,10 @@ def _validate_sensor_ray_records(
             raise AssayInputError("event field differs from its payload-bound value")
         if ray != list(sensor_ray(event, calibration)):
             raise AssayInputError("sensor ray differs from payload-bound calibration recovery")
+    for event_ids in event_ids_by_window.values():
+        source_event_id_span = max(event_ids) - min(event_ids)
+        if source_event_id_span >= WINDOW_SOURCE_EVENT_ID_SPAN_LIMIT:
+            raise AssayInputError("source_event_id_span must be less than 2^23")
 
 
 def _extract_events(
@@ -328,6 +338,7 @@ def _extract_events(
     total_query = 0
     total_entry_cycles = 0
     aggregate_peak_occupancy = 0
+    selected_event_sequence_tags = set()
     for row in rows:
         window_id = str(row["window_id"])
         window_start = int(row["warmup_start_ns_inclusive"])
@@ -335,7 +346,7 @@ def _extract_events(
         events = selected[window_id]
         query_ids = []  # type: List[int]
         window_records = []  # type: List[Dict[str, Any]]
-        window_event_sequence_tags = set()
+        window_event_sequence_tags = []  # type: List[int]
         exact_clusters = {}  # type: Dict[int, Tuple[int, int]]
         index = 0
         while index < len(events):
@@ -352,11 +363,12 @@ def _extract_events(
             exact_clusters[events[index].timestamp_ns] = (cluster_id, cluster_size)
             for event in events[index:cluster_end]:
                 event_sequence_tag = _event_sequence_tag(event.event_id)
-                if event_sequence_tag in window_event_sequence_tags:
+                if event_sequence_tag in selected_event_sequence_tags:
                     raise AssayInputError(
-                        "event_sequence_tag is not unique within its window"
+                        "event_sequence_tag is not globally unique in the selected artifact"
                     )
-                window_event_sequence_tags.add(event_sequence_tag)
+                selected_event_sequence_tags.add(event_sequence_tag)
+                window_event_sequence_tags.append(event_sequence_tag)
                 is_query = event.timestamp_ns >= query_start
                 if is_query:
                     query_ids.append(event.event_id)
@@ -488,6 +500,13 @@ def _extract_events(
             if prior_hash != snapshot_hash:
                 raise AssayInputError("equal-timestamp cluster has multiple pose snapshots")
         total_query += len(query_ids)
+        if not window_records:
+            raise AssayInputError("selected window has no source events")
+        min_source_event_id = min(record["event_id"] for record in window_records)
+        max_source_event_id = max(record["event_id"] for record in window_records)
+        source_event_id_span = max_source_event_id - min_source_event_id
+        if source_event_id_span >= WINDOW_SOURCE_EVENT_ID_SPAN_LIMIT:
+            raise AssayInputError("source_event_id_span must be less than 2^23")
         summaries.append(
             {
                 "window_id": window_id,
@@ -496,6 +515,12 @@ def _extract_events(
                 "query_end_ns_exclusive": int(row["query_end_ns_exclusive"]),
                 "selected_event_count": len(events),
                 "query_event_count": len(query_ids),
+                "min_source_event_id": min_source_event_id,
+                "max_source_event_id": max_source_event_id,
+                "source_event_id_span": source_event_id_span,
+                "ordered_event_sequence_tags_sha256": canonical_sha256(
+                    window_event_sequence_tags
+                ),
                 "ordered_query_event_ids_sha256": canonical_sha256(query_ids),
                 "occurrence_batch_count": len(window_batches),
                 "maximum_occurrence_batch_size": max(
@@ -954,6 +979,31 @@ def generate_score_free_inputs(
     }
     runtime_binding = _runtime_binding()
     ordered_payload = _ordered_payload_bytes(event_records)
+    ordered_event_sequence_tags = [
+        record["event_sequence_tag"] for record in event_records
+    ]
+    if len(set(ordered_event_sequence_tags)) != len(ordered_event_sequence_tags):
+        raise AssayInputError(
+            "event_sequence_tag is not globally unique in the selected artifact"
+        )
+    ordered_event_sequence_tags_sha256 = canonical_sha256(
+        ordered_event_sequence_tags
+    )
+    window_source_event_id_evidence = [
+        {
+            "window_id": summary["window_id"],
+            "min_source_event_id": summary["min_source_event_id"],
+            "max_source_event_id": summary["max_source_event_id"],
+            "source_event_id_span": summary["source_event_id_span"],
+            "ordered_event_sequence_tags_sha256": summary[
+                "ordered_event_sequence_tags_sha256"
+            ],
+        }
+        for summary in window_summaries
+    ]
+    window_source_event_id_evidence_sha256 = canonical_sha256(
+        window_source_event_id_evidence
+    )
     authoritative_binding = {
         "schema": "redred.mc_wtb.stage4_authoritative_input_binding/v1",
         "ordered_102bit_occurrence_records": {
@@ -962,6 +1012,22 @@ def generate_score_free_inputs(
             "sha256": hashlib.sha256(ordered_payload).hexdigest(),
             "ordered_event_ids_sha256": canonical_sha256(
                 [record["event_id"] for record in event_records]
+            ),
+        },
+        "event_sequence_tags": {
+            "derivation": "event_id_mod_2^24",
+            "bits": EVENT_SEQUENCE_TAG_BITS,
+            "event_sequence_tag_count": len(ordered_event_sequence_tags),
+            "event_sequence_tags_globally_unique": True,
+            "ordered_event_sequence_tags_sha256": (
+                ordered_event_sequence_tags_sha256
+            ),
+            "window_reset_domains": True,
+            "window_source_event_id_span_limit_exclusive": (
+                WINDOW_SOURCE_EVENT_ID_SPAN_LIMIT
+            ),
+            "window_source_event_id_evidence_sha256": (
+                window_source_event_id_evidence_sha256
             ),
         },
         "raw_source_streams": {
@@ -1035,6 +1101,18 @@ def generate_score_free_inputs(
                 "authority_sha256"
             ],
             "selected_event_count": len(event_records),
+            "event_sequence_tag_count": len(ordered_event_sequence_tags),
+            "event_sequence_tags_globally_unique": True,
+            "ordered_event_sequence_tags_sha256": (
+                ordered_event_sequence_tags_sha256
+            ),
+            "window_reset_domains": True,
+            "window_source_event_id_span_limit_exclusive": (
+                WINDOW_SOURCE_EVENT_ID_SPAN_LIMIT
+            ),
+            "window_source_event_id_evidence_sha256": (
+                window_source_event_id_evidence_sha256
+            ),
             "occurrence_batch_count": len(occurrence_batches),
             "ordered_selected_event_ids_sha256": canonical_sha256(
                 [record["event_id"] for record in event_records]
