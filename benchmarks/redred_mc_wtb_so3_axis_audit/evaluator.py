@@ -68,6 +68,19 @@ _POSE_FIELDS = frozenset((
     "value_valid",
     "arithmetic_valid",
 ))
+_CAV_WINDOW_FIELDS = frozenset((
+    "registry",
+    "input_events",
+    "input_poses",
+    "simulation",
+    "query_events",
+    "query_decisions_sha256",
+))
+_CAV_REGISTRY_FIELDS = frozenset((
+    "registry_sha256",
+    "neutral_input_sha256",
+    "windows",
+))
 _REFERENCE_CAPACITY_PER_POLARITY = 256
 _REFERENCE_MAX_AGE_NS = 2_000_000
 _POSITIVE_WINDOW_THRESHOLD = 1.0e-6
@@ -446,6 +459,8 @@ def _effect(events: Sequence[CAVEventEvaluation]) -> float:
 @dataclass(frozen=True)
 class CAVWindowEvaluation:
     registry: NeutralRegistryWindow
+    input_events: Tuple[NeutralEventInput, ...]
+    input_poses: Tuple[NeutralPoseInput, ...]
     simulation: SimulationResult
     query_events: Tuple[CAVEventEvaluation, ...]
     query_decisions_sha256: str
@@ -665,6 +680,87 @@ def _validate_pose_input(value: object) -> NeutralPoseInput:
     return pose
 
 
+def _neutral_input_mapping(
+    windows: Sequence[CAVWindowEvaluation],
+) -> Mapping[str, object]:
+    return {
+        "schema": "redred.mc_wtb.current_cav_neutral_inputs/v1",
+        "registry": [window.registry.to_mapping() for window in windows],
+        "windows": [
+            {
+                "window_id": window.registry.window_id,
+                "events": [
+                    event.to_content_mapping() for event in window.input_events
+                ],
+                "poses": [pose.to_content_mapping() for pose in window.input_poses],
+            }
+            for window in windows
+        ],
+    }
+
+
+def verify_current_cav_evaluation_integrity(
+    evaluation: CAVRegistryEvaluation,
+) -> str:
+    """Recompute the aggregate neutral-input binding from retained inputs."""
+
+    _exact_dataclass(
+        evaluation,
+        CAVRegistryEvaluation,
+        _CAV_REGISTRY_FIELDS,
+        "registry evaluation",
+    )
+    _sha256(evaluation.registry_sha256, "registry digest")
+    _sha256(evaluation.neutral_input_sha256, "neutral input digest")
+    if type(evaluation.windows) is not tuple or not evaluation.windows:
+        raise CurrentCAVEvaluationError("evaluation windows must be a non-empty tuple")
+    identifiers = []
+    for window in evaluation.windows:
+        _exact_dataclass(
+            window,
+            CAVWindowEvaluation,
+            _CAV_WINDOW_FIELDS,
+            "window evaluation",
+        )
+        registry = _validate_registry_window(window.registry)
+        if type(window.input_events) is not tuple or not window.input_events:
+            raise CurrentCAVEvaluationError("retained event inputs must be a tuple")
+        if type(window.input_poses) is not tuple or not window.input_poses:
+            raise CurrentCAVEvaluationError("retained pose inputs must be a tuple")
+        events = tuple(_validate_event_input(event) for event in window.input_events)
+        tuple(_validate_pose_input(pose) for pose in window.input_poses)
+        for event in events:
+            if not (
+                registry.warmup_start_ns_inclusive
+                <= event.timestamp_ns
+                < registry.query_end_ns_exclusive
+            ):
+                raise CurrentCAVEvaluationError(
+                    "retained event lies outside registry bounds"
+                )
+            if event.is_query != (
+                registry.query_start_ns_inclusive <= event.timestamp_ns
+            ):
+                raise CurrentCAVEvaluationError(
+                    "retained event query flag differs from bounds"
+                )
+        if window.simulation.window_id != registry.window_id:
+            raise CurrentCAVEvaluationError("simulation window identity differs")
+        identifiers.append(registry.window_id)
+    if len(set(identifiers)) != len(identifiers):
+        raise CurrentCAVEvaluationError("evaluation window IDs are duplicated")
+    registry_mapping = [window.registry.to_mapping() for window in evaluation.windows]
+    expected_registry_sha256 = canonical_sha256(registry_mapping)
+    if evaluation.registry_sha256 != expected_registry_sha256:
+        raise CurrentCAVEvaluationError("registry digest differs")
+    expected_input_sha256 = canonical_sha256(
+        _neutral_input_mapping(evaluation.windows)
+    )
+    if evaluation.neutral_input_sha256 != expected_input_sha256:
+        raise CurrentCAVEvaluationError("neutral input digest differs")
+    return expected_input_sha256
+
+
 def evaluate_current_cav_window(
     registry: NeutralRegistryWindow,
     events: Sequence[NeutralEventInput],
@@ -791,6 +887,8 @@ def evaluate_current_cav_window(
     query_decisions = [event.decision.to_mapping() for event in query]
     result = CAVWindowEvaluation(
         registry,
+        event_values,
+        pose_values,
         simulation,
         tuple(query),
         canonical_sha256(query_decisions),
@@ -838,28 +936,11 @@ def evaluate_current_cav_registry(
     if len(set(event_ids)) != len(event_ids):
         raise CurrentCAVEvaluationError("query event IDs repeat across registry windows")
     registry_mapping = [window.to_mapping() for window in windows]
-    neutral_input_mapping = {
-        "schema": "redred.mc_wtb.current_cav_neutral_inputs/v1",
-        "registry": registry_mapping,
-        "windows": [
-            {
-                "window_id": window.window_id,
-                "events": [
-                    event.to_content_mapping()
-                    for event in checked_events[window.window_id]
-                ],
-                "poses": [
-                    pose.to_content_mapping()
-                    for pose in checked_poses[window.window_id]
-                ],
-            }
-            for window in windows
-        ],
-    }
     result = CAVRegistryEvaluation(
         canonical_sha256(registry_mapping),
-        canonical_sha256(neutral_input_mapping),
+        canonical_sha256(_neutral_input_mapping(results)),
         results,
     )
+    verify_current_cav_evaluation_integrity(result)
     _ = result.all_event_effect
     return result

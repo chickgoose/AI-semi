@@ -40,6 +40,7 @@ from .evaluator import (
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
     evaluate_current_cav_registry,
+    verify_current_cav_evaluation_integrity,
 )
 
 
@@ -624,6 +625,12 @@ def verify_original_24_compatibility(
     )
     if type(evaluation) is not CAVRegistryEvaluation:
         raise Original24CompatibilityError("evaluation type differs")
+    try:
+        verify_current_cav_evaluation_integrity(evaluation)
+    except CurrentCAVEvaluationError as exc:
+        raise Original24CompatibilityError(
+            "neutral evaluation integrity differs"
+        ) from exc
     if len(evaluation.windows) != 24:
         raise Original24CompatibilityError("evaluation is not the original 24")
     seal_root = Path(seal_dir)

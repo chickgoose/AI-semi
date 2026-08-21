@@ -18,6 +18,7 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     CAVRegistryEvaluation,
     NeutralRegistryWindow,
 )
+from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 
 
 ASSAY_DIR = Path("/tmp/mcwtb-stage4-official-assay-20260821-v3")
@@ -71,22 +72,55 @@ class Original24CompatibilityTests(unittest.TestCase):
                 ASSAY_DIR, expected_manifest_sha256="0" * 64
             )
 
+    def test_mutated_neutral_input_digest_fails_before_compatibility(self):
+        mutated = replace(self.evaluation)
+        object.__setattr__(mutated, "neutral_input_sha256", "0" * 64)
+        with self.assertRaisesRegex(
+            Original24CompatibilityError, "neutral evaluation integrity"
+        ):
+            verify_original_24_compatibility(
+                mutated,
+                seal_dir=SEAL_DIR,
+                result_path=RESULT_PATH,
+            )
+
     def test_campaign_window_bounds_are_exact(self):
         original_window = self.evaluation.windows[0]
         registry = original_window.registry
         changed_registry = NeutralRegistryWindow(
             registry.window_id,
-            registry.warmup_start_ns_inclusive,
-            registry.query_start_ns_inclusive + 1,
+            registry.warmup_start_ns_inclusive + 1,
+            registry.query_start_ns_inclusive,
             registry.query_end_ns_exclusive,
         )
         changed_window = replace(original_window, registry=changed_registry)
+        changed_windows = (changed_window,) + self.evaluation.windows[1:]
+        registry_mapping = [window.registry.to_mapping() for window in changed_windows]
+        neutral_input_mapping = {
+            "schema": "redred.mc_wtb.current_cav_neutral_inputs/v1",
+            "registry": registry_mapping,
+            "windows": [
+                {
+                    "window_id": window.registry.window_id,
+                    "events": [
+                        event.to_content_mapping() for event in window.input_events
+                    ],
+                    "poses": [
+                        pose.to_content_mapping() for pose in window.input_poses
+                    ],
+                }
+                for window in changed_windows
+            ],
+        }
         forged = CAVRegistryEvaluation(
-            self.evaluation.registry_sha256,
-            self.evaluation.neutral_input_sha256,
-            (changed_window,) + self.evaluation.windows[1:],
+            canonical_sha256(registry_mapping),
+            canonical_sha256(neutral_input_mapping),
+            changed_windows,
         )
-        with self.assertRaisesRegex(Original24CompatibilityError, "registry bounds"):
+        with self.assertRaisesRegex(
+            Original24CompatibilityError,
+            "campaign registry digest|registry bounds",
+        ):
             verify_original_24_compatibility(
                 forged,
                 seal_dir=SEAL_DIR,
