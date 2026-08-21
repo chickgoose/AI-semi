@@ -15,6 +15,7 @@ from typing import Optional, Sequence, Tuple
 
 
 QuaternionXYZW = Tuple[float, float, float, float]
+Vector3 = Tuple[float, float, float]
 
 SLERP_LINEAR_DOT_THRESHOLD = 0.9995
 DEFAULT_CAV_MAX_HORIZON_NS = 5_000_000
@@ -22,6 +23,8 @@ DEFAULT_ZOH_MAX_AGE_NS = 1_000_000
 DEFAULT_RESAMPLE_CADENCE_NS = 1_000_000
 DEFAULT_CLOCK_PERIOD_PS = 6_500
 UINT64_MAX = (1 << 64) - 1
+INT64_MIN = -(1 << 63)
+INT64_MAX = (1 << 63) - 1
 
 
 class GeometryError(ValueError):
@@ -71,6 +74,16 @@ def _quaternion(value: Sequence[float], name: str) -> QuaternionXYZW:
     )
 
 
+def _vector3(value: Sequence[float], name: str) -> Vector3:
+    if not isinstance(value, (tuple, list)) or len(value) != 3:
+        raise GeometryError("%s must contain exactly three components" % name)
+    return (
+        _finite(value[0], "%s[0]" % name),
+        _finite(value[1], "%s[1]" % name),
+        _finite(value[2], "%s[2]" % name),
+    )
+
+
 def _dot(left: QuaternionXYZW, right: QuaternionXYZW) -> float:
     return math.fsum(left[index] * right[index] for index in range(4))
 
@@ -86,6 +99,47 @@ def normalize_quaternion_xyzw(value: Sequence[float]) -> QuaternionXYZW:
     result = tuple(component / norm for component in quaternion)
     if not all(math.isfinite(component) for component in result):
         raise GeometryError("quaternion normalization produced a non-finite value")
+    return result  # type: ignore[return-value]
+
+
+def rotate_sensor_ray_to_world(
+    quaternion_xyzw: Sequence[float], sensor_ray: Sequence[float]
+) -> Vector3:
+    """Rotate a camera/sensor ray into world coordinates with active ``R_WC``.
+
+    The UZH xyzw quaternion represents camera-to-world orientation.  The
+    input ray may have any nonzero finite magnitude; the returned world ray
+    is deterministically normalized.  Since the rotation matrix contains
+    only quadratic quaternion products, ``q`` and ``-q`` produce the same
+    result.
+    """
+
+    x, y, z, w = normalize_quaternion_xyzw(quaternion_xyzw)
+    sx, sy, sz = _vector3(sensor_ray, "sensor_ray")
+    sensor_norm_squared = math.fsum(
+        component * component for component in (sx, sy, sz)
+    )
+    if not math.isfinite(sensor_norm_squared) or sensor_norm_squared <= 0.0:
+        raise GeometryError("sensor_ray must have nonzero finite norm")
+
+    world = (
+        (1.0 - 2.0 * (y * y + z * z)) * sx
+        + 2.0 * (x * y - z * w) * sy
+        + 2.0 * (x * z + y * w) * sz,
+        2.0 * (x * y + z * w) * sx
+        + (1.0 - 2.0 * (x * x + z * z)) * sy
+        + 2.0 * (y * z - x * w) * sz,
+        2.0 * (x * z - y * w) * sx
+        + 2.0 * (y * z + x * w) * sy
+        + (1.0 - 2.0 * (x * x + y * y)) * sz,
+    )
+    world_norm_squared = math.fsum(component * component for component in world)
+    if not math.isfinite(world_norm_squared) or world_norm_squared <= 0.0:
+        raise GeometryError("world-ray rotation produced an invalid norm")
+    world_norm = math.sqrt(world_norm_squared)
+    result = tuple(component / world_norm for component in world)
+    if not all(math.isfinite(component) for component in result):
+        raise GeometryError("world-ray normalization produced a non-finite value")
     return result  # type: ignore[return-value]
 
 
@@ -196,7 +250,7 @@ def extrapolate_constant_angular_velocity(
 
 @dataclass(frozen=True)
 class PoseSample:
-    """One orientation measurement and the cycle on which it commits."""
+    """One orientation measurement and its signed window-relative commit cycle."""
 
     measurement_timestamp_ns: int
     commit_cycle: int
@@ -208,7 +262,11 @@ class PoseSample:
             "measurement_timestamp_ns",
             _integer(self.measurement_timestamp_ns, "measurement_timestamp_ns"),
         )
-        object.__setattr__(self, "commit_cycle", _integer(self.commit_cycle, "commit_cycle"))
+        object.__setattr__(
+            self,
+            "commit_cycle",
+            _integer(self.commit_cycle, "commit_cycle", INT64_MIN, INT64_MAX),
+        )
         object.__setattr__(
             self, "quaternion_xyzw", normalize_quaternion_xyzw(self.quaternion_xyzw)
         )
@@ -217,8 +275,8 @@ class PoseSample:
     def availability_cycle(self) -> int:
         """First event cycle that may observe this committed pose."""
 
-        if self.commit_cycle == UINT64_MAX:
-            raise GeometryError("pose visible cycle overflows unsigned 64 bits")
+        if self.commit_cycle == INT64_MAX:
+            raise GeometryError("pose visible cycle overflows signed 64 bits")
         return self.commit_cycle + 1
 
     @property
@@ -381,8 +439,6 @@ def recover_causal_cav(
 def _cycle_at_or_after_timestamp(
     timestamp_ns: int, origin_timestamp_ns: int, clock_period_ps: int
 ) -> int:
-    if timestamp_ns < origin_timestamp_ns:
-        raise GeometryError("resample timestamp precedes the cycle origin")
     delta_ps = (timestamp_ns - origin_timestamp_ns) * 1_000
     return (delta_ps + clock_period_ps - 1) // clock_period_ps
 

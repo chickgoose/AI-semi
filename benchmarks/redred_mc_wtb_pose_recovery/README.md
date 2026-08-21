@@ -7,8 +7,9 @@ or access any holdout.
 Each `PoseSample` binds an orientation measurement to two distinct times:
 
 - `measurement_timestamp_ns` is when the orientation applies;
-- `commit_cycle` (also exposed as `availability_cycle`) is the first edge on
-  which the packet commits.
+- `commit_cycle` is a signed 64-bit cycle relative to the window origin, so
+  retained pre-window pose history may commit on a negative cycle;
+- `availability_cycle`/`visible_cycle` is `commit_cycle + 1`.
 
 An event on cycle `c` sees only poses with `commit_cycle < c`, matching the
 frozen pre-edge-read rule. Measurement timestamps after the event are also
@@ -17,6 +18,9 @@ excluded from causal constant-angular-velocity recovery.
 ## Geometry and policies
 
 - Quaternion inputs use xyzw order and are normalized.
+- `rotate_sensor_ray_to_world` applies the active camera-to-world `R_WC`
+  orientation to a finite nonzero sensor ray and returns a normalized world
+  ray; quaternion antipodes are identical rotations.
 - Interpolation aligns the second quaternion sign and follows the shortest arc,
   with deterministic normalized-linear fallback above dot `0.9995`.
 - Delayed bracket interpolation requires `left <= event < right` and requires

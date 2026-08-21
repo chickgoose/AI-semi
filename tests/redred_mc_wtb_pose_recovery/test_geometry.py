@@ -11,6 +11,7 @@ from benchmarks.redred_mc_wtb_pose_recovery import (
     recover_causal_cav,
     resample_oracle_groundtruth_1khz,
     resample_counterfactual_1khz,
+    rotate_sensor_ray_to_world,
     shortest_arc_slerp_xyzw,
 )
 
@@ -27,6 +28,12 @@ def assert_quaternion_equivalent(test, observed, expected, places=12):
     dot = sum(left * right for left, right in zip(observed, expected))
     test.assertAlmostEqual(abs(dot), 1.0, places=places)
     test.assertAlmostEqual(sum(value * value for value in observed), 1.0, places=places)
+
+
+def assert_vector_almost_equal(test, observed, expected, places=12):
+    test.assertEqual(len(observed), len(expected))
+    for actual, wanted in zip(observed, expected):
+        test.assertAlmostEqual(actual, wanted, places=places)
 
 
 class QuaternionGeometryTests(unittest.TestCase):
@@ -64,6 +71,28 @@ class QuaternionGeometryTests(unittest.TestCase):
                 with self.subTest(endpoint=endpoint, signs=(left_sign, right_sign)):
                     assert_quaternion_equivalent(self, observed, expected)
 
+    def test_sensor_ray_rotation_uses_active_camera_to_world_r_wc(self):
+        identity = rotate_sensor_ray_to_world(Q_IDENTITY, (3.0, 4.0, 0.0))
+        assert_vector_almost_equal(self, identity, (0.6, 0.8, 0.0))
+        self.assertAlmostEqual(sum(value * value for value in identity), 1.0)
+
+        quarter_turn = z_rotation(90.0)
+        rotated = rotate_sensor_ray_to_world(quarter_turn, (2.0, 0.0, 0.0))
+        repeated = rotate_sensor_ray_to_world(quarter_turn, (2.0, 0.0, 0.0))
+        antipodal = rotate_sensor_ray_to_world(
+            tuple(-value for value in quarter_turn), (2.0, 0.0, 0.0)
+        )
+        self.assertEqual(rotated, repeated)
+        assert_vector_almost_equal(self, rotated, (0.0, 1.0, 0.0))
+        assert_vector_almost_equal(self, antipodal, rotated)
+        self.assertAlmostEqual(sum(value * value for value in rotated), 1.0)
+
+    def test_sensor_ray_rotation_rejects_invalid_rays(self):
+        with self.assertRaisesRegex(GeometryError, "nonzero"):
+            rotate_sensor_ray_to_world(Q_IDENTITY, (0.0, 0.0, 0.0))
+        with self.assertRaisesRegex(GeometryError, "finite"):
+            rotate_sensor_ray_to_world(Q_IDENTITY, (math.inf, 0.0, 0.0))
+
     def test_committed_bracket_interpolation_and_same_cycle_rejection(self):
         left = PoseSample(1_000_000, 10, Q_IDENTITY)
         right = PoseSample(3_000_000, 20, z_rotation(90.0))
@@ -90,6 +119,26 @@ class QuaternionGeometryTests(unittest.TestCase):
 
 
 class CausalRecoveryTests(unittest.TestCase):
+    def test_signed_pre_window_commits_remain_strictly_pre_edge(self):
+        poses = (
+            PoseSample(0, -2, Q_IDENTITY),
+            PoseSample(1_000_000, -1, z_rotation(45.0)),
+            PoseSample(1_500_000, 0, z_rotation(60.0)),
+        )
+        decision = recover_causal_cav(poses, 2_000_000, 0)
+        self.assertIs(decision.mode, RecoveryMode.CAV)
+        self.assertEqual(decision.used_commit_cycles, (-2, -1))
+        self.assertNotIn(0, decision.used_commit_cycles)
+        self.assertEqual(poses[0].availability_cycle, -1)
+        self.assertEqual(poses[1].visible_cycle, 0)
+
+        bracket = interpolate_committed_bracket(poses[0], poses[1], 500_000, 0)
+        self.assertEqual(bracket.left_commit_cycle, -2)
+        self.assertEqual(bracket.right_commit_cycle, -1)
+        same_edge_right = PoseSample(1_000_000, 0, z_rotation(45.0))
+        with self.assertRaisesRegex(GeometryError, "commit before"):
+            interpolate_committed_bracket(poses[0], same_edge_right, 500_000, 0)
+
     def test_guard_is_inclusive_and_limited_by_previous_interval(self):
         poses = (
             PoseSample(0, 1, Q_IDENTITY),
@@ -201,11 +250,34 @@ class CounterfactualResamplingTests(unittest.TestCase):
                 truth, 0, 2_000_000, 0, commit_delay_cycles=2
             )
 
-    def test_unsigned_widths_fail_closed(self):
+    def test_oracle_grid_supports_signed_cycles_before_window_origin(self):
+        truth = (
+            PoseSample(0, -2, Q_IDENTITY),
+            PoseSample(2_000_000, 1, z_rotation(90.0)),
+        )
+        stream = resample_oracle_groundtruth_1khz(
+            truth, 0, 2_000_000, 1_000_000
+        )
+        self.assertEqual(
+            tuple(sample.measurement_timestamp_ns for sample in stream),
+            (0, 1_000_000),
+        )
+        self.assertEqual(
+            tuple(sample.commit_cycle for sample in stream),
+            (-153_845, 1),
+        )
+
+    def test_timestamp_and_signed_cycle_widths_fail_closed(self):
         with self.assertRaisesRegex(GeometryError, "must be an integer in"):
             PoseSample((1 << 64), 0, Q_IDENTITY)
+        with self.assertRaisesRegex(GeometryError, "must be an integer in"):
+            PoseSample(-1, 0, Q_IDENTITY)
+        with self.assertRaisesRegex(GeometryError, "must be an integer in"):
+            PoseSample(0, -(1 << 63) - 1, Q_IDENTITY)
+        with self.assertRaisesRegex(GeometryError, "must be an integer in"):
+            PoseSample(0, 1 << 63, Q_IDENTITY)
         with self.assertRaisesRegex(GeometryError, "visible cycle"):
-            PoseSample(0, (1 << 64) - 1, Q_IDENTITY).visible_cycle
+            PoseSample(0, (1 << 63) - 1, Q_IDENTITY).visible_cycle
 
 
 if __name__ == "__main__":

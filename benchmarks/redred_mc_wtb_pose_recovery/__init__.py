@@ -12,6 +12,7 @@ from .geometry import (
     recover_causal_cav,
     resample_oracle_groundtruth_1khz,
     resample_counterfactual_1khz,
+    rotate_sensor_ray_to_world,
     shortest_arc_slerp_xyzw,
 )
 
@@ -27,5 +28,6 @@ __all__ = (
     "recover_causal_cav",
     "resample_oracle_groundtruth_1khz",
     "resample_counterfactual_1khz",
+    "rotate_sensor_ray_to_world",
     "shortest_arc_slerp_xyzw",
 )
