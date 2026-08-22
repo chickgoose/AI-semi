@@ -168,6 +168,18 @@ class ScoreFreePrimeTests(unittest.TestCase):
         with self.assertRaisesRegex(CausalReferenceError, "split across calls"):
             prime_then_process.process((observation(41, 40, 1, 0.0),))
 
+    def test_receipt_sealing_failure_does_not_commit_warmup_state(self) -> None:
+        bank = ScoreFreeCausalReferenceBank()
+        source = (observation(1, 10, 0, 0.0),)
+        with mock.patch(
+            "benchmarks.redred_mc_wtb_predictor_stage3.reference_prime._canonical_sha256",
+            side_effect=RuntimeError("seal failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "seal failure"):
+                bank.prime(source)
+        self.assertEqual(bank.occupancy(), (0, 0))
+        self.assertEqual(bank.prime(source).observation_count, 1)
+
     def test_prime_uses_process_expiry_capacity_and_cluster_insertion_rules(self) -> None:
         config = CausalReferenceConfig(capacity_per_polarity=2, max_age_ns=5)
         warmup = (

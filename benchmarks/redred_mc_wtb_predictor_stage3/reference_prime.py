@@ -44,21 +44,28 @@ class ScoreFreeCausalReferenceBank(CausalReferenceBank):
         if source and self._last_timestamp is not None and source[0].timestamp_ns == self._last_timestamp:
             raise CausalReferenceError("equal timestamp cluster was split across calls")
 
+        # Commit only after insertion and receipt construction both succeed.
+        # This keeps the public bank unchanged even if sealing raises.
+        shadow = ScoreFreeCausalReferenceBank(self.config)
+        shadow._banks = (self._banks[0].copy(), self._banks[1].copy())
+        shadow._last_timestamp = self._last_timestamp
+        shadow._seen_ids = set(self._seen_ids)
+
         index = 0
         while index < len(source):
             timestamp = source[index].timestamp_ns
             end = index + 1
             while end < len(source) and source[end].timestamp_ns == timestamp:
                 end += 1
-            self._expire(timestamp)
+            shadow._expire(timestamp)
             for observation in source[index:end]:
-                bank = self._banks[observation.polarity]
+                bank = shadow._banks[observation.polarity]
                 bank.append(observation)
-                while len(bank) > self.config.capacity_per_polarity:
+                while len(bank) > shadow.config.capacity_per_polarity:
                     bank.popleft()
-            self._last_timestamp = timestamp
+            shadow._last_timestamp = timestamp
             index = end
-        self._seen_ids.update(observation.event_id for observation in source)
+        shadow._seen_ids.update(observation.event_id for observation in source)
 
         schema = "redred.mc_wtb_causal_reference.prime_receipt/v1"
         observations_payload = [
@@ -76,18 +83,22 @@ class ScoreFreeCausalReferenceBank(CausalReferenceBank):
             "last_timestamp_ns": source[-1].timestamp_ns if source else None,
             "observation_count": len(source),
             "observations_sha256": observations_sha256,
-            "occupancy": list(self.occupancy()),
+            "occupancy": list(shadow.occupancy()),
             "schema": schema,
         }
-        return PrimeReceipt(
+        receipt = PrimeReceipt(
             schema=schema,
             observation_count=len(source),
             first_timestamp_ns=source[0].timestamp_ns if source else None,
             last_timestamp_ns=source[-1].timestamp_ns if source else None,
-            occupancy=self.occupancy(),
+            occupancy=shadow.occupancy(),
             observations_sha256=observations_sha256,
             seal_sha256=_canonical_sha256(receipt_payload),
         )
+        self._banks = shadow._banks
+        self._last_timestamp = shadow._last_timestamp
+        self._seen_ids = shadow._seen_ids
+        return receipt
 
 
 def _canonical_sha256(value: object) -> str:
