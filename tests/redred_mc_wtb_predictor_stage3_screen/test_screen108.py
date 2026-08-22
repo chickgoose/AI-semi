@@ -79,7 +79,7 @@ def _baseline_route(decision):
     if decision.disposition_reason == "fresh_zoh_fallback":
         return "fresh_zoh", False, list(decision.used_pose_ids)
     if decision.disposition == "raw_bypass":
-        return "sensor_fixed", False, []
+        return "sensor_fixed", False, list(decision.used_pose_ids)
     raise AssertionError("unexpected fixture baseline route")
 
 
@@ -293,8 +293,39 @@ class LockedScreen108Tests(unittest.TestCase):
             / "benchmarks/redred_mc_wtb_predictor_stage3/screen108_result.schema.json"
         )
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            schema["$id"],
+            "https://redred.invalid/schemas/mc_wtb_predictor_stage3_screen108_result_v2.json",
+        )
         jsonschema.Draft202012Validator.check_schema(schema)
-        jsonschema.Draft202012Validator(schema).validate(self._evaluate())
+        result = self._evaluate()
+        self.assertEqual(result["schema"], screen108.RESULT_SCHEMA)
+        self.assertTrue(result["schema"].endswith("/v2"))
+        jsonschema.Draft202012Validator(schema).validate(result)
+
+    def test_candidate_and_result_v1_envelopes_are_rejected(self):
+        bundle, baseline, output, _ = _fixture()
+        self.assertEqual(output["schema"], screen108.CANDIDATE_OUTPUT_SCHEMA)
+        self.assertTrue(output["schema"].endswith("/v2"))
+        legacy_output = deepcopy(output)
+        legacy_output["schema"] = (
+            "redred.mc_wtb_predictor_stage3.candidate_output/v1"
+        )
+        with self.assertRaisesRegex(Screen108Error, "schema differs"):
+            screen108._validate_candidate_output(
+                _reseal_output(legacy_output),
+                bundle,
+                baseline,
+                EXECUTABLE_SHA,
+                CONFIG_SHA,
+            )
+
+        legacy_result = self._evaluate()
+        legacy_result["schema"] = (
+            "redred.mc_wtb_predictor_stage3.screen108_result/v1"
+        )
+        with self.assertRaisesRegex(Screen108Error, "schema or status differs"):
+            verify_screen108_result_envelope(_reseal_result(legacy_result))
 
     def test_drop_duplicate_extra_and_reorder_fail_even_when_resealed(self):
         _, _, original, _ = _fixture()
@@ -359,7 +390,51 @@ class LockedScreen108Tests(unittest.TestCase):
             self._evaluate(_reseal_output(unknown))
 
     def test_cycles_are_separate_sealed_evidence_on_the_frozen_edge_mapping(self):
-        _, _, original, _ = _fixture()
+        bundle, baseline, original, _ = _fixture()
+        base_window = baseline.windows[0]
+        edge_zero_record = replace(
+            base_window.simulation.records[0],
+            occurrence_cycle=0,
+            occurrence_pose_ids=(),
+            occurrence_pose_timestamps_ns=(),
+            occurrence_pose_commit_cycles=(),
+            occurrence_pose_sha256=(),
+            used_pose_ids=(),
+            used_pose_timestamps_ns=(),
+            used_pose_commit_cycles=(),
+            used_pose_sha256=(),
+            intentional_future_pose_use=False,
+            pose_age_ns=None,
+            disposition="raw_bypass",
+            disposition_reason="no_occurrence_pose",
+        )
+        edge_zero_window = replace(
+            base_window,
+            simulation=replace(
+                base_window.simulation,
+                records=(edge_zero_record,) + base_window.simulation.records[1:],
+            ),
+        )
+        edge_zero_baseline = replace(
+            baseline, windows=(edge_zero_window,) + baseline.windows[1:]
+        )
+        edge_zero_output = deepcopy(original)
+        edge_zero_event = edge_zero_output["windows"][0]["events"][0]
+        edge_zero_event.update({
+            "occurrence_cycle": -1,
+            "decision_cycle": 0,
+            "used_pose_ids": [],
+            "route": "sensor_fixed",
+            "candidate_attempted": False,
+        })
+        screen108._validate_candidate_output(
+            _reseal_output(edge_zero_output),
+            bundle,
+            edge_zero_baseline,
+            EXECUTABLE_SHA,
+            CONFIG_SHA,
+        )
+
         mutations = []
         same_edge = deepcopy(original)
         event = same_edge["windows"][0]["events"][0]
@@ -423,15 +498,45 @@ class LockedScreen108Tests(unittest.TestCase):
         sensor_event = original["windows"][0]["events"][2]
         self.assertEqual(sensor_event["route"], "sensor_fixed")
         self.assertFalse(sensor_event["candidate_attempted"])
+        self.assertEqual(
+            sensor_event["used_pose_ids"],
+            list(baseline.windows[0].simulation.records[2].used_pose_ids),
+        )
+        sensor_dropped_diagnostic = deepcopy(original)
+        sensor_dropped_diagnostic["windows"][0]["events"][2]["used_pose_ids"] = []
+        with self.assertRaisesRegex(Screen108Error, "sensor-fixed route"):
+            self._evaluate(_reseal_output(sensor_dropped_diagnostic))
+
         sensor_as_current = deepcopy(original)
         event = sensor_as_current["windows"][0]["events"][2]
         event["route"] = "current_cav"
         event["candidate_attempted"] = True
-        event["used_pose_ids"] = list(
-            baseline.windows[0].simulation.records[2].used_pose_ids
-        )
         with self.assertRaisesRegex(Screen108Error, "current-CAV route"):
             self._evaluate(_reseal_output(sensor_as_current))
+
+        invalid_pose_streams = {
+            window.registry.window_id: (
+                replace(window.input_poses[-1], value_valid=False),
+            )
+            for window in baseline.windows
+        }
+        invalid_baseline = evaluate_current_cav_registry(
+            bundle.neutral_registry, bundle.event_streams, invalid_pose_streams
+        )
+        invalid_output = _fallback_output(bundle, invalid_baseline)
+        invalid_event = invalid_output["windows"][0]["events"][1]
+        self.assertEqual(invalid_event["route"], "sensor_fixed")
+        self.assertEqual(
+            invalid_event["used_pose_ids"],
+            list(invalid_baseline.windows[0].simulation.records[1].used_pose_ids),
+        )
+        screen108._validate_candidate_output(
+            invalid_output,
+            bundle,
+            invalid_baseline,
+            EXECUTABLE_SHA,
+            CONFIG_SHA,
+        )
 
     def test_candidate_may_use_any_time_eligible_neutral_pose(self):
         _, baseline, output, _ = _fixture()

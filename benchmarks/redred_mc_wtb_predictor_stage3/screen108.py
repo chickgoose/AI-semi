@@ -40,8 +40,8 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 
 
-RESULT_SCHEMA = "redred.mc_wtb_predictor_stage3.screen108_result/v1"
-CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v1"
+RESULT_SCHEMA = "redred.mc_wtb_predictor_stage3.screen108_result/v2"
+CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v2"
 STATUS_MEASURED = "SCREEN108_MEASURED_PROMOTION_NOT_AUTHORIZED"
 STATUS_HOLD = "SCREEN108_METRICS_HOLD"
 MODEL_ACCURACY_PASS = "MODEL_ACCURACY_PASS"
@@ -163,6 +163,12 @@ def _identifier(value: object, where: str) -> str:
 def _nonnegative_int(value: object, where: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise Screen108Error("%s must be a nonnegative integer" % where)
+    return value
+
+
+def _signed_int(value: object, where: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise Screen108Error("%s must be a signed integer" % where)
     return value
 
 
@@ -405,7 +411,7 @@ def _validate_candidate_output(
                 raise Screen108Error("candidate event decision seal differs")
             if decision["event_id"] != expected_event.event_id or decision["event_content_sha256"] != expected_event.event_content_sha256:
                 raise Screen108Error("candidate event order or content identity differs")
-            occurrence_cycle = _nonnegative_int(
+            occurrence_cycle = _signed_int(
                 decision["occurrence_cycle"], "candidate occurrence cycle"
             )
             cycle = _nonnegative_int(
@@ -435,19 +441,21 @@ def _validate_candidate_output(
                 raise Screen108Error("candidate used pose IDs differ")
             if used_pose_ids != sorted(set(used_pose_ids)):
                 raise Screen108Error("candidate used pose IDs are not unique and ordered")
+            route = decision["route"]
+            if type(route) is not str or route not in _ROUTES:
+                raise Screen108Error("candidate route differs")
             for pose_id in used_pose_ids:
                 pose = poses_by_id.get(pose_id)
                 if (
                     pose is None
                     or pose.commit_cycle >= cycle
                     or pose.timestamp_ns > expected_event.timestamp_ns
-                    or not pose.value_valid
-                    or not pose.arithmetic_valid
+                    or (
+                        route != "sensor_fixed"
+                        and (not pose.value_valid or not pose.arithmetic_valid)
+                    )
                 ):
                     raise Screen108Error("candidate used an unavailable pose")
-            route = decision["route"]
-            if type(route) is not str or route not in _ROUTES:
-                raise Screen108Error("candidate route differs")
             if type(decision["candidate_attempted"]) is not bool:
                 raise Screen108Error("candidate_attempted must be an exact bool")
             if type(decision["candidate_used"]) is not bool:
@@ -498,7 +506,7 @@ def _validate_candidate_output(
                     if (
                         attempted
                         or baseline_decision.disposition != "raw_bypass"
-                        or used_pose_ids
+                        or used_pose_ids != list(baseline_decision.used_pose_ids)
                     ):
                         raise Screen108Error("sensor-fixed route differs from baseline")
                 else:

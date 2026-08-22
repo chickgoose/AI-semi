@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://redred.invalid/schemas/mc_wtb_predictor_stage3_screen108_result_v1.json",
+  "$id": "https://redred.invalid/schemas/mc_wtb_predictor_stage3_screen108_result_v2.json",
   "title": "Locked candidate-neutral MC-WTB NEW108 screen result",
   "type": "object",
   "additionalProperties": false,
@@ -9,7 +9,7 @@
     "groups", "windows", "gate", "claim_scope", "result_sha256"
   ],
   "properties": {
-    "schema": {"const": "redred.mc_wtb_predictor_stage3.screen108_result/v1"},
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.screen108_result/v2"},
     "status": {
       "enum": [
         "SCREEN108_MEASURED_PROMOTION_NOT_AUTHORIZED",
