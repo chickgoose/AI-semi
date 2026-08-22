@@ -382,6 +382,10 @@ class WarmupTranscriptTests(unittest.TestCase):
         self.assertEqual(boundary["first_query_occurrence_cycle"], boundary["first_query_decision_cycle"] - 1)
         self.assertEqual(replay["logical_cycle_replay_authority"], self.execution["logical_cycle_replay_authority"])
         self.assertEqual(replay["logical_cycle_replay_authority_sha256"], self.execution["logical_cycle_replay_authority_sha256"])
+        self.assertEqual(
+            replay["warmup_source_sequence_authority"],
+            "verified_stage3_execution_input_v3_window_source_order",
+        )
         self.assertEqual(replay["native_candidate_replay_status"], EXTERNAL_PRODUCTION_HOLD)
         self.assertEqual(replay["candidate_state_payload_status"], EXTERNAL_PRODUCTION_HOLD)
         self.assertEqual(replay["pending_transition_payload_status"], EXTERNAL_PRODUCTION_HOLD)
@@ -594,6 +598,24 @@ class WarmupTranscriptTests(unittest.TestCase):
         false_go["receipt_sha256"] = canonical_sha256(receipt_body)
         with self.assertRaises(WarmupTranscriptError):
             self.verify(false_go)
+
+        stale_source_authority = deepcopy(pristine)
+        stale_replay = stale_source_authority["replay_receipt"]
+        stale_replay["warmup_source_sequence_authority"] = (
+            "verified_stage3_execution_input_v2_window_source_order"
+        )
+        stale_replay_body = dict(stale_replay)
+        stale_replay_body.pop("replay_receipt_sha256")
+        stale_replay["replay_receipt_sha256"] = canonical_sha256(
+            stale_replay_body
+        )
+        stale_receipt_body = dict(stale_source_authority)
+        stale_receipt_body.pop("receipt_sha256")
+        stale_source_authority["receipt_sha256"] = canonical_sha256(
+            stale_receipt_body
+        )
+        with self.assertRaises(WarmupTranscriptError):
+            self.verify(stale_source_authority)
 
     def test_reset_and_exact_reference_policy_are_locked(self):
         for mutation, message in (

@@ -489,7 +489,7 @@ def _make_replay_receipt(
             "logical_ingress_profile_sha256"
         ],
         "warmup_source_sequence_authority": (
-            "verified_stage3_execution_input_v2_window_source_order"
+            "verified_stage3_execution_input_v3_window_source_order"
         ),
         "same_edge_order_rule": "events_before_same_edge_pose_transition",
         "native_candidate_replay_status": EXTERNAL_PRODUCTION_HOLD,
@@ -527,7 +527,7 @@ def _normalize_replay_receipt(value: object) -> Dict[str, object]:
         _sha256(row[field], field)
     if (
         row["warmup_source_sequence_authority"]
-        != "verified_stage3_execution_input_v2_window_source_order"
+        != "verified_stage3_execution_input_v3_window_source_order"
         or row["same_edge_order_rule"] != "events_before_same_edge_pose_transition"
         or row["native_candidate_replay_status"] != EXTERNAL_PRODUCTION_HOLD
         or row["candidate_state_payload_status"] != EXTERNAL_PRODUCTION_HOLD
@@ -1553,7 +1553,7 @@ def begin_warmup_transcript(
     reference_prime_policy: Mapping[str, object],
     transport_policy: Mapping[str, object], reset: Mapping[str, object],
 ) -> _WarmupTranscriptBuilder:
-    """Verify v2 authority and begin a bounded incremental transcript."""
+    """Verify v3 authority and begin a bounded incremental transcript."""
 
     binding, bounds, boundary, replay = _derive_execution_window_authority(
         execution_input, window_id, repo_root
@@ -1857,7 +1857,7 @@ def verify_warmup_transcript(
     warmup_occurrences: Iterable[Mapping[str, object]],
     state_transitions: Iterable[Mapping[str, object]],
 ) -> str:
-    """Recompute against a verified execution-input v2 window.
+    """Recompute against a verified execution-input v3 window.
 
     Candidate-native state/ray/transition fields remain integrity-only until
     the external production HOLDs recorded by the receipt are closed.

@@ -365,7 +365,7 @@
         "logical_cycle_replay_authority": {"$ref": "#/$defs/logicalAuthority"},
         "logical_cycle_replay_authority_sha256": {"$ref": "#/$defs/sha256"},
         "logical_ingress_profile_sha256": {"$ref": "#/$defs/sha256"},
-        "warmup_source_sequence_authority": {"const": "verified_stage3_execution_input_v2_window_source_order"},
+        "warmup_source_sequence_authority": {"const": "verified_stage3_execution_input_v3_window_source_order"},
         "same_edge_order_rule": {"const": "events_before_same_edge_pose_transition"},
         "native_candidate_replay_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
         "candidate_state_payload_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
