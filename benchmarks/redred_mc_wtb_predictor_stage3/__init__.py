@@ -1,4 +1,4 @@
-"""Common score-blind interfaces for MC-WTB Stage-3 predictors."""
+"""Common score-blind predictor interfaces and sealed Stage-3 evaluation."""
 
 from .framework import (
     CandidateAttempt,
