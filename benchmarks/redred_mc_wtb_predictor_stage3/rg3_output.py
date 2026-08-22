@@ -46,7 +46,7 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
 )
 
 
-CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v1"
+CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.rg3_output/v2"
 PREROLL_NS = 50_000_000
 CURRENT_CAV_MODEL_ID = "CURRENT_CAV"
 RG3_OUTPUT_CANDIDATE_ID = RG3_POLICY.candidate_id
@@ -589,7 +589,7 @@ def generate_locked_rg3_output(
                 if record.disposition != "raw_bypass":
                     raise RG3OutputError("cycle sensor-fixed taxonomy differs")
                 route = ROUTE_SENSOR_FIXED
-                used_pose_ids = []
+                used_pose_ids = list(record.used_pose_ids)
             else:
                 raise RG3OutputError("cycle fallback taxonomy differs")
 

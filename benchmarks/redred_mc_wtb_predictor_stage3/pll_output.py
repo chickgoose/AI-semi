@@ -36,7 +36,7 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
 )
 
 
-CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v2"
+CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.pll_output/v2"
 PREROLL_NS = 50_000_000
 LOCKED_PLL_CONFIG = SO3PLLConfig()
 CANDIDATE_ID = LOCKED_PLL_CONFIG.candidate_id
@@ -414,7 +414,7 @@ def _event_row(
     poses_by_id: Mapping[int, object],
 ) -> Mapping[str, object]:
     decision_cycle = baseline.occurrence_cycle
-    if decision_cycle <= 0:
+    if decision_cycle < 0:
         raise PLLOutputError("decision edge has no nonnegative prior occurrence edge")
     if (
         baseline.event_id != event.event_id

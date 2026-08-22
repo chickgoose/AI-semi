@@ -280,7 +280,7 @@ class RG3LockedOutputTests(unittest.TestCase):
                     self.assertIsNone(row["world_ray"])
                 elif row["route"] == ROUTE_SENSOR_FIXED:
                     self.assertEqual(row["model_id"], CURRENT_CAV_MODEL_ID)
-                    self.assertEqual(row["used_pose_ids"], [])
+                    self.assertEqual(row["used_pose_ids"], list(record.used_pose_ids))
                     self.assertEqual(row["fallback_reason"], record.disposition_reason)
                     self.assertIsNone(row["world_ray"])
         self.assertEqual(
