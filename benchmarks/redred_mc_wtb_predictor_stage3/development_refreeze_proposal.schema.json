@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json",
+  "title": "Consumed NEW108 development refreeze proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "authority_domain", "refreeze_id", "legacy_migration_receipt_sha256", "legacy_artifact_inventory_sha256", "candidate_ids", "bindings", "measurement_policy", "proposal_sha256"],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.development_refreeze_proposal/v1"},
+    "status": {"const": "DEVELOPMENT_REFREEZE_PROPOSED"},
+    "authority_domain": {"const": "CONSUMED_NEW108_DEVELOPMENT"},
+    "refreeze_id": {"$ref": "#/$defs/refreeze_id"},
+    "legacy_migration_receipt_sha256": {"$ref": "#/$defs/sha256"},
+    "legacy_artifact_inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_ids": {"$ref": "#/$defs/candidate_ids"},
+    "bindings": {"$ref": "#/$defs/bindings"},
+    "measurement_policy": {"$ref": "#/$defs/policy"},
+    "proposal_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "refreeze_id": {"type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9]$"},
+    "candidate_ids": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string", "minLength": 1, "maxLength": 512}, "uniqueItems": true},
+    "bindings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_split_plan_sha256", "ordered_query_ids_sha256", "selector_labels_sidecar_sha256", "stage3_adapter_sha256", "neutral_input_builder_sha256", "candidate_authority_aggregate_sha256", "candidate_config_aggregate_sha256", "evaluator_sha256", "screen_result_schema_sha256"],
+      "properties": {
+        "source_split_plan_sha256": {"$ref": "#/$defs/sha256"},
+        "ordered_query_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "selector_labels_sidecar_sha256": {"$ref": "#/$defs/sha256"},
+        "stage3_adapter_sha256": {"$ref": "#/$defs/sha256"},
+        "neutral_input_builder_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_authority_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_config_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "evaluator_sha256": {"$ref": "#/$defs/sha256"},
+        "screen_result_schema_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cohort_role", "legacy_outcomes_unseen", "labels_constructed_before_candidate_invocation", "descriptive_only", "development_model_measurement_allowed", "development_comparison_allowed", "unbiased_claim_allowed", "generalization_claim_allowed", "promotion_allowed", "rtl_ppa_allowed", "epoch2_authorized", "holdout_reconstituted", "single_attempt_per_candidate_config", "retry_allowed", "within_run_tuning_allowed", "future_variants_require_new_refreeze"],
+      "properties": {
+        "cohort_role": {"const": "DEVELOPMENT_CONSUMED"},
+        "legacy_outcomes_unseen": {"const": "UNKNOWN"},
+        "labels_constructed_before_candidate_invocation": {"const": true},
+        "descriptive_only": {"const": true},
+        "development_model_measurement_allowed": {"const": true},
+        "development_comparison_allowed": {"const": false},
+        "unbiased_claim_allowed": {"const": false},
+        "generalization_claim_allowed": {"const": false},
+        "promotion_allowed": {"const": false},
+        "rtl_ppa_allowed": {"const": false},
+        "epoch2_authorized": {"const": false},
+        "holdout_reconstituted": {"const": false},
+        "single_attempt_per_candidate_config": {"const": true},
+        "retry_allowed": {"const": false},
+        "within_run_tuning_allowed": {"const": false},
+        "future_variants_require_new_refreeze": {"const": true}
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://redred.invalid/schemas/development_refreeze_direction_v1.json",
+  "title": "Explicit user continue direction for consumed NEW108 development",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "action", "authorization_provenance", "proposal_sha256", "refreeze_id", "authorized_candidate_ids", "acknowledged_policy", "direction_sha256"],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.development_refreeze_direction/v1"},
+    "status": {"const": "USER_CONTINUE_DIRECTION_RECORDED"},
+    "action": {"const": "CONTINUE_CONSUMED_NEW108_DEVELOPMENT"},
+    "authorization_provenance": {"const": "USER_SUPPLIED_UNAUTHENTICATED"},
+    "proposal_sha256": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/sha256"},
+    "refreeze_id": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/refreeze_id"},
+    "authorized_candidate_ids": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/candidate_ids"},
+    "acknowledged_policy": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/policy"},
+    "direction_sha256": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/sha256"}
+  }
+}

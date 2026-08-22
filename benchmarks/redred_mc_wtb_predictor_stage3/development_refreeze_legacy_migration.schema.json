@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://redred.invalid/schemas/development_refreeze_legacy_migration_v1.json",
+  "title": "Append-only legacy NEW108 v4 migration HOLD receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "source_campaign_schema", "append_only",
+    "legacy_attempts_preserved", "failure_classification", "outcomes_unseen",
+    "labels_constructed_before_candidate_invocation", "epoch2_authorized",
+    "cohort_role", "development_model_measurement_authorized",
+    "development_refreeze_required", "claim_boundary", "preserved_roots",
+    "artifacts", "inventory_sha256", "receipt_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.legacy_migration_hold/v1"},
+    "status": {"const": "LEGACY_MIGRATION_HOLD"},
+    "source_campaign_schema": {"const": "redred.mc_wtb_predictor_stage3.campaign108_attempt/v4"},
+    "append_only": {"const": true},
+    "legacy_attempts_preserved": {"const": true},
+    "failure_classification": {"const": "COMMON_PRE_SCORE_INFRASTRUCTURE_SUPPORTED_NOT_EXECUTION_PROVEN"},
+    "outcomes_unseen": {"const": "UNKNOWN"},
+    "labels_constructed_before_candidate_invocation": {"const": true},
+    "epoch2_authorized": {"const": false},
+    "cohort_role": {"const": "DEVELOPMENT_CONSUMED"},
+    "development_model_measurement_authorized": {"const": false},
+    "development_refreeze_required": {"const": true},
+    "claim_boundary": {"$ref": "#/$defs/claim_boundary"},
+    "preserved_roots": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "prefixItems": [
+        {"$ref": "#/$defs/root_rg3"},
+        {"$ref": "#/$defs/root_dspb"},
+        {"$ref": "#/$defs/root_pll"}
+      ],
+      "items": false
+    },
+    "artifacts": {
+      "type": "array", "minItems": 6, "maxItems": 6,
+      "prefixItems": [
+        {"$ref": "#/$defs/rg3_attempt"},
+        {"$ref": "#/$defs/rg3_authority"},
+        {"$ref": "#/$defs/dspb_attempt"},
+        {"$ref": "#/$defs/dspb_authority"},
+        {"$ref": "#/$defs/pll_attempt"},
+        {"$ref": "#/$defs/pll_authority"}
+      ],
+      "items": false
+    },
+    "inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "receipt_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "safe_path": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$"},
+    "claim_boundary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["descriptive_only", "unbiased_claim_allowed", "generalization_claim_allowed", "promotion_allowed", "rtl_ppa_allowed"],
+      "properties": {
+        "descriptive_only": {"const": true},
+        "unbiased_claim_allowed": {"const": false},
+        "generalization_claim_allowed": {"const": false},
+        "promotion_allowed": {"const": false},
+        "rtl_ppa_allowed": {"const": false}
+      }
+    },
+    "root_base": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate", "path"],
+      "properties": {"candidate": {"type": "string"}, "path": {"$ref": "#/$defs/safe_path"}}
+    },
+    "root_rg3": {"allOf": [{"$ref": "#/$defs/root_base"}, {"properties": {"candidate": {"const": "RG3"}}}]},
+    "root_dspb": {"allOf": [{"$ref": "#/$defs/root_base"}, {"properties": {"candidate": {"const": "DSPB"}}}]},
+    "root_pll": {"allOf": [{"$ref": "#/$defs/root_base"}, {"properties": {"candidate": {"const": "PLL"}}}]},
+    "artifact_base": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate", "candidate_id", "artifact_role", "path", "size_bytes", "sha256", "semantic_sha256"],
+      "properties": {
+        "candidate": {"type": "string"},
+        "candidate_id": {"type": "string", "minLength": 1, "maxLength": 512},
+        "artifact_role": {"enum": ["ATTEMPT_V4", "CAMPAIGN_AUTHORITY_V4"]},
+        "path": {"$ref": "#/$defs/safe_path"},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "semantic_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rg3_attempt": {"allOf": [{"$ref": "#/$defs/artifact_base"}, {"properties": {"candidate": {"const": "RG3"}, "artifact_role": {"const": "ATTEMPT_V4"}}}]},
+    "rg3_authority": {"allOf": [{"$ref": "#/$defs/artifact_base"}, {"properties": {"candidate": {"const": "RG3"}, "artifact_role": {"const": "CAMPAIGN_AUTHORITY_V4"}}}]},
+    "dspb_attempt": {"allOf": [{"$ref": "#/$defs/artifact_base"}, {"properties": {"candidate": {"const": "DSPB"}, "artifact_role": {"const": "ATTEMPT_V4"}}}]},
+    "dspb_authority": {"allOf": [{"$ref": "#/$defs/artifact_base"}, {"properties": {"candidate": {"const": "DSPB"}, "artifact_role": {"const": "CAMPAIGN_AUTHORITY_V4"}}}]},
+    "pll_attempt": {"allOf": [{"$ref": "#/$defs/artifact_base"}, {"properties": {"candidate": {"const": "PLL"}, "artifact_role": {"const": "ATTEMPT_V4"}}}]},
+    "pll_authority": {"allOf": [{"$ref": "#/$defs/artifact_base"}, {"properties": {"candidate": {"const": "PLL"}, "artifact_role": {"const": "CAMPAIGN_AUTHORITY_V4"}}}]}
+  }
+}

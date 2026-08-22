@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://redred.invalid/schemas/development_refreeze_authority_v1.json",
+  "title": "Final descriptive-only consumed NEW108 development authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "authority_domain", "refreeze_id", "legacy_migration_receipt_sha256", "proposal_sha256", "direction_sha256", "candidate_ids", "bindings", "measurement_policy", "authority_sha256"],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.development_refreeze_authority/v1"},
+    "status": {"const": "DEVELOPMENT_REFREEZE_AUTHORIZED"},
+    "authority_domain": {"const": "CONSUMED_NEW108_DEVELOPMENT"},
+    "refreeze_id": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/refreeze_id"},
+    "legacy_migration_receipt_sha256": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/sha256"},
+    "proposal_sha256": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/sha256"},
+    "direction_sha256": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/sha256"},
+    "candidate_ids": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/candidate_ids"},
+    "bindings": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/bindings"},
+    "measurement_policy": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/policy"},
+    "authority_sha256": {"$ref": "https://redred.invalid/schemas/development_refreeze_proposal_v1.json#/$defs/sha256"}
+  }
+}
