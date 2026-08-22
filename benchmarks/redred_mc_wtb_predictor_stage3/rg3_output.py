@@ -40,7 +40,7 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Event,
     PosePacket,
     PoseSource,
-    RAW_INGRESS_LANES,
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     run_cycle_model,
     timestamp_to_cycle,
 )
@@ -416,8 +416,12 @@ def _snapshot_inputs(
         for event in event_values:
             cycle = timestamp_to_cycle(event.timestamp_ns, window.warmup_start_ns_inclusive)
             counts[cycle] = counts.get(cycle, 0) + 1
-        if max(counts.values()) > RAW_INGRESS_LANES:
-            raise RG3OutputError("more than six events share one occurrence cycle")
+        if max(counts.values()) > (
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.raw_ingress_lanes
+        ):
+            raise RG3OutputError(
+                "events exceed Stage3 logical replay ingress lanes"
+            )
         events[window.window_id] = event_values
         poses[window.window_id] = pose_values
     return windows, events, poses
@@ -514,7 +518,15 @@ def generate_locked_rg3_output(
                 event.causal_pose_source_index,
             ) for event in event_values),
             poses=pose_packets,
+            ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
         )
+        if (
+            simulation.raw_ingress_lanes
+            != STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.raw_ingress_lanes
+            or simulation.ingress_staging_entries
+            != STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.ingress_staging_entries
+        ):
+            raise RG3OutputError("cycle model used the wrong ingress profile")
         if simulation.synthetic_test_mode or not simulation.all_event_pose_indices_verified:
             raise RG3OutputError("cycle replay did not authenticate every event pose index")
         if len(simulation.records) != len(event_values):

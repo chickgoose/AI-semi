@@ -26,7 +26,13 @@ from benchmarks.redred_mc_wtb_stage4_assay.source import (
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    Arm,
+    Event,
+    PosePacket,
+    PoseSource,
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     pose_timestamp_to_cycle,
+    run_cycle_model,
     timestamp_to_cycle,
 )
 
@@ -44,7 +50,6 @@ from .new108_adapter import (
     _authenticate_registry_snapshot,
     _labels,
     _load_pinned_pose_samples,
-    _preflight,
     _selector_windows,
     _source_member_sha256,
     _validate_calibration_snapshot,
@@ -96,12 +101,14 @@ _DEPENDENCY_PATHS = (
     "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
 )
 
-_SEAL_SCHEMA = "redred.mc_wtb_so3_axis_audit.stage3_new108_adapter_seal/v1"
+_SEAL_SCHEMA = "redred.mc_wtb_so3_axis_audit.stage3_new108_adapter_seal/v2"
 _SEAL_FIELDS = frozenset((
     "schema", "source_lock_sha256", "source_member_sha256",
     "source_events_size_bytes", "source_events_line_count",
     "stage12_freeze_receipt_sha256", "stage12_source_split_plan_sha256",
     "candidate_screen_preroll_rule_sha256", "pre_roll_ns",
+    "cycle_model_ingress_profile", "cycle_model_ingress_profile_sha256",
+    "maximum_occurrence_batch_size", "peak_ingress_staging_occupancy",
     "selector_registry_sha256", "selector_implementation_sha256",
     "projection_dependency_manifest", "projection_dependency_aggregate_sha256",
     "neutral_registry_sha256", "selector_labels_sidecar_sha256",
@@ -118,6 +125,7 @@ _WINDOW_FIELDS = frozenset((
     "event_inputs_sha256", "ordered_pose_ids_sha256",
     "negative_commit_pose_ids_sha256", "pose_input_count",
     "pose_inputs_sha256", "neutral_inputs_sha256",
+    "maximum_occurrence_batch_size", "peak_ingress_staging_occupancy",
     "causal_cav_preflight_sha256",
 ))
 _SOURCE_FIELDS = frozenset(("events", "poses", "calibration"))
@@ -414,6 +422,82 @@ def _read_events(
     return {key: tuple(value) for key, value in event_streams.items()}, evidence
 
 
+def _stage3_preflight(
+    neutral: Sequence[NeutralRegistryWindow],
+    events: Mapping[str, Tuple[NeutralEventInput, ...]],
+    poses: Mapping[str, Tuple[NeutralPoseInput, ...]],
+) -> Mapping[str, Mapping[str, object]]:
+    """Authenticate the fixed logical replay profile without changing inputs."""
+
+    evidence = {}
+    profile = STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE
+    profile_sha256 = profile.canonical_sha256()
+    for window in neutral:
+        event_values = events[window.window_id]
+        pose_values = poses[window.window_id]
+        counts: Dict[int, int] = {}
+        for event in event_values:
+            cycle = timestamp_to_cycle(
+                event.timestamp_ns, window.warmup_start_ns_inclusive
+            )
+            counts[cycle] = counts.get(cycle, 0) + 1
+        maximum_batch = max(counts.values(), default=0)
+        simulation = run_cycle_model(
+            window_id=window.window_id,
+            window_start_ns=window.warmup_start_ns_inclusive,
+            arm=Arm.CAUSAL_CAV,
+            events=tuple(Event(
+                event.event_id, event.timestamp_ns, event.transform_guard_valid,
+                event.causal_pose_source_index,
+            ) for event in event_values),
+            poses=tuple(PosePacket(
+                pose.pose_id, pose.timestamp_ns, pose.commit_cycle,
+                PoseSource.DATASET, pose.pose_sha256, pose.value_valid,
+                pose.arithmetic_valid,
+            ) for pose in pose_values),
+            ingress_profile=profile,
+        )
+        if (
+            not simulation.all_event_pose_indices_verified
+            or simulation.synthetic_test_mode
+            or simulation.raw_ingress_lanes != profile.raw_ingress_lanes
+            or simulation.ingress_staging_entries
+            != profile.ingress_staging_entries
+        ):
+            raise Stage3New108AdapterError(
+                "logical CAUSAL_CAV preflight profile differs"
+            )
+        body = {
+            "ingress_profile_id": profile.profile_id,
+            "ingress_profile_sha256": profile_sha256,
+            "raw_ingress_lanes": profile.raw_ingress_lanes,
+            "ingress_staging_entries": profile.ingress_staging_entries,
+            "event_service_lanes": simulation.event_lanes,
+            "maximum_occurrence_batch_size": maximum_batch,
+            "peak_ingress_staging_occupancy":
+                simulation.peak_ingress_staging_occupancy,
+            "ordered_event_identity_timestamp_sha256": canonical_sha256([
+                {"event_id": event.event_id, "timestamp_ns": event.timestamp_ns}
+                for event in event_values
+            ]),
+            "decision_records_sha256": simulation.decision_records_sha256,
+            "cycle_receipts_sha256": simulation.cycle_receipts_sha256,
+            "pose_ring_accounting_sha256":
+                simulation.pose_ring_accounting_sha256,
+            "input_event_count": len(event_values),
+            "input_pose_count": len(pose_values),
+            "all_event_pose_indices_verified": True,
+            "synthetic_test_mode": False,
+        }
+        evidence[window.window_id] = {
+            "maximum_occurrence_batch_size": maximum_batch,
+            "peak_ingress_staging_occupancy":
+                simulation.peak_ingress_staging_occupancy,
+            "causal_cav_preflight_sha256": canonical_sha256(body),
+        }
+    return evidence
+
+
 def _seal(
     registry: Mapping[str, object], sources: ValidatedSources,
     rows: Sequence[Mapping[str, object]], windows: Sequence[NeutralRegistryWindow],
@@ -421,7 +505,7 @@ def _seal(
     poses: Mapping[str, Tuple[NeutralPoseInput, ...]],
     labels: Mapping[str, Mapping[str, object]],
     evidence: Mapping[str, Mapping[str, object]],
-    preflight: Mapping[str, str], authority: _Stage12Authority,
+    preflight: Mapping[str, Mapping[str, object]], authority: _Stage12Authority,
     dependencies: Sequence[Mapping[str, str]],
 ) -> Mapping[str, object]:
     row_by_id = {_window_id(row): row for row in rows}
@@ -450,7 +534,7 @@ def _seal(
                 "registry": window.to_mapping(), "events": event_mapping,
                 "poses": pose_mapping,
             }),
-            "causal_cav_preflight_sha256": preflight[window_id],
+            **preflight[window_id],
         })
     dependency_rows = [dict(row) for row in dependencies]
     all_event_ids = {
@@ -466,6 +550,18 @@ def _seal(
         "stage12_source_split_plan_sha256": authority.plan_sha256,
         "candidate_screen_preroll_rule_sha256": authority.rule_sha256,
         "pre_roll_ns": STAGE3_PREROLL_NS,
+        "cycle_model_ingress_profile":
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.to_mapping(),
+        "cycle_model_ingress_profile_sha256":
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.canonical_sha256(),
+        "maximum_occurrence_batch_size": max(
+            int(row["maximum_occurrence_batch_size"])
+            for row in preflight.values()
+        ),
+        "peak_ingress_staging_occupancy": max(
+            int(row["peak_ingress_staging_occupancy"])
+            for row in preflight.values()
+        ),
         "selector_registry_sha256": registry["registry_sha256"],
         "selector_implementation_sha256": registry["bindings"]["selector_py_sha256"],  # type: ignore[index]
         "projection_dependency_manifest": dependency_rows,
@@ -494,6 +590,13 @@ def _validate_seal(seal: object) -> Mapping[str, object]:
         raise Stage3New108AdapterError("Stage3 adapter provenance field schema differs")
     if seal.get("schema") != _SEAL_SCHEMA:
         raise Stage3New108AdapterError("Stage3 adapter provenance schema differs")
+    profile = STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE
+    if (
+        seal.get("cycle_model_ingress_profile") != profile.to_mapping()
+        or seal.get("cycle_model_ingress_profile_sha256")
+        != profile.canonical_sha256()
+    ):
+        raise Stage3New108AdapterError("Stage3 logical ingress profile differs")
     members = seal.get("source_member_sha256")
     if not isinstance(members, Mapping) or frozenset(members) != _SOURCE_FIELDS:
         raise Stage3New108AdapterError("Stage3 source member schema differs")
@@ -536,7 +639,7 @@ def _project(
     source_poses = _load_pinned_pose_samples(sources)
     poses = _pose_inputs(windows, source_poses)
     events, evidence = _read_events(sources, rows, windows, poses)
-    preflight = _preflight(windows, events, poses)
+    preflight = _stage3_preflight(windows, events, poses)
     if authority != _stage12_authority() or dependencies != _dependency_manifest():
         raise Stage3New108AdapterError("Stage3 authority changed during projection")
     seal = _seal(

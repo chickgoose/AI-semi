@@ -10,6 +10,8 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     CAUSAL_POSE_INDEX_LIMIT,
     DELAYED_DEADLINE_CYCLES,
     INGRESS_STAGING_ENTRIES,
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    STAGE4_DEFAULT_INGRESS_PROFILE,
     POSE_RING_ENTRIES,
     POSE_RING_STATE_BITS,
     POSE_ID_GAPS_ALLOWED,
@@ -17,6 +19,7 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Arm,
     CycleModelError,
     Event,
+    IngressProfile,
     PosePacket,
     PoseRingSafetyError,
     PoseSource,
@@ -121,6 +124,83 @@ class IntegerTimingTests(unittest.TestCase):
 
 
 class CausalArmTests(unittest.TestCase):
+    def test_fixed_stage3_logical_ingress_preserves_occurrence_order_and_snapshot(self):
+        poses = [dataset_pose(10, 0)]
+        events = [Event(100 + index, 13) for index in range(8)]
+        with self.assertRaisesRegex(CycleModelError, "more than six"):
+            simulate(Arm.ZOH_FRESHNESS, events, poses)
+
+        logical = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=START,
+            arm=Arm.ZOH_FRESHNESS,
+            events=events,
+            poses=poses,
+            synthetic_test_mode=True,
+            ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+        )
+        self.assertEqual([row.event_id for row in logical.records], list(range(100, 108)))
+        self.assertEqual([row.event_timestamp_ns for row in logical.records], [13] * 8)
+        self.assertEqual([row.occurrence_cycle for row in logical.records], [2] * 8)
+        self.assertEqual([row.occurrence_pose_ids for row in logical.records], [(10,)] * 8)
+        self.assertEqual(logical.peak_ingress_staging_occupancy, 8)
+        self.assertEqual(logical.raw_ingress_lanes, 8)
+        self.assertEqual(logical.ingress_staging_entries, 8)
+        self.assertEqual(logical.event_lanes, 2)
+        self.assertEqual(
+            logical.ingress_profile_id,
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.profile_id,
+        )
+        self.assertEqual(
+            logical.ingress_profile_sha256,
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.canonical_sha256(),
+        )
+
+        adjacent = events + [Event(108 + index, 14) for index in range(2)]
+        adjacent_result = run_cycle_model(
+            window_id=WINDOW, window_start_ns=START,
+            arm=Arm.ZOH_FRESHNESS, events=adjacent, poses=poses,
+            synthetic_test_mode=True,
+            ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+        )
+        self.assertEqual(adjacent_result.peak_ingress_staging_occupancy, 8)
+        with self.assertRaisesRegex(CycleModelError, "staging overflow"):
+            run_cycle_model(
+                window_id=WINDOW, window_start_ns=START,
+                arm=Arm.ZOH_FRESHNESS,
+                events=events + [Event(108 + index, 14) for index in range(3)],
+                poses=poses, synthetic_test_mode=True,
+                ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+            )
+
+        explicit_default = run_cycle_model(
+            window_id=WINDOW,
+            window_start_ns=START,
+            arm=Arm.ZOH_FRESHNESS,
+            events=events[:6],
+            poses=poses,
+            synthetic_test_mode=True,
+            ingress_profile=STAGE4_DEFAULT_INGRESS_PROFILE,
+        )
+        self.assertEqual(explicit_default, simulate(
+            Arm.ZOH_FRESHNESS, events[:6], poses
+        ))
+        with self.assertRaisesRegex(CycleModelError, "locked raw ingress"):
+            run_cycle_model(
+                window_id=WINDOW, window_start_ns=START,
+                arm=Arm.ZOH_FRESHNESS,
+                events=[Event(200 + index, 13) for index in range(9)],
+                poses=poses, synthetic_test_mode=True,
+                ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+            )
+        with self.assertRaisesRegex(CycleModelError, "not a locked profile"):
+            run_cycle_model(
+                window_id=WINDOW, window_start_ns=START,
+                arm=Arm.ZOH_FRESHNESS, events=events, poses=poses,
+                synthetic_test_mode=True,
+                ingress_profile=IngressProfile("UNLOCKED", 8, 8, "test"),
+            )
+
     def test_same_edge_pose_is_invisible_and_equal_timestamp_snapshot_is_atomic(self):
         poses = [dataset_pose(10, 0), dataset_pose(11, 13)]
         events = [Event(100 + index, 13) for index in range(5)]

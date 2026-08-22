@@ -36,7 +36,10 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     evaluate_current_cav_registry,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import pose_timestamp_to_cycle
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    pose_timestamp_to_cycle,
+)
 
 
 ADAPTER_SHA256 = "1" * 64
@@ -208,6 +211,21 @@ def _assert_sealed(test, output):
 
 
 class LockedDSPBOutputTests(unittest.TestCase):
+    def test_cycle_replay_uses_fixed_stage3_logical_ingress_profile(self):
+        registries, events, poses = _motion_fixture()
+        with mock.patch.object(
+            dspb_output, "run_cycle_model", wraps=dspb_output.run_cycle_model
+        ) as replay:
+            generate_dspb_candidate_output(
+                registries, events, poses, ADAPTER_SHA256
+            )
+        self.assertTrue(replay.call_args_list)
+        self.assertTrue(all(
+            call.kwargs["ingress_profile"]
+            == STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE
+            for call in replay.call_args_list
+        ))
+
     def test_replay_has_native_identity_hardened_schema_and_recursive_seals(self):
         registries, events, poses = _motion_fixture()
         output = generate_dspb_candidate_output(

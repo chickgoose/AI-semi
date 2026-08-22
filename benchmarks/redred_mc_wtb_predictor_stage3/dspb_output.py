@@ -52,6 +52,7 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Event,
     PosePacket,
     PoseSource,
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     run_cycle_model,
 )
 
@@ -383,11 +384,19 @@ def _score_free_baseline_records(
                 pose.value_valid,
                 pose.arithmetic_valid,
             ) for pose in poses),
+            ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
         )
     except (TypeError, ValueError) as exc:
         raise DSPBOutputError("score-free current-CAV replay failed") from exc
     if simulation.synthetic_test_mode or not simulation.all_event_pose_indices_verified:
         raise DSPBOutputError("score-free replay did not verify every event pose index")
+    if (
+        simulation.raw_ingress_lanes
+        != STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.raw_ingress_lanes
+        or simulation.ingress_staging_entries
+        != STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.ingress_staging_entries
+    ):
+        raise DSPBOutputError("cycle model used the wrong ingress profile")
     records = tuple(simulation.records)
     if tuple(record.event_id for record in records) != tuple(
         event.event_id for event in events

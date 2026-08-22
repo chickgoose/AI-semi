@@ -23,6 +23,9 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.stage3_new108_adapter import (
 )
 from benchmarks.redred_mc_wtb_stage4_assay.source import SourcePins, ValidatedSources
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+)
 
 
 CALIBRATION = b"100 100 120 90 0 0 0 0 0\n"
@@ -159,6 +162,20 @@ class Stage3New108AdapterTests(unittest.TestCase):
             self.assertEqual([pose.commit_cycle < 0 for pose in poses[:3]], [True, True, False])
             self.assertEqual(bundle.selector_registry, registry)
             self.assertEqual(bundle.provenance_seal["pre_roll_ns"], 50_000_000)
+            self.assertEqual(
+                bundle.provenance_seal["cycle_model_ingress_profile"],
+                STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.to_mapping(),
+            )
+            self.assertEqual(
+                bundle.provenance_seal["cycle_model_ingress_profile_sha256"],
+                STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.canonical_sha256(),
+            )
+            self.assertLessEqual(
+                bundle.provenance_seal["maximum_occurrence_batch_size"], 8
+            )
+            self.assertLessEqual(
+                bundle.provenance_seal["peak_ingress_staging_occupancy"], 8
+            )
             self.assertEqual(
                 _verify_against_pinned_source(bundle, registry, source.validated),
                 bundle.provenance_seal["aggregate_sha256"],

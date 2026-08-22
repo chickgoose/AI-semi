@@ -33,9 +33,12 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Arm,
     DecisionRecord,
     Event,
+    IngressProfile,
     PosePacket,
     PoseSource,
     SimulationResult,
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    STAGE4_DEFAULT_INGRESS_PROFILE,
     run_cycle_model,
 )
 
@@ -835,6 +838,26 @@ def verify_current_cav_evaluation_integrity(
     )
     if evaluation.neutral_input_sha256 != expected_input_sha256:
         raise CurrentCAVEvaluationError("neutral input digest differs")
+    profile_pairs = {
+        (
+            window.simulation.raw_ingress_lanes,
+            window.simulation.ingress_staging_entries,
+        )
+        for window in evaluation.windows
+    }
+    known_profiles = {
+        (
+            profile.raw_ingress_lanes,
+            profile.ingress_staging_entries,
+        ): profile
+        for profile in (
+            STAGE4_DEFAULT_INGRESS_PROFILE,
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+        )
+    }
+    if len(profile_pairs) != 1 or next(iter(profile_pairs)) not in known_profiles:
+        raise CurrentCAVEvaluationError("evaluation ingress profile differs")
+    ingress_profile = known_profiles[next(iter(profile_pairs))]
     replayed = _evaluate_current_cav_registry_core(
         tuple(window.registry for window in evaluation.windows),
         {
@@ -845,6 +868,7 @@ def verify_current_cav_evaluation_integrity(
             window.registry.window_id: window.input_poses
             for window in evaluation.windows
         },
+        ingress_profile=ingress_profile,
     )
     _compare_replayed_evaluation(evaluation, replayed)
     return expected_input_sha256
@@ -854,6 +878,8 @@ def evaluate_current_cav_window(
     registry: NeutralRegistryWindow,
     events: Sequence[NeutralEventInput],
     poses: Sequence[NeutralPoseInput],
+    *,
+    ingress_profile: IngressProfile = STAGE4_DEFAULT_INGRESS_PROFILE,
 ) -> CAVWindowEvaluation:
     """Evaluate one neutral window with frozen CAV and two causal banks."""
 
@@ -904,6 +930,7 @@ def evaluate_current_cav_window(
         arm=Arm.CAUSAL_CAV,
         events=cycle_events,
         poses=cycle_poses,
+        ingress_profile=ingress_profile,
     )
     if simulation.synthetic_test_mode or not simulation.all_event_pose_indices_verified:
         raise CurrentCAVEvaluationError("cycle model did not verify every pose index")
@@ -991,6 +1018,8 @@ def _evaluate_current_cav_registry_core(
     registry: Sequence[NeutralRegistryWindow],
     event_streams: Mapping[str, Sequence[NeutralEventInput]],
     pose_streams: Mapping[str, Sequence[NeutralPoseInput]],
+    *,
+    ingress_profile: IngressProfile = STAGE4_DEFAULT_INGRESS_PROFILE,
 ) -> CAVRegistryEvaluation:
     windows = tuple(_validate_registry_window(row) for row in registry)
     if not windows:
@@ -1013,7 +1042,8 @@ def _evaluate_current_cav_registry_core(
     }
     results = tuple(
         evaluate_current_cav_window(
-            window, checked_events[window.window_id], checked_poses[window.window_id]
+            window, checked_events[window.window_id], checked_poses[window.window_id],
+            ingress_profile=ingress_profile,
         )
         for window in windows
     )
@@ -1036,7 +1066,11 @@ def evaluate_current_cav_registry(
     registry: Sequence[NeutralRegistryWindow],
     event_streams: Mapping[str, Sequence[NeutralEventInput]],
     pose_streams: Mapping[str, Sequence[NeutralPoseInput]],
+    *,
+    ingress_profile: IngressProfile = STAGE4_DEFAULT_INGRESS_PROFILE,
 ) -> CAVRegistryEvaluation:
     """Evaluate an ordered neutral registry without accepting selector data."""
 
-    return _evaluate_current_cav_registry_core(registry, event_streams, pose_streams)
+    return _evaluate_current_cav_registry_core(
+        registry, event_streams, pose_streams, ingress_profile=ingress_profile
+    )

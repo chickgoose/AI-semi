@@ -40,6 +40,9 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.stage3_new108_adapter import (
     verify_stage3_new108_adapter,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+)
 
 RESULT_SCHEMA = "redred.mc_wtb_predictor_stage3.screen108_result/v2"
 CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v2"
@@ -57,7 +60,7 @@ MOTION_BINS = ("LOW", "MID", "HIGH")
 # query cohort and reporting labels remain fixed by these selector authorities.
 EXPECTED_LABEL_SIDECAR_SHA256 = "2dd3be5aba43610bef999c2491978d3abb39b206cfa6c53cb658cee43c2b3ecb"
 EXPECTED_SELECTOR_REGISTRY_SHA256 = "4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d"
-EXPECTED_EVALUATOR_SHA256 = "64cf6d9aff7c4a3dec791469b5e2f010fe80d8930650f8438d80f4659b3302fd"
+EXPECTED_EVALUATOR_SHA256 = "9ffeb75ddac946c5443566e4490a9080344a654539fcfd7a6b62f591b5aa2ba5"
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTIFIER = re.compile(
@@ -1164,7 +1167,8 @@ def run_locked_screen108(
     ):
         raise Screen108Error("Stage3 NEW108 cohort does not retain 50 ms pre-roll")
     baseline = evaluate_current_cav_registry(
-        bundle.neutral_registry, bundle.event_streams, bundle.pose_streams
+        bundle.neutral_registry, bundle.event_streams, bundle.pose_streams,
+        ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     )
     candidate_output = _json_object(
         _file_bytes(Path(candidate_output_path), "candidate output"), "candidate output"

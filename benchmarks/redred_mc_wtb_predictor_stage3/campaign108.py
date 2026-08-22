@@ -32,6 +32,9 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.stage3_new108_adapter import (
     verify_stage3_new108_adapter,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+)
 
 from . import candidate_authority, dspb_output, pll_output, rg3_output, screen108
 
@@ -1119,7 +1122,8 @@ def _run_campaign108_attempt(
     neutral = _neutral_view(bundle)
     progress.failure_stage = "BASELINE_BUILD"
     full_baseline = evaluate_current_cav_registry(
-        neutral.neutral_registry, neutral.event_streams, neutral.pose_streams
+        neutral.neutral_registry, neutral.event_streams, neutral.pose_streams,
+        ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     )
     baseline = _neutral_baseline_view(full_baseline, neutral)
     progress.failure_stage = "NEUTRAL_BINDING"

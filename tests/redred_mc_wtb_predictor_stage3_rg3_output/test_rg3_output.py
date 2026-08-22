@@ -43,7 +43,10 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_json_bytes,
     canonical_sha256,
 )
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import pose_timestamp_to_cycle
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    pose_timestamp_to_cycle,
+)
 
 
 ADAPTER_SHA256 = "a" * 64
@@ -226,6 +229,18 @@ class RG3LockedOutputTests(unittest.TestCase):
             self.pose_streams,
             ADAPTER_SHA256,
         )
+
+    def test_cycle_replay_uses_fixed_stage3_logical_ingress_profile(self):
+        with mock.patch.object(
+            rg3_output, "run_cycle_model", wraps=rg3_output.run_cycle_model
+        ) as replay:
+            self._generate()
+        self.assertTrue(replay.call_args_list)
+        self.assertTrue(all(
+            call.kwargs["ingress_profile"]
+            == STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE
+            for call in replay.call_args_list
+        ))
 
     def test_exact_signed_row_contract_native_identity_and_event_conservation(self):
         output = self._generate()

@@ -24,7 +24,10 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
 )
 from benchmarks.redred_mc_wtb_stage4_assay.source import SourcePins, ValidatedSources
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import timestamp_to_cycle
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    timestamp_to_cycle,
+)
 
 
 STAGE3_PREROLL_NS = 50_000_000
@@ -445,6 +448,16 @@ class PinnedStage3New108AdapterTests(unittest.TestCase):
         dataset = Path(os.environ[PINNED_DATA_ENV])
         bundle = build(dataset)
         self.assertEqual(len(bundle.neutral_registry), 108)
+        self.assertEqual(
+            bundle.provenance_seal["cycle_model_ingress_profile"],
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.to_mapping(),
+        )
+        self.assertEqual(
+            bundle.provenance_seal["maximum_occurrence_batch_size"], 7
+        )
+        self.assertEqual(
+            bundle.provenance_seal["peak_ingress_staging_occupancy"], 7
+        )
         source_rows = {
             row["candidate_id"]: row
             for row in bundle.selector_registry["windows"]
