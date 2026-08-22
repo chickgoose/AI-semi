@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+import hashlib
+import json
 import math
 from typing import Deque, Iterable, Optional, Sequence, Tuple
 
@@ -65,6 +67,19 @@ class ReferenceScore:
     reference_age_ns: Optional[int]
 
 
+@dataclass(frozen=True)
+class PrimeReceipt:
+    """Sealed summary of score-free observations inserted into one bank."""
+
+    schema: str
+    observation_count: int
+    first_timestamp_ns: Optional[int]
+    last_timestamp_ns: Optional[int]
+    occupancy: Tuple[int, int]
+    observations_sha256: str
+    seal_sha256: str
+
+
 def angular_distance(left: Sequence[float], right: Sequence[float]) -> float:
     dot = sum(float(a) * float(b) for a, b in zip(left, right))
     return math.acos(min(1.0, max(-1.0, dot)))
@@ -84,6 +99,90 @@ class CausalReferenceBank:
         for bank in self._banks:
             while bank and bank[0].timestamp_ns < cutoff:
                 bank.popleft()
+
+    def prime(self, warmup_observations: Iterable[ReferenceObservation]) -> PrimeReceipt:
+        """Insert warmup state without computing or returning any angular score.
+
+        Validation, expiry, capacity, and equal-timestamp cluster rules are the
+        same as :meth:`process`.  In particular, a cluster may not be split
+        between ``prime`` and ``process`` calls.
+        """
+
+        source = tuple(warmup_observations)
+        local_ids = set()
+        for index, observation in enumerate(source):
+            if not isinstance(observation, ReferenceObservation):
+                raise CausalReferenceError("observations must be ReferenceObservation values")
+            if index and observation.timestamp_ns < source[index - 1].timestamp_ns:
+                raise CausalReferenceError("timestamps are not nondecreasing")
+            if self._last_timestamp is not None and observation.timestamp_ns < self._last_timestamp:
+                raise CausalReferenceError("timestamp moved backwards across calls")
+            if observation.event_id in self._seen_ids or observation.event_id in local_ids:
+                raise CausalReferenceError("duplicate event ID")
+            local_ids.add(observation.event_id)
+        if source and self._last_timestamp is not None and source[0].timestamp_ns == self._last_timestamp:
+            raise CausalReferenceError("equal timestamp cluster was split across calls")
+
+        index = 0
+        while index < len(source):
+            timestamp = source[index].timestamp_ns
+            end = index + 1
+            while end < len(source) and source[end].timestamp_ns == timestamp:
+                end += 1
+            cluster = source[index:end]
+            self._expire(timestamp)
+            for observation in cluster:
+                bank = self._banks[observation.polarity]
+                bank.append(observation)
+                while len(bank) > self.config.capacity_per_polarity:
+                    bank.popleft()
+            self._last_timestamp = timestamp
+            index = end
+        self._seen_ids.update(observation.event_id for observation in source)
+
+        schema = "redred.mc_wtb_causal_reference.prime_receipt/v1"
+        observations_payload = [
+            {
+                "event_id": observation.event_id,
+                "polarity": observation.polarity,
+                "ray_hex": [float(value).hex() for value in observation.ray],
+                "timestamp_ns": observation.timestamp_ns,
+            }
+            for observation in source
+        ]
+        observations_sha256 = hashlib.sha256(
+            json.dumps(
+                observations_payload,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        receipt_payload = {
+            "first_timestamp_ns": source[0].timestamp_ns if source else None,
+            "last_timestamp_ns": source[-1].timestamp_ns if source else None,
+            "observation_count": len(source),
+            "observations_sha256": observations_sha256,
+            "occupancy": list(self.occupancy()),
+            "schema": schema,
+        }
+        seal_sha256 = hashlib.sha256(
+            json.dumps(
+                receipt_payload,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        return PrimeReceipt(
+            schema=schema,
+            observation_count=len(source),
+            first_timestamp_ns=source[0].timestamp_ns if source else None,
+            last_timestamp_ns=source[-1].timestamp_ns if source else None,
+            occupancy=self.occupancy(),
+            observations_sha256=observations_sha256,
+            seal_sha256=seal_sha256,
+        )
 
     def process(self, observations: Iterable[ReferenceObservation]) -> Tuple[ReferenceScore, ...]:
         source = tuple(observations)
