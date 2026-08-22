@@ -20,7 +20,7 @@ from .logical_cycle_replay import (
 
 
 FROZEN_LOGICAL_REPLAY_SHA256 = (
-    "bd1a2fbfc441b0e0b288c32785773dcfce2f797dce22c21ecc6422335c8e18bf"
+    "7bd89f3f18aad5ee6101cd95563473f3bcbb3e9e964cf96b37cd2bb5caa7d4da"
 )
 FROZEN_STAGE4_EVALUATOR_SHA256 = (
     "64cf6d9aff7c4a3dec791469b5e2f010fe80d8930650f8438d80f4659b3302fd"

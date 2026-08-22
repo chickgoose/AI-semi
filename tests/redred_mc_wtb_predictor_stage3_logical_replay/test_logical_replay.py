@@ -206,7 +206,10 @@ class LogicalReplayIsolationTests(unittest.TestCase):
                     "benchmarks.redred_mc_wtb_predictor_stage3."
                     "_stage3_private_stage4_cyclemodel",
                 )
-        with self.assertRaises(CycleModelError):
+        with self.assertRaisesRegex(
+            CycleModelError,
+            r"\Amore than eight source records map to one occurrence cycle\Z",
+        ):
             _logical(9)
         with self.assertRaises(CycleModelError):
             run_cycle_model(
@@ -279,6 +282,18 @@ class LogicalReplayIsolationTests(unittest.TestCase):
                 window_start_ns=0,
                 arm=Arm.ZOH_FRESHNESS,
                 events=_events(1),
+                poses=_poses(),
+                synthetic_test_mode=True,
+            )
+        with self.assertRaisesRegex(
+            CycleModelError,
+            r"\Acausal_pose_index differs from the latest occurrence pose\Z",
+        ):
+            run_stage3_logical_cycle_model(
+                window_id=WINDOW_ID,
+                window_start_ns=0,
+                arm=Arm.CAUSAL_CAV,
+                events=(Event(100, 13, True, 10),),
                 poses=_poses(),
                 synthetic_test_mode=True,
             )

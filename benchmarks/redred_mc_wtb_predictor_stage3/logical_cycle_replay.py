@@ -197,7 +197,10 @@ def run_stage3_logical_cycle_model(
                 synthetic_test_mode=synthetic_test_mode,
             )
         except module.CycleModelError as exc:
-            raise CycleModelError(str(exc)) from None
+            message = str(exc)
+            if message == "more than six source records map to one occurrence cycle":
+                message = "more than eight source records map to one occurrence cycle"
+            raise CycleModelError(message) from None
     except AttributeError as exc:
         raise LogicalCycleReplayError("logical replay input interface differs") from exc
     if (

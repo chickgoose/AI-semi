@@ -808,6 +808,55 @@ class ExecutionAuthorityTests(unittest.TestCase):
                 continue
             self.assertTrue(list(validator.iter_errors(nested)))
 
+    def test_built_execution_round_trips_committed_schema_loader_and_dependencies(self):
+        registry, events, poses = neutral_fixture()
+        built = build_stage3_execution_input(
+            registry,
+            events,
+            poses,
+            source_events_authority=source_authority(),
+            repo_root=ROOT,
+        )
+        encoded = canonical_json_bytes(built)
+        loaded = json.loads(encoded.decode("ascii"))
+        schema_path = (
+            ROOT / "benchmarks/redred_mc_wtb_predictor_stage3"
+            / "stage3_execution_input.schema.json"
+        )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        Draft202012Validator.check_schema(schema)
+        self.assertEqual(
+            list(Draft202012Validator(schema).iter_errors(loaded)), []
+        )
+        self.assertEqual(
+            verify_stage3_execution_input(
+                loaded,
+                expected_aggregate_sha256=built["aggregate_sha256"],
+                repo_root=ROOT,
+            ),
+            built["aggregate_sha256"],
+        )
+        expected_paths = (
+            "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py",
+            "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
+            "benchmarks/redred_mc_wtb_predictor_stage3/current_cav_trace.py",
+            "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py",
+            "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
+            "benchmarks/redred_mc_wtb_stage4_contract/contract.py",
+            "benchmarks/redred_mc_wtb_stage4_contract/receipt.py",
+            "benchmarks/redred_mc_wtb_stage4_cyclemodel/__init__.py",
+            "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
+        )
+        dependencies = loaded["consumer_dependency_manifest"]
+        self.assertEqual(len(dependencies), 9)
+        self.assertEqual(
+            tuple(row["path"] for row in dependencies), expected_paths
+        )
+        self.assertEqual(
+            loaded["logical_ingress_profile"]["schema"],
+            "redred.mc_wtb_predictor_stage3.logical_ingress_profile/v1",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
