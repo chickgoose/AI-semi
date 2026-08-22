@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-semi.local/schemas/stage3_warmup_transcript.schema.json",
+  "title": "Stage3 warmup transcript v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "execution_binding", "execution_binding_sha256", "bounds",
+    "bounds_sha256", "reference_prime_policy", "reference_prime_policy_sha256",
+    "transport_policy", "transport_policy_sha256", "reset", "query_start_state",
+    "binding_context_sha256", "warmup_occurrence_count", "same_edge_cluster_count",
+    "state_transition_count", "transport_cycle_violation_count",
+    "warmup_occurrence_chain_sha256", "same_edge_cluster_chain_sha256",
+    "state_transition_chain_sha256", "transport_cycle_violation_chain_sha256",
+    "first_warmup_occurrence", "last_warmup_occurrence", "boundary_authority",
+    "pending_query_transition", "replay_receipt", "query_start_reference_snapshot",
+    "receipt_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_transcript/v3"},
+    "execution_binding": {"$ref": "#/$defs/executionBinding"},
+    "execution_binding_sha256": {"$ref": "#/$defs/sha256"},
+    "bounds": {"$ref": "#/$defs/bounds"},
+    "bounds_sha256": {"$ref": "#/$defs/sha256"},
+    "reference_prime_policy": {"$ref": "#/$defs/referencePolicy"},
+    "reference_prime_policy_sha256": {"$ref": "#/$defs/sha256"},
+    "transport_policy": {"$ref": "#/$defs/transportPolicy"},
+    "transport_policy_sha256": {"$ref": "#/$defs/sha256"},
+    "reset": {"$ref": "#/$defs/reset"},
+    "query_start_state": {"$ref": "#/$defs/queryStartState"},
+    "binding_context_sha256": {"$ref": "#/$defs/sha256"},
+    "warmup_occurrence_count": {"$ref": "#/$defs/nonnegative"},
+    "same_edge_cluster_count": {"$ref": "#/$defs/nonnegative"},
+    "state_transition_count": {"$ref": "#/$defs/nonnegative"},
+    "transport_cycle_violation_count": {"$ref": "#/$defs/nonnegative"},
+    "warmup_occurrence_chain_sha256": {"$ref": "#/$defs/sha256"},
+    "same_edge_cluster_chain_sha256": {"$ref": "#/$defs/sha256"},
+    "state_transition_chain_sha256": {"$ref": "#/$defs/sha256"},
+    "transport_cycle_violation_chain_sha256": {"$ref": "#/$defs/sha256"},
+    "first_warmup_occurrence": {"$ref": "#/$defs/endpoint"},
+    "last_warmup_occurrence": {"$ref": "#/$defs/endpoint"},
+    "boundary_authority": {"$ref": "#/$defs/boundary"},
+    "pending_query_transition": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/pendingTransition"}]
+    },
+    "replay_receipt": {"$ref": "#/$defs/replayReceipt"},
+    "query_start_reference_snapshot": {"$ref": "#/$defs/referenceSnapshot"},
+    "receipt_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonnegative": {"type": "integer", "minimum": 0},
+    "nullableId": {
+      "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]
+    },
+    "windowId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9_.:/,+=-]{0,510}[A-Za-z0-9])?$"
+    },
+    "executionBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "execution_input_aggregate_sha256",
+        "consumer_dependency_aggregate_sha256", "logical_ingress_profile_sha256",
+        "logical_cycle_replay_authority_sha256", "neutral_input_sha256",
+        "neutral_registry_sha256", "window_id", "window_neutral_bounds_sha256",
+        "window_events_sha256", "window_neutral_inputs_sha256",
+        "current_cav_window_trace_sha256", "ordered_warmup_event_ids_sha256",
+        "ordered_warmup_event_authority_chain_sha256", "warmup_event_count",
+        "ordered_query_event_ids_sha256", "query_event_count",
+        "reference_prime_implementation_sha256",
+        "warmup_transcript_implementation_sha256", "reset_generation"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_execution_binding/v1"},
+        "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "consumer_dependency_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "logical_ingress_profile_sha256": {"$ref": "#/$defs/sha256"},
+        "logical_cycle_replay_authority_sha256": {"$ref": "#/$defs/sha256"},
+        "neutral_input_sha256": {"$ref": "#/$defs/sha256"},
+        "neutral_registry_sha256": {"$ref": "#/$defs/sha256"},
+        "window_id": {"$ref": "#/$defs/windowId"},
+        "window_neutral_bounds_sha256": {"$ref": "#/$defs/sha256"},
+        "window_events_sha256": {"$ref": "#/$defs/sha256"},
+        "window_neutral_inputs_sha256": {"$ref": "#/$defs/sha256"},
+        "current_cav_window_trace_sha256": {"$ref": "#/$defs/sha256"},
+        "ordered_warmup_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "ordered_warmup_event_authority_chain_sha256": {"$ref": "#/$defs/sha256"},
+        "warmup_event_count": {"type": "integer", "minimum": 1},
+        "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "query_event_count": {"type": "integer", "minimum": 1},
+        "reference_prime_implementation_sha256": {"$ref": "#/$defs/sha256"},
+        "warmup_transcript_implementation_sha256": {"$ref": "#/$defs/sha256"},
+        "reset_generation": {"$ref": "#/$defs/nonnegative"}
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "window_id", "warmup_start_ns_inclusive", "query_start_ns_inclusive",
+        "query_end_ns_exclusive", "query_start_decision_cycle",
+        "first_query_timestamp_ns",
+        "first_query_occurrence_cycle", "first_query_decision_cycle"
+      ],
+      "properties": {
+        "window_id": {"$ref": "#/$defs/windowId"},
+        "warmup_start_ns_inclusive": {"$ref": "#/$defs/nonnegative"},
+        "query_start_ns_inclusive": {"$ref": "#/$defs/nonnegative"},
+        "query_end_ns_exclusive": {"$ref": "#/$defs/nonnegative"},
+        "query_start_decision_cycle": {"$ref": "#/$defs/nonnegative"},
+        "first_query_timestamp_ns": {"$ref": "#/$defs/nonnegative"},
+        "first_query_occurrence_cycle": {"type": "integer"},
+        "first_query_decision_cycle": {"$ref": "#/$defs/nonnegative"}
+      }
+    },
+    "referencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "capacity_per_polarity", "max_age_ns", "expiration_rule",
+        "selection_rule", "equal_timestamp_rule", "snapshot_boundary_rule",
+        "warmup_mode"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.reference_prime_policy/v1"},
+        "capacity_per_polarity": {"const": 256},
+        "max_age_ns": {"const": 2000000},
+        "expiration_rule": {"const": "drop_timestamp_lt_cluster_timestamp_minus_max_age_ns"},
+        "selection_rule": {"const": "minimum_angular_distance_then_timestamp_then_event_id"},
+        "equal_timestamp_rule": {"const": "complete_cluster_before_insert"},
+        "snapshot_boundary_rule": {"const": "after_last_warmup_cluster_without_query_start_expiry"},
+        "warmup_mode": {"const": "prime_without_metrics"}
+      }
+    },
+    "transportPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "capacity_per_cycle", "violation_rule", "service_rule"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.transport_diagnostic_policy/v1"},
+        "capacity_per_cycle": {"type": "integer", "minimum": 1},
+        "violation_rule": {"const": "observed_occurrences_gt_capacity"},
+        "service_rule": {"const": "record_without_deferral"}
+      }
+    },
+    "reset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "reset_generation", "reset_cycle", "predictor_state_version",
+        "predictor_state_sha256", "dependency_pose_count",
+        "dependency_pose_chain_sha256", "last_dependency_pose_id",
+        "authentication_status", "reset_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_reset/v2"},
+        "reset_generation": {"$ref": "#/$defs/nonnegative"},
+        "reset_cycle": {"const": 0},
+        "predictor_state_version": {"const": 0},
+        "predictor_state_sha256": {"$ref": "#/$defs/sha256"},
+        "dependency_pose_count": {"const": 0},
+        "dependency_pose_chain_sha256": {"$ref": "#/$defs/sha256"},
+        "last_dependency_pose_id": {"type": "null"},
+        "authentication_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
+        "reset_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "queryStartState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "predictor_state_version", "predictor_state_sha256",
+        "dependency_pose_count", "dependency_pose_chain_sha256",
+        "last_dependency_pose_id", "state_boundary", "state_cycle",
+        "authentication_status",
+        "query_start_state_receipt_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.query_start_state/v2"},
+        "predictor_state_version": {"$ref": "#/$defs/nonnegative"},
+        "predictor_state_sha256": {"$ref": "#/$defs/sha256"},
+        "dependency_pose_count": {"$ref": "#/$defs/nonnegative"},
+        "dependency_pose_chain_sha256": {"$ref": "#/$defs/sha256"},
+        "last_dependency_pose_id": {"$ref": "#/$defs/nullableId"},
+        "state_boundary": {"const": "at_query_start_before_first_query"},
+        "state_cycle": {"$ref": "#/$defs/nonnegative"},
+        "authentication_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
+        "query_start_state_receipt_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "occurrence_ordinal", "event_id", "event_content_sha256",
+        "timestamp_ns", "occurrence_cycle", "decision_cycle"
+      ],
+      "properties": {
+        "occurrence_ordinal": {"$ref": "#/$defs/nonnegative"},
+        "event_id": {"$ref": "#/$defs/nonnegative"},
+        "event_content_sha256": {"$ref": "#/$defs/sha256"},
+        "timestamp_ns": {"$ref": "#/$defs/nonnegative"},
+        "occurrence_cycle": {"type": "integer"},
+        "decision_cycle": {"$ref": "#/$defs/nonnegative"}
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "window_id", "warmup_start_ns_inclusive",
+        "query_start_ns_inclusive", "query_end_ns_exclusive",
+        "query_start_decision_cycle",
+        "last_warmup_occurrence_ordinal", "last_warmup_event_id",
+        "last_warmup_event_content_sha256", "last_warmup_timestamp_ns",
+        "last_warmup_occurrence_cycle", "last_warmup_decision_cycle",
+        "first_query_source_ordinal", "first_query_event_id",
+        "first_query_event_content_sha256", "first_query_timestamp_ns",
+        "first_query_occurrence_cycle", "first_query_decision_cycle",
+        "ordered_warmup_event_ids_sha256", "warmup_event_count",
+        "ordered_query_event_ids_sha256", "query_event_count",
+        "execution_input_aggregate_sha256", "window_events_sha256",
+        "window_neutral_inputs_sha256", "logical_cycle_replay_authority_sha256",
+        "boundary_close_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_boundary_close/v2"},
+        "window_id": {"$ref": "#/$defs/windowId"},
+        "warmup_start_ns_inclusive": {"$ref": "#/$defs/nonnegative"},
+        "query_start_ns_inclusive": {"$ref": "#/$defs/nonnegative"},
+        "query_end_ns_exclusive": {"$ref": "#/$defs/nonnegative"},
+        "query_start_decision_cycle": {"$ref": "#/$defs/nonnegative"},
+        "last_warmup_occurrence_ordinal": {"$ref": "#/$defs/nonnegative"},
+        "last_warmup_event_id": {"$ref": "#/$defs/nonnegative"},
+        "last_warmup_event_content_sha256": {"$ref": "#/$defs/sha256"},
+        "last_warmup_timestamp_ns": {"$ref": "#/$defs/nonnegative"},
+        "last_warmup_occurrence_cycle": {"type": "integer"},
+        "last_warmup_decision_cycle": {"$ref": "#/$defs/nonnegative"},
+        "first_query_source_ordinal": {"$ref": "#/$defs/nonnegative"},
+        "first_query_event_id": {"$ref": "#/$defs/nonnegative"},
+        "first_query_event_content_sha256": {"$ref": "#/$defs/sha256"},
+        "first_query_timestamp_ns": {"$ref": "#/$defs/nonnegative"},
+        "first_query_occurrence_cycle": {"type": "integer"},
+        "first_query_decision_cycle": {"$ref": "#/$defs/nonnegative"},
+        "ordered_warmup_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "warmup_event_count": {"type": "integer", "minimum": 1},
+        "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "query_event_count": {"type": "integer", "minimum": 1},
+        "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "window_events_sha256": {"$ref": "#/$defs/sha256"},
+        "window_neutral_inputs_sha256": {"$ref": "#/$defs/sha256"},
+        "logical_cycle_replay_authority_sha256": {"$ref": "#/$defs/sha256"},
+        "boundary_close_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "pendingTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "transition_ordinal", "pose_id", "pose_content_sha256",
+        "measurement_timestamp_ns", "commit_cycle", "publication_cycle",
+        "effective_cycle", "state_changed", "prior_state_version",
+        "prior_state_sha256", "prior_dependency_pose_count",
+        "prior_dependency_pose_chain_sha256", "prior_last_dependency_pose_id",
+        "next_state_version", "next_state_sha256", "next_dependency_pose_count",
+        "next_dependency_pose_chain_sha256", "next_last_dependency_pose_id",
+        "native_transition_sha256", "authentication_status",
+        "pending_transition_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.pending_query_transition/v2"},
+        "transition_ordinal": {"$ref": "#/$defs/nonnegative"},
+        "pose_id": {"$ref": "#/$defs/nonnegative"},
+        "pose_content_sha256": {"$ref": "#/$defs/sha256"},
+        "measurement_timestamp_ns": {"$ref": "#/$defs/nonnegative"},
+        "commit_cycle": {"$ref": "#/$defs/nonnegative"},
+        "publication_cycle": {"$ref": "#/$defs/nonnegative"},
+        "effective_cycle": {"$ref": "#/$defs/nonnegative"},
+        "state_changed": {"const": true},
+        "prior_state_version": {"$ref": "#/$defs/nonnegative"},
+        "prior_state_sha256": {"$ref": "#/$defs/sha256"},
+        "prior_dependency_pose_count": {"$ref": "#/$defs/nonnegative"},
+        "prior_dependency_pose_chain_sha256": {"$ref": "#/$defs/sha256"},
+        "prior_last_dependency_pose_id": {"$ref": "#/$defs/nullableId"},
+        "next_state_version": {"$ref": "#/$defs/nonnegative"},
+        "next_state_sha256": {"$ref": "#/$defs/sha256"},
+        "next_dependency_pose_count": {"$ref": "#/$defs/nonnegative"},
+        "next_dependency_pose_chain_sha256": {"$ref": "#/$defs/sha256"},
+        "next_last_dependency_pose_id": {"$ref": "#/$defs/nullableId"},
+        "native_transition_sha256": {"$ref": "#/$defs/sha256"},
+        "authentication_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
+        "pending_transition_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "logicalProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "profile_id", "raw_ingress_lanes", "ingress_staging_entries",
+        "event_service_lanes", "scope"
+      ],
+      "properties": {
+        "schema": {"type": "string", "minLength": 1},
+        "profile_id": {"type": "string", "minLength": 1},
+        "raw_ingress_lanes": {"$ref": "#/$defs/nonnegative"},
+        "ingress_staging_entries": {"$ref": "#/$defs/nonnegative"},
+        "event_service_lanes": {"$ref": "#/$defs/nonnegative"},
+        "scope": {"type": "string", "minLength": 1}
+      }
+    },
+    "logicalAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "frozen_stage4_model_sha256", "frozen_stage4_api_sha256",
+        "private_module_namespace", "profile", "profile_sha256", "overrides",
+        "retained_event_service_lanes", "exposed_arm", "event_order_rule",
+        "event_id_transport", "canonical_module_mutation", "authority_sha256"
+      ],
+      "properties": {
+        "schema": {"type": "string", "minLength": 1},
+        "frozen_stage4_model_sha256": {"$ref": "#/$defs/sha256"},
+        "frozen_stage4_api_sha256": {"$ref": "#/$defs/sha256"},
+        "private_module_namespace": {"type": "string", "minLength": 1},
+        "profile": {"$ref": "#/$defs/logicalProfile"},
+        "profile_sha256": {"$ref": "#/$defs/sha256"},
+        "overrides": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["RAW_INGRESS_LANES", "INGRESS_STAGING_ENTRIES"],
+          "properties": {
+            "RAW_INGRESS_LANES": {"$ref": "#/$defs/nonnegative"},
+            "INGRESS_STAGING_ENTRIES": {"$ref": "#/$defs/nonnegative"}
+          }
+        },
+        "retained_event_service_lanes": {"$ref": "#/$defs/nonnegative"},
+        "exposed_arm": {"type": "string", "minLength": 1},
+        "event_order_rule": {"type": "string", "minLength": 1},
+        "event_id_transport": {"type": "string", "minLength": 1},
+        "canonical_module_mutation": {"type": "boolean"},
+        "authority_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "replayReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "execution_input_schema", "execution_input_aggregate_sha256",
+        "consumer_dependency_aggregate_sha256", "logical_cycle_replay_authority",
+        "logical_cycle_replay_authority_sha256", "logical_ingress_profile_sha256",
+        "warmup_source_sequence_authority", "same_edge_order_rule",
+        "native_candidate_replay_status", "candidate_state_payload_status",
+        "pending_transition_payload_status", "integrity_scope",
+        "replay_receipt_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_replay_receipt/v1"},
+        "execution_input_schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v2"},
+        "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "consumer_dependency_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "logical_cycle_replay_authority": {"$ref": "#/$defs/logicalAuthority"},
+        "logical_cycle_replay_authority_sha256": {"$ref": "#/$defs/sha256"},
+        "logical_ingress_profile_sha256": {"$ref": "#/$defs/sha256"},
+        "warmup_source_sequence_authority": {"const": "verified_stage3_execution_input_v2_window_source_order"},
+        "same_edge_order_rule": {"const": "events_before_same_edge_pose_transition"},
+        "native_candidate_replay_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
+        "candidate_state_payload_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
+        "pending_transition_payload_status": {"const": "EXTERNAL_PRODUCTION_HOLD"},
+        "integrity_scope": {"const": "source_identity_order_and_locked_cycles_authenticated_candidate_derived_fields_integrity_only"},
+        "replay_receipt_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "snapshotObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["occurrence_ordinal", "event_id", "timestamp_ns", "polarity", "world_ray"],
+      "properties": {
+        "occurrence_ordinal": {"$ref": "#/$defs/nonnegative"},
+        "event_id": {"$ref": "#/$defs/nonnegative"},
+        "timestamp_ns": {"$ref": "#/$defs/nonnegative"},
+        "polarity": {"enum": [0, 1]},
+        "world_ray": {
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": {"type": "number"}
+        }
+      }
+    },
+    "referenceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "binding_context_sha256", "reference_prime_policy_sha256",
+        "reference_prime_implementation_sha256", "query_start_ns_inclusive",
+        "last_warmup_timestamp_ns", "merge_order", "polarity_0",
+        "polarity_0_sha256", "polarity_1", "polarity_1_sha256",
+        "observation_count", "occupancy", "snapshot_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.query_start_reference_snapshot/v1"},
+        "binding_context_sha256": {"$ref": "#/$defs/sha256"},
+        "reference_prime_policy_sha256": {"$ref": "#/$defs/sha256"},
+        "reference_prime_implementation_sha256": {"$ref": "#/$defs/sha256"},
+        "query_start_ns_inclusive": {"$ref": "#/$defs/nonnegative"},
+        "last_warmup_timestamp_ns": {"$ref": "#/$defs/nonnegative"},
+        "merge_order": {"const": "timestamp_ns_then_occurrence_ordinal"},
+        "polarity_0": {
+          "type": "array", "maxItems": 256,
+          "items": {"$ref": "#/$defs/snapshotObservation"}
+        },
+        "polarity_0_sha256": {"$ref": "#/$defs/sha256"},
+        "polarity_1": {
+          "type": "array", "maxItems": 256,
+          "items": {"$ref": "#/$defs/snapshotObservation"}
+        },
+        "polarity_1_sha256": {"$ref": "#/$defs/sha256"},
+        "observation_count": {"type": "integer", "minimum": 0, "maximum": 512},
+        "occupancy": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "items": {"type": "integer", "minimum": 0, "maximum": 256}
+        },
+        "snapshot_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

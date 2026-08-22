@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-semi.local/schemas/stage3_warmup_query_start_state.schema.json",
+  "$ref": "stage3_warmup_transcript.schema.json#/$defs/queryStartState"
+}

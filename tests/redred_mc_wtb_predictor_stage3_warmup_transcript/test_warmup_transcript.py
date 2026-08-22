@@ -1,26 +1,39 @@
 from __future__ import annotations
 
+import ast
 from copy import deepcopy
+from dataclasses import dataclass
+import inspect
 import json
 import math
 from pathlib import Path
 import subprocess
 import sys
 import unittest
+from unittest import mock
+
+from jsonschema import Draft202012Validator
+from referencing import Registry as SchemaRegistry, Resource
 
 from benchmarks.redred_mc_wtb_causal_reference.reference import (
     CausalReferenceBank,
     CausalReferenceConfig,
     ReferenceObservation,
 )
+from benchmarks.redred_mc_wtb_predictor_stage3 import warmup_transcript as transcript_module
+from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
+    canonical_event_content_sha256,
+    canonical_pose_value_sha256,
+    timestamp_to_cycle,
+)
+from benchmarks.redred_mc_wtb_predictor_stage3.execution_authority import (
+    build_stage3_execution_input,
+)
 from benchmarks.redred_mc_wtb_predictor_stage3.reference_prime import (
     ScoreFreeCausalReferenceBank,
 )
-from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import RG3_POLICY
-from benchmarks.redred_mc_wtb_predictor_stage3.so3_pll import SO3PLLConfig
 from benchmarks.redred_mc_wtb_predictor_stage3.warmup_transcript import (
-    BOUNDARY_CLOSE_SCHEMA,
-    NATIVE_REPLAY_AUTHORITY_SHA256,
+    EXTERNAL_PRODUCTION_HOLD,
     PENDING_TRANSITION_SCHEMA,
     QUERY_START_STATE_SCHEMA,
     REFERENCE_PRIME_POLICY_SCHEMA,
@@ -33,20 +46,51 @@ from benchmarks.redred_mc_wtb_predictor_stage3.warmup_transcript import (
     verify_warmup_transcript,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import pose_timestamp_to_cycle
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULE = "benchmarks.redred_mc_wtb_predictor_stage3.warmup_transcript"
+MODULE_PATH = ROOT / "benchmarks/redred_mc_wtb_predictor_stage3/warmup_transcript.py"
+WINDOW_ID = "shapes_rotation/query_start_ns=50000000"
 SHA_A = "a" * 64
 SHA_B = "b" * 64
 SHA_C = "c" * 64
 SHA_D = "d" * 64
-SHA_E = "e" * 64
-SHA_F = "f" * 64
+EMPTY_DEPENDENCY_CHAIN = "6" * 64
 DEPENDENCY_DOMAIN = "stage3/warmup/state_dependency_pose/v1"
 LEAF_SCHEMA = "redred.mc_wtb_predictor_stage3.stream_leaf/v1"
 CHAIN_LINK_SCHEMA = "redred.mc_wtb_predictor_stage3.stream_chain_link/v1"
-EMPTY_DEPENDENCY_CHAIN = "6" * 64
+
+
+@dataclass(frozen=True)
+class Registry:
+    window_id: str
+    warmup_start_ns_inclusive: int
+    query_start_ns_inclusive: int
+    query_end_ns_exclusive: int
+
+
+@dataclass(frozen=True)
+class NeutralEvent:
+    event_id: int
+    timestamp_ns: int
+    polarity: int
+    is_query: bool
+    sensor_ray: tuple
+    causal_pose_source_index: int
+    event_content_sha256: str
+    transform_guard_valid: bool
+
+
+@dataclass(frozen=True)
+class NeutralPose:
+    pose_id: int
+    timestamp_ns: int
+    commit_cycle: int
+    quaternion_xyzw: tuple
+    pose_sha256: str
+    value_valid: bool
+    arithmetic_valid: bool
 
 
 def ray(angle):
@@ -77,31 +121,73 @@ POSE2_CHAIN = dependency_link(POSE1_CHAIN, 1, 2, "4" * 64)
 POSE3_CHAIN = dependency_link(POSE2_CHAIN, 2, 3, "7" * 64)
 
 
-def bindings(event_ids=None):
+def make_pose(pose_id, timestamp_ns):
+    quaternion = (0.0, 0.0, 0.0, 1.0)
+    return NeutralPose(
+        pose_id,
+        timestamp_ns,
+        pose_timestamp_to_cycle(timestamp_ns, 0),
+        quaternion,
+        canonical_pose_value_sha256(pose_id, timestamp_ns, quaternion),
+        True,
+        True,
+    )
+
+
+def make_event(event_id, timestamp_ns, polarity, causal_pose_id):
+    sensor_ray = (1.0, 0.0, 0.0)
+    is_query = timestamp_ns >= 50_000_000
+    return NeutralEvent(
+        event_id,
+        timestamp_ns,
+        polarity,
+        is_query,
+        sensor_ray,
+        causal_pose_id,
+        canonical_event_content_sha256(
+            event_id,
+            timestamp_ns,
+            polarity,
+            is_query,
+            sensor_ray,
+            causal_pose_id,
+            True,
+        ),
+        True,
+    )
+
+
+def make_execution(event_ids=None, query_ids=None):
     if event_ids is None:
-        event_ids = list(range(10, 19))
-    return {
-        "candidate_id": "TEST_CANDIDATE",
-        "candidate_config_sha256": SHA_A,
-        "candidate_dependency_aggregate_sha256": SHA_B,
-        "logical_ingress_profile_sha256": SHA_C,
-        "execution_input_aggregate_sha256": SHA_D,
-        "neutral_input_sha256": SHA_E,
-        "window_input_sha256": SHA_F,
-        "reference_prime_implementation_sha256": "1" * 64,
-        "native_replay_authority_sha256": NATIVE_REPLAY_AUTHORITY_SHA256,
-        "ordered_warmup_event_ids_sha256": canonical_sha256(list(event_ids)),
-    }
-
-
-def bounds():
-    return {
-        "window_id": "w0",
-        "warmup_start_ns_inclusive": 0,
-        "query_start_ns_inclusive": 1_000,
-        "query_end_ns_exclusive": 2_000,
-        "query_start_decision_cycle": 10,
-    }
+        event_ids = [90, 4, 80, 3, 70, 2, 60, 1, 50]
+    if query_ids is None:
+        query_ids = [100, 101]
+    times = [100, 200, 200, 300, 600, 600, 600, 600, 900]
+    causal = [0, 0, 0, 1, 2, 2, 2, 2, 2]
+    events = [
+        make_event(event_id, timestamp, ordinal % 2, pose_id)
+        for ordinal, (event_id, timestamp, pose_id)
+        in enumerate(zip(event_ids, times, causal))
+    ]
+    events.extend((
+        make_event(query_ids[0], 50_000_100, 0, 2),
+        make_event(query_ids[1], 50_000_200, 1, 2),
+    ))
+    registry = (Registry(WINDOW_ID, 0, 50_000_000, 51_000_000),)
+    return build_stage3_execution_input(
+        registry,
+        {WINDOW_ID: tuple(events)},
+        {WINDOW_ID: (
+            make_pose(0, 0), make_pose(1, 200), make_pose(2, 500),
+        )},
+        source_events_authority={
+            "source_events_path": "external/new108/events.txt",
+            "source_events_sha256": "0" * 64,
+            "source_events_size_bytes": 1234,
+            "source_events_line_count": len(events),
+        },
+        repo_root=ROOT,
+    )
 
 
 def reference_policy(capacity=256, max_age=2_000_000):
@@ -129,65 +215,29 @@ def transport_policy(capacity=3):
 def reset():
     return sealed({
         "schema": RESET_SCHEMA,
-        "reset_generation": 7,
+        "reset_generation": 0,
         "reset_cycle": 0,
         "predictor_state_version": 0,
         "predictor_state_sha256": SHA_A,
         "dependency_pose_count": 0,
         "dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
         "last_dependency_pose_id": None,
+        "authentication_status": EXTERNAL_PRODUCTION_HOLD,
     }, "reset_sha256")
 
 
-def query_state():
+def query_state(version=2, state_sha=SHA_C, count=2, chain=POSE2_CHAIN, last=2):
     return sealed({
         "schema": QUERY_START_STATE_SCHEMA,
-        "predictor_state_version": 2,
-        "predictor_state_sha256": SHA_C,
-        "dependency_pose_count": 2,
-        "dependency_pose_chain_sha256": POSE2_CHAIN,
-        "last_dependency_pose_id": 2,
+        "predictor_state_version": version,
+        "predictor_state_sha256": state_sha,
+        "dependency_pose_count": count,
+        "dependency_pose_chain_sha256": chain,
+        "last_dependency_pose_id": last,
+        "state_boundary": "at_query_start_before_first_query",
+        "state_cycle": timestamp_to_cycle(50_000_000, 0),
+        "authentication_status": EXTERNAL_PRODUCTION_HOLD,
     }, "query_start_state_receipt_sha256")
-
-
-def boundary_close(
-    source=None, *, transition_rows=None, bound=None, binding=None,
-    first_query_event_id=100, first_query_timestamp_ns=1_100,
-):
-    if source is None:
-        source = occurrences()
-    if bound is None:
-        bound = bounds()
-    if binding is None:
-        binding = bindings([row["event_id"] for row in source])
-    if transition_rows is None:
-        transition_rows = transitions()
-    last = source[-1]
-    last_transition_timestamp = max(
-        (row["measurement_timestamp_ns"] for row in transition_rows), default=None
-    )
-    last_cluster_timestamp = max(
-        last["timestamp_ns"],
-        last_transition_timestamp
-        if last_transition_timestamp is not None else last["timestamp_ns"],
-    )
-    return sealed({
-        "schema": BOUNDARY_CLOSE_SCHEMA,
-        "window_id": bound["window_id"],
-        "query_start_ns_inclusive": bound["query_start_ns_inclusive"],
-        "last_warmup_occurrence_ordinal": last["occurrence_ordinal"],
-        "last_warmup_event_id": last["event_id"],
-        "last_warmup_timestamp_ns": last["timestamp_ns"],
-        "warmup_transition_count": len(transition_rows),
-        "last_warmup_transition_measurement_timestamp_ns": last_transition_timestamp,
-        "last_warmup_cluster_timestamp_ns": last_cluster_timestamp,
-        "first_query_source_ordinal": len(source),
-        "first_query_event_id": first_query_event_id,
-        "first_query_timestamp_ns": first_query_timestamp_ns,
-        "execution_input_aggregate_sha256": binding["execution_input_aggregate_sha256"],
-        "ordered_warmup_event_ids_sha256": binding["ordered_warmup_event_ids_sha256"],
-        "native_replay_authority_sha256": binding["native_replay_authority_sha256"],
-    }, "boundary_close_sha256")
 
 
 def transitions():
@@ -197,9 +247,9 @@ def transitions():
             "pose_id": 1,
             "pose_content_sha256": "2" * 64,
             "measurement_timestamp_ns": 200,
-            "commit_cycle": 2,
-            "publication_cycle": 3,
-            "effective_cycle": 3,
+            "commit_cycle": timestamp_to_cycle(200, 0),
+            "publication_cycle": timestamp_to_cycle(200, 0) + 1,
+            "effective_cycle": timestamp_to_cycle(200, 0) + 1,
             "state_changed": True,
             "prior_state_version": 0,
             "prior_state_sha256": SHA_A,
@@ -218,9 +268,9 @@ def transitions():
             "pose_id": 2,
             "pose_content_sha256": "4" * 64,
             "measurement_timestamp_ns": 500,
-            "commit_cycle": 5,
-            "publication_cycle": 6,
-            "effective_cycle": 6,
+            "commit_cycle": timestamp_to_cycle(500, 0),
+            "publication_cycle": timestamp_to_cycle(500, 0) + 1,
+            "effective_cycle": timestamp_to_cycle(500, 0) + 1,
             "state_changed": True,
             "prior_state_version": 1,
             "prior_state_sha256": SHA_B,
@@ -237,442 +287,232 @@ def transitions():
     ]
 
 
-def occurrence(
-    ordinal, event_id, timestamp_ns, decision_cycle, state_version, state_sha,
-    dependency_count, dependency_chain, last_dependency_pose_id,
-    polarity=None, angle=None,
-):
-    if polarity is None:
-        polarity = ordinal % 2
-    if angle is None:
-        angle = ordinal * 0.01
-    return {
-        "occurrence_ordinal": ordinal,
-        "event_id": event_id,
-        "event_content_sha256": ("%x" % ((ordinal % 6) + 10)) * 64,
-        "timestamp_ns": timestamp_ns,
-        "polarity": polarity,
-        "occurrence_cycle": decision_cycle - 1,
-        "decision_cycle": decision_cycle,
-        "service_cycle": decision_cycle,
-        "predictor_state_version": state_version,
-        "predictor_state_sha256": state_sha,
-        "state_dependency_pose_count": dependency_count,
-        "state_dependency_pose_chain_sha256": dependency_chain,
-        "state_last_dependency_pose_id": last_dependency_pose_id,
-        "candidate_attempted": True,
-        "candidate_used": True,
-        "route": "CANDIDATE",
-        "decision_sha256": ("%x" % ((ordinal % 6) + 1)) * 64,
-        "world_ray": ray(angle),
-    }
-
-
-def occurrences():
-    result = [
-        occurrence(0, 10, 100, 1, 0, SHA_A, 0, EMPTY_DEPENDENCY_CHAIN, None),
-        occurrence(1, 11, 200, 2, 0, SHA_A, 0, EMPTY_DEPENDENCY_CHAIN, None),
-        occurrence(2, 12, 200, 2, 0, SHA_A, 0, EMPTY_DEPENDENCY_CHAIN, None),
-        occurrence(3, 13, 300, 3, 1, SHA_B, 1, POSE1_CHAIN, 1),
-    ]
-    for offset in range(4):
-        result.append(occurrence(
-            4 + offset, 14 + offset, 600, 6, 2, SHA_C, 2, POSE2_CHAIN, 2
-        ))
-    result.append(occurrence(8, 18, 900, 9, 2, SHA_C, 2, POSE2_CHAIN, 2))
+def occurrences(execution):
+    result = []
+    for ordinal, event in enumerate(execution["windows"][0]["events"][:9]):
+        if event["timestamp_ns"] <= 200:
+            state = (0, SHA_A, 0, EMPTY_DEPENDENCY_CHAIN, None)
+        elif event["timestamp_ns"] < 600:
+            state = (1, SHA_B, 1, POSE1_CHAIN, 1)
+        else:
+            state = (2, SHA_C, 2, POSE2_CHAIN, 2)
+        decision_cycle = timestamp_to_cycle(event["timestamp_ns"], 0)
+        result.append({
+            "occurrence_ordinal": ordinal,
+            "event_id": event["event_id"],
+            "event_content_sha256": event["event_content_sha256"],
+            "timestamp_ns": event["timestamp_ns"],
+            "polarity": event["polarity"],
+            "occurrence_cycle": decision_cycle - 1,
+            "decision_cycle": decision_cycle,
+            "service_cycle": decision_cycle,
+            "predictor_state_version": state[0],
+            "predictor_state_sha256": state[1],
+            "state_dependency_pose_count": state[2],
+            "state_dependency_pose_chain_sha256": state[3],
+            "state_last_dependency_pose_id": state[4],
+            "candidate_attempted": True,
+            "candidate_used": True,
+            "route": "CANDIDATE",
+            "decision_sha256": canonical_sha256({
+                "event_id": event["event_id"], "ordinal": ordinal,
+            }),
+            "world_ray": ray(ordinal * 0.01),
+        })
     return result
-
-
-def build(**overrides):
-    arguments = {
-        "bindings": bindings(),
-        "bounds": bounds(),
-        "reference_prime_policy": reference_policy(),
-        "transport_policy": transport_policy(),
-        "reset": reset(),
-        "query_start_state": query_state(),
-        "boundary_close_authority": boundary_close(),
-        "warmup_occurrences": occurrences(),
-        "state_transitions": transitions(),
-    }
-    arguments.update(overrides)
-    return build_warmup_transcript(**arguments)
-
-
-def verify(receipt, **overrides):
-    arguments = {
-        "bindings": bindings(),
-        "bounds": bounds(),
-        "reference_prime_policy": reference_policy(),
-        "transport_policy": transport_policy(),
-        "reset": reset(),
-        "query_start_state": query_state(),
-        "boundary_close_authority": boundary_close(),
-        "warmup_occurrences": occurrences(),
-        "state_transitions": transitions(),
-    }
-    arguments.update(overrides)
-    return verify_warmup_transcript(receipt, **arguments)
 
 
 def merge_snapshot(snapshot):
     values = snapshot["polarity_0"] + snapshot["polarity_1"]
-    return sorted(values, key=lambda item: (item["timestamp_ns"], item["occurrence_ordinal"]))
+    return sorted(values, key=lambda row: (
+        row["timestamp_ns"], row["occurrence_ordinal"]
+    ))
 
 
 class WarmupTranscriptTests(unittest.TestCase):
-    def test_compact_closed_receipt_binds_all_stream_domains(self):
-        receipt = build()
-        self.assertEqual(receipt["schema"], WARMUP_TRANSCRIPT_SCHEMA)
-        self.assertEqual(receipt["warmup_occurrence_count"], 9)
-        self.assertEqual(receipt["same_edge_cluster_count"], 5)
-        self.assertEqual(receipt["state_transition_count"], 2)
-        self.assertEqual(receipt["transport_cycle_violation_count"], 1)
-        self.assertEqual(receipt["first_warmup_occurrence"], {
-            "occurrence_ordinal": 0, "event_id": 10, "timestamp_ns": 100,
-        })
-        self.assertEqual(receipt["last_warmup_occurrence"], {
-            "occurrence_ordinal": 8, "event_id": 18, "timestamp_ns": 900,
-        })
-        self.assertIsNone(receipt["pending_query_transition"])
-        authority = receipt["native_replay_authority"]
-        self.assertEqual(authority["authority_sha256"], NATIVE_REPLAY_AUTHORITY_SHA256)
-        self.assertEqual(
-            authority["integrity_scope"],
-            "transcript_chains_are_not_independent_authentication",
-        )
-        self.assertEqual(
-            authority["ordered_warmup_event_ids_sha256"],
-            bindings()["ordered_warmup_event_ids_sha256"],
-        )
-        self.assertEqual(verify(receipt), receipt["receipt_sha256"])
+    @classmethod
+    def setUpClass(cls):
+        cls.execution = make_execution()
 
-        serialized = json.dumps(receipt, sort_keys=True)
-        for forbidden in (
-            "warmup_occurrences", "state_transitions", "selector", "label",
-            "loss", "score",
-        ):
-            self.assertNotIn(forbidden, serialized.lower())
-        self.assertLessEqual(
-            receipt["query_start_reference_snapshot"]["occupancy"][0], 256
-        )
-        self.assertLessEqual(
-            receipt["query_start_reference_snapshot"]["occupancy"][1], 256
-        )
-        chains = {
-            receipt["warmup_occurrence_chain_sha256"],
-            receipt["same_edge_cluster_chain_sha256"],
-            receipt["state_transition_chain_sha256"],
-            receipt["transport_cycle_violation_chain_sha256"],
+    def arguments(self, execution=None, **overrides):
+        if execution is None:
+            execution = self.execution
+        arguments = {
+            "execution_input": execution,
+            "window_id": WINDOW_ID,
+            "repo_root": ROOT,
+            "reference_prime_policy": reference_policy(),
+            "transport_policy": transport_policy(),
+            "reset": reset(),
+            "query_start_state": query_state(),
+            "warmup_occurrences": occurrences(execution),
+            "state_transitions": transitions(),
         }
-        self.assertEqual(len(chains), 4)
+        arguments.update(overrides)
+        arguments["warmup_occurrences"] = iter(arguments["warmup_occurrences"])
+        arguments["state_transitions"] = iter(arguments["state_transitions"])
+        return arguments
 
-    def test_snapshot_is_oldest_to_newest_and_reproduces_query_scores(self):
-        policy = reference_policy()
-        source = occurrences()
-        receipt = build(reference_prime_policy=policy)
-        snapshot = receipt["query_start_reference_snapshot"]
-        for polarity in (0, 1):
-            values = snapshot["polarity_%d" % polarity]
-            self.assertEqual(
-                [(row["timestamp_ns"], row["occurrence_ordinal"]) for row in values],
-                sorted((row["timestamp_ns"], row["occurrence_ordinal"]) for row in values),
-            )
-            self.assertLessEqual(len(values), 256)
+    def build(self, execution=None, **overrides):
+        return build_warmup_transcript(**self.arguments(execution, **overrides))
 
-        config = CausalReferenceConfig(256, 2_000_000)
-        warmup = tuple(ReferenceObservation(
-            row["event_id"], row["timestamp_ns"], row["polarity"],
-            tuple(row["world_ray"]),
-        ) for row in source)
-        query = (
-            ReferenceObservation(100, 1_100, 0, tuple(ray(0.07))),
-            ReferenceObservation(101, 1_100, 1, tuple(ray(0.08))),
+    def verify(self, receipt, execution=None, **overrides):
+        return verify_warmup_transcript(
+            receipt, **self.arguments(execution, **overrides)
         )
-        legacy = CausalReferenceBank(config).process(warmup + query)[len(warmup):]
-        primed = ScoreFreeCausalReferenceBank(config)
-        primed.prime(tuple(ReferenceObservation(
-            row["event_id"], row["timestamp_ns"], row["polarity"],
-            tuple(row["world_ray"]),
-        ) for row in merge_snapshot(snapshot)))
-        self.assertEqual(primed.process(query), legacy)
 
-    def test_sparse_gap_snapshot_waits_for_actual_first_query_expiry(self):
-        sparse_bounds = bounds()
-        sparse_bounds["query_start_ns_inclusive"] = 3_000_000
-        sparse_bounds["query_end_ns_exclusive"] = 6_000_000
-        sparse_source = [occurrence(
-            0, 10, 100, 1, 0, SHA_A, 0, EMPTY_DEPENDENCY_CHAIN, None,
-            polarity=0,
-        )]
-        empty_query = sealed({
-            "schema": QUERY_START_STATE_SCHEMA,
-            "predictor_state_version": 0,
-            "predictor_state_sha256": SHA_A,
-            "dependency_pose_count": 0,
-            "dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
-            "last_dependency_pose_id": None,
-        }, "query_start_state_receipt_sha256")
-        receipt = build(
-            bindings=bindings([10]),
-            bounds=sparse_bounds,
-            boundary_close_authority=boundary_close(
-                sparse_source, transition_rows=[], bound=sparse_bounds,
-                binding=bindings([10]),
-                first_query_event_id=20, first_query_timestamp_ns=5_000_000,
-            ),
-            reference_prime_policy=reference_policy(),
-            query_start_state=empty_query,
-            warmup_occurrences=sparse_source,
-            state_transitions=[],
-        )
-        snapshot = receipt["query_start_reference_snapshot"]
-        self.assertEqual(snapshot["last_warmup_timestamp_ns"], 100)
-        self.assertEqual([row["event_id"] for row in snapshot["polarity_0"]], [10])
+    def test_verified_execution_derives_all_authority_and_holds(self):
+        receipt = self.build()
+        window = self.execution["windows"][0]
+        binding = receipt["execution_binding"]
+        boundary = receipt["boundary_authority"]
+        replay = receipt["replay_receipt"]
+        self.assertEqual(receipt["schema"], WARMUP_TRANSCRIPT_SCHEMA)
+        self.assertEqual(binding["execution_input_aggregate_sha256"], self.execution["aggregate_sha256"])
+        self.assertEqual(binding["consumer_dependency_aggregate_sha256"], self.execution["consumer_dependency_aggregate_sha256"])
+        self.assertEqual(binding["window_events_sha256"], window["events_sha256"])
+        self.assertEqual(binding["window_neutral_inputs_sha256"], window["neutral_inputs_sha256"])
+        self.assertEqual(binding["ordered_warmup_event_ids_sha256"], window["ordered_warmup_event_ids_sha256"])
+        self.assertEqual(binding["ordered_query_event_ids_sha256"], window["ordered_query_event_ids_sha256"])
+        first_query = window["events"][9]
+        self.assertEqual(boundary["first_query_event_id"], first_query["event_id"])
+        self.assertEqual(boundary["first_query_event_content_sha256"], first_query["event_content_sha256"])
+        self.assertEqual(boundary["query_end_ns_exclusive"], 51_000_000)
+        self.assertEqual(boundary["first_query_decision_cycle"], timestamp_to_cycle(first_query["timestamp_ns"], 0))
+        self.assertEqual(boundary["first_query_occurrence_cycle"], boundary["first_query_decision_cycle"] - 1)
+        self.assertEqual(replay["logical_cycle_replay_authority"], self.execution["logical_cycle_replay_authority"])
+        self.assertEqual(replay["logical_cycle_replay_authority_sha256"], self.execution["logical_cycle_replay_authority_sha256"])
+        self.assertEqual(replay["native_candidate_replay_status"], EXTERNAL_PRODUCTION_HOLD)
+        self.assertEqual(replay["candidate_state_payload_status"], EXTERNAL_PRODUCTION_HOLD)
+        self.assertEqual(replay["pending_transition_payload_status"], EXTERNAL_PRODUCTION_HOLD)
+        self.assertEqual(self.verify(receipt), receipt["receipt_sha256"])
 
-        query = ReferenceObservation(20, 5_000_000, 0, tuple(ray(0.1)))
-        config = CausalReferenceConfig(256, 2_000_000)
-        legacy = CausalReferenceBank(config).process((
-            ReferenceObservation(10, 100, 0, tuple(sparse_source[0]["world_ray"])),
-            query,
-        ))[-1]
-        primed = ScoreFreeCausalReferenceBank(config)
-        primed.prime((ReferenceObservation(
-            10, 100, 0, tuple(snapshot["polarity_0"][0]["world_ray"]),
-        ),))
-        actual = primed.process((query,))[0]
-        self.assertFalse(actual.reference_available)
-        self.assertEqual(actual, legacy)
-
-    def test_authenticated_boundary_rejects_equal_timestamp_cluster_split(self):
-        split = boundary_close(first_query_timestamp_ns=900)
-        with self.assertRaisesRegex(
-            WarmupTranscriptError, "equal-timestamp warmup/query cluster",
+    def test_public_apis_have_no_caller_authority_arguments(self):
+        forbidden = {"bindings", "bounds", "boundary_close_authority", "boundary_authority"}
+        for function in (
+            begin_warmup_transcript,
+            build_warmup_transcript,
+            verify_warmup_transcript,
         ):
-            build(boundary_close_authority=split)
+            self.assertTrue(forbidden.isdisjoint(inspect.signature(function).parameters))
+        arguments = self.arguments()
+        arguments["bindings"] = {"execution_input_aggregate_sha256": SHA_A}
+        with self.assertRaises(TypeError):
+            build_warmup_transcript(**arguments)
 
-        builder = begin_warmup_transcript(
-            bindings=bindings([10]), bounds=bounds(),
-            reference_prime_policy=reference_policy(),
-            transport_policy=transport_policy(), reset=reset(),
-        )
-        builder.update_occurrence(occurrences()[0])
-        empty_query = sealed({
-            "schema": QUERY_START_STATE_SCHEMA,
-            "predictor_state_version": 0,
-            "predictor_state_sha256": SHA_A,
-            "dependency_pose_count": 0,
-            "dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
-            "last_dependency_pose_id": None,
-        }, "query_start_state_receipt_sha256")
-        with self.assertRaisesRegex(WarmupTranscriptError, "field schema"):
-            builder.finalize(empty_query)
+        re_iterable = self.arguments()
+        re_iterable["warmup_occurrences"] = occurrences(self.execution)
+        with self.assertRaisesRegex(WarmupTranscriptError, "one-shot iterators"):
+            build_warmup_transcript(**re_iterable)
 
-        wrong_source_boundary = boundary_close()
-        wrong_source_boundary["first_query_source_ordinal"] += 1
-        unsigned = dict(wrong_source_boundary)
-        unsigned.pop("boundary_close_sha256")
-        wrong_source_boundary["boundary_close_sha256"] = canonical_sha256(unsigned)
-        with self.assertRaisesRegex(WarmupTranscriptError, "source order"):
-            build(boundary_close_authority=wrong_source_boundary)
-
-        omitted_transition = boundary_close()
-        omitted_transition["warmup_transition_count"] -= 1
-        omitted_transition_body = dict(omitted_transition)
-        omitted_transition_body.pop("boundary_close_sha256")
-        omitted_transition["boundary_close_sha256"] = canonical_sha256(
-            omitted_transition_body
-        )
-        with self.assertRaisesRegex(WarmupTranscriptError, "transition endpoint"):
-            build(boundary_close_authority=omitted_transition)
-
-    def test_production_window_and_native_candidate_identifiers_are_accepted(self):
-        production_bounds = bounds()
-        production_bounds["window_id"] = "shapes_rotation/query_start_ns=41590000000"
-        for candidate_id in (RG3_POLICY.candidate_id, SO3PLLConfig().candidate_id):
-            production_bindings = bindings()
-            production_bindings["candidate_id"] = candidate_id
-            with self.subTest(candidate_id=candidate_id):
-                receipt = build(
-                    bindings=production_bindings,
-                    bounds=production_bounds,
-                    boundary_close_authority=boundary_close(
-                        bound=production_bounds, binding=production_bindings,
-                    ),
-                )
-                self.assertEqual(receipt["bounds"]["window_id"], production_bounds["window_id"])
-                self.assertEqual(receipt["bindings"]["candidate_id"], candidate_id)
-
-    def test_receipt_mutations_are_rejected_even_when_locally_resealed(self):
-        pristine = build()
-        mutations = []
-
-        config = deepcopy(pristine)
-        config["bindings"]["candidate_config_sha256"] = "0" * 64
-        config["bindings_sha256"] = canonical_sha256(config["bindings"])
-        mutations.append(config)
-
-        snapshot = deepcopy(pristine)
-        snapshot_body = snapshot["query_start_reference_snapshot"]
-        snapshot_body["polarity_0"][0]["world_ray"] = ray(0.9)
-        snapshot_body["polarity_0_sha256"] = canonical_sha256({
-            "domain": "stage3/warmup/reference_snapshot/polarity_0/v1",
-            "observations": snapshot_body["polarity_0"],
-        })
-        unsigned_snapshot = dict(snapshot_body)
-        unsigned_snapshot.pop("snapshot_sha256")
-        snapshot_body["snapshot_sha256"] = canonical_sha256(unsigned_snapshot)
-        mutations.append(snapshot)
-
-        boundary = deepcopy(pristine)
-        boundary["last_warmup_occurrence"]["timestamp_ns"] = 1_000
-        mutations.append(boundary)
-
-        for chain_field in (
-            "warmup_occurrence_chain_sha256",
-            "same_edge_cluster_chain_sha256",
-            "state_transition_chain_sha256",
-            "transport_cycle_violation_chain_sha256",
-        ):
-            chain = deepcopy(pristine)
-            chain[chain_field] = "0" * 64
-            mutations.append(chain)
-
-        for mutant in mutations:
-            body = dict(mutant)
-            body.pop("receipt_sha256")
-            mutant["receipt_sha256"] = canonical_sha256(body)
-            with self.subTest(mutant=mutant):
-                with self.assertRaises(WarmupTranscriptError):
-                    verify(mutant)
-
-    def test_replay_rejects_drop_reorder_deferral_state_and_pose_mutations(self):
-        pristine = build()
-        source = occurrences()
+    def test_fabricated_reused_out_of_range_and_equal_split_boundaries_fail(self):
+        pristine = self.build()
         attacks = []
-        attacks.append(source[:-1])
-        reordered = deepcopy(source)
-        reordered[1], reordered[2] = reordered[2], reordered[1]
-        attacks.append(reordered)
-        deferred = deepcopy(source)
-        deferred[3]["service_cycle"] += 1
-        attacks.append(deferred)
-        state = deepcopy(source)
-        state[3]["predictor_state_sha256"] = SHA_A
-        attacks.append(state)
-        pose = deepcopy(source)
-        pose[3]["state_dependency_pose_count"] = 0
-        pose[3]["state_dependency_pose_chain_sha256"] = EMPTY_DEPENDENCY_CHAIN
-        pose[3]["state_last_dependency_pose_id"] = None
-        attacks.append(pose)
+        for field, value in (
+            ("first_query_event_id", pristine["boundary_authority"]["last_warmup_event_id"]),
+            ("first_query_event_content_sha256", "0" * 64),
+            ("first_query_timestamp_ns", 51_000_000),
+            ("first_query_timestamp_ns", pristine["boundary_authority"]["last_warmup_timestamp_ns"]),
+            ("query_end_ns_exclusive", 52_000_000),
+            ("ordered_query_event_ids_sha256", "1" * 64),
+            ("query_event_count", 99),
+            ("first_query_decision_cycle", 7),
+        ):
+            mutant = deepcopy(pristine)
+            mutant["boundary_authority"][field] = value
+            boundary_body = dict(mutant["boundary_authority"])
+            boundary_body.pop("boundary_close_sha256")
+            mutant["boundary_authority"]["boundary_close_sha256"] = canonical_sha256(boundary_body)
+            receipt_body = dict(mutant)
+            receipt_body.pop("receipt_sha256")
+            mutant["receipt_sha256"] = canonical_sha256(receipt_body)
+            attacks.append(mutant)
+        for attack in attacks:
+            with self.subTest(boundary=attack["boundary_authority"]):
+                with self.assertRaises(WarmupTranscriptError):
+                    self.verify(attack)
 
+    def test_verified_input_mutations_cannot_be_resealed_into_authority(self):
+        mutant = deepcopy(self.execution)
+        mutant["windows"][0]["events"][9]["event_id"] = mutant["windows"][0]["events"][0]["event_id"]
+        mutant["windows"][0]["events_sha256"] = canonical_sha256(mutant["windows"][0]["events"])
+        mutant["windows_sha256"] = canonical_sha256(mutant["windows"])
+        body = dict(mutant)
+        body.pop("aggregate_sha256")
+        mutant["aggregate_sha256"] = canonical_sha256(body)
+        with self.assertRaisesRegex(WarmupTranscriptError, "verification failed"):
+            self.build(execution=mutant, warmup_occurrences=occurrences(self.execution))
+
+    def test_canonical_snapshot_closes_mutable_input_toctou(self):
+        mutable = deepcopy(self.execution)
+        source = occurrences(mutable)
+        original_query_id = mutable["windows"][0]["events"][9]["event_id"]
+
+        def mutate_caller_after_snapshot(snapshot, **unused):
+            mutable["windows"][0]["events"][9]["event_id"] = 777_777
+            return snapshot["aggregate_sha256"]
+
+        with mock.patch.object(
+            transcript_module,
+            "verify_stage3_execution_input",
+            side_effect=mutate_caller_after_snapshot,
+        ):
+            receipt = self.build(
+                execution=mutable, warmup_occurrences=source
+            )
+        self.assertEqual(
+            receipt["boundary_authority"]["first_query_event_id"],
+            original_query_id,
+        )
+        self.assertEqual(mutable["windows"][0]["events"][9]["event_id"], 777_777)
+
+    def test_source_chain_rejects_drop_reorder_duplicate_content_and_cycle(self):
+        pristine = self.build()
+        source = occurrences(self.execution)
+        attacks = [source[:-1]]
+        reordered = deepcopy(source)
+        reordered[0], reordered[1] = reordered[1], reordered[0]
+        attacks.append(reordered)
+        duplicate = deepcopy(source)
+        duplicate[-1]["event_id"] = duplicate[0]["event_id"]
+        attacks.append(duplicate)
+        content = deepcopy(source)
+        content[0]["event_content_sha256"] = "0" * 64
+        attacks.append(content)
+        cycle = deepcopy(source)
+        cycle[0]["decision_cycle"] += 1
+        cycle[0]["occurrence_cycle"] += 1
+        cycle[0]["service_cycle"] += 1
+        attacks.append(cycle)
         for attack in attacks:
             with self.subTest(attack=attack):
                 with self.assertRaises(WarmupTranscriptError):
-                    verify(pristine, warmup_occurrences=attack)
+                    self.verify(pristine, warmup_occurrences=attack)
 
-        transition_attack = transitions()
-        transition_attack[0]["effective_cycle"] = 2
-        with self.assertRaises(WarmupTranscriptError):
-            verify(pristine, state_transitions=transition_attack)
-
-    def test_boundary_policy_and_query_state_attacks_fail_closed(self):
-        query_event = occurrences()
-        query_event[-1]["timestamp_ns"] = 1_000
-        with self.assertRaisesRegex(WarmupTranscriptError, "boundary"):
-            build(warmup_occurrences=query_event)
-
-        wrong_query = query_state()
-        wrong_query["predictor_state_version"] = 1
-        query_body = dict(wrong_query)
-        query_body.pop("query_start_state_receipt_sha256")
-        wrong_query["query_start_state_receipt_sha256"] = canonical_sha256(query_body)
-        with self.assertRaisesRegex(WarmupTranscriptError, "query-start state"):
-            build(query_start_state=wrong_query)
-
-        wrong_policy = reference_policy()
-        wrong_policy["capacity_per_polarity"] = 257
-        with self.assertRaisesRegex(WarmupTranscriptError, "fixed bounds"):
-            build(reference_prime_policy=wrong_policy)
-
-        wrong_age = reference_policy()
-        wrong_age["max_age_ns"] -= 1
-        with self.assertRaisesRegex(WarmupTranscriptError, "fixed bounds"):
-            build(reference_prime_policy=wrong_age)
-
-        wrong_semantics = reference_policy()
-        wrong_semantics["selection_rule"] = "minimum_angular_distance_only"
-        with self.assertRaisesRegex(WarmupTranscriptError, "semantics"):
-            build(reference_prime_policy=wrong_semantics)
-
-        late_reset = reset()
-        late_reset["reset_cycle"] = 1
-        reset_body = dict(late_reset)
-        reset_body.pop("reset_sha256")
-        late_reset["reset_sha256"] = canonical_sha256(reset_body)
-        with self.assertRaisesRegex(WarmupTranscriptError, "exactly zero"):
-            build(reset=late_reset)
-
-    def test_event_ids_follow_authoritative_source_order_not_numeric_order(self):
-        source = occurrences()
-        replacement_ids = [90, 4, 80, 3, 70, 2, 60, 1, 50]
-        for row, event_id in zip(source, replacement_ids):
-            row["event_id"] = event_id
-        source_bindings = bindings(replacement_ids)
-        source_boundary = boundary_close(source, binding=source_bindings)
-        receipt = build(
-            bindings=source_bindings,
-            boundary_close_authority=source_boundary,
-            warmup_occurrences=source,
-        )
+    def test_unique_numerically_decreasing_ids_pass_in_source_order(self):
+        receipt = self.build()
         self.assertEqual(receipt["first_warmup_occurrence"]["event_id"], 90)
         self.assertEqual(receipt["last_warmup_occurrence"]["event_id"], 50)
         self.assertEqual(
-            verify(
-                receipt, bindings=source_bindings,
-                boundary_close_authority=source_boundary,
-                warmup_occurrences=(row for row in source),
+            self.verify(
+                receipt,
+                warmup_occurrences=(row for row in occurrences(self.execution)),
             ),
             receipt["receipt_sha256"],
         )
 
-        duplicate = deepcopy(source)
-        duplicate[-1]["event_id"] = duplicate[0]["event_id"]
-        with self.assertRaises(WarmupTranscriptError):
-            verify(
-                receipt, bindings=source_bindings,
-                boundary_close_authority=source_boundary,
-                warmup_occurrences=duplicate,
-            )
-
-    def test_fixed_native_replay_authority_is_required_and_resealed_mutations_fail(self):
-        bad_bindings = bindings()
-        bad_bindings["native_replay_authority_sha256"] = "0" * 64
-        with self.assertRaisesRegex(WarmupTranscriptError, "authority"):
-            build(bindings=bad_bindings)
-
-        pristine = build()
-        mutant = deepcopy(pristine)
-        authority = mutant["native_replay_authority"]
-        authority["integrity_scope"] = "rows_are_independently_authenticated"
-        authority_body = dict(authority)
-        authority_body.pop("authority_receipt_sha256")
-        authority["authority_receipt_sha256"] = canonical_sha256(authority_body)
-        receipt_body = dict(mutant)
-        receipt_body.pop("receipt_sha256")
-        mutant["receipt_sha256"] = canonical_sha256(receipt_body)
-        with self.assertRaisesRegex(WarmupTranscriptError, "authority"):
-            verify(mutant)
-
-    def test_future_effective_transition_is_preserved_for_query_continuation(self):
+    def test_same_edge_old_state_transition_and_future_pending(self):
+        source = occurrences(self.execution)
+        self.assertEqual(source[1]["decision_cycle"], transitions()[0]["commit_cycle"])
+        self.assertEqual(source[1]["predictor_state_version"], 0)
         pending = {
             "transition_ordinal": 2,
             "pose_id": 3,
             "pose_content_sha256": "7" * 64,
             "measurement_timestamp_ns": 900,
-            "commit_cycle": 9,
-            "publication_cycle": 11,
-            "effective_cycle": 12,
+            "commit_cycle": timestamp_to_cycle(900, 0),
+            "publication_cycle": timestamp_to_cycle(50_000_100, 0) + 1,
+            "effective_cycle": timestamp_to_cycle(50_000_100, 0) + 2,
             "state_changed": True,
             "prior_state_version": 2,
             "prior_state_sha256": SHA_C,
@@ -687,174 +527,290 @@ class WarmupTranscriptTests(unittest.TestCase):
             "native_transition_sha256": "9" * 64,
         }
         replay_transitions = transitions() + [pending]
-        receipt = build(
-            boundary_close_authority=boundary_close(
-                transition_rows=replay_transitions,
-            ),
-            state_transitions=replay_transitions,
+        receipt = self.build(state_transitions=replay_transitions)
+        self.assertEqual(receipt["pending_query_transition"]["effective_cycle"], pending["effective_cycle"])
+        self.assertEqual(receipt["pending_query_transition"]["authentication_status"], EXTERNAL_PRODUCTION_HOLD)
+        self.assertEqual(self.verify(receipt, state_transitions=replay_transitions), receipt["receipt_sha256"])
+
+        gap_pending = deepcopy(pending)
+        gap_pending["publication_cycle"] = timestamp_to_cycle(50_000_000, 0) + 1
+        gap_pending["effective_cycle"] = timestamp_to_cycle(50_000_000, 0) + 1
+        self.assertLess(
+            gap_pending["effective_cycle"],
+            timestamp_to_cycle(50_000_100, 0),
         )
-        preserved = receipt["pending_query_transition"]
-        self.assertEqual(preserved["schema"], PENDING_TRANSITION_SCHEMA)
-        self.assertEqual(preserved["effective_cycle"], 12)
-        self.assertEqual(preserved["next_state_sha256"], SHA_D)
+        gap_transitions = transitions() + [gap_pending]
+        gap_receipt = self.build(state_transitions=gap_transitions)
         self.assertEqual(
-            verify(
-                receipt,
-                boundary_close_authority=boundary_close(
-                    transition_rows=replay_transitions,
-                ),
-                state_transitions=replay_transitions,
-            ),
-            receipt["receipt_sha256"],
+            gap_receipt["query_start_state"]["predictor_state_version"], 2
+        )
+        self.assertEqual(
+            gap_receipt["pending_query_transition"]["effective_cycle"],
+            gap_pending["effective_cycle"],
+        )
+        self.assertEqual(
+            self.verify(gap_receipt, state_transitions=gap_transitions),
+            gap_receipt["receipt_sha256"],
         )
 
-        removed = deepcopy(receipt)
-        removed["pending_query_transition"] = None
-        removed_body = dict(removed)
-        removed_body.pop("receipt_sha256")
-        removed["receipt_sha256"] = canonical_sha256(removed_body)
+    def test_transition_snapshot_and_hold_mutations_fail(self):
+        pristine = self.build()
+        transition_attacks = [transitions()[:-1]]
+        wrong_commit = transitions()
+        wrong_commit[0]["commit_cycle"] += 1
+        transition_attacks.append(wrong_commit)
+        wrong_pose = transitions()
+        wrong_pose[0]["pose_content_sha256"] = "8" * 64
+        transition_attacks.append(wrong_pose)
+        for attack in transition_attacks:
+            with self.subTest(transition=attack):
+                with self.assertRaises(WarmupTranscriptError):
+                    self.verify(pristine, state_transitions=attack)
+
+        snapshot = deepcopy(pristine)
+        bank = snapshot["query_start_reference_snapshot"]["polarity_0"]
+        bank[0]["world_ray"] = ray(0.7)
+        snapshot_body = snapshot["query_start_reference_snapshot"]
+        snapshot_body["polarity_0_sha256"] = canonical_sha256({
+            "domain": "stage3/warmup/reference_snapshot/polarity_0/v1",
+            "observations": bank,
+        })
+        unsigned_snapshot = dict(snapshot_body)
+        unsigned_snapshot.pop("snapshot_sha256")
+        snapshot_body["snapshot_sha256"] = canonical_sha256(unsigned_snapshot)
+        unsigned_receipt = dict(snapshot)
+        unsigned_receipt.pop("receipt_sha256")
+        snapshot["receipt_sha256"] = canonical_sha256(unsigned_receipt)
         with self.assertRaises(WarmupTranscriptError):
-            verify(
-                removed,
-                boundary_close_authority=boundary_close(
-                    transition_rows=replay_transitions,
-                ),
-                state_transitions=replay_transitions,
-            )
+            self.verify(snapshot)
 
-    def test_snapshot_never_exceeds_256_per_polarity(self):
-        large = []
-        for ordinal in range(600):
-            large.append(occurrence(
-                ordinal,
-                10_000 + ordinal,
-                300 + ordinal,
-                1 + ordinal,
-                0,
-                SHA_A,
-                0,
-                EMPTY_DEPENDENCY_CHAIN,
-                None,
-                polarity=ordinal % 2,
-                angle=ordinal * 0.0001,
-            ))
-        large_bounds = bounds()
-        large_bounds["query_start_ns_inclusive"] = 2_000
-        large_bounds["query_end_ns_exclusive"] = 3_000
-        large_bounds["query_start_decision_cycle"] = 700
-        empty_query = sealed({
-            "schema": QUERY_START_STATE_SCHEMA,
-            "predictor_state_version": 0,
-            "predictor_state_sha256": SHA_A,
-            "dependency_pose_count": 0,
-            "dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
-            "last_dependency_pose_id": None,
-        }, "query_start_state_receipt_sha256")
-        receipt = build(
-            bindings=bindings([row["event_id"] for row in large]),
-            bounds=large_bounds,
-            boundary_close_authority=boundary_close(
-                large, transition_rows=[], bound=large_bounds,
-                binding=bindings([row["event_id"] for row in large]),
-                first_query_event_id=99_999,
-                first_query_timestamp_ns=2_000,
-            ),
-            reference_prime_policy=reference_policy(),
-            transport_policy=transport_policy(capacity=1),
-            query_start_state=empty_query,
-            warmup_occurrences=large,
-            state_transitions=[],
-        )
+        false_go = deepcopy(pristine)
+        false_go["replay_receipt"]["native_candidate_replay_status"] = "PASS"
+        replay_body = dict(false_go["replay_receipt"])
+        replay_body.pop("replay_receipt_sha256")
+        false_go["replay_receipt"]["replay_receipt_sha256"] = canonical_sha256(replay_body)
+        receipt_body = dict(false_go)
+        receipt_body.pop("receipt_sha256")
+        false_go["receipt_sha256"] = canonical_sha256(receipt_body)
+        with self.assertRaises(WarmupTranscriptError):
+            self.verify(false_go)
+
+    def test_reset_and_exact_reference_policy_are_locked(self):
+        for mutation, message in (
+            (("reset_cycle", 1), "cycle-zero"),
+            (("reset_generation", 1), "cycle-zero"),
+            (("predictor_state_version", 1), "cycle-zero"),
+            (("dependency_pose_count", 1), "cycle-zero"),
+        ):
+            bad = reset()
+            bad[mutation[0]] = mutation[1]
+            if mutation[0] == "dependency_pose_count":
+                bad["last_dependency_pose_id"] = 1
+            body = dict(bad)
+            body.pop("reset_sha256")
+            bad["reset_sha256"] = canonical_sha256(body)
+            with self.subTest(field=mutation[0]):
+                with self.assertRaisesRegex(WarmupTranscriptError, message):
+                    self.build(reset=bad)
+        for field, value in (("capacity_per_polarity", 257), ("max_age_ns", 1_999_999)):
+            bad_policy = reference_policy()
+            bad_policy[field] = value
+            with self.assertRaisesRegex(WarmupTranscriptError, "fixed bounds"):
+                self.build(reference_prime_policy=bad_policy)
+
+    def test_snapshot_matches_actual_cluster_state_and_first_query_expires_gap(self):
+        receipt = self.build()
         snapshot = receipt["query_start_reference_snapshot"]
-        self.assertEqual(receipt["warmup_occurrence_count"], 600)
-        self.assertEqual(snapshot["occupancy"], [256, 256])
-        self.assertEqual(snapshot["polarity_0"][0]["occurrence_ordinal"], 88)
-        self.assertEqual(snapshot["polarity_1"][0]["occurrence_ordinal"], 89)
-        self.assertNotIn("warmup_occurrences", receipt)
+        self.assertEqual(snapshot["last_warmup_timestamp_ns"], 900)
+        self.assertGreater(snapshot["observation_count"], 0)
+        for polarity in (0, 1):
+            values = snapshot["polarity_%d" % polarity]
+            self.assertEqual(
+                [(row["timestamp_ns"], row["occurrence_ordinal"]) for row in values],
+                sorted((row["timestamp_ns"], row["occurrence_ordinal"]) for row in values),
+            )
+            self.assertLessEqual(len(values), 256)
 
-    def test_incremental_generator_retains_only_bounded_reference_state(self):
-        stream_bounds = bounds()
-        stream_bounds["query_start_ns_inclusive"] = 5_000
-        stream_bounds["query_end_ns_exclusive"] = 6_000
-        stream_bounds["query_start_decision_cycle"] = 3_000
+        source = occurrences(self.execution)
+        warmup = tuple(ReferenceObservation(
+            row["event_id"], row["timestamp_ns"], row["polarity"], tuple(row["world_ray"])
+        ) for row in source)
+        query = ReferenceObservation(100, 50_000_100, 0, tuple(ray(0.07)))
+        config = CausalReferenceConfig(256, 2_000_000)
+        legacy = CausalReferenceBank(config).process(warmup + (query,))[-1]
+        primed = ScoreFreeCausalReferenceBank(config)
+        primed.prime(tuple(ReferenceObservation(
+            row["event_id"], row["timestamp_ns"], row["polarity"], tuple(row["world_ray"])
+        ) for row in merge_snapshot(snapshot)))
+        actual = primed.process((query,))[0]
+        self.assertFalse(actual.reference_available)
+        self.assertEqual(actual, legacy)
+
+    def test_recursive_unknowns_and_locally_resealed_mutations_fail(self):
+        pristine = self.build()
+        paths = (
+            ("execution_binding",),
+            ("boundary_authority",),
+            ("replay_receipt", "logical_cycle_replay_authority", "profile"),
+            ("query_start_state",),
+            ("query_start_reference_snapshot", "polarity_0", 0),
+        )
+        for path in paths:
+            mutant = deepcopy(pristine)
+            target = mutant
+            for part in path:
+                target = target[part]
+            target["unknown"] = 1
+            receipt_body = dict(mutant)
+            receipt_body.pop("receipt_sha256")
+            mutant["receipt_sha256"] = canonical_sha256(receipt_body)
+            with self.subTest(path=path):
+                with self.assertRaises(WarmupTranscriptError):
+                    self.verify(mutant)
+
+    def test_committed_schemas_are_closed_and_accept_receipt(self):
+        receipt = self.build()
+        schema_cases = {
+            "stage3_warmup_transcript.schema.json": receipt,
+            "stage3_warmup_boundary.schema.json": receipt["boundary_authority"],
+            "stage3_warmup_replay_receipt.schema.json": receipt["replay_receipt"],
+            "stage3_warmup_pending_transition.schema.json": self.build(
+                state_transitions=transitions() + [{
+                    "transition_ordinal": 2,
+                    "pose_id": 3,
+                    "pose_content_sha256": "7" * 64,
+                    "measurement_timestamp_ns": 900,
+                    "commit_cycle": timestamp_to_cycle(900, 0),
+                    "publication_cycle": timestamp_to_cycle(50_000_100, 0) + 1,
+                    "effective_cycle": timestamp_to_cycle(50_000_100, 0) + 2,
+                    "state_changed": True,
+                    "prior_state_version": 2,
+                    "prior_state_sha256": SHA_C,
+                    "prior_dependency_pose_count": 2,
+                    "prior_dependency_pose_chain_sha256": POSE2_CHAIN,
+                    "prior_last_dependency_pose_id": 2,
+                    "next_state_version": 3,
+                    "next_state_sha256": SHA_D,
+                    "next_dependency_pose_count": 3,
+                    "next_dependency_pose_chain_sha256": POSE3_CHAIN,
+                    "next_last_dependency_pose_id": 3,
+                    "native_transition_sha256": "9" * 64,
+                }]
+            )["pending_query_transition"],
+            "stage3_warmup_query_start_state.schema.json": receipt["query_start_state"],
+            "stage3_warmup_reference_snapshot.schema.json": receipt["query_start_reference_snapshot"],
+        }
+        schema_root = ROOT / "benchmarks/redred_mc_wtb_predictor_stage3"
+        transcript_schema = json.loads((
+            schema_root / "stage3_warmup_transcript.schema.json"
+        ).read_text(encoding="utf-8"))
+        registry = SchemaRegistry().with_resource(
+            transcript_schema["$id"], Resource.from_contents(transcript_schema)
+        )
+        for filename, instance in schema_cases.items():
+            schema = json.loads((schema_root / filename).read_text(encoding="utf-8"))
+            validator = Draft202012Validator(schema, registry=registry)
+            with self.subTest(schema=filename):
+                self.assertEqual(list(validator.iter_errors(instance)), [])
+                mutant = deepcopy(instance)
+                mutant["unknown"] = True
+                self.assertNotEqual(list(validator.iter_errors(mutant)), [])
+        top_validator = Draft202012Validator(transcript_schema, registry=registry)
+        recursive = deepcopy(receipt)
+        recursive["replay_receipt"]["logical_cycle_replay_authority"]["profile"]["unknown"] = 1
+        self.assertNotEqual(list(top_validator.iter_errors(recursive)), [])
+
+    def test_20k_generator_retains_no_rich_rows_or_unbounded_id_set(self):
+        warmup_events = []
+        for ordinal in range(20_000):
+            warmup_events.append(make_event(
+                100_000 - ordinal, 1 + ordinal * 1_000, ordinal % 2, 0
+            ))
+        query_event = make_event(200_000, 50_000_100, 0, 0)
+        all_events = tuple(warmup_events) + (query_event,)
+        expanded = build_stage3_execution_input(
+            (Registry(WINDOW_ID, 0, 50_000_000, 51_000_000),),
+            {WINDOW_ID: all_events},
+            {WINDOW_ID: (make_pose(0, 0),)},
+            source_events_authority={
+                "source_events_path": "external/new108/events.txt",
+                "source_events_sha256": "0" * 64,
+                "source_events_size_bytes": 1,
+                "source_events_line_count": len(all_events),
+            },
+            repo_root=ROOT,
+        )
         builder = begin_warmup_transcript(
-            bindings=bindings(range(20_000, 22_000)),
-            bounds=stream_bounds,
+            execution_input=expanded,
+            window_id=WINDOW_ID,
+            repo_root=ROOT,
             reference_prime_policy=reference_policy(),
-            transport_policy=transport_policy(capacity=6),
+            transport_policy=transport_policy(8),
             reset=reset(),
         )
+        del expanded
+        del warmup_events
+        del all_events
 
-        def occurrence_stream():
-            for ordinal in range(2_000):
-                yield occurrence(
-                    ordinal, 20_000 + ordinal, 1 + ordinal, 1 + ordinal,
-                    0, SHA_A, 0, EMPTY_DEPENDENCY_CHAIN, None,
-                    polarity=ordinal % 2, angle=ordinal * 0.00001,
-                )
+        def stream():
+            for ordinal in range(20_000):
+                timestamp = 1 + ordinal * 1_000
+                decision_cycle = timestamp_to_cycle(timestamp, 0)
+                event_id = 100_000 - ordinal
+                polarity = ordinal % 2
+                sensor_ray = (1.0, 0.0, 0.0)
+                yield {
+                    "occurrence_ordinal": ordinal,
+                    "event_id": event_id,
+                    "event_content_sha256": canonical_event_content_sha256(
+                        event_id, timestamp, polarity, False, sensor_ray, 0, True
+                    ),
+                    "timestamp_ns": timestamp,
+                    "polarity": polarity,
+                    "occurrence_cycle": decision_cycle - 1,
+                    "decision_cycle": decision_cycle,
+                    "service_cycle": decision_cycle,
+                    "predictor_state_version": 0,
+                    "predictor_state_sha256": SHA_A,
+                    "state_dependency_pose_count": 0,
+                    "state_dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
+                    "state_last_dependency_pose_id": None,
+                    "candidate_attempted": False,
+                    "candidate_used": False,
+                    "route": "FALLBACK",
+                    "decision_sha256": canonical_sha256({"ordinal": ordinal}),
+                    "world_ray": ray(ordinal * 0.00001),
+                }
 
-        for item in occurrence_stream():
-            builder.update_occurrence(item)
-            retained = builder.retained_state_counts()
-            self.assertEqual(retained["rich_occurrence_rows"], 0)
-            self.assertEqual(retained["rich_transition_rows"], 0)
-            self.assertLessEqual(retained["reference_polarity_0"], 256)
-            self.assertLessEqual(retained["reference_polarity_1"], 256)
+        for row in stream():
+            builder.update_occurrence(row)
+        retained = builder.retained_state_counts()
+        self.assertEqual(retained["rich_occurrence_rows"], 0)
+        self.assertEqual(retained["rich_transition_rows"], 0)
+        self.assertLessEqual(retained["reference_polarity_0"], 256)
+        self.assertLessEqual(retained["reference_polarity_1"], 256)
+        for value in builder.__dict__.values():
+            if isinstance(value, (list, tuple, set, dict, frozenset, bytes, bytearray)):
+                self.assertLessEqual(len(value), 512)
+        receipt = builder.finalize(query_state(0, SHA_A, 0, EMPTY_DEPENDENCY_CHAIN, None))
+        self.assertEqual(receipt["warmup_occurrence_count"], 20_000)
+        self.assertNotIn("warmup_occurrences", receipt)
 
-        empty_query = sealed({
-            "schema": QUERY_START_STATE_SCHEMA,
-            "predictor_state_version": 0,
-            "predictor_state_sha256": SHA_A,
-            "dependency_pose_count": 0,
-            "dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
-            "last_dependency_pose_id": None,
-        }, "query_start_state_receipt_sha256")
-        stream_boundary = sealed({
-            "schema": BOUNDARY_CLOSE_SCHEMA,
-            "window_id": stream_bounds["window_id"],
-            "query_start_ns_inclusive": stream_bounds["query_start_ns_inclusive"],
-            "last_warmup_occurrence_ordinal": 1_999,
-            "last_warmup_event_id": 21_999,
-            "last_warmup_timestamp_ns": 2_000,
-            "warmup_transition_count": 0,
-            "last_warmup_transition_measurement_timestamp_ns": None,
-            "last_warmup_cluster_timestamp_ns": 2_000,
-            "first_query_source_ordinal": 2_000,
-            "first_query_event_id": 30_000,
-            "first_query_timestamp_ns": 5_000,
-            "execution_input_aggregate_sha256": bindings()["execution_input_aggregate_sha256"],
-            "ordered_warmup_event_ids_sha256": bindings(range(20_000, 22_000))["ordered_warmup_event_ids_sha256"],
-            "native_replay_authority_sha256": NATIVE_REPLAY_AUTHORITY_SHA256,
-        }, "boundary_close_sha256")
-        receipt = builder.finalize(empty_query, stream_boundary)
-        self.assertEqual(receipt["warmup_occurrence_count"], 2_000)
-        self.assertEqual(
-            receipt["query_start_reference_snapshot"]["occupancy"], [256, 256]
-        )
-
-    def test_clean_import_is_python38_syntax_and_loads_no_label_or_metric_modules(self):
+    def test_python38_grammar_and_clean_import(self):
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        ast.parse(source, filename=str(MODULE_PATH), feature_version=(3, 8))
         script = (
-            "import json,sys; import " + MODULE + "; "
+            "import json,sys; import benchmarks.redred_mc_wtb_predictor_stage3.warmup_transcript; "
             "bad=[m for m in sys.modules if (m.endswith('.selector') or "
-            "m.endswith('.evaluator') or m.endswith('.screen108'))]; "
+            "m.endswith('.evaluator') or m.endswith('.screen108') or "
+            "m.endswith('.scorer') or 'causal_reference' in m)]; "
             "print(json.dumps(sorted(bad)))"
         )
         completed = subprocess.run(
-            [sys.executable, "-S", "-c", script],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
+            [sys.executable, "-S", "-c", script], cwd=ROOT,
+            check=True, capture_output=True, text=True,
         )
         self.assertEqual(json.loads(completed.stdout), [])
-        completed = subprocess.run(
-            [sys.executable, "-m", "py_compile", str(ROOT / "benchmarks/redred_mc_wtb_predictor_stage3/warmup_transcript.py")],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(completed.returncode, 0)
 
 
 if __name__ == "__main__":
