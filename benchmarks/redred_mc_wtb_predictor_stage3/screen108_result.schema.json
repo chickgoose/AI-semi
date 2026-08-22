@@ -45,7 +45,9 @@
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "identifier": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9_.:/,+-]{0,510}[A-Za-z0-9])?$"
     },
     "nonnegative_integer": {"type": "integer", "minimum": 0},
     "finite_number": {"type": "number"},
@@ -125,6 +127,16 @@
       }
     },
     "cncp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_grade", "verdict", "declared_values"],
+      "properties": {
+        "evidence_grade": {"const": "DECLARED_UNVERIFIED"},
+        "verdict": {"const": "CNCP_HOLD_UNVERIFIED"},
+        "declared_values": {"$ref": "#/$defs/cncp_declared_values"}
+      }
+    },
+    "cncp_declared_values": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -249,7 +261,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "accuracy_and_waste", "cost_and_endpoint", "screen_metric_gate_pass",
+        "accuracy_and_waste", "model_accuracy_verdict",
+        "model_accuracy_gate_pass",
         "synthetic_pass_supplied", "promotion_authorized",
         "hardware_estimate_boundary_met", "rtl_ppa_authorized"
       ],
@@ -269,26 +282,13 @@
             "sensor_waste_not_worse_than_A": {"type": "boolean"}
           }
         },
-        "cost_and_endpoint": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "state_at_most_S2", "compute_at_most_C2", "pipeline_at_most_P2",
-            "II_event_is_1", "two_event_lanes", "endpoint_target_is_6p5ns"
-          ],
-          "properties": {
-            "state_at_most_S2": {"type": "boolean"},
-            "compute_at_most_C2": {"type": "boolean"},
-            "pipeline_at_most_P2": {"type": "boolean"},
-            "II_event_is_1": {"type": "boolean"},
-            "two_event_lanes": {"type": "boolean"},
-            "endpoint_target_is_6p5ns": {"type": "boolean"}
-          }
+        "model_accuracy_verdict": {
+          "enum": ["MODEL_ACCURACY_PASS", "MODEL_ACCURACY_FAIL"]
         },
-        "screen_metric_gate_pass": {"type": "boolean"},
+        "model_accuracy_gate_pass": {"type": "boolean"},
         "synthetic_pass_supplied": {"const": false},
         "promotion_authorized": {"const": false},
-        "hardware_estimate_boundary_met": {"type": "boolean"},
+        "hardware_estimate_boundary_met": {"const": false},
         "rtl_ppa_authorized": {"const": false}
       }
     },

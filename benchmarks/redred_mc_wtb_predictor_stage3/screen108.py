@@ -44,6 +44,10 @@ RESULT_SCHEMA = "redred.mc_wtb_predictor_stage3.screen108_result/v1"
 CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v1"
 STATUS_MEASURED = "SCREEN108_MEASURED_PROMOTION_NOT_AUTHORIZED"
 STATUS_HOLD = "SCREEN108_METRICS_HOLD"
+MODEL_ACCURACY_PASS = "MODEL_ACCURACY_PASS"
+MODEL_ACCURACY_FAIL = "MODEL_ACCURACY_FAIL"
+CNCP_EVIDENCE_GRADE = "DECLARED_UNVERIFIED"
+CNCP_VERDICT = "CNCP_HOLD_UNVERIFIED"
 PREROLL_NS = 50_000_000
 POSITIVE_WINDOW_THRESHOLD = 1.0e-6
 REFERENCE_CAPACITY_PER_POLARITY = 256
@@ -57,7 +61,9 @@ EXPECTED_SELECTOR_REGISTRY_SHA256 = "4d022cfde62c609c19c275add2e374d656babde3d4e
 EXPECTED_EVALUATOR_SHA256 = "64cf6d9aff7c4a3dec791469b5e2f010fe80d8930650f8438d80f4659b3302fd"
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+_IDENTIFIER = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9_.:/,+-]{0,510}[A-Za-z0-9])?\Z"
+)
 _OUTPUT_FIELDS = frozenset((
     "schema", "candidate_id", "adapter_aggregate_sha256",
     "neutral_input_sha256", "candidate_executable_sha256",
@@ -74,6 +80,9 @@ _CNCP_FIELDS = frozenset((
     "II_event", "critical_depth", "pipeline_bits", "max_wire_width",
     "numeric_risk", "state_class", "compute_class", "pipeline_class",
     "endpoint_target_ns", "event_lanes",
+))
+_CNCP_RESULT_FIELDS = frozenset((
+    "evidence_grade", "verdict", "declared_values",
 ))
 _OPERATION_FIELDS = frozenset(("add_compare", "fixed_multiply", "nonlinear"))
 _RESULT_FIELDS = frozenset((
@@ -98,6 +107,16 @@ _WINDOW_RESULT_FIELDS = frozenset((
     "E_A_S", "E_P_S", "I_P_A", "Delta_P_A", "positive_vs_s",
     "positive_vs_a", "candidate_use_events", "fallback_events",
     "fallback_reasons",
+))
+_ACCURACY_CHECK_FIELDS = frozenset((
+    "overall_I_P_A_positive", "MID_I_P_A_positive", "HIGH_I_P_A_positive",
+    "LOW_I_P_A_not_below_minus_0p25pct", "sensor_waste_not_worse_than_A",
+))
+_GATE_FIELDS = frozenset((
+    "accuracy_and_waste", "model_accuracy_verdict",
+    "model_accuracy_gate_pass", "synthetic_pass_supplied",
+    "promotion_authorized", "hardware_estimate_boundary_met",
+    "rtl_ppa_authorized",
 ))
 
 
@@ -215,7 +234,7 @@ def _pipeline_class(depth: int) -> str:
 
 
 def validate_cncp(value: object) -> Mapping[str, object]:
-    """Validate the complete candidate-neutral hardware cost proxy."""
+    """Lint a flat CNCP declaration without treating it as feasibility evidence."""
 
     cncp = _exact_mapping(value, _CNCP_FIELDS, "CNCP")
     integers = {}
@@ -398,9 +417,6 @@ def _validate_candidate_output(
                 raise Screen108Error("candidate used pose IDs differ")
             if used_pose_ids != sorted(set(used_pose_ids)):
                 raise Screen108Error("candidate used pose IDs are not unique and ordered")
-            occurrence_ids = set(baseline_decision.occurrence_pose_ids)
-            if not set(used_pose_ids).issubset(occurrence_ids):
-                raise Screen108Error("candidate used a same-edge or future pose")
             for pose_id in used_pose_ids:
                 pose = poses_by_id.get(pose_id)
                 if (
@@ -418,6 +434,8 @@ def _validate_candidate_output(
                     raise Screen108Error("candidate-use receipt has fallback fields")
                 if model_id == "CURRENT_CAV":
                     raise Screen108Error("current CAV must be recorded as baseline fallback")
+                if model_id != candidate_id:
+                    raise Screen108Error("candidate model identity differs from candidate ID")
                 if baseline_decision.disposition != "corrected_world_ray":
                     raise Screen108Error("candidate used geometry where current CAV is invalid")
                 _unit_ray(decision["world_ray"], "candidate world ray")
@@ -687,18 +705,10 @@ def _evaluate_verified(
             <= group_index["OVERALL"]["baseline_sensor_waste_rate"]
         ),
     }
-    cost_checks = {
-        "state_at_most_S2": _class_rank(str(cncp["state_class"]), "S") <= 2,
-        "compute_at_most_C2": _class_rank(str(cncp["compute_class"]), "C") <= 2,
-        "pipeline_at_most_P2": _class_rank(str(cncp["pipeline_class"]), "P") <= 2,
-        "II_event_is_1": cncp["II_event"] == 1,
-        "two_event_lanes": cncp["event_lanes"] == 2,
-        "endpoint_target_is_6p5ns": cncp["endpoint_target_ns"] == 6.5,
-    }
-    screen_metric_pass = all(accuracy_checks.values()) and all(cost_checks.values())
-    hardware_estimate_boundary = all(cost_checks.values()) and _class_rank(
-        str(cncp["numeric_risk"]), "N"
-    ) <= 2
+    model_accuracy_pass = all(accuracy_checks.values())
+    model_accuracy_verdict = (
+        MODEL_ACCURACY_PASS if model_accuracy_pass else MODEL_ACCURACY_FAIL
+    )
     cohort = {
         "sequence_id": "uzh_davis240c/shapes_rotation",
         "role": "DEVELOPMENT_CONSUMED",
@@ -743,20 +753,24 @@ def _evaluate_verified(
     }
     body = {
         "schema": RESULT_SCHEMA,
-        "status": STATUS_MEASURED if screen_metric_pass else STATUS_HOLD,
+        "status": STATUS_MEASURED if model_accuracy_pass else STATUS_HOLD,
         "candidate_id": candidate_id,
         "cohort": cohort,
         "provenance": provenance,
-        "cncp": cncp,
+        "cncp": {
+            "evidence_grade": CNCP_EVIDENCE_GRADE,
+            "verdict": CNCP_VERDICT,
+            "declared_values": cncp,
+        },
         "groups": groups,
         "windows": result_windows,
         "gate": {
             "accuracy_and_waste": accuracy_checks,
-            "cost_and_endpoint": cost_checks,
-            "screen_metric_gate_pass": screen_metric_pass,
+            "model_accuracy_verdict": model_accuracy_verdict,
+            "model_accuracy_gate_pass": model_accuracy_pass,
             "synthetic_pass_supplied": False,
             "promotion_authorized": False,
-            "hardware_estimate_boundary_met": hardware_estimate_boundary,
+            "hardware_estimate_boundary_met": False,
             "rtl_ppa_authorized": False,
         },
         "claim_scope": {
@@ -781,6 +795,13 @@ def verify_screen108_result_envelope(value: object) -> str:
     if result["schema"] != RESULT_SCHEMA or result["status"] not in (STATUS_MEASURED, STATUS_HOLD):
         raise Screen108Error("screen result schema or status differs")
     _identifier(result["candidate_id"], "result candidate ID")
+    cncp_result = _exact_mapping(result["cncp"], _CNCP_RESULT_FIELDS, "screen result CNCP")
+    if (
+        cncp_result["evidence_grade"] != CNCP_EVIDENCE_GRADE
+        or cncp_result["verdict"] != CNCP_VERDICT
+    ):
+        raise Screen108Error("screen result CNCP evidence boundary differs")
+    validate_cncp(cncp_result["declared_values"])
     if not isinstance(result["groups"], list) or [row.get("group") for row in result["groups"] if isinstance(row, Mapping)] != ["OVERALL", "LOW", "MID", "HIGH"]:
         raise Screen108Error("screen result metric groups differ")
     for row in result["groups"]:
@@ -791,9 +812,31 @@ def verify_screen108_result_envelope(value: object) -> str:
         raise Screen108Error("screen result windows differ")
     for row in result["windows"]:
         _exact_mapping(row, _WINDOW_RESULT_FIELDS, "screen result window")
-    gate = result["gate"]
+    gate = _exact_mapping(result["gate"], _GATE_FIELDS, "screen result gate")
+    accuracy = _exact_mapping(
+        gate["accuracy_and_waste"], _ACCURACY_CHECK_FIELDS,
+        "screen result accuracy checks",
+    )
+    if any(type(value) is not bool for value in accuracy.values()):
+        raise Screen108Error("screen result accuracy checks must be exact bools")
+    model_accuracy_pass = all(accuracy.values())
+    expected_verdict = (
+        MODEL_ACCURACY_PASS if model_accuracy_pass else MODEL_ACCURACY_FAIL
+    )
+    expected_status = STATUS_MEASURED if model_accuracy_pass else STATUS_HOLD
+    if (
+        gate["model_accuracy_gate_pass"] is not model_accuracy_pass
+        or gate["model_accuracy_verdict"] != expected_verdict
+        or result["status"] != expected_status
+    ):
+        raise Screen108Error("screen result model accuracy verdict differs")
     claim = result["claim_scope"]
-    if not isinstance(gate, Mapping) or gate.get("promotion_authorized") is not False or gate.get("rtl_ppa_authorized") is not False:
+    if (
+        gate["synthetic_pass_supplied"] is not False
+        or gate["promotion_authorized"] is not False
+        or gate["hardware_estimate_boundary_met"] is not False
+        or gate["rtl_ppa_authorized"] is not False
+    ):
         raise Screen108Error("screen result authorization boundary differs")
     if not isinstance(claim, Mapping) or claim.get("rtl_evaluated") is not False or claim.get("ppa_evaluated") is not False or claim.get("candidate_executed_by_runner") is not False:
         raise Screen108Error("screen result claim boundary differs")

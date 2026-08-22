@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import hashlib
 import json
 import math
@@ -10,12 +11,14 @@ import unittest
 from unittest import mock
 
 from benchmarks.redred_mc_wtb_predictor_stage3 import screen108
+from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import RG3_POLICY
 from benchmarks.redred_mc_wtb_predictor_stage3.screen108 import (
     Screen108Error,
     seal_candidate_output,
     validate_cncp,
     verify_screen108_result_envelope,
 )
+from benchmarks.redred_mc_wtb_predictor_stage3.so3_pll import SO3PLLConfig
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     NeutralEventInput,
     NeutralPoseInput,
@@ -82,16 +85,18 @@ def _fixture():
         window_id = "fixture-%s" % motion_bin
         pose0 = index * 10
         pose1 = pose0 + 1
+        pose2 = pose0 + 2
         registries.append(NeutralRegistryWindow(window_id, start, query, end))
         pose_streams[window_id] = (
             _pose(pose0, start, start, 0.0),
-            _pose(pose1, query - 1_000_000, start, 0.1),
+            _pose(pose1, query - 2_000_000, start, 0.05),
+            _pose(pose2, query - 1_000_000, start, 0.1),
         )
         event_base = index * 100
         event_streams[window_id] = (
-            _event(event_base, query - 200_000, False, 0.00, pose1),
-            _event(event_base + 1, query, True, 0.10, pose1),
-            _event(event_base + 2, query + 100_000, True, 0.20, pose1),
+            _event(event_base, query - 200_000, False, 0.00, pose2),
+            _event(event_base + 1, query, True, 0.10, pose2),
+            _event(event_base + 2, query + 100_000, True, 0.20, pose2),
         )
         labels[window_id] = {
             "axis": "X", "sign": "POSITIVE", "motion_bin": motion_bin,
@@ -114,7 +119,7 @@ def _fixture():
         "selector_labels_sidecar_sha256": canonical_sha256(labels),
         "window_count": 3,
         "selected_event_count": 9,
-        "selected_pose_packet_count": 6,
+        "selected_pose_packet_count": 9,
         "aggregate_sha256": "1" * 64,
     }
     bundle = New108AdapterBundle(
@@ -191,6 +196,18 @@ def _reseal_output(output):
     return output
 
 
+def _candidate_use_output(output, candidate_id, used_pose_ids, event_index=1):
+    changed = deepcopy(output)
+    changed["candidate_id"] = candidate_id
+    event = changed["windows"][0]["events"][event_index]
+    event["candidate_used"] = True
+    event["fallback_reason"] = None
+    event["world_ray"] = [1.0, 0.0, 0.0]
+    event["model_id"] = candidate_id
+    event["used_pose_ids"] = list(used_pose_ids)
+    return _reseal_output(changed)
+
+
 class LockedScreen108Tests(unittest.TestCase):
     def _evaluate(self, output=None, cncp=None):
         bundle, baseline, original, frozen = _fixture()
@@ -218,6 +235,15 @@ class LockedScreen108Tests(unittest.TestCase):
         self.assertAlmostEqual(overall["pooled"]["I_P_A"], 0.0)
         self.assertAlmostEqual(overall["equal_window"]["I_P_A"], 0.0)
         self.assertEqual(result["status"], screen108.STATUS_HOLD)
+        self.assertEqual(
+            result["gate"]["model_accuracy_verdict"],
+            screen108.MODEL_ACCURACY_FAIL,
+        )
+        self.assertFalse(result["gate"]["model_accuracy_gate_pass"])
+        self.assertEqual(result["cncp"]["evidence_grade"], "DECLARED_UNVERIFIED")
+        self.assertEqual(result["cncp"]["verdict"], "CNCP_HOLD_UNVERIFIED")
+        self.assertEqual(result["cncp"]["declared_values"], _cncp())
+        self.assertFalse(result["gate"]["hardware_estimate_boundary_met"])
         self.assertFalse(result["gate"]["promotion_authorized"])
         self.assertFalse(result["gate"]["rtl_ppa_authorized"])
         self.assertFalse(result["claim_scope"]["candidate_executed_by_runner"])
@@ -263,7 +289,7 @@ class LockedScreen108Tests(unittest.TestCase):
             ):
                 self._evaluate(_reseal_output(changed))
 
-    def test_fallback_substitution_label_injection_and_future_pose_fail_closed(self):
+    def test_fallback_substitution_label_injection_and_unknown_pose_fail_closed(self):
         _, _, original, _ = _fixture()
         substituted = deepcopy(original)
         substituted["windows"][0]["events"][0]["world_ray"] = [1.0, 0.0, 0.0]
@@ -284,15 +310,101 @@ class LockedScreen108Tests(unittest.TestCase):
         with self.assertRaisesRegex(Screen108Error, "baseline fallback"):
             self._evaluate(_reseal_output(mislabeled_use))
 
-        future = deepcopy(original)
-        event = future["windows"][0]["events"][1]
+        unknown = deepcopy(original)
+        event = unknown["windows"][0]["events"][1]
         event["candidate_used"] = True
         event["fallback_reason"] = None
         event["world_ray"] = [1.0, 0.0, 0.0]
         event["model_id"] = "FIXTURE-CANDIDATE"
         event["used_pose_ids"] = [999]
-        with self.assertRaisesRegex(Screen108Error, "same-edge or future pose"):
-            self._evaluate(_reseal_output(future))
+        with self.assertRaisesRegex(Screen108Error, "unavailable pose"):
+            self._evaluate(_reseal_output(unknown))
+
+    def test_candidate_may_use_any_time_eligible_neutral_pose(self):
+        _, baseline, output, _ = _fixture()
+        old_pose_id = baseline.windows[0].input_poses[0].pose_id
+        occurrence_ids = baseline.windows[0].simulation.records[1].occurrence_pose_ids
+        self.assertNotIn(old_pose_id, occurrence_ids)
+        result = self._evaluate(_candidate_use_output(
+            output, RG3_POLICY.candidate_id, [old_pose_id]
+        ))
+        self.assertEqual(result["candidate_id"], RG3_POLICY.candidate_id)
+        self.assertEqual(result["windows"][0]["candidate_use_events"], 1)
+
+    def test_same_edge_future_invalid_and_unknown_poses_fail_closed(self):
+        bundle, baseline, output, _ = _fixture()
+        base_window = baseline.windows[0]
+        event = base_window.input_events[1]
+        decision = base_window.simulation.records[1]
+        start = base_window.registry.warmup_start_ns_inclusive
+        invalid = replace(
+            _pose(1000, event.timestamp_ns - 1_000, start, 0.2),
+            value_valid=False,
+        )
+        same_edge = _pose(1001, event.timestamp_ns, start, 0.2)
+        future = _pose(1002, event.timestamp_ns + 1_000, start, 0.2)
+        self.assertEqual(same_edge.commit_cycle, decision.occurrence_cycle)
+        changed_window = replace(
+            base_window,
+            input_poses=base_window.input_poses + (invalid, same_edge, future),
+        )
+        changed_baseline = replace(
+            baseline, windows=(changed_window,) + baseline.windows[1:]
+        )
+        for pose_id in (same_edge.pose_id, future.pose_id, invalid.pose_id, 9999):
+            with self.subTest(pose_id=pose_id), self.assertRaisesRegex(
+                Screen108Error, "unavailable pose"
+            ):
+                screen108._validate_candidate_output(
+                    _candidate_use_output(
+                        output, RG3_POLICY.candidate_id, [pose_id]
+                    ),
+                    bundle,
+                    changed_baseline,
+                    EXECUTABLE_SHA,
+                    CONFIG_SHA,
+                )
+
+    def test_frozen_rg3_and_so3_pll_candidate_and_model_ids_are_accepted(self):
+        _, baseline, output, _ = _fixture()
+        pose_id = baseline.windows[0].input_poses[-1].pose_id
+        candidate_ids = (RG3_POLICY.candidate_id, SO3PLLConfig().candidate_id)
+        results = []
+        for candidate_id in candidate_ids:
+            with self.subTest(candidate_id=candidate_id):
+                result = self._evaluate(_candidate_use_output(
+                    output, candidate_id, [pose_id]
+                ))
+                self.assertEqual(result["candidate_id"], candidate_id)
+                self.assertRegex(
+                    verify_screen108_result_envelope(result), r"^[0-9a-f]{64}$"
+                )
+                results.append(result)
+
+        mismatched = _candidate_use_output(
+            output, RG3_POLICY.candidate_id, [pose_id]
+        )
+        mismatched["windows"][0]["events"][1]["model_id"] = SO3PLLConfig().candidate_id
+        with self.assertRaisesRegex(Screen108Error, "model identity"):
+            self._evaluate(_reseal_output(mismatched))
+
+        unsafe = deepcopy(output)
+        unsafe["candidate_id"] = "RG3 unsafe"
+        with self.assertRaisesRegex(Screen108Error, "canonical identifier"):
+            self._evaluate(_reseal_output(unsafe))
+
+        try:
+            import jsonschema
+        except ImportError:
+            return
+        schema_path = (
+            Path(__file__).resolve().parents[2]
+            / "benchmarks/redred_mc_wtb_predictor_stage3/screen108_result.schema.json"
+        )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        validator = jsonschema.Draft202012Validator(schema)
+        for result in results:
+            validator.validate(result)
 
     def test_output_and_executable_config_provenance_are_bound(self):
         bundle, baseline, output, _ = _fixture()
@@ -309,7 +421,7 @@ class LockedScreen108Tests(unittest.TestCase):
                 output, bundle, baseline, EXECUTABLE_SHA, "4" * 64
             )
 
-    def test_cncp_charges_pipeline_and_preserves_endpoint(self):
+    def test_cncp_declaration_lint_charges_pipeline_and_preserves_endpoint(self):
         self.assertEqual(validate_cncp(_cncp())["state_class"], "S1")
         bad_state = _cncp()
         bad_state["pipeline_bits"] = 513
@@ -328,6 +440,47 @@ class LockedScreen108Tests(unittest.TestCase):
         with self.assertRaisesRegex(Screen108Error, "undercharges"):
             validate_cncp(undercharged)
 
+    def test_unverified_cncp_never_changes_model_verdict_or_meets_boundary(self):
+        unfavorable_cncp = _cncp()
+        unfavorable_cncp.update({
+            "B_ff": 4097,
+            "state_class": "S3",
+            "compute_class": "C4",
+            "critical_depth": 9,
+            "pipeline_class": "P3",
+            "II_event": 2,
+            "numeric_risk": "N3",
+        })
+        unfavorable_cncp["O_event"]["nonlinear"] = 1
+        summarize_group = screen108._summarize_group
+
+        def passing_accuracy(group, windows):
+            result = dict(summarize_group(group, windows))
+            result["pooled"] = dict(result["pooled"], I_P_A=0.1)
+            return result
+
+        with mock.patch.object(
+            screen108, "_summarize_group", side_effect=passing_accuracy
+        ):
+            favorable = self._evaluate(cncp=_cncp())
+            unfavorable = self._evaluate(cncp=unfavorable_cncp)
+        self.assertEqual(favorable["status"], unfavorable["status"])
+        self.assertEqual(favorable["status"], screen108.STATUS_MEASURED)
+        self.assertEqual(favorable["groups"], unfavorable["groups"])
+        self.assertEqual(favorable["windows"], unfavorable["windows"])
+        self.assertEqual(favorable["gate"], unfavorable["gate"])
+        for result in (favorable, unfavorable):
+            self.assertEqual(
+                result["gate"]["model_accuracy_verdict"],
+                screen108.MODEL_ACCURACY_PASS,
+            )
+            self.assertTrue(result["gate"]["model_accuracy_gate_pass"])
+            self.assertEqual(result["cncp"]["evidence_grade"], "DECLARED_UNVERIFIED")
+            self.assertEqual(result["cncp"]["verdict"], "CNCP_HOLD_UNVERIFIED")
+            self.assertFalse(result["gate"]["hardware_estimate_boundary_met"])
+            self.assertNotIn("cost_and_endpoint", result["gate"])
+            self.assertNotIn("screen_metric_gate_pass", result["gate"])
+
     def test_resealed_result_cannot_claim_rtl_or_ppa_authorization(self):
         result = deepcopy(self._evaluate())
         result["gate"]["rtl_ppa_authorized"] = True
@@ -335,6 +488,22 @@ class LockedScreen108Tests(unittest.TestCase):
         body.pop("result_sha256")
         result["result_sha256"] = canonical_sha256(body)
         with self.assertRaisesRegex(Screen108Error, "authorization boundary"):
+            verify_screen108_result_envelope(result)
+
+        result = deepcopy(self._evaluate())
+        result["gate"]["hardware_estimate_boundary_met"] = True
+        body = dict(result)
+        body.pop("result_sha256")
+        result["result_sha256"] = canonical_sha256(body)
+        with self.assertRaisesRegex(Screen108Error, "authorization boundary"):
+            verify_screen108_result_envelope(result)
+
+        result = deepcopy(self._evaluate())
+        result["cncp"]["verdict"] = "CNCP_PASS_BOUNDED"
+        body = dict(result)
+        body.pop("result_sha256")
+        result["result_sha256"] = canonical_sha256(body)
+        with self.assertRaisesRegex(Screen108Error, "CNCP evidence boundary"):
             verify_screen108_result_envelope(result)
 
     def test_public_runner_reads_but_does_not_execute_candidate(self):
