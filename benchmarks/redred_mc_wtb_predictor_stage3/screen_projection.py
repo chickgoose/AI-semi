@@ -447,6 +447,11 @@ def _project_event(
     else:
         if type(fallback_reason) is not str or not fallback_reason:
             raise ScreenProjectionError("native fallback reason is missing")
+        # The candidate-specific failure remains cryptographically bound by
+        # the native receipt and projection companion.  The common screen
+        # uses a closed, candidate-neutral taxonomy.
+        if route == "current_cav":
+            fallback_reason = "candidate_failure"
         # DSPB's native model_id names the predictor that attempted the row,
         # while screen108's model_id names the geometry source.  The latter is
         # therefore CURRENT_CAV on every fallback; the source value remains
