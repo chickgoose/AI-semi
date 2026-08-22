@@ -10,15 +10,19 @@ or compute any loss or outcome statistic.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 import hashlib
+import math
 from pathlib import Path
 from typing import Dict, Iterator, Mapping, Sequence, Tuple
 
 from benchmarks.redred_mc_wtb_stage4_assay.source import (
     EventSample,
+    PoseSample,
+    SourcePins,
     ValidatedSources,
+    canonicalize_quaternion,
     iter_event_samples,
-    load_pose_samples,
     parse_calibration_bytes,
     sensor_ray,
     validate_sources,
@@ -46,6 +50,35 @@ from .evaluator import (
 from .selector import EXPECTED_WINDOW_COUNT, select_full_source
 
 
+_SEAL_SCHEMA = "redred.mc_wtb_so3_axis_audit.new108_adapter_seal/v2"
+_SEAL_FIELDS = frozenset((
+    "schema",
+    "source_member_sha256",
+    "source_events_size_bytes",
+    "source_events_line_count",
+    "selector_registry_sha256",
+    "selector_implementation_sha256",
+    "projection_implementation_sha256",
+    "neutral_registry_sha256",
+    "selector_labels_sidecar_sha256",
+    "window_count",
+    "selected_event_count",
+    "selected_pose_packet_count",
+    "windows",
+    "aggregate_sha256",
+))
+_SOURCE_MEMBER_FIELDS = frozenset(("events", "poses", "calibration"))
+_WINDOW_SEAL_FIELDS = frozenset((
+    "window_id",
+    "neutral_bounds_sha256",
+    "selected_raw_event_lines_sha256",
+    "event_inputs_sha256",
+    "pose_inputs_sha256",
+    "neutral_inputs_sha256",
+    "causal_cav_preflight_sha256",
+))
+
+
 class New108AdapterError(ValueError):
     """A locked-source, projection, provenance, or preflight invariant failed."""
 
@@ -71,6 +104,103 @@ class _CapturedLineStream:
             self.current = raw
             self.count += 1
             yield raw
+
+
+def _source_member_sha256(pins: SourcePins) -> Mapping[str, str]:
+    return {
+        "events": pins.events_sha256,
+        "poses": pins.groundtruth_sha256,
+        "calibration": pins.calibration_sha256,
+    }
+
+
+def _authenticate_registry_snapshot(
+    registry: Mapping[str, object], sources: ValidatedSources
+) -> None:
+    if not isinstance(registry, Mapping):
+        raise New108AdapterError("selector registry is not an object")
+    unsigned = dict(registry)
+    supplied = unsigned.pop("registry_sha256", None)
+    if supplied != canonical_sha256(unsigned):
+        raise New108AdapterError("selector registry content hash differs")
+    bindings = registry.get("bindings")
+    if not isinstance(bindings, Mapping):
+        raise New108AdapterError("selector source bindings are missing")
+    members = bindings.get("source_member_sha256")
+    if not isinstance(members, Mapping) or frozenset(members) != _SOURCE_MEMBER_FIELDS:
+        raise New108AdapterError("selector source member schema differs")
+    if dict(members) != _source_member_sha256(sources.pins):
+        raise New108AdapterError("selector source member hashes differ")
+
+
+def _timestamp_ns(text: str, where: str) -> int:
+    try:
+        value = Decimal(text) * Decimal(1_000_000_000)
+    except InvalidOperation as exc:
+        raise New108AdapterError("%s timestamp is invalid" % where) from exc
+    integral = value.to_integral_value()
+    if value != integral or integral < 0:
+        raise New108AdapterError("%s timestamp is not a nonnegative nanosecond" % where)
+    return int(integral)
+
+
+def _load_pinned_pose_samples(sources: ValidatedSources) -> Tuple[PoseSample, ...]:
+    """Parse one immutable, hash-checked snapshot of groundtruth.txt."""
+
+    try:
+        payload = sources.groundtruth_path.read_bytes()
+    except OSError as exc:
+        raise New108AdapterError("cannot read pinned groundtruth source") from exc
+    if hashlib.sha256(payload).hexdigest() != sources.pins.groundtruth_sha256:
+        raise New108AdapterError("consumed groundtruth source hash differs")
+    try:
+        lines = payload.decode("ascii").splitlines(keepends=True)
+    except UnicodeError as exc:
+        raise New108AdapterError("cannot parse pinned groundtruth source") from exc
+    poses = []
+    previous_timestamp = None
+    try:
+        for line_number, line in enumerate(lines, 1):
+            body = line[:-1] if line.endswith("\n") else line
+            fields = body.split(" ")
+            if len(fields) != 8 or any(field == "" for field in fields):
+                raise New108AdapterError(
+                    "groundtruth line %d is not canonical" % line_number
+                )
+            timestamp_ns = _timestamp_ns(
+                fields[0], "groundtruth line %d" % line_number
+            )
+            numeric = tuple(float(field) for field in fields[1:])
+            if not all(math.isfinite(value) for value in numeric):
+                raise New108AdapterError(
+                    "groundtruth line %d is non-finite" % line_number
+                )
+            if previous_timestamp is not None and timestamp_ns <= previous_timestamp:
+                raise New108AdapterError("pose timestamps must be strictly increasing")
+            previous_timestamp = timestamp_ns
+            poses.append(PoseSample(
+                line_number - 1,
+                timestamp_ns,
+                canonicalize_quaternion(
+                    (numeric[3], numeric[4], numeric[5], numeric[6])
+                ),
+            ))
+    except New108AdapterError:
+        raise
+    except (ValueError, OverflowError) as exc:
+        raise New108AdapterError("cannot parse pinned groundtruth source") from exc
+    if not poses:
+        raise New108AdapterError("groundtruth source is empty")
+    return tuple(poses)
+
+
+def _validate_calibration_snapshot(sources: ValidatedSources) -> None:
+    digest = hashlib.sha256(sources.calibration_bytes).hexdigest()
+    if (
+        digest != sources.pins.calibration_sha256
+        or sources.calibration_sha256 != sources.pins.calibration_sha256
+    ):
+        raise New108AdapterError("consumed calibration source hash differs")
 
 
 def _window_id(row: Mapping[str, object]) -> str:
@@ -198,10 +328,14 @@ def _read_selected_events(
     calibration = parse_calibration_bytes(sources.calibration_bytes)
     events: Dict[str, list] = {window.window_id: [] for window in neutral}
     digests = {window.window_id: hashlib.sha256() for window in neutral}
+    full_digest = hashlib.sha256()
+    full_size = 0
     seen = set()
     with sources.events_path.open("rb") as source_stream:
         captured = _CapturedLineStream(source_stream)
         for event in iter_event_samples(captured):  # type: ignore[arg-type]
+            full_digest.update(captured.current)
+            full_size += len(captured.current)
             owner = owners.get(event.event_id)
             if owner is None:
                 continue
@@ -230,6 +364,10 @@ def _read_selected_events(
             seen.add(event.event_id)
     if captured.count != sources.pins.events_line_count:
         raise New108AdapterError("events source line count differs")
+    if full_size != sources.pins.events_size_bytes:
+        raise New108AdapterError("consumed events source size differs")
+    if full_digest.hexdigest() != sources.pins.events_sha256:
+        raise New108AdapterError("consumed events source hash differs")
     if seen != set(owners):
         raise New108AdapterError("not every selected event ID was re-read")
     actual_raw = {window_id: digest.hexdigest() for window_id, digest in digests.items()}
@@ -255,6 +393,10 @@ def _preflight(
             row.quaternion_xyzw, row.pose_sha256, row.value_valid,
             row.arithmetic_valid,
         ) for row in poses[window.window_id])
+        if not event_values or not pose_values:
+            raise New108AdapterError("neutral event and pose streams must not be empty")
+        if not any(event.is_query for event in event_values):
+            raise New108AdapterError("neutral window has no query events")
         counts: Dict[int, int] = {}
         for event in event_values:
             cycle = timestamp_to_cycle(event.timestamp_ns, window.warmup_start_ns_inclusive)
@@ -318,12 +460,10 @@ def _projection_seal(
             "causal_cav_preflight_sha256": preflight[window_id],
         })
     body = {
-        "schema": "redred.mc_wtb_so3_axis_audit.new108_adapter_seal/v1",
-        "source_member_sha256": {
-            "events": sources.pins.events_sha256,
-            "poses": sources.pins.groundtruth_sha256,
-            "calibration": sources.pins.calibration_sha256,
-        },
+        "schema": _SEAL_SCHEMA,
+        "source_member_sha256": _source_member_sha256(sources.pins),
+        "source_events_size_bytes": sources.pins.events_size_bytes,
+        "source_events_line_count": sources.pins.events_line_count,
         "selector_registry_sha256": registry["registry_sha256"],
         "selector_implementation_sha256": registry["bindings"]["selector_py_sha256"],  # type: ignore[index]
         "projection_implementation_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
@@ -340,10 +480,12 @@ def _projection_seal(
 def _project(
     registry: Mapping[str, object], sources: ValidatedSources
 ) -> New108AdapterBundle:
+    _authenticate_registry_snapshot(registry, sources)
+    _validate_calibration_snapshot(sources)
     rows = _selector_windows(registry)
     neutral = _neutral_rows(rows)
     labels = _labels(rows)
-    source_poses = load_pose_samples(sources.groundtruth_path)
+    source_poses = _load_pinned_pose_samples(sources)
     poses = _pose_inputs(rows, source_poses)
     events, raw_hashes = _read_selected_events(sources, rows, neutral, poses)
     preflight = _preflight(neutral, events, poses)
@@ -362,79 +504,72 @@ def build_locked_new108_adapter(dataset_directory: Path) -> New108AdapterBundle:
         raise New108AdapterError("production selector did not return 108 windows")
     sources = validate_sources(root)
     bundle = _project(registry, sources)
-    verify_new108_adapter(bundle)
+    verify_new108_adapter(bundle, root)
     return bundle
 
 
-def verify_new108_adapter(bundle: New108AdapterBundle) -> str:
-    """Replay every neutral-input hash and CAUSAL_CAV preflight in memory."""
+def _validate_seal_schema(seal: object) -> Mapping[str, object]:
+    if not isinstance(seal, Mapping) or frozenset(seal) != _SEAL_FIELDS:
+        raise New108AdapterError("adapter provenance field schema differs")
+    if seal.get("schema") != _SEAL_SCHEMA:
+        raise New108AdapterError("adapter provenance schema differs")
+    source_members = seal.get("source_member_sha256")
+    if (
+        not isinstance(source_members, Mapping)
+        or frozenset(source_members) != _SOURCE_MEMBER_FIELDS
+    ):
+        raise New108AdapterError("adapter source member schema differs")
+    sealed_windows = seal.get("windows")
+    if not isinstance(sealed_windows, list):
+        raise New108AdapterError("adapter per-window provenance differs")
+    for row in sealed_windows:
+        if not isinstance(row, Mapping) or frozenset(row) != _WINDOW_SEAL_FIELDS:
+            raise New108AdapterError("adapter per-window field schema differs")
+    unsigned = dict(seal)
+    supplied_aggregate = unsigned.pop("aggregate_sha256")
+    if supplied_aggregate != canonical_sha256(unsigned):
+        raise New108AdapterError("adapter aggregate provenance hash differs")
+    return seal
+
+
+def _verify_against_pinned_source(
+    bundle: New108AdapterBundle,
+    expected_registry: Mapping[str, object],
+    sources: ValidatedSources,
+) -> str:
+    """Reconstruct a projection from independently supplied registry and sources."""
 
     if type(bundle) is not New108AdapterBundle:
         raise New108AdapterError("adapter bundle type differs")
-    rows = _selector_windows(bundle.selector_registry)
-    expected_neutral = _neutral_rows(rows)
-    expected_labels = _labels(rows)
-    if bundle.neutral_registry != expected_neutral:
+    _authenticate_registry_snapshot(expected_registry, sources)
+    if bundle.selector_registry != expected_registry:
+        raise New108AdapterError("selector registry differs from authenticated authority")
+    seal = _validate_seal_schema(bundle.provenance_seal)
+    reconstructed = _project(expected_registry, sources)
+    if bundle.neutral_registry != reconstructed.neutral_registry:
         raise New108AdapterError("neutral bounds projection differs")
-    if bundle.selector_labels != expected_labels:
+    if bundle.selector_labels != reconstructed.selector_labels:
         raise New108AdapterError("selector label sidecar differs")
-    expected_ids = {row.window_id for row in expected_neutral}
-    if set(bundle.event_streams) != expected_ids or set(bundle.pose_streams) != expected_ids:
-        raise New108AdapterError("neutral stream window IDs differ")
-    preflight = _preflight(expected_neutral, bundle.event_streams, bundle.pose_streams)
-    seal = bundle.provenance_seal
-    if not isinstance(seal, Mapping) or seal.get("schema") != "redred.mc_wtb_so3_axis_audit.new108_adapter_seal/v1":
-        raise New108AdapterError("adapter provenance schema differs")
-    unsigned = dict(seal)
-    supplied_aggregate = unsigned.pop("aggregate_sha256", None)
-    if supplied_aggregate != canonical_sha256(unsigned):
-        raise New108AdapterError("adapter aggregate provenance hash differs")
-    if seal.get("selector_registry_sha256") != bundle.selector_registry.get("registry_sha256"):
-        raise New108AdapterError("adapter selector registry hash differs")
-    bindings = bundle.selector_registry.get("bindings")
-    if not isinstance(bindings, Mapping):
-        raise New108AdapterError("selector source bindings are missing")
-    if seal.get("selector_implementation_sha256") != bindings.get("selector_py_sha256"):
-        raise New108AdapterError("adapter selector implementation hash differs")
-    if seal.get("source_member_sha256") != bindings.get("source_member_sha256"):
-        raise New108AdapterError("adapter source member hashes differ")
-    if seal.get("projection_implementation_sha256") != hashlib.sha256(Path(__file__).read_bytes()).hexdigest():
-        raise New108AdapterError("adapter projection implementation hash differs")
-    if seal.get("neutral_registry_sha256") != canonical_sha256([row.to_mapping() for row in expected_neutral]):
-        raise New108AdapterError("adapter neutral registry hash differs")
-    if seal.get("selector_labels_sidecar_sha256") != canonical_sha256(expected_labels):
-        raise New108AdapterError("adapter selector sidecar hash differs")
-    if (seal.get("window_count") != len(expected_neutral)
-            or seal.get("selected_event_count")
-            != sum(len(values) for values in bundle.event_streams.values())
-            or seal.get("selected_pose_packet_count")
-            != sum(len(values) for values in bundle.pose_streams.values())):
-        raise New108AdapterError("adapter aggregate counts differ")
-    sealed_windows = seal.get("windows")
-    if not isinstance(sealed_windows, list) or len(sealed_windows) != len(expected_neutral):
-        raise New108AdapterError("adapter per-window provenance differs")
-    by_id = {row.get("window_id"): row for row in sealed_windows if isinstance(row, Mapping)}
-    for window in expected_neutral:
-        sealed = by_id.get(window.window_id)
-        if not isinstance(sealed, Mapping):
-            raise New108AdapterError("adapter per-window provenance is missing")
-        event_mapping = [row.to_content_mapping() for row in bundle.event_streams[window.window_id]]
-        pose_mapping = [row.to_content_mapping() for row in bundle.pose_streams[window.window_id]]
-        selector_row = next(row for row in rows if _window_id(row) == window.window_id)
-        expected = {
-            "window_id": window.window_id,
-            "neutral_bounds_sha256": canonical_sha256(window.to_mapping()),
-            "selected_raw_event_lines_sha256": selector_row["selected_raw_event_lines_sha256"],
-            "event_inputs_sha256": canonical_sha256(event_mapping),
-            "pose_inputs_sha256": canonical_sha256(pose_mapping),
-            "neutral_inputs_sha256": canonical_sha256({
-                "registry": window.to_mapping(), "events": event_mapping, "poses": pose_mapping,
-            }),
-            "causal_cav_preflight_sha256": preflight[window.window_id],
-        }
-        if dict(sealed) != expected:
-            raise New108AdapterError("adapter per-window provenance hash differs")
-    return str(supplied_aggregate)
+    if bundle.event_streams != reconstructed.event_streams:
+        raise New108AdapterError("projected event inputs differ from pinned source")
+    if bundle.pose_streams != reconstructed.pose_streams:
+        raise New108AdapterError("projected pose inputs differ from pinned source")
+    if dict(seal) != dict(reconstructed.provenance_seal):
+        raise New108AdapterError("adapter provenance differs from reconstructed source")
+    return str(seal["aggregate_sha256"])
+
+
+def verify_new108_adapter(
+    bundle: New108AdapterBundle, dataset_directory: Path
+) -> str:
+    """Authenticate authority and reconstruct every input from pinned sources."""
+
+    root = Path(dataset_directory)
+    registry = select_full_source(root)
+    if registry.get("window_count") != EXPECTED_WINDOW_COUNT:
+        raise New108AdapterError("production selector did not return 108 windows")
+    sources = validate_sources(root)
+    return _verify_against_pinned_source(bundle, registry, sources)
 
 
 __all__ = [
