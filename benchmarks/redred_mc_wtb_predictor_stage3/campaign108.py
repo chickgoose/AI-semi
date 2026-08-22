@@ -43,12 +43,13 @@ except ImportError:  # pragma: no cover - exercised through the fail-closed API.
     _screen_projection = None
 
 
-CAMPAIGN_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_receipt/v4"
-ATTEMPT_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_attempt/v4"
+CAMPAIGN_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_receipt/v5"
+ATTEMPT_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_attempt/v5"
+FAILURE_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_failure/v5"
 GENERATOR_EVIDENCE_SCHEMA = (
-    "redred.mc_wtb_predictor_stage3.campaign108_adapter_dispatch/v4"
+    "redred.mc_wtb_predictor_stage3.campaign108_adapter_dispatch/v5"
 )
-REPLAY_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_replay/v2"
+REPLAY_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_replay/v3"
 
 RG3_ID = candidate_authority.candidate_native_id("RG3")
 DSPB_ID = candidate_authority.candidate_native_id("DSPB")
@@ -57,9 +58,50 @@ FROZEN_CANDIDATE_IDS = (RG3_ID, DSPB_ID, SO3_PLL_ID)
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
+_FAILURE_STAGES = frozenset((
+    "CAMPAIGN_AUTHORITY_SEAL",
+    "INPUT_BUILD",
+    "BASELINE_BUILD",
+    "NEUTRAL_BINDING",
+    "PRODUCTION_ADAPTER",
+    "NATIVE_OUTPUT_VALIDATE",
+    "NATIVE_OUTPUT_SEAL",
+    "PRE_REPLAY_INTEGRITY",
+    "VERIFICATION_REPLAY",
+    "REPLAY_SEAL",
+    "POST_REPLAY_INTEGRITY",
+    "PROJECTION",
+    "PROJECTION_SEAL",
+    "GENERATOR_EVIDENCE_SEAL",
+    "PRE_SCREEN_INTEGRITY",
+    "SCREEN",
+    "SCREEN_RESULT_VALIDATE",
+    "SCREEN_RESULT_SEAL",
+    "FINAL_INTEGRITY",
+    "CAMPAIGN_RECEIPT_SEAL",
+))
+_PRE_SCORE_INFRASTRUCTURE_STAGES = frozenset((
+    "CAMPAIGN_AUTHORITY_SEAL",
+    "INPUT_BUILD",
+    "BASELINE_BUILD",
+    "NEUTRAL_BINDING",
+))
+
 
 class Campaign108Error(ValueError):
     """A source authority, artifact, replay, or projection invariant failed."""
+
+
+@dataclass
+class _CampaignProgress:
+    failure_stage: str = "CAMPAIGN_AUTHORITY_SEAL"
+    attempt_sealed: bool = False
+    native_output_sealed: bool = False
+    screen_started: bool = False
+    score_computed: bool = False
+    labels_accessed: bool = False
+    attempt: Optional[Mapping[str, object]] = None
+    paths: Optional[Mapping[str, Path]] = None
 
 
 @dataclass(frozen=True)
@@ -635,6 +677,14 @@ def _artifact(path: Path, payload: bytes, semantic_sha256: str) -> Mapping[str, 
     }
 
 
+def _raw_artifact(path: Path, payload: bytes) -> Mapping[str, object]:
+    return {
+        "path": path.name,
+        "size_bytes": len(payload),
+        "sha256": _sha256_bytes(payload),
+    }
+
+
 def _check_unchanged(path: Path, expected: bytes, where: str) -> None:
     if _read_bytes(path, where) != expected:
         raise Campaign108Error("%s changed during the single attempt" % where)
@@ -653,7 +703,335 @@ def _artifact_paths(campaign_directory: Path, candidate_id: str) -> Mapping[str,
         "replay": campaign_directory / (stem + ".replay.json"),
         "screen_result": campaign_directory / (stem + ".screen108-result.json"),
         "campaign_receipt": campaign_directory / (stem + ".campaign-receipt.json"),
+        "failure_receipt": campaign_directory / (stem + ".failure-receipt.json"),
     }
+
+
+def _campaign_epoch(value: object) -> int:
+    if type(value) is not int or value < 1:
+        raise Campaign108Error("campaign epoch must be a positive integer")
+    return value
+
+
+def _validate_predecessor_bindings(
+    value: object,
+    aggregate: object,
+    campaign_epoch: int,
+    candidate_id: str,
+) -> Tuple[Mapping[str, object], ...]:
+    if not isinstance(value, list):
+        raise Campaign108Error("failure predecessor bindings differ")
+    _sha256(aggregate, "predecessor failure aggregate")
+    if canonical_sha256(value) != aggregate:
+        raise Campaign108Error("failure predecessor aggregate differs")
+    rows = []
+    for row in value:
+        if not isinstance(row, Mapping) or set(row) != {
+            "candidate_id", "campaign_epoch", "attempt_sha256",
+            "failure_receipt_sha256", "artifact_sha256",
+        }:
+            raise Campaign108Error("failure predecessor binding schema differs")
+        if (
+            type(row.get("candidate_id")) is not str
+            or row.get("campaign_epoch") != campaign_epoch - 1
+        ):
+            raise Campaign108Error("failure predecessor epoch or candidate differs")
+        for field in (
+            "attempt_sha256", "failure_receipt_sha256", "artifact_sha256"
+        ):
+            _sha256(row.get(field), "failure predecessor %s" % field)
+        rows.append(dict(row))
+    expected = sorted(
+        rows,
+        key=lambda row: (str(row["candidate_id"]), str(row["failure_receipt_sha256"])),
+    )
+    if rows != expected or len({row["candidate_id"] for row in rows}) != len(rows):
+        raise Campaign108Error("failure predecessor order or uniqueness differs")
+    if campaign_epoch == 1:
+        if rows:
+            raise Campaign108Error("campaign epoch 1 cannot have predecessors")
+    elif not rows or candidate_id not in {row["candidate_id"] for row in rows}:
+        raise Campaign108Error("candidate predecessor failure is missing")
+    return tuple(rows)
+
+
+def verify_campaign108_failure_receipt(
+    receipt: Mapping[str, object],
+    campaign_directory: Optional[Path] = None,
+) -> str:
+    """Verify a sealed failed attempt and, when supplied, its artifact bytes."""
+
+    required = {
+        "schema", "status", "candidate_id", "authority_name",
+        "campaign_epoch", "attempt_index", "attempt_sha256",
+        "predecessor_failures", "predecessor_failures_sha256",
+        "failure_stage", "exception_type", "exception_message",
+        "exception_message_sha256", "native_output_sealed", "screen_started",
+        "score_computed", "labels_accessed", "retry_allowed",
+        "tuning_allowed", "artifacts", "failure_receipt_sha256",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != required:
+        raise Campaign108Error("failure receipt field schema differs")
+    if (
+        receipt.get("schema") != FAILURE_SCHEMA
+        or receipt.get("status") != "CAMPAIGN_SINGLE_ATTEMPT_FAILED"
+        or type(receipt.get("candidate_id")) is not str
+        or type(receipt.get("authority_name")) is not str
+        or _campaign_epoch(receipt.get("campaign_epoch")) < 1
+        or receipt.get("attempt_index") != 1
+        or receipt.get("failure_stage") not in _FAILURE_STAGES
+        or type(receipt.get("exception_type")) is not str
+        or not receipt.get("exception_type")
+        or type(receipt.get("exception_message")) is not str
+        or _sha256_bytes(
+            str(receipt.get("exception_message")).encode("utf-8")
+        ) != receipt.get("exception_message_sha256")
+        or any(
+            type(receipt.get(field)) is not bool
+            for field in (
+                "native_output_sealed", "screen_started", "score_computed",
+                "labels_accessed", "retry_allowed", "tuning_allowed",
+            )
+        )
+        or receipt.get("retry_allowed") is not False
+        or receipt.get("tuning_allowed") is not False
+        or (receipt.get("score_computed") is True and receipt.get("screen_started") is not True)
+        or (receipt.get("labels_accessed") is True and receipt.get("screen_started") is not True)
+    ):
+        raise Campaign108Error("failure receipt policy boundary differs")
+    spec = _candidate(receipt.get("candidate_id"))
+    if receipt.get("authority_name") != spec.authority_name:
+        raise Campaign108Error("failure receipt candidate authority differs")
+    for field in (
+        "attempt_sha256", "predecessor_failures_sha256",
+        "exception_message_sha256", "failure_receipt_sha256",
+    ):
+        _sha256(receipt.get(field), "failure receipt %s" % field)
+    _validate_predecessor_bindings(
+        receipt.get("predecessor_failures"),
+        receipt.get("predecessor_failures_sha256"),
+        int(receipt["campaign_epoch"]),
+        str(receipt["candidate_id"]),
+    )
+    unsigned = dict(receipt)
+    supplied = unsigned.pop("failure_receipt_sha256", None)
+    if supplied != canonical_sha256(unsigned):
+        raise Campaign108Error("failure receipt aggregate seal differs")
+
+    artifacts = receipt.get("artifacts")
+    allowed_artifacts = {
+        "attempt", "campaign_authority", "native_output", "projection_receipt",
+        "screen_output", "executable_artifact", "generator_evidence", "replay",
+        "screen_result",
+    }
+    if (
+        not isinstance(artifacts, Mapping)
+        or not set(artifacts).issubset(allowed_artifacts)
+    ):
+        raise Campaign108Error("failure artifact index differs")
+    if "attempt" not in artifacts:
+        raise Campaign108Error("failure attempt artifact is missing")
+    for name, identity in artifacts.items():
+        if not isinstance(identity, Mapping) or set(identity) != {
+            "path", "size_bytes", "sha256"
+        }:
+            raise Campaign108Error("failure artifact identity differs")
+        if (
+            type(identity.get("path")) is not str
+            or Path(str(identity["path"])).name != identity["path"]
+        ):
+            raise Campaign108Error("failure artifact path differs")
+        if type(identity.get("size_bytes")) is not int or identity["size_bytes"] < 0:
+            raise Campaign108Error("failure artifact size differs")
+        _sha256(identity.get("sha256"), "failure artifact digest")
+        if campaign_directory is not None:
+            path = Path(campaign_directory) / str(identity["path"])
+            if path.is_symlink() or not path.is_file():
+                raise Campaign108Error("failure artifact is missing or aliased")
+            payload = _read_bytes(path, "%s failure artifact" % name)
+            if (
+                len(payload) != identity["size_bytes"]
+                or _sha256_bytes(payload) != identity["sha256"]
+            ):
+                raise Campaign108Error("failure artifact bytes differ")
+    if (
+        receipt.get("native_output_sealed") is True
+        and "native_output" not in artifacts
+    ):
+        raise Campaign108Error("failure native-output state differs")
+    if campaign_directory is not None:
+        attempt_identity = artifacts["attempt"]
+        attempt_path = Path(campaign_directory) / str(attempt_identity["path"])
+        attempt = _read_json_bytes(
+            _read_bytes(attempt_path, "failed attempt marker"),
+            "failed attempt marker",
+        )
+        attempt_unsigned = dict(attempt)
+        attempt_digest = attempt_unsigned.pop("attempt_sha256", None)
+        if (
+            set(attempt) != {
+                "schema", "candidate_id", "authority_name", "campaign_epoch",
+                "attempt_index", "predecessor_failures",
+                "predecessor_failures_sha256", "campaign_authority_sha256",
+                "candidate_authority_sha256", "authority_config_sha256",
+                "caller_config_sha256", "caller_config_semantic_sha256",
+                "cncp_sha256", "cncp_semantic_sha256",
+                "campaign_runner_sha256", "adapter_execution_count",
+                "verification_replay_count", "verification_replay_is_tuning",
+                "retry_allowed", "tuning_allowed", "attempt_sha256",
+            }
+            or attempt_digest != canonical_sha256(attempt_unsigned)
+            or attempt_digest != receipt.get("attempt_sha256")
+            or attempt.get("schema") != ATTEMPT_SCHEMA
+            or attempt.get("candidate_id") != spec.candidate_id
+            or attempt.get("authority_name") != spec.authority_name
+            or attempt.get("campaign_epoch") != receipt.get("campaign_epoch")
+            or attempt.get("attempt_index") != 1
+            or attempt.get("predecessor_failures")
+            != receipt.get("predecessor_failures")
+            or attempt.get("predecessor_failures_sha256")
+            != receipt.get("predecessor_failures_sha256")
+            or attempt.get("adapter_execution_count") != 2
+            or attempt.get("verification_replay_count") != 1
+            or attempt.get("verification_replay_is_tuning") is not False
+            or attempt.get("retry_allowed") is not False
+            or attempt.get("tuning_allowed") is not False
+        ):
+            raise Campaign108Error("failed attempt marker seal differs")
+        if "campaign_authority" in artifacts:
+            authority_identity = artifacts["campaign_authority"]
+            authority_path = Path(campaign_directory) / str(
+                authority_identity["path"]
+            )
+            authority = _read_json_bytes(
+                _read_bytes(authority_path, "failed campaign authority"),
+                "failed campaign authority",
+            )
+            authority_unsigned = dict(authority)
+            authority_digest = authority_unsigned.pop("aggregate_sha256", None)
+            if (
+                authority_digest != canonical_sha256(authority_unsigned)
+                or authority_digest != attempt.get("campaign_authority_sha256")
+            ):
+                raise Campaign108Error("failed campaign authority seal differs")
+    return str(supplied)
+
+
+def _predecessor_failure_bindings(
+    candidate_id: str,
+    campaign_epoch: int,
+    receipt_paths: Sequence[Path],
+) -> Tuple[Tuple[Mapping[str, object], ...], str]:
+    epoch = _campaign_epoch(campaign_epoch)
+    paths = tuple(Path(path) for path in receipt_paths)
+    if epoch == 1:
+        if paths:
+            raise Campaign108Error("campaign epoch 1 cannot have predecessors")
+        return (), canonical_sha256([])
+    if not paths:
+        raise Campaign108Error("later campaign epoch requires predecessor failures")
+
+    resolved = []
+    bindings = []
+    for path in paths:
+        if path.is_symlink() or not path.is_file():
+            raise Campaign108Error("predecessor failure receipt is missing or aliased")
+        identity = path.resolve()
+        if identity in resolved:
+            raise Campaign108Error("duplicate predecessor failure receipt")
+        resolved.append(identity)
+        payload = _read_bytes(path, "predecessor failure receipt")
+        receipt = _read_json_bytes(payload, "predecessor failure receipt")
+        semantic = verify_campaign108_failure_receipt(receipt, path.parent)
+        if (
+            receipt.get("campaign_epoch") != epoch - 1
+            or receipt.get("failure_stage") not in _PRE_SCORE_INFRASTRUCTURE_STAGES
+            or receipt.get("native_output_sealed") is not False
+            or receipt.get("screen_started") is not False
+            or receipt.get("score_computed") is not False
+            or receipt.get("labels_accessed") is not False
+            or any(
+                name in receipt.get("artifacts", {})
+                for name in (
+                    "native_output", "replay", "projection_receipt",
+                    "screen_output", "executable_artifact",
+                    "generator_evidence", "screen_result",
+                )
+            )
+        ):
+            raise Campaign108Error(
+                "predecessor is not an eligible pre-score infrastructure failure"
+            )
+        bindings.append({
+            "candidate_id": receipt["candidate_id"],
+            "campaign_epoch": receipt["campaign_epoch"],
+            "attempt_sha256": receipt["attempt_sha256"],
+            "failure_receipt_sha256": semantic,
+            "artifact_sha256": _sha256_bytes(payload),
+        })
+    if len({row["candidate_id"] for row in bindings}) != len(bindings):
+        raise Campaign108Error("duplicate predecessor candidate failure")
+    if candidate_id not in {row["candidate_id"] for row in bindings}:
+        raise Campaign108Error("candidate predecessor failure is missing")
+    ordered = tuple(sorted(
+        bindings,
+        key=lambda row: (str(row["candidate_id"]), str(row["failure_receipt_sha256"])),
+    ))
+    return ordered, canonical_sha256(list(ordered))
+
+
+def _seal_failure_receipt(
+    spec: FrozenCandidate,
+    campaign_epoch: int,
+    predecessors: Sequence[Mapping[str, object]],
+    predecessor_digest: str,
+    progress: _CampaignProgress,
+    error: Exception,
+) -> None:
+    if not progress.attempt_sealed or progress.attempt is None or progress.paths is None:
+        return
+    paths = progress.paths
+    artifacts = {}
+    for name in (
+        "attempt", "campaign_authority", "native_output", "projection_receipt",
+        "screen_output", "executable_artifact", "generator_evidence", "replay",
+        "screen_result",
+    ):
+        path = paths[name]
+        if path.is_symlink():
+            raise Campaign108Error("cannot seal failure with aliased artifact")
+        if path.is_file():
+            payload = _read_bytes(path, "%s failed-attempt artifact" % name)
+            artifacts[name] = _raw_artifact(path, payload)
+    message = str(error)
+    body = {
+        "schema": FAILURE_SCHEMA,
+        "status": "CAMPAIGN_SINGLE_ATTEMPT_FAILED",
+        "candidate_id": spec.candidate_id,
+        "authority_name": spec.authority_name,
+        "campaign_epoch": campaign_epoch,
+        "attempt_index": 1,
+        "attempt_sha256": progress.attempt["attempt_sha256"],
+        "predecessor_failures": list(predecessors),
+        "predecessor_failures_sha256": predecessor_digest,
+        "failure_stage": progress.failure_stage,
+        "exception_type": "%s.%s" % (
+            type(error).__module__, type(error).__qualname__
+        ),
+        "exception_message": message,
+        "exception_message_sha256": _sha256_bytes(message.encode("utf-8")),
+        "native_output_sealed": progress.native_output_sealed,
+        "screen_started": progress.screen_started,
+        "score_computed": progress.score_computed,
+        "labels_accessed": progress.labels_accessed,
+        "retry_allowed": False,
+        "tuning_allowed": False,
+        "artifacts": artifacts,
+    }
+    receipt = dict(body, failure_receipt_sha256=canonical_sha256(body))
+    _exclusive_write(
+        paths["failure_receipt"], _json_bytes(receipt), "campaign failure receipt"
+    )
 
 
 def _screen_result_cncp(result: Mapping[str, object]) -> object:
@@ -663,12 +1041,16 @@ def _screen_result_cncp(result: Mapping[str, object]) -> object:
     return value
 
 
-def run_campaign108(
+def _run_campaign108_attempt(
     candidate_id: str,
     dataset_directory: Path,
     config_path: Path,
     cncp_path: Path,
     campaign_directory: Path,
+    campaign_epoch: int,
+    predecessor_failures: Sequence[Mapping[str, object]],
+    predecessor_failures_sha256: str,
+    progress: _CampaignProgress,
 ) -> Mapping[str, object]:
     """Execute one production attempt and one explicitly non-tuning replay."""
 
@@ -702,12 +1084,16 @@ def run_campaign108(
     except OSError as exc:
         raise Campaign108Error("cannot create campaign directory") from exc
     paths = _artifact_paths(root, candidate_id)
+    progress.paths = paths
 
     attempt_body = {
         "schema": ATTEMPT_SCHEMA,
         "candidate_id": candidate_id,
         "authority_name": spec.authority_name,
+        "campaign_epoch": campaign_epoch,
         "attempt_index": 1,
+        "predecessor_failures": list(predecessor_failures),
+        "predecessor_failures_sha256": predecessor_failures_sha256,
         "campaign_authority_sha256": authority_digest,
         "candidate_authority_sha256": selected_manifest_digest,
         "authority_config_sha256": selected_authority["config_sha256"],
@@ -723,28 +1109,39 @@ def run_campaign108(
         "tuning_allowed": False,
     }
     attempt = dict(attempt_body, attempt_sha256=canonical_sha256(attempt_body))
+    progress.attempt = attempt
     attempt_bytes = _json_bytes(attempt)
     _exclusive_write(paths["attempt"], attempt_bytes, "campaign attempt marker")
+    progress.attempt_sealed = True
+    progress.failure_stage = "CAMPAIGN_AUTHORITY_SEAL"
     _exclusive_write(paths["campaign_authority"], authority_bytes, "campaign authority")
 
+    progress.failure_stage = "INPUT_BUILD"
     bundle = _build_verified_stage3_adapter(Path(dataset_directory))
     neutral = _neutral_view(bundle)
+    progress.failure_stage = "BASELINE_BUILD"
     full_baseline = evaluate_current_cav_registry(
         neutral.neutral_registry, neutral.event_streams, neutral.pose_streams
     )
     baseline = _neutral_baseline_view(full_baseline, neutral)
+    progress.failure_stage = "NEUTRAL_BINDING"
     neutral_digest = _neutral_projection_sha256(neutral)
     if neutral_digest != baseline.neutral_input_sha256:
         raise Campaign108Error("neutral source binding differs from baseline")
 
+    progress.failure_stage = "PRODUCTION_ADAPTER"
     produced = spec.adapter(neutral, baseline)
+    progress.failure_stage = "NATIVE_OUTPUT_VALIDATE"
     native_output = _validate_native_output(produced, spec, neutral, baseline)
     native_bytes = _json_bytes(native_output)
     native_digest = _sha256(
         native_output.get("aggregate_sha256"), "native output digest"
     )
+    progress.failure_stage = "NATIVE_OUTPUT_SEAL"
     _exclusive_write(paths["native_output"], native_bytes, "rich native output")
+    progress.native_output_sealed = True
 
+    progress.failure_stage = "PRE_REPLAY_INTEGRITY"
     _check_unchanged(config_file, caller_config_bytes, "candidate config")
     _check_unchanged(cncp_file, cncp_bytes, "CNCP")
     _check_unchanged(Path(__file__), campaign_bytes, "campaign runner")
@@ -752,6 +1149,7 @@ def run_campaign108(
     if _neutral_projection_sha256(_neutral_view(bundle)) != neutral_digest:
         raise Campaign108Error("neutral source changed after production execution")
 
+    progress.failure_stage = "VERIFICATION_REPLAY"
     replayed = spec.adapter(neutral, baseline)
     replay_output = _validate_native_output(replayed, spec, neutral, baseline)
     replay_bytes = _json_bytes(replay_output)
@@ -760,6 +1158,8 @@ def run_campaign108(
     replay_body = {
         "schema": REPLAY_SCHEMA,
         "candidate_id": candidate_id,
+        "campaign_epoch": campaign_epoch,
+        "attempt_sha256": attempt["attempt_sha256"],
         "mode": "verifier_replay",
         "neutral_input_sha256": neutral_digest,
         "adapter_execution_count": 2,
@@ -771,8 +1171,10 @@ def run_campaign108(
     }
     replay = dict(replay_body, replay_sha256=canonical_sha256(replay_body))
     replay_bytes_artifact = _json_bytes(replay)
+    progress.failure_stage = "REPLAY_SEAL"
     _exclusive_write(paths["replay"], replay_bytes_artifact, "verifier replay receipt")
 
+    progress.failure_stage = "POST_REPLAY_INTEGRITY"
     _check_unchanged(config_file, caller_config_bytes, "candidate config")
     _check_unchanged(cncp_file, cncp_bytes, "CNCP")
     _check_unchanged(Path(__file__), campaign_bytes, "campaign runner")
@@ -781,6 +1183,7 @@ def run_campaign108(
     if _neutral_projection_sha256(_neutral_view(bundle)) != neutral_digest:
         raise Campaign108Error("neutral source changed during verifier replay")
 
+    progress.failure_stage = "PROJECTION"
     projected = _project_native_output(native_output)
     screen_output, projection_receipt, executable_bytes, projection_config = (
         _validate_projection(native_output, projected, spec)
@@ -796,6 +1199,7 @@ def run_campaign108(
     screen_output_digest = _sha256(
         screen_output.get("aggregate_sha256"), "screen output digest"
     )
+    progress.failure_stage = "PROJECTION_SEAL"
     _exclusive_write(
         paths["projection_receipt"], projection_bytes, "projection receipt"
     )
@@ -808,6 +1212,9 @@ def run_campaign108(
         "schema": GENERATOR_EVIDENCE_SCHEMA,
         "candidate_id": candidate_id,
         "authority_name": spec.authority_name,
+        "campaign_epoch": campaign_epoch,
+        "attempt_sha256": attempt["attempt_sha256"],
+        "predecessor_failures_sha256": predecessor_failures_sha256,
         "campaign_authority_sha256": authority_digest,
         "candidate_authority_sha256": selected_manifest_digest,
         "native_output_sha256": native_digest,
@@ -820,8 +1227,10 @@ def run_campaign108(
     }
     evidence = dict(evidence_body, aggregate_sha256=canonical_sha256(evidence_body))
     evidence_bytes = _json_bytes(evidence)
+    progress.failure_stage = "GENERATOR_EVIDENCE_SEAL"
     _exclusive_write(paths["generator_evidence"], evidence_bytes, "generator evidence")
 
+    progress.failure_stage = "PRE_SCREEN_INTEGRITY"
     for path, payload, where in (
         (config_file, caller_config_bytes, "candidate config"),
         (cncp_file, cncp_bytes, "CNCP"),
@@ -834,6 +1243,9 @@ def run_campaign108(
         _check_unchanged(path, payload, where)
     _check_authority_unchanged(authority, source_snapshots)
 
+    progress.failure_stage = "SCREEN"
+    progress.screen_started = True
+    progress.labels_accessed = True
     screen_result = screen108.run_locked_screen108(
         Path(dataset_directory),
         paths["screen_output"],
@@ -841,8 +1253,11 @@ def run_campaign108(
         config_file,
         cncp,
     )
+    progress.score_computed = True
+    progress.failure_stage = "SCREEN_RESULT_VALIDATE"
     screen_digest = screen108.verify_screen108_result_envelope(screen_result)
     screen_result_bytes = _json_bytes(screen_result)
+    progress.failure_stage = "SCREEN_RESULT_SEAL"
     _exclusive_write(paths["screen_result"], screen_result_bytes, "screen108 result")
 
     immutable = (
@@ -856,6 +1271,7 @@ def run_campaign108(
         ("replay", replay_bytes_artifact),
         ("screen_result", screen_result_bytes),
     )
+    progress.failure_stage = "FINAL_INTEGRITY"
     _check_unchanged(config_file, caller_config_bytes, "candidate config")
     _check_unchanged(cncp_file, cncp_bytes, "CNCP")
     _check_unchanged(Path(__file__), campaign_bytes, "campaign runner")
@@ -886,6 +1302,7 @@ def run_campaign108(
         "screen_result": _artifact(paths["screen_result"], screen_result_bytes, screen_digest),
     }
     bindings = {
+        "predecessor_failures_sha256": predecessor_failures_sha256,
         "campaign_authority_sha256": authority_digest,
         "candidate_authority_sha256": selected_manifest_digest,
         "authority_config_sha256": selected_authority["config_sha256"],
@@ -908,7 +1325,9 @@ def run_campaign108(
         "status": "SCREEN108_SINGLE_ATTEMPT_REPLAY_VERIFIED",
         "candidate_id": candidate_id,
         "authority_name": spec.authority_name,
+        "campaign_epoch": campaign_epoch,
         "attempt_sha256": attempt["attempt_sha256"],
+        "predecessor_failures": list(predecessor_failures),
         "bindings": bindings,
         "artifacts": artifacts,
         "policy": {
@@ -926,18 +1345,63 @@ def run_campaign108(
         },
     }
     receipt = dict(receipt_body, receipt_sha256=canonical_sha256(receipt_body))
+    progress.failure_stage = "CAMPAIGN_RECEIPT_SEAL"
     _exclusive_write(paths["campaign_receipt"], _json_bytes(receipt), "campaign receipt")
     return receipt
 
 
+def run_campaign108(
+    candidate_id: str,
+    dataset_directory: Path,
+    config_path: Path,
+    cncp_path: Path,
+    campaign_directory: Path,
+    campaign_epoch: int = 1,
+    predecessor_failure_receipts: Sequence[Path] = (),
+) -> Mapping[str, object]:
+    """Execute one attempt in one epoch and seal every post-marker failure."""
+
+    spec = _candidate(candidate_id)
+    epoch = _campaign_epoch(campaign_epoch)
+    predecessors, predecessor_digest = _predecessor_failure_bindings(
+        candidate_id, epoch, predecessor_failure_receipts
+    )
+    progress = _CampaignProgress()
+    try:
+        return _run_campaign108_attempt(
+            candidate_id,
+            dataset_directory,
+            config_path,
+            cncp_path,
+            campaign_directory,
+            epoch,
+            predecessors,
+            predecessor_digest,
+            progress,
+        )
+    except Exception as error:
+        try:
+            _seal_failure_receipt(
+                spec, epoch, predecessors, predecessor_digest, progress, error
+            )
+        except Exception as receipt_error:
+            raise Campaign108Error(
+                "campaign failed and append-only failure receipt could not be sealed"
+            ) from receipt_error
+        raise
+
+
 def verify_campaign108_receipt(
-    receipt: Mapping[str, object], campaign_directory: Path
+    receipt: Mapping[str, object],
+    campaign_directory: Path,
+    predecessor_failure_receipts: Sequence[Path] = (),
 ) -> str:
     """Verify source authority and every append-only campaign cross-binding."""
 
     required = {
         "schema", "status", "candidate_id", "authority_name", "attempt_sha256",
-        "bindings", "artifacts", "policy", "receipt_sha256",
+        "campaign_epoch", "predecessor_failures", "bindings", "artifacts",
+        "policy", "receipt_sha256",
     }
     if not isinstance(receipt, Mapping) or set(receipt) != required:
         raise Campaign108Error("campaign receipt field schema differs")
@@ -947,6 +1411,7 @@ def verify_campaign108_receipt(
     ):
         raise Campaign108Error("campaign receipt schema or status differs")
     spec = _candidate(receipt.get("candidate_id"))
+    epoch = _campaign_epoch(receipt.get("campaign_epoch"))
     if receipt.get("authority_name") != spec.authority_name:
         raise Campaign108Error("campaign authority name differs")
     expected_policy = {
@@ -964,6 +1429,26 @@ def verify_campaign108_receipt(
     }
     if receipt.get("policy") != expected_policy:
         raise Campaign108Error("campaign receipt policy boundary differs")
+    predecessors = _validate_predecessor_bindings(
+        receipt.get("predecessor_failures"),
+        receipt.get("bindings", {}).get("predecessor_failures_sha256")
+        if isinstance(receipt.get("bindings"), Mapping) else None,
+        epoch,
+        spec.candidate_id,
+    )
+    reopened_predecessors, reopened_predecessor_digest = (
+        _predecessor_failure_bindings(
+            spec.candidate_id,
+            epoch,
+            predecessor_failure_receipts,
+        )
+    )
+    if (
+        reopened_predecessors != predecessors
+        or reopened_predecessor_digest
+        != receipt.get("bindings", {}).get("predecessor_failures_sha256")
+    ):
+        raise Campaign108Error("campaign predecessor failure binding differs")
     unsigned = dict(receipt)
     receipt_digest = unsigned.pop("receipt_sha256", None)
     if receipt_digest != canonical_sha256(unsigned):
@@ -973,6 +1458,7 @@ def verify_campaign108_receipt(
     del unused
     bindings = receipt.get("bindings")
     expected_binding_fields = {
+        "predecessor_failures_sha256",
         "campaign_authority_sha256", "candidate_authority_sha256",
         "authority_config_sha256", "caller_config_sha256",
         "caller_config_semantic_sha256", "cncp_sha256", "cncp_semantic_sha256",
@@ -986,6 +1472,8 @@ def verify_campaign108_receipt(
     for field in expected_binding_fields:
         _sha256(bindings[field], "campaign %s" % field)
     if (
+        bindings["predecessor_failures_sha256"] != canonical_sha256(list(predecessors))
+        or
         bindings["campaign_authority_sha256"] != authority["aggregate_sha256"]
         or bindings["candidate_authority_sha256"] != selected["manifest_sha256"]
         or bindings["authority_config_sha256"] != selected["config_sha256"]
@@ -1079,7 +1567,8 @@ def verify_campaign108_receipt(
     replay_digest = replay_unsigned.pop("replay_sha256", None)
     if (
         set(replay) != {
-            "schema", "candidate_id", "mode", "neutral_input_sha256",
+            "schema", "candidate_id", "campaign_epoch", "attempt_sha256",
+            "mode", "neutral_input_sha256",
             "adapter_execution_count", "production_native_bytes_sha256",
             "replay_native_bytes_sha256", "native_output_byte_identical",
             "replay_used_for_tuning", "replay_output_used_for_screen",
@@ -1087,6 +1576,8 @@ def verify_campaign108_receipt(
         }
         or replay.get("schema") != REPLAY_SCHEMA
         or replay.get("candidate_id") != spec.candidate_id
+        or replay.get("campaign_epoch") != epoch
+        or replay.get("attempt_sha256") != receipt.get("attempt_sha256")
         or replay.get("mode") != "verifier_replay"
         or replay.get("neutral_input_sha256") != native.get("neutral_input_sha256")
         or replay.get("adapter_execution_count") != 2
@@ -1110,6 +1601,7 @@ def verify_campaign108_receipt(
     if (
         set(evidence) != {
             "schema", "candidate_id", "authority_name",
+            "campaign_epoch", "attempt_sha256", "predecessor_failures_sha256",
             "campaign_authority_sha256", "candidate_authority_sha256",
             "native_output_sha256", "projection_receipt_sha256",
             "screen_output_sha256", "executable_artifact_sha256",
@@ -1119,6 +1611,10 @@ def verify_campaign108_receipt(
         or evidence.get("schema") != GENERATOR_EVIDENCE_SCHEMA
         or evidence.get("candidate_id") != spec.candidate_id
         or evidence.get("authority_name") != spec.authority_name
+        or evidence.get("campaign_epoch") != epoch
+        or evidence.get("attempt_sha256") != receipt.get("attempt_sha256")
+        or evidence.get("predecessor_failures_sha256")
+        != bindings["predecessor_failures_sha256"]
         or evidence.get("campaign_authority_sha256") != bindings["campaign_authority_sha256"]
         or evidence.get("candidate_authority_sha256")
         != bindings["candidate_authority_sha256"]
@@ -1138,7 +1634,9 @@ def verify_campaign108_receipt(
     attempt_digest = attempt_unsigned.pop("attempt_sha256", None)
     if (
         set(attempt) != {
-            "schema", "candidate_id", "authority_name", "attempt_index",
+            "schema", "candidate_id", "authority_name", "campaign_epoch",
+            "attempt_index", "predecessor_failures",
+            "predecessor_failures_sha256",
             "campaign_authority_sha256", "candidate_authority_sha256",
             "authority_config_sha256", "caller_config_sha256",
             "caller_config_semantic_sha256", "cncp_sha256",
@@ -1150,7 +1648,11 @@ def verify_campaign108_receipt(
         or attempt.get("schema") != ATTEMPT_SCHEMA
         or attempt.get("candidate_id") != spec.candidate_id
         or attempt.get("authority_name") != spec.authority_name
+        or attempt.get("campaign_epoch") != epoch
         or attempt.get("attempt_index") != 1
+        or attempt.get("predecessor_failures") != list(predecessors)
+        or attempt.get("predecessor_failures_sha256")
+        != bindings["predecessor_failures_sha256"]
         or attempt.get("adapter_execution_count") != 2
         or attempt.get("verification_replay_count") != 1
         or attempt.get("verification_replay_is_tuning") is not False
@@ -1210,9 +1712,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--cncp", type=Path, required=True)
     parser.add_argument("--campaign-dir", type=Path, required=True)
+    parser.add_argument("--campaign-epoch", type=int, default=1)
+    parser.add_argument(
+        "--predecessor-failure-receipt",
+        type=Path,
+        action="append",
+        default=[],
+    )
     args = parser.parse_args(argv)
     receipt = run_campaign108(
-        args.candidate_id, args.dataset_dir, args.config, args.cncp, args.campaign_dir
+        args.candidate_id,
+        args.dataset_dir,
+        args.config,
+        args.cncp,
+        args.campaign_dir,
+        args.campaign_epoch,
+        args.predecessor_failure_receipt,
     )
     print("receipt_sha256=%s" % receipt["receipt_sha256"])
     return 0
@@ -1227,9 +1742,10 @@ if __name__ == "__main__":
 
 
 __all__ = (
-    "ATTEMPT_SCHEMA", "CAMPAIGN_SCHEMA", "DSPB_ID", "FROZEN_CANDIDATE_IDS",
-    "GENERATOR_EVIDENCE_SCHEMA", "NeutralAdapterView", "NeutralBaselineView",
+    "ATTEMPT_SCHEMA", "CAMPAIGN_SCHEMA", "DSPB_ID", "FAILURE_SCHEMA",
+    "FROZEN_CANDIDATE_IDS", "GENERATOR_EVIDENCE_SCHEMA", "NeutralAdapterView",
+    "NeutralBaselineView",
     "RG3_ID", "REPLAY_SCHEMA", "SO3_PLL_ID", "Campaign108Error",
     "frozen_candidate_config", "frozen_candidate_config_bytes", "run_campaign108",
-    "verify_campaign108_receipt",
+    "verify_campaign108_failure_receipt", "verify_campaign108_receipt",
 )

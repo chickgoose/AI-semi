@@ -410,6 +410,12 @@ class Campaign108Tests(unittest.TestCase):
                 self.assertTrue(paths["replay"].exists())
                 self.assertEqual(receipt["policy"]["attempt_count"], 1)
                 self.assertFalse(receipt["policy"]["verification_replay_is_tuning"])
+                self.assertEqual(receipt["campaign_epoch"], 1)
+                self.assertEqual(receipt["predecessor_failures"], [])
+                self.assertEqual(
+                    receipt["bindings"]["predecessor_failures_sha256"],
+                    canonical_sha256([]),
+                )
 
     def test_receipt_reopens_all_native_projection_and_screen_bindings(self):
         candidate_id = campaign108.RG3_ID
@@ -856,6 +862,222 @@ class Campaign108Tests(unittest.TestCase):
                     candidate_id, root / "dataset", config, cncp, campaign_dir
                 )
             self.assertEqual(adapter.call_count, 1)
+            paths = campaign108._artifact_paths(campaign_dir, candidate_id)
+            failure_bytes = paths["failure_receipt"].read_bytes()
+            failure = json.loads(failure_bytes)
+            self.assertEqual(failure["failure_stage"], "PRODUCTION_ADAPTER")
+            self.assertFalse(failure["native_output_sealed"])
+            self.assertFalse(failure["screen_started"])
+            self.assertFalse(failure["score_computed"])
+            self.assertFalse(failure["labels_accessed"])
+            self.assertFalse(failure["retry_allowed"])
+            self.assertEqual(
+                campaign108.verify_campaign108_failure_receipt(
+                    failure, campaign_dir
+                ),
+                failure["failure_receipt_sha256"],
+            )
+            self.assertEqual(paths["failure_receipt"].read_bytes(), failure_bytes)
+
+    def test_pre_score_failure_opens_only_bound_next_epoch(self):
+        candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            failed_dir = root / "epoch1"
+            with ExitStack() as stack:
+                self._run_patches(
+                    stack, spec, bundle, baseline, _fake_projection
+                )
+                stack.enter_context(mock.patch.object(
+                    campaign108,
+                    "build_locked_new108_adapter",
+                    side_effect=Campaign108Error("shared input mount unavailable"),
+                ))
+                with self.assertRaisesRegex(Campaign108Error, "input mount"):
+                    run_campaign108(
+                        candidate_id,
+                        root / "dataset",
+                        config,
+                        cncp,
+                        failed_dir,
+                    )
+            failed_paths = campaign108._artifact_paths(failed_dir, candidate_id)
+            failure_path = failed_paths["failure_receipt"]
+            failure = json.loads(failure_path.read_text(encoding="utf-8"))
+            self.assertEqual(failure["campaign_epoch"], 1)
+            self.assertEqual(failure["failure_stage"], "INPUT_BUILD")
+            self.assertFalse(failure["native_output_sealed"])
+            self.assertFalse(failure["screen_started"])
+            self.assertFalse(failure["score_computed"])
+            self.assertFalse(failure["labels_accessed"])
+
+            with self.assertRaisesRegex(
+                Campaign108Error, "requires predecessor"
+            ):
+                run_campaign108(
+                    candidate_id,
+                    root / "dataset",
+                    config,
+                    cncp,
+                    root / "epoch2-missing-lineage",
+                    campaign_epoch=2,
+                )
+
+            campaign_dir = root / "epoch2"
+            with ExitStack() as stack:
+                self._run_patches(
+                    stack, spec, bundle, baseline, _fake_projection
+                )
+                receipt = run_campaign108(
+                    candidate_id,
+                    root / "dataset",
+                    config,
+                    cncp,
+                    campaign_dir,
+                    campaign_epoch=2,
+                    predecessor_failure_receipts=(failure_path,),
+                )
+                self.assertEqual(
+                    verify_campaign108_receipt(
+                        receipt, campaign_dir, (failure_path,)
+                    ),
+                    receipt["receipt_sha256"],
+                )
+            self.assertEqual(receipt["campaign_epoch"], 2)
+            self.assertEqual(len(receipt["predecessor_failures"]), 1)
+            self.assertEqual(
+                receipt["predecessor_failures"][0]["failure_receipt_sha256"],
+                failure["failure_receipt_sha256"],
+            )
+            attempt = json.loads(
+                campaign108._artifact_paths(campaign_dir, candidate_id)[
+                    "attempt"
+                ].read_text(encoding="utf-8")
+            )
+            self.assertEqual(attempt["campaign_epoch"], 2)
+            self.assertEqual(attempt["attempt_index"], 1)
+            self.assertFalse(attempt["retry_allowed"])
+
+    def test_post_native_or_label_access_failure_cannot_open_new_epoch(self):
+        candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            failed_dir = root / "epoch1"
+            screen = mock.Mock(side_effect=Campaign108Error("screen unavailable"))
+            self._run_patches(
+                stack, spec, bundle, baseline, _fake_projection, screen
+            )
+            with self.assertRaisesRegex(Campaign108Error, "screen unavailable"):
+                run_campaign108(
+                    candidate_id,
+                    root / "dataset",
+                    config,
+                    cncp,
+                    failed_dir,
+                )
+            failure_path = campaign108._artifact_paths(
+                failed_dir, candidate_id
+            )["failure_receipt"]
+            failure = json.loads(failure_path.read_text(encoding="utf-8"))
+            self.assertTrue(failure["native_output_sealed"])
+            self.assertTrue(failure["screen_started"])
+            self.assertFalse(failure["score_computed"])
+            self.assertTrue(failure["labels_accessed"])
+            with self.assertRaisesRegex(
+                Campaign108Error, "not an eligible pre-score"
+            ):
+                run_campaign108(
+                    candidate_id,
+                    root / "dataset",
+                    config,
+                    cncp,
+                    root / "epoch2",
+                    campaign_epoch=2,
+                    predecessor_failure_receipts=(failure_path,),
+                )
+
+    def test_post_score_validation_failure_records_score_computed(self):
+        candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            campaign_dir = root / "epoch1"
+            self._run_patches(
+                stack, spec, bundle, baseline, _fake_projection
+            )
+            stack.enter_context(mock.patch.object(
+                screen108,
+                "verify_screen108_result_envelope",
+                side_effect=Campaign108Error("result envelope invalid"),
+            ))
+            with self.assertRaisesRegex(Campaign108Error, "envelope invalid"):
+                run_campaign108(
+                    candidate_id,
+                    root / "dataset",
+                    config,
+                    cncp,
+                    campaign_dir,
+                )
+            failure = json.loads(campaign108._artifact_paths(
+                campaign_dir, candidate_id
+            )["failure_receipt"].read_text(encoding="utf-8"))
+            self.assertEqual(
+                failure["failure_stage"], "SCREEN_RESULT_VALIDATE"
+            )
+            self.assertTrue(failure["native_output_sealed"])
+            self.assertTrue(failure["screen_started"])
+            self.assertTrue(failure["score_computed"])
+            self.assertTrue(failure["labels_accessed"])
+
+    def test_predecessor_alias_and_duplicate_fail_closed(self):
+        candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            failed_dir = root / "epoch1"
+            self._run_patches(
+                stack, spec, bundle, baseline, _fake_projection
+            )
+            stack.enter_context(mock.patch.object(
+                campaign108,
+                "build_locked_new108_adapter",
+                side_effect=Campaign108Error("shared preflight failure"),
+            ))
+            with self.assertRaises(Campaign108Error):
+                run_campaign108(
+                    candidate_id, root / "dataset", config, cncp, failed_dir
+                )
+            failure_path = campaign108._artifact_paths(
+                failed_dir, candidate_id
+            )["failure_receipt"]
+            alias = root / "failure-alias.json"
+            alias.symlink_to(failure_path)
+            for predecessors, message in (
+                ((failure_path, failure_path), "duplicate predecessor"),
+                ((alias,), "missing or aliased"),
+            ):
+                with self.subTest(message=message), self.assertRaisesRegex(
+                    Campaign108Error, message
+                ):
+                    run_campaign108(
+                        candidate_id,
+                        root / "dataset",
+                        config,
+                        cncp,
+                        root / ("epoch2-" + message.replace(" ", "-")),
+                        campaign_epoch=2,
+                        predecessor_failure_receipts=predecessors,
+                    )
 
     def test_resealed_receipt_cannot_claim_retry_or_rtl(self):
         body = {
@@ -863,8 +1085,12 @@ class Campaign108Tests(unittest.TestCase):
             "status": "SCREEN108_SINGLE_ATTEMPT_REPLAY_VERIFIED",
             "candidate_id": campaign108.RG3_ID,
             "authority_name": "RG3",
+            "campaign_epoch": 1,
             "attempt_sha256": "0" * 64,
-            "bindings": {},
+            "predecessor_failures": [],
+            "bindings": {
+                "predecessor_failures_sha256": canonical_sha256([]),
+            },
             "artifacts": {},
             "policy": {
                 "attempt_count": 2,
