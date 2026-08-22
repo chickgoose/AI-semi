@@ -91,7 +91,7 @@
             "scoring": {"const": "query_interval_only"},
             "insufficient_support": {"const": "hard_fail_no_extension"},
             "outcome_dependent_extension": {"const": false},
-            "cycle_boundary": {"const": "last_warmup_occurrence_cycle<timestamp_to_cycle(query_start_ns,warmup_start_ns)<=first_query_occurrence_cycle"}
+            "cycle_boundary": {"const": "last_warmup_decision_cycle<timestamp_to_cycle(query_start_ns,warmup_start_ns)<=first_query_decision_cycle"}
           }
         },
         "candidate_screen_preroll_rule_sha256": {"$ref": "#/$defs/sha256"}

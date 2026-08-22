@@ -43,9 +43,9 @@ _PREROLL_RULE = {
     "insufficient_support": "hard_fail_no_extension",
     "outcome_dependent_extension": False,
     "cycle_boundary": (
-        "last_warmup_occurrence_cycle<"
+        "last_warmup_decision_cycle<"
         "timestamp_to_cycle(query_start_ns,warmup_start_ns)"
-        "<=first_query_occurrence_cycle"
+        "<=first_query_decision_cycle"
     ),
 }
 
