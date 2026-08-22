@@ -70,10 +70,13 @@ INPUT_DOMAIN_HOLD = {
     "maximum_equal_time_cluster_events": MAX_EQUAL_TIME_CLUSTER_EVENTS,
     "valid_v3_inputs_beyond_fixed_caps": "fail_closed",
     "caps_are_execution_input_v3_guarantees": False,
+    "post_reset_pose_commit_cycles": "strictly_unique",
+    "unique_pose_commit_cycles_are_execution_input_v3_guaranteed": False,
     "reason": (
         "the 256-pose and 8-event-cluster caps are development policy, not "
-        "execution_input/v3 guarantees; otherwise valid v3 inputs beyond "
-        "either fixed cap fail closed"
+        "execution_input/v3 guarantees; v3 also permits multiple poses on "
+        "one commit cycle while native DSPB does not; inputs outside this "
+        "narrower development domain fail closed"
     ),
 }
 

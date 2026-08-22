@@ -490,6 +490,11 @@ def _run_window(
     if len(poses) > MAX_WINDOW_POSE_OCCURRENCES:
         raise DSPBQueryStreamCoreError("DSPB window has more than 256 poses")
     active_poses = [pose for pose in poses if pose["commit_cycle"] >= 0]
+    active_pose_cycles = [pose["commit_cycle"] for pose in active_poses]
+    if len(set(active_pose_cycles)) != len(active_pose_cycles):
+        raise DSPBQueryStreamCoreError(
+            "DSPB post-reset pose commit cycles must be unique"
+        )
     excluded_ids = [pose["pose_id"] for pose in poses if pose["commit_cycle"] < 0]
     poses_by_id = {pose["pose_id"]: pose for pose in poses}
     bounded = _BoundedDSPB()

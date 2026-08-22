@@ -251,6 +251,32 @@ class DSPBQueryStreamTests(unittest.TestCase):
         with self.assertRaisesRegex(DSPBQueryStreamError, "more than 256 poses"):
             generate_dspb_query_stream(execution)
 
+    def test_v3_same_cycle_poses_fail_closed_in_narrow_dspb_domain(self):
+        start = 0
+        query = 50_000_000
+        window_id = "same-pose-cycle"
+        registry = (
+            NeutralRegistryWindow(window_id, start, query, query + 500_000),
+        )
+        poses = (
+            _pose(0, query - 1_000, start, 0.1),
+            _pose(1, query - 999, start, 0.2),
+        )
+        self.assertEqual(poses[0].commit_cycle, poses[1].commit_cycle)
+        events = (
+            _event(2, query - 500, query, 0.01, 1),
+            _event(1, query, query, 0.02, 1),
+        )
+        execution = _execution(
+            registry,
+            {window_id: events},
+            {window_id: poses},
+        )
+        with self.assertRaisesRegex(
+            DSPBQueryStreamError, "post-reset pose commit cycles must be unique"
+        ):
+            generate_dspb_query_stream(execution)
+
     def test_verified_query_path_and_double_replay_fail_closed(self):
         real = dspb_query_stream._run_verified_execution_snapshot
         first = real(self.execution)
@@ -290,6 +316,16 @@ class DSPBQueryStreamTests(unittest.TestCase):
         )
         self.assertIs(
             INPUT_DOMAIN_HOLD["caps_are_execution_input_v3_guarantees"],
+            False,
+        )
+        self.assertEqual(
+            INPUT_DOMAIN_HOLD["post_reset_pose_commit_cycles"],
+            "strictly_unique",
+        )
+        self.assertIs(
+            INPUT_DOMAIN_HOLD[
+                "unique_pose_commit_cycles_are_execution_input_v3_guaranteed"
+            ],
             False,
         )
         self.assertEqual(output["deterministic_replay_count"], 2)
