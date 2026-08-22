@@ -57,7 +57,7 @@ MOTION_BINS = ("LOW", "MID", "HIGH")
 # query cohort and reporting labels remain fixed by these selector authorities.
 EXPECTED_LABEL_SIDECAR_SHA256 = "2dd3be5aba43610bef999c2491978d3abb39b206cfa6c53cb658cee43c2b3ecb"
 EXPECTED_SELECTOR_REGISTRY_SHA256 = "4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d"
-EXPECTED_EVALUATOR_SHA256 = "91055ee1656f7266137111bfeff1d9587160b0a3f00fc51a90afc49bad434b76"
+EXPECTED_EVALUATOR_SHA256 = "c27228df4dabb4db4db345c2f184edf9411086654cda653aaccd0ccb3e83ba33"
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTIFIER = re.compile(

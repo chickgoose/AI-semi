@@ -24,6 +24,7 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
 from benchmarks.redred_mc_wtb_predictor_stage3 import current_cav_trace as _trace
 from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
     STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    logical_replay_authority,
     run_stage3_logical_cycle_model,
 )
 
@@ -77,6 +78,8 @@ CONSUMER_DEPENDENCY_PATHS = (
 _EXECUTION_FIELDS = frozenset((
     "schema", "source_events_authority", "timing_authority",
     "logical_ingress_profile", "logical_ingress_profile_sha256",
+    "logical_cycle_replay_authority",
+    "logical_cycle_replay_authority_sha256",
     "consumer_dependency_manifest", "consumer_dependency_aggregate_sha256",
     "neutral_registry", "neutral_registry_sha256", "ordered_window_ids_sha256",
     "ordered_event_occurrences_sha256", "ordered_query_event_ids_sha256",
@@ -97,6 +100,12 @@ _TIMING_FIELDS = frozenset((
 _PROFILE_FIELDS = frozenset((
     "schema", "profile_id", "raw_ingress_lanes", "ingress_staging_entries",
     "event_service_lanes", "scope",
+))
+_LOGICAL_REPLAY_AUTHORITY_FIELDS = frozenset((
+    "schema", "frozen_stage4_model_sha256", "frozen_stage4_api_sha256",
+    "private_module_namespace", "profile", "profile_sha256", "overrides",
+    "retained_event_service_lanes", "exposed_arm", "event_order_rule",
+    "event_id_transport", "canonical_module_mutation", "authority_sha256",
 ))
 _DEPENDENCY_FIELDS = frozenset(("path", "sha256"))
 _REGISTRY_FIELDS = frozenset((
@@ -407,6 +416,34 @@ def _profile_mapping(profile: object) -> Mapping[str, object]:
     return _validate_profile(value)
 
 
+def _validate_logical_replay_authority(value: object) -> Mapping[str, object]:
+    row = _exact(
+        value,
+        _LOGICAL_REPLAY_AUTHORITY_FIELDS,
+        "logical cycle replay authority",
+    )
+    supplied = dict(row)
+    supplied_sha256 = _sha(
+        supplied.pop("authority_sha256"),
+        "logical cycle replay authority internal digest",
+    )
+    if supplied_sha256 != canonical_sha256(supplied):
+        raise Stage3ExecutionAuthorityError(
+            "logical cycle replay authority internal seal differs"
+        )
+    try:
+        expected = dict(logical_replay_authority())
+    except (TypeError, ValueError) as exc:
+        raise Stage3ExecutionAuthorityError(
+            "locked logical cycle replay authority is unavailable"
+        ) from exc
+    if dict(row) != expected:
+        raise Stage3ExecutionAuthorityError(
+            "logical cycle replay authority differs from locked Stage3 authority"
+        )
+    return expected
+
+
 def _timing_authority() -> Mapping[str, object]:
     return {
         "pre_roll_ns": PRE_ROLL_NS,
@@ -539,6 +576,9 @@ def build_stage3_execution_input(
         raise Stage3ExecutionAuthorityError("Stage3 execution runner is not the repository runner")
     source = _validate_source(source_events_authority)
     profile = _profile_mapping(cycle_profile)
+    replay_authority = _validate_logical_replay_authority(
+        logical_replay_authority()
+    )
     root = _repo_root(repo_root)
     trace = _trace.build_current_cav_trace(
         registry, event_streams, pose_streams,
@@ -564,6 +604,10 @@ def build_stage3_execution_input(
         "timing_authority": _timing_authority(),
         "logical_ingress_profile": profile,
         "logical_ingress_profile_sha256": canonical_sha256(profile),
+        "logical_cycle_replay_authority": replay_authority,
+        "logical_cycle_replay_authority_sha256": replay_authority[
+            "authority_sha256"
+        ],
         "consumer_dependency_manifest": dependencies,
         "consumer_dependency_aggregate_sha256": canonical_sha256(dependencies),
         "neutral_registry": registry_rows,
@@ -733,6 +777,15 @@ def verify_stage3_execution_input(
     profile = _validate_profile(row.get("logical_ingress_profile"))
     if row.get("logical_ingress_profile_sha256") != canonical_sha256(profile):
         raise Stage3ExecutionAuthorityError("logical-ingress profile digest differs")
+    replay_authority = _validate_logical_replay_authority(
+        row.get("logical_cycle_replay_authority")
+    )
+    if row.get("logical_cycle_replay_authority_sha256") != replay_authority[
+        "authority_sha256"
+    ]:
+        raise Stage3ExecutionAuthorityError(
+            "logical cycle replay authority digest differs"
+        )
     dependencies = _verify_dependency_manifest(row.get("consumer_dependency_manifest"), _repo_root(repo_root))
     if row.get("consumer_dependency_aggregate_sha256") != canonical_sha256(dependencies):
         raise Stage3ExecutionAuthorityError("dependency aggregate differs")
@@ -766,9 +819,30 @@ def verify_stage3_execution_input(
         poses = [_validate_pose(item, bounds) for item in _sequence(window["poses"], "window poses")]
         event_ids = [event["event_id"] for event in events]
         event_timestamps = [event["timestamp_ns"] for event in events]
-        if (any(right <= left for left, right in zip(event_ids, event_ids[1:]))
-                or any(right < left for left, right in zip(event_timestamps, event_timestamps[1:]))):
-            raise Stage3ExecutionAuthorityError("window events are not source ordered")
+        event_cycles = [
+            _trace.timestamp_to_cycle(
+                timestamp, bounds["warmup_start_ns_inclusive"]
+            )
+            for timestamp in event_timestamps
+        ]
+        if len(set(event_ids)) != len(event_ids):
+            raise Stage3ExecutionAuthorityError(
+                "window contains duplicate event IDs"
+            )
+        if any(
+            right < left
+            for left, right in zip(event_timestamps, event_timestamps[1:])
+        ):
+            raise Stage3ExecutionAuthorityError(
+                "window event timestamps move backwards"
+            )
+        if any(
+            right < left
+            for left, right in zip(event_cycles, event_cycles[1:])
+        ):
+            raise Stage3ExecutionAuthorityError(
+                "window event occurrence cycles move backwards"
+            )
         pose_ids = [pose["pose_id"] for pose in poses]
         pose_timestamps = [pose["timestamp_ns"] for pose in poses]
         if (any(right <= left for left, right in zip(pose_ids, pose_ids[1:]))

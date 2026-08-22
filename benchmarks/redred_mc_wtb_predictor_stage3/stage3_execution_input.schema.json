@@ -6,6 +6,7 @@
   "required": [
     "schema", "source_events_authority", "timing_authority",
     "logical_ingress_profile", "logical_ingress_profile_sha256",
+    "logical_cycle_replay_authority", "logical_cycle_replay_authority_sha256",
     "consumer_dependency_manifest", "consumer_dependency_aggregate_sha256",
     "neutral_registry", "neutral_registry_sha256", "ordered_window_ids_sha256",
     "ordered_event_occurrences_sha256", "ordered_query_event_ids_sha256",
@@ -21,6 +22,8 @@
     "timing_authority": {"$ref": "#/$defs/timingAuthority"},
     "logical_ingress_profile": {"$ref": "#/$defs/ingressProfile"},
     "logical_ingress_profile_sha256": {"$ref": "#/$defs/sha256"},
+    "logical_cycle_replay_authority": {"$ref": "#/$defs/logicalReplayAuthority"},
+    "logical_cycle_replay_authority_sha256": {"$ref": "#/$defs/sha256"},
     "consumer_dependency_manifest": {
       "type": "array", "minItems": 9, "maxItems": 9,
       "prefixItems": [
@@ -103,6 +106,37 @@
         "ingress_staging_entries": {"const": 8},
         "event_service_lanes": {"const": 2},
         "scope": {"const": "MODEL_ONLY_LOGICAL_REPLAY_NO_RTL_OR_PPA_CLAIM"}
+      }
+    },
+    "logicalReplayAuthority": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "schema", "frozen_stage4_model_sha256", "frozen_stage4_api_sha256",
+        "private_module_namespace", "profile", "profile_sha256", "overrides",
+        "retained_event_service_lanes", "exposed_arm", "event_order_rule",
+        "event_id_transport", "canonical_module_mutation", "authority_sha256"
+      ],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.logical_cycle_replay/v1"},
+        "frozen_stage4_model_sha256": {"const": "ac69d2e5e35f100cca1385be728814fec5e873ce0cf81a2ca4f38880100167ee"},
+        "frozen_stage4_api_sha256": {"const": "8357e0b4d5579dcd1d96ade00060ecce7c7e9a254aac54f094d286b851ea46af"},
+        "private_module_namespace": {"const": "benchmarks.redred_mc_wtb_predictor_stage3._stage3_private_stage4_cyclemodel"},
+        "profile": {"$ref": "#/$defs/ingressProfile"},
+        "profile_sha256": {"$ref": "#/$defs/sha256"},
+        "overrides": {
+          "type": "object", "additionalProperties": false,
+          "required": ["RAW_INGRESS_LANES", "INGRESS_STAGING_ENTRIES"],
+          "properties": {
+            "RAW_INGRESS_LANES": {"const": 8},
+            "INGRESS_STAGING_ENTRIES": {"const": 8}
+          }
+        },
+        "retained_event_service_lanes": {"const": 2},
+        "exposed_arm": {"const": "causal_cav"},
+        "event_order_rule": {"const": "preserve_source_array_order_with_nondecreasing_occurrence_timestamps_and_cycles"},
+        "event_id_transport": {"const": "unique_source_ids_may_decrease_private_ordinal_then_exact_restore"},
+        "canonical_module_mutation": {"const": false},
+        "authority_sha256": {"$ref": "#/$defs/sha256"}
       }
     },
     "dependency": {

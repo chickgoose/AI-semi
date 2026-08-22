@@ -719,12 +719,25 @@ def _validated_inputs(
         poses = tuple(_snapshot_pose(row) for row in pose_source[window.window_id])
         if not events or not poses:
             raise CurrentCAVTraceError("neutral event and pose streams must be nonempty")
+        event_ids = tuple(event.event_id for event in events)
+        if len(set(event_ids)) != len(event_ids):
+            raise CurrentCAVTraceError("neutral event IDs repeat within a window")
         if any(
-            right.event_id <= left.event_id
-            or right.timestamp_ns < left.timestamp_ns
+            right.timestamp_ns < left.timestamp_ns
             for left, right in zip(events, events[1:])
         ):
-            raise CurrentCAVTraceError("neutral events are not strictly ID-ordered")
+            raise CurrentCAVTraceError("neutral event timestamps move backwards")
+        occurrence_cycles = tuple(
+            timestamp_to_cycle(
+                event.timestamp_ns, window.warmup_start_ns_inclusive
+            )
+            for event in events
+        )
+        if any(
+            right < left
+            for left, right in zip(occurrence_cycles, occurrence_cycles[1:])
+        ):
+            raise CurrentCAVTraceError("neutral event occurrence cycles move backwards")
         if any(
             right.pose_id <= left.pose_id
             or right.timestamp_ns <= left.timestamp_ns

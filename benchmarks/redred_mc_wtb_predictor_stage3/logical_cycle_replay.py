@@ -8,7 +8,7 @@ closed to the current-CAV arm and cannot select another profile.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import importlib.util
 from pathlib import Path
@@ -42,6 +42,12 @@ _INGRESS_STAGING_ENTRIES = 8
 _EVENT_SERVICE_LANES = 2
 _FROZEN_RAW_INGRESS_LANES = 6
 _FROZEN_INGRESS_STAGING_ENTRIES = 6
+_EVENT_ORDER_RULE = (
+    "preserve_source_array_order_with_nondecreasing_occurrence_timestamps_and_cycles"
+)
+_EVENT_ID_TRANSPORT = (
+    "unique_source_ids_may_decrease_private_ordinal_then_exact_restore"
+)
 _FROZEN_MODEL_PATH = Path(_canonical_model.__file__).resolve()
 _FROZEN_API_PATH = _FROZEN_MODEL_PATH.with_name("__init__.py")
 _LOAD_LOCK = threading.RLock()
@@ -151,6 +157,8 @@ def logical_replay_authority() -> Mapping[str, object]:
         },
         "retained_event_service_lanes": _EVENT_SERVICE_LANES,
         "exposed_arm": "causal_cav",
+        "event_order_rule": _EVENT_ORDER_RULE,
+        "event_id_transport": _EVENT_ID_TRANSPORT,
         "canonical_module_mutation": False,
     }
     return dict(body, authority_sha256=canonical_sha256(body))
@@ -172,12 +180,46 @@ def run_stage3_logical_cycle_model(
     if arm_value != "causal_cav":
         raise LogicalCycleReplayError("Stage3 logical replay arm is not causal_cav")
     try:
-        private_events = tuple(module.Event(
+        source_events = tuple(module.Event(
             event.event_id,
             event.timestamp_ns,
             event.transform_guard_valid,
             event.causal_pose_index,
         ) for event in events)
+        source_event_ids = tuple(event.event_id for event in source_events)
+        if len(set(source_event_ids)) != len(source_event_ids):
+            raise CycleModelError("duplicate event IDs are forbidden")
+        source_occurrence_cycles = tuple(
+            module.timestamp_to_cycle(event.timestamp_ns, window_start_ns)
+            for event in source_events
+        )
+        if any(
+            right.timestamp_ns < left.timestamp_ns
+            for left, right in zip(source_events, source_events[1:])
+        ):
+            raise CycleModelError("event timestamps must be nondecreasing")
+        if any(
+            right < left
+            for left, right in zip(
+                source_occurrence_cycles, source_occurrence_cycles[1:]
+            )
+        ):
+            raise CycleModelError("event occurrence cycles must be nondecreasing")
+        requires_id_transport = any(
+            right < left
+            for left, right in zip(source_event_ids, source_event_ids[1:])
+        )
+        private_events = source_events
+        if requires_id_transport:
+            private_events = tuple(
+                module.Event(
+                    ordinal,
+                    event.timestamp_ns,
+                    event.transform_guard_valid,
+                    event.causal_pose_index,
+                )
+                for ordinal, event in enumerate(source_events)
+            )
         private_poses = tuple(module.PosePacket(
             pose.pose_id,
             pose.timestamp_ns,
@@ -203,6 +245,37 @@ def run_stage3_logical_cycle_model(
             raise CycleModelError(message) from None
     except AttributeError as exc:
         raise LogicalCycleReplayError("logical replay input interface differs") from exc
+    if requires_id_transport:
+        if (
+            len(result.records) != len(source_event_ids)
+            or len(result.cycle_receipts) != len(source_event_ids)
+        ):
+            raise LogicalCycleReplayError("logical replay transport cardinality differs")
+        records = tuple(
+            replace(record, event_id=event_id)
+            for event_id, record in zip(source_event_ids, result.records)
+        )
+        receipts = tuple(
+            replace(
+                receipt,
+                event_id=event_id,
+                decision_record_sha256=record.canonical_sha256(),
+            )
+            for event_id, record, receipt in zip(
+                source_event_ids, records, result.cycle_receipts
+            )
+        )
+        result = replace(
+            result,
+            records=records,
+            decision_records_sha256=module._canonical_sha256(
+                [record.to_mapping() for record in records]
+            ),
+            cycle_receipts=receipts,
+            cycle_receipts_sha256=module._canonical_sha256(
+                [receipt.to_mapping() for receipt in receipts]
+            ),
+        )
     if (
         result.raw_ingress_lanes != _RAW_INGRESS_LANES
         or result.ingress_staging_entries != _INGRESS_STAGING_ENTRIES

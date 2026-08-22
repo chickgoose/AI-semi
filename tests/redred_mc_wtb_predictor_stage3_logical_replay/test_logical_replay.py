@@ -32,6 +32,7 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     evaluate_current_cav_registry as evaluate_frozen_current_cav_registry,
 )
 from benchmarks.redred_mc_wtb_so3_axis_audit import evaluator as canonical_evaluator
+from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Arm,
     CycleModelError,
@@ -244,6 +245,55 @@ class LogicalReplayIsolationTests(unittest.TestCase):
                 window_start_ns=0,
                 arm=Arm.CAUSAL_CAV,
                 events=first_edge + three_next_edge,
+                poses=_poses(),
+                synthetic_test_mode=True,
+            )
+
+    def test_decreasing_unique_ids_use_lossless_private_ordinal_transport(self):
+        events = (
+            Event(900, 13, True, 11),
+            Event(100, 13, True, 11),
+        )
+        result = run_stage3_logical_cycle_model(
+            window_id=WINDOW_ID,
+            window_start_ns=0,
+            arm=Arm.CAUSAL_CAV,
+            events=events,
+            poses=_poses(),
+            synthetic_test_mode=True,
+        )
+        self.assertEqual(
+            tuple(record.event_id for record in result.records), (900, 100)
+        )
+        self.assertEqual(
+            tuple(receipt.event_id for receipt in result.cycle_receipts),
+            (900, 100),
+        )
+        self.assertEqual(
+            result.decision_records_sha256,
+            canonical_sha256([record.to_mapping() for record in result.records]),
+        )
+        self.assertEqual(
+            result.cycle_receipts_sha256,
+            canonical_sha256([
+                receipt.to_mapping() for receipt in result.cycle_receipts
+            ]),
+        )
+        self.assertEqual(
+            tuple(
+                receipt.decision_record_sha256
+                for receipt in result.cycle_receipts
+            ),
+            tuple(record.canonical_sha256() for record in result.records),
+        )
+        with self.assertRaisesRegex(
+            CycleModelError, r"\Aduplicate event IDs are forbidden\Z"
+        ):
+            run_stage3_logical_cycle_model(
+                window_id=WINDOW_ID,
+                window_start_ns=0,
+                arm=Arm.CAUSAL_CAV,
+                events=(Event(900, 13, True, 11), Event(900, 13, True, 11)),
                 poses=_poses(),
                 synthetic_test_mode=True,
             )

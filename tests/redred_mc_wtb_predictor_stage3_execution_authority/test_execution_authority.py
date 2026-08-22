@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from copy import deepcopy
 from dataclasses import dataclass
 import json
@@ -25,11 +26,13 @@ from benchmarks.redred_mc_wtb_predictor_stage3.execution_authority import (
     verify_stage3_scoring_join_receipt,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
+    CurrentCAVTraceError,
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
     STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    logical_replay_authority,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.pll_output import (
     CANDIDATE_ID as PLL_CANDIDATE_ID,
@@ -300,6 +303,14 @@ class ExecutionAuthorityTests(unittest.TestCase):
             execution["logical_ingress_profile"],
             STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.to_mapping(),
         )
+        replay_authority = logical_replay_authority()
+        self.assertEqual(
+            execution["logical_cycle_replay_authority"], replay_authority
+        )
+        self.assertEqual(
+            execution["logical_cycle_replay_authority_sha256"],
+            replay_authority["authority_sha256"],
+        )
         self.assertEqual(
             verify_stage3_execution_input(
                 execution,
@@ -370,6 +381,123 @@ class ExecutionAuthorityTests(unittest.TestCase):
         )
         self.assertNotEqual(mutated_labels, labels())
         self.assertEqual(canonical_json_bytes(before), canonical_json_bytes(after))
+
+    def test_replay_authority_object_and_companion_digest_fail_closed(self):
+        companion = deepcopy(self.execution)
+        companion["logical_cycle_replay_authority_sha256"] = ZERO_SHA
+        reseal(companion)
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "authority digest differs"
+        ):
+            verify_stage3_execution_input(companion, repo_root=ROOT)
+
+        substituted = deepcopy(self.execution)
+        authority = substituted["logical_cycle_replay_authority"]
+        authority["event_order_rule"] = "substituted"
+        authority["authority_sha256"] = canonical_sha256({
+            key: value
+            for key, value in authority.items()
+            if key != "authority_sha256"
+        })
+        substituted["logical_cycle_replay_authority_sha256"] = authority[
+            "authority_sha256"
+        ]
+        reseal(substituted)
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "locked Stage3 authority"
+        ):
+            verify_stage3_execution_input(substituted, repo_root=ROOT)
+
+        extra = deepcopy(self.execution)
+        extra["logical_cycle_replay_authority"]["free_digest"] = ZERO_SHA
+        extra["logical_cycle_replay_authority_sha256"] = extra[
+            "logical_cycle_replay_authority"
+        ]["authority_sha256"]
+        reseal(extra)
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "field schema differs"
+        ):
+            verify_stage3_execution_input(extra, repo_root=ROOT)
+
+    def test_unique_decreasing_event_ids_preserve_source_order(self):
+        registry, _, poses = neutral_fixture()
+        decreasing = {
+            "w0": (
+                event(900, 20_000_000, 50_000_000, 1),
+                event(100, 50_100_000, 50_000_000, 2),
+            ),
+            "w1": (
+                event(900, 20_000_000, 60_000_000, 1),
+                event(50, 60_100_000, 60_000_000, 3),
+            ),
+        }
+        built = build_stage3_execution_input(
+            registry,
+            decreasing,
+            poses,
+            source_events_authority=source_authority(),
+            repo_root=ROOT,
+        )
+        expected = ((900, 100), (900, 50))
+        self.assertEqual(
+            tuple(
+                tuple(row["event_id"] for row in window["events"])
+                for window in built["windows"]
+            ),
+            expected,
+        )
+        self.assertEqual(
+            tuple(
+                tuple(
+                    row["event_id"]
+                    for row in window["simulation"]["records"]
+                )
+                for window in built["score_free_current_cav_trace"]["windows"]
+            ),
+            expected,
+        )
+        self.assertEqual(
+            verify_stage3_execution_input(built, repo_root=ROOT),
+            built["aggregate_sha256"],
+        )
+        schema = json.loads((
+            ROOT / "benchmarks/redred_mc_wtb_predictor_stage3"
+            / "stage3_execution_input.schema.json"
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(
+            list(Draft202012Validator(schema).iter_errors(built)), []
+        )
+
+    def test_duplicate_ids_and_backwards_source_time_fail_closed(self):
+        registry, events, poses = neutral_fixture()
+        duplicate = dict(events)
+        duplicate["w0"] = (
+            event(900, 20_000_000, 50_000_000, 1),
+            event(900, 50_100_000, 50_000_000, 2),
+        )
+        with self.assertRaisesRegex(
+            CurrentCAVTraceError, "event IDs repeat within a window"
+        ):
+            build_stage3_execution_input(
+                registry,
+                duplicate,
+                poses,
+                source_events_authority=source_authority(),
+                repo_root=ROOT,
+            )
+
+        backwards = dict(events)
+        backwards["w0"] = tuple(reversed(events["w0"]))
+        with self.assertRaisesRegex(
+            CurrentCAVTraceError, "event timestamps move backwards"
+        ):
+            build_stage3_execution_input(
+                registry,
+                backwards,
+                poses,
+                source_events_authority=source_authority(),
+                repo_root=ROOT,
+            )
 
     def test_production_window_ids_and_actual_candidate_ids(self):
         registry, events, poses = production_id_fixture()
@@ -825,9 +953,8 @@ class ExecutionAuthorityTests(unittest.TestCase):
         )
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(schema)
-        self.assertEqual(
-            list(Draft202012Validator(schema).iter_errors(loaded)), []
-        )
+        validator = Draft202012Validator(schema)
+        self.assertEqual(list(validator.iter_errors(loaded)), [])
         self.assertEqual(
             verify_stage3_execution_input(
                 loaded,
@@ -856,6 +983,30 @@ class ExecutionAuthorityTests(unittest.TestCase):
             loaded["logical_ingress_profile"]["schema"],
             "redred.mc_wtb_predictor_stage3.logical_ingress_profile/v1",
         )
+        self.assertEqual(
+            loaded["logical_cycle_replay_authority"],
+            logical_replay_authority(),
+        )
+        self.assertEqual(
+            loaded["logical_cycle_replay_authority_sha256"],
+            loaded["logical_cycle_replay_authority"]["authority_sha256"],
+        )
+        schema_mutation = deepcopy(loaded)
+        schema_mutation["logical_cycle_replay_authority"]["unexpected"] = True
+        self.assertTrue(list(validator.iter_errors(schema_mutation)))
+
+    def test_execution_v2_sources_parse_with_python38_grammar(self):
+        paths = (
+            "benchmarks/redred_mc_wtb_predictor_stage3/execution_authority.py",
+            "benchmarks/redred_mc_wtb_predictor_stage3/current_cav_trace.py",
+            "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py",
+        )
+        for relative in paths:
+            with self.subTest(path=relative):
+                ast.parse(
+                    (ROOT / relative).read_text(encoding="utf-8"),
+                    feature_version=(3, 8),
+                )
 
 
 if __name__ == "__main__":
