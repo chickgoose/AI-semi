@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred.mc_wtb_predictor_stage3.execution_input/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "source_events_authority", "timing_authority",
+    "logical_ingress_profile", "logical_ingress_profile_sha256",
+    "consumer_dependency_manifest", "consumer_dependency_aggregate_sha256",
+    "neutral_registry", "neutral_registry_sha256", "ordered_window_ids_sha256",
+    "ordered_event_occurrences_sha256", "ordered_query_event_ids_sha256",
+    "windows", "windows_sha256", "neutral_input_sha256",
+    "score_free_current_cav_trace", "score_free_current_cav_trace_sha256",
+    "window_count", "source_event_occurrence_count", "unique_source_event_count",
+    "warmup_event_occurrence_count", "query_event_count", "pose_occurrence_count",
+    "aggregate_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v1"},
+    "source_events_authority": {"$ref": "#/$defs/sourceAuthority"},
+    "timing_authority": {"$ref": "#/$defs/timingAuthority"},
+    "logical_ingress_profile": {"$ref": "#/$defs/ingressProfile"},
+    "logical_ingress_profile_sha256": {"$ref": "#/$defs/sha256"},
+    "consumer_dependency_manifest": {
+      "type": "array", "minItems": 8, "maxItems": 8,
+      "prefixItems": [
+        {"$ref": "#/$defs/dependencyPredictorInit"},
+        {"$ref": "#/$defs/dependencyFramework"},
+        {"$ref": "#/$defs/dependencyTrace"},
+        {"$ref": "#/$defs/dependencyContractInit"},
+        {"$ref": "#/$defs/dependencyContract"},
+        {"$ref": "#/$defs/dependencyReceipt"},
+        {"$ref": "#/$defs/dependencyCycleInit"},
+        {"$ref": "#/$defs/dependencyCycleModel"}
+      ],
+      "items": false
+    },
+    "consumer_dependency_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+    "neutral_registry": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/registry"}},
+    "neutral_registry_sha256": {"$ref": "#/$defs/sha256"},
+    "ordered_window_ids_sha256": {"$ref": "#/$defs/sha256"},
+    "ordered_event_occurrences_sha256": {"$ref": "#/$defs/sha256"},
+    "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+    "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/window"}},
+    "windows_sha256": {"$ref": "#/$defs/sha256"},
+    "neutral_input_sha256": {"$ref": "#/$defs/sha256"},
+    "score_free_current_cav_trace": {"$ref": "#/$defs/currentCavTrace"},
+    "score_free_current_cav_trace_sha256": {"$ref": "#/$defs/sha256"},
+    "window_count": {"$ref": "#/$defs/count"},
+    "source_event_occurrence_count": {"$ref": "#/$defs/count"},
+    "unique_source_event_count": {"$ref": "#/$defs/count"},
+    "warmup_event_occurrence_count": {"$ref": "#/$defs/count"},
+    "query_event_count": {"$ref": "#/$defs/count"},
+    "pose_occurrence_count": {"$ref": "#/$defs/count"},
+    "aggregate_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "count": {"type": "integer", "minimum": 0},
+    "identifier": {"type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"},
+    "sourceAuthority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_events_path", "source_events_sha256", "source_events_size_bytes", "source_events_line_count"],
+      "properties": {
+        "source_events_path": {"type": "string", "minLength": 1},
+        "source_events_sha256": {"$ref": "#/$defs/sha256"},
+        "source_events_size_bytes": {"type": "integer", "minimum": 1},
+        "source_events_line_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "timingAuthority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pre_roll_ns", "candidate_screen_preroll_rule", "candidate_screen_preroll_rule_sha256"],
+      "properties": {
+        "pre_roll_ns": {"const": 50000000},
+        "candidate_screen_preroll_rule": {
+          "type": "object", "additionalProperties": false,
+          "required": ["duration_ns", "interval", "state_initialization", "scoring", "insufficient_support", "outcome_dependent_extension"],
+          "properties": {
+            "duration_ns": {"const": 50000000},
+            "interval": {"const": "[query_start_ns-50000000,query_start_ns)"},
+            "state_initialization": {"const": "reset_then_replay_in_source_order"},
+            "scoring": {"const": "query_interval_only"},
+            "insufficient_support": {"const": "hard_fail_no_extension"},
+            "outcome_dependent_extension": {"const": false}
+          }
+        },
+        "candidate_screen_preroll_rule_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "ingressProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "profile_id", "raw_ingress_lanes", "ingress_staging_entries", "event_service_lanes", "scope"],
+      "properties": {
+        "schema": {"type": "string", "minLength": 1},
+        "profile_id": {"$ref": "#/$defs/identifier"},
+        "raw_ingress_lanes": {"type": "integer", "minimum": 1},
+        "ingress_staging_entries": {"type": "integer", "minimum": 1},
+        "event_service_lanes": {"type": "integer", "minimum": 1},
+        "scope": {"const": "MODEL_ONLY_LOGICAL_REPLAY"}
+      }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {"path": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "dependencyPredictorInit": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py"}}}]},
+    "dependencyFramework": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_predictor_stage3/framework.py"}}}]},
+    "dependencyTrace": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_predictor_stage3/current_cav_trace.py"}}}]},
+    "dependencyContractInit": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_contract/__init__.py"}}}]},
+    "dependencyContract": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_contract/contract.py"}}}]},
+    "dependencyReceipt": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_contract/receipt.py"}}}]},
+    "dependencyCycleInit": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_cyclemodel/__init__.py"}}}]},
+    "dependencyCycleModel": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py"}}}]},
+    "registry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["window_id", "warmup_start_ns_inclusive", "query_start_ns_inclusive", "query_end_ns_exclusive"],
+      "properties": {
+        "window_id": {"$ref": "#/$defs/identifier"},
+        "warmup_start_ns_inclusive": {"type": "integer", "minimum": 0},
+        "query_start_ns_inclusive": {"type": "integer", "minimum": 0},
+        "query_end_ns_exclusive": {"type": "integer", "minimum": 0}
+      }
+    },
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_id", "timestamp_ns", "polarity", "is_query", "sensor_ray", "causal_pose_source_index", "event_content_sha256", "transform_guard_valid"],
+      "properties": {
+        "event_id": {"type": "integer", "minimum": 0},
+        "timestamp_ns": {"type": "integer", "minimum": 0},
+        "polarity": {"type": "integer", "enum": [0, 1]},
+        "is_query": {"type": "boolean"},
+        "sensor_ray": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+        "causal_pose_source_index": {"type": "integer", "minimum": 0},
+        "event_content_sha256": {"$ref": "#/$defs/sha256"},
+        "transform_guard_valid": {"type": "boolean"}
+      }
+    },
+    "pose": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pose_id", "timestamp_ns", "commit_cycle", "quaternion_xyzw", "pose_sha256", "value_valid", "arithmetic_valid"],
+      "properties": {
+        "pose_id": {"type": "integer", "minimum": 0},
+        "timestamp_ns": {"type": "integer", "minimum": 0},
+        "commit_cycle": {"type": "integer"},
+        "quaternion_xyzw": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+        "pose_sha256": {"$ref": "#/$defs/sha256"},
+        "value_valid": {"type": "boolean"},
+        "arithmetic_valid": {"type": "boolean"}
+      }
+    },
+    "window": {
+      "type": "object", "additionalProperties": false,
+      "required": ["window_id", "neutral_bounds_sha256", "events", "events_sha256", "ordered_source_event_ids_sha256", "ordered_warmup_event_ids_sha256", "ordered_query_event_ids_sha256", "source_event_count", "warmup_event_count", "query_event_count", "poses", "poses_sha256", "ordered_pose_ids_sha256", "negative_commit_pose_ids_sha256", "pose_input_count", "neutral_inputs_sha256", "current_cav_window_trace_sha256"],
+      "properties": {
+        "window_id": {"$ref": "#/$defs/identifier"}, "neutral_bounds_sha256": {"$ref": "#/$defs/sha256"},
+        "events": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/event"}},
+        "events_sha256": {"$ref": "#/$defs/sha256"}, "ordered_source_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "ordered_warmup_event_ids_sha256": {"$ref": "#/$defs/sha256"}, "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "source_event_count": {"$ref": "#/$defs/count"}, "warmup_event_count": {"$ref": "#/$defs/count"}, "query_event_count": {"$ref": "#/$defs/count"},
+        "poses": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pose"}}, "poses_sha256": {"$ref": "#/$defs/sha256"},
+        "ordered_pose_ids_sha256": {"$ref": "#/$defs/sha256"}, "negative_commit_pose_ids_sha256": {"$ref": "#/$defs/sha256"},
+        "pose_input_count": {"$ref": "#/$defs/count"}, "neutral_inputs_sha256": {"$ref": "#/$defs/sha256"},
+        "current_cav_window_trace_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["window_id", "event_id", "event_timestamp_ns", "occurrence_cycle", "occurrence_pose_ids", "occurrence_pose_timestamps_ns", "occurrence_pose_commit_cycles", "occurrence_pose_sha256", "used_pose_ids", "used_pose_timestamps_ns", "used_pose_commit_cycles", "used_pose_sha256", "disposition", "disposition_reason", "decision_sha256"],
+      "properties": {
+        "window_id": {"$ref": "#/$defs/identifier"}, "event_id": {"$ref": "#/$defs/count"}, "event_timestamp_ns": {"$ref": "#/$defs/count"}, "occurrence_cycle": {"type": "integer"},
+        "occurrence_pose_ids": {"type": "array", "items": {"$ref": "#/$defs/count"}}, "occurrence_pose_timestamps_ns": {"type": "array", "items": {"$ref": "#/$defs/count"}},
+        "occurrence_pose_commit_cycles": {"type": "array", "items": {"type": "integer"}}, "occurrence_pose_sha256": {"type": "array", "items": {"$ref": "#/$defs/sha256"}},
+        "used_pose_ids": {"type": "array", "items": {"$ref": "#/$defs/count"}}, "used_pose_timestamps_ns": {"type": "array", "items": {"$ref": "#/$defs/count"}},
+        "used_pose_commit_cycles": {"type": "array", "items": {"type": "integer"}}, "used_pose_sha256": {"type": "array", "items": {"$ref": "#/$defs/sha256"}},
+        "disposition": {"type": "string", "minLength": 1}, "disposition_reason": {"type": "string", "minLength": 1}, "decision_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "traceWindow": {
+      "type": "object", "additionalProperties": false,
+      "required": ["registry", "input_events", "input_poses", "simulation", "window_sha256"],
+      "properties": {
+        "registry": {"$ref": "#/$defs/registry"}, "input_events": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/event"}},
+        "input_poses": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/pose"}},
+        "simulation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["records", "decision_records_sha256", "synthetic_test_mode", "all_event_pose_indices_verified"],
+          "properties": {
+            "records": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/decision"}},
+            "decision_records_sha256": {"$ref": "#/$defs/sha256"}, "synthetic_test_mode": {"const": false}, "all_event_pose_indices_verified": {"const": true}
+          }
+        },
+        "window_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "traceProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "profile_id", "profile_mapping_json", "profile_mapping_sha256", "semantic_contract_sha256", "semantics"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.current_cav_runner_profile/v1"}, "profile_id": {"$ref": "#/$defs/identifier"},
+        "profile_mapping_json": {"type": "string", "minLength": 1}, "profile_mapping_sha256": {"$ref": "#/$defs/sha256"}, "semantic_contract_sha256": {"$ref": "#/$defs/sha256"},
+        "semantics": {"type": "object", "additionalProperties": false, "required": ["arm", "event_edge", "pose_visibility", "occurrence_snapshot", "same_edge_priority", "candidate_gate"], "properties": {
+          "arm": {"type": "string"}, "event_edge": {"type": "string"}, "pose_visibility": {"type": "string"}, "occurrence_snapshot": {"type": "string"}, "same_edge_priority": {"type": "string"}, "candidate_gate": {"type": "string"}
+        }}
+      }
+    },
+    "currentCavTrace": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "profile", "profile_sha256", "neutral_input_sha256", "baseline_schema", "baseline_decisions_sha256", "windows", "aggregate_sha256"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.current_cav_trace/v1"}, "profile": {"$ref": "#/$defs/traceProfile"}, "profile_sha256": {"$ref": "#/$defs/sha256"},
+        "neutral_input_sha256": {"$ref": "#/$defs/sha256"}, "baseline_schema": {"const": "redred.mc_wtb_predictor_stage3.current_cav_baseline/v1"},
+        "baseline_decisions_sha256": {"$ref": "#/$defs/sha256"}, "windows": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/traceWindow"}}, "aggregate_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

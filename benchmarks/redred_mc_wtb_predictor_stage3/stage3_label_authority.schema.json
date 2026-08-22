@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred.mc_wtb_predictor_stage3.label_authority/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "execution_input_aggregate_sha256", "execution_neutral_input_sha256", "ordered_window_ids_sha256", "ordered_query_event_ids_sha256", "window_count", "selector_authority", "labels", "selector_labels_sidecar_sha256", "joins", "joins_sha256", "aggregate_sha256"],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.label_authority/v1"},
+    "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"}, "execution_neutral_input_sha256": {"$ref": "#/$defs/sha256"},
+    "ordered_window_ids_sha256": {"$ref": "#/$defs/sha256"}, "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"}, "window_count": {"type": "integer", "minimum": 1},
+    "selector_authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage12_freeze_receipt_sha256", "stage12_source_split_plan_sha256", "selector_registry_sha256", "selector_implementation_sha256"],
+      "properties": {
+        "stage12_freeze_receipt_sha256": {"$ref": "#/$defs/sha256"}, "stage12_source_split_plan_sha256": {"$ref": "#/$defs/sha256"},
+        "selector_registry_sha256": {"$ref": "#/$defs/sha256"}, "selector_implementation_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "labels": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/label"}},
+    "selector_labels_sidecar_sha256": {"$ref": "#/$defs/sha256"},
+    "joins": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/join"}},
+    "joins_sha256": {"$ref": "#/$defs/sha256"}, "aggregate_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "label": {
+      "type": "object", "additionalProperties": false,
+      "required": ["window_id", "axis", "sign", "motion_bin", "rotation_vector_rad", "purity", "motion_proxy", "rank_sha256", "label_sha256"],
+      "properties": {
+        "window_id": {"type": "string", "minLength": 1}, "axis": {"enum": ["X", "Y", "Z"]}, "sign": {"enum": ["NEGATIVE", "POSITIVE"]},
+        "motion_bin": {"enum": ["LOW", "MID", "HIGH"]}, "rotation_vector_rad": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+        "purity": {"type": "number", "minimum": 0.0, "maximum": 1.0}, "motion_proxy": {"type": "number"}, "rank_sha256": {"$ref": "#/$defs/sha256"}, "label_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "join": {
+      "type": "object", "additionalProperties": false,
+      "required": ["window_id", "ordered_query_event_ids_sha256", "label_sha256"],
+      "properties": {"window_id": {"type": "string", "minLength": 1}, "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"}, "label_sha256": {"$ref": "#/$defs/sha256"}}
+    }
+  }
+}
