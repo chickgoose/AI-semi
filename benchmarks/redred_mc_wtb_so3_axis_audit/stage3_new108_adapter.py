@@ -25,14 +25,16 @@ from benchmarks.redred_mc_wtb_stage4_assay.source import (
     validate_sources,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    run_stage3_logical_cycle_model,
+)
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Arm,
     Event,
     PosePacket,
     PoseSource,
-    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     pose_timestamp_to_cycle,
-    run_cycle_model,
     timestamp_to_cycle,
 )
 
@@ -85,6 +87,7 @@ _DEPENDENCY_PATHS = (
     "benchmarks/redred_mc_wtb_motion_qualification/controller.py",
     "benchmarks/redred_mc_wtb_pose_recovery/__init__.py",
     "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py",
     "benchmarks/redred_mc_wtb_so3_axis_audit/__init__.py",
     "benchmarks/redred_mc_wtb_so3_axis_audit/analyzer.py",
     "benchmarks/redred_mc_wtb_so3_axis_audit/evaluator.py",
@@ -101,7 +104,7 @@ _DEPENDENCY_PATHS = (
     "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
 )
 
-_SEAL_SCHEMA = "redred.mc_wtb_so3_axis_audit.stage3_new108_adapter_seal/v2"
+_SEAL_SCHEMA = "redred.mc_wtb_so3_axis_audit.stage3_new108_adapter_seal/v3"
 _SEAL_FIELDS = frozenset((
     "schema", "source_lock_sha256", "source_member_sha256",
     "source_events_size_bytes", "source_events_line_count",
@@ -442,7 +445,7 @@ def _stage3_preflight(
             )
             counts[cycle] = counts.get(cycle, 0) + 1
         maximum_batch = max(counts.values(), default=0)
-        simulation = run_cycle_model(
+        simulation = run_stage3_logical_cycle_model(
             window_id=window.window_id,
             window_start_ns=window.warmup_start_ns_inclusive,
             arm=Arm.CAUSAL_CAV,
@@ -455,7 +458,6 @@ def _stage3_preflight(
                 PoseSource.DATASET, pose.pose_sha256, pose.value_valid,
                 pose.arithmetic_valid,
             ) for pose in pose_values),
-            ingress_profile=profile,
         )
         if (
             not simulation.all_event_pose_indices_verified

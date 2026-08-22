@@ -43,8 +43,10 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_json_bytes,
     canonical_sha256,
 )
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
     STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+)
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     pose_timestamp_to_cycle,
 )
 
@@ -70,6 +72,7 @@ MANIFEST_PATHS = (
     "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/rg3.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/rg3_output.py",
     "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
@@ -232,15 +235,20 @@ class RG3LockedOutputTests(unittest.TestCase):
 
     def test_cycle_replay_uses_fixed_stage3_logical_ingress_profile(self):
         with mock.patch.object(
-            rg3_output, "run_cycle_model", wraps=rg3_output.run_cycle_model
+            rg3_output,
+            "run_stage3_logical_cycle_model",
+            wraps=rg3_output.run_stage3_logical_cycle_model,
         ) as replay:
             self._generate()
         self.assertTrue(replay.call_args_list)
         self.assertTrue(all(
-            call.kwargs["ingress_profile"]
-            == STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE
+            "ingress_profile" not in call.kwargs
             for call in replay.call_args_list
         ))
+        self.assertEqual(
+            rg3_output.STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+        )
 
     def test_exact_signed_row_contract_native_identity_and_event_conservation(self):
         output = self._generate()

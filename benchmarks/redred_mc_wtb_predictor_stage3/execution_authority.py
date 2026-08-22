@@ -22,13 +22,13 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_sha256,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3 import current_cav_trace as _trace
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
     STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
-    run_cycle_model,
+    run_stage3_logical_cycle_model,
 )
 
 
-EXECUTION_INPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.execution_input/v1"
+EXECUTION_INPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.execution_input/v2"
 LABEL_AUTHORITY_SCHEMA = "redred.mc_wtb_predictor_stage3.label_authority/v1"
 SCORING_JOIN_SCHEMA = "redred.mc_wtb_predictor_stage3.scoring_join_receipt/v1"
 
@@ -56,7 +56,7 @@ _FORBIDDEN_CANDIDATE_FIELD_PIECES = (
     "selector", "label", "score", "evaluator",
 )
 _LOCKED_CYCLE_PROFILE = STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE
-_LOCKED_CYCLE_RUNNER = run_cycle_model
+_LOCKED_CYCLE_RUNNER = run_stage3_logical_cycle_model
 
 # These are the complete Python dependencies executed by the score-free trace
 # consumer.  The authority producer itself is deliberately absent: this file
@@ -66,6 +66,7 @@ CONSUMER_DEPENDENCY_PATHS = (
     "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/current_cav_trace.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py",
     "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
     "benchmarks/redred_mc_wtb_stage4_contract/contract.py",
     "benchmarks/redred_mc_wtb_stage4_contract/receipt.py",
@@ -541,7 +542,9 @@ def build_stage3_execution_input(
     root = _repo_root(repo_root)
     trace = _trace.build_current_cav_trace(
         registry, event_streams, pose_streams,
-        cycle_profile=cycle_profile, cycle_runner=cycle_runner,
+        cycle_profile=cycle_profile,
+        cycle_runner=cycle_runner,
+        cycle_runner_owns_profile=True,
     )
     trace_mapping = trace.to_mapping()
     if json.loads(trace.profile.profile_mapping_json) != profile:

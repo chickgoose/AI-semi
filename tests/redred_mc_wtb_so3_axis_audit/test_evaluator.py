@@ -14,11 +14,8 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     canonical_pose_value_sha256,
     evaluate_current_cav_registry,
     load_neutral_registry,
-    verify_current_cav_evaluation_integrity,
 )
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
-    CycleModelError,
-    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     pose_timestamp_to_cycle,
 )
 
@@ -92,33 +89,6 @@ class NeutralRegistryTests(unittest.TestCase):
 
 
 class CurrentCAVEvaluatorTests(unittest.TestCase):
-    def test_stage3_logical_profile_accepts_eight_and_integrity_replays_it(self):
-        registry, base_events, poses = synthetic_inputs()
-        events = (base_events[0],) + tuple(
-            event_input(200 + index, 1_500_000, True, 0.1 + index * 0.001)
-            for index in range(8)
-        )
-        with self.assertRaises(CycleModelError):
-            evaluate_current_cav_registry(
-                (registry,), {registry.window_id: events},
-                {registry.window_id: poses},
-            )
-        result = evaluate_current_cav_registry(
-            (registry,), {registry.window_id: events},
-            {registry.window_id: poses},
-            ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
-        )
-        self.assertEqual(result.accepted_events, 8)
-        self.assertEqual(
-            [row.decision.event_id for row in result.query_events],
-            list(range(200, 208)),
-        )
-        self.assertEqual(result.windows[0].simulation.raw_ingress_lanes, 8)
-        self.assertEqual(
-            verify_current_cav_evaluation_integrity(result),
-            result.neutral_input_sha256,
-        )
-
     def test_generic_window_uses_current_cav_and_past_only_references(self):
         registry, events, poses = synthetic_inputs()
 

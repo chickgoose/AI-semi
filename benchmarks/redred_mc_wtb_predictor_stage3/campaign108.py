@@ -20,7 +20,7 @@ import sys
 from types import MappingProxyType
 from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple
 
-from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cav_evaluator import (
     CAVRegistryEvaluation,
     evaluate_current_cav_registry,
 )
@@ -32,9 +32,6 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.stage3_new108_adapter import (
     verify_stage3_new108_adapter,
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
-    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
-)
 
 from . import candidate_authority, dspb_output, pll_output, rg3_output, screen108
 
@@ -307,9 +304,17 @@ def _neutral_baseline_view(
     for row, registry in zip(windows, neutral.neutral_registry):
         identifier = registry.window_id
         if (
-            row.registry != registry
-            or tuple(row.input_events) != neutral.event_streams[identifier]
-            or tuple(row.input_poses) != neutral.pose_streams[identifier]
+            row.registry.to_mapping() != registry.to_mapping()
+            or tuple(event.to_content_mapping() for event in row.input_events)
+            != tuple(
+                event.to_content_mapping()
+                for event in neutral.event_streams[identifier]
+            )
+            or tuple(pose.to_content_mapping() for pose in row.input_poses)
+            != tuple(
+                pose.to_content_mapping()
+                for pose in neutral.pose_streams[identifier]
+            )
         ):
             raise Campaign108Error("baseline neutral window binding differs")
         projected.append(NeutralBaselineWindow(
@@ -1123,7 +1128,6 @@ def _run_campaign108_attempt(
     progress.failure_stage = "BASELINE_BUILD"
     full_baseline = evaluate_current_cav_registry(
         neutral.neutral_registry, neutral.event_streams, neutral.pose_streams,
-        ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     )
     baseline = _neutral_baseline_view(full_baseline, neutral)
     progress.failure_stage = "NEUTRAL_BINDING"

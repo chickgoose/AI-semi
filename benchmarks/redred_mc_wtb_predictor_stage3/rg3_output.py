@@ -31,6 +31,10 @@ from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import (
     RG3_POLICY,
     recover_rg3_cav,
 )
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    run_stage3_logical_cycle_model,
+)
 from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_json_bytes,
     canonical_sha256,
@@ -40,8 +44,6 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Event,
     PosePacket,
     PoseSource,
-    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
-    run_cycle_model,
     timestamp_to_cycle,
 )
 
@@ -154,6 +156,7 @@ _EXECUTABLE_MANIFEST_MEMBERS = (
     "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/rg3.py",
     "benchmarks/redred_mc_wtb_predictor_stage3/rg3_output.py",
     "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
@@ -507,7 +510,7 @@ def generate_locked_rg3_output(
             pose.value_valid,
             pose.arithmetic_valid,
         ) for pose in pose_values)
-        simulation = run_cycle_model(
+        simulation = run_stage3_logical_cycle_model(
             window_id=window.window_id,
             window_start_ns=window.warmup_start_ns_inclusive,
             arm=Arm.CAUSAL_CAV,
@@ -518,7 +521,6 @@ def generate_locked_rg3_output(
                 event.causal_pose_source_index,
             ) for event in event_values),
             poses=pose_packets,
-            ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
         )
         if (
             simulation.raw_ingress_lanes

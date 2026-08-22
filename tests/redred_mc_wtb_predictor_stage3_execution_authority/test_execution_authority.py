@@ -28,13 +28,15 @@ from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
 )
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+)
 from benchmarks.redred_mc_wtb_predictor_stage3.pll_output import (
     CANDIDATE_ID as PLL_CANDIDATE_ID,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import RG3_POLICY
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_json_bytes, canonical_sha256
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
-    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     pose_timestamp_to_cycle,
     run_cycle_model,
 )

@@ -20,12 +20,16 @@ from benchmarks.redred_mc_wtb_so3_axis_audit import (
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
+)
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cav_evaluator import (
     evaluate_current_cav_registry,
 )
 from benchmarks.redred_mc_wtb_stage4_assay.source import SourcePins, ValidatedSources
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
     STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+)
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     timestamp_to_cycle,
 )
 

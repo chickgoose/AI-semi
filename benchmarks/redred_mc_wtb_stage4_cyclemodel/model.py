@@ -51,64 +51,6 @@ class CycleModelError(ValueError):
     """An input or a frozen cycle-model invariant failed."""
 
 
-@dataclass(frozen=True)
-class IngressProfile:
-    """Closed cycle-model ingress authority; it does not claim RTL capacity."""
-
-    profile_id: str
-    raw_ingress_lanes: int
-    ingress_staging_entries: int
-    scope: str
-
-    def to_mapping(self) -> Dict[str, Any]:
-        return {
-            "schema": "redred.mc_wtb.stage4_cyclemodel.ingress_profile/v1",
-            "profile_id": self.profile_id,
-            "raw_ingress_lanes": self.raw_ingress_lanes,
-            "ingress_staging_entries": self.ingress_staging_entries,
-            "event_service_lanes": EVENT_LANES,
-            "scope": self.scope,
-        }
-
-    def canonical_sha256(self) -> str:
-        return _canonical_sha256(self.to_mapping())
-
-
-STAGE4_DEFAULT_INGRESS_PROFILE = IngressProfile(
-    "STAGE4_FROZEN_PHYSICAL_6X6_V1",
-    RAW_INGRESS_LANES,
-    INGRESS_STAGING_ENTRIES,
-    "FROZEN_STAGE4_ENDPOINT",
-)
-STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE = IngressProfile(
-    "STAGE3_CANDIDATE_NEUTRAL_LOGICAL_REPLAY_8X8_V1",
-    8,
-    8,
-    "MODEL_ONLY_LOGICAL_REPLAY_NO_RTL_OR_PPA_CLAIM",
-)
-_INGRESS_PROFILES = (
-    STAGE4_DEFAULT_INGRESS_PROFILE,
-    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
-)
-
-
-def _checked_ingress_profile(value: object) -> IngressProfile:
-    if type(value) is not IngressProfile:
-        raise CycleModelError("ingress_profile must have exact IngressProfile type")
-    if value not in _INGRESS_PROFILES:
-        raise CycleModelError("ingress_profile is not a locked profile")
-    if (
-        isinstance(value.raw_ingress_lanes, bool)
-        or not isinstance(value.raw_ingress_lanes, int)
-        or value.raw_ingress_lanes <= 0
-        or isinstance(value.ingress_staging_entries, bool)
-        or not isinstance(value.ingress_staging_entries, int)
-        or value.ingress_staging_entries < value.raw_ingress_lanes
-    ):
-        raise CycleModelError("ingress_profile capacity is invalid")
-    return value
-
-
 class Arm(str, Enum):
     ZOH_FRESHNESS = "zoh_freshness"
     DELAYED_EXACT = "delayed_exact"
@@ -451,28 +393,6 @@ class SimulationResult:
     pose_ring_accounting: "PoseRingAccounting"
     pose_ring_accounting_sha256: str
 
-    @property
-    def ingress_profile(self) -> IngressProfile:
-        matches = tuple(
-            profile for profile in _INGRESS_PROFILES
-            if (
-                profile.raw_ingress_lanes == self.raw_ingress_lanes
-                and profile.ingress_staging_entries
-                == self.ingress_staging_entries
-            )
-        )
-        if len(matches) != 1:
-            raise CycleModelError("simulation ingress profile is not locked")
-        return matches[0]
-
-    @property
-    def ingress_profile_id(self) -> str:
-        return self.ingress_profile.profile_id
-
-    @property
-    def ingress_profile_sha256(self) -> str:
-        return self.ingress_profile.canonical_sha256()
-
 
 @dataclass(frozen=True)
 class PoseRingAccounting:
@@ -778,7 +698,6 @@ class DelayedUnboundedDiagnosticEvidence:
             self.input_events,
             self.input_poses,
             self.synthetic_test_mode,
-            STAGE4_DEFAULT_INGRESS_PROFILE,
         )
         checked_event_ids = tuple(
             state.event.event_id for state in checked_states
@@ -1085,7 +1004,6 @@ def _validate_and_prepare(
     events: Sequence[Event],
     poses: Sequence[PosePacket],
     synthetic_test_mode: bool,
-    ingress_profile: IngressProfile,
 ) -> Tuple[List[_EventState], Tuple[PosePacket, ...]]:
     _nonnegative_int(window_start_ns, "window_start_ns")
     if not isinstance(arm, Arm):
@@ -1161,15 +1079,8 @@ def _validate_and_prepare(
     cycle_groups = {}  # type: Dict[int, List[Event]]
     for event, cycle in zip(event_values, occurrence_cycles):
         cycle_groups.setdefault(cycle, []).append(event)
-    if any(
-        len(group) > ingress_profile.raw_ingress_lanes
-        for group in cycle_groups.values()
-    ):
-        if ingress_profile == STAGE4_DEFAULT_INGRESS_PROFILE:
-            raise CycleModelError(
-                "more than six source records map to one occurrence cycle"
-            )
-        raise CycleModelError("source records exceed locked raw ingress lanes")
+    if any(len(group) > RAW_INGRESS_LANES for group in cycle_groups.values()):
+        raise CycleModelError("more than six source records map to one occurrence cycle")
 
     prepared = []  # type: List[_EventState]
     for event, occurrence_cycle in zip(event_values, occurrence_cycles):
@@ -1225,7 +1136,6 @@ def _capture_occurrences(
     next_event: int,
     cycle: int,
     staging: List[_EventState],
-    ingress_profile: IngressProfile,
 ) -> Tuple[int, int]:
     if next_event < len(states) and states[next_event].occurrence_cycle < cycle:
         raise CycleModelError("an occurrence was skipped before ingress capture")
@@ -1236,14 +1146,10 @@ def _capture_occurrences(
     ):
         captured.append(states[next_event])
         next_event += 1
-    if len(captured) > ingress_profile.raw_ingress_lanes:
-        if ingress_profile == STAGE4_DEFAULT_INGRESS_PROFILE:
-            raise CycleModelError("raw ingress exceeded six lanes")
-        raise CycleModelError("raw ingress exceeded locked lanes")
-    if len(staging) + len(captured) > ingress_profile.ingress_staging_entries:
-        if ingress_profile == STAGE4_DEFAULT_INGRESS_PROFILE:
-            raise CycleModelError("six-entry ingress staging overflow")
-        raise CycleModelError("locked ingress staging overflow")
+    if len(captured) > RAW_INGRESS_LANES:
+        raise CycleModelError("raw ingress exceeded six lanes")
+    if len(staging) + len(captured) > INGRESS_STAGING_ENTRIES:
+        raise CycleModelError("six-entry ingress staging overflow")
     staging.extend(captured)
     return next_event, len(staging)
 
@@ -1339,7 +1245,6 @@ def _run_causal(
     window_id: str,
     arm: Arm,
     states: List[_EventState],
-    ingress_profile: IngressProfile,
 ) -> Tuple[List[DecisionRecord], int, int]:
     if not states:
         return [], 0, 0
@@ -1372,7 +1277,7 @@ def _run_causal(
             inflight = []
 
         next_event, staging_occupancy = _capture_occurrences(
-            states, next_event, cycle, staging, ingress_profile
+            states, next_event, cycle, staging
         )
         peak_staging = max(peak_staging, staging_occupancy)
         admitted = staging[:EVENT_LANES]
@@ -1497,7 +1402,6 @@ def _run_delayed(
     window_id: str,
     states: List[_EventState],
     poses: Tuple[PosePacket, ...],
-    ingress_profile: IngressProfile,
 ) -> Tuple[List[DecisionRecord], int, int]:
     if not states:
         return [], 0, 0
@@ -1562,7 +1466,7 @@ def _run_delayed(
             retirements += 1
 
         next_event, staging_occupancy = _capture_occurrences(
-            states, next_event, cycle, staging, ingress_profile
+            states, next_event, cycle, staging
         )
         peak_staging = max(peak_staging, staging_occupancy)
         incoming = staging[:EVENT_LANES]
@@ -1769,7 +1673,7 @@ def _run_delayed_unbounded(
             retirements += 1
 
         next_event, staging_occupancy = _capture_occurrences(
-            states, next_event, cycle, staging, STAGE4_DEFAULT_INGRESS_PROFILE
+            states, next_event, cycle, staging
         )
         peak_staging = max(peak_staging, staging_occupancy)
         incoming = staging[:EVENT_LANES]
@@ -2146,23 +2050,19 @@ def run_cycle_model(
     events: Sequence[Event],
     poses: Sequence[PosePacket],
     synthetic_test_mode: bool = False,
-    ingress_profile: IngressProfile = STAGE4_DEFAULT_INGRESS_PROFILE,
 ) -> SimulationResult:
     """Simulate one arm/window and return exact-once score-free decisions."""
 
     _nonempty_text(window_id, "window_id")
-    ingress_profile = _checked_ingress_profile(ingress_profile)
     states, checked_poses = _validate_and_prepare(
-        window_start_ns, arm, events, poses, synthetic_test_mode, ingress_profile
+        window_start_ns, arm, events, poses, synthetic_test_mode
     )
     if arm is Arm.DELAYED_EXACT:
         records, peak, peak_staging = _run_delayed(
-            window_id, states, checked_poses, ingress_profile
+            window_id, states, checked_poses
         )
     else:
-        records, peak, peak_staging = _run_causal(
-            window_id, arm, states, ingress_profile
-        )
+        records, peak, peak_staging = _run_causal(window_id, arm, states)
     _validate_conservation(states, records)
     if arm is Arm.DELAYED_EXACT:
         _validate_delayed_dispositions(states, checked_poses, records)
@@ -2195,8 +2095,8 @@ def run_cycle_model(
         policy_added_latency_cycles=tuple(policy_added_cycles),
         peak_ingress_staging_occupancy=peak_staging,
         peak_buffer_occupancy=peak,
-        raw_ingress_lanes=ingress_profile.raw_ingress_lanes,
-        ingress_staging_entries=ingress_profile.ingress_staging_entries,
+        raw_ingress_lanes=RAW_INGRESS_LANES,
+        ingress_staging_entries=INGRESS_STAGING_ENTRIES,
         buffer_entries=BUFFER_ENTRIES,
         event_record_bits=EVENT_RECORD_BITS,
         causal_pose_index_bits_in_event_record=CAUSAL_POSE_INDEX_BITS,
@@ -2240,7 +2140,6 @@ def run_delayed_unbounded_diagnostic(
         events,
         poses,
         synthetic_test_mode,
-        STAGE4_DEFAULT_INGRESS_PROFILE,
     )
     records, peak, peak_staging, iterations = _run_delayed_unbounded(
         window_id, states, checked_poses

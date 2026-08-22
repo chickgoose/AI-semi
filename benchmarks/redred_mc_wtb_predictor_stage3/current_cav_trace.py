@@ -1071,11 +1071,14 @@ def build_current_cav_trace(
     *,
     cycle_runner: CycleRunner = run_cycle_model,
     cycle_profile: object = None,
+    cycle_runner_owns_profile: bool = False,
 ) -> CurrentCAVTrace:
     """Build a sealed, event-for-event score-free current-CAV trace."""
 
     if not callable(cycle_runner):
         raise CurrentCAVTraceError("cycle runner must be callable")
+    if type(cycle_runner_owns_profile) is not bool:
+        raise CurrentCAVTraceError("cycle_runner_owns_profile must be bool")
     profile_snapshot = _profile_snapshot(cycle_profile)
     windows, events_by_window, poses_by_window = _validated_inputs(
         registry, event_streams, pose_streams
@@ -1108,7 +1111,7 @@ def build_current_cav_trace(
                 poses=cycle_poses,
                 synthetic_test_mode=False,
             )
-            if cycle_profile is not None:
+            if cycle_profile is not None and not cycle_runner_owns_profile:
                 runner_arguments["ingress_profile"] = cycle_profile
             result = cycle_runner(**runner_arguments)
             raw_records = tuple(result.records)

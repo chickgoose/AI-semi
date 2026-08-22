@@ -23,7 +23,7 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.stage3_new108_adapter import (
 )
 from benchmarks.redred_mc_wtb_stage4_assay.source import SourcePins, ValidatedSources
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
-from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
     STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
 )
 

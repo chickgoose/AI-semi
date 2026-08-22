@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "redred.mc_wtb_predictor_stage3.execution_input/v1",
+  "$id": "redred.mc_wtb_predictor_stage3.execution_input/v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,17 +16,18 @@
     "aggregate_sha256"
   ],
   "properties": {
-    "schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v1"},
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v2"},
     "source_events_authority": {"$ref": "#/$defs/sourceAuthority"},
     "timing_authority": {"$ref": "#/$defs/timingAuthority"},
     "logical_ingress_profile": {"$ref": "#/$defs/ingressProfile"},
     "logical_ingress_profile_sha256": {"$ref": "#/$defs/sha256"},
     "consumer_dependency_manifest": {
-      "type": "array", "minItems": 8, "maxItems": 8,
+      "type": "array", "minItems": 9, "maxItems": 9,
       "prefixItems": [
         {"$ref": "#/$defs/dependencyPredictorInit"},
         {"$ref": "#/$defs/dependencyFramework"},
         {"$ref": "#/$defs/dependencyTrace"},
+        {"$ref": "#/$defs/dependencyLogicalReplay"},
         {"$ref": "#/$defs/dependencyContractInit"},
         {"$ref": "#/$defs/dependencyContract"},
         {"$ref": "#/$defs/dependencyReceipt"},
@@ -96,7 +97,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["schema", "profile_id", "raw_ingress_lanes", "ingress_staging_entries", "event_service_lanes", "scope"],
       "properties": {
-        "schema": {"const": "redred.mc_wtb.stage4_cyclemodel.ingress_profile/v1"},
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.logical_ingress_profile/v1"},
         "profile_id": {"const": "STAGE3_CANDIDATE_NEUTRAL_LOGICAL_REPLAY_8X8_V1"},
         "raw_ingress_lanes": {"const": 8},
         "ingress_staging_entries": {"const": 8},
@@ -112,6 +113,7 @@
     "dependencyPredictorInit": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py"}}}]},
     "dependencyFramework": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_predictor_stage3/framework.py"}}}]},
     "dependencyTrace": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_predictor_stage3/current_cav_trace.py"}}}]},
+    "dependencyLogicalReplay": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py"}}}]},
     "dependencyContractInit": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_contract/__init__.py"}}}]},
     "dependencyContract": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_contract/contract.py"}}}]},
     "dependencyReceipt": {"allOf": [{"$ref": "#/$defs/dependency"}, {"properties": {"path": {"const": "benchmarks/redred_mc_wtb_stage4_contract/receipt.py"}}}]},

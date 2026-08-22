@@ -19,13 +19,15 @@ from benchmarks.redred_mc_wtb_predictor_stage3.screen108 import (
     verify_screen108_result_envelope,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.so3_pll import SO3PLLConfig
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cav_evaluator import (
+    evaluate_current_cav_registry,
+)
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     NeutralEventInput,
     NeutralPoseInput,
     NeutralRegistryWindow,
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
-    evaluate_current_cav_registry,
 )
 from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import New108AdapterBundle
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256

@@ -39,6 +39,10 @@ from benchmarks.redred_mc_wtb_predictor_stage3.dspb import (
     EventRecord,
     SuppliedPose,
 )
+from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    run_stage3_logical_cycle_model,
+)
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     NeutralEventInput,
     NeutralPoseInput,
@@ -52,8 +56,6 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Event,
     PosePacket,
     PoseSource,
-    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
-    run_cycle_model,
 )
 
 
@@ -80,6 +82,7 @@ _EXECUTABLE_DEPENDENCIES = (
     ("producer", "benchmarks/redred_mc_wtb_predictor_stage3/dspb_output.py"),
     ("candidate_package", "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py"),
     ("candidate_framework", "benchmarks/redred_mc_wtb_predictor_stage3/framework.py"),
+    ("logical_cycle_replay", "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py"),
     ("candidate_model", "benchmarks/redred_mc_wtb_predictor_stage3/dspb.py"),
     ("pose_recovery_api", "benchmarks/redred_mc_wtb_pose_recovery/__init__.py"),
     ("pose_recovery_implementation", "benchmarks/redred_mc_wtb_pose_recovery/geometry.py"),
@@ -365,7 +368,7 @@ def _score_free_baseline_records(
     poses: Sequence[NeutralPoseInput],
 ) -> Tuple[object, ...]:
     try:
-        simulation = run_cycle_model(
+        simulation = run_stage3_logical_cycle_model(
             window_id=registry.window_id,
             window_start_ns=registry.warmup_start_ns_inclusive,
             arm=Arm.CAUSAL_CAV,
@@ -384,7 +387,6 @@ def _score_free_baseline_records(
                 pose.value_valid,
                 pose.arithmetic_valid,
             ) for pose in poses),
-            ingress_profile=STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
         )
     except (TypeError, ValueError) as exc:
         raise DSPBOutputError("score-free current-CAV replay failed") from exc
