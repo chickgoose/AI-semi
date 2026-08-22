@@ -21,6 +21,7 @@ from benchmarks.redred_mc_wtb_predictor_stage3.output_common import (
     seal_candidate_output_envelope,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.screen108 import (
+    Screen108Error,
     seal_candidate_output,
 )
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
@@ -192,7 +193,7 @@ class CandidateOutputCommonTests(unittest.TestCase):
         self.assertEqual(fallback.used_pose_ids, (0, 1))
         self.assertEqual(fallback.fallback_reason, "candidate:test_unavailable")
 
-    def test_window_and_envelope_match_locked_screen_sealer_byte_for_byte(self):
+    def test_legacy_common_envelope_cannot_enter_screen_v2(self):
         window = build_candidate_output_window(
             WINDOW_ID, self.events, self.poses, self.cycles, self.predictions
         )
@@ -204,8 +205,8 @@ class CandidateOutputCommonTests(unittest.TestCase):
             "4" * 64,
         )
         common = seal_candidate_output_envelope(*args, (window,))
-        screen = seal_candidate_output(*args, [window.to_unsealed_mapping()])
-        self.assertEqual(common, screen)
+        with self.assertRaisesRegex(Screen108Error, "field schema differs"):
+            seal_candidate_output(*args, [window.to_unsealed_mapping()])
         self.assertEqual(common["schema"], CANDIDATE_OUTPUT_SCHEMA)
         self.assertEqual(
             common["aggregate_sha256"],

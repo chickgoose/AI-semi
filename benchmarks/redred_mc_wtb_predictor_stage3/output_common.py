@@ -1,12 +1,14 @@
-"""Candidate-neutral conversion from predictor decisions to sealed world rays.
+"""Legacy v1 candidate-neutral conversion retained for synthetic regression.
 
 This module is the wrapper-owned boundary between an always-on predictor and
 the locked Stage-3 consumer.  It joins immutable neutral inputs, frozen
 cycle-model occurrence decisions, and append-only predictor decisions.  It
 does not execute a predictor or change an event route.
 
-The serialized event shape is exactly the ``screen108`` candidate-output
-shape.  A non-baseline quaternion is actively rotated from sensor to world.
+The serialized event shape predates the signed-edge/route fields in
+``screen108`` v2 and is deliberately not accepted by the production screen.
+Production candidates use ``screen_projection``.  A non-baseline quaternion is
+actively rotated from sensor to world.
 An exact baseline fallback is authenticated here and serialized with
 ``world_ray=None`` so that the locked consumer reuses its independently
 reconstructed current-CAV geometry.

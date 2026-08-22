@@ -190,7 +190,13 @@ def _project_for_screen(output):
                 "candidate_attempted": bool(rich_row["candidate_attempted"]),
                 "candidate_used": candidate_used,
                 "fallback_reason": (
-                    None if candidate_used else rich_row["fallback_reason"]
+                    None
+                    if candidate_used
+                    else (
+                        "candidate_failure"
+                        if str(rich_row["route"]).upper() == "CURRENT_CAV"
+                        else rich_row["fallback_reason"]
+                    )
                 ),
                 "world_ray": rich_row["world_ray"] if candidate_used else None,
             })
