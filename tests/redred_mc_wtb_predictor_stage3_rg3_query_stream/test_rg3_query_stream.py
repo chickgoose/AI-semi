@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+import copy
 from dataclasses import replace
+import inspect
 import hashlib
 from pathlib import Path
 import unittest
@@ -20,6 +22,7 @@ from benchmarks.redred_mc_wtb_predictor_stage3.rg3_output import (
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.rg3_query_stream import (
     NATIVE_TRANSITION_HOLD,
+    OUTPUT_AUTHORITY_HOLD,
     RG3_QUERY_STREAM_SCHEMA,
     RG3QueryStreamError,
     VERIFIED_INPUT_HOLD,
@@ -96,7 +99,7 @@ class RG3QueryStreamTests(unittest.TestCase):
         cls.execution = _execution(cls.registry, cls.events, cls.poses)
 
     def test_query_rows_are_byte_exact_locked_batch_projection(self):
-        streamed = generate_rg3_query_stream(self.execution, repo_root=ROOT)
+        streamed = generate_rg3_query_stream(self.execution)
         batch = generate_locked_rg3_output(
             self.registry,
             self.events,
@@ -127,7 +130,7 @@ class RG3QueryStreamTests(unittest.TestCase):
             "recover_rg3_cav",
             wraps=real,
         ) as recover:
-            output = generate_rg3_query_stream(self.execution, repo_root=ROOT)
+            output = generate_rg3_query_stream(self.execution)
         attempted_queries = sum(
             record["disposition_reason"] == "causal_cav"
             for window in self.execution["score_free_current_cav_trace"]["windows"]
@@ -162,7 +165,7 @@ class RG3QueryStreamTests(unittest.TestCase):
     def test_decreasing_unique_event_ids_preserve_source_order(self):
         decreasing = _decreasing_event_ids(self.events)
         execution = _execution(self.registry, decreasing, self.poses)
-        output = generate_rg3_query_stream(execution, repo_root=ROOT)
+        output = generate_rg3_query_stream(execution)
         expected = [
             event.event_id
             for window_id in (window.window_id for window in self.registry)
@@ -178,8 +181,8 @@ class RG3QueryStreamTests(unittest.TestCase):
         self.assertTrue(all(right < left for left, right in zip(actual, actual[1:])))
 
     def test_double_replay_is_deterministic_and_self_sealed(self):
-        first = generate_rg3_query_stream(self.execution, repo_root=ROOT)
-        second = generate_rg3_query_stream(self.execution, repo_root=ROOT)
+        first = generate_rg3_query_stream(self.execution)
+        second = generate_rg3_query_stream(self.execution)
         self.assertEqual(canonical_json_bytes(first), canonical_json_bytes(second))
         self.assertEqual(first["deterministic_replay_count"], 2)
         self.assertIs(first["deterministic_double_replay_verified"], True)
@@ -211,7 +214,24 @@ class RG3QueryStreamTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 RG3QueryStreamError, "deterministic double replay differs"
             ):
-                generate_rg3_query_stream(self.execution, repo_root=ROOT)
+                generate_rg3_query_stream(self.execution)
+
+    def test_query_path_is_joined_directly_to_verified_v3(self):
+        forged = copy.deepcopy(
+            rg3_query_stream._run_verified_execution_snapshot(self.execution)
+        )
+        forged["windows"][0]["query_rows"].pop()
+        forged["windows"][0]["query_event_count"] -= 1
+        forged["query_event_count"] -= 1
+        with mock.patch.object(
+            rg3_query_stream,
+            "_run_verified_execution_snapshot",
+            return_value=forged,
+        ):
+            with self.assertRaisesRegex(
+                RG3QueryStreamError, "RG3 query event cardinality differs"
+            ):
+                generate_rg3_query_stream(self.execution)
 
     def test_tampered_v3_never_reaches_candidate_core(self):
         tampered = dict(self.execution)
@@ -221,15 +241,17 @@ class RG3QueryStreamTests(unittest.TestCase):
             "_run_verified_execution_snapshot",
         ) as core:
             with self.assertRaises(RG3QueryStreamError):
-                generate_rg3_query_stream(tampered, repo_root=ROOT)
+                generate_rg3_query_stream(tampered)
         core.assert_not_called()
 
     def test_explicit_linear_holds_and_both_manifests_are_bound(self):
-        output = generate_rg3_query_stream(self.execution, repo_root=ROOT)
+        output = generate_rg3_query_stream(self.execution)
         self.assertEqual(output["verified_input_complexity_hold"], VERIFIED_INPUT_HOLD)
         self.assertEqual(
             output["native_transition_complexity_hold"], NATIVE_TRANSITION_HOLD
         )
+        self.assertEqual(output["status"], "DEVELOPMENT_HOLD")
+        self.assertEqual(output["output_authority_hold"], OUTPUT_AUTHORITY_HOLD)
         for hold in (VERIFIED_INPUT_HOLD, NATIVE_TRANSITION_HOLD):
             self.assertEqual(hold["status"], "HOLD")
             self.assertEqual(hold["complexity"], "O(N)")
@@ -276,6 +298,10 @@ class RG3QueryStreamTests(unittest.TestCase):
             for imported in imports
         ))
         self.assertNotIn("execution_authority", core_source)
+        self.assertNotIn(
+            "repo_root",
+            inspect.signature(generate_rg3_query_stream).parameters,
+        )
 
         coordinator_tree = ast.parse(
             coordinator_path.read_text(encoding="utf-8"),
@@ -296,6 +322,7 @@ class RG3QueryStreamTests(unittest.TestCase):
             rg3_query_stream.__all__,
             (
                 "NATIVE_TRANSITION_HOLD",
+                "OUTPUT_AUTHORITY_HOLD",
                 "RG3_QUERY_STREAM_SCHEMA",
                 "RG3QueryStreamError",
                 "VERIFIED_INPUT_HOLD",

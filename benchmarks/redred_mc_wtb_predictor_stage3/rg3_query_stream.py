@@ -53,6 +53,13 @@ VERIFIED_INPUT_HOLD = {
         "traverses all sealed events, poses, and current-CAV records"
     ),
 }
+OUTPUT_AUTHORITY_HOLD = {
+    "status": "HOLD",
+    "reason": (
+        "this development slice has no externally pinned candidate authority "
+        "or independent closed-schema replay verifier"
+    ),
+}
 NATIVE_TRANSITION_HOLD = {
     "status": "HOLD",
     "complexity": "O(N)",
@@ -65,6 +72,61 @@ NATIVE_TRANSITION_HOLD = {
 
 class RG3QueryStreamError(ValueError):
     """The coordinator rejected input, replay, or executable binding."""
+
+
+def _query_path(execution: Mapping[str, object]) -> Mapping[str, object]:
+    """Derive the exact query identity/order/cycle path from verified v3."""
+
+    windows = []
+    total = 0
+    trace_windows = execution["score_free_current_cav_trace"]["windows"]
+    for window, trace_window in zip(execution["windows"], trace_windows):
+        rows = []
+        for event, record in zip(
+            window["events"], trace_window["simulation"]["records"]
+        ):
+            if event["is_query"]:
+                rows.append({
+                    "event_id": event["event_id"],
+                    "event_content_sha256": event["event_content_sha256"],
+                    "occurrence_cycle": record["occurrence_cycle"] - 1,
+                    "decision_cycle": record["occurrence_cycle"],
+                })
+        total += len(rows)
+        windows.append({
+            "window_id": window["window_id"],
+            "query_count": len(rows),
+            "query_path_sha256": canonical_sha256(rows),
+            "rows": rows,
+        })
+    return {
+        "windows": windows,
+        "query_count": total,
+        "query_path_sha256": canonical_sha256(windows),
+    }
+
+
+def _verify_core_query_path(
+    result: Mapping[str, object],
+    expected: Mapping[str, object],
+) -> None:
+    if len(result["windows"]) != len(expected["windows"]):
+        raise RG3QueryStreamError("RG3 query window cardinality differs")
+    if result["query_event_count"] != expected["query_count"]:
+        raise RG3QueryStreamError("RG3 query event cardinality differs")
+    for actual_window, expected_window in zip(
+        result["windows"], expected["windows"]
+    ):
+        if actual_window["window_id"] != expected_window["window_id"]:
+            raise RG3QueryStreamError("RG3 query window order differs")
+        actual_rows = [{
+            "event_id": row["event_id"],
+            "event_content_sha256": row["event_content_sha256"],
+            "occurrence_cycle": row["occurrence_cycle"],
+            "decision_cycle": row["decision_cycle"],
+        } for row in actual_window["query_rows"]]
+        if actual_rows != expected_window["rows"]:
+            raise RG3QueryStreamError("RG3 query identity/order/cycle path differs")
 
 
 def _manifest(
@@ -113,8 +175,6 @@ def _manifests() -> Mapping[str, Mapping[str, object]]:
 
 def generate_rg3_query_stream(
     execution_input: object,
-    *,
-    repo_root: Optional[Path] = None,
 ) -> Mapping[str, object]:
     """Verify v3 once, replay the private core twice, and seal query rows.
 
@@ -128,8 +188,9 @@ def generate_rg3_query_stream(
         execution_digest = verify_stage3_execution_input(
             snapshot,
             expected_aggregate_sha256=snapshot.get("aggregate_sha256"),
-            repo_root=repo_root,
+            repo_root=_REPOSITORY_ROOT,
         )
+        expected_query_path = _query_path(snapshot)
         manifests_before = _manifests()
         first = _run_verified_execution_snapshot(snapshot)
         second = _run_verified_execution_snapshot(snapshot)
@@ -138,6 +199,7 @@ def generate_rg3_query_stream(
         raise RG3QueryStreamError("RG3 query stream failed: %s" % exc) from exc
     if canonical_json_bytes(first) != canonical_json_bytes(second):
         raise RG3QueryStreamError("RG3 deterministic double replay differs")
+    _verify_core_query_path(first, expected_query_path)
     if manifests_before != manifests_after:
         raise RG3QueryStreamError("RG3 executable dependencies changed during replay")
 
@@ -145,6 +207,7 @@ def generate_rg3_query_stream(
     body = {
         "schema": RG3_QUERY_STREAM_SCHEMA,
         "candidate_id": RG3_POLICY.candidate_id,
+        "status": "DEVELOPMENT_HOLD",
         "execution_input_schema": EXECUTION_INPUT_SCHEMA,
         "execution_input_aggregate_sha256": execution_digest,
         "neutral_input_sha256": snapshot["neutral_input_sha256"],
@@ -161,6 +224,8 @@ def generate_rg3_query_stream(
         ],
         "verified_input_complexity_hold": dict(VERIFIED_INPUT_HOLD),
         "native_transition_complexity_hold": dict(NATIVE_TRANSITION_HOLD),
+        "output_authority_hold": dict(OUTPUT_AUTHORITY_HOLD),
+        "query_path_sha256": expected_query_path["query_path_sha256"],
         "deterministic_replay_count": 2,
         "deterministic_double_replay_verified": True,
         "replay_sha256": replay_sha256,
@@ -180,6 +245,7 @@ def generate_rg3_query_stream(
 
 __all__ = (
     "NATIVE_TRANSITION_HOLD",
+    "OUTPUT_AUTHORITY_HOLD",
     "RG3_QUERY_STREAM_SCHEMA",
     "RG3QueryStreamError",
     "VERIFIED_INPUT_HOLD",
