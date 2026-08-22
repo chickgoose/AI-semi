@@ -9,9 +9,9 @@ adapter, evaluator, screen runner, selector, labels, losses, or filters.
 Every input window starts exactly 50 ms before its query interval.  All state
 is reconstructed inside that window, every neutral event produces exactly one
 append-only decision, and no state is shared between windows.  A successful
-RG3 receipt records all three pose IDs actually consumed.  Otherwise the
-receipt requests the screen runner's exact frozen current-CAV fallback by
-supplying ``world_ray=None`` and ``model_id=CURRENT_CAV``.
+RG3 receipt records all three pose IDs actually consumed.  Non-candidate rows
+name the exact CURRENT_CAV, FRESH_ZOH, or SENSOR_FIXED fallback route and pose
+dependencies while leaving geometry reconstruction to the locked screen.
 """
 
 from __future__ import annotations
@@ -49,10 +49,11 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
 CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v1"
 PREROLL_NS = 50_000_000
 CURRENT_CAV_MODEL_ID = "CURRENT_CAV"
-# The model-only policy ID uses path separators.  screen108/v1 identifiers are
-# deliberately restricted to [A-Za-z0-9_.-], so the output namespace uses the
-# one-to-one dot encoding and binds the original policy ID in RG3_CONFIG.
-RG3_OUTPUT_CANDIDATE_ID = RG3_POLICY.candidate_id.replace("/", ".")
+RG3_OUTPUT_CANDIDATE_ID = RG3_POLICY.candidate_id
+ROUTE_CANDIDATE = "CANDIDATE"
+ROUTE_CURRENT_CAV = "CURRENT_CAV"
+ROUTE_FRESH_ZOH = "FRESH_ZOH"
+ROUTE_SENSOR_FIXED = "SENSOR_FIXED"
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _REGISTRY_FIELDS = frozenset((
     "window_id",
@@ -147,13 +148,57 @@ class _Pose:
         }
 
 
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+_EXECUTABLE_MANIFEST_MEMBERS = (
+    "benchmarks/redred_mc_wtb_pose_recovery/__init__.py",
+    "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/rg3.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/rg3_output.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/contract.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/receipt.py",
+    "benchmarks/redred_mc_wtb_stage4_cyclemodel/__init__.py",
+    "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
+)
+
+
+def build_rg3_executable_manifest() -> Mapping[str, object]:
+    """Build the exact repository-source closure executed by this adapter."""
+
+    files = []
+    for relative in _EXECUTABLE_MANIFEST_MEMBERS:
+        path = (_REPOSITORY_ROOT / relative).resolve()
+        try:
+            path.relative_to(_REPOSITORY_ROOT)
+        except ValueError as exc:  # pragma: no cover - constants are local
+            raise RG3OutputError("executable dependency escapes repository") from exc
+        content = path.read_bytes()
+        files.append({
+            "path": relative,
+            "sha256": hashlib.sha256(content).hexdigest(),
+        })
+    if tuple(row["path"] for row in files) != tuple(sorted(_EXECUTABLE_MANIFEST_MEMBERS)):
+        raise RG3OutputError("executable manifest members are not canonical")
+    return {
+        "schema": "redred.mc_wtb_predictor_stage3.rg3_executable_manifest/v1",
+        "candidate_id": RG3_OUTPUT_CANDIDATE_ID,
+        "entrypoint": "benchmarks/redred_mc_wtb_predictor_stage3/rg3_output.py",
+        "files": files,
+    }
+
+
+RG3_EXECUTABLE_MANIFEST = build_rg3_executable_manifest()
+RG3_EXECUTABLE_MANIFEST_BYTES = canonical_json_bytes(RG3_EXECUTABLE_MANIFEST)
+RG3_EXECUTABLE_SHA256 = hashlib.sha256(RG3_EXECUTABLE_MANIFEST_BYTES).hexdigest()
 RG3_MODEL_PATH = Path(__file__).with_name("rg3.py")
 RG3_MODEL_SHA256 = hashlib.sha256(RG3_MODEL_PATH.read_bytes()).hexdigest()
 RG3_CONFIG = {
     "schema": "redred.mc_wtb_predictor_stage3.rg3_config/v1",
     "candidate_id": RG3_OUTPUT_CANDIDATE_ID,
-    "model_policy_id": RG3_POLICY.candidate_id,
     "model_implementation_sha256": RG3_MODEL_SHA256,
+    "executable_manifest_sha256": RG3_EXECUTABLE_SHA256,
     "maximum_pose_interval_ns": RG3_POLICY.maximum_pose_interval_ns,
     "near_pi_margin_rad": RG3_POLICY.near_pi_margin_rad,
     "maximum_rate_change_ratio": RG3_POLICY.maximum_rate_change_ratio,
@@ -162,14 +207,23 @@ RG3_CONFIG = {
         RG3_POLICY.maximum_acceleration_contribution_ratio
     ),
     "decision_edge": "cycle_model_occurrence_cycle",
-    "pose_visibility": "commit_cycle<decision_cycle_and_timestamp<=event_timestamp",
+    "candidate_pose_visibility": (
+        "0<=commit_cycle<decision_cycle_and_timestamp<=event_timestamp"
+    ),
     "preroll_ns": PREROLL_NS,
-    "fallback": "exact_current_cav",
+    "fallback_routes": (
+        ROUTE_CURRENT_CAV,
+        ROUTE_FRESH_ZOH,
+        ROUTE_SENSOR_FIXED,
+    ),
 }
 RG3_CONFIG_BYTES = canonical_json_bytes(RG3_CONFIG)
 RG3_CONFIG_SHA256 = hashlib.sha256(RG3_CONFIG_BYTES).hexdigest()
-RG3_EXECUTABLE_PATH = Path(__file__)
-RG3_EXECUTABLE_SHA256 = hashlib.sha256(RG3_EXECUTABLE_PATH.read_bytes()).hexdigest()
+
+
+def _verify_locked_executable_manifest() -> None:
+    if canonical_json_bytes(build_rg3_executable_manifest()) != RG3_EXECUTABLE_MANIFEST_BYTES:
+        raise RG3OutputError("executable dependency changed after manifest lock")
 
 
 def _exact_object(value: object, fields: frozenset, where: str) -> Mapping[str, object]:
@@ -426,6 +480,7 @@ def generate_locked_rg3_output(
     """
 
     adapter_digest = _sha256(adapter_aggregate_sha256, "adapter aggregate digest")
+    _verify_locked_executable_manifest()
     windows, events_by_window, poses_by_window = _snapshot_inputs(
         neutral_registry, event_streams, pose_streams
     )
@@ -462,22 +517,33 @@ def generate_locked_rg3_output(
         rows = []
         for event, record in zip(event_values, simulation.records):
             edge = record.occurrence_cycle
-            visible = tuple(
+            baseline_visible = tuple(
                 pose for pose in pose_values
                 if pose.commit_cycle < edge and pose.timestamp_ns <= event.timestamp_ns
             )
-            if tuple(pose.pose_id for pose in visible[-2:]) != record.occurrence_pose_ids:
+            if tuple(pose.pose_id for pose in baseline_visible[-2:]) != record.occurrence_pose_ids:
                 raise RG3OutputError("cycle occurrence snapshot differs from strict visibility")
+            # A negative commit belongs to source evidence before this window's
+            # reset edge.  It may be needed to authenticate the frozen baseline,
+            # but is never candidate state and can never become RG3 provenance.
+            visible = tuple(pose for pose in baseline_visible if pose.commit_cycle >= 0)
             state_version = len(visible)
+            candidate_attempted = False
             candidate_used = False
-            fallback_reason = "baseline_%s" % record.disposition_reason
-            used_pose_ids = list(record.used_pose_ids)
+            fallback_reason = record.disposition_reason
+            used_pose_ids = []
             world_ray = None
             model_id = CURRENT_CAV_MODEL_ID
+            route = ROUTE_SENSOR_FIXED
 
             # The cycle-model disposition is the authoritative current-CAV
             # validity gate, including transform and pose-validity guards.
             if record.disposition_reason == "causal_cav":
+                if record.disposition != "corrected_world_ray" or len(record.used_pose_ids) != 2:
+                    raise RG3OutputError("cycle current-CAV taxonomy differs")
+                candidate_attempted = True
+                route = ROUTE_CURRENT_CAV
+                used_pose_ids = list(record.used_pose_ids)
                 latest_three = visible[-3:]
                 if len(latest_three) == 3 and not all(
                     pose.value_valid and pose.arithmetic_valid for pose in latest_three
@@ -506,20 +572,38 @@ def generate_locked_rg3_output(
                         candidate_used = True
                         fallback_reason = None
                         model_id = RG3_OUTPUT_CANDIDATE_ID
+                        route = ROUTE_CANDIDATE
                         world_ray = list(rotate_sensor_ray_to_world(
                             decision.quaternion_xyzw, event.sensor_ray
                         ))
                     else:
                         fallback_reason = decision.reason
+            elif record.disposition_reason == "fresh_zoh_fallback":
+                if record.disposition != "corrected_world_ray" or len(record.used_pose_ids) != 1:
+                    raise RG3OutputError("cycle fresh-ZOH taxonomy differs")
+                route = ROUTE_FRESH_ZOH
+                used_pose_ids = list(record.used_pose_ids)
+            elif record.disposition_reason in (
+                "no_occurrence_pose", "invalid_pose", "stale_pose"
+            ):
+                if record.disposition != "raw_bypass":
+                    raise RG3OutputError("cycle sensor-fixed taxonomy differs")
+                route = ROUTE_SENSOR_FIXED
+                used_pose_ids = []
+            else:
+                raise RG3OutputError("cycle fallback taxonomy differs")
 
             rows.append({
                 "event_id": event.event_id,
                 "event_content_sha256": event.event_content_sha256,
+                "occurrence_cycle": edge - 1,
                 "decision_cycle": edge,
                 "model_id": model_id,
                 "predictor_state_version": state_version,
                 "used_pose_ids": used_pose_ids,
+                "candidate_attempted": candidate_attempted,
                 "candidate_used": candidate_used,
+                "route": route,
                 "fallback_reason": fallback_reason,
                 "world_ray": world_ray,
             })
@@ -539,11 +623,17 @@ __all__ = (
     "RG3_CONFIG",
     "RG3_CONFIG_BYTES",
     "RG3_CONFIG_SHA256",
-    "RG3_EXECUTABLE_PATH",
+    "RG3_EXECUTABLE_MANIFEST",
+    "RG3_EXECUTABLE_MANIFEST_BYTES",
     "RG3_EXECUTABLE_SHA256",
     "RG3_MODEL_PATH",
     "RG3_MODEL_SHA256",
     "RG3_OUTPUT_CANDIDATE_ID",
     "RG3OutputError",
+    "ROUTE_CANDIDATE",
+    "ROUTE_CURRENT_CAV",
+    "ROUTE_FRESH_ZOH",
+    "ROUTE_SENSOR_FIXED",
+    "build_rg3_executable_manifest",
     "generate_locked_rg3_output",
 )
