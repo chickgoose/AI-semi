@@ -52,3 +52,28 @@ The shared analytic ledgers cover:
 All trajectories are analytic SO(3) rotations generated in memory.  The tests
 read no dataset and exercise no event-quality filter, scorer, RTL, PPA, or
 external service.
+
+## Production-output mutation gate
+
+`test_production_mutation_gate.py` additionally invokes RG3, DSPB, and PLL
+through `rg3_output.py`, `dspb_output.py`, and `pll_output.py`.  Its test-only
+`ExactProductionGate` independently checks the exact envelope and nested
+seals, frozen executable/config identity, neutral event identity/order and
+cardinality, strict pose visibility, one-state-per-edge atomicity, fallback
+shape, and byte-exact equality with a pristine production replay.  Every
+mutated envelope is fully resealed before validation, so digest checks alone
+cannot kill it; a mutation with no observable effect fails the test itself.
+
+The added mutations cover noncommuting multi-axis RG3 transport removal,
+occurrence/decision-cycle substitution, same-edge pose citation, cross-window
+PLL state carry, PLL commit-time anchoring, DSPB hindcast and stale-winner
+selection, unrelated unit rays, candidate/executable/config substitution,
+fallback relabeling, event deletion/reordering/duplication, and retrospective
+outcome-retry rewrite/append behavior.
+
+This is a synthetic, in-process mutation gate.  The public output-v1 schema
+still exposes only one `decision_cycle` and no reset-generation, initial-state,
+pose-update, or fallback-route receipt.  Consequently the gate detects those
+mutations by independent locked replay; it does not turn the current envelope
+into standalone proof of occurrence-to-decision latency, reset provenance,
+commit publication, or exact CAV/ZOH/BYPASS route selection.
