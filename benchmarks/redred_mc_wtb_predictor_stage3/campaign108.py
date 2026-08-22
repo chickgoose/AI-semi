@@ -1,9 +1,10 @@
-"""Single-attempt dispatch of tested Stage-3 output adapters to screen108.
+"""Single-attempt, source-bound Stage-3 campaign orchestration.
 
-This module does not implement a predictor or replay pose/event edges.  A
-closed frozen-ID registry dispatches exactly one tested output adapter.  The
-adapter returns the sealed candidate-output envelope that is written
-append-only before the locked screen is allowed to join selector labels.
+The campaign executes one native output adapter twice over the same immutable,
+label-free view.  It persists the first rich native receipt, requires the
+verifier replay to serialize byte-for-byte identically, and only then invokes
+the candidate-neutral screen projection.  Selector labels remain reachable
+only by ``screen108`` after every candidate and projection artifact is sealed.
 """
 
 from __future__ import annotations
@@ -29,120 +30,36 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
 )
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 
-from . import dspb, dspb_output, pll_output, rg3, rg3_output, screen108, so3_pll
+from . import candidate_authority, dspb_output, pll_output, rg3_output, screen108
+
+try:  # The projector is integrated independently of this campaign worker.
+    from . import screen_projection as _screen_projection
+except ImportError:  # pragma: no cover - exercised through the fail-closed API.
+    _screen_projection = None
 
 
-CAMPAIGN_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_receipt/v3"
-ATTEMPT_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_attempt/v3"
+CAMPAIGN_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_receipt/v4"
+ATTEMPT_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_attempt/v4"
 GENERATOR_EVIDENCE_SCHEMA = (
-    "redred.mc_wtb_predictor_stage3.campaign108_adapter_dispatch/v3"
+    "redred.mc_wtb_predictor_stage3.campaign108_adapter_dispatch/v4"
 )
-DEPENDENCY_MANIFEST_SCHEMA = (
-    "redred.mc_wtb_predictor_stage3.campaign108_dependency_manifest/v1"
-)
-REPLAY_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_replay/v1"
+REPLAY_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign108_replay/v2"
 
-RG3_ID = rg3_output.RG3_OUTPUT_CANDIDATE_ID
-DSPB_ID = dspb.DSPBConfig().candidate_id
-SO3_PLL_ID = pll_output.CANDIDATE_ID
+RG3_ID = candidate_authority.candidate_native_id("RG3")
+DSPB_ID = candidate_authority.candidate_native_id("DSPB")
+SO3_PLL_ID = candidate_authority.candidate_native_id("PLL")
 FROZEN_CANDIDATE_IDS = (RG3_ID, DSPB_ID, SO3_PLL_ID)
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
-_EXPECTED_AUTHORITIES = {
-    RG3_ID: {
-        "output_adapter_path": "benchmarks/redred_mc_wtb_predictor_stage3/rg3_output.py",
-        "output_adapter_sha256": (
-            "ef3ebd6afa3bdb16c5744e22b837cbb42be0b0fb32d2a7fbad1f0d0c6fc9b989"
-        ),
-        "candidate_executable_sha256": (
-            "ef3ebd6afa3bdb16c5744e22b837cbb42be0b0fb32d2a7fbad1f0d0c6fc9b989"
-        ),
-        "candidate_executable_path": (
-            "benchmarks/redred_mc_wtb_predictor_stage3/rg3_output.py"
-        ),
-        "candidate_config_sha256": (
-            "bd8f57020a8eff97112e933e86e87fa49e802d63545638913d34be6be0a20ee1"
-        ),
-        "model_path": "benchmarks/redred_mc_wtb_predictor_stage3/rg3.py",
-        "model_sha256": (
-            "de1cb82ac902064dc5875f34807028554f62815ec626b91f1fac68e07a41d865"
-        ),
-    },
-    DSPB_ID: {
-        "output_adapter_path": "benchmarks/redred_mc_wtb_predictor_stage3/dspb_output.py",
-        "output_adapter_sha256": (
-            "0ec8500d610b7327d8ae74f5699b7256af0c96920169d027180cb6500133870a"
-        ),
-        "candidate_executable_sha256": (
-            "c63f4d5f1ac6b28f5ba2665af133a2de5c5e39a51297bfbeceee240571026302"
-        ),
-        "candidate_executable_path": (
-            "benchmarks/redred_mc_wtb_predictor_stage3/dspb.py"
-        ),
-        "candidate_config_sha256": (
-            "94cdfdbbb532baf02fc836b43677cbdacffeeeaedb42584718d6875e3358b9f5"
-        ),
-        "model_path": "benchmarks/redred_mc_wtb_predictor_stage3/dspb.py",
-        "model_sha256": (
-            "c63f4d5f1ac6b28f5ba2665af133a2de5c5e39a51297bfbeceee240571026302"
-        ),
-    },
-    SO3_PLL_ID: {
-        "output_adapter_path": "benchmarks/redred_mc_wtb_predictor_stage3/pll_output.py",
-        "output_adapter_sha256": (
-            "9d1495753d8a166c86856c89f0dc0dde4005e027789f222960545ae2b79503c0"
-        ),
-        "candidate_executable_sha256": (
-            "9d1495753d8a166c86856c89f0dc0dde4005e027789f222960545ae2b79503c0"
-        ),
-        "candidate_executable_path": (
-            "benchmarks/redred_mc_wtb_predictor_stage3/pll_output.py"
-        ),
-        "candidate_config_sha256": (
-            "971a74c52f65f4b68d828fc9b391f194e5f2e8245c8d43779c472e72a99a2ffd"
-        ),
-        "model_path": "benchmarks/redred_mc_wtb_predictor_stage3/so3_pll.py",
-        "model_sha256": (
-            "dc1f0433f7ae4b16828ba51100a5587ae70c42f86c3ef1dc26960bc23058ed58"
-        ),
-    },
-}
-
-_DEPENDENCY_AUTHORITIES = (
-    ("pose_recovery_package", "benchmarks/redred_mc_wtb_pose_recovery/__init__.py", "4a188a7d496b5b02db50d35d6b5b0b59a4bbb9db9e7b2d4c5bfed0262e564d7a"),
-    ("pose_geometry", "benchmarks/redred_mc_wtb_pose_recovery/geometry.py", "4996aca6e9b85a777334a0239ea655a40bb8ba31a78e467bbbd4cbfa95dc8057"),
-    ("contract_package", "benchmarks/redred_mc_wtb_stage4_contract/__init__.py", "851a179fb715c7f30160ccd28837e94795fb361e7ae203ee5fbbf5cbb8562a7c"),
-    ("contract", "benchmarks/redred_mc_wtb_stage4_contract/contract.py", "65f5131fce3b30e956e30494e7ebaa2f3fad399a396f8760625a275f63378d38"),
-    ("contract_receipt", "benchmarks/redred_mc_wtb_stage4_contract/receipt.py", "dd41d3591544da08c031f1c0d6d70428df3e495865c65dbbdeb31c0ae2a91c9b"),
-    ("cyclemodel_package", "benchmarks/redred_mc_wtb_stage4_cyclemodel/__init__.py", "8357e0b4d5579dcd1d96ade00060ecce7c7e9a254aac54f094d286b851ea46af"),
-    ("cyclemodel", "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py", "ac69d2e5e35f100cca1385be728814fec5e873ce0cf81a2ca4f38880100167ee"),
-    ("axis_analyzer", "benchmarks/redred_mc_wtb_so3_axis_audit/analyzer.py", "093a80285f79f97f9a73090ed7a9c5cbbe3112a89a9a99a923d1e68556a573c3"),
-    ("current_cav_evaluator", "benchmarks/redred_mc_wtb_so3_axis_audit/evaluator.py", "64cf6d9aff7c4a3dec791469b5e2f010fe80d8930650f8438d80f4659b3302fd"),
-    ("new108_adapter", "benchmarks/redred_mc_wtb_so3_axis_audit/new108_adapter.py", "51ad0ac11f4334b9936fe7aa332d6e84401bfd0a369e8c1c85a59ec8b5579904"),
-    ("locked_screen", "benchmarks/redred_mc_wtb_predictor_stage3/screen108.py", "1fd56ae7b96a6cb910a85834f830b48d4bad25be6f93998404be1e5383773513"),
-    ("screen_schema", "benchmarks/redred_mc_wtb_predictor_stage3/screen108_result.schema.json", "d5028197abb43f5be6c336ad80f39f6fa3d778ced1b4f13bd8047baead0256f3"),
-    ("predictor_package", "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py", "956d1dac6c59cd40eba6079ab7b0762e0a92b6c001594643f36a6440156defdc"),
-    ("axis_audit_package", "benchmarks/redred_mc_wtb_so3_axis_audit/__init__.py", "a543dd82af6621ff0714975326f75e2e8a2dd150561a97907fa26a25dca3539b"),
-    ("axis_selector", "benchmarks/redred_mc_wtb_so3_axis_audit/selector.py", "c6dfd995f095a9b5c3bb5319a004a44db9af095605ff62e536f49c782f4ff76b"),
-    ("causal_reference_package", "benchmarks/redred_mc_wtb_causal_reference/__init__.py", "3e61e89dfa8bfd7727685bf54afb468c35eb3ae2e809688b7039607af4b89b9f"),
-    ("causal_reference", "benchmarks/redred_mc_wtb_causal_reference/reference.py", "91476780b663991ab39f9f60d6afc900ae32ae58e4d790d105995a345f9bcd83"),
-    ("causal_reference_routing", "benchmarks/redred_mc_wtb_causal_reference/routing.py", "665405747de889a100c21c145aad8847286e299ec0a8c1722eea04614aea1929"),
-    ("causal_reference_development", "benchmarks/redred_mc_wtb_causal_reference/development.py", "dbd8cf95df3a5d6520aad047e5a0706fc3618866e700ef97478b13add5068d42"),
-    ("motion_qualification_package", "benchmarks/redred_mc_wtb_motion_qualification/__init__.py", "823cc7684d51a41df0c0f33ce972cb565f8960e3c7cd767088f70cccfbd0622d"),
-    ("motion_qualification", "benchmarks/redred_mc_wtb_motion_qualification/controller.py", "fee2819cb7205ced693cece540c0d50b0e3e96574af9f1d03bc5392d3f4447e1"),
-    ("stage4_assay_package", "benchmarks/redred_mc_wtb_stage4_assay/__init__.py", "b5af60a5c5372749c927ed97f9b047c174312ecd382823aa2ae56974a924cdc6"),
-    ("stage4_assay_generator", "benchmarks/redred_mc_wtb_stage4_assay/generator.py", "2e0f5bb2903150606c05916f688f3e03fca1b004fc1ac52dc0dee36c9428d719"),
-    ("stage4_assay_source", "benchmarks/redred_mc_wtb_stage4_assay/source.py", "48e6786d35f46d7e8d51c268ee7f539718dd1d5e6ed8190296b349d5c66f1102"),
-)
 
 
 class Campaign108Error(ValueError):
-    """A frozen authority, artifact, or single-attempt invariant failed."""
+    """A source authority, artifact, replay, or projection invariant failed."""
 
 
 @dataclass(frozen=True)
 class NeutralAdapterView:
-    """Only the neutral projection and aggregate binding exposed to adapters."""
+    """The only NEW108 projection visible to a native adapter."""
 
     neutral_registry: Tuple[object, ...]
     event_streams: Mapping[str, Tuple[object, ...]]
@@ -174,28 +91,17 @@ Adapter = Callable[[NeutralAdapterView, NeutralBaselineView], Mapping[str, objec
 
 @dataclass(frozen=True)
 class FrozenCandidate:
+    authority_name: str
+    artifact_stem: str
     candidate_id: str
-    model_candidate_id: str
-    output_adapter_path: Path
-    output_adapter_sha256: str
-    candidate_executable_path: Path
-    candidate_executable_sha256: str
-    model_path: Path
-    model_sha256: str
-    config_bytes: bytes
-    config_sha256: str
+    native_schema: str
     adapter: Adapter
+    config_bytes: bytes
+    executable_sha256: Callable[[], str]
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
-
-
-def _relative_authority_path(path: Path) -> str:
-    try:
-        return str(Path(path).resolve().relative_to(_repo_root()))
-    except ValueError as exc:
-        raise Campaign108Error("candidate authority lies outside the repository") from exc
 
 
 def _read_bytes(path: Path, where: str) -> bytes:
@@ -268,8 +174,6 @@ def _exclusive_write(path: Path, payload: bytes, where: str) -> None:
 
 
 def _neutral_view(bundle: New108AdapterBundle) -> NeutralAdapterView:
-    """Snapshot a label-free, immutable view for both adapter executions."""
-
     if type(bundle) is not New108AdapterBundle:
         raise Campaign108Error("locked adapter returned the wrong bundle type")
     registries = tuple(bundle.neutral_registry)
@@ -281,20 +185,18 @@ def _neutral_view(bundle: New108AdapterBundle) -> NeutralAdapterView:
         or set(bundle.pose_streams) != set(identifiers)
     ):
         raise Campaign108Error("neutral adapter projection identities differ")
-    events = MappingProxyType({
-        window_id: tuple(bundle.event_streams[window_id])
-        for window_id in identifiers
-    })
-    poses = MappingProxyType({
-        window_id: tuple(bundle.pose_streams[window_id])
-        for window_id in identifiers
-    })
     aggregate = bundle.provenance_seal.get("aggregate_sha256")
     _sha256(aggregate, "adapter aggregate digest")
     return NeutralAdapterView(
         registries,
-        events,
-        poses,
+        MappingProxyType({
+            identifier: tuple(bundle.event_streams[identifier])
+            for identifier in identifiers
+        }),
+        MappingProxyType({
+            identifier: tuple(bundle.pose_streams[identifier])
+            for identifier in identifiers
+        }),
         MappingProxyType({"aggregate_sha256": str(aggregate)}),
     )
 
@@ -321,8 +223,7 @@ def _neutral_projection_sha256(view: NeutralAdapterView) -> str:
 
 
 def _neutral_baseline_view(
-    baseline: CAVRegistryEvaluation,
-    neutral: NeutralAdapterView,
+    baseline: CAVRegistryEvaluation, neutral: NeutralAdapterView
 ) -> NeutralBaselineView:
     try:
         windows = tuple(baseline.windows)
@@ -333,32 +234,20 @@ def _neutral_baseline_view(
         raise Campaign108Error("baseline neutral window cardinality differs")
     projected = []
     for row, registry in zip(windows, neutral.neutral_registry):
-        window_id = registry.window_id
+        identifier = registry.window_id
         if (
             row.registry != registry
-            or tuple(row.input_events) != neutral.event_streams[window_id]
-            or tuple(row.input_poses) != neutral.pose_streams[window_id]
+            or tuple(row.input_events) != neutral.event_streams[identifier]
+            or tuple(row.input_poses) != neutral.pose_streams[identifier]
         ):
             raise Campaign108Error("baseline neutral window binding differs")
         projected.append(NeutralBaselineWindow(
             registry,
-            neutral.event_streams[window_id],
-            neutral.pose_streams[window_id],
+            neutral.event_streams[identifier],
+            neutral.pose_streams[identifier],
             NeutralCycleView(tuple(row.simulation.records)),
         ))
-    _sha256(digest, "baseline neutral input digest")
-    return NeutralBaselineView(tuple(projected), str(digest))
-
-
-def _execute_adapter(
-    spec: FrozenCandidate,
-    view: NeutralAdapterView,
-    baseline: NeutralBaselineView,
-    mode: str,
-) -> Mapping[str, object]:
-    if mode not in ("production", "verifier_replay"):
-        raise Campaign108Error("adapter execution mode differs")
-    return spec.adapter(view, baseline)
+    return NeutralBaselineView(tuple(projected), _sha256(digest, "neutral input digest"))
 
 
 def _dispatch_rg3(
@@ -392,50 +281,26 @@ def _dispatch_pll(
 
 
 def _candidate_registry() -> Mapping[str, FrozenCandidate]:
-    rg3_authority = _EXPECTED_AUTHORITIES[RG3_ID]
-    dspb_authority = _EXPECTED_AUTHORITIES[DSPB_ID]
-    pll_authority = _EXPECTED_AUTHORITIES[SO3_PLL_ID]
-    return {
-        RG3_ID: FrozenCandidate(
-            RG3_ID,
-            rg3.RG3_POLICY.candidate_id,
-            Path(rg3_output.__file__).resolve(),
-            rg3_authority["output_adapter_sha256"],
-            Path(rg3_output.RG3_EXECUTABLE_PATH).resolve(),
-            rg3_authority["candidate_executable_sha256"],
-            Path(rg3.__file__).resolve(),
-            rg3_authority["model_sha256"],
-            bytes(rg3_output.RG3_CONFIG_BYTES),
-            rg3_authority["candidate_config_sha256"],
-            _dispatch_rg3,
+    rows = (
+        FrozenCandidate(
+            "RG3", "rg3", RG3_ID, rg3_output.CANDIDATE_OUTPUT_SCHEMA,
+            _dispatch_rg3, bytes(rg3_output.RG3_CONFIG_BYTES),
+            lambda: rg3_output.RG3_EXECUTABLE_SHA256,
         ),
-        DSPB_ID: FrozenCandidate(
-            DSPB_ID,
-            dspb.DSPBConfig().candidate_id,
-            Path(dspb_output.__file__).resolve(),
-            dspb_authority["output_adapter_sha256"],
-            Path(dspb.__file__).resolve(),
-            dspb_authority["candidate_executable_sha256"],
-            Path(dspb.__file__).resolve(),
-            dspb_authority["model_sha256"],
-            bytes(dspb_output.locked_dspb_config_bytes()),
-            dspb_authority["candidate_config_sha256"],
-            _dispatch_dspb,
+        FrozenCandidate(
+            "DSPB", "dspb", DSPB_ID, dspb_output.CANDIDATE_OUTPUT_SCHEMA,
+            _dispatch_dspb, bytes(dspb_output.locked_dspb_config_bytes()),
+            dspb_output.locked_dspb_executable_sha256,
         ),
-        SO3_PLL_ID: FrozenCandidate(
-            SO3_PLL_ID,
-            so3_pll.SO3PLLConfig().candidate_id,
-            Path(pll_output.__file__).resolve(),
-            pll_authority["output_adapter_sha256"],
-            Path(pll_output.__file__).resolve(),
-            pll_authority["candidate_executable_sha256"],
-            Path(so3_pll.__file__).resolve(),
-            pll_authority["model_sha256"],
-            bytes(pll_output.locked_config_bytes()),
-            pll_authority["candidate_config_sha256"],
-            _dispatch_pll,
+        FrozenCandidate(
+            "PLL", "pll", SO3_PLL_ID, pll_output.CANDIDATE_OUTPUT_SCHEMA,
+            _dispatch_pll, bytes(pll_output.locked_config_bytes()),
+            pll_output.generator_executable_sha256,
         ),
-    }
+    )
+    if tuple(row.candidate_id for row in rows) != FROZEN_CANDIDATE_IDS:
+        raise Campaign108Error("native candidate IDs differ from authority")
+    return MappingProxyType({row.candidate_id: row for row in rows})
 
 
 _CANDIDATES = _candidate_registry()
@@ -448,179 +313,286 @@ def _candidate(candidate_id: object) -> FrozenCandidate:
 
 
 def frozen_candidate_config_bytes(candidate_id: str) -> bytes:
-    """Return the exact adapter-owned config bytes accepted for a frozen ID."""
+    """Return the adapter config expected from the candidate-neutral projector."""
 
     return bytes(_candidate(candidate_id).config_bytes)
 
 
 def frozen_candidate_config(candidate_id: str) -> Mapping[str, object]:
-    """Return the adapter-owned config as a detached JSON mapping."""
-
     return _read_json_bytes(
         frozen_candidate_config_bytes(candidate_id), "locked candidate config"
     )
 
 
-def _verify_authorities(
+def _campaign_authority(
     spec: FrozenCandidate,
-) -> Tuple[bytes, bytes, bytes]:
-    expected = _EXPECTED_AUTHORITIES[spec.candidate_id]
-    if (
-        _relative_authority_path(spec.output_adapter_path)
-        != expected["output_adapter_path"]
-        or _relative_authority_path(spec.candidate_executable_path)
-        != expected["candidate_executable_path"]
-        or _relative_authority_path(spec.model_path) != expected["model_path"]
-    ):
-        raise Campaign108Error("candidate authority path differs from the frozen ID")
-    adapter_bytes = _read_bytes(spec.output_adapter_path, "output adapter")
-    executable_bytes = _read_bytes(
-        spec.candidate_executable_path, "candidate executable"
+) -> Tuple[Mapping[str, object], Mapping[str, object], Tuple[Tuple[Path, bytes], ...]]:
+    try:
+        campaign = candidate_authority.build_campaign_authority(_repo_root())
+        candidate_authority.verify_campaign_authority(campaign, _repo_root())
+    except candidate_authority.CandidateAuthorityError as exc:
+        raise Campaign108Error("candidate source authority differs") from exc
+    manifests = campaign.get("candidates")
+    if not isinstance(manifests, list):
+        raise Campaign108Error("campaign authority candidate schema differs")
+    selected = next(
+        (
+            row for row in manifests
+            if isinstance(row, Mapping) and row.get("candidate") == spec.authority_name
+        ),
+        None,
     )
-    model_bytes = _read_bytes(spec.model_path, "candidate model")
-    if _sha256_bytes(adapter_bytes) != spec.output_adapter_sha256:
-        raise Campaign108Error("output adapter differs from the frozen ID")
-    if _sha256_bytes(executable_bytes) != spec.candidate_executable_sha256:
-        raise Campaign108Error("candidate executable differs from the frozen ID")
-    if _sha256_bytes(model_bytes) != spec.model_sha256:
-        raise Campaign108Error("candidate model differs from the frozen ID")
-    if _sha256_bytes(spec.config_bytes) != spec.config_sha256:
-        raise Campaign108Error("adapter-owned config differs from the frozen ID")
-    return adapter_bytes, executable_bytes, model_bytes
-
-
-def _dependency_manifest(
-    candidate_id: str,
-) -> Tuple[Mapping[str, object], Tuple[Tuple[Path, bytes], ...]]:
-    dependencies = []
+    if not isinstance(selected, Mapping):
+        raise Campaign108Error("candidate authority is missing")
+    if selected.get("native_candidate_id") != spec.candidate_id:
+        raise Campaign108Error("candidate authority native ID differs")
+    try:
+        candidate_authority.verify_candidate_authority(selected, _repo_root())
+    except candidate_authority.CandidateAuthorityError as exc:
+        raise Campaign108Error("candidate source authority differs") from exc
     snapshots = []
-    for role, relative, expected_sha256 in _DEPENDENCY_AUTHORITIES:
+    dependencies = selected.get("dependencies")
+    if not isinstance(dependencies, list) or not dependencies:
+        raise Campaign108Error("candidate source closure is empty")
+    for row in dependencies:
+        if not isinstance(row, Mapping):
+            raise Campaign108Error("candidate source closure schema differs")
+        relative = row.get("path")
+        if type(relative) is not str:
+            raise Campaign108Error("candidate source path differs")
         path = _repo_root() / relative
-        payload = _read_bytes(path, "%s dependency" % role)
-        if _sha256_bytes(payload) != expected_sha256:
-            raise Campaign108Error("%s dependency differs from the frozen manifest" % role)
-        dependencies.append({
-            "role": role,
-            "path": relative,
-            "sha256": expected_sha256,
-        })
+        payload = _read_bytes(path, "candidate source")
+        if _sha256_bytes(payload) != row.get("sha256"):
+            raise Campaign108Error("candidate source digest differs")
         snapshots.append((path, payload))
-    body = {
-        "schema": DEPENDENCY_MANIFEST_SCHEMA,
-        "candidate_id": candidate_id,
-        "dependencies": dependencies,
-    }
-    manifest = dict(body, manifest_sha256=canonical_sha256(body))
-    return manifest, tuple(snapshots)
+    return campaign, selected, tuple(snapshots)
 
 
-def _check_dependencies_unchanged(
-    snapshots: Sequence[Tuple[Path, bytes]],
+def _check_authority_unchanged(
+    campaign: Mapping[str, object], snapshots: Sequence[Tuple[Path, bytes]]
 ) -> None:
     for path, payload in snapshots:
-        _check_unchanged(path, payload, "%s dependency" % path.name)
+        if _read_bytes(path, "candidate source") != payload:
+            raise Campaign108Error("candidate source changed during the single attempt")
+    try:
+        candidate_authority.verify_campaign_authority(campaign, _repo_root())
+    except candidate_authority.CandidateAuthorityError as exc:
+        raise Campaign108Error("candidate source authority changed") from exc
 
 
-def _validate_adapter_output(
+def _validate_native_output(
     value: object,
     spec: FrozenCandidate,
-    bundle: NeutralAdapterView,
+    neutral: NeutralAdapterView,
     baseline: NeutralBaselineView,
 ) -> Mapping[str, object]:
-    fields = {
+    if not isinstance(value, Mapping):
+        raise Campaign108Error("native adapter output must be an object")
+    output = dict(value)
+    required = {
         "schema", "candidate_id", "adapter_aggregate_sha256",
         "neutral_input_sha256", "candidate_executable_sha256",
         "candidate_config_sha256", "windows", "aggregate_sha256",
     }
-    # Event rows remain opaque: occurrence/decision/state fields added by a
-    # future v2 row pass through byte-for-byte once the screen adopts them.
-    if not isinstance(value, Mapping) or set(value) != fields:
-        raise Campaign108Error("output adapter returned the wrong field schema")
-    output = dict(value)
+    if not required.issubset(output):
+        raise Campaign108Error("native adapter output field schema differs")
     unsigned = dict(output)
-    digest = unsigned.pop("aggregate_sha256", None)
+    supplied = unsigned.pop("aggregate_sha256", None)
     if (
-        output.get("schema") != screen108.CANDIDATE_OUTPUT_SCHEMA
+        output.get("schema") != spec.native_schema
         or output.get("candidate_id") != spec.candidate_id
         or output.get("adapter_aggregate_sha256")
-        != bundle.provenance_seal.get("aggregate_sha256")
+        != neutral.provenance_seal.get("aggregate_sha256")
         or output.get("neutral_input_sha256") != baseline.neutral_input_sha256
-        or output.get("candidate_executable_sha256")
-        != spec.candidate_executable_sha256
-        or output.get("candidate_config_sha256") != spec.config_sha256
-        or digest != canonical_sha256(unsigned)
+        or output.get("candidate_executable_sha256") != spec.executable_sha256()
+        or output.get("candidate_config_sha256")
+        != _sha256_bytes(spec.config_bytes)
+        or supplied != canonical_sha256(unsigned)
     ):
-        raise Campaign108Error("output adapter seal or frozen binding differs")
-    supplied_windows = output.get("windows")
-    expected_ids = [row.window_id for row in bundle.neutral_registry]
-    if not isinstance(supplied_windows, list) or [
-        row.get("window_id") if isinstance(row, Mapping) else None
-        for row in supplied_windows
+        raise Campaign108Error("native adapter seal or frozen binding differs")
+    windows = output.get("windows")
+    expected_ids = [row.window_id for row in neutral.neutral_registry]
+    if not isinstance(windows, list) or [
+        row.get("window_id") if isinstance(row, Mapping) else None for row in windows
     ] != expected_ids:
-        raise Campaign108Error("output adapter changed screen window IDs")
+        raise Campaign108Error("native adapter changed window IDs")
     return output
 
 
-def _dispatch_evidence(
-    spec: FrozenCandidate,
-    candidate_output_sha256: str,
-    window_ids: Sequence[str],
-    dependency_manifest_sha256: str,
-    campaign_runner_sha256: str,
-) -> Mapping[str, object]:
-    dispatch = {
-        "output_adapter_path": _relative_authority_path(spec.output_adapter_path),
-        "output_adapter_sha256": spec.output_adapter_sha256,
-        "candidate_executable_path": _relative_authority_path(
-            spec.candidate_executable_path
-        ),
-        "candidate_executable_sha256": spec.candidate_executable_sha256,
-        "model_path": _relative_authority_path(spec.model_path),
-        "model_sha256": spec.model_sha256,
-        "dependency_manifest_sha256": dependency_manifest_sha256,
-        "candidate_config_sha256": spec.config_sha256,
-        "campaign_runner_sha256": campaign_runner_sha256,
-        "candidate_output_sha256": candidate_output_sha256,
-        "ordered_window_ids": list(window_ids),
-        "ordered_window_ids_sha256": canonical_sha256(list(window_ids)),
-    }
-    body = {
-        "schema": GENERATOR_EVIDENCE_SCHEMA,
-        "candidate_id": spec.candidate_id,
-        "model_candidate_id": spec.model_candidate_id,
-        "windows": [dispatch],
-    }
-    return dict(body, aggregate_sha256=canonical_sha256(body))
+def _project_native_output(native_output: Mapping[str, object]) -> object:
+    if _screen_projection is None:
+        raise Campaign108Error("screen projection implementation is unavailable")
+    try:
+        return _screen_projection.project_native_output(native_output)
+    except Exception as exc:
+        raise Campaign108Error("screen projection failed") from exc
 
 
-def _replay_receipt(
-    spec: FrozenCandidate,
-    neutral_input_sha256: str,
-    production_output_bytes: bytes,
-    replay_output_bytes: bytes,
-    production_evidence_bytes: bytes,
-    replay_evidence_bytes: bytes,
+def _projection_parts(value: object) -> Tuple[Mapping[str, object], Mapping[str, object], bytes, bytes]:
+    try:
+        screen_output = value.screen_output  # type: ignore[attr-defined]
+        receipt = value.projection_receipt  # type: ignore[attr-defined]
+        executable = value.executable_artifact_bytes  # type: ignore[attr-defined]
+        config = value.config_bytes  # type: ignore[attr-defined]
+    except AttributeError as exc:
+        raise Campaign108Error("screen projection result schema differs") from exc
+    if not isinstance(screen_output, Mapping) or not isinstance(receipt, Mapping):
+        raise Campaign108Error("screen projection mappings differ")
+    if type(executable) is not bytes or not executable:
+        raise Campaign108Error("screen executable artifact bytes differ")
+    if type(config) is not bytes or not config:
+        raise Campaign108Error("screen config bytes differ")
+    return dict(screen_output), dict(receipt), executable, config
+
+
+def _expected_screen_event(
+    native_event: Mapping[str, object], candidate_id: str
 ) -> Mapping[str, object]:
-    if production_output_bytes != replay_output_bytes:
-        raise Campaign108Error("verifier replay candidate output is not byte-identical")
-    if production_evidence_bytes != replay_evidence_bytes:
-        raise Campaign108Error("verifier replay evidence is not byte-identical")
-    body = {
-        "schema": REPLAY_SCHEMA,
-        "candidate_id": spec.candidate_id,
-        "mode": "verifier_replay",
-        "neutral_input_sha256": neutral_input_sha256,
-        "adapter_execution_count": 2,
-        "production_output_bytes_sha256": _sha256_bytes(production_output_bytes),
-        "replay_output_bytes_sha256": _sha256_bytes(replay_output_bytes),
-        "production_evidence_bytes_sha256": _sha256_bytes(production_evidence_bytes),
-        "replay_evidence_bytes_sha256": _sha256_bytes(replay_evidence_bytes),
-        "candidate_output_byte_identical": True,
-        "evidence_byte_identical": True,
-        "replay_used_for_tuning": False,
-        "replay_output_used_for_screen": False,
+    route_map = {
+        "CANDIDATE": "candidate",
+        "CURRENT_CAV": "current_cav",
+        "FRESH_ZOH": "fresh_zoh",
+        "SENSOR_FIXED": "sensor_fixed",
     }
-    return dict(body, replay_sha256=canonical_sha256(body))
+    route = route_map.get(native_event.get("route"))
+    if route is None:
+        raise Campaign108Error("native route cannot be projected")
+    used = native_event.get("candidate_used")
+    if type(used) is not bool:
+        raise Campaign108Error("native candidate-use evidence differs")
+    return {
+        "event_id": native_event.get("event_id"),
+        "event_content_sha256": native_event.get("event_content_sha256"),
+        "occurrence_cycle": native_event.get("occurrence_cycle"),
+        "decision_cycle": native_event.get("decision_cycle"),
+        "model_id": candidate_id if used else "CURRENT_CAV",
+        "predictor_state_version": native_event.get("predictor_state_version"),
+        "used_pose_ids": native_event.get("used_pose_ids"),
+        "route": route,
+        "candidate_attempted": native_event.get("candidate_attempted"),
+        "candidate_used": used,
+        "fallback_reason": native_event.get("fallback_reason"),
+        "world_ray": native_event.get("world_ray") if used else None,
+    }
+
+
+def _validate_projection(
+    native_output: Mapping[str, object],
+    projection: object,
+    spec: FrozenCandidate,
+) -> Tuple[Mapping[str, object], Mapping[str, object], bytes, bytes]:
+    screen_output, receipt, executable, config = _projection_parts(projection)
+    required = {
+        "schema", "candidate_id", "adapter_aggregate_sha256",
+        "neutral_input_sha256", "candidate_executable_sha256",
+        "candidate_config_sha256", "windows", "aggregate_sha256",
+    }
+    if set(screen_output) != required:
+        raise Campaign108Error("projected screen output field schema differs")
+    unsigned = dict(screen_output)
+    supplied = unsigned.pop("aggregate_sha256", None)
+    native_windows = native_output["windows"]
+    native_ids = [
+        row.get("window_id") if isinstance(row, Mapping) else None
+        for row in native_windows  # type: ignore[union-attr]
+    ]
+    screen_windows = screen_output.get("windows")
+    screen_ids = [
+        row.get("window_id") if isinstance(row, Mapping) else None
+        for row in screen_windows
+    ] if isinstance(screen_windows, list) else None
+    if (
+        screen_output.get("schema") != screen108.CANDIDATE_OUTPUT_SCHEMA
+        or screen_output.get("candidate_id") != spec.candidate_id
+        or screen_output.get("adapter_aggregate_sha256")
+        != native_output.get("adapter_aggregate_sha256")
+        or screen_output.get("neutral_input_sha256")
+        != native_output.get("neutral_input_sha256")
+        or screen_output.get("candidate_executable_sha256")
+        != _sha256_bytes(executable)
+        or screen_output.get("candidate_config_sha256") != _sha256_bytes(config)
+        or supplied != canonical_sha256(unsigned)
+        or screen_ids != native_ids
+    ):
+        raise Campaign108Error("screen projection binding differs")
+
+    receipt_windows = receipt.get("windows")
+    if not isinstance(receipt_windows, list) or len(receipt_windows) != len(native_ids):
+        raise Campaign108Error("screen projection receipt windows differ")
+    for native_window, projected_window, receipt_window in zip(
+        native_windows, screen_windows, receipt_windows  # type: ignore[arg-type]
+    ):
+        if (
+            not isinstance(native_window, Mapping)
+            or not isinstance(projected_window, Mapping)
+            or not isinstance(receipt_window, Mapping)
+            or set(projected_window) != {"window_id", "events", "events_sha256"}
+        ):
+            raise Campaign108Error("screen projection window schema differs")
+        native_events = native_window.get("events")
+        projected_events = projected_window.get("events")
+        if (
+            not isinstance(native_events, list)
+            or not isinstance(projected_events, list)
+            or len(native_events) != len(projected_events)
+            or projected_window.get("events_sha256")
+            != canonical_sha256(projected_events)
+        ):
+            raise Campaign108Error("screen projection event population differs")
+        event_bindings = []
+        for native_event, projected_event in zip(native_events, projected_events):
+            if not isinstance(native_event, Mapping) or not isinstance(projected_event, Mapping):
+                raise Campaign108Error("screen projection event schema differs")
+            projected_body = dict(projected_event)
+            projected_digest = projected_body.pop("decision_sha256", None)
+            if (
+                projected_body != _expected_screen_event(native_event, spec.candidate_id)
+                or projected_digest != canonical_sha256(projected_body)
+            ):
+                raise Campaign108Error("screen projection decision substitution differs")
+            event_bindings.append({
+                "event_id": native_event.get("event_id"),
+                "source_decision_sha256": native_event.get("decision_sha256"),
+                "projected_decision_sha256": projected_digest,
+            })
+        source_window_sha = native_window.get("window_sha256")
+        if source_window_sha is None:
+            source_window_sha = canonical_sha256(native_window)
+        receipt_window_body = {
+            "window_id": native_window.get("window_id"),
+            "source_window_sha256": source_window_sha,
+            "source_events_sha256": native_window.get("events_sha256"),
+            "projected_events_sha256": projected_window.get("events_sha256"),
+            "event_bindings": event_bindings,
+            "event_bindings_sha256": canonical_sha256(event_bindings),
+        }
+        expected_receipt_window = dict(
+            receipt_window_body,
+            window_projection_sha256=canonical_sha256(receipt_window_body),
+        )
+        if dict(receipt_window) != expected_receipt_window:
+            raise Campaign108Error("screen projection receipt window differs")
+    receipt_fields = {
+        "schema", "candidate_id", "native_schema", "native_aggregate_sha256",
+        "projected_aggregate_sha256", "candidate_executable_sha256",
+        "candidate_config_sha256", "windows", "projection_receipt_sha256",
+    }
+    receipt_unsigned = dict(receipt)
+    receipt_digest = receipt_unsigned.pop("projection_receipt_sha256", None)
+    if (
+        set(receipt) != receipt_fields
+        or type(receipt.get("schema")) is not str
+        or receipt.get("candidate_id") != spec.candidate_id
+        or receipt.get("native_schema") != native_output.get("schema")
+        or receipt.get("native_aggregate_sha256")
+        != native_output.get("aggregate_sha256")
+        or receipt.get("projected_aggregate_sha256") != supplied
+        or receipt.get("candidate_executable_sha256") != _sha256_bytes(executable)
+        or receipt.get("candidate_config_sha256") != _sha256_bytes(config)
+        or receipt_digest != canonical_sha256(receipt_unsigned)
+    ):
+        raise Campaign108Error("screen projection receipt seal differs")
+    return screen_output, receipt, executable, config
 
 
 def _artifact(path: Path, payload: bytes, semantic_sha256: str) -> Mapping[str, object]:
@@ -628,7 +600,7 @@ def _artifact(path: Path, payload: bytes, semantic_sha256: str) -> Mapping[str, 
         "path": path.name,
         "size_bytes": len(payload),
         "sha256": _sha256_bytes(payload),
-        "semantic_sha256": semantic_sha256,
+        "semantic_sha256": _sha256(semantic_sha256, "artifact semantic digest"),
     }
 
 
@@ -638,20 +610,26 @@ def _check_unchanged(path: Path, expected: bytes, where: str) -> None:
 
 
 def _artifact_paths(campaign_directory: Path, candidate_id: str) -> Mapping[str, Path]:
-    prefix = candidate_id.lower()
+    stem = _candidate(candidate_id).artifact_stem
     return {
-        "attempt": campaign_directory / (prefix + ".attempt.json"),
-        "generator_evidence": campaign_directory / (
-            prefix + ".generator-evidence.json"
-        ),
-        "candidate_output": campaign_directory / (prefix + ".candidate-output.json"),
-        "dependency_manifest": campaign_directory / (
-            prefix + ".dependency-manifest.json"
-        ),
-        "replay": campaign_directory / (prefix + ".replay.json"),
-        "screen_result": campaign_directory / (prefix + ".screen108-result.json"),
-        "campaign_receipt": campaign_directory / (prefix + ".campaign-receipt.json"),
+        "attempt": campaign_directory / (stem + ".attempt.json"),
+        "campaign_authority": campaign_directory / (stem + ".campaign-authority.json"),
+        "native_output": campaign_directory / (stem + ".native-output.json"),
+        "projection_receipt": campaign_directory / (stem + ".projection-receipt.json"),
+        "screen_output": campaign_directory / (stem + ".screen-output.json"),
+        "executable_artifact": campaign_directory / (stem + ".executable-authority"),
+        "generator_evidence": campaign_directory / (stem + ".generator-evidence.json"),
+        "replay": campaign_directory / (stem + ".replay.json"),
+        "screen_result": campaign_directory / (stem + ".screen108-result.json"),
+        "campaign_receipt": campaign_directory / (stem + ".campaign-receipt.json"),
     }
+
+
+def _screen_result_cncp(result: Mapping[str, object]) -> object:
+    value = result.get("cncp")
+    if isinstance(value, Mapping) and "declared_values" in value:
+        return value["declared_values"]
+    return value
 
 
 def run_campaign108(
@@ -661,58 +639,51 @@ def run_campaign108(
     cncp_path: Path,
     campaign_directory: Path,
 ) -> Mapping[str, object]:
-    """Run one production adapter execution plus one non-tuning replay."""
+    """Execute one production attempt and one explicitly non-tuning replay."""
 
     spec = _candidate(candidate_id)
     config_file = Path(config_path)
     cncp_file = Path(cncp_path)
-    config_bytes = _read_bytes(config_file, "candidate config")
+    caller_config_bytes = _read_bytes(config_file, "candidate config")
+    caller_config = _read_json_bytes(caller_config_bytes, "candidate config")
+    if caller_config_bytes != spec.config_bytes:
+        raise Campaign108Error("caller config bytes differ from native adapter")
     cncp_bytes = _read_bytes(cncp_file, "CNCP")
-    if config_bytes != spec.config_bytes:
-        raise Campaign108Error("candidate config bytes differ from the output adapter")
-    config = _read_json_bytes(config_bytes, "candidate config")
     cncp = _read_json_bytes(cncp_bytes, "CNCP")
     screen108.validate_cncp(cncp)
-    adapter_bytes, executable_bytes, model_bytes = _verify_authorities(spec)
-    dependency_manifest, dependency_snapshots = _dependency_manifest(candidate_id)
-    dependency_manifest_digest = str(dependency_manifest["manifest_sha256"])
-    dependency_manifest_bytes = _json_bytes(dependency_manifest)
+
+    authority, selected_authority, source_snapshots = _campaign_authority(spec)
+    authority_bytes = _json_bytes(authority)
+    authority_digest = _sha256(
+        authority.get("aggregate_sha256"), "campaign authority digest"
+    )
+    selected_manifest_digest = _sha256(
+        selected_authority.get("manifest_sha256"), "candidate authority digest"
+    )
     campaign_bytes = _read_bytes(Path(__file__), "campaign runner")
     campaign_digest = _sha256_bytes(campaign_bytes)
 
-    campaign_root = Path(campaign_directory)
-    if campaign_root.exists() and (
-        not campaign_root.is_dir() or campaign_root.is_symlink()
-    ):
+    root = Path(campaign_directory)
+    if root.exists() and (not root.is_dir() or root.is_symlink()):
         raise Campaign108Error("campaign directory must be a real directory")
     try:
-        campaign_root.mkdir(mode=0o755, parents=False, exist_ok=True)
+        root.mkdir(mode=0o755, parents=False, exist_ok=True)
     except OSError as exc:
         raise Campaign108Error("cannot create campaign directory") from exc
-    paths = _artifact_paths(campaign_root, candidate_id)
-    config_sha256 = _sha256_bytes(config_bytes)
-    cncp_sha256 = _sha256_bytes(cncp_bytes)
-    config_semantic_sha256 = canonical_sha256(config)
-    cncp_semantic_sha256 = canonical_sha256(cncp)
-    adapter_relative = _relative_authority_path(spec.output_adapter_path)
-    executable_relative = _relative_authority_path(spec.candidate_executable_path)
-    model_relative = _relative_authority_path(spec.model_path)
+    paths = _artifact_paths(root, candidate_id)
+
     attempt_body = {
         "schema": ATTEMPT_SCHEMA,
         "candidate_id": candidate_id,
-        "model_candidate_id": spec.model_candidate_id,
+        "authority_name": spec.authority_name,
         "attempt_index": 1,
-        "output_adapter_path": adapter_relative,
-        "output_adapter_sha256": spec.output_adapter_sha256,
-        "candidate_executable_path": executable_relative,
-        "candidate_executable_sha256": spec.candidate_executable_sha256,
-        "model_path": model_relative,
-        "model_sha256": spec.model_sha256,
-        "dependency_manifest_sha256": dependency_manifest_digest,
-        "candidate_config_sha256": config_sha256,
-        "candidate_config_semantic_sha256": config_semantic_sha256,
-        "cncp_sha256": cncp_sha256,
-        "cncp_semantic_sha256": cncp_semantic_sha256,
+        "campaign_authority_sha256": authority_digest,
+        "candidate_authority_sha256": selected_manifest_digest,
+        "authority_config_sha256": selected_authority["config_sha256"],
+        "caller_config_sha256": _sha256_bytes(caller_config_bytes),
+        "caller_config_semantic_sha256": canonical_sha256(caller_config),
+        "cncp_sha256": _sha256_bytes(cncp_bytes),
+        "cncp_semantic_sha256": canonical_sha256(cncp),
         "campaign_runner_sha256": campaign_digest,
         "adapter_execution_count": 2,
         "verification_replay_count": 1,
@@ -723,171 +694,189 @@ def run_campaign108(
     attempt = dict(attempt_body, attempt_sha256=canonical_sha256(attempt_body))
     attempt_bytes = _json_bytes(attempt)
     _exclusive_write(paths["attempt"], attempt_bytes, "campaign attempt marker")
-    _exclusive_write(
-        paths["dependency_manifest"],
-        dependency_manifest_bytes,
-        "dependency manifest",
-    )
+    _exclusive_write(paths["campaign_authority"], authority_bytes, "campaign authority")
 
-    # The bundle contains a selector-label sidecar, but neither this projection
-    # nor any output-adapter API reads or receives it.  screen108 is called only
-    # after the returned candidate envelope has been sealed and persisted.
     bundle = build_locked_new108_adapter(Path(dataset_directory))
     neutral = _neutral_view(bundle)
     full_baseline = evaluate_current_cav_registry(
         neutral.neutral_registry, neutral.event_streams, neutral.pose_streams
     )
     baseline = _neutral_baseline_view(full_baseline, neutral)
-    neutral_input_sha256 = _neutral_projection_sha256(neutral)
-    if neutral_input_sha256 != baseline.neutral_input_sha256:
+    neutral_digest = _neutral_projection_sha256(neutral)
+    if neutral_digest != baseline.neutral_input_sha256:
         raise Campaign108Error("neutral source binding differs from baseline")
 
-    # Production and verifier modes call the same tested adapter.  All causal
-    # scheduling remains inside that adapter; the campaign never interprets a
-    # candidate row and never exposes the label sidecar.
-    generated = _execute_adapter(spec, neutral, baseline, "production")
-    candidate_output = _validate_adapter_output(generated, spec, neutral, baseline)
-    output_digest = str(candidate_output["aggregate_sha256"])
-    candidate_output_bytes = _json_bytes(candidate_output)
-    _exclusive_write(paths["candidate_output"], candidate_output_bytes, "candidate output")
-
-    window_ids = [row.window_id for row in neutral.neutral_registry]
-    evidence = _dispatch_evidence(
-        spec,
-        output_digest,
-        window_ids,
-        dependency_manifest_digest,
-        campaign_digest,
+    produced = spec.adapter(neutral, baseline)
+    native_output = _validate_native_output(produced, spec, neutral, baseline)
+    native_bytes = _json_bytes(native_output)
+    native_digest = _sha256(
+        native_output.get("aggregate_sha256"), "native output digest"
     )
-    evidence_digest = str(evidence["aggregate_sha256"])
-    evidence_bytes = _json_bytes(evidence)
-    _exclusive_write(paths["generator_evidence"], evidence_bytes, "adapter dispatch evidence")
+    _exclusive_write(paths["native_output"], native_bytes, "rich native output")
 
-    # Freeze every authority before verifier replay.  The source-bound bundle
-    # is independently reprojected to catch mapping substitution while the
-    # immutable neutral snapshot remains the exact adapter input.
-    _check_unchanged(config_file, config_bytes, "candidate config")
+    _check_unchanged(config_file, caller_config_bytes, "candidate config")
     _check_unchanged(cncp_file, cncp_bytes, "CNCP")
     _check_unchanged(Path(__file__), campaign_bytes, "campaign runner")
-    _check_unchanged(spec.output_adapter_path, adapter_bytes, "output adapter")
-    _check_unchanged(
-        spec.candidate_executable_path, executable_bytes, "candidate executable"
-    )
-    _check_unchanged(spec.model_path, model_bytes, "candidate model")
-    _check_dependencies_unchanged(dependency_snapshots)
-    if _neutral_projection_sha256(_neutral_view(bundle)) != neutral_input_sha256:
+    _check_authority_unchanged(authority, source_snapshots)
+    if _neutral_projection_sha256(_neutral_view(bundle)) != neutral_digest:
         raise Campaign108Error("neutral source changed after production execution")
 
-    replayed = _execute_adapter(spec, neutral, baseline, "verifier_replay")
-    replay_output = _validate_adapter_output(replayed, spec, neutral, baseline)
-    replay_output_bytes = _json_bytes(replay_output)
-    replay_evidence = _dispatch_evidence(
-        spec,
-        str(replay_output["aggregate_sha256"]),
-        window_ids,
-        dependency_manifest_digest,
-        campaign_digest,
-    )
-    replay_evidence_bytes = _json_bytes(replay_evidence)
-    replay = _replay_receipt(
-        spec,
-        neutral_input_sha256,
-        candidate_output_bytes,
-        replay_output_bytes,
-        evidence_bytes,
-        replay_evidence_bytes,
-    )
-    replay_digest = str(replay["replay_sha256"])
-    replay_bytes = _json_bytes(replay)
-    _exclusive_write(paths["replay"], replay_bytes, "verifier replay receipt")
+    replayed = spec.adapter(neutral, baseline)
+    replay_output = _validate_native_output(replayed, spec, neutral, baseline)
+    replay_bytes = _json_bytes(replay_output)
+    if replay_bytes != native_bytes:
+        raise Campaign108Error("verifier replay rich output is not byte-identical")
+    replay_body = {
+        "schema": REPLAY_SCHEMA,
+        "candidate_id": candidate_id,
+        "mode": "verifier_replay",
+        "neutral_input_sha256": neutral_digest,
+        "adapter_execution_count": 2,
+        "production_native_bytes_sha256": _sha256_bytes(native_bytes),
+        "replay_native_bytes_sha256": _sha256_bytes(replay_bytes),
+        "native_output_byte_identical": True,
+        "replay_used_for_tuning": False,
+        "replay_output_used_for_screen": False,
+    }
+    replay = dict(replay_body, replay_sha256=canonical_sha256(replay_body))
+    replay_bytes_artifact = _json_bytes(replay)
+    _exclusive_write(paths["replay"], replay_bytes_artifact, "verifier replay receipt")
 
-    _check_unchanged(config_file, config_bytes, "candidate config")
+    _check_unchanged(config_file, caller_config_bytes, "candidate config")
     _check_unchanged(cncp_file, cncp_bytes, "CNCP")
     _check_unchanged(Path(__file__), campaign_bytes, "campaign runner")
-    _check_unchanged(spec.output_adapter_path, adapter_bytes, "output adapter")
-    _check_unchanged(
-        spec.candidate_executable_path, executable_bytes, "candidate executable"
-    )
-    _check_unchanged(spec.model_path, model_bytes, "candidate model")
-    _check_dependencies_unchanged(dependency_snapshots)
-    _check_unchanged(
-        paths["candidate_output"], candidate_output_bytes, "candidate output"
-    )
-    _check_unchanged(
-        paths["generator_evidence"], evidence_bytes, "adapter dispatch evidence"
-    )
-    if _neutral_projection_sha256(_neutral_view(bundle)) != neutral_input_sha256:
+    _check_authority_unchanged(authority, source_snapshots)
+    _check_unchanged(paths["native_output"], native_bytes, "rich native output")
+    if _neutral_projection_sha256(_neutral_view(bundle)) != neutral_digest:
         raise Campaign108Error("neutral source changed during verifier replay")
+
+    projected = _project_native_output(native_output)
+    screen_output, projection_receipt, executable_bytes, projection_config = (
+        _validate_projection(native_output, projected, spec)
+    )
+    if caller_config_bytes != projection_config:
+        raise Campaign108Error("caller config bytes differ from screen projection")
+    projection_bytes = _json_bytes(projection_receipt)
+    screen_output_bytes = _json_bytes(screen_output)
+    projection_digest = _sha256(
+        projection_receipt.get("projection_receipt_sha256"),
+        "projection receipt digest",
+    )
+    screen_output_digest = _sha256(
+        screen_output.get("aggregate_sha256"), "screen output digest"
+    )
+    _exclusive_write(
+        paths["projection_receipt"], projection_bytes, "projection receipt"
+    )
+    _exclusive_write(paths["screen_output"], screen_output_bytes, "screen output")
+    _exclusive_write(
+        paths["executable_artifact"], executable_bytes, "executable authority"
+    )
+
+    evidence_body = {
+        "schema": GENERATOR_EVIDENCE_SCHEMA,
+        "candidate_id": candidate_id,
+        "authority_name": spec.authority_name,
+        "campaign_authority_sha256": authority_digest,
+        "candidate_authority_sha256": selected_manifest_digest,
+        "native_output_sha256": native_digest,
+        "projection_receipt_sha256": projection_digest,
+        "screen_output_sha256": screen_output_digest,
+        "executable_artifact_sha256": _sha256_bytes(executable_bytes),
+        "candidate_config_sha256": _sha256_bytes(projection_config),
+        "campaign_runner_sha256": campaign_digest,
+        "ordered_window_ids": [row.window_id for row in neutral.neutral_registry],
+    }
+    evidence = dict(evidence_body, aggregate_sha256=canonical_sha256(evidence_body))
+    evidence_bytes = _json_bytes(evidence)
+    _exclusive_write(paths["generator_evidence"], evidence_bytes, "generator evidence")
+
+    for path, payload, where in (
+        (config_file, caller_config_bytes, "candidate config"),
+        (cncp_file, cncp_bytes, "CNCP"),
+        (Path(__file__), campaign_bytes, "campaign runner"),
+        (paths["native_output"], native_bytes, "rich native output"),
+        (paths["projection_receipt"], projection_bytes, "projection receipt"),
+        (paths["screen_output"], screen_output_bytes, "screen output"),
+        (paths["executable_artifact"], executable_bytes, "executable authority"),
+    ):
+        _check_unchanged(path, payload, where)
+    _check_authority_unchanged(authority, source_snapshots)
 
     screen_result = screen108.run_locked_screen108(
         Path(dataset_directory),
-        paths["candidate_output"],
-        spec.candidate_executable_path,
+        paths["screen_output"],
+        paths["executable_artifact"],
         config_file,
         cncp,
     )
     screen_digest = screen108.verify_screen108_result_envelope(screen_result)
-    screen_bytes = _json_bytes(screen_result)
-    _exclusive_write(paths["screen_result"], screen_bytes, "screen108 result")
+    screen_result_bytes = _json_bytes(screen_result)
+    _exclusive_write(paths["screen_result"], screen_result_bytes, "screen108 result")
 
-    _check_unchanged(config_file, config_bytes, "candidate config")
+    immutable = (
+        ("attempt", attempt_bytes),
+        ("campaign_authority", authority_bytes),
+        ("native_output", native_bytes),
+        ("projection_receipt", projection_bytes),
+        ("screen_output", screen_output_bytes),
+        ("executable_artifact", executable_bytes),
+        ("generator_evidence", evidence_bytes),
+        ("replay", replay_bytes_artifact),
+        ("screen_result", screen_result_bytes),
+    )
+    _check_unchanged(config_file, caller_config_bytes, "candidate config")
     _check_unchanged(cncp_file, cncp_bytes, "CNCP")
     _check_unchanged(Path(__file__), campaign_bytes, "campaign runner")
-    _check_unchanged(spec.output_adapter_path, adapter_bytes, "output adapter")
-    _check_unchanged(
-        spec.candidate_executable_path, executable_bytes, "candidate executable"
-    )
-    _check_unchanged(spec.model_path, model_bytes, "candidate model")
-    _check_dependencies_unchanged(dependency_snapshots)
-    for name, payload in (
-        ("attempt", attempt_bytes),
-        ("dependency_manifest", dependency_manifest_bytes),
-        ("candidate_output", candidate_output_bytes),
-        ("generator_evidence", evidence_bytes),
-        ("replay", replay_bytes),
-        ("screen_result", screen_bytes),
-    ):
+    _check_authority_unchanged(authority, source_snapshots)
+    for name, payload in immutable:
         _check_unchanged(paths[name], payload, "%s artifact" % name)
 
     artifacts = {
         "attempt": _artifact(paths["attempt"], attempt_bytes, attempt["attempt_sha256"]),
-        "dependency_manifest": _artifact(
-            paths["dependency_manifest"],
-            dependency_manifest_bytes,
-            dependency_manifest_digest,
+        "campaign_authority": _artifact(
+            paths["campaign_authority"], authority_bytes, authority_digest
+        ),
+        "native_output": _artifact(paths["native_output"], native_bytes, native_digest),
+        "projection_receipt": _artifact(
+            paths["projection_receipt"], projection_bytes, projection_digest
+        ),
+        "screen_output": _artifact(
+            paths["screen_output"], screen_output_bytes, screen_output_digest
+        ),
+        "executable_artifact": _artifact(
+            paths["executable_artifact"], executable_bytes,
+            _sha256_bytes(executable_bytes),
         ),
         "generator_evidence": _artifact(
-            paths["generator_evidence"], evidence_bytes, evidence_digest
+            paths["generator_evidence"], evidence_bytes, evidence["aggregate_sha256"]
         ),
-        "candidate_output": _artifact(
-            paths["candidate_output"], candidate_output_bytes, output_digest
-        ),
-        "replay": _artifact(paths["replay"], replay_bytes, replay_digest),
-        "screen_result": _artifact(paths["screen_result"], screen_bytes, screen_digest),
+        "replay": _artifact(paths["replay"], replay_bytes_artifact, replay["replay_sha256"]),
+        "screen_result": _artifact(paths["screen_result"], screen_result_bytes, screen_digest),
     }
     bindings = {
-        "output_adapter_path": adapter_relative,
-        "output_adapter_sha256": spec.output_adapter_sha256,
-        "candidate_executable_path": executable_relative,
-        "candidate_executable_sha256": spec.candidate_executable_sha256,
-        "model_path": model_relative,
-        "model_sha256": spec.model_sha256,
-        "dependency_manifest_sha256": dependency_manifest_digest,
-        "candidate_config_sha256": config_sha256,
-        "candidate_config_semantic_sha256": config_semantic_sha256,
-        "cncp_sha256": cncp_sha256,
-        "cncp_semantic_sha256": cncp_semantic_sha256,
-        "generator_evidence_sha256": evidence_digest,
-        "candidate_output_sha256": output_digest,
+        "campaign_authority_sha256": authority_digest,
+        "candidate_authority_sha256": selected_manifest_digest,
+        "authority_config_sha256": selected_authority["config_sha256"],
+        "caller_config_sha256": _sha256_bytes(caller_config_bytes),
+        "caller_config_semantic_sha256": canonical_sha256(caller_config),
+        "cncp_sha256": _sha256_bytes(cncp_bytes),
+        "cncp_semantic_sha256": canonical_sha256(cncp),
         "campaign_runner_sha256": campaign_digest,
-        "replay_sha256": replay_digest,
+        "native_output_sha256": native_digest,
+        "projection_receipt_sha256": projection_digest,
+        "screen_output_sha256": screen_output_digest,
+        "executable_artifact_sha256": _sha256_bytes(executable_bytes),
+        "candidate_config_sha256": _sha256_bytes(projection_config),
+        "generator_evidence_sha256": evidence["aggregate_sha256"],
+        "replay_sha256": replay["replay_sha256"],
         "screen_result_sha256": screen_digest,
     }
     receipt_body = {
         "schema": CAMPAIGN_SCHEMA,
         "status": "SCREEN108_SINGLE_ATTEMPT_REPLAY_VERIFIED",
         "candidate_id": candidate_id,
-        "model_candidate_id": spec.model_candidate_id,
+        "authority_name": spec.authority_name,
         "attempt_sha256": attempt["attempt_sha256"],
         "bindings": bindings,
         "artifacts": artifacts,
@@ -899,38 +888,36 @@ def run_campaign108(
             "verification_replay_output_scored": False,
             "retry_performed": False,
             "tuning_performed": False,
-            "labels_accessed_before_candidate_output_seal": False,
+            "labels_accessed_before_screen_output_seal": False,
             "source_selection_changed": False,
             "external_data_accessed": False,
             "rtl_or_ppa_evaluated": False,
         },
     }
     receipt = dict(receipt_body, receipt_sha256=canonical_sha256(receipt_body))
-    _exclusive_write(
-        paths["campaign_receipt"], _json_bytes(receipt), "campaign receipt"
-    )
+    _exclusive_write(paths["campaign_receipt"], _json_bytes(receipt), "campaign receipt")
     return receipt
 
 
 def verify_campaign108_receipt(
     receipt: Mapping[str, object], campaign_directory: Path
 ) -> str:
-    """Verify frozen authorities and all campaign artifact cross-bindings."""
+    """Verify source authority and every append-only campaign cross-binding."""
 
     required = {
-        "schema", "status", "candidate_id", "model_candidate_id",
-        "attempt_sha256", "bindings", "artifacts", "policy", "receipt_sha256",
+        "schema", "status", "candidate_id", "authority_name", "attempt_sha256",
+        "bindings", "artifacts", "policy", "receipt_sha256",
     }
     if not isinstance(receipt, Mapping) or set(receipt) != required:
         raise Campaign108Error("campaign receipt field schema differs")
     if (
-        receipt["schema"] != CAMPAIGN_SCHEMA
-        or receipt["status"] != "SCREEN108_SINGLE_ATTEMPT_REPLAY_VERIFIED"
+        receipt.get("schema") != CAMPAIGN_SCHEMA
+        or receipt.get("status") != "SCREEN108_SINGLE_ATTEMPT_REPLAY_VERIFIED"
     ):
         raise Campaign108Error("campaign receipt schema or status differs")
-    spec = _candidate(receipt["candidate_id"])
-    if receipt["model_candidate_id"] != spec.model_candidate_id:
-        raise Campaign108Error("campaign model identity differs")
+    spec = _candidate(receipt.get("candidate_id"))
+    if receipt.get("authority_name") != spec.authority_name:
+        raise Campaign108Error("campaign authority name differs")
     expected_policy = {
         "attempt_count": 1,
         "adapter_execution_count": 2,
@@ -939,202 +926,122 @@ def verify_campaign108_receipt(
         "verification_replay_output_scored": False,
         "retry_performed": False,
         "tuning_performed": False,
-        "labels_accessed_before_candidate_output_seal": False,
+        "labels_accessed_before_screen_output_seal": False,
         "source_selection_changed": False,
         "external_data_accessed": False,
         "rtl_or_ppa_evaluated": False,
     }
-    if receipt["policy"] != expected_policy:
+    if receipt.get("policy") != expected_policy:
         raise Campaign108Error("campaign receipt policy boundary differs")
-    unsigned_receipt = dict(receipt)
-    supplied = unsigned_receipt.pop("receipt_sha256", None)
-    if supplied != canonical_sha256(unsigned_receipt):
+    unsigned = dict(receipt)
+    receipt_digest = unsigned.pop("receipt_sha256", None)
+    if receipt_digest != canonical_sha256(unsigned):
         raise Campaign108Error("campaign receipt aggregate seal differs")
 
-    bindings = receipt["bindings"]
-    binding_fields = {
-        "output_adapter_path", "output_adapter_sha256",
-        "candidate_executable_path", "candidate_executable_sha256",
-        "model_path", "model_sha256", "dependency_manifest_sha256",
-        "candidate_config_sha256", "candidate_config_semantic_sha256",
-        "cncp_sha256", "cncp_semantic_sha256", "generator_evidence_sha256",
-        "candidate_output_sha256", "campaign_runner_sha256", "replay_sha256",
-        "screen_result_sha256",
+    authority, selected, unused = _campaign_authority(spec)
+    del unused
+    bindings = receipt.get("bindings")
+    expected_binding_fields = {
+        "campaign_authority_sha256", "candidate_authority_sha256",
+        "authority_config_sha256", "caller_config_sha256",
+        "caller_config_semantic_sha256", "cncp_sha256", "cncp_semantic_sha256",
+        "campaign_runner_sha256", "native_output_sha256",
+        "projection_receipt_sha256", "screen_output_sha256",
+        "executable_artifact_sha256", "candidate_config_sha256",
+        "generator_evidence_sha256", "replay_sha256", "screen_result_sha256",
     }
-    if not isinstance(bindings, Mapping) or set(bindings) != binding_fields:
+    if not isinstance(bindings, Mapping) or set(bindings) != expected_binding_fields:
         raise Campaign108Error("campaign digest bindings differ")
-    for field in binding_fields - {
-        "output_adapter_path", "candidate_executable_path", "model_path"
-    }:
+    for field in expected_binding_fields:
         _sha256(bindings[field], "campaign %s" % field)
     if (
-        bindings["output_adapter_path"]
-        != _relative_authority_path(spec.output_adapter_path)
-        or bindings["output_adapter_sha256"] != spec.output_adapter_sha256
-        or bindings["candidate_executable_path"]
-        != _relative_authority_path(spec.candidate_executable_path)
-        or bindings["candidate_executable_sha256"]
-        != spec.candidate_executable_sha256
-        or bindings["model_path"] != _relative_authority_path(spec.model_path)
-        or bindings["model_sha256"] != spec.model_sha256
-        or bindings["candidate_config_sha256"] != spec.config_sha256
-        or bindings["campaign_runner_sha256"]
-        != _sha256_bytes(_read_bytes(Path(__file__), "campaign runner"))
+        bindings["campaign_authority_sha256"] != authority["aggregate_sha256"]
+        or bindings["candidate_authority_sha256"] != selected["manifest_sha256"]
+        or bindings["authority_config_sha256"] != selected["config_sha256"]
+        or bindings["caller_config_sha256"] != bindings["candidate_config_sha256"]
+        or bindings["campaign_runner_sha256"] != _sha256_bytes(_read_bytes(Path(__file__), "campaign runner"))
     ):
-        raise Campaign108Error("campaign frozen authority binding differs")
-    _verify_authorities(spec)
+        raise Campaign108Error("campaign authority binding differs")
 
-    artifacts = receipt["artifacts"]
     artifact_names = {
-        "attempt", "dependency_manifest", "generator_evidence",
-        "candidate_output", "replay", "screen_result",
+        "attempt", "campaign_authority", "native_output", "projection_receipt",
+        "screen_output", "executable_artifact", "generator_evidence", "replay",
+        "screen_result",
     }
+    artifacts = receipt.get("artifacts")
     if not isinstance(artifacts, Mapping) or set(artifacts) != artifact_names:
         raise Campaign108Error("campaign artifact index differs")
-    root = Path(campaign_directory)
-    expected_paths = _artifact_paths(root, str(receipt["candidate_id"]))
-    decoded = {}
-    for name, identity in artifacts.items():
+    paths = _artifact_paths(Path(campaign_directory), spec.candidate_id)
+    payloads = {}
+    for name in artifact_names:
+        identity = artifacts[name]
         if not isinstance(identity, Mapping) or set(identity) != {
             "path", "size_bytes", "sha256", "semantic_sha256"
         }:
             raise Campaign108Error("campaign artifact identity differs")
-        relative = identity["path"]
-        if type(relative) is not str or relative != expected_paths[name].name:
+        if identity["path"] != paths[name].name:
             raise Campaign108Error("campaign artifact path differs")
-        payload = _read_bytes(root / relative, "%s artifact" % name)
-        if (
-            len(payload) != identity["size_bytes"]
-            or _sha256_bytes(payload) != identity["sha256"]
-        ):
+        payload = _read_bytes(paths[name], "%s artifact" % name)
+        if len(payload) != identity["size_bytes"] or _sha256_bytes(payload) != identity["sha256"]:
             raise Campaign108Error("campaign artifact bytes differ")
-        decoded[name] = _read_json_bytes(payload, "%s artifact" % name)
+        payloads[name] = payload
 
-    attempt = decoded["attempt"]
-    attempt_unsigned = dict(attempt)
-    attempt_digest = attempt_unsigned.pop("attempt_sha256", None)
-    attempt_fields = {
-        "schema", "candidate_id", "model_candidate_id", "attempt_index",
-        "output_adapter_path", "output_adapter_sha256",
-        "candidate_executable_path", "candidate_executable_sha256",
-        "model_path", "model_sha256", "dependency_manifest_sha256",
-        "candidate_config_sha256", "candidate_config_semantic_sha256",
-        "cncp_sha256", "cncp_semantic_sha256", "campaign_runner_sha256",
-        "adapter_execution_count", "verification_replay_count",
-        "verification_replay_is_tuning",
-        "retry_allowed", "tuning_allowed", "attempt_sha256",
+    decoded = {
+        name: _read_json_bytes(payloads[name], "%s artifact" % name)
+        for name in artifact_names - {"executable_artifact"}
     }
+    if decoded["campaign_authority"] != authority:
+        raise Campaign108Error("stored campaign authority differs")
+    native = decoded["native_output"]
+    native_unsigned = dict(native)
+    native_digest = native_unsigned.pop("aggregate_sha256", None)
     if (
-        set(attempt) != attempt_fields
-        or attempt.get("schema") != ATTEMPT_SCHEMA
-        or attempt.get("candidate_id") != receipt["candidate_id"]
-        or attempt.get("model_candidate_id") != spec.model_candidate_id
-        or type(attempt.get("attempt_index")) is not int
-        or attempt.get("attempt_index") != 1
-        or attempt.get("retry_allowed") is not False
-        or attempt.get("tuning_allowed") is not False
-        or attempt.get("adapter_execution_count") != 2
-        or attempt.get("verification_replay_count") != 1
-        or attempt.get("verification_replay_is_tuning") is not False
-        or attempt_digest != canonical_sha256(attempt_unsigned)
-        or attempt_digest != receipt["attempt_sha256"]
-        or attempt_digest != artifacts["attempt"]["semantic_sha256"]
+        native.get("candidate_id") != spec.candidate_id
+        or native.get("schema") != spec.native_schema
+        or native_digest != canonical_sha256(native_unsigned)
+        or native_digest != bindings["native_output_sha256"]
     ):
-        raise Campaign108Error("campaign attempt seal differs")
-    for field in binding_fields - {
-        "generator_evidence_sha256", "candidate_output_sha256",
-        "replay_sha256", "screen_result_sha256",
-    }:
-        if attempt.get(field) != bindings[field]:
-            raise Campaign108Error("campaign attempt digest binding differs")
-
-    candidate_output = decoded["candidate_output"]
-    output_unsigned = dict(candidate_output)
-    output_digest = output_unsigned.pop("aggregate_sha256", None)
+        raise Campaign108Error("stored native output differs")
+    screen_output = decoded["screen_output"]
+    screen_unsigned = dict(screen_output)
+    screen_digest = screen_unsigned.pop("aggregate_sha256", None)
     if (
-        set(candidate_output) != {
+        set(screen_output) != {
             "schema", "candidate_id", "adapter_aggregate_sha256",
             "neutral_input_sha256", "candidate_executable_sha256",
             "candidate_config_sha256", "windows", "aggregate_sha256",
         }
-        or candidate_output.get("schema") != screen108.CANDIDATE_OUTPUT_SCHEMA
-        or candidate_output.get("candidate_id") != receipt["candidate_id"]
-        or candidate_output.get("candidate_executable_sha256")
-        != bindings["candidate_executable_sha256"]
-        or candidate_output.get("candidate_config_sha256")
-        != bindings["candidate_config_sha256"]
-        or output_digest != canonical_sha256(output_unsigned)
-        or output_digest != bindings["candidate_output_sha256"]
-        or output_digest != artifacts["candidate_output"]["semantic_sha256"]
+        or screen_output.get("schema") != screen108.CANDIDATE_OUTPUT_SCHEMA
+        or screen_output.get("candidate_id") != spec.candidate_id
+        or screen_output.get("adapter_aggregate_sha256") != native.get("adapter_aggregate_sha256")
+        or screen_output.get("neutral_input_sha256") != native.get("neutral_input_sha256")
+        or screen_output.get("candidate_executable_sha256") != _sha256_bytes(payloads["executable_artifact"])
+        or screen_output.get("candidate_config_sha256") != bindings["candidate_config_sha256"]
+        or screen_digest != canonical_sha256(screen_unsigned)
+        or screen_digest != bindings["screen_output_sha256"]
     ):
-        raise Campaign108Error("campaign candidate output seal differs")
-
-    evidence = decoded["generator_evidence"]
-    evidence_unsigned = dict(evidence)
-    evidence_digest = evidence_unsigned.pop("aggregate_sha256", None)
-    windows = evidence.get("windows")
-    dispatch = windows[0] if isinstance(windows, list) and len(windows) == 1 else None
-    output_windows = candidate_output.get("windows")
-    if not isinstance(output_windows, list):
-        raise Campaign108Error("campaign candidate output windows differ")
-    output_window_ids = [
-        row.get("window_id") if isinstance(row, Mapping) else None
-        for row in output_windows
-    ]
+        raise Campaign108Error("stored screen projection differs")
+    projection_receipt = decoded["projection_receipt"]
+    projection_unsigned = dict(projection_receipt)
+    projection_digest = projection_unsigned.pop("projection_receipt_sha256", None)
     if (
-        set(evidence) != {
-            "schema", "candidate_id", "model_candidate_id", "windows",
-            "aggregate_sha256",
+        set(projection_receipt) != {
+            "schema", "candidate_id", "native_schema", "native_aggregate_sha256",
+            "projected_aggregate_sha256", "candidate_executable_sha256",
+            "candidate_config_sha256", "windows", "projection_receipt_sha256",
         }
-        or evidence.get("schema") != GENERATOR_EVIDENCE_SCHEMA
-        or evidence.get("candidate_id") != receipt["candidate_id"]
-        or evidence.get("model_candidate_id") != spec.model_candidate_id
-        or not isinstance(dispatch, Mapping)
-        or set(dispatch) != {
-            "output_adapter_path", "output_adapter_sha256",
-            "candidate_executable_path", "candidate_executable_sha256",
-            "model_path", "model_sha256", "dependency_manifest_sha256",
-            "candidate_config_sha256", "campaign_runner_sha256",
-            "candidate_output_sha256",
-            "ordered_window_ids", "ordered_window_ids_sha256",
-        }
-        or dispatch.get("output_adapter_path") != bindings["output_adapter_path"]
-        or dispatch.get("output_adapter_sha256") != bindings["output_adapter_sha256"]
-        or dispatch.get("candidate_executable_path")
-        != bindings["candidate_executable_path"]
-        or dispatch.get("candidate_executable_sha256")
-        != bindings["candidate_executable_sha256"]
-        or dispatch.get("model_path") != bindings["model_path"]
-        or dispatch.get("model_sha256") != bindings["model_sha256"]
-        or dispatch.get("dependency_manifest_sha256")
-        != bindings["dependency_manifest_sha256"]
-        or dispatch.get("candidate_config_sha256")
+        or projection_receipt.get("candidate_id") != spec.candidate_id
+        or projection_receipt.get("native_schema") != native.get("schema")
+        or projection_receipt.get("native_aggregate_sha256") != native_digest
+        or projection_receipt.get("projected_aggregate_sha256") != screen_digest
+        or projection_receipt.get("candidate_executable_sha256")
+        != _sha256_bytes(payloads["executable_artifact"])
+        or projection_receipt.get("candidate_config_sha256")
         != bindings["candidate_config_sha256"]
-        or dispatch.get("campaign_runner_sha256")
-        != bindings["campaign_runner_sha256"]
-        or dispatch.get("candidate_output_sha256") != output_digest
-        or dispatch.get("ordered_window_ids") != output_window_ids
-        or dispatch.get("ordered_window_ids_sha256")
-        != canonical_sha256(output_window_ids)
-        or evidence_digest != canonical_sha256(evidence_unsigned)
-        or evidence_digest != bindings["generator_evidence_sha256"]
-        or evidence_digest != artifacts["generator_evidence"]["semantic_sha256"]
+        or projection_digest != canonical_sha256(projection_unsigned)
+        or projection_digest != bindings["projection_receipt_sha256"]
     ):
-        raise Campaign108Error("campaign adapter dispatch seal differs")
-
-    dependency_manifest = decoded["dependency_manifest"]
-    expected_manifest, unused_snapshots = _dependency_manifest(
-        str(receipt["candidate_id"])
-    )
-    del unused_snapshots
-    if (
-        dependency_manifest != expected_manifest
-        or dependency_manifest.get("manifest_sha256")
-        != bindings["dependency_manifest_sha256"]
-        or dependency_manifest.get("manifest_sha256")
-        != artifacts["dependency_manifest"]["semantic_sha256"]
-    ):
-        raise Campaign108Error("campaign dependency manifest differs")
+        raise Campaign108Error("stored projection receipt differs")
 
     replay = decoded["replay"]
     replay_unsigned = dict(replay)
@@ -1142,59 +1049,130 @@ def verify_campaign108_receipt(
     if (
         set(replay) != {
             "schema", "candidate_id", "mode", "neutral_input_sha256",
-            "adapter_execution_count", "production_output_bytes_sha256",
-            "replay_output_bytes_sha256", "production_evidence_bytes_sha256",
-            "replay_evidence_bytes_sha256", "candidate_output_byte_identical",
-            "evidence_byte_identical", "replay_used_for_tuning",
-            "replay_output_used_for_screen", "replay_sha256",
+            "adapter_execution_count", "production_native_bytes_sha256",
+            "replay_native_bytes_sha256", "native_output_byte_identical",
+            "replay_used_for_tuning", "replay_output_used_for_screen",
+            "replay_sha256",
         }
         or replay.get("schema") != REPLAY_SCHEMA
-        or replay.get("candidate_id") != receipt["candidate_id"]
+        or replay.get("candidate_id") != spec.candidate_id
         or replay.get("mode") != "verifier_replay"
-        or replay.get("neutral_input_sha256")
-        != candidate_output.get("neutral_input_sha256")
+        or replay.get("neutral_input_sha256") != native.get("neutral_input_sha256")
         or replay.get("adapter_execution_count") != 2
-        or replay.get("candidate_output_byte_identical") is not True
-        or replay.get("evidence_byte_identical") is not True
+        or replay.get("native_output_byte_identical") is not True
         or replay.get("replay_used_for_tuning") is not False
         or replay.get("replay_output_used_for_screen") is not False
-        or replay.get("production_output_bytes_sha256")
-        != artifacts["candidate_output"]["sha256"]
-        or replay.get("replay_output_bytes_sha256")
-        != artifacts["candidate_output"]["sha256"]
-        or replay.get("production_evidence_bytes_sha256")
-        != artifacts["generator_evidence"]["sha256"]
-        or replay.get("replay_evidence_bytes_sha256")
-        != artifacts["generator_evidence"]["sha256"]
+        or replay.get("production_native_bytes_sha256") != artifacts["native_output"]["sha256"]
+        or replay.get("replay_native_bytes_sha256") != artifacts["native_output"]["sha256"]
         or replay_digest != canonical_sha256(replay_unsigned)
         or replay_digest != bindings["replay_sha256"]
-        or replay_digest != artifacts["replay"]["semantic_sha256"]
     ):
         raise Campaign108Error("campaign verifier replay seal differs")
-
-    screen_result = decoded["screen_result"]
-    screen_digest = screen108.verify_screen108_result_envelope(screen_result)
-    provenance = screen_result.get("provenance")
+    evidence = decoded["generator_evidence"]
+    evidence_unsigned = dict(evidence)
+    evidence_digest = evidence_unsigned.pop("aggregate_sha256", None)
+    native_windows = native.get("windows")
+    ordered_window_ids = [
+        row.get("window_id") if isinstance(row, Mapping) else None
+        for row in native_windows
+    ] if isinstance(native_windows, list) else None
     if (
-        screen_result.get("candidate_id") != receipt["candidate_id"]
-        or canonical_sha256(screen_result.get("cncp"))
-        != bindings["cncp_semantic_sha256"]
+        set(evidence) != {
+            "schema", "candidate_id", "authority_name",
+            "campaign_authority_sha256", "candidate_authority_sha256",
+            "native_output_sha256", "projection_receipt_sha256",
+            "screen_output_sha256", "executable_artifact_sha256",
+            "candidate_config_sha256", "campaign_runner_sha256",
+            "ordered_window_ids", "aggregate_sha256",
+        }
+        or evidence.get("schema") != GENERATOR_EVIDENCE_SCHEMA
+        or evidence.get("candidate_id") != spec.candidate_id
+        or evidence.get("authority_name") != spec.authority_name
+        or evidence.get("campaign_authority_sha256") != bindings["campaign_authority_sha256"]
+        or evidence.get("candidate_authority_sha256")
+        != bindings["candidate_authority_sha256"]
+        or evidence.get("native_output_sha256") != native_digest
+        or evidence.get("projection_receipt_sha256") != bindings["projection_receipt_sha256"]
+        or evidence.get("screen_output_sha256") != screen_digest
+        or evidence.get("executable_artifact_sha256") != bindings["executable_artifact_sha256"]
+        or evidence.get("candidate_config_sha256") != bindings["candidate_config_sha256"]
+        or evidence.get("campaign_runner_sha256") != bindings["campaign_runner_sha256"]
+        or evidence.get("ordered_window_ids") != ordered_window_ids
+        or evidence_digest != canonical_sha256(evidence_unsigned)
+        or evidence_digest != bindings["generator_evidence_sha256"]
+    ):
+        raise Campaign108Error("campaign generator evidence differs")
+    attempt = decoded["attempt"]
+    attempt_unsigned = dict(attempt)
+    attempt_digest = attempt_unsigned.pop("attempt_sha256", None)
+    if (
+        set(attempt) != {
+            "schema", "candidate_id", "authority_name", "attempt_index",
+            "campaign_authority_sha256", "candidate_authority_sha256",
+            "authority_config_sha256", "caller_config_sha256",
+            "caller_config_semantic_sha256", "cncp_sha256",
+            "cncp_semantic_sha256", "campaign_runner_sha256",
+            "adapter_execution_count", "verification_replay_count",
+            "verification_replay_is_tuning", "retry_allowed", "tuning_allowed",
+            "attempt_sha256",
+        }
+        or attempt.get("schema") != ATTEMPT_SCHEMA
+        or attempt.get("candidate_id") != spec.candidate_id
+        or attempt.get("authority_name") != spec.authority_name
+        or attempt.get("attempt_index") != 1
+        or attempt.get("adapter_execution_count") != 2
+        or attempt.get("verification_replay_count") != 1
+        or attempt.get("verification_replay_is_tuning") is not False
+        or attempt.get("retry_allowed") is not False
+        or attempt.get("tuning_allowed") is not False
+        or any(
+            attempt.get(field) != bindings[field]
+            for field in (
+                "campaign_authority_sha256", "candidate_authority_sha256",
+                "authority_config_sha256", "caller_config_sha256",
+                "caller_config_semantic_sha256", "cncp_sha256",
+                "cncp_semantic_sha256", "campaign_runner_sha256",
+            )
+        )
+        or attempt_digest != canonical_sha256(attempt_unsigned)
+        or attempt_digest != receipt.get("attempt_sha256")
+    ):
+        raise Campaign108Error("campaign attempt seal differs")
+    result = decoded["screen_result"]
+    result_digest = screen108.verify_screen108_result_envelope(result)
+    provenance = result.get("provenance")
+    if (
+        result.get("candidate_id") != spec.candidate_id
+        or canonical_sha256(_screen_result_cncp(result)) != bindings["cncp_semantic_sha256"]
         or not isinstance(provenance, Mapping)
-        or provenance.get("candidate_output_sha256") != output_digest
-        or provenance.get("candidate_executable_sha256")
-        != bindings["candidate_executable_sha256"]
-        or provenance.get("candidate_config_sha256")
-        != bindings["candidate_config_sha256"]
-        or screen_digest != bindings["screen_result_sha256"]
-        or screen_digest != artifacts["screen_result"]["semantic_sha256"]
+        or provenance.get("candidate_output_sha256") != screen_digest
+        or provenance.get("candidate_executable_sha256") != bindings["executable_artifact_sha256"]
+        or provenance.get("candidate_config_sha256") != bindings["candidate_config_sha256"]
+        or result_digest != bindings["screen_result_sha256"]
     ):
         raise Campaign108Error("campaign screen result binding differs")
-    return str(supplied)
+    expected_semantic = {
+        "attempt": attempt_digest,
+        "campaign_authority": bindings["campaign_authority_sha256"],
+        "native_output": native_digest,
+        "projection_receipt": projection_digest,
+        "screen_output": screen_digest,
+        "executable_artifact": _sha256_bytes(payloads["executable_artifact"]),
+        "generator_evidence": evidence_digest,
+        "replay": replay_digest,
+        "screen_result": result_digest,
+    }
+    if any(
+        artifacts[name].get("semantic_sha256") != digest
+        for name, digest in expected_semantic.items()
+    ):
+        raise Campaign108Error("campaign artifact semantic binding differs")
+    return str(receipt_digest)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Dispatch exactly one frozen Stage3 adapter to locked NEW108"
+        description="Dispatch exactly one source-bound Stage3 adapter to locked NEW108"
     )
     parser.add_argument("--candidate-id", choices=FROZEN_CANDIDATE_IDS, required=True)
     parser.add_argument("--dataset-dir", type=Path, required=True)
@@ -1203,11 +1181,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--campaign-dir", type=Path, required=True)
     args = parser.parse_args(argv)
     receipt = run_campaign108(
-        args.candidate_id,
-        args.dataset_dir,
-        args.config,
-        args.cncp,
-        args.campaign_dir,
+        args.candidate_id, args.dataset_dir, args.config, args.cncp, args.campaign_dir
     )
     print("receipt_sha256=%s" % receipt["receipt_sha256"])
     return 0
@@ -1222,20 +1196,9 @@ if __name__ == "__main__":
 
 
 __all__ = (
-    "ATTEMPT_SCHEMA",
-    "CAMPAIGN_SCHEMA",
-    "DEPENDENCY_MANIFEST_SCHEMA",
-    "DSPB_ID",
-    "FROZEN_CANDIDATE_IDS",
-    "GENERATOR_EVIDENCE_SCHEMA",
-    "NeutralAdapterView",
-    "NeutralBaselineView",
-    "RG3_ID",
-    "REPLAY_SCHEMA",
-    "SO3_PLL_ID",
-    "Campaign108Error",
-    "frozen_candidate_config",
-    "frozen_candidate_config_bytes",
-    "run_campaign108",
+    "ATTEMPT_SCHEMA", "CAMPAIGN_SCHEMA", "DSPB_ID", "FROZEN_CANDIDATE_IDS",
+    "GENERATOR_EVIDENCE_SCHEMA", "NeutralAdapterView", "NeutralBaselineView",
+    "RG3_ID", "REPLAY_SCHEMA", "SO3_PLL_ID", "Campaign108Error",
+    "frozen_candidate_config", "frozen_candidate_config_bytes", "run_campaign108",
     "verify_campaign108_receipt",
 )

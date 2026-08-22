@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from copy import deepcopy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
@@ -10,10 +11,13 @@ import tempfile
 import unittest
 from unittest import mock
 
-from benchmarks.redred_mc_wtb_predictor_stage3 import campaign108, screen108
+from benchmarks.redred_mc_wtb_predictor_stage3 import (
+    campaign108,
+    candidate_authority,
+    screen108,
+)
 from benchmarks.redred_mc_wtb_predictor_stage3.campaign108 import (
     Campaign108Error,
-    frozen_candidate_config_bytes,
     run_campaign108,
     verify_campaign108_receipt,
 )
@@ -31,9 +35,6 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     pose_timestamp_to_cycle,
     timestamp_to_cycle,
 )
-
-
-ZERO_SHA = "0" * 64
 
 
 def _quaternion(angle):
@@ -77,7 +78,7 @@ def _event(event_id, timestamp_ns, is_query, angle, pose_index):
 
 class ForbiddenLabels(dict):
     def _forbidden(self, *args, **kwargs):
-        raise AssertionError("label sidecar was accessed before candidate seal")
+        raise AssertionError("label sidecar was accessed before screen")
 
     __getitem__ = _forbidden
     __bool__ = _forbidden
@@ -88,7 +89,6 @@ class ForbiddenLabels(dict):
     items = _forbidden
     keys = _forbidden
     values = _forbidden
-    copy = _forbidden
 
 
 def _fixture(same_edge_angle=None):
@@ -110,15 +110,15 @@ def _fixture(same_edge_angle=None):
         _event(11, 50_000_000, True, 0.10, 2),
         _event(12, 50_100_000, True, 0.20, 3 if same_edge_angle is not None else 2),
     )
-    poses_tuple = tuple(poses)
+    pose_values = tuple(poses)
     baseline = evaluate_current_cav_registry(
-        (registry,), {registry.window_id: events}, {registry.window_id: poses_tuple}
+        (registry,), {registry.window_id: events}, {registry.window_id: pose_values}
     )
     bundle = New108AdapterBundle(
         {},
         (registry,),
         {registry.window_id: events},
-        {registry.window_id: poses_tuple},
+        {registry.window_id: pose_values},
         ForbiddenLabels(),
         {"aggregate_sha256": "1" * 64},
     )
@@ -146,644 +146,532 @@ def _cncp():
     }
 
 
-def _fixture_screen_result(
-    candidate_id,
-    candidate_output_sha256,
-    candidate_executable_sha256,
-    candidate_config_sha256,
-    cncp,
-):
-    body = {
-        "schema": "fixture-screen-result/v1",
-        "status": "FIXTURE_ONLY",
-        "candidate_id": candidate_id,
-        "cncp": cncp,
-        "provenance": {
-            "candidate_output_sha256": candidate_output_sha256,
-            "candidate_executable_sha256": candidate_executable_sha256,
-            "candidate_config_sha256": candidate_config_sha256,
-        },
-    }
-    return dict(body, result_sha256=canonical_sha256(body))
+@dataclass(frozen=True)
+class FakeProjection:
+    screen_output: object
+    projection_receipt: object
+    executable_artifact_bytes: bytes
+    config_bytes: bytes
 
 
-def _event_row(output, event_id):
-    return next(
-        row
-        for window in output["windows"]
-        for row in window["events"]
-        if row["event_id"] == event_id
+def _fake_projection(native_output, config_bytes=None):
+    candidate_id = native_output["candidate_id"]
+    executable = ("fixture-executable:%s\n" % candidate_id).encode("ascii")
+    if config_bytes is None:
+        config_bytes = campaign108.frozen_candidate_config_bytes(candidate_id)
+    event_fields = screen108._OUTPUT_EVENT_FIELDS - frozenset(("decision_sha256",))
+    windows = []
+    for native_window in native_output["windows"]:
+        events = []
+        for native_event in native_window["events"]:
+            row = {field: native_event[field] for field in event_fields}
+            row["route"] = native_event["route"].lower()
+            if not native_event["candidate_used"]:
+                row["model_id"] = "CURRENT_CAV"
+                row["world_ray"] = None
+            events.append(row)
+        windows.append({"window_id": native_window["window_id"], "events": events})
+    screen_output = screen108.seal_candidate_output(
+        candidate_id,
+        native_output["adapter_aggregate_sha256"],
+        native_output["neutral_input_sha256"],
+        hashlib.sha256(executable).hexdigest(),
+        hashlib.sha256(config_bytes).hexdigest(),
+        windows,
     )
-
-
-def _bundle_with_event_ray(bundle, event_id, angle):
-    event_streams = dict(bundle.event_streams)
-    window_id = bundle.neutral_registry[0].window_id
-    events = []
-    for event in event_streams[window_id]:
-        if event.event_id != event_id:
-            events.append(event)
-            continue
-        ray = _ray(angle)
-        events.append(NeutralEventInput(
-            event.event_id,
-            event.timestamp_ns,
-            event.polarity,
-            event.is_query,
-            ray,
-            event.causal_pose_source_index,
-            canonical_event_content_sha256(
-                event.event_id,
-                event.timestamp_ns,
-                event.polarity,
-                event.is_query,
-                ray,
-                event.causal_pose_source_index,
-                event.transform_guard_valid,
+    receipt_windows = []
+    for native_window, projected_window in zip(
+        native_output["windows"], screen_output["windows"]
+    ):
+        event_bindings = [
+            {
+                "event_id": native_event["event_id"],
+                "source_decision_sha256": native_event["decision_sha256"],
+                "projected_decision_sha256": projected_event["decision_sha256"],
+            }
+            for native_event, projected_event in zip(
+                native_window["events"], projected_window["events"]
+            )
+        ]
+        window_body = {
+            "window_id": native_window["window_id"],
+            "source_window_sha256": native_window.get(
+                "window_sha256", canonical_sha256(native_window)
             ),
-            event.transform_guard_valid,
+            "source_events_sha256": native_window["events_sha256"],
+            "projected_events_sha256": projected_window["events_sha256"],
+            "event_bindings": event_bindings,
+            "event_bindings_sha256": canonical_sha256(event_bindings),
+        }
+        receipt_windows.append(dict(
+            window_body,
+            window_projection_sha256=canonical_sha256(window_body),
         ))
-    event_streams[window_id] = tuple(events)
-    return New108AdapterBundle(
-        bundle.selector_registry,
-        bundle.neutral_registry,
-        event_streams,
-        bundle.pose_streams,
-        ForbiddenLabels(),
-        bundle.provenance_seal,
+    receipt_body = {
+        "schema": "fixture-screen-projection/v1",
+        "candidate_id": candidate_id,
+        "native_schema": native_output["schema"],
+        "native_aggregate_sha256": native_output["aggregate_sha256"],
+        "projected_aggregate_sha256": screen_output["aggregate_sha256"],
+        "candidate_executable_sha256": hashlib.sha256(executable).hexdigest(),
+        "candidate_config_sha256": hashlib.sha256(config_bytes).hexdigest(),
+        "windows": receipt_windows,
+    }
+    receipt = dict(
+        receipt_body,
+        projection_receipt_sha256=canonical_sha256(receipt_body),
     )
+    return FakeProjection(screen_output, receipt, executable, config_bytes)
 
 
-def _reseal_output(value):
-    output = deepcopy(value)
-    for window in output["windows"]:
-        for event in window["events"]:
-            body = dict(event)
-            body.pop("decision_sha256", None)
-            event["decision_sha256"] = canonical_sha256(body)
-        window["events_sha256"] = canonical_sha256(window["events"])
-    unsigned = dict(output)
+def _reseal(value):
+    result = deepcopy(value)
+    unsigned = dict(result)
     unsigned.pop("aggregate_sha256", None)
-    output["aggregate_sha256"] = canonical_sha256(unsigned)
-    return output
+    result["aggregate_sha256"] = canonical_sha256(unsigned)
+    return result
 
 
 class Campaign108Tests(unittest.TestCase):
     def _files(self, root, candidate_id):
         config = root / "config.json"
         cncp = root / "cncp.json"
-        config.write_bytes(frozen_candidate_config_bytes(candidate_id))
+        config.write_bytes(campaign108.frozen_candidate_config_bytes(candidate_id))
         cncp.write_text(json.dumps(_cncp(), sort_keys=True), encoding="utf-8")
         return config, cncp
 
+    def _authority(self, spec):
+        selected = {
+            "candidate": spec.authority_name,
+            "native_candidate_id": spec.candidate_id,
+            "config_sha256": candidate_authority.candidate_config_sha256(
+                spec.authority_name
+            ),
+            "manifest_sha256": hashlib.sha256(
+                ("manifest:" + spec.authority_name).encode("ascii")
+            ).hexdigest(),
+        }
+        body = {
+            "schema": candidate_authority.CAMPAIGN_SCHEMA,
+            "candidate_order": list(candidate_authority.CANDIDATE_NAMES),
+            "candidates": [selected],
+        }
+        return dict(body, aggregate_sha256=canonical_sha256(body)), selected, ()
+
     def _screen(self, candidate_id, calls=None):
-        def locked_screen(dataset, output, executable, config, cncp):
+        def run(dataset, output_path, executable_path, config_path, cncp):
             if calls is not None:
                 calls.append("screen")
-            self.assertTrue(output.exists())
-            generated = json.loads(output.read_text(encoding="utf-8"))
-            return _fixture_screen_result(
-                candidate_id,
-                generated["aggregate_sha256"],
-                hashlib.sha256(executable.read_bytes()).hexdigest(),
-                hashlib.sha256(config.read_bytes()).hexdigest(),
-                cncp,
+            output = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                output["candidate_executable_sha256"],
+                hashlib.sha256(executable_path.read_bytes()).hexdigest(),
             )
+            self.assertEqual(
+                output["candidate_config_sha256"],
+                hashlib.sha256(config_path.read_bytes()).hexdigest(),
+            )
+            body = {
+                "schema": "fixture-screen-result/v1",
+                "status": "FIXTURE_ONLY",
+                "candidate_id": candidate_id,
+                "cncp": {"declared_values": cncp},
+                "provenance": {
+                    "candidate_output_sha256": output["aggregate_sha256"],
+                    "candidate_executable_sha256": output[
+                        "candidate_executable_sha256"
+                    ],
+                    "candidate_config_sha256": output["candidate_config_sha256"],
+                },
+            }
+            return dict(body, result_sha256=canonical_sha256(body))
 
-        return locked_screen
+        return run
 
-    def test_registry_dispatches_exact_tested_adapters_and_authorities(self):
+    def _run_patches(self, stack, spec, bundle, baseline, projector, screen=None):
+        stack.enter_context(mock.patch.object(
+            campaign108, "_CANDIDATES", {spec.candidate_id: spec}
+        ))
+        stack.enter_context(mock.patch.object(
+            campaign108, "_campaign_authority", return_value=self._authority(spec)
+        ))
+        stack.enter_context(mock.patch.object(
+            campaign108, "_check_authority_unchanged", return_value=None
+        ))
+        stack.enter_context(mock.patch.object(
+            campaign108, "build_locked_new108_adapter", return_value=bundle
+        ))
+        stack.enter_context(mock.patch.object(
+            campaign108, "evaluate_current_cav_registry", return_value=baseline
+        ))
+        stack.enter_context(mock.patch.object(
+            campaign108, "_project_native_output", side_effect=projector
+        ))
+        stack.enter_context(mock.patch.object(
+            screen108,
+            "run_locked_screen108",
+            side_effect=screen or self._screen(spec.candidate_id),
+        ))
+        stack.enter_context(mock.patch.object(
+            screen108,
+            "verify_screen108_result_envelope",
+            side_effect=lambda value: value["result_sha256"],
+        ))
+
+    def test_current_authority_ids_and_source_closures_are_the_registry(self):
+        authority = candidate_authority.build_campaign_authority()
+        self.assertRegex(
+            candidate_authority.verify_campaign_authority(authority), r"^[0-9a-f]{64}$"
+        )
+        observed = tuple(row["native_candidate_id"] for row in authority["candidates"])
+        self.assertEqual(observed, campaign108.FROZEN_CANDIDATE_IDS)
+        for candidate_id in observed:
+            spec = campaign108._candidate(candidate_id)
+            self.assertEqual(spec.candidate_id, candidate_id)
+            self.assertNotIn("/", spec.artifact_stem)
+            self.assertNotIn(":", spec.artifact_stem)
+
+    def test_no_stale_literal_authority_tables_remain(self):
+        source = Path(campaign108.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("_EXPECTED_AUTHORITIES", source)
+        self.assertNotIn("_DEPENDENCY_AUTHORITIES", source)
+        self.assertIn("build_campaign_authority", source)
+        self.assertIn("verify_campaign_authority", source)
+
+    def test_actual_adapters_replay_rich_output_then_project_before_screen(self):
         bundle, baseline = _fixture()
-        neutral = campaign108._neutral_view(bundle)
-        neutral_baseline = campaign108._neutral_baseline_view(baseline, neutral)
         for candidate_id in campaign108.FROZEN_CANDIDATE_IDS:
-            with self.subTest(candidate_id=candidate_id):
-                spec = campaign108._candidate(candidate_id)
-                adapter_bytes, executable_bytes, model_bytes = (
-                    campaign108._verify_authorities(spec)
-                )
-                self.assertEqual(
-                    hashlib.sha256(adapter_bytes).hexdigest(),
-                    spec.output_adapter_sha256,
-                )
-                self.assertEqual(
-                    hashlib.sha256(executable_bytes).hexdigest(),
-                    spec.candidate_executable_sha256,
-                )
-                self.assertEqual(
-                    hashlib.sha256(model_bytes).hexdigest(), spec.model_sha256
-                )
-                self.assertEqual(
-                    hashlib.sha256(spec.config_bytes).hexdigest(), spec.config_sha256
-                )
-                output = spec.adapter(neutral, neutral_baseline)
-                self.assertEqual(output["candidate_id"], candidate_id)
-                self.assertEqual(
-                    output["candidate_executable_sha256"],
-                    spec.candidate_executable_sha256,
-                )
-                self.assertEqual(output["candidate_config_sha256"], spec.config_sha256)
-        with self.assertRaisesRegex(Campaign108Error, "frozen Stage3 registry"):
-            campaign108._candidate("RG3-TUNED-AFTER-RESULT")
+            with self.subTest(candidate_id=candidate_id), tempfile.TemporaryDirectory() as tmp:
+                original = campaign108._candidate(candidate_id)
+                calls = []
 
-    def test_same_edge_pose_mutation_cannot_change_same_edge_decision(self):
-        left_bundle, left_baseline = _fixture(same_edge_angle=0.4)
-        right_bundle, right_baseline = _fixture(same_edge_angle=-0.7)
-        left_neutral = campaign108._neutral_view(left_bundle)
-        right_neutral = campaign108._neutral_view(right_bundle)
-        left_baseline = campaign108._neutral_baseline_view(
-            left_baseline, left_neutral
-        )
-        right_baseline = campaign108._neutral_baseline_view(
-            right_baseline, right_neutral
-        )
-        for candidate_id in campaign108.FROZEN_CANDIDATE_IDS:
-            with self.subTest(candidate_id=candidate_id):
-                spec = campaign108._candidate(candidate_id)
-                left = spec.adapter(left_neutral, left_baseline)
-                right = spec.adapter(right_neutral, right_baseline)
-                self.assertEqual(_event_row(left, 11), _event_row(right, 11))
+                def adapter(neutral, neutral_baseline, original=original):
+                    self.assertIs(type(neutral), campaign108.NeutralAdapterView)
+                    self.assertFalse(hasattr(neutral, "selector_labels"))
+                    self.assertFalse(hasattr(neutral_baseline.windows[0], "query_events"))
+                    calls.append("adapter")
+                    return original.adapter(neutral, neutral_baseline)
 
-    def test_unrelated_event_ray_cannot_change_prior_event_decision(self):
-        left_bundle, left_baseline = _fixture()
-        right_bundle = _bundle_with_event_ray(left_bundle, 12, 1.7)
-        right_baseline = evaluate_current_cav_registry(
-            right_bundle.neutral_registry,
-            right_bundle.event_streams,
-            right_bundle.pose_streams,
-        )
-        left_neutral = campaign108._neutral_view(left_bundle)
-        right_neutral = campaign108._neutral_view(right_bundle)
-        left_baseline = campaign108._neutral_baseline_view(
-            left_baseline, left_neutral
-        )
-        right_baseline = campaign108._neutral_baseline_view(
-            right_baseline, right_neutral
-        )
-        for candidate_id in campaign108.FROZEN_CANDIDATE_IDS:
-            with self.subTest(candidate_id=candidate_id):
-                spec = campaign108._candidate(candidate_id)
-                left = spec.adapter(
-                    left_neutral, left_baseline
-                )
-                right = spec.adapter(
-                    right_neutral, right_baseline
-                )
-                self.assertEqual(_event_row(left, 11), _event_row(right, 11))
+                spec = replace(original, adapter=adapter)
 
-    def test_future_v2_row_fields_are_preserved_opaquely(self):
-        bundle, baseline = _fixture()
-        neutral = campaign108._neutral_view(bundle)
-        neutral_baseline = campaign108._neutral_baseline_view(baseline, neutral)
-        spec = campaign108._candidate(campaign108.RG3_ID)
-        output = deepcopy(spec.adapter(neutral, neutral_baseline))
-        event = output["windows"][0]["events"][0]
-        event["occurrence_cycle"] = event["decision_cycle"] - 1
-        event["state_sha256"] = "2" * 64
-        output = _reseal_output(output)
-        checked = campaign108._validate_adapter_output(
-            output, spec, neutral, neutral_baseline
-        )
-        self.assertEqual(
-            checked["windows"][0]["events"][0]["occurrence_cycle"],
-            event["decision_cycle"] - 1,
-        )
-        self.assertEqual(
-            checked["windows"][0]["events"][0]["state_sha256"], "2" * 64
-        )
+                def projector(native):
+                    calls.append("projector")
+                    self.assertNotEqual(native["schema"], screen108.CANDIDATE_OUTPUT_SCHEMA)
+                    return _fake_projection(native)
 
-    def test_single_attempt_persists_adapter_output_before_locked_screen(self):
-        bundle, baseline = _fixture()
+                root = Path(tmp)
+                config, cncp = self._files(root, candidate_id)
+                campaign_dir = root / "campaign"
+                with ExitStack() as stack:
+                    self._run_patches(
+                        stack, spec, bundle, baseline, projector,
+                        self._screen(candidate_id, calls),
+                    )
+                    receipt = run_campaign108(
+                        candidate_id, root / "dataset-not-opened", config, cncp,
+                        campaign_dir,
+                    )
+                self.assertEqual(calls, ["adapter", "adapter", "projector", "screen"])
+                paths = campaign108._artifact_paths(campaign_dir, candidate_id)
+                native = json.loads(paths["native_output"].read_text(encoding="utf-8"))
+                projected = json.loads(paths["screen_output"].read_text(encoding="utf-8"))
+                self.assertEqual(native["schema"], spec.native_schema)
+                self.assertEqual(projected["schema"], screen108.CANDIDATE_OUTPUT_SCHEMA)
+                self.assertTrue(paths["projection_receipt"].exists())
+                self.assertTrue(paths["executable_artifact"].exists())
+                self.assertTrue(paths["replay"].exists())
+                self.assertEqual(receipt["policy"]["attempt_count"], 1)
+                self.assertFalse(receipt["policy"]["verification_replay_is_tuning"])
+
+    def test_receipt_reopens_all_native_projection_and_screen_bindings(self):
         candidate_id = campaign108.RG3_ID
-        calls = []
-        original = campaign108._candidate(candidate_id)
-
-        def adapter(supplied_bundle, supplied_baseline):
-            self.assertIs(type(supplied_bundle), campaign108.NeutralAdapterView)
-            self.assertFalse(hasattr(supplied_bundle, "selector_labels"))
-            self.assertIs(
-                type(supplied_baseline), campaign108.NeutralBaselineView
-            )
-            self.assertFalse(hasattr(supplied_baseline.windows[0], "query_events"))
-            calls.append("adapter")
-            return original.adapter(supplied_bundle, supplied_baseline)
-
-        spec = replace(original, adapter=adapter)
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        spec = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
             config, cncp = self._files(root, candidate_id)
             campaign_dir = root / "campaign"
-            with mock.patch.dict(
-                campaign108._CANDIDATES, {candidate_id: spec}
-            ), mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ), mock.patch.object(
-                screen108,
-                "run_locked_screen108",
-                side_effect=self._screen(candidate_id, calls),
-            ) as screen, mock.patch.object(
-                screen108,
-                "verify_screen108_result_envelope",
-                side_effect=lambda value: value["result_sha256"],
-            ):
-                receipt = run_campaign108(
-                    candidate_id,
-                    root / "dataset-not-opened",
-                    config,
-                    cncp,
-                    campaign_dir,
-                )
-            self.assertEqual(calls, ["adapter", "adapter", "screen"])
-            screen.assert_called_once()
-            paths = campaign108._artifact_paths(campaign_dir, candidate_id)
-            output = json.loads(paths["candidate_output"].read_text(encoding="utf-8"))
-            direct_neutral = campaign108._neutral_view(bundle)
-            direct = original.adapter(
-                direct_neutral,
-                campaign108._neutral_baseline_view(baseline, direct_neutral),
-            )
-            self.assertEqual(output, direct)
-            self.assertEqual(receipt["candidate_id"], output["candidate_id"])
-            self.assertEqual(
-                receipt["bindings"]["output_adapter_sha256"],
-                spec.output_adapter_sha256,
-            )
-            self.assertEqual(receipt["policy"]["attempt_count"], 1)
-            self.assertEqual(receipt["policy"]["adapter_execution_count"], 2)
-            self.assertEqual(receipt["policy"]["verification_replay_count"], 1)
-            self.assertFalse(
-                receipt["policy"]["verification_replay_is_tuning"]
-            )
-            self.assertFalse(
-                receipt["policy"]["verification_replay_output_scored"]
-            )
-            replay = json.loads(paths["replay"].read_text(encoding="utf-8"))
-            self.assertTrue(replay["candidate_output_byte_identical"])
-            self.assertTrue(replay["evidence_byte_identical"])
-            self.assertEqual(
-                receipt["bindings"]["model_sha256"], spec.model_sha256
+            self._run_patches(stack, spec, bundle, baseline, _fake_projection)
+            receipt = run_campaign108(
+                candidate_id, root / "dataset", config, cncp, campaign_dir
             )
             self.assertRegex(
-                receipt["bindings"]["dependency_manifest_sha256"],
-                r"^[0-9a-f]{64}$",
+                verify_campaign108_receipt(receipt, campaign_dir), r"^[0-9a-f]{64}$"
             )
-            self.assertRegex(
-                receipt["bindings"]["campaign_runner_sha256"],
-                r"^[0-9a-f]{64}$",
-            )
-            with mock.patch.object(
-                screen108,
-                "verify_screen108_result_envelope",
-                side_effect=lambda value: value["result_sha256"],
-            ):
-                self.assertRegex(
-                    verify_campaign108_receipt(receipt, campaign_dir),
-                    r"^[0-9a-f]{64}$",
-                )
 
-    def test_semantically_equal_but_nonexact_config_bytes_are_rejected(self):
-        candidate_id = campaign108.SO3_PLL_ID
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+    def test_nonexact_and_projection_substituted_configs_fail_closed(self):
+        candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
             config, cncp = self._files(root, candidate_id)
-            parsed = json.loads(config.read_text(encoding="utf-8"))
-            config.write_text(json.dumps(parsed, indent=2, sort_keys=True), encoding="utf-8")
-            with mock.patch.object(
-                campaign108, "build_locked_new108_adapter"
-            ) as build, self.assertRaisesRegex(Campaign108Error, "config bytes"):
+            config.write_bytes(config.read_bytes() + b"\n")
+            with mock.patch.object(campaign108, "build_locked_new108_adapter") as build:
+                with self.assertRaisesRegex(Campaign108Error, "config bytes"):
+                    run_campaign108(
+                        candidate_id, root / "dataset", config, cncp, root / "campaign"
+                    )
+            build.assert_not_called()
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+
+            def wrong_config(native):
+                return _fake_projection(native, b"{}\n")
+
+            self._run_patches(stack, spec, bundle, baseline, wrong_config)
+            with self.assertRaisesRegex(Campaign108Error, "caller config bytes"):
                 run_campaign108(
                     candidate_id, root / "dataset", config, cncp, root / "campaign"
                 )
-            build.assert_not_called()
-            self.assertFalse((root / "campaign").exists())
 
-    def test_output_adapter_and_candidate_executable_drift_fail_preflight(self):
-        candidate_id = campaign108.DSPB_ID
-        spec = campaign108._candidate(candidate_id)
-        real_read = campaign108._read_bytes
-        for drift_where in ("output adapter", "candidate executable"):
-            with self.subTest(drift_where=drift_where), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                config, cncp = self._files(root, candidate_id)
-
-                def drifting_read(path, where):
-                    payload = real_read(path, where)
-                    return payload + b"fixture-drift" if where == drift_where else payload
-
-                with mock.patch.object(
-                    campaign108, "_read_bytes", side_effect=drifting_read
-                ), mock.patch.object(
-                    campaign108, "build_locked_new108_adapter"
-                ) as build, self.assertRaisesRegex(Campaign108Error, "frozen ID"):
-                    run_campaign108(
-                        candidate_id,
-                        root / "dataset",
-                        config,
-                        cncp,
-                        root / "campaign",
-                    )
-                build.assert_not_called()
-                self.assertFalse((root / "campaign").exists())
-        self.assertNotEqual(spec.output_adapter_path, spec.candidate_executable_path)
-
-    def test_dependency_source_substitution_fails_before_attempt(self):
+    def test_native_id_substitution_fails_before_replay(self):
         candidate_id = campaign108.RG3_ID
-        real_read = campaign108._read_bytes
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            config, cncp = self._files(root, candidate_id)
-
-            def substituted_read(path, where):
-                payload = real_read(path, where)
-                if where == "pose_geometry dependency":
-                    return payload + b"fixture-source-substitution"
-                return payload
-
-            with mock.patch.object(
-                campaign108, "_read_bytes", side_effect=substituted_read
-            ), mock.patch.object(
-                campaign108, "build_locked_new108_adapter"
-            ) as build, self.assertRaisesRegex(Campaign108Error, "frozen manifest"):
-                run_campaign108(
-                    candidate_id,
-                    root / "dataset",
-                    config,
-                    cncp,
-                    root / "campaign",
-                )
-            build.assert_not_called()
-            self.assertFalse((root / "campaign").exists())
-
-    def test_neutral_source_substitution_after_production_fails_before_replay(self):
-        candidate_id = campaign108.RG3_ID
-        bundle, baseline = _fixture()
-        substituted = _bundle_with_event_ray(bundle, 12, 1.4)
         original = campaign108._candidate(candidate_id)
-        adapter = mock.Mock()
+        bundle, baseline = _fixture()
 
-        def mutate_source(neutral, supplied_baseline):
-            output = original.adapter(neutral, supplied_baseline)
-            bundle.event_streams.clear()
-            bundle.event_streams.update(substituted.event_streams)
-            return output
+        def substitute(neutral, neutral_baseline):
+            value = deepcopy(original.adapter(neutral, neutral_baseline))
+            value["candidate_id"] = campaign108.DSPB_ID
+            return _reseal(value)
 
-        adapter.side_effect = mutate_source
-        spec = replace(original, adapter=adapter)
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        spec = replace(original, adapter=mock.Mock(side_effect=substitute))
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
             config, cncp = self._files(root, candidate_id)
-            with mock.patch.dict(
-                campaign108._CANDIDATES, {candidate_id: spec}
-            ), mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ), mock.patch.object(
-                screen108, "run_locked_screen108"
-            ) as screen, self.assertRaisesRegex(Campaign108Error, "neutral source changed"):
+            self._run_patches(stack, spec, bundle, baseline, _fake_projection)
+            with self.assertRaisesRegex(Campaign108Error, "frozen binding"):
                 run_campaign108(
-                    candidate_id,
-                    root / "dataset",
-                    config,
-                    cncp,
+                    candidate_id, root / "dataset", config, cncp, root / "campaign"
+                )
+            self.assertEqual(spec.adapter.call_count, 1)
+
+    def test_source_authority_failure_and_source_race_fail_closed(self):
+        spec = campaign108._candidate(campaign108.RG3_ID)
+        with mock.patch.object(
+            candidate_authority, "build_campaign_authority", return_value={}
+        ), mock.patch.object(
+            candidate_authority,
+            "verify_campaign_authority",
+            side_effect=candidate_authority.CandidateAuthorityError("stale source"),
+        ):
+            with self.assertRaisesRegex(Campaign108Error, "source authority"):
+                campaign108._campaign_authority(spec)
+
+        bundle, baseline = _fixture()
+        adapter = mock.Mock(side_effect=spec.adapter)
+        raced = replace(spec, adapter=adapter)
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, spec.candidate_id)
+            self._run_patches(stack, raced, bundle, baseline, _fake_projection)
+            stack.enter_context(mock.patch.object(
+                campaign108,
+                "_check_authority_unchanged",
+                side_effect=Campaign108Error("candidate source changed"),
+            ))
+            with self.assertRaisesRegex(Campaign108Error, "source changed"):
+                run_campaign108(
+                    spec.candidate_id, root / "dataset", config, cncp,
                     root / "campaign",
                 )
             self.assertEqual(adapter.call_count, 1)
+
+    def test_nondeterministic_native_replay_fails_before_projection_and_screen(self):
+        candidate_id = campaign108.RG3_ID
+        original = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        count = 0
+
+        def nondeterministic(neutral, neutral_baseline):
+            nonlocal count
+            count += 1
+            value = original.adapter(neutral, neutral_baseline)
+            if count == 2:
+                value = deepcopy(value)
+                value["replay_nonce"] = 1
+                value = _reseal(value)
+            return value
+
+        spec = replace(original, adapter=nondeterministic)
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            projector = mock.Mock(side_effect=_fake_projection)
+            screen = mock.Mock()
+            self._run_patches(stack, spec, bundle, baseline, projector, screen)
+            with self.assertRaisesRegex(Campaign108Error, "not byte-identical"):
+                run_campaign108(
+                    candidate_id, root / "dataset", config, cncp, root / "campaign"
+                )
+            self.assertEqual(count, 2)
+            projector.assert_not_called()
             screen.assert_not_called()
 
-    def test_native_candidate_id_substitution_is_rejected_before_replay(self):
+    def test_projection_id_executable_config_and_receipt_substitution_fail(self):
         candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
         bundle, baseline = _fixture()
-        original = campaign108._candidate(candidate_id)
 
-        def substitute_id(neutral, supplied_baseline):
-            output = deepcopy(original.adapter(neutral, supplied_baseline))
+        def wrong_id(native):
+            projection = _fake_projection(native)
+            output = deepcopy(projection.screen_output)
             output["candidate_id"] = campaign108.DSPB_ID
-            unsigned = dict(output)
-            unsigned.pop("aggregate_sha256")
-            output["aggregate_sha256"] = canonical_sha256(unsigned)
-            return output
+            output = _reseal(output)
+            return replace(projection, screen_output=output)
 
-        spec = replace(original, adapter=mock.Mock(side_effect=substitute_id))
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        def wrong_executable(native):
+            projection = _fake_projection(native)
+            return replace(projection, executable_artifact_bytes=b"substituted\n")
+
+        def wrong_receipt(native):
+            projection = _fake_projection(native)
+            receipt = deepcopy(projection.projection_receipt)
+            receipt["candidate_id"] = campaign108.DSPB_ID
+            return replace(projection, projection_receipt=receipt)
+
+        def coordinated_decision_substitution(native):
+            projection = _fake_projection(native)
+            output = deepcopy(projection.screen_output)
+            event = output["windows"][0]["events"][0]
+            event["world_ray"] = [0.0, 1.0, 0.0]
+            event_body = dict(event)
+            event_body.pop("decision_sha256")
+            event["decision_sha256"] = canonical_sha256(event_body)
+            window = output["windows"][0]
+            window["events_sha256"] = canonical_sha256(window["events"])
+            output = _reseal(output)
+
+            receipt = deepcopy(projection.projection_receipt)
+            receipt_window = receipt["windows"][0]
+            receipt_window["projected_events_sha256"] = window["events_sha256"]
+            receipt_window["event_bindings"][0]["projected_decision_sha256"] = (
+                event["decision_sha256"]
+            )
+            receipt_window["event_bindings_sha256"] = canonical_sha256(
+                receipt_window["event_bindings"]
+            )
+            receipt_window_body = dict(receipt_window)
+            receipt_window_body.pop("window_projection_sha256")
+            receipt_window["window_projection_sha256"] = canonical_sha256(
+                receipt_window_body
+            )
+            receipt["projected_aggregate_sha256"] = output["aggregate_sha256"]
+            receipt_body = dict(receipt)
+            receipt_body.pop("projection_receipt_sha256")
+            receipt["projection_receipt_sha256"] = canonical_sha256(receipt_body)
+            return replace(
+                projection, screen_output=output, projection_receipt=receipt
+            )
+
+        cases = (
+            (wrong_id, "projection binding"),
+            (wrong_executable, "projection binding"),
+            (wrong_receipt, "receipt seal"),
+            (coordinated_decision_substitution, "decision substitution"),
+        )
+        for projector, message in cases:
+            with self.subTest(projector=projector.__name__), tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+                root = Path(tmp)
+                config, cncp = self._files(root, candidate_id)
+                screen = mock.Mock()
+                self._run_patches(stack, spec, bundle, baseline, projector, screen)
+                with self.assertRaisesRegex(Campaign108Error, message):
+                    run_campaign108(
+                        candidate_id, root / "dataset", config, cncp,
+                        root / "campaign",
+                    )
+                screen.assert_not_called()
+
+    def test_config_and_neutral_races_stop_after_first_native_seal(self):
+        candidate_id = campaign108.RG3_ID
+        original = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
             config, cncp = self._files(root, candidate_id)
-            with mock.patch.dict(
-                campaign108._CANDIDATES, {candidate_id: spec}
-            ), mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ), mock.patch.object(
-                screen108, "run_locked_screen108"
-            ) as screen, self.assertRaisesRegex(Campaign108Error, "frozen binding"):
+
+            def race(neutral, neutral_baseline):
+                value = original.adapter(neutral, neutral_baseline)
+                config.write_bytes(b"{}")
+                return value
+
+            spec = replace(original, adapter=mock.Mock(side_effect=race))
+            screen = mock.Mock()
+            self._run_patches(stack, spec, bundle, baseline, _fake_projection, screen)
+            with self.assertRaisesRegex(Campaign108Error, "changed during"):
                 run_campaign108(
-                    candidate_id,
-                    root / "dataset",
-                    config,
-                    cncp,
-                    root / "campaign",
+                    candidate_id, root / "dataset", config, cncp, root / "campaign"
                 )
             self.assertEqual(spec.adapter.call_count, 1)
             screen.assert_not_called()
 
-    def test_nondeterministic_adapter_replay_is_rejected_before_screen(self):
+    def test_append_only_attempt_native_output_and_safe_artifact_names(self):
         candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
         bundle, baseline = _fixture()
-        original = campaign108._candidate(candidate_id)
-        calls = 0
-
-        def nondeterministic(neutral, supplied_baseline):
-            nonlocal calls
-            calls += 1
-            output = original.adapter(neutral, supplied_baseline)
-            if calls == 2:
-                changed = deepcopy(output)
-                changed["windows"][0]["events"][0]["v2_replay_nonce"] = 1
-                return _reseal_output(changed)
-            return output
-
-        spec = replace(original, adapter=nondeterministic)
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            config, cncp = self._files(root, candidate_id)
-            campaign_dir = root / "campaign"
-            with mock.patch.dict(
-                campaign108._CANDIDATES, {candidate_id: spec}
-            ), mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ), mock.patch.object(
-                screen108, "run_locked_screen108"
-            ) as screen, self.assertRaisesRegex(Campaign108Error, "not byte-identical"):
-                run_campaign108(
-                    candidate_id, root / "dataset", config, cncp, campaign_dir
-                )
-            self.assertEqual(calls, 2)
-            screen.assert_not_called()
-            self.assertTrue(
-                campaign108._artifact_paths(campaign_dir, candidate_id)[
-                    "candidate_output"
-                ].exists()
-            )
-            self.assertFalse(
-                campaign108._artifact_paths(campaign_dir, candidate_id)[
-                    "replay"
-                ].exists()
-            )
-
-    def test_nondeterministic_replay_evidence_is_rejected_before_screen(self):
-        candidate_id = campaign108.RG3_ID
-        bundle, baseline = _fixture()
-        original_evidence = campaign108._dispatch_evidence
-        calls = 0
-
-        def nondeterministic_evidence(*args, **kwargs):
-            nonlocal calls
-            calls += 1
-            evidence = deepcopy(original_evidence(*args, **kwargs))
-            if calls == 2:
-                evidence["windows"][0]["v2_replay_nonce"] = 1
-                unsigned = dict(evidence)
-                unsigned.pop("aggregate_sha256")
-                evidence["aggregate_sha256"] = canonical_sha256(unsigned)
-            return evidence
-
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            config, cncp = self._files(root, candidate_id)
-            with mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ), mock.patch.object(
-                campaign108, "_dispatch_evidence", side_effect=nondeterministic_evidence
-            ), mock.patch.object(
-                screen108, "run_locked_screen108"
-            ) as screen, self.assertRaisesRegex(Campaign108Error, "evidence"):
-                run_campaign108(
-                    candidate_id,
-                    root / "dataset",
-                    config,
-                    cncp,
-                    root / "campaign",
-                )
-            self.assertEqual(calls, 2)
-            screen.assert_not_called()
-
-    def test_config_race_fails_after_adapter_seal_without_screen_or_retry(self):
-        candidate_id = campaign108.RG3_ID
-        bundle, baseline = _fixture()
-        original = campaign108._candidate(candidate_id)
-        calls = []
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            config, cncp = self._files(root, candidate_id)
-            campaign_dir = root / "campaign"
-
-            def racing_adapter(supplied_bundle, supplied_baseline):
-                calls.append("adapter")
-                output = original.adapter(supplied_bundle, supplied_baseline)
-                config.write_bytes(b"{}")
-                return output
-
-            spec = replace(original, adapter=racing_adapter)
-            with mock.patch.dict(
-                campaign108._CANDIDATES, {candidate_id: spec}
-            ), mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ), mock.patch.object(
-                screen108, "run_locked_screen108"
-            ) as screen, self.assertRaisesRegex(Campaign108Error, "changed during"):
-                run_campaign108(
-                    candidate_id, root / "dataset", config, cncp, campaign_dir
-                )
-            self.assertEqual(calls, ["adapter"])
-            screen.assert_not_called()
-            self.assertTrue(
-                campaign108._artifact_paths(campaign_dir, candidate_id)[
-                    "candidate_output"
-                ].exists()
-            )
-
-    def test_adapter_failure_consumes_attempt_and_cannot_retry(self):
-        candidate_id = campaign108.RG3_ID
-        bundle, baseline = _fixture()
-        adapter = mock.Mock(side_effect=RuntimeError("fixture adapter failure"))
-        spec = replace(campaign108._candidate(candidate_id), adapter=adapter)
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            config, cncp = self._files(root, candidate_id)
-            campaign_dir = root / "campaign"
-            with mock.patch.dict(
-                campaign108._CANDIDATES, {candidate_id: spec}
-            ), mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ):
-                with self.assertRaisesRegex(RuntimeError, "fixture adapter"):
-                    run_campaign108(
-                        candidate_id, root / "dataset", config, cncp, campaign_dir
-                    )
-                with self.assertRaisesRegex(Campaign108Error, "attempt marker"):
-                    run_campaign108(
-                        candidate_id, root / "dataset", config, cncp, campaign_dir
-                    )
-            self.assertEqual(adapter.call_count, 1)
-
-    def test_preexisting_candidate_output_is_not_overwritten(self):
-        candidate_id = campaign108.RG3_ID
-        bundle, baseline = _fixture()
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
             config, cncp = self._files(root, candidate_id)
             campaign_dir = root / "campaign"
             campaign_dir.mkdir()
-            output = campaign108._artifact_paths(campaign_dir, candidate_id)[
-                "candidate_output"
-            ]
-            output.write_bytes(b"fixture-existing-output\n")
-            with mock.patch.object(
-                campaign108, "build_locked_new108_adapter", return_value=bundle
-            ), mock.patch.object(
-                campaign108, "evaluate_current_cav_registry", return_value=baseline
-            ), mock.patch.object(
-                screen108, "run_locked_screen108"
-            ) as screen, self.assertRaisesRegex(Campaign108Error, "candidate output"):
+            paths = campaign108._artifact_paths(campaign_dir, candidate_id)
+            self.assertTrue(all(path.parent == campaign_dir for path in paths.values()))
+            paths["native_output"].write_bytes(b"existing-native\n")
+            self._run_patches(stack, spec, bundle, baseline, _fake_projection)
+            with self.assertRaisesRegex(Campaign108Error, "rich native output"):
                 run_campaign108(
                     candidate_id, root / "dataset", config, cncp, campaign_dir
                 )
-            self.assertEqual(output.read_bytes(), b"fixture-existing-output\n")
-            screen.assert_not_called()
+            self.assertEqual(paths["native_output"].read_bytes(), b"existing-native\n")
+            self.assertTrue(paths["attempt"].exists())
+
+    def test_failed_attempt_cannot_retry(self):
+        candidate_id = campaign108.RG3_ID
+        original = campaign108._candidate(candidate_id)
+        bundle, baseline = _fixture()
+        adapter = mock.Mock(side_effect=RuntimeError("fixture adapter failure"))
+        spec = replace(original, adapter=adapter)
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            campaign_dir = root / "campaign"
+            self._run_patches(stack, spec, bundle, baseline, _fake_projection)
+            with self.assertRaisesRegex(RuntimeError, "fixture adapter"):
+                run_campaign108(
+                    candidate_id, root / "dataset", config, cncp, campaign_dir
+                )
+            with self.assertRaisesRegex(Campaign108Error, "attempt marker"):
+                run_campaign108(
+                    candidate_id, root / "dataset", config, cncp, campaign_dir
+                )
+            self.assertEqual(adapter.call_count, 1)
 
     def test_resealed_receipt_cannot_claim_retry_or_rtl(self):
-        receipt = {
+        body = {
             "schema": campaign108.CAMPAIGN_SCHEMA,
             "status": "SCREEN108_SINGLE_ATTEMPT_REPLAY_VERIFIED",
             "candidate_id": campaign108.RG3_ID,
-            "model_candidate_id": campaign108._candidate(
-                campaign108.RG3_ID
-            ).model_candidate_id,
-            "attempt_sha256": ZERO_SHA,
+            "authority_name": "RG3",
+            "attempt_sha256": "0" * 64,
             "bindings": {},
             "artifacts": {},
             "policy": {
                 "attempt_count": 2,
+                "adapter_execution_count": 2,
+                "verification_replay_count": 1,
+                "verification_replay_is_tuning": False,
+                "verification_replay_output_scored": False,
                 "retry_performed": True,
                 "tuning_performed": False,
-                "labels_accessed_before_candidate_output_seal": False,
+                "labels_accessed_before_screen_output_seal": False,
                 "source_selection_changed": False,
                 "external_data_accessed": False,
                 "rtl_or_ppa_evaluated": True,
             },
         }
-        receipt["receipt_sha256"] = canonical_sha256(receipt)
+        receipt = dict(body, receipt_sha256=canonical_sha256(body))
         with self.assertRaisesRegex(Campaign108Error, "policy boundary"):
             verify_campaign108_receipt(receipt, Path("unused"))
 
