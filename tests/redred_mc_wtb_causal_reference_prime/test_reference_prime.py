@@ -7,11 +7,14 @@ import unittest
 from unittest import mock
 
 from benchmarks.redred_mc_wtb_causal_reference import reference as reference_module
+from benchmarks.redred_mc_wtb_predictor_stage3.reference_prime import (
+    PrimeReceipt,
+    ScoreFreeCausalReferenceBank,
+)
 from benchmarks.redred_mc_wtb_causal_reference.reference import (
     CausalReferenceBank,
     CausalReferenceConfig,
     CausalReferenceError,
-    PrimeReceipt,
     ReferenceObservation,
 )
 
@@ -43,7 +46,7 @@ class ScoreFreePrimeTests(unittest.TestCase):
             observation(3, 11, 1, -0.1),
             observation(4, 14, 0, 0.2),
         )
-        bank = CausalReferenceBank()
+        bank = ScoreFreeCausalReferenceBank()
         with mock.patch.object(
             reference_module,
             "angular_distance",
@@ -79,7 +82,7 @@ class ScoreFreePrimeTests(unittest.TestCase):
         self.assertEqual(receipt.seal_sha256, canonical_sha256(receipt_payload))
 
     def test_empty_prime_is_score_free_countable_and_does_not_change_state(self) -> None:
-        bank = CausalReferenceBank()
+        bank = ScoreFreeCausalReferenceBank()
         with mock.patch.object(reference_module, "angular_distance") as distance_spy:
             receipt = bank.prime(())
         distance_spy.assert_not_called()
@@ -109,7 +112,7 @@ class ScoreFreePrimeTests(unittest.TestCase):
         legacy_all_scores = legacy.process(warmup + query)
         expected_query_scores = legacy_all_scores[len(warmup):]
 
-        split = CausalReferenceBank(config)
+        split = ScoreFreeCausalReferenceBank(config)
         split.prime(warmup)
         actual_query_scores = split.process(query)
 
@@ -134,7 +137,7 @@ class ScoreFreePrimeTests(unittest.TestCase):
         for source in invalid_sequences:
             with self.subTest(source=source):
                 process_bank = CausalReferenceBank()
-                prime_bank = CausalReferenceBank()
+                prime_bank = ScoreFreeCausalReferenceBank()
                 with self.assertRaises(CausalReferenceError) as process_error:
                     process_bank.process(source)
                 with self.assertRaises(CausalReferenceError) as prime_error:
@@ -142,7 +145,7 @@ class ScoreFreePrimeTests(unittest.TestCase):
                 self.assertEqual(str(prime_error.exception), str(process_error.exception))
                 self.assertEqual(prime_bank.occupancy(), (0, 0))
 
-        bank = CausalReferenceBank()
+        bank = ScoreFreeCausalReferenceBank()
         bank.prime((observation(20, 10, 0, 0.0),))
         occupancy_before = bank.occupancy()
         for mutated, message in (
@@ -155,12 +158,12 @@ class ScoreFreePrimeTests(unittest.TestCase):
                     bank.prime(mutated)
                 self.assertEqual(bank.occupancy(), occupancy_before)
 
-        process_then_prime = CausalReferenceBank()
+        process_then_prime = ScoreFreeCausalReferenceBank()
         process_then_prime.process((observation(30, 30, 0, 0.0),))
         with self.assertRaisesRegex(CausalReferenceError, "split across calls"):
             process_then_prime.prime((observation(31, 30, 1, 0.0),))
 
-        prime_then_process = CausalReferenceBank()
+        prime_then_process = ScoreFreeCausalReferenceBank()
         prime_then_process.prime((observation(40, 40, 0, 0.0),))
         with self.assertRaisesRegex(CausalReferenceError, "split across calls"):
             prime_then_process.process((observation(41, 40, 1, 0.0),))
@@ -174,7 +177,7 @@ class ScoreFreePrimeTests(unittest.TestCase):
             observation(4, 10, 0, 0.2),
             observation(5, 10, 0, 0.3),
         )
-        bank = CausalReferenceBank(config)
+        bank = ScoreFreeCausalReferenceBank(config)
         receipt = bank.prime(warmup)
         self.assertEqual(receipt.observation_count, 5)
         self.assertEqual(receipt.occupancy, (2, 0))
@@ -192,8 +195,8 @@ class ScoreFreePrimeTests(unittest.TestCase):
             observation(100, 100, 0, 0.0),
             observation(101, 101, 1, -0.1),
         )
-        left = CausalReferenceBank()
-        right = CausalReferenceBank()
+        left = ScoreFreeCausalReferenceBank()
+        right = ScoreFreeCausalReferenceBank()
         self.assertEqual(left.prime(overlap), right.prime(overlap))
 
         left_query = left.process((observation(200, 102, 0, 0.05),))
