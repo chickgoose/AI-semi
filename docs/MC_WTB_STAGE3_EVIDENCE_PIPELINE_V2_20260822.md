@@ -25,6 +25,12 @@ Every v2 receipt binds these Checkpoint A authorities:
 - architecture SHA-256
   `86be810c63a3e4817af9611c24b6d02283f763c0616e02c12628a92cf4de1178`.
 
+These hashes identify the original Checkpoint A bytes and remain historical
+authorities. This clarification does not silently replace them with the hashes
+of edited documentation. A permitted pre-score remediation epoch must bind the
+original authorities, this documentation lineage, and the remediated artifacts
+in a separate append-only checkpoint before execution or scoring.
+
 `candidate_id` is the exact UTF-8 byte string returned by the native frozen
 model: `RG3_POLICY.candidate_id`, `DSPBConfig().candidate_id`, or
 `SO3PLLConfig().candidate_id`. Replacement, shortening, escaping,
@@ -62,10 +68,32 @@ eligible when `state_effective_edge <= decision_edge`; an update produced on
 edge `p` has `state_effective_edge == p + 1`. Dequeue, callback,
 retirement, logging, and scoring edges never affect a decision.
 
-The 50 ms window reset occurs at signed edge zero. Pose commits before reset
-may remain baseline source evidence when the frozen baseline permits them, but
-they may not initialize post-reset candidate state. The exact distinction is
-verified rather than silently dropping or unsigned-wrapping records.
+The Stage 3 source-reconstructed 50 ms window reset occurs at signed edge zero.
+It is distinct from the frozen selector registry's 1 ms diagnostic warmup.
+Pose commits before reset may remain baseline source evidence when the frozen
+baseline permits them, but they may not initialize post-reset candidate state.
+The exact distinction is verified rather than silently dropping or
+unsigned-wrapping records.
+
+### 2.1 Frozen query authority and reconstructed pre-roll
+
+The frozen selector registry, SHA-256
+`4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d`,
+is the authority for the ordered 108 query windows, exact query bounds, query
+event IDs, and label lineage. Its 1 ms warmup is a diagnostic registry field,
+not the predictor initialization interval. Stage 3 reconstructs
+`[query_start - 50 ms, query_start)` from the locked source, SHA-256
+`0e0dbb17db4d170de650729fe9ad1cd3f18d20c1bddcd577c84999fcde045a4c`,
+without changing any query ID, query event, bound, order, or label.
+
+Each reconstructed window is an independent reset generation. Its 50 ms
+pre-roll may overlap another window's pre-roll, and the same source event or
+pose may therefore appear in multiple generations. Each occurrence is bound
+to `window_id` and `reset_generation`. Only query event IDs are globally
+exact-once in `Q`; pre-roll IDs are exact in source order within a window but
+are not required to be globally unique across windows. Pre-roll records are
+initialization evidence only: they are never scored, labeled as query events,
+included in a metric denominator, or substituted for a frozen query event.
 
 ## 3. Exact v2 evidence objects
 
@@ -132,6 +160,11 @@ window state is permitted. `query_start_lock_status` is one of
 `STATELESS`, `UNLOCKED`, `LOCKED`, or `FAULTED`. Route counts use all four
 routes below as exact keys, including zero values. The fixed 25/100 ms sensitivity runs
 have separate non-ranking receipts and cannot modify this 50 ms row.
+Here `warmup_start_ns_inclusive` is the reconstructed Stage 3 boundary exactly
+50 ms before `query_start_ns_inclusive`; it is not copied from the selector's
+1 ms diagnostic row. `ordered_event_ids_sha256` is per-window and includes the
+reconstructed occurrence stream, while `ordered_query_event_ids_sha256` binds
+the unchanged scored subset. Cross-window exact-once applies only to the latter.
 
 ### 3.3 Event-decision row
 
@@ -266,9 +299,13 @@ requires a CNCP HOLD. No naked CNCP number is present in this envelope.
 The v2 runner performs this order without an override:
 
 1. verify the frozen authorities, clean tree, dependency-closed manifest,
-   native candidate ID, canonical config, neutral-input seal, and schemas;
-2. create a fresh process, reset each window at its 50 ms pre-roll start, and
-   execute the actual native candidate through the identity-free adapter;
+   native candidate ID, canonical config, selector query authority, source
+   lock, neutral-input seal, and schemas; reconstruct and seal the common 50 ms
+   pre-roll without changing the frozen query population or label lineage;
+2. create a fresh process, independently reset each window at its reconstructed
+   50 ms pre-roll start, and execute the actual native candidate through the
+   identity-free adapter; overlapping source occurrences remain namespaced by
+   window/reset generation and no pre-roll row is scoreable;
 3. repeat the complete execution in another fresh process, visiting windows in
    reverse registry order while preserving within-window order, restore the
    canonical registry order, and require exact decision/state/feedback bytes;
@@ -288,6 +325,25 @@ relative causal time, visible pose values/deltas, and declared validity or
 transport flags; it excludes all IDs, absolute query start, labels, scores,
 digests, roles, ranks, and split membership. Forbidden-field injection is
 rejected even when it would not change the output.
+
+### 4.1 Conditional epoch2 remediation
+
+`epoch2` is not a candidate retry. It is allowed only after a common
+infrastructure failure stopped the preceding epoch before candidate scoring and
+before any candidate output, loss, group result, rank, plot, or other outcome
+was visible. A common mismatch between the selector's 1 ms diagnostic bundle
+and Stage 3's required 50 ms reconstructed input qualifies; a
+candidate-specific verifier failure or an unfavorable result does not.
+
+An append-only remediation checkpoint must precede `epoch2` and bind the
+predecessor epoch and commits, failed artifact hashes, source lock, exact
+failure disposition, remediation bytes, replacement neutral-input/adapter
+hashes, unchanged query-ID/order/bounds and label digests, and a no-outcome-
+visibility attestation. It must also attest that candidates and configs,
+scorer, metrics, thresholds, gates, and label isolation are unchanged and that
+the remediation is applied identically to all candidates. If any outcome was
+available or the attestation is incomplete, scoring remains HOLD and this
+exception cannot authorize `epoch2`.
 
 ## 5. Model evidence and CNCP are separate
 
@@ -324,16 +380,16 @@ pipeline and accepted by the independent verifier before any 108 scoring.
 | P0-1 disconnected candidate/framework/oracle | One runner receipt per native candidate proving that the same manifested binary traversed the identity-free adapter, actual candidate, independent verifier, mutation gate, and score-input producer. |
 | P0-2 unattested supplied geometry | Two runner-executed fresh-process hashes, native quaternion, independently recomputed world ray, complete state/input provenance, and verifier receipt; external supplied rows are rejected. |
 | P0-3 occurrence/decision confusion | Signed event rows satisfying the frozen ceiling conversion and `occurrence_cycle == decision_edge - 1`, plus boundary, same-edge, dequeue/retirement, and rounding mutation receipts. |
-| P0-4 reset/state/feedback ambiguity | Window reset-generation and initial/query-start state rows, full state ancestry, feedback rows, cluster atomicity proof, window-permutation replay, and cross-window-carry mutant rejection. |
+| P0-4 reset/state/feedback ambiguity | Window reset-generation and initial/query-start state rows, full state ancestry, feedback rows, cluster atomicity proof, window-permutation replay, cross-window-carry mutant rejection, and proof that overlapping reconstructed pre-roll occurrences stay in independent generations. |
 | P0-5 incompatible/aliased IDs | Byte-identical native candidate ID in configuration, source manifest, every candidate-use row, execution/verifier/mutation receipts, schema, and result. |
 | P0-6 self-referential source/config binding | Independently pinned authorities, clean-tree receipt, canonical config, dependency-closed phased source manifest, runtime hash, and proof that those exact bytes were executed. |
 | P0-7 collapsed fallback semantics | Exhaustive attempted/use/route partition, exact model ID and reason for each route, exact used poses/quaternion/ray, independent CAV/ZOH/sensor reconstruction, and fallback-route mutation rejection. |
 | P1-1 identity-bearing native input | Hash-bound positive-allowlist projection plus forbidden-ID/label/digest injection mutations showing the candidate never receives wrapper identity. |
-| P1-2 signed pre-roll disagreement | Signed-int64 schema and known answers for negative cycles, reset edge, signed/unsigned boundaries, and pre-reset baseline-versus-candidate-state treatment. |
+| P1-2 signed pre-roll disagreement | Signed-int64 schema and known answers for negative cycles, reset edge, signed/unsigned boundaries, pre-reset baseline-versus-candidate-state treatment, and explicit rejection of copying the selector's 1 ms diagnostic start into the Stage 3 50 ms boundary. |
 | P1-3 positive-window epsilon drift | Metric receipt proving positive counts use strict `effect > 0.0`, including zero and sub-`1e-6` positive known answers. |
 | P1-4 asserted CNCP as feasibility | Independent model and CNCP statuses; model receipt contains only a sealed CNCP digest/verdict, while unverified numeric declarations force CNCP HOLD and cannot change model output or rank. |
 | P1-5 missing actual-candidate mutants | Append-only mutation receipt for every mandatory ORC/TIME/EDGE/TUNE/DEN/FILT/FB/RG3/DSPB/PLL/FALL/ROB/REPLAY case, naming expected/observed disposition and verifier reason; every mutant is killed through the same manifested runner path. |
-| P1-6 missing query-start diagnostics | Every window row reports reset, initial and query-start state/version/hash, validity/lock, pre-roll attempt/use/route counts, plus separate sealed non-ranking 25/100 ms sensitivity receipts. |
+| P1-6 missing query-start diagnostics | Every window row reports its source-reconstructed 50 ms reset, initial and query-start state/version/hash, validity/lock, pre-roll attempt/use/route counts, overlap-safe generation binding, and no-pre-roll-scoring proof, plus separate sealed non-ranking 25/100 ms sensitivity receipts. |
 
 ## 7. Gate
 
@@ -342,8 +398,11 @@ runner executions and the independent verifier must agree byte-for-byte, every
 mandatory mutation must be killed, ordered `Q` must be exact, and label
 isolation must be proven. Any unknown field, missing dependency, alias ID,
 edge mismatch, surviving mutation, nondeterminism, state ancestry gap,
-fallback ambiguity, external candidate output, or pre-seal label access is
-`STAGE3_EVIDENCE_V2_FAIL`; scoring must not start.
+fallback ambiguity, external candidate output, pre-seal label access,
+1 ms/50 ms boundary substitution, global de-duplication of overlapping
+pre-roll, any pre-roll scoring, or an epoch2 without complete pre-score
+lineage and no-outcome proof is `STAGE3_EVIDENCE_V2_FAIL`; scoring must not
+start.
 
 `STAGE3_EVIDENCE_V2_PASS` authorizes only the already frozen development
 screen. It does not authorize retuning, full-stream replay, external sequence
