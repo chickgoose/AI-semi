@@ -17,6 +17,7 @@ from benchmarks.redred_mc_wtb_causal_reference.reference import (
 @dataclass(frozen=True)
 class PrimeReceipt:
     schema: str
+    config_sha256: str
     observation_count: int
     first_timestamp_ns: Optional[int]
     last_timestamp_ns: Optional[int]
@@ -68,6 +69,11 @@ class ScoreFreeCausalReferenceBank(CausalReferenceBank):
         shadow._seen_ids.update(observation.event_id for observation in source)
 
         schema = "redred.mc_wtb_causal_reference.prime_receipt/v1"
+        config_sha256 = _canonical_sha256({
+            "capacity_per_polarity": shadow.config.capacity_per_polarity,
+            "max_age_ns": shadow.config.max_age_ns,
+            "schema": "redred.mc_wtb_causal_reference.prime_config/v1",
+        })
         observations_payload = [
             {
                 "event_id": observation.event_id,
@@ -79,6 +85,7 @@ class ScoreFreeCausalReferenceBank(CausalReferenceBank):
         ]
         observations_sha256 = _canonical_sha256(observations_payload)
         receipt_payload = {
+            "config_sha256": config_sha256,
             "first_timestamp_ns": source[0].timestamp_ns if source else None,
             "last_timestamp_ns": source[-1].timestamp_ns if source else None,
             "observation_count": len(source),
@@ -88,6 +95,7 @@ class ScoreFreeCausalReferenceBank(CausalReferenceBank):
         }
         receipt = PrimeReceipt(
             schema=schema,
+            config_sha256=config_sha256,
             observation_count=len(source),
             first_timestamp_ns=source[0].timestamp_ns if source else None,
             last_timestamp_ns=source[-1].timestamp_ns if source else None,

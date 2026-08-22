@@ -72,6 +72,7 @@ class ScoreFreePrimeTests(unittest.TestCase):
         ]
         self.assertEqual(receipt.observations_sha256, canonical_sha256(observation_payload))
         receipt_payload = {
+            "config_sha256": receipt.config_sha256,
             "first_timestamp_ns": receipt.first_timestamp_ns,
             "last_timestamp_ns": receipt.last_timestamp_ns,
             "observation_count": receipt.observation_count,
@@ -80,6 +81,12 @@ class ScoreFreePrimeTests(unittest.TestCase):
             "schema": receipt.schema,
         }
         self.assertEqual(receipt.seal_sha256, canonical_sha256(receipt_payload))
+
+        other = ScoreFreeCausalReferenceBank(
+            CausalReferenceConfig(capacity_per_polarity=8, max_age_ns=99)
+        ).prime(warmup)
+        self.assertNotEqual(receipt.config_sha256, other.config_sha256)
+        self.assertNotEqual(receipt.seal_sha256, other.seal_sha256)
 
     def test_empty_prime_is_score_free_countable_and_does_not_change_state(self) -> None:
         bank = ScoreFreeCausalReferenceBank()
