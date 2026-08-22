@@ -69,6 +69,59 @@ _POSE_FIELDS = frozenset((
     "value_valid",
     "arithmetic_valid",
 ))
+_PROFILE_MAPPING_FIELDS = frozenset((
+    "schema",
+    "profile_id",
+    "profile_mapping_json",
+    "profile_mapping_sha256",
+    "semantic_contract_sha256",
+    "semantics",
+))
+_DECISION_MAPPING_FIELDS = frozenset((
+    "window_id",
+    "event_id",
+    "event_timestamp_ns",
+    "occurrence_cycle",
+    "occurrence_pose_ids",
+    "occurrence_pose_timestamps_ns",
+    "occurrence_pose_commit_cycles",
+    "occurrence_pose_sha256",
+    "used_pose_ids",
+    "used_pose_timestamps_ns",
+    "used_pose_commit_cycles",
+    "used_pose_sha256",
+    "disposition",
+    "disposition_reason",
+    "decision_sha256",
+))
+_SIMULATION_MAPPING_FIELDS = frozenset((
+    "records",
+    "decision_records_sha256",
+    "synthetic_test_mode",
+    "all_event_pose_indices_verified",
+))
+_WINDOW_MAPPING_FIELDS = frozenset((
+    "registry",
+    "input_events",
+    "input_poses",
+    "simulation",
+    "window_sha256",
+))
+_TRACE_MAPPING_FIELDS = frozenset((
+    "schema",
+    "profile",
+    "profile_sha256",
+    "neutral_input_sha256",
+    "baseline_schema",
+    "baseline_decisions_sha256",
+    "windows",
+    "aggregate_sha256",
+))
+_IMPLICIT_PROFILE_FIELDS = frozenset((
+    "schema",
+    "profile_id",
+    "invocation",
+))
 _INJECTED_PROFILE_FIELDS = frozenset((
     "schema",
     "profile_id",
@@ -145,6 +198,16 @@ def _exact_fields(value: object, expected: frozenset, where: str) -> Mapping[str
     if frozenset(body) != expected:
         raise CurrentCAVTraceError("%s field schema differs" % where)
     return body
+
+
+def _mapping_list(
+    value: object, where: str, *, nonempty: bool = True
+) -> Sequence[object]:
+    if type(value) is not list:
+        raise CurrentCAVTraceError("%s must be an exact JSON array" % where)
+    if nonempty and not value:
+        raise CurrentCAVTraceError("%s must be nonempty" % where)
+    return value
 
 
 def canonical_event_content_sha256(
@@ -807,6 +870,200 @@ def _neutral_input_mapping(
     }
 
 
+def _load_profile(value: object) -> CycleRunnerProfile:
+    row = _exact_fields(value, _PROFILE_MAPPING_FIELDS, "trace profile")
+    profile = CycleRunnerProfile(
+        row["profile_id"],  # type: ignore[arg-type]
+        row["profile_mapping_json"],  # type: ignore[arg-type]
+        row["profile_mapping_sha256"],  # type: ignore[arg-type]
+        row["semantic_contract_sha256"],  # type: ignore[arg-type]
+    )
+    mapping = json.loads(profile.profile_mapping_json)
+    if mapping.get("profile_id") != profile.profile_id:
+        raise CurrentCAVTraceError("trace profile identity differs")
+    if frozenset(mapping) == _IMPLICIT_PROFILE_FIELDS:
+        if mapping != json.loads(DEFAULT_CYCLE_PROFILE.profile_mapping_json):
+            raise CurrentCAVTraceError("trace implicit profile differs")
+    elif frozenset(mapping) == _INJECTED_PROFILE_FIELDS:
+        _text(mapping.get("schema"), "trace injected profile schema")
+        raw_lanes = _integer(
+            mapping.get("raw_ingress_lanes"), "trace injected raw ingress lanes"
+        )
+        staging = _integer(
+            mapping.get("ingress_staging_entries"),
+            "trace injected ingress staging entries",
+        )
+        service = _integer(
+            mapping.get("event_service_lanes"),
+            "trace injected event service lanes",
+        )
+        if raw_lanes == 0 or service == 0 or staging < raw_lanes:
+            raise CurrentCAVTraceError("trace injected profile capacity differs")
+        _text(mapping.get("scope"), "trace injected profile scope")
+    else:
+        raise CurrentCAVTraceError("trace profile field schema differs")
+    if profile.to_mapping() != row:
+        raise CurrentCAVTraceError("trace profile mapping differs")
+    return profile
+
+
+def _decision_tuple(value: object, where: str) -> Tuple[object, ...]:
+    return tuple(_mapping_list(value, where, nonempty=False))
+
+
+def _load_decision(value: object) -> CurrentCAVDecision:
+    row = _exact_fields(value, _DECISION_MAPPING_FIELDS, "trace decision")
+    decision = CurrentCAVDecision(
+        row["window_id"],  # type: ignore[arg-type]
+        row["event_id"],  # type: ignore[arg-type]
+        row["event_timestamp_ns"],  # type: ignore[arg-type]
+        row["occurrence_cycle"],  # type: ignore[arg-type]
+        _decision_tuple(row["occurrence_pose_ids"], "occurrence pose IDs"),  # type: ignore[arg-type]
+        _decision_tuple(
+            row["occurrence_pose_timestamps_ns"],
+            "occurrence pose timestamps",
+        ),  # type: ignore[arg-type]
+        _decision_tuple(
+            row["occurrence_pose_commit_cycles"],
+            "occurrence pose commit cycles",
+        ),  # type: ignore[arg-type]
+        _decision_tuple(
+            row["occurrence_pose_sha256"], "occurrence pose digests"
+        ),  # type: ignore[arg-type]
+        _decision_tuple(row["used_pose_ids"], "used pose IDs"),  # type: ignore[arg-type]
+        _decision_tuple(
+            row["used_pose_timestamps_ns"], "used pose timestamps"
+        ),  # type: ignore[arg-type]
+        _decision_tuple(
+            row["used_pose_commit_cycles"], "used pose commit cycles"
+        ),  # type: ignore[arg-type]
+        _decision_tuple(row["used_pose_sha256"], "used pose digests"),  # type: ignore[arg-type]
+        row["disposition"],  # type: ignore[arg-type]
+        row["disposition_reason"],  # type: ignore[arg-type]
+    )
+    if decision.to_mapping() != row:
+        raise CurrentCAVTraceError("trace decision seal differs")
+    return decision
+
+
+def load_current_cav_trace(value: object) -> CurrentCAVTrace:
+    """Reconstruct and authenticate a sealed trace without running a cycle model."""
+
+    row = _exact_fields(value, _TRACE_MAPPING_FIELDS, "current-CAV trace")
+    if row.get("schema") != TRACE_SCHEMA:
+        raise CurrentCAVTraceError("current-CAV trace schema differs")
+    if row.get("baseline_schema") != BASELINE_SCHEMA:
+        raise CurrentCAVTraceError("current-CAV baseline schema differs")
+    profile = _load_profile(row["profile"])
+    supplied_windows = _mapping_list(row["windows"], "trace windows")
+
+    raw_windows = []
+    registry_rows = []
+    event_streams: Dict[str, Tuple[TraceEventInput, ...]] = {}
+    pose_streams: Dict[str, Tuple[TracePoseInput, ...]] = {}
+    for supplied in supplied_windows:
+        window_row = _exact_fields(
+            supplied, _WINDOW_MAPPING_FIELDS, "trace window"
+        )
+        registry = _snapshot_registry(window_row["registry"])
+        events = tuple(
+            _snapshot_event(event)
+            for event in _mapping_list(window_row["input_events"], "trace events")
+        )
+        poses = tuple(
+            _snapshot_pose(pose)
+            for pose in _mapping_list(window_row["input_poses"], "trace poses")
+        )
+        raw_windows.append(window_row)
+        registry_rows.append(registry)
+        event_streams[registry.window_id] = events
+        pose_streams[registry.window_id] = poses
+
+    windows, checked_events, checked_poses = _validated_inputs(
+        tuple(registry_rows), event_streams, pose_streams
+    )
+    trace_windows = []
+    for supplied, window in zip(raw_windows, windows):
+        events = checked_events[window.window_id]
+        poses = checked_poses[window.window_id]
+        simulation_row = _exact_fields(
+            supplied["simulation"],
+            _SIMULATION_MAPPING_FIELDS,
+            "trace simulation",
+        )
+        if (
+            type(simulation_row["synthetic_test_mode"]) is not bool
+            or type(simulation_row["all_event_pose_indices_verified"]) is not bool
+        ):
+            raise CurrentCAVTraceError("trace simulation flags must be exact bools")
+        raw_decisions = _mapping_list(
+            simulation_row["records"], "trace decision records"
+        )
+        if len(raw_decisions) != len(events):
+            raise CurrentCAVTraceError("trace changed event cardinality")
+        loaded_decisions = tuple(
+            _load_decision(decision) for decision in raw_decisions
+        )
+        checked_decisions = tuple(
+            _project_record(window, event, poses, decision)
+            for event, decision in zip(events, loaded_decisions)
+        )
+        if checked_decisions != loaded_decisions:
+            raise CurrentCAVTraceError("trace decision semantics differ")
+        simulation = CurrentCAVSimulationTrace(
+            checked_decisions,
+            synthetic_test_mode=simulation_row["synthetic_test_mode"],  # type: ignore[arg-type]
+            all_event_pose_indices_verified=(
+                simulation_row["all_event_pose_indices_verified"]  # type: ignore[arg-type]
+            ),
+        )
+        if simulation.to_mapping() != simulation_row:
+            raise CurrentCAVTraceError("trace simulation seal differs")
+        loaded_window = CurrentCAVWindowTrace(window, events, poses, simulation)
+        if loaded_window.to_mapping() != supplied:
+            raise CurrentCAVTraceError("trace window seal differs")
+        trace_windows.append(loaded_window)
+
+    neutral_sha256 = canonical_sha256(_neutral_input_mapping(
+        windows, checked_events, checked_poses
+    ))
+    if row["neutral_input_sha256"] != neutral_sha256:
+        raise CurrentCAVTraceError("trace neutral input digest differs")
+    baseline_sha256 = canonical_sha256({
+        "schema": BASELINE_SCHEMA,
+        "windows": [
+            {
+                "window_id": window.registry.window_id,
+                "decisions": [
+                    decision.to_mapping()
+                    for decision in window.simulation.records
+                ],
+            }
+            for window in trace_windows
+        ],
+    })
+    if row["baseline_decisions_sha256"] != baseline_sha256:
+        raise CurrentCAVTraceError("trace baseline decisions digest differs")
+    profile_sha256 = canonical_sha256(profile.to_mapping())
+    if row["profile_sha256"] != profile_sha256:
+        raise CurrentCAVTraceError("trace profile digest differs")
+    trace = CurrentCAVTrace(
+        profile,
+        tuple(trace_windows),
+        neutral_sha256,
+        baseline_sha256,
+        profile_sha256,
+    )
+    try:
+        supplied_bytes = canonical_json_bytes(row)
+        reconstructed_bytes = canonical_json_bytes(trace.to_mapping())
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise CurrentCAVTraceError("current-CAV trace is not canonical JSON") from exc
+    if supplied_bytes != reconstructed_bytes:
+        raise CurrentCAVTraceError("current-CAV trace mapping differs")
+    return trace
+
+
 def build_current_cav_trace(
     registry: Sequence[object],
     event_streams: Mapping[str, Sequence[object]],
@@ -946,6 +1203,7 @@ __all__ = (
     "build_current_cav_trace",
     "canonical_event_content_sha256",
     "canonical_pose_value_sha256",
+    "load_current_cav_trace",
     "run_frozen_current_cav_profile",
     "verify_current_cav_trace",
 )

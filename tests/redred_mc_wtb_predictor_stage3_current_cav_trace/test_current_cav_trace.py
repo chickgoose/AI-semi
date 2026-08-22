@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, replace
 import json
 from pathlib import Path
@@ -7,13 +8,22 @@ import subprocess
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest import mock
 
+from benchmarks.redred_mc_wtb_predictor_stage3 import current_cav_trace
 from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
+    BASELINE_SCHEMA,
     CurrentCAVTraceError,
+    NEUTRAL_INPUT_SCHEMA,
     build_current_cav_trace,
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
+    load_current_cav_trace,
     verify_current_cav_trace,
+)
+from benchmarks.redred_mc_wtb_stage4_contract import (
+    canonical_json_bytes,
+    canonical_sha256,
 )
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
     Arm,
@@ -173,6 +183,50 @@ def direct_cycle_result(registry, events, poses):
     )
 
 
+def reseal_trace_mapping(value):
+    for window in value["windows"]:
+        simulation = window["simulation"]
+        for decision in simulation["records"]:
+            decision["decision_sha256"] = canonical_sha256({
+                key: item for key, item in decision.items()
+                if key != "decision_sha256"
+            })
+        simulation["decision_records_sha256"] = canonical_sha256(
+            simulation["records"]
+        )
+        window["window_sha256"] = canonical_sha256({
+            key: item for key, item in window.items() if key != "window_sha256"
+        })
+    neutral = {
+        "schema": NEUTRAL_INPUT_SCHEMA,
+        "registry": [window["registry"] for window in value["windows"]],
+        "windows": [
+            {
+                "window_id": window["registry"]["window_id"],
+                "events": window["input_events"],
+                "poses": window["input_poses"],
+            }
+            for window in value["windows"]
+        ],
+    }
+    value["neutral_input_sha256"] = canonical_sha256(neutral)
+    value["baseline_decisions_sha256"] = canonical_sha256({
+        "schema": BASELINE_SCHEMA,
+        "windows": [
+            {
+                "window_id": window["registry"]["window_id"],
+                "decisions": window["simulation"]["records"],
+            }
+            for window in value["windows"]
+        ],
+    })
+    value["profile_sha256"] = canonical_sha256(value["profile"])
+    value["aggregate_sha256"] = canonical_sha256({
+        key: item for key, item in value.items() if key != "aggregate_sha256"
+    })
+    return value
+
+
 class CurrentCAVTraceTests(unittest.TestCase):
     def test_clean_import_does_not_load_scoring_or_selector_modules(self):
         script = (
@@ -231,6 +285,89 @@ class CurrentCAVTraceTests(unittest.TestCase):
             "loss", "score", "reference_event", "motion_bin", "selector_label"
         ):
             self.assertNotIn(forbidden, serialized)
+
+    def test_loader_round_trip_is_byte_exact_and_never_runs_cycle_model(self):
+        registry, events, poses = fixture()
+        trace = build_current_cav_trace(registry, events, poses)
+        serialized = json.loads(json.dumps(trace.to_mapping(), sort_keys=True))
+        with mock.patch.object(
+            current_cav_trace,
+            "run_cycle_model",
+            side_effect=AssertionError("loader called cycle model"),
+        ) as runner:
+            loaded = load_current_cav_trace(serialized)
+        runner.assert_not_called()
+        self.assertEqual(loaded, trace)
+        self.assertEqual(
+            canonical_json_bytes(loaded.to_mapping()),
+            canonical_json_bytes(serialized),
+        )
+
+    def test_loader_rejects_fully_resealed_semantic_mutations(self):
+        registry, events, poses = fixture()
+        original = build_current_cav_trace(registry, events, poses).to_mapping()
+
+        edge = deepcopy(original)
+        edge["windows"][0]["simulation"]["records"][0][
+            "occurrence_cycle"
+        ] += 1
+
+        same_edge_pose = deepcopy(original)
+        pose_row = same_edge_pose["windows"][0]["input_poses"][1]
+        decision = same_edge_pose["windows"][0]["simulation"]["records"][0]
+        decision["occurrence_pose_ids"].append(pose_row["pose_id"])
+        decision["occurrence_pose_timestamps_ns"].append(
+            pose_row["timestamp_ns"]
+        )
+        decision["occurrence_pose_commit_cycles"].append(
+            pose_row["commit_cycle"]
+        )
+        decision["occurrence_pose_sha256"].append(pose_row["pose_sha256"])
+
+        route = deepcopy(original)
+        route["windows"][0]["simulation"]["records"][1][
+            "disposition_reason"
+        ] = "fresh_zoh_fallback"
+
+        cases = (
+            (edge, "occurrence_cycle"),
+            (same_edge_pose, "occurrence_pose_ids"),
+            (route, "disposition_reason"),
+        )
+        for mutated, message in cases:
+            with self.subTest(message=message):
+                reseal_trace_mapping(mutated)
+                with self.assertRaisesRegex(CurrentCAVTraceError, message):
+                    load_current_cav_trace(mutated)
+
+    def test_loader_rechecks_content_profile_and_mapping_digests(self):
+        registry, events, poses = fixture()
+        original = build_current_cav_trace(registry, events, poses).to_mapping()
+
+        event_digest = deepcopy(original)
+        event_digest["windows"][0]["input_events"][0][
+            "event_content_sha256"
+        ] = "0" * 64
+        reseal_trace_mapping(event_digest)
+        with self.assertRaisesRegex(CurrentCAVTraceError, "event content digest"):
+            load_current_cav_trace(event_digest)
+
+        profile = deepcopy(original)
+        decoded = json.loads(profile["profile"]["profile_mapping_json"])
+        decoded["profile_id"] = "substituted-profile"
+        profile["profile"]["profile_mapping_json"] = (
+            canonical_json_bytes(decoded).decode("ascii")
+        )
+        profile["profile"]["profile_mapping_sha256"] = canonical_sha256(decoded)
+        reseal_trace_mapping(profile)
+        with self.assertRaisesRegex(CurrentCAVTraceError, "profile identity"):
+            load_current_cav_trace(profile)
+
+        extra = deepcopy(original)
+        extra["windows"][0]["simulation"]["records"][0]["score"] = 0.0
+        reseal_trace_mapping(extra)
+        with self.assertRaisesRegex(CurrentCAVTraceError, "field schema"):
+            load_current_cav_trace(extra)
 
     def test_semantic_projection_equals_direct_cycle_model(self):
         registry, events, poses = fixture()
