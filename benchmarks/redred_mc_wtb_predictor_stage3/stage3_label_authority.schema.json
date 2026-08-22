@@ -23,11 +23,15 @@
   },
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "windowIdentifier": {
+      "type": "string", "minLength": 1, "maxLength": 512,
+      "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_.:-]*|[A-Za-z0-9][A-Za-z0-9_.-]*/query_start_ns=(?:0|[1-9][0-9]*))$"
+    },
     "label": {
       "type": "object", "additionalProperties": false,
       "required": ["window_id", "axis", "sign", "motion_bin", "rotation_vector_rad", "purity", "motion_proxy", "rank_sha256", "label_sha256"],
       "properties": {
-        "window_id": {"type": "string", "minLength": 1}, "axis": {"enum": ["X", "Y", "Z"]}, "sign": {"enum": ["NEGATIVE", "POSITIVE"]},
+        "window_id": {"$ref": "#/$defs/windowIdentifier"}, "axis": {"enum": ["X", "Y", "Z"]}, "sign": {"enum": ["NEGATIVE", "POSITIVE"]},
         "motion_bin": {"enum": ["LOW", "MID", "HIGH"]}, "rotation_vector_rad": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
         "purity": {"type": "number", "minimum": 0.0, "maximum": 1.0}, "motion_proxy": {"type": "number"}, "rank_sha256": {"$ref": "#/$defs/sha256"}, "label_sha256": {"$ref": "#/$defs/sha256"}
       }
@@ -35,7 +39,7 @@
     "join": {
       "type": "object", "additionalProperties": false,
       "required": ["window_id", "ordered_query_event_ids_sha256", "label_sha256"],
-      "properties": {"window_id": {"type": "string", "minLength": 1}, "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"}, "label_sha256": {"$ref": "#/$defs/sha256"}}
+      "properties": {"window_id": {"$ref": "#/$defs/windowIdentifier"}, "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"}, "label_sha256": {"$ref": "#/$defs/sha256"}}
     }
   }
 }

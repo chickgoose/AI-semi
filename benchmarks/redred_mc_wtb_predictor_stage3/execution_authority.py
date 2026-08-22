@@ -22,6 +22,10 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_sha256,
 )
 from benchmarks.redred_mc_wtb_predictor_stage3 import current_cav_trace as _trace
+from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
+    run_cycle_model,
+)
 
 
 EXECUTION_INPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.execution_input/v1"
@@ -29,7 +33,7 @@ LABEL_AUTHORITY_SCHEMA = "redred.mc_wtb_predictor_stage3.label_authority/v1"
 SCORING_JOIN_SCHEMA = "redred.mc_wtb_predictor_stage3.scoring_join_receipt/v1"
 
 PRE_ROLL_NS = 50_000_000
-LOGICAL_INGRESS_SCOPE = "MODEL_ONLY_LOGICAL_REPLAY"
+LOGICAL_INGRESS_SCOPE = "MODEL_ONLY_LOGICAL_REPLAY_NO_RTL_OR_PPA_CLAIM"
 _PREROLL_RULE = {
     "duration_ns": PRE_ROLL_NS,
     "interval": "[query_start_ns-50000000,query_start_ns)",
@@ -41,6 +45,18 @@ _PREROLL_RULE = {
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]*\Z")
+_WINDOW_IDENTIFIER = re.compile(
+    r"(?:[A-Za-z0-9][A-Za-z0-9_.:-]*|"
+    r"[A-Za-z0-9][A-Za-z0-9_.-]*/query_start_ns=(0|[1-9][0-9]*))\Z"
+)
+_CANDIDATE_IDENTIFIER = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9_.:/,+-]{0,510}[A-Za-z0-9])?\Z"
+)
+_FORBIDDEN_CANDIDATE_FIELD_PIECES = (
+    "selector", "label", "score", "evaluator",
+)
+_LOCKED_CYCLE_PROFILE = STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE
+_LOCKED_CYCLE_RUNNER = run_cycle_model
 
 # These are the complete Python dependencies executed by the score-free trace
 # consumer.  The authority producer itself is deliberately absent: this file
@@ -164,6 +180,38 @@ def _identifier(value: object, where: str) -> str:
     return result
 
 
+def _window_identifier(value: object, query_start_ns: int, where: str) -> str:
+    result = _text(value, where)
+    match = _WINDOW_IDENTIFIER.fullmatch(result)
+    if match is None or len(result) > 512:
+        raise Stage3ExecutionAuthorityError("%s is not a canonical window identifier" % where)
+    encoded_query = match.group(1)
+    if encoded_query is not None and int(encoded_query) != query_start_ns:
+        raise Stage3ExecutionAuthorityError("%s query timestamp differs" % where)
+    return result
+
+
+def _candidate_identifier(value: object, where: str) -> str:
+    result = _text(value, where)
+    if _CANDIDATE_IDENTIFIER.fullmatch(result) is None:
+        raise Stage3ExecutionAuthorityError("%s is not a canonical candidate identifier" % where)
+    return result
+
+
+def _reject_forbidden_candidate_fields(value: object, where: str = "candidate output") -> None:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if type(key) is not str:
+                raise Stage3ExecutionAuthorityError("%s field name must be text" % where)
+            lowered = key.lower()
+            if any(piece in lowered for piece in _FORBIDDEN_CANDIDATE_FIELD_PIECES):
+                raise Stage3ExecutionAuthorityError("candidate output contains a forbidden field")
+            _reject_forbidden_candidate_fields(item, "%s.%s" % (where, key))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for index, item in enumerate(value):
+            _reject_forbidden_candidate_fields(item, "%s[%d]" % (where, index))
+
+
 def _sha(value: object, where: str) -> str:
     if type(value) is not str or _SHA256.fullmatch(value) is None:
         raise Stage3ExecutionAuthorityError("%s must be lowercase SHA-256" % where)
@@ -260,6 +308,15 @@ def _verify_import_closure(root: Path, paths: Sequence[str]) -> None:
                 resolved = _resolve_import(module, node, is_package)
                 if resolved:
                     imported = [resolved]
+                    for alias in node.names:
+                        if alias.name != "*":
+                            candidate = "%s.%s" % (resolved, alias.name)
+                            module_path = root / (candidate.replace(".", "/") + ".py")
+                            package_path = root / candidate.replace(".", "/") / "__init__.py"
+                            if module_path.is_file() or package_path.is_file():
+                                imported.append(candidate)
+                        if any(piece in alias.name.lower() for piece in forbidden):
+                            raise Stage3ExecutionAuthorityError("forbidden candidate dependency import")
             for name in imported:
                 lowered = name.lower()
                 if any(piece in lowered for piece in forbidden):
@@ -336,8 +393,8 @@ def _validate_profile(value: object) -> Mapping[str, object]:
     if (result["raw_ingress_lanes"] == 0 or result["event_service_lanes"] == 0
             or result["ingress_staging_entries"] < result["raw_ingress_lanes"]):
         raise Stage3ExecutionAuthorityError("logical ingress capacity differs")
-    if result["scope"] != LOGICAL_INGRESS_SCOPE:
-        raise Stage3ExecutionAuthorityError("logical ingress scope differs")
+    if result != _LOCKED_CYCLE_PROFILE.to_mapping():
+        raise Stage3ExecutionAuthorityError("logical ingress profile differs from locked Stage3 profile")
     return result
 
 
@@ -366,10 +423,11 @@ def _validate_timing(value: object) -> Mapping[str, object]:
 
 def _validate_registry(value: object) -> Mapping[str, object]:
     row = _exact(value, _REGISTRY_FIELDS, "neutral registry row")
+    query_start = _integer(row.get("query_start_ns_inclusive"), "query start")
     result = {
-        "window_id": _identifier(row.get("window_id"), "window ID"),
+        "window_id": _window_identifier(row.get("window_id"), query_start, "window ID"),
         "warmup_start_ns_inclusive": _integer(row.get("warmup_start_ns_inclusive"), "warmup start"),
-        "query_start_ns_inclusive": _integer(row.get("query_start_ns_inclusive"), "query start"),
+        "query_start_ns_inclusive": query_start,
         "query_end_ns_exclusive": _integer(row.get("query_end_ns_exclusive"), "query end"),
     }
     if result["query_start_ns_inclusive"] - result["warmup_start_ns_inclusive"] != PRE_ROLL_NS:
@@ -468,12 +526,16 @@ def build_stage3_execution_input(
     pose_streams: Mapping[str, Sequence[object]],
     *,
     source_events_authority: Mapping[str, object],
-    cycle_profile: object,
-    cycle_runner: _trace.CycleRunner,
+    cycle_profile: object = _LOCKED_CYCLE_PROFILE,
+    cycle_runner: _trace.CycleRunner = _LOCKED_CYCLE_RUNNER,
     repo_root: Optional[Path] = None,
 ) -> Mapping[str, object]:
     """Build the only Stage-3 authority that may be exposed to a candidate."""
 
+    if cycle_profile is not _LOCKED_CYCLE_PROFILE:
+        raise Stage3ExecutionAuthorityError("Stage3 execution profile is not the locked profile")
+    if cycle_runner is not _LOCKED_CYCLE_RUNNER:
+        raise Stage3ExecutionAuthorityError("Stage3 execution runner is not the repository runner")
     source = _validate_source(source_events_authority)
     profile = _profile_mapping(cycle_profile)
     root = _repo_root(repo_root)
@@ -874,12 +936,13 @@ def verify_stage3_label_authority(
 
 
 def _candidate_output_bindings(candidate_output: object, execution: Mapping[str, object]) -> Mapping[str, object]:
+    _reject_forbidden_candidate_fields(candidate_output)
     output = _mapping(candidate_output, "candidate output")
     required = frozenset(("schema", "candidate_id", "adapter_aggregate_sha256", "neutral_input_sha256", "windows", "aggregate_sha256"))
     if not required.issubset(output):
         raise Stage3ExecutionAuthorityError("candidate output seal envelope differs")
     schema = _text(output.get("schema"), "candidate output schema")
-    candidate_id = _identifier(output.get("candidate_id"), "candidate ID")
+    candidate_id = _candidate_identifier(output.get("candidate_id"), "candidate ID")
     if output.get("adapter_aggregate_sha256") != execution["aggregate_sha256"] or output.get("neutral_input_sha256") != execution["neutral_input_sha256"]:
         raise Stage3ExecutionAuthorityError("candidate output execution binding differs")
     output_aggregate = _verify_seal(output, "aggregate_sha256", "candidate output")
@@ -926,9 +989,9 @@ def build_stage3_scoring_join_receipt(
 
     execution = _mapping(execution_input, "execution input")
     verify_stage3_execution_input(execution, repo_root=repo_root)
+    candidate = _candidate_output_bindings(candidate_output, execution)
     labels = _mapping(label_authority, "label authority")
     verify_stage3_label_authority(labels, execution, repo_root=repo_root)
-    candidate = _candidate_output_bindings(candidate_output, execution)
     label_joins = labels["joins"]
     joined = []
     for candidate_row, label_row in zip(candidate["joined"], label_joins):
@@ -965,9 +1028,9 @@ def verify_stage3_scoring_join_receipt(
         raise Stage3ExecutionAuthorityError("scoring join schema differs")
     execution = _mapping(execution_input, "execution input")
     verify_stage3_execution_input(execution, repo_root=repo_root)
+    candidate = _candidate_output_bindings(candidate_output, execution)
     labels = _mapping(label_authority, "label authority")
     verify_stage3_label_authority(labels, execution, repo_root=repo_root)
-    candidate = _candidate_output_bindings(candidate_output, execution)
     joined = []
     for candidate_row, label_row in zip(candidate["joined"], labels["joins"]):
         joined.append(dict(candidate_row, label_sha256=label_row["label_sha256"]))

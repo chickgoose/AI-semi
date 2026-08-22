@@ -9,9 +9,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from jsonschema import Draft202012Validator
 
+from benchmarks.redred_mc_wtb_predictor_stage3 import execution_authority as authority_module
 from benchmarks.redred_mc_wtb_predictor_stage3.execution_authority import (
     CONSUMER_DEPENDENCY_PATHS,
     Stage3ExecutionAuthorityError,
@@ -26,8 +28,13 @@ from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
 )
-from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+from benchmarks.redred_mc_wtb_predictor_stage3.pll_output import (
+    CANDIDATE_ID as PLL_CANDIDATE_ID,
+)
+from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import RG3_POLICY
+from benchmarks.redred_mc_wtb_stage4_contract import canonical_json_bytes, canonical_sha256
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import (
+    STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE,
     pose_timestamp_to_cycle,
     run_cycle_model,
 )
@@ -70,30 +77,6 @@ class NeutralPose:
     pose_sha256: str
     value_valid: bool
     arithmetic_valid: bool
-
-
-@dataclass(frozen=True)
-class LogicalIngressProfile:
-    profile_id: str = "TEST_LOGICAL_INGRESS_8X2_V1"
-    raw_ingress_lanes: int = 8
-    ingress_staging_entries: int = 8
-    event_service_lanes: int = 2
-    scope: str = "MODEL_ONLY_LOGICAL_REPLAY"
-
-    def to_mapping(self):
-        return {
-            "schema": "test.logical_ingress_profile/v1",
-            "profile_id": self.profile_id,
-            "raw_ingress_lanes": self.raw_ingress_lanes,
-            "ingress_staging_entries": self.ingress_staging_entries,
-            "event_service_lanes": self.event_service_lanes,
-            "scope": self.scope,
-        }
-
-
-def logical_cycle_runner(**arguments):
-    arguments.pop("ingress_profile")
-    return run_cycle_model(**arguments)
 
 
 def pose(window_start_ns: int, pose_id: int, timestamp_ns: int) -> NeutralPose:
@@ -242,6 +225,38 @@ def candidate_output(execution):
     return body
 
 
+def production_id_fixture():
+    registry, events, poses = neutral_fixture()
+    replacements = {
+        "w0": "shapes_rotation/query_start_ns=50000000",
+        "w1": "shapes_rotation/query_start_ns=60000000",
+    }
+    production_registry = tuple(Registry(
+        replacements[row.window_id],
+        row.warmup_start_ns_inclusive,
+        row.query_start_ns_inclusive,
+        row.query_end_ns_exclusive,
+    ) for row in registry)
+    return (
+        production_registry,
+        {replacements[key]: value for key, value in events.items()},
+        {replacements[key]: value for key, value in poses.items()},
+    )
+
+
+def production_id_labels():
+    replacements = {
+        "w0": "shapes_rotation/query_start_ns=50000000",
+        "w1": "shapes_rotation/query_start_ns=60000000",
+    }
+    result = {}
+    for old_id, label in labels().items():
+        row = dict(label)
+        row["window_id"] = replacements[old_id]
+        result[replacements[old_id]] = row
+    return result
+
+
 class ExecutionAuthorityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -251,8 +266,6 @@ class ExecutionAuthorityTests(unittest.TestCase):
             events,
             poses,
             source_events_authority=source_authority(),
-            cycle_profile=LogicalIngressProfile(),
-            cycle_runner=logical_cycle_runner,
             repo_root=ROOT,
         )
         cls.label_authority = build_stage3_label_authority(
@@ -279,7 +292,11 @@ class ExecutionAuthorityTests(unittest.TestCase):
         self.assertEqual(execution["timing_authority"]["pre_roll_ns"], 50_000_000)
         self.assertEqual(
             execution["logical_ingress_profile"]["scope"],
-            "MODEL_ONLY_LOGICAL_REPLAY",
+            "MODEL_ONLY_LOGICAL_REPLAY_NO_RTL_OR_PPA_CLAIM",
+        )
+        self.assertEqual(
+            execution["logical_ingress_profile"],
+            STAGE3_LOGICAL_REPLAY_INGRESS_PROFILE.to_mapping(),
         )
         self.assertEqual(
             verify_stage3_execution_input(
@@ -295,6 +312,127 @@ class ExecutionAuthorityTests(unittest.TestCase):
             '"evaluator"', '"scorer"',
         ):
             self.assertNotIn(forbidden, encoded)
+
+    def test_builder_locks_repository_runner_and_exact_stage3_profile(self):
+        registry, events, poses = neutral_fixture()
+
+        def substituted_runner(*args, **kwargs):
+            return run_cycle_model(*args, **kwargs)
+
+        with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "repository runner"):
+            build_stage3_execution_input(
+                registry,
+                events,
+                poses,
+                source_events_authority=source_authority(),
+                cycle_runner=substituted_runner,
+                repo_root=ROOT,
+            )
+        with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "locked profile"):
+            build_stage3_execution_input(
+                registry,
+                events,
+                poses,
+                source_events_authority=source_authority(),
+                cycle_profile=object(),
+                repo_root=ROOT,
+            )
+
+        resealed = deepcopy(self.execution)
+        resealed["logical_ingress_profile"]["profile_id"] = "SUBSTITUTED_PROFILE"
+        resealed["logical_ingress_profile_sha256"] = canonical_sha256(
+            resealed["logical_ingress_profile"]
+        )
+        reseal(resealed)
+        with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "locked Stage3 profile"):
+            verify_stage3_execution_input(resealed, repo_root=ROOT)
+
+    def test_execution_bytes_are_identical_under_label_mutation(self):
+        registry, events, poses = neutral_fixture()
+        before = build_stage3_execution_input(
+            registry,
+            events,
+            poses,
+            source_events_authority=source_authority(),
+            repo_root=ROOT,
+        )
+        mutated_labels = labels()
+        mutated_labels["w0"]["axis"] = "Y"
+        mutated_labels["w0"]["rank_sha256"] = THREE_SHA
+        after = build_stage3_execution_input(
+            registry,
+            events,
+            poses,
+            source_events_authority=source_authority(),
+            repo_root=ROOT,
+        )
+        self.assertNotEqual(mutated_labels, labels())
+        self.assertEqual(canonical_json_bytes(before), canonical_json_bytes(after))
+
+    def test_production_window_ids_and_actual_candidate_ids(self):
+        registry, events, poses = production_id_fixture()
+        execution = build_stage3_execution_input(
+            registry,
+            events,
+            poses,
+            source_events_authority=source_authority(),
+            repo_root=ROOT,
+        )
+        authority = build_stage3_label_authority(
+            execution,
+            production_id_labels(),
+            selector_authority=selector_authority(),
+            repo_root=ROOT,
+        )
+        expected_ids = [row.window_id for row in registry]
+        self.assertEqual(
+            [row["window_id"] for row in execution["neutral_registry"]],
+            expected_ids,
+        )
+        schema_path = (
+            ROOT / "benchmarks/redred_mc_wtb_predictor_stage3/"
+            "stage3_scoring_join_receipt.schema.json"
+        )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        validator = Draft202012Validator(schema)
+        for candidate_id in (RG3_POLICY.candidate_id, PLL_CANDIDATE_ID):
+            with self.subTest(candidate_id=candidate_id):
+                output = candidate_output(execution)
+                output["candidate_id"] = candidate_id
+                reseal(output)
+                receipt = build_stage3_scoring_join_receipt(
+                    execution, output, authority, repo_root=ROOT
+                )
+                self.assertEqual(receipt["candidate_id"], candidate_id)
+                self.assertEqual(list(validator.iter_errors(receipt)), [])
+
+        invalid_output = candidate_output(execution)
+        invalid_output["candidate_id"] = "candidate with spaces"
+        reseal(invalid_output)
+        with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "candidate identifier"):
+            build_stage3_scoring_join_receipt(
+                execution, invalid_output, authority, repo_root=ROOT
+            )
+
+        bad_registry = list(registry)
+        bad_registry[0] = Registry(
+            "shapes_rotation/query_start_ns=50000001",
+            registry[0].warmup_start_ns_inclusive,
+            registry[0].query_start_ns_inclusive,
+            registry[0].query_end_ns_exclusive,
+        )
+        bad_events = dict(events)
+        bad_events[bad_registry[0].window_id] = bad_events.pop(registry[0].window_id)
+        bad_poses = dict(poses)
+        bad_poses[bad_registry[0].window_id] = bad_poses.pop(registry[0].window_id)
+        with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "query timestamp"):
+            build_stage3_execution_input(
+                bad_registry,
+                bad_events,
+                bad_poses,
+                source_events_authority=source_authority(),
+                repo_root=ROOT,
+            )
 
     def test_dependency_closure_has_no_authority_or_scoring_modules(self):
         paths = [row["path"] for row in self.execution["consumer_dependency_manifest"]]
@@ -387,6 +525,36 @@ class ExecutionAuthorityTests(unittest.TestCase):
             reseal(mutated)
             with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "forbidden"):
                 verify_stage3_execution_input(mutated, repo_root=root)
+
+    def test_package_alias_forbidden_import_mutations_fail_closed(self):
+        import hashlib
+
+        for source_line in (
+            "from benchmarks.redred_mc_wtb_predictor_stage3 import screen108\n",
+            "from . import screen108\n",
+        ):
+            with self.subTest(source_line=source_line), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                for relative in CONSUMER_DEPENDENCY_PATHS:
+                    target = root / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(ROOT / relative, target)
+                framework_path = root / "benchmarks/redred_mc_wtb_predictor_stage3/framework.py"
+                framework_path.write_text(
+                    source_line + framework_path.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+                mutated = deepcopy(self.execution)
+                for dependency in mutated["consumer_dependency_manifest"]:
+                    dependency["sha256"] = hashlib.sha256(
+                        (root / dependency["path"]).read_bytes()
+                    ).hexdigest()
+                mutated["consumer_dependency_aggregate_sha256"] = canonical_sha256(
+                    mutated["consumer_dependency_manifest"]
+                )
+                reseal(mutated)
+                with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "forbidden"):
+                    verify_stage3_execution_input(mutated, repo_root=root)
 
     def test_event_pose_and_current_cav_mutations_fail(self):
         mutations = []
@@ -488,6 +656,107 @@ class ExecutionAuthorityTests(unittest.TestCase):
                 self.execution, reordered, self.label_authority, repo_root=ROOT
             )
 
+    def test_resealed_forbidden_candidate_fields_fail_closed(self):
+        mutations = []
+        top_level = deepcopy(self.output)
+        top_level["selector_rank_sha256"] = ZERO_SHA
+        reseal(top_level)
+        mutations.append(top_level)
+
+        nested_window = deepcopy(self.output)
+        nested_window["windows"][0]["label_metadata"] = {"axis": "X"}
+        reseal(nested_window)
+        mutations.append(nested_window)
+
+        nested_event = deepcopy(self.output)
+        nested_event["windows"][0]["events"][0]["score"] = 1.0
+        nested_event["windows"][0]["events_sha256"] = canonical_sha256(
+            nested_event["windows"][0]["events"]
+        )
+        reseal(nested_event)
+        mutations.append(nested_event)
+
+        evaluator_nested = deepcopy(self.output)
+        evaluator_nested["evidence"] = {"evaluator_version": "v1"}
+        reseal(evaluator_nested)
+        mutations.append(evaluator_nested)
+
+        for mutated in mutations:
+            with self.subTest(keys=sorted(mutated.keys())):
+                with self.assertRaisesRegex(Stage3ExecutionAuthorityError, "forbidden field"):
+                    build_stage3_scoring_join_receipt(
+                        self.execution,
+                        mutated,
+                        self.label_authority,
+                        repo_root=ROOT,
+                    )
+
+    def test_candidate_output_is_verified_before_label_authority_opens(self):
+        original_candidate = authority_module._candidate_output_bindings
+        original_labels = authority_module.verify_stage3_label_authority
+        calls = []
+
+        def candidate_spy(*args, **kwargs):
+            result = original_candidate(*args, **kwargs)
+            calls.append("output_verified")
+            return result
+
+        def label_spy(*args, **kwargs):
+            calls.append("label_opened")
+            return original_labels(*args, **kwargs)
+
+        with mock.patch.object(
+            authority_module, "_candidate_output_bindings", side_effect=candidate_spy
+        ), mock.patch.object(
+            authority_module, "verify_stage3_label_authority", side_effect=label_spy
+        ):
+            build_stage3_scoring_join_receipt(
+                self.execution, self.output, self.label_authority, repo_root=ROOT
+            )
+        self.assertEqual(
+            calls,
+            ["output_verified", "label_opened", "output_verified", "label_opened"],
+        )
+
+        calls.clear()
+        with mock.patch.object(
+            authority_module, "_candidate_output_bindings", side_effect=candidate_spy
+        ), mock.patch.object(
+            authority_module, "verify_stage3_label_authority", side_effect=label_spy
+        ):
+            verify_stage3_scoring_join_receipt(
+                self.join,
+                self.execution,
+                self.output,
+                self.label_authority,
+                repo_root=ROOT,
+            )
+        self.assertEqual(calls, ["output_verified", "label_opened"])
+
+        unsealed = deepcopy(self.output)
+        del unsealed["aggregate_sha256"]
+        for operation in ("build", "verify"):
+            calls.clear()
+            with self.subTest(operation=operation), mock.patch.object(
+                authority_module, "_candidate_output_bindings", side_effect=candidate_spy
+            ), mock.patch.object(
+                authority_module, "verify_stage3_label_authority", side_effect=label_spy
+            ):
+                with self.assertRaises(Stage3ExecutionAuthorityError):
+                    if operation == "build":
+                        build_stage3_scoring_join_receipt(
+                            self.execution, unsealed, self.label_authority, repo_root=ROOT
+                        )
+                    else:
+                        verify_stage3_scoring_join_receipt(
+                            self.join,
+                            self.execution,
+                            unsealed,
+                            self.label_authority,
+                            repo_root=ROOT,
+                        )
+            self.assertEqual(calls, [])
+
     def test_scoring_join_receipt_binds_all_three_seals(self):
         self.assertEqual(
             verify_stage3_scoring_join_receipt(
@@ -527,6 +796,15 @@ class ExecutionAuthorityTests(unittest.TestCase):
             mutated = deepcopy(artifact)
             mutated["unexpected"] = True
             self.assertTrue(list(validator.iter_errors(mutated)))
+
+            nested = deepcopy(artifact)
+            if filename == "stage3_execution_input.schema.json":
+                nested["windows"][0]["events"][0]["unexpected"] = True
+            elif filename == "stage3_label_authority.schema.json":
+                nested["labels"][0]["unexpected"] = True
+            else:
+                continue
+            self.assertTrue(list(validator.iter_errors(nested)))
 
 
 if __name__ == "__main__":
