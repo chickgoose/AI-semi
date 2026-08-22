@@ -1,0 +1,148 @@
+{
+  "schema": "redred.mc_wtb_so3_current_cav.axis_motion_checkpoint_summary/v1",
+  "status": "PASS_SCOPED_CURRENT_CAV_EVALUATION",
+  "full_result_sha256": "aab9aa403a3d7d74c1eb9a3ee1481550f00eec98fc6797d7e68703617db8bd6d",
+  "source_dataset": "UZH_DAVIS240C_shapes_rotation",
+  "authority": {
+    "selector_registry_sha256": "4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d",
+    "adapter_aggregate_sha256": "2a7b41cbb29aa4d9a1e86be2d6beeeda56434d0dc60e366259e19f1f6da9ea05",
+    "selector_labels_sidecar_sha256": "2dd3be5aba43610bef999c2491978d3abb39b206cfa6c53cb658cee43c2b3ecb",
+    "neutral_registry_sha256": "64d168977d1074fc60f56b35d854612920d057bf0bdc30dd98486a99a60ecd0f",
+    "neutral_input_sha256": "3ecd379823fcdd4e596dba3daa260a1d979a16fda8d77c82f7628c2f1758d884",
+    "verified_input_sha256": "3ecd379823fcdd4e596dba3daa260a1d979a16fda8d77c82f7628c2f1758d884",
+    "evaluator_implementation_sha256": "64cf6d9aff7c4a3dec791469b5e2f010fe80d8930650f8438d80f4659b3302fd"
+  },
+  "population": {
+    "windows": 108,
+    "selected_events": 88028,
+    "query_events": 44029,
+    "selected_pose_packets": 456,
+    "windows_per_unsigned_axis_motion_cell": 12,
+    "windows_per_signed_axis_motion_cell": 6
+  },
+  "metric_definition": "pooled_loss_ratio_effect = 1 - sum(policy_angular_loss) / sum(sensor_fixed_angular_loss)",
+  "overall": {
+    "pooled_loss_ratio_effect": 0.0490827648941613,
+    "equal_window_mean_effect": 0.03865125383927977,
+    "positive_windows": 97,
+    "enabled_events": 44029,
+    "enable_rate": 1.0,
+    "quality_waste_events": 16842,
+    "quality_waste_rate": 0.3825206114152036,
+    "sensor_loss_sum": 393.01796906597866,
+    "policy_loss_sum": 373.72756049113246,
+    "occurrence_latency_cycles": {
+      "mean": 1.0338867564559722,
+      "p50": 1,
+      "p95": 1,
+      "p99": 2,
+      "max": 3
+    },
+    "added_latency_cycles": {
+      "mean": 0.0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "max": 0
+    }
+  },
+  "axis_motion": [
+    {
+      "axis": "X",
+      "motion_bin": "LOW",
+      "query_events": 2655,
+      "pooled_loss_ratio_effect": 0.0179462577700934,
+      "equal_window_mean_effect": 0.013956607515446742,
+      "positive_windows": 10,
+      "quality_waste_rate": 0.4090395480225989
+    },
+    {
+      "axis": "X",
+      "motion_bin": "MID",
+      "query_events": 6189,
+      "pooled_loss_ratio_effect": 0.03022675830964705,
+      "equal_window_mean_effect": 0.02975722167210158,
+      "positive_windows": 12,
+      "quality_waste_rate": 0.40426563257392145
+    },
+    {
+      "axis": "X",
+      "motion_bin": "HIGH",
+      "query_events": 7835,
+      "pooled_loss_ratio_effect": 0.10448977421493488,
+      "equal_window_mean_effect": 0.10834992110330505,
+      "positive_windows": 12,
+      "quality_waste_rate": 0.3391193363114231
+    },
+    {
+      "axis": "Y",
+      "motion_bin": "LOW",
+      "query_events": 2402,
+      "pooled_loss_ratio_effect": 0.009038896205714408,
+      "equal_window_mean_effect": 0.006844933984071831,
+      "positive_windows": 9,
+      "quality_waste_rate": 0.45503746877601997
+    },
+    {
+      "axis": "Y",
+      "motion_bin": "MID",
+      "query_events": 5013,
+      "pooled_loss_ratio_effect": 0.03061778273629534,
+      "equal_window_mean_effect": 0.02806017170834152,
+      "positive_windows": 11,
+      "quality_waste_rate": 0.44803510871733493
+    },
+    {
+      "axis": "Y",
+      "motion_bin": "HIGH",
+      "query_events": 7722,
+      "pooled_loss_ratio_effect": 0.06847853520630087,
+      "equal_window_mean_effect": 0.07035173261077628,
+      "positive_windows": 12,
+      "quality_waste_rate": 0.3321678321678322
+    },
+    {
+      "axis": "Z",
+      "motion_bin": "LOW",
+      "query_events": 1886,
+      "pooled_loss_ratio_effect": 0.0034070946125188684,
+      "equal_window_mean_effect": 0.0027593887970707256,
+      "positive_windows": 7,
+      "quality_waste_rate": 0.45068928950159065
+    },
+    {
+      "axis": "Z",
+      "motion_bin": "MID",
+      "query_events": 4399,
+      "pooled_loss_ratio_effect": 0.02711680621583301,
+      "equal_window_mean_effect": 0.02627346938927731,
+      "positive_windows": 12,
+      "quality_waste_rate": 0.3941804955671744
+    },
+    {
+      "axis": "Z",
+      "motion_bin": "HIGH",
+      "query_events": 5928,
+      "pooled_loss_ratio_effect": 0.06437564621498282,
+      "equal_window_mean_effect": 0.06150783777312685,
+      "positive_windows": 12,
+      "quality_waste_rate": 0.3557692307692308
+    }
+  ],
+  "signed_axis_motion_effect": [
+    {"axis": "X", "sign": "NEGATIVE", "low": 0.016323350691012983, "mid": 0.03702345742717894, "high": 0.14088870872197712},
+    {"axis": "X", "sign": "POSITIVE", "low": 0.01925125751562551, "mid": 0.02384041524044722, "high": 0.06481609174439196},
+    {"axis": "Y", "sign": "NEGATIVE", "low": 0.012514853563159067, "mid": 0.028561643939064463, "high": 0.06399309148152976},
+    {"axis": "Y", "sign": "POSITIVE", "low": 0.004714526729516666, "mid": 0.03286199274049639, "high": 0.07343252314901227},
+    {"axis": "Z", "sign": "NEGATIVE", "low": 0.004611253124415904, "mid": 0.024065379258027875, "high": 0.07285699959080905},
+    {"axis": "Z", "sign": "POSITIVE", "low": 0.0022427314352893024, "mid": 0.03079431927333154, "high": 0.056822071182807465}
+  ],
+  "scope": [
+    "The CAV implementation and hardware interface were not changed by this evaluation.",
+    "Axis and motion-bin selection is offline evaluation logic and is not charged to RTL PPA.",
+    "X, Y, and Z are dominant axes of the frozen BODY-frame SO(3) logarithm with purity at least 0.8; they are not asserted as universal pan, tilt, and roll labels.",
+    "LOW, MID, and HIGH are frozen focal-scaled motion-proxy bins, not general angular-velocity classes.",
+    "The result is descriptive for one pinned UZH shapes_rotation sequence and does not establish causality, statistical significance, translation/parallax behavior, cross-scene generalization, or PPA.",
+    "The policy enabled CAV for every query event; filtering remains a later, unimplemented stage."
+  ]
+}
