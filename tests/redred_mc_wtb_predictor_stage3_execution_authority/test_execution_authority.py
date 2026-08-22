@@ -326,6 +326,63 @@ class ExecutionAuthorityTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, encoded)
 
+    def test_warmup_query_boundary_must_be_cycle_atomic(self):
+        registry, event_streams, pose_streams = neutral_fixture()
+        query_start = registry[0].query_start_ns_inclusive
+        colliding = dict(event_streams)
+        colliding["w0"] = (
+            event(100, query_start - 1, query_start, 2),
+            event(101, query_start, query_start, 2),
+        )
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "boundary is not cycle atomic"
+        ):
+            build_stage3_execution_input(
+                registry,
+                colliding,
+                pose_streams,
+                source_events_authority=source_authority(),
+                repo_root=ROOT,
+            )
+
+        # Capture the exact artifact the pre-fix builder would have returned,
+        # then prove that the public verifier independently rejects it.
+        with mock.patch.object(
+            authority_module, "verify_stage3_execution_input", return_value=ZERO_SHA
+        ):
+            pre_fix_artifact = build_stage3_execution_input(
+                registry,
+                colliding,
+                pose_streams,
+                source_events_authority=source_authority(),
+                repo_root=ROOT,
+            )
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "boundary is not cycle atomic"
+        ):
+            verify_stage3_execution_input(pre_fix_artifact, repo_root=ROOT)
+
+        adjacent = dict(event_streams)
+        adjacent["w0"] = (
+            event(100, query_start - 5, query_start, 2),
+            event(101, query_start, query_start, 2),
+        )
+        accepted = build_stage3_execution_input(
+            registry,
+            adjacent,
+            pose_streams,
+            source_events_authority=source_authority(),
+            repo_root=ROOT,
+        )
+        self.assertEqual(
+            verify_stage3_execution_input(
+                accepted,
+                expected_aggregate_sha256=accepted["aggregate_sha256"],
+                repo_root=ROOT,
+            ),
+            accepted["aggregate_sha256"],
+        )
+
     def test_builder_locks_repository_runner_and_exact_stage3_profile(self):
         registry, events, poses = neutral_fixture()
 

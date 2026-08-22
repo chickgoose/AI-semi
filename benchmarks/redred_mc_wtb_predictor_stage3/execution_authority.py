@@ -843,6 +843,18 @@ def verify_stage3_execution_input(
             raise Stage3ExecutionAuthorityError(
                 "window event occurrence cycles move backwards"
             )
+        warmup_cycles = [
+            cycle for event, cycle in zip(events, event_cycles)
+            if not event["is_query"]
+        ]
+        query_cycles = [
+            cycle for event, cycle in zip(events, event_cycles)
+            if event["is_query"]
+        ]
+        if warmup_cycles and query_cycles and warmup_cycles[-1] >= query_cycles[0]:
+            raise Stage3ExecutionAuthorityError(
+                "warmup/query boundary is not cycle atomic"
+            )
         pose_ids = [pose["pose_id"] for pose in poses]
         pose_timestamps = [pose["timestamp_ns"] for pose in poses]
         if (any(right <= left for left, right in zip(pose_ids, pose_ids[1:]))
