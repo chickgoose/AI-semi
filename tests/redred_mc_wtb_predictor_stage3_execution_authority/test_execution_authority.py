@@ -296,6 +296,18 @@ class ExecutionAuthorityTests(unittest.TestCase):
         self.assertEqual(execution["query_event_count"], 2)
         self.assertEqual(execution["timing_authority"]["pre_roll_ns"], 50_000_000)
         self.assertEqual(
+            execution["schema"],
+            "redred.mc_wtb_predictor_stage3.execution_input/v3",
+        )
+        self.assertEqual(
+            execution["timing_authority"]["candidate_screen_preroll_rule"][
+                "cycle_boundary"
+            ],
+            "last_warmup_occurrence_cycle<"
+            "timestamp_to_cycle(query_start_ns,warmup_start_ns)"
+            "<=first_query_occurrence_cycle",
+        )
+        self.assertEqual(
             execution["logical_ingress_profile"]["scope"],
             "MODEL_ONLY_LOGICAL_REPLAY_NO_RTL_OR_PPA_CLAIM",
         )

@@ -5,7 +5,7 @@ and at most 256 reference observations per polarity are retained.  Rich warmup
 decisions are consumed exactly once and are never stored in a receipt.
 
 Event identity, source order, content digests, and locked cycles come from a
-verified Stage3ExecutionInput/v2, not from these unkeyed transcript chains.
+verified Stage3ExecutionInput/v3, not from these unkeyed transcript chains.
 Candidate-derived rays, states, routes, decisions, and pose transitions remain
 explicit production HOLDs.  The builder recomputes the authenticated source
 sequence incrementally so arbitrary (including numerically decreasing) IDs
@@ -35,14 +35,14 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
 )
 
 
-WARMUP_TRANSCRIPT_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_transcript/v3"
+WARMUP_TRANSCRIPT_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_transcript/v4"
 REFERENCE_PRIME_POLICY_SCHEMA = "redred.mc_wtb_predictor_stage3.reference_prime_policy/v1"
 TRANSPORT_POLICY_SCHEMA = "redred.mc_wtb_predictor_stage3.transport_diagnostic_policy/v1"
 RESET_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_reset/v2"
 QUERY_START_STATE_SCHEMA = "redred.mc_wtb_predictor_stage3.query_start_state/v2"
 REFERENCE_SNAPSHOT_SCHEMA = "redred.mc_wtb_predictor_stage3.query_start_reference_snapshot/v1"
 PENDING_TRANSITION_SCHEMA = "redred.mc_wtb_predictor_stage3.pending_query_transition/v2"
-REPLAY_RECEIPT_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_replay_receipt/v1"
+REPLAY_RECEIPT_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_replay_receipt/v2"
 BOUNDARY_CLOSE_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_boundary_close/v2"
 EXECUTION_BINDING_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_execution_binding/v1"
 

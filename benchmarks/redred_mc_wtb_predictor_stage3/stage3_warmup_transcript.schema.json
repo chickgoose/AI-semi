@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ai-semi.local/schemas/stage3_warmup_transcript.schema.json",
-  "title": "Stage3 warmup transcript v3",
+  "title": "Stage3 warmup transcript v4",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,7 +17,7 @@
     "receipt_sha256"
   ],
   "properties": {
-    "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_transcript/v3"},
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_transcript/v4"},
     "execution_binding": {"$ref": "#/$defs/executionBinding"},
     "execution_binding_sha256": {"$ref": "#/$defs/sha256"},
     "bounds": {"$ref": "#/$defs/bounds"},
@@ -358,8 +358,8 @@
         "replay_receipt_sha256"
       ],
       "properties": {
-        "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_replay_receipt/v1"},
-        "execution_input_schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v2"},
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.warmup_replay_receipt/v2"},
+        "execution_input_schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v3"},
         "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"},
         "consumer_dependency_aggregate_sha256": {"$ref": "#/$defs/sha256"},
         "logical_cycle_replay_authority": {"$ref": "#/$defs/logicalAuthority"},

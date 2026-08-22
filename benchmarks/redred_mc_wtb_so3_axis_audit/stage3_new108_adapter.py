@@ -327,34 +327,6 @@ def _causal_pose_id(
     return visible[-1].pose_id
 
 
-def _validate_cycle_atomic_boundary(
-    window: NeutralRegistryWindow,
-    events: Sequence[NeutralEventInput],
-) -> None:
-    """Reject a timestamp partition that splits one physical clock edge."""
-
-    warmup_cycles = [
-        timestamp_to_cycle(event.timestamp_ns, window.warmup_start_ns_inclusive)
-        for event in events if not event.is_query
-    ]
-    query_cycles = [
-        timestamp_to_cycle(event.timestamp_ns, window.warmup_start_ns_inclusive)
-        for event in events if event.is_query
-    ]
-    if not warmup_cycles or not query_cycles:
-        raise Stage3New108AdapterError("Stage3 window event phase is empty")
-    query_start_cycle = timestamp_to_cycle(
-        window.query_start_ns_inclusive, window.warmup_start_ns_inclusive
-    )
-    if (
-        warmup_cycles[-1] >= query_start_cycle
-        or query_cycles[0] < query_start_cycle
-    ):
-        raise Stage3New108AdapterError(
-            "warmup/query boundary is not cycle atomic"
-        )
-
-
 def _read_events(
     sources: ValidatedSources,
     rows: Sequence[Mapping[str, object]],
@@ -438,7 +410,6 @@ def _read_events(
             raise Stage3New108AdapterError("selector raw event evidence differs")
         if not warmup_ids[window_id] or not query_ids[window_id]:
             raise Stage3New108AdapterError("Stage3 window event phase is empty")
-        _validate_cycle_atomic_boundary(window, event_streams[window_id])
         observed_global_query_ids.extend(query_ids[window_id])
         evidence[window_id] = {
             "raw_source_event_lines_sha256": raw_digests[window_id].hexdigest(),

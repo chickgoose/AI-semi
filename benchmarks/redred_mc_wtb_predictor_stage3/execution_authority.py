@@ -29,7 +29,7 @@ from benchmarks.redred_mc_wtb_predictor_stage3.logical_cycle_replay import (
 )
 
 
-EXECUTION_INPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.execution_input/v2"
+EXECUTION_INPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.execution_input/v3"
 LABEL_AUTHORITY_SCHEMA = "redred.mc_wtb_predictor_stage3.label_authority/v1"
 SCORING_JOIN_SCHEMA = "redred.mc_wtb_predictor_stage3.scoring_join_receipt/v1"
 
@@ -42,6 +42,11 @@ _PREROLL_RULE = {
     "scoring": "query_interval_only",
     "insufficient_support": "hard_fail_no_extension",
     "outcome_dependent_extension": False,
+    "cycle_boundary": (
+        "last_warmup_occurrence_cycle<"
+        "timestamp_to_cycle(query_start_ns,warmup_start_ns)"
+        "<=first_query_occurrence_cycle"
+    ),
 }
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")

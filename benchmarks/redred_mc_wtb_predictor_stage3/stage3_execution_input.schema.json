@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "redred.mc_wtb_predictor_stage3.execution_input/v2",
+  "$id": "redred.mc_wtb_predictor_stage3.execution_input/v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,7 +17,7 @@
     "aggregate_sha256"
   ],
   "properties": {
-    "schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v2"},
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v3"},
     "source_events_authority": {"$ref": "#/$defs/sourceAuthority"},
     "timing_authority": {"$ref": "#/$defs/timingAuthority"},
     "logical_ingress_profile": {"$ref": "#/$defs/ingressProfile"},
@@ -83,14 +83,15 @@
         "pre_roll_ns": {"const": 50000000},
         "candidate_screen_preroll_rule": {
           "type": "object", "additionalProperties": false,
-          "required": ["duration_ns", "interval", "state_initialization", "scoring", "insufficient_support", "outcome_dependent_extension"],
+          "required": ["duration_ns", "interval", "state_initialization", "scoring", "insufficient_support", "outcome_dependent_extension", "cycle_boundary"],
           "properties": {
             "duration_ns": {"const": 50000000},
             "interval": {"const": "[query_start_ns-50000000,query_start_ns)"},
             "state_initialization": {"const": "reset_then_replay_in_source_order"},
             "scoring": {"const": "query_interval_only"},
             "insufficient_support": {"const": "hard_fail_no_extension"},
-            "outcome_dependent_extension": {"const": false}
+            "outcome_dependent_extension": {"const": false},
+            "cycle_boundary": {"const": "last_warmup_occurrence_cycle<timestamp_to_cycle(query_start_ns,warmup_start_ns)<=first_query_occurrence_cycle"}
           }
         },
         "candidate_screen_preroll_rule_sha256": {"$ref": "#/$defs/sha256"}
