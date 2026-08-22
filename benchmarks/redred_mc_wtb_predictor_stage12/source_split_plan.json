@@ -1,0 +1,189 @@
+{
+  "schema": "redred.mc_wtb_predictor_stage12.source_split_plan/v1",
+  "status": "FREEZE_EFFECTIVE_ONLY_VIA_SEPARATE_COMMITTED_RECEIPT",
+  "content_date": "2026-08-22",
+  "implementation_baseline_commit": "2d7d3d128da2436b257ea1ce759bf8cb6c0b2466",
+  "official_authority_url": "https://rpg.ifi.uzh.ch/davis_data.html",
+  "license_authority_url": "https://creativecommons.org/licenses/by-nc-sa/3.0/",
+  "license_identifier": "CC-BY-NC-SA-3.0",
+  "archive_hash_policy": "COMPUTE_SHA256_OVER_EXACT_CAPTURED_BYTES_BEFORE_EXTRACTION_OR_OUTCOME_ACCESS",
+  "catalog": [
+    {
+      "sequence_id": "uzh_davis240c/shapes_rotation",
+      "role": "DEVELOPMENT_CONSUMED",
+      "scene_family": "simple_shapes",
+      "motion_label": "rotation_increasing_speed",
+      "acquisition_status": "ALREADY_CONSUMED",
+      "requested_url": "https://rpg.ifi.uzh.ch/datasets/davis/shapes_rotation.zip",
+      "source_lock_sha256": "0e0dbb17db4d170de650729fe9ad1cd3f18d20c1bddcd577c84999fcde045a4c",
+      "restrictions": [
+        "ALL_WINDOWS_ARE_DEVELOPMENT_ONLY",
+        "NEW108_IS_NOT_UNSEEN",
+        "THE_CONSUMED_43P321_SECOND_INTERVAL_MUST_NOT_BE_REUSED_AS_HOLDOUT"
+      ]
+    },
+    {
+      "sequence_id": "uzh_davis240c/dynamic_rotation",
+      "role": "ONE_SHOT_NONCOMPENSATORY_CHALLENGE",
+      "scene_family": "dynamic_office",
+      "motion_label": "rotation_increasing_speed",
+      "acquisition_status": "NOT_ACQUIRED_AT_FREEZE",
+      "requested_url": "https://rpg.ifi.uzh.ch/datasets/davis/dynamic_rotation.zip",
+      "resolved_url": "https://download.ifi.uzh.ch/rpg/web/datasets/davis/dynamic_rotation.zip",
+      "http_content_length": 403615114,
+      "http_etag": "\"180ead8a-5c68b80c8ae7d\"",
+      "http_last_modified": "Wed, 07 Jul 2021 17:02:26 GMT",
+      "archive_sha256": "TO_BE_RECORDED_IN_IMMUTABLE_SEPARATE_ACQUISITION_RECEIPT",
+      "restrictions": [
+        "MUST_NOT_SELECT_OR_TUNE_BY_OUTCOME",
+        "FAILURE_BLOCKS_MOVING_SCENE_GENERALIZATION_BUT_DOES_NOT_REWRITE_STATIC_SCENE_RESULTS",
+        "DYNAMIC_TRANSLATION_AND_DYNAMIC_6DOF_REMAIN_UNOPENED"
+      ]
+    },
+    {
+      "sequence_id": "uzh_davis240c/poster_rotation",
+      "role": "FINAL_CONFIRMATORY_HOLDOUT",
+      "scene_family": "wall_poster",
+      "motion_label": "rotation_increasing_speed",
+      "acquisition_status": "NOT_ACQUIRED_AT_FREEZE",
+      "requested_url": "https://rpg.ifi.uzh.ch/datasets/davis/poster_rotation.zip",
+      "resolved_url": "https://download.ifi.uzh.ch/rpg/web/datasets/davis/poster_rotation.zip",
+      "http_content_length": 833672602,
+      "http_etag": "\"31b0d59a-5c68ba7db6e63\"",
+      "http_last_modified": "Wed, 07 Jul 2021 17:13:22 GMT",
+      "archive_sha256": "TO_BE_RECORDED_IN_IMMUTABLE_SEPARATE_ACQUISITION_RECEIPT",
+      "restrictions": [
+        "KEEP_ALL_POSTER_FAMILY_SEQUENCES_UNOPENED_UNTIL_FINAL_UNBLIND",
+        "NO_AXIS_SIGN_MOTION_OR_CONTENT_BALANCING",
+        "MUST_PASS_INDEPENDENTLY_OF_BOXES_ROTATION"
+      ]
+    },
+    {
+      "sequence_id": "uzh_davis240c/boxes_rotation",
+      "role": "FINAL_CONFIRMATORY_HOLDOUT",
+      "scene_family": "highly_textured_boxes",
+      "motion_label": "rotation_increasing_speed",
+      "acquisition_status": "NOT_ACQUIRED_AT_FREEZE",
+      "requested_url": "https://rpg.ifi.uzh.ch/datasets/davis/boxes_rotation.zip",
+      "resolved_url": "https://download.ifi.uzh.ch/rpg/web/datasets/davis/boxes_rotation.zip",
+      "http_content_length": 893172313,
+      "http_etag": "\"353cba59-5c68b73299eb1\"",
+      "http_last_modified": "Wed, 07 Jul 2021 16:58:38 GMT",
+      "archive_sha256": "TO_BE_RECORDED_IN_IMMUTABLE_SEPARATE_ACQUISITION_RECEIPT",
+      "restrictions": [
+        "KEEP_ALL_BOXES_FAMILY_SEQUENCES_UNOPENED_UNTIL_FINAL_UNBLIND",
+        "NO_AXIS_SIGN_MOTION_OR_CONTENT_BALANCING",
+        "MUST_PASS_INDEPENDENTLY_OF_POSTER_ROTATION"
+      ]
+    },
+    {
+      "sequence_id": "uzh_davis240c/shapes_6dof",
+      "role": "FUTURE_6DOF_TRANSLATION_PARALLAX_DEVELOPMENT",
+      "scene_family": "simple_shapes",
+      "motion_label": "six_dof_increasing_speed",
+      "acquisition_status": "NOT_ACQUIRED_AT_FREEZE",
+      "requested_url": "https://rpg.ifi.uzh.ch/datasets/davis/shapes_6dof.zip",
+      "resolved_url": "https://download.ifi.uzh.ch/rpg/web/datasets/davis/shapes_6dof.zip",
+      "http_content_length": 127851106,
+      "http_etag": "\"79eda62-5c68bae0a0321\"",
+      "http_last_modified": "Wed, 07 Jul 2021 17:15:06 GMT",
+      "archive_sha256": "TO_BE_RECORDED_IN_IMMUTABLE_SEPARATE_ACQUISITION_RECEIPT",
+      "restrictions": [
+        "NOT_A_ROTATION_PREDICTOR_SELECTION_OR_CONFIRMATORY_SOURCE",
+        "NO_OFFICIAL_DEPTH_GROUND_TRUTH_IS_CLAIMED",
+        "DO_NOT_CLAIM_DEPTH_OR_PARALLAX_CORRECTION_FROM_ORIENTATION_ONLY_RESULTS"
+      ]
+    }
+  ],
+  "primary_holdout_window_rule": {
+    "block_duration_ns": 1000000000,
+    "query_duration_ns": 1000000,
+    "query_grid_ns": 10000000,
+    "eligibility_inputs": [
+      "ARCHIVE_AND_MEMBER_INTEGRITY",
+      "STRICTLY_CAUSAL_POSE_TIMESTAMP_AND_COMMIT_AVAILABILITY_WITHOUT_POSE_VALUE_ACCESS",
+      "SCORER_TRUTH_TIMESTAMP_BRACKETING_AVAILABILITY_WITHOUT_POSE_VALUE_ACCESS",
+      "NONEMPTY_EVENT_SUPPORT"
+    ],
+    "forbidden_selection_inputs": [
+      "PREDICTOR_OR_BASELINE_LOSS",
+      "AXIS_SIGN_OR_MOTION_BIN",
+      "IMAGE_OR_SCENE_CONTENT",
+      "FUTURE_POSE_OR_QUERY_ENDPOINT_LABEL",
+      "EVENT_DENSITY_EXCEPT_NONEMPTY_SUPPORT"
+    ],
+    "block_zero_origin": "SMALLEST_INTEGER_MULTIPLE_OF_BLOCK_DURATION_NS_NOT_LESS_THAN_SOURCE_MINIMUM_EVENT_TIMESTAMP_NS_PLUS_PREROLL_DURATION_NS",
+    "last_partial_block": "DISCARD",
+    "rank_domain_prefix_hex": "5245445245442d4d435754422d535441474531322d57494e444f572d52414e4b2d563100",
+    "rank_serialization": "PREFIX_BYTES_THEN_LOWERCASE_ARCHIVE_SHA256_ASCII_THEN_NUL_THEN_UTF8_SEQUENCE_ID_THEN_NUL_THEN_CANONICAL_UNSIGNED_DECIMAL_BLOCK_INDEX_THEN_NUL_THEN_CANONICAL_UNSIGNED_DECIMAL_QUERY_START_NS",
+    "rank_tie_break": "SMALLEST_QUERY_START_NS",
+    "query_grid_anchor": "EACH_BLOCK_START_NS",
+    "query_enumeration": "QUERY_START_NS_EQUALS_BLOCK_START_NS_PLUS_N_TIMES_QUERY_GRID_NS_FOR_CANONICAL_UNSIGNED_N_AND_QUERY_END_NS_DOES_NOT_EXCEED_BLOCK_END_NS",
+    "valid_block": "AT_LEAST_ONE_QUERY_PASSES_ALL_DECLARED_ELIGIBILITY_PREDICATES",
+    "selection": "ONE_WINDOW_PER_VALID_BLOCK_WITH_LEXICOGRAPHICALLY_MINIMUM_SHA256_DIGEST",
+    "minimum_valid_blocks_per_sequence": 40,
+    "replacement_policy": "NO_REPLACEMENT_OR_THRESHOLD_RELAXATION_AFTER_OUTCOME_ACCESS",
+    "selector_authority_projection": [
+      "SEQUENCE_ID",
+      "EXACT_SOURCE_PINS",
+      "CAPTURED_ARCHIVE_SHA256",
+      "ACQUISITION_RECEIPT_SHA256",
+      "FROZEN_POLICY_ID"
+    ]
+  },
+  "dynamic_challenge_window_rule": "IDENTICAL_PREVALENCE_PRESERVING_RULE_AS_PRIMARY_HOLDOUT_WITHOUT_CROSS_SEQUENCE_POOLING",
+  "external_state_replay_rule": "RESET_ONCE_AT_RECORDING_BOUNDARY_REPLAY_ENTIRE_SEQUENCE_CHRONOLOGICALLY_AND_USE_SELECTED_WINDOWS_FOR_SCORING_ONLY",
+  "dynamic_disposition": {
+    "protocol_fail": "ANY_CORRECTNESS_CAUSALITY_OR_IDENTITY_FAILURE",
+    "stop": "POOLED_INCREMENTAL_EFFECT_BELOW_MINUS_ONE_PERCENT_OR_ANY_ONE_SECOND_BLOCK_BELOW_MINUS_FIVE_PERCENT_OR_QUALITY_HARM_MASS_ABOVE_ONE_PERCENT",
+    "safe_no_benefit": "POOLED_INCREMENTAL_EFFECT_FROM_MINUS_ONE_PERCENT_INCLUSIVE_TO_PLUS_ONE_PERCENT_EXCLUSIVE_WITH_NO_HARD_FAILURE_STATIC_FINAL_MAY_PROCEED_MOVING_SCENE_CLAIM_HOLD",
+    "scoped_benefit": "POOLED_INCREMENTAL_EFFECT_AT_LEAST_PLUS_ONE_PERCENT_WITH_NO_HARD_FAILURE_AND_NO_MOVING_OBJECT_CORRECTION_CLAIM"
+  },
+  "candidate_screen_preroll_rule": {
+    "duration_ns": 50000000,
+    "interval": "QUERY_START_MINUS_DURATION_INCLUSIVE_TO_QUERY_START_EXCLUSIVE",
+    "state_initialization": "RESET_AT_PREROLL_START",
+    "scoring": "PREROLL_EVENTS_AND_POSES_ARE_NEVER_SCORED",
+    "insufficient_support": "ONLY_COMMON_SOURCE_OR_SCORER_SUPPORT_CAN_INVALIDATE_A_WINDOW_CANDIDATE_SPECIFIC_HISTORY_SHORTAGE_MUST_FALL_BACK_WITH_Q_UNCHANGED",
+    "outcome_dependent_extension": "FORBIDDEN"
+  },
+  "external_access_attestation": {
+    "observed_at_utc_interval": "2026-08-22T04:20:29Z/2026-08-22T04:20:32Z",
+    "metadata_access": "HTTP_HEAD_AND_REDIRECT_HEADERS_ONLY",
+    "archive_body_status": "NOT_DOWNLOADED_BY_THIS_CHECKPOINT_WORK",
+    "archive_member_status": "NOT_OPENED_BY_THIS_CHECKPOINT_WORK",
+    "outcome_status": "NOT_EVALUATED_BY_THIS_CHECKPOINT_WORK",
+    "freeze_receipt": "REQUIRED_AS_A_SEPARATE_POST_CONTENT_COMMIT_ARTIFACT"
+  },
+  "evaluation_partitioning": "EVALUATE_EACH_SEQUENCE_IN_ITS_OWN_LOCAL_TIMESTAMP_AND_EVENT_ID_NAMESPACE_THEN_AGGREGATE_ONLY_RESULT_RECEIPTS",
+  "required_future_seals_before_external_evaluation": {
+    "child": [
+      "UNIQUE_SEQUENCE_ID",
+      "WINDOW_ID_NAMESPACED_BY_SEQUENCE_ID",
+      "SOURCE_LOCK_SHA256",
+      "CAPTURED_ARCHIVE_SHA256",
+      "ACQUISITION_RECEIPT_SHA256",
+      "CHILD_REGISTRY_SHA256",
+      "NEUTRAL_INPUT_SHA256",
+      "LABEL_SIDECAR_SHA256",
+      "ADAPTER_SEAL_SHA256",
+      "CANDIDATE_EXECUTABLE_SHA256",
+      "CANDIDATE_CONFIG_SHA256",
+      "SELECTOR_IMPLEMENTATION_SHA256",
+      "EVALUATOR_IMPLEMENTATION_SHA256",
+      "BOOTSTRAP_IMPLEMENTATION_SHA256",
+      "STRESS_INPUT_BUNDLE_SHA256",
+      "RESULT_RECEIPT_SHA256"
+    ],
+    "aggregate": "ORDERED_SEQUENCE_ID_TO_CHILD_SEAL_MAPPING_WITH_EXACT_CATALOG_COMPLETENESS_AND_DUPLICATE_MISSING_OR_RELABELED_CHILD_REJECTION"
+  },
+  "custody_policy": {
+    "acquisition_authorizing_status": "NEGATIVE_ACCESS_PASS_ONLY",
+    "consumed_status": "CONSUMED_DEMOTE_SCENE_FAMILY_TO_DEVELOPMENT_AND_STOP_EXTERNAL_EVALUATION",
+    "unknown_status": "HOLD_NO_ACQUISITION"
+  },
+  "transport_capacity_policy": "NEVER_SELECT_OR_REJECT_A_PREDICTOR_WINDOW_BY_BURST_OR_INGRESS_CAPACITY_REPORT_CAPACITY_ON_THE_ALREADY_SELECTED_COHORT_AS_SEPARATE_SYSTEM_EVIDENCE",
+  "immutability_rule": "DO_NOT_UPDATE_THIS_PLAN_WITH_CAPTURE_HASHES_OR_RESULTS_USE_SEPARATE_VERSIONED_RECEIPTS",
+  "acquisition_rule": "RAW_ARCHIVES_STAY_OUTSIDE_GIT_AND_ARE_NOT_OPENED_UNTIL_THE_RELEVANT_FREEZE_CHECKPOINT",
+  "claim_ceiling": "ORIENTATION_ONLY_SCENE_TRANSFER_WITHIN_THE_UZH_DAVIS240C_FAMILY"
+}
