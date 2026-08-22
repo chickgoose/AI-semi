@@ -61,40 +61,13 @@ disconnected diagnostic windows. However, the complete source contains
 23,126,288 events—about 260 times the 88,028 selected events—so replaying it for
 every weak candidate would be wasteful.
 
-The frozen selector registry and the Stage 3 predictor input have different
-roles. The selector registry identified by SHA-256
-`4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d`
-contains a 1 ms diagnostic warmup for each selected query. That 1 ms interval
-is frozen evidence about the already-consumed selector cohort; it is not the
-Stage 3 stateful-predictor pre-roll and must not be relabeled as 50 ms.
-
-Stage 3 keeps the selector's ordered 108 query windows, query bounds, query
-event IDs, and post-seal labels exactly unchanged. It reconstructs a separate
-50 ms causal pre-roll for each window from the locked source identified by
-source-lock SHA-256
-`0e0dbb17db4d170de650729fe9ad1cd3f18d20c1bddcd577c84999fcde045a4c`.
-Every candidate receives the same reconstruction. State resets independently
-at `query_start - 50 ms`; only earlier events and poses committed under the
-frozen edge rule may initialize that reset generation. Nearby windows may have
-overlapping 50 ms pre-rolls, so one source event or pose may legitimately occur
-in more than one independently reset window. Such occurrences are bound to
-their `window_id` and `reset_generation` and do not represent duplicated query
-outputs.
-
-Only the ordered query event IDs in `Q` are globally exact-once. Within each
-window, pre-roll and query source order and cardinality are exact, but global
-ID uniqueness is not imposed on overlapping pre-roll occurrences. No pre-roll
-event or pose is scored, enters `Q`, receives a query label, changes a metric
-denominator, or is promoted into the query interval. The 1 ms selector
-diagnostic rows remain immutable lineage evidence and are not scored again as
-Stage 3 pre-roll.
-
 Development is staged. All candidates first run synthetic causality/fallback
-tests and the common 108-window screen using that source-reconstructed 50 ms
-causal pre-roll. A query without the full pre-roll or common source/scorer
-timestamp support is invalid for every candidate and is not replaced or
-extended. Candidate-specific history shortage never changes `Q`; it takes the
-exact fallback and is counted.
+tests and the common 108-window screen with a 50 ms causal pre-roll. State
+resets exactly 50 ms before each query start; only earlier events and committed
+poses initialize it, and no pre-roll item is scored. A query without the full
+pre-roll or common source/scorer timestamp support is invalid for every
+candidate and is not replaced or extended. Candidate-specific history shortage
+never changes `Q`; it takes the exact fallback and is counted.
 Only candidates that improve the current CAV overall and in MID/HIGH without
 worsening waste advance. At most two advancing stateful candidates may replay
 the complete locked `shapes_rotation` stream chronologically. That second gate
@@ -107,26 +80,6 @@ causal state transitions, not the number of independent scenes or sensors.
 Feedback state resets at the declared recording boundary. Validation or final
 holdout state, residual statistics, gains, or normalization may not flow back
 into another run.
-
-### Pre-score remediation epoch
-
-An `epoch2` execution is permitted only when the preceding epoch stopped on a
-common pre-score infrastructure failure before any candidate outcome became
-visible. The qualifying case is common plumbing such as supplying the frozen
-1 ms diagnostic bundle to an interface that requires the frozen 50 ms
-reconstruction; a candidate-specific rejection, unfavorable output, score,
-loss, rank, plot, or grouped statistic is not a qualifying failure.
-
-Before `epoch2`, an append-only lineage checkpoint must bind the failed epoch,
-its commits and artifact hashes, the unchanged ordered query-ID and label
-digests, the source lock, the precise pre-score failure, the remediation diff,
-and the replacement neutral-input and adapter hashes. It must attest that no
-candidate or scoring outcome was computed, read, logged, or used and that the
-candidates, configs, query IDs/order/bounds, labels, scorer, metrics, gates,
-and thresholds are unchanged. The remediation must be common to every
-candidate and every candidate must restart through it. If outcome invisibility
-cannot be proved, `epoch2` is forbidden under this exception and a separately
-authorized development freeze is required.
 
 The official UZH dataset page specifies the DAVIS text formats and describes
 the rotation/6-DoF scenes. It releases the data under CC BY-NC-SA 3.0 for
