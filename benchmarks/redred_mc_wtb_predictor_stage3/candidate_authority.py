@@ -2,8 +2,10 @@
 
 This module is the dependency-closed hand-off boundary for output adapters and
 campaign tooling.  It does not execute a candidate.  It binds each candidate's
-native model identity, exact canonical configuration bytes, and every local
-Python source reachable from the ordered authority seeds.
+adapter-exported native model identity and exact configuration bytes, the
+physical executable artifact whose digest is published in candidate output,
+every adapter-declared executable source, and the mandatory shared framework,
+pose geometry, cycle-model, and canonical-sealer sources.
 
 The public builder is suitable for an adapter before it emits output.  The
 public verifier is suitable for a campaign after reopening a stored manifest.
@@ -13,13 +15,12 @@ spellings, symlinks, hard-link aliases, and dependency-order changes.
 
 from __future__ import annotations
 
-import ast
 from dataclasses import dataclass
 import hashlib
-import math
+import json
 from pathlib import Path, PurePosixPath
 import re
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import List, Mapping, Optional, Sequence, Set, Tuple
 
 from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_json_bytes,
@@ -27,90 +28,16 @@ from benchmarks.redred_mc_wtb_stage4_contract import (
 )
 
 
-AUTHORITY_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_authority/v1"
+AUTHORITY_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_authority/v2"
 CAMPAIGN_SCHEMA = "redred.mc_wtb_predictor_stage3.campaign_authority/v1"
-CONFIG_SCHEMA = "redred.mc_wtb_predictor_stage3.native_config/v1"
 CANDIDATE_NAMES = ("RG3", "DSPB", "PLL")
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
-_RG3_NATIVE_ID = (
-    "redred.mc_wtb_predictor_stage3.rg3_cav/"
-    "body_transport3_cadence10ms_nearpi1em6_"
-    "residual0p5_dircos0_accel0p25/v1"
-)
-_RG3_PARAMETERS = (
-    ("maximum_pose_interval_ns", 10_000_000),
-    ("near_pi_margin_rad", 1.0e-6),
-    ("maximum_rate_change_ratio", 0.5),
-    ("minimum_direction_cosine", 0.0),
-    ("maximum_acceleration_contribution_ratio", 0.25),
-)
-
-_DSPB_NATIVE_ID = "DSPB-A4-E0E1E2E3-V1"
-_DSPB_PARAMETERS = (
-    ("max_horizon_ns", 5_000_000),
-    ("zoh_max_age_ns", 1_000_000),
-    ("ewma_rate_alpha", 0.25),
-    ("credit_ewma_alpha", 0.25),
-    ("minimum_credit_samples", 2),
-    ("credit_tie_tolerance_rad", 1.0e-12),
-    ("winner_switch_margin_rad", 1.0e-4),
-    ("disagreement_probe_ns", 5_000_000),
-    ("maximum_expert_disagreement_rad", 0.5),
-    ("maximum_rate_rad_s", 100.0),
-    ("maximum_rg3_acceleration_rad_s2", 10_000.0),
-    ("maximum_cadence_ratio", 2.0),
-    ("rg3_minimum_direction_cosine", 0.0),
-    ("rg3_maximum_prior_residual_rad", 0.25),
-    ("axis_minimum_coherence", 0.90),
-    ("minimum_signed_speed_rad_s", 1.0e-9),
-    ("near_pi_margin_rad", 1.0e-6),
-)
-
-_PLL_PARAMETERS = (
-    ("proportional_gain", 0.25),
-    ("integral_gain", 0.02),
-    ("lock_residual_max_rad", math.radians(2.0)),
-    ("phase_jump_max_rad", math.radians(30.0)),
-    ("near_pi_margin_rad", 1.0e-6),
-    ("max_gap_ns", 20_000_000),
-    ("max_prediction_horizon_ns", 5_000_000),
-    ("cav_max_horizon_ns", 5_000_000),
-    ("zoh_max_age_ns", 1_000_000),
-    ("max_proportional_correction_rad_s", math.radians(2_000.0)),
-    ("max_integral_correction_rad_s", math.radians(500.0)),
-    ("max_angular_rate_rad_s", math.radians(4_000.0)),
-    ("lock_count", 2),
-    ("limit_cycle_min_residual_rad", math.radians(0.05)),
-    ("limit_cycle_cosine_max", -0.95),
-)
-_PLL_PARAMETER_MAP = dict(_PLL_PARAMETERS)
-_PLL_NATIVE_ID = "%s:%s:%s" % (
-    "SO3_PLL_A5_V1",
-    ",".join(format(_PLL_PARAMETER_MAP[name], ".17g") for name in (
-        "proportional_gain",
-        "integral_gain",
-        "lock_residual_max_rad",
-        "phase_jump_max_rad",
-        "near_pi_margin_rad",
-        "max_proportional_correction_rad_s",
-        "max_integral_correction_rad_s",
-        "max_angular_rate_rad_s",
-        "limit_cycle_min_residual_rad",
-        "limit_cycle_cosine_max",
-    )),
-    ",".join(str(_PLL_PARAMETER_MAP[name]) for name in (
-        "max_gap_ns",
-        "max_prediction_horizon_ns",
-        "cav_max_horizon_ns",
-        "zoh_max_age_ns",
-        "lock_count",
-    )),
-)
 _MANIFEST_FIELDS = frozenset((
     "schema", "candidate", "native_candidate_id", "config_encoding",
-    "config_bytes_hex", "config_sha256", "dependencies",
+    "config_bytes_hex", "config_sha256", "executable_encoding",
+    "executable_bytes_hex", "executable_sha256", "dependencies",
     "dependency_aggregate_sha256", "manifest_sha256",
 ))
 _DEPENDENCY_FIELDS = frozenset(("role", "path", "sha256"))
@@ -130,28 +57,36 @@ _MODEL_PATHS = {
 }
 _COMMON_AUTHORITY_SEEDS = (
     (
+        "candidate_framework",
+        "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
+    ),
+    (
+        "pose_recovery_api",
+        "benchmarks/redred_mc_wtb_pose_recovery/__init__.py",
+    ),
+    (
         "pose_recovery_geometry",
         "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
+    ),
+    (
+        "cycle_model_api",
+        "benchmarks/redred_mc_wtb_stage4_cyclemodel/__init__.py",
     ),
     (
         "cycle_model",
         "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
     ),
     (
-        "shared_output_sealer",
-        "benchmarks/redred_mc_wtb_predictor_stage3/output_common.py",
-    ),
-    (
-        "screen_output_sealer",
-        "benchmarks/redred_mc_wtb_predictor_stage3/screen108.py",
+        "canonical_sealer_api",
+        "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
     ),
     (
         "canonical_json_sealer",
         "benchmarks/redred_mc_wtb_stage4_contract/contract.py",
     ),
     (
-        "authority_manifest",
-        "benchmarks/redred_mc_wtb_predictor_stage3/candidate_authority.py",
+        "canonical_receipt_sealer",
+        "benchmarks/redred_mc_wtb_stage4_contract/receipt.py",
     ),
 )
 
@@ -174,12 +109,14 @@ class DependencySeal:
 
 @dataclass(frozen=True)
 class CandidateAuthority:
-    """Immutable native/config/dependency authority for one candidate."""
+    """Immutable native/config/artifact/dependency authority for a candidate."""
 
     candidate: str
     native_candidate_id: str
     config_bytes: bytes
     config_sha256: str
+    executable_artifact_bytes: bytes
+    executable_sha256: str
     dependencies: Tuple[DependencySeal, ...]
     dependency_aggregate_sha256: str
     manifest_sha256: str
@@ -189,9 +126,12 @@ class CandidateAuthority:
             "schema": AUTHORITY_SCHEMA,
             "candidate": self.candidate,
             "native_candidate_id": self.native_candidate_id,
-            "config_encoding": "canonical-json-ascii-hex/v1",
+            "config_encoding": "adapter-export-bytes-hex/v1",
             "config_bytes_hex": self.config_bytes.hex(),
             "config_sha256": self.config_sha256,
+            "executable_encoding": "canonical-json-ascii-hex/v1",
+            "executable_bytes_hex": self.executable_artifact_bytes.hex(),
+            "executable_sha256": self.executable_sha256,
             "dependencies": [row.to_mapping() for row in self.dependencies],
             "dependency_aggregate_sha256": self.dependency_aggregate_sha256,
             "manifest_sha256": self.manifest_sha256,
@@ -222,45 +162,124 @@ def _exact_mapping(
     return value
 
 
-def candidate_native_id(candidate: str) -> str:
-    """Return the model-native, parameter-bound candidate identity."""
+@dataclass(frozen=True)
+class _AdapterExports:
+    native_candidate_id: str
+    config_bytes: bytes
+    config_sha256: str
+    executable_artifact_bytes: bytes
+    executable_sha256: str
+    native_dependency_paths: Tuple[str, ...]
+    native_dependency_digests: Tuple[Tuple[str, str], ...]
+
+
+def _validated_adapter_exports(candidate: str) -> _AdapterExports:
+    """Read the exact public authority exported by one hardened adapter."""
 
     name = _candidate_name(candidate)
     if name == "RG3":
-        return _RG3_NATIVE_ID
-    if name == "DSPB":
-        return _DSPB_NATIVE_ID
-    return _PLL_NATIVE_ID
+        from benchmarks.redred_mc_wtb_predictor_stage3 import rg3_output
+
+        native_id = rg3_output.RG3_OUTPUT_CANDIDATE_ID
+        config_bytes = bytes(rg3_output.RG3_CONFIG_BYTES)
+        exported_config_sha = rg3_output.RG3_CONFIG_SHA256
+        executable_bytes = bytes(rg3_output.RG3_EXECUTABLE_MANIFEST_BYTES)
+        exported_executable_sha = rg3_output.RG3_EXECUTABLE_SHA256
+        manifest = rg3_output.RG3_EXECUTABLE_MANIFEST
+    elif name == "DSPB":
+        from benchmarks.redred_mc_wtb_predictor_stage3 import dspb_output
+
+        sealed_manifest = dict(dspb_output.locked_dspb_executable_manifest())
+        exported_executable_sha = sealed_manifest.pop("manifest_sha256", None)
+        executable_bytes = canonical_json_bytes(sealed_manifest)
+        if exported_executable_sha != dspb_output.locked_dspb_executable_sha256():
+            raise CandidateAuthorityError("DSPB executable export digest differs")
+        native_id = sealed_manifest.get("candidate_id")
+        config_bytes = dspb_output.locked_dspb_config_bytes()
+        exported_config_sha = dspb_output.locked_dspb_config_sha256()
+        manifest = sealed_manifest
+    else:
+        from benchmarks.redred_mc_wtb_predictor_stage3 import pll_output
+
+        native_id = pll_output.CANDIDATE_ID
+        config_bytes = pll_output.locked_config_bytes()
+        exported_config_sha = pll_output.locked_config_sha256()
+        manifest = pll_output.executable_dependency_manifest()
+        executable_bytes = canonical_json_bytes(manifest)
+        exported_executable_sha = pll_output.generator_executable_sha256()
+
+    if type(native_id) is not str or not native_id:
+        raise CandidateAuthorityError("adapter native candidate identity is invalid")
+    if type(config_bytes) is not bytes or not config_bytes:
+        raise CandidateAuthorityError("adapter config export is invalid")
+    config_sha = _sha256(exported_config_sha, "adapter config digest")
+    if hashlib.sha256(config_bytes).hexdigest() != config_sha:
+        raise CandidateAuthorityError("adapter config export digest differs")
+    executable_sha = _sha256(
+        exported_executable_sha, "adapter executable digest"
+    )
+    if hashlib.sha256(executable_bytes).hexdigest() != executable_sha:
+        raise CandidateAuthorityError("adapter executable artifact digest differs")
+    try:
+        files = manifest["files"]
+        dependency_rows = tuple(
+            (row["path"], _sha256(row["sha256"], "adapter dependency digest"))
+            for row in files
+        )
+    except (KeyError, TypeError) as exc:
+        raise CandidateAuthorityError("adapter executable manifest differs") from exc
+    dependency_paths = tuple(path for path, _ in dependency_rows)
+    if not dependency_paths or len(set(dependency_paths)) != len(dependency_paths):
+        raise CandidateAuthorityError("adapter executable dependencies differ")
+    for index, path in enumerate(dependency_paths):
+        _canonical_relative_path(path, "adapter dependency %d" % index)
+    return _AdapterExports(
+        native_id,
+        config_bytes,
+        config_sha,
+        executable_bytes,
+        executable_sha,
+        dependency_paths,
+        dependency_rows,
+    )
 
 
-def _native_parameter_mapping(candidate: str) -> Mapping[str, object]:
-    if candidate == "RG3":
-        return dict(_RG3_PARAMETERS)
-    if candidate == "DSPB":
-        return dict(_DSPB_PARAMETERS)
-    return dict(_PLL_PARAMETERS)
+def candidate_native_id(candidate: str) -> str:
+    """Return the adapter-exported, model-native candidate identity."""
+
+    return _validated_adapter_exports(candidate).native_candidate_id
 
 
 def candidate_config_mapping(candidate: str) -> Mapping[str, object]:
-    """Return the uniform native configuration mapping for one candidate."""
+    """Decode the adapter's native config without imposing a common schema."""
 
-    name = _candidate_name(candidate)
-    return {
-        "schema": CONFIG_SCHEMA,
-        "candidate": name,
-        "native_candidate_id": candidate_native_id(name),
-        "parameters": dict(_native_parameter_mapping(name)),
-    }
+    try:
+        decoded = json.loads(candidate_config_bytes(candidate).decode("ascii"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CandidateAuthorityError("adapter config is not ASCII JSON") from exc
+    if not isinstance(decoded, Mapping):
+        raise CandidateAuthorityError("adapter config is not a JSON object")
+    return decoded
 
 
 def candidate_config_bytes(candidate: str) -> bytes:
-    """Return exact newline-terminated canonical JSON configuration bytes."""
+    """Return the exact byte stream exported and hashed by the adapter."""
 
-    return canonical_json_bytes(candidate_config_mapping(candidate))
+    return _validated_adapter_exports(candidate).config_bytes
 
 
 def candidate_config_sha256(candidate: str) -> str:
-    return hashlib.sha256(candidate_config_bytes(candidate)).hexdigest()
+    return _validated_adapter_exports(candidate).config_sha256
+
+
+def candidate_executable_artifact_bytes(candidate: str) -> bytes:
+    """Return bytes of the artifact whose raw hash candidate output publishes."""
+
+    return _validated_adapter_exports(candidate).executable_artifact_bytes
+
+
+def candidate_executable_sha256(candidate: str) -> str:
+    return _validated_adapter_exports(candidate).executable_sha256
 
 
 def _canonical_relative_path(value: object, where: str) -> str:
@@ -306,99 +325,25 @@ def _source_path(root: Path, relative: str) -> Path:
     return lexical
 
 
-def _module_name(relative: str) -> Tuple[str, bool]:
-    pure = PurePosixPath(relative)
-    if pure.name == "__init__.py":
-        return ".".join(pure.parent.parts), True
-    return ".".join(pure.with_suffix("").parts), False
-
-
-def _module_sources(root: Path, module: str) -> Tuple[str, ...]:
-    if module != "benchmarks" and not module.startswith("benchmarks."):
-        return ()
-    parts = tuple(module.split("."))
-    found = []  # type: List[str]
-    for length in range(2, len(parts) + 1):
-        package = root.joinpath(*parts[:length]) / "__init__.py"
-        if package.is_file():
-            found.append(PurePosixPath(*parts[:length], "__init__.py").as_posix())
-    file_path = root.joinpath(*parts).with_suffix(".py")
-    package_path = root.joinpath(*parts) / "__init__.py"
-    if file_path.is_file():
-        relative = PurePosixPath(*parts).with_suffix(".py").as_posix()
-        found.append(relative)
-    elif package_path.is_file():
-        relative = PurePosixPath(*parts, "__init__.py").as_posix()
-        found.append(relative)
-    return tuple(dict.fromkeys(found))
-
-
-def _absolute_import_base(
-    current_relative: str, module: Optional[str], level: int
-) -> str:
-    if level == 0:
-        return "" if module is None else module
-    current, is_package = _module_name(current_relative)
-    package_parts = current.split(".") if is_package else current.split(".")[:-1]
-    remove = level - 1
-    if remove > len(package_parts):
-        raise CandidateAuthorityError("relative import escapes source package")
-    base = package_parts[:len(package_parts) - remove]
-    if module:
-        base.extend(module.split("."))
-    return ".".join(base)
-
-
-def _imported_sources(root: Path, relative: str) -> Tuple[str, ...]:
-    path = _source_path(root, relative)
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-    except (OSError, UnicodeError, SyntaxError) as exc:
-        raise CandidateAuthorityError(
-            "cannot parse dependency source: %s" % relative
-        ) from exc
-    modules = set()  # type: Set[str]
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "benchmarks" or alias.name.startswith("benchmarks."):
-                    modules.add(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            base = _absolute_import_base(relative, node.module, node.level)
-            if base == "benchmarks" or base.startswith("benchmarks."):
-                modules.add(base)
-                for alias in node.names:
-                    if alias.name != "*":
-                        modules.add("%s.%s" % (base, alias.name))
-        elif isinstance(node, ast.Call):
-            function = node.func
-            if (
-                isinstance(function, ast.Name) and function.id == "__import__"
-            ) or (
-                isinstance(function, ast.Attribute)
-                and function.attr == "import_module"
-            ):
-                raise CandidateAuthorityError(
-                    "dynamic import prevents dependency closure: %s" % relative
-                )
-    result = set()  # type: Set[str]
-    for module in modules:
-        result.update(_module_sources(root, module))
-    return tuple(sorted(result))
-
-
 def _authority_seeds(candidate: str) -> Tuple[Tuple[str, str], ...]:
     name = _candidate_name(candidate)
-    return (
+    primary = (
         ("output_adapter", _OUTPUT_ADAPTER_PATHS[name]),
         ("model", _MODEL_PATHS[name]),
     ) + _COMMON_AUTHORITY_SEEDS
+    observed = {path for _, path in primary}
+    native = []
+    for path in _validated_adapter_exports(name).native_dependency_paths:
+        if path not in observed:
+            native.append(("native_executable_source", path))
+            observed.add(path)
+    return primary + tuple(native)
 
 
 def candidate_dependency_specs(
     candidate: str, repo_root: Optional[Path] = None
 ) -> Tuple[Tuple[str, str], ...]:
-    """Return ordered role/path pairs closed over local Python imports."""
+    """Return the adapter-native closure plus mandatory shared sources."""
 
     name = _candidate_name(candidate)
     root = _root_path(repo_root)
@@ -406,17 +351,9 @@ def candidate_dependency_specs(
     seed_paths = tuple(path for _, path in seeds)
     if len(set(seed_paths)) != len(seed_paths):
         raise CandidateAuthorityError("authority seed paths are duplicated")
-    closure = set(seed_paths)  # type: Set[str]
-    pending = list(seed_paths)
-    while pending:
-        relative = pending.pop()
+    for relative in seed_paths:
         _source_path(root, relative)
-        for dependency in _imported_sources(root, relative):
-            if dependency not in closure:
-                closure.add(dependency)
-                pending.append(dependency)
-    transitive = tuple(sorted(closure.difference(seed_paths)))
-    return seeds + tuple(("transitive_source", path) for path in transitive)
+    return seeds
 
 
 def candidate_dependency_paths(
@@ -456,11 +393,24 @@ def _sealed_dependencies(
     return tuple(result)
 
 
+def _verify_native_dependency_digests(
+    exports: _AdapterExports, dependencies: Sequence[DependencySeal]
+) -> None:
+    sealed = {row.path: row.sha256 for row in dependencies}
+    for path, expected_sha in exports.native_dependency_digests:
+        if sealed.get(path) != expected_sha:
+            raise CandidateAuthorityError(
+                "adapter executable dependency digest differs: %s" % path
+            )
+
+
 def _manifest_body(
     candidate: str,
     native_candidate_id: str,
     config_bytes: bytes,
     config_sha256: str,
+    executable_artifact_bytes: bytes,
+    executable_sha256: str,
     dependencies: Sequence[DependencySeal],
     dependency_aggregate_sha256: str,
 ) -> Mapping[str, object]:
@@ -468,9 +418,12 @@ def _manifest_body(
         "schema": AUTHORITY_SCHEMA,
         "candidate": candidate,
         "native_candidate_id": native_candidate_id,
-        "config_encoding": "canonical-json-ascii-hex/v1",
+        "config_encoding": "adapter-export-bytes-hex/v1",
         "config_bytes_hex": config_bytes.hex(),
         "config_sha256": config_sha256,
+        "executable_encoding": "canonical-json-ascii-hex/v1",
+        "executable_bytes_hex": executable_artifact_bytes.hex(),
+        "executable_sha256": executable_sha256,
         "dependencies": [row.to_mapping() for row in dependencies],
         "dependency_aggregate_sha256": dependency_aggregate_sha256,
     }
@@ -483,42 +436,48 @@ def build_candidate_authority(
 
     name = _candidate_name(candidate)
     root = _root_path(repo_root)
-    config_bytes = candidate_config_bytes(name)
-    config_sha = hashlib.sha256(config_bytes).hexdigest()
+    exports = _validated_adapter_exports(name)
     dependencies = _sealed_dependencies(
         candidate_dependency_specs(name, root), root
     )
+    _verify_native_dependency_digests(exports, dependencies)
     dependency_aggregate = canonical_sha256([
         row.to_mapping() for row in dependencies
     ])
     body = _manifest_body(
         name,
-        candidate_native_id(name),
-        config_bytes,
-        config_sha,
+        exports.native_candidate_id,
+        exports.config_bytes,
+        exports.config_sha256,
+        exports.executable_artifact_bytes,
+        exports.executable_sha256,
         dependencies,
         dependency_aggregate,
     )
     return CandidateAuthority(
         name,
-        candidate_native_id(name),
-        config_bytes,
-        config_sha,
+        exports.native_candidate_id,
+        exports.config_bytes,
+        exports.config_sha256,
+        exports.executable_artifact_bytes,
+        exports.executable_sha256,
         dependencies,
         dependency_aggregate,
         canonical_sha256(body),
     )
 
 
-def _decode_config_hex(value: object) -> bytes:
+def _decode_hex(value: object, where: str) -> bytes:
     if type(value) is not str or len(value) % 2 != 0:
-        raise CandidateAuthorityError("config bytes are not canonical hex")
+        raise CandidateAuthorityError("%s bytes are not canonical hex" % where)
     try:
         decoded = bytes.fromhex(value)
     except ValueError as exc:
-        raise CandidateAuthorityError("config bytes are not canonical hex") from exc
+        raise CandidateAuthorityError(
+            "%s bytes are not canonical hex" % where
+        ) from exc
     if decoded.hex() != value:
-        raise CandidateAuthorityError("config bytes are not canonical hex")
+        raise CandidateAuthorityError("%s bytes are not canonical hex" % where)
     return decoded
 
 
@@ -532,17 +491,33 @@ def verify_candidate_authority(
     if manifest["schema"] != AUTHORITY_SCHEMA:
         raise CandidateAuthorityError("candidate authority schema differs")
     candidate = _candidate_name(manifest["candidate"])
-    if manifest["native_candidate_id"] != candidate_native_id(candidate):
+    exports = _validated_adapter_exports(candidate)
+    if manifest["native_candidate_id"] != exports.native_candidate_id:
         raise CandidateAuthorityError("native candidate identity differs")
-    if manifest["config_encoding"] != "canonical-json-ascii-hex/v1":
+    if manifest["config_encoding"] != "adapter-export-bytes-hex/v1":
         raise CandidateAuthorityError("config encoding differs")
-    config_bytes = _decode_config_hex(manifest["config_bytes_hex"])
-    expected_config = candidate_config_bytes(candidate)
-    if config_bytes != expected_config:
+    config_bytes = _decode_hex(manifest["config_bytes_hex"], "config")
+    if config_bytes != exports.config_bytes:
         raise CandidateAuthorityError("exact candidate config bytes differ")
     config_sha = _sha256(manifest["config_sha256"], "config digest")
     if config_sha != hashlib.sha256(config_bytes).hexdigest():
         raise CandidateAuthorityError("candidate config digest differs")
+    if config_sha != exports.config_sha256:
+        raise CandidateAuthorityError("candidate config export digest differs")
+    if manifest["executable_encoding"] != "canonical-json-ascii-hex/v1":
+        raise CandidateAuthorityError("executable artifact encoding differs")
+    executable_bytes = _decode_hex(
+        manifest["executable_bytes_hex"], "executable artifact"
+    )
+    if executable_bytes != exports.executable_artifact_bytes:
+        raise CandidateAuthorityError("exact executable artifact bytes differ")
+    executable_sha = _sha256(
+        manifest["executable_sha256"], "executable artifact digest"
+    )
+    if executable_sha != hashlib.sha256(executable_bytes).hexdigest():
+        raise CandidateAuthorityError("executable artifact digest differs")
+    if executable_sha != exports.executable_sha256:
+        raise CandidateAuthorityError("adapter executable export digest differs")
 
     supplied_rows = manifest["dependencies"]
     if not isinstance(supplied_rows, list) or not supplied_rows:
@@ -568,6 +543,7 @@ def verify_candidate_authority(
     if observed_specs != expected_specs:
         raise CandidateAuthorityError("dependency order or closure differs")
     current = _sealed_dependencies(expected_specs, root)
+    _verify_native_dependency_digests(exports, current)
     for supplied, observed in zip(parsed, current):
         if supplied[2] != observed.sha256:
             raise CandidateAuthorityError(
@@ -638,7 +614,6 @@ __all__ = (
     "AUTHORITY_SCHEMA",
     "CAMPAIGN_SCHEMA",
     "CANDIDATE_NAMES",
-    "CONFIG_SCHEMA",
     "CandidateAuthority",
     "CandidateAuthorityError",
     "DependencySeal",
@@ -649,6 +624,8 @@ __all__ = (
     "candidate_config_sha256",
     "candidate_dependency_paths",
     "candidate_dependency_specs",
+    "candidate_executable_artifact_bytes",
+    "candidate_executable_sha256",
     "candidate_native_id",
     "verify_campaign_authority",
     "verify_candidate_authority",

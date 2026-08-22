@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
@@ -9,6 +8,11 @@ import shutil
 import tempfile
 import unittest
 
+from benchmarks.redred_mc_wtb_predictor_stage3 import (
+    dspb_output,
+    pll_output,
+    rg3_output,
+)
 from benchmarks.redred_mc_wtb_predictor_stage3.candidate_authority import (
     AUTHORITY_SCHEMA,
     CAMPAIGN_SCHEMA,
@@ -20,28 +24,23 @@ from benchmarks.redred_mc_wtb_predictor_stage3.candidate_authority import (
     candidate_config_mapping,
     candidate_config_sha256,
     candidate_dependency_paths,
+    candidate_executable_artifact_bytes,
+    candidate_executable_sha256,
     candidate_native_id,
     verify_campaign_authority,
     verify_candidate_authority,
 )
-from benchmarks.redred_mc_wtb_predictor_stage3.dspb import DSPBConfig
-from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import RG3_POLICY
-from benchmarks.redred_mc_wtb_predictor_stage3.so3_pll import SO3PLLConfig
 from benchmarks.redred_mc_wtb_stage4_contract import (
     canonical_json_bytes,
     canonical_sha256,
 )
+from tests.redred_mc_wtb_predictor_stage3_real_candidates.production_gate import (
+    generate_production_output,
+    make_motion_fixture,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-REQUIRED_COMMON_PATHS = (
-    "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
-    "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
-    "benchmarks/redred_mc_wtb_predictor_stage3/output_common.py",
-    "benchmarks/redred_mc_wtb_predictor_stage3/screen108.py",
-    "benchmarks/redred_mc_wtb_stage4_contract/contract.py",
-    "benchmarks/redred_mc_wtb_predictor_stage3/candidate_authority.py",
-)
 EXPECTED_ADAPTERS = {
     "RG3": "benchmarks/redred_mc_wtb_predictor_stage3/rg3_output.py",
     "DSPB": "benchmarks/redred_mc_wtb_predictor_stage3/dspb_output.py",
@@ -52,6 +51,66 @@ EXPECTED_MODELS = {
     "DSPB": "benchmarks/redred_mc_wtb_predictor_stage3/dspb.py",
     "PLL": "benchmarks/redred_mc_wtb_predictor_stage3/so3_pll.py",
 }
+REQUIRED_SHARED_PATHS = (
+    "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
+    "benchmarks/redred_mc_wtb_pose_recovery/__init__.py",
+    "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
+    "benchmarks/redred_mc_wtb_stage4_cyclemodel/__init__.py",
+    "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/contract.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/receipt.py",
+)
+EXCLUDED_NONEXECUTION_PATHS = (
+    "benchmarks/redred_mc_wtb_predictor_stage3/candidate_authority.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/output_common.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/screen108.py",
+)
+
+
+def _adapter_config_exports():
+    return {
+        "RG3": (
+            rg3_output.RG3_OUTPUT_CANDIDATE_ID,
+            bytes(rg3_output.RG3_CONFIG_BYTES),
+            rg3_output.RG3_CONFIG_SHA256,
+        ),
+        "DSPB": (
+            dspb_output.DSPBConfig().candidate_id,
+            dspb_output.locked_dspb_config_bytes(),
+            dspb_output.locked_dspb_config_sha256(),
+        ),
+        "PLL": (
+            pll_output.CANDIDATE_ID,
+            pll_output.locked_config_bytes(),
+            pll_output.locked_config_sha256(),
+        ),
+    }
+
+
+def _adapter_executable_exports():
+    dspb_manifest = dict(dspb_output.locked_dspb_executable_manifest())
+    dspb_sha = dspb_manifest.pop("manifest_sha256")
+    return {
+        "RG3": (
+            bytes(rg3_output.RG3_EXECUTABLE_MANIFEST_BYTES),
+            rg3_output.RG3_EXECUTABLE_SHA256,
+            tuple(row["path"] for row in rg3_output.RG3_EXECUTABLE_MANIFEST["files"]),
+        ),
+        "DSPB": (
+            canonical_json_bytes(dspb_manifest),
+            dspb_sha,
+            tuple(row["path"] for row in dspb_manifest["files"]),
+        ),
+        "PLL": (
+            canonical_json_bytes(pll_output.executable_dependency_manifest()),
+            pll_output.generator_executable_sha256(),
+            tuple(
+                row["path"]
+                for row in pll_output.executable_dependency_manifest()["files"]
+            ),
+        ),
+    }
 
 
 def _copy_dependency_tree(authority, destination):
@@ -62,6 +121,17 @@ def _copy_dependency_tree(authority, destination):
         shutil.copy2(str(source), str(target))
 
 
+def _reseal_manifest(manifest, dependencies_changed=False):
+    if dependencies_changed:
+        manifest["dependency_aggregate_sha256"] = canonical_sha256(
+            manifest["dependencies"]
+        )
+    unsigned = dict(manifest)
+    unsigned.pop("manifest_sha256", None)
+    manifest["manifest_sha256"] = canonical_sha256(unsigned)
+    return manifest
+
+
 class CandidateAuthorityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -69,44 +139,72 @@ class CandidateAuthorityTests(unittest.TestCase):
             name: build_candidate_authority(name) for name in CANDIDATE_NAMES
         }
 
-    def test_native_ids_and_exact_canonical_config_bytes(self):
-        expected_ids = {
-            "RG3": RG3_POLICY.candidate_id,
-            "DSPB": DSPBConfig().candidate_id,
-            "PLL": SO3PLLConfig().candidate_id,
-        }
-        expected_parameters = {
-            "RG3": {
-                "maximum_pose_interval_ns": RG3_POLICY.maximum_pose_interval_ns,
-                "near_pi_margin_rad": RG3_POLICY.near_pi_margin_rad,
-                "maximum_rate_change_ratio": RG3_POLICY.maximum_rate_change_ratio,
-                "minimum_direction_cosine": RG3_POLICY.minimum_direction_cosine,
-                "maximum_acceleration_contribution_ratio": (
-                    RG3_POLICY.maximum_acceleration_contribution_ratio
-                ),
-            },
-            "DSPB": dict(DSPBConfig().to_mapping()),
-            "PLL": asdict(SO3PLLConfig()),
-        }
-        expected_parameters["DSPB"].pop("candidate_id")
+    def test_native_ids_and_config_bytes_are_exact_adapter_exports(self):
+        for name, (native_id, config_bytes, config_sha) in (
+            _adapter_config_exports().items()
+        ):
+            with self.subTest(candidate=name):
+                authority = self.authorities[name]
+                self.assertEqual(candidate_native_id(name), native_id)
+                self.assertEqual(candidate_config_bytes(name), config_bytes)
+                self.assertEqual(candidate_config_sha256(name), config_sha)
+                self.assertEqual(hashlib.sha256(config_bytes).hexdigest(), config_sha)
+                self.assertEqual(
+                    candidate_config_mapping(name),
+                    json.loads(config_bytes.decode("ascii")),
+                )
+                self.assertEqual(authority.native_candidate_id, native_id)
+                self.assertEqual(authority.config_bytes, config_bytes)
+                self.assertEqual(authority.config_sha256, config_sha)
+
+    def test_executable_artifacts_match_adapter_output_authority(self):
+        exports = _adapter_executable_exports()
+        for name, (artifact, executable_sha, _) in exports.items():
+            with self.subTest(candidate=name):
+                authority = self.authorities[name]
+                self.assertEqual(candidate_executable_artifact_bytes(name), artifact)
+                self.assertEqual(candidate_executable_sha256(name), executable_sha)
+                self.assertEqual(hashlib.sha256(artifact).hexdigest(), executable_sha)
+                self.assertEqual(authority.executable_artifact_bytes, artifact)
+                self.assertEqual(authority.executable_sha256, executable_sha)
+
+        sealed_dspb = dspb_output.locked_dspb_executable_manifest()
+        self.assertNotEqual(
+            hashlib.sha256(canonical_json_bytes(sealed_dspb)).hexdigest(),
+            exports["DSPB"][1],
+        )
+        self.assertNotIn(
+            "manifest_sha256",
+            json.loads(exports["DSPB"][0].decode("ascii")),
+        )
+
+    def test_real_adapter_outputs_publish_authority_hashes(self):
+        fixture = make_motion_fixture(window_count=1)
         for name in CANDIDATE_NAMES:
             with self.subTest(candidate=name):
-                self.assertEqual(candidate_native_id(name), expected_ids[name])
-                config = candidate_config_bytes(name)
+                output = generate_production_output(name, fixture)
+                authority = self.authorities[name]
+                self.assertEqual(output["candidate_id"], authority.native_candidate_id)
                 self.assertEqual(
-                    config,
-                    canonical_json_bytes(json.loads(config.decode("ascii"))),
+                    output["candidate_config_sha256"], authority.config_sha256
                 )
                 self.assertEqual(
-                    hashlib.sha256(config).hexdigest(),
-                    candidate_config_sha256(name),
+                    output["candidate_executable_sha256"],
+                    authority.executable_sha256,
                 )
-                mapping = candidate_config_mapping(name)
-                self.assertEqual(mapping["native_candidate_id"], expected_ids[name])
-                self.assertEqual(mapping["candidate"], name)
-                self.assertEqual(mapping["parameters"], expected_parameters[name])
 
-    def test_dependency_closure_is_ordered_complete_and_self_sealed(self):
+    def test_adapter_hashes_are_derived_without_authority_literals(self):
+        source = (
+            REPO_ROOT
+            / "benchmarks/redred_mc_wtb_predictor_stage3/candidate_authority.py"
+        ).read_text(encoding="utf-8")
+        for name, authority in self.authorities.items():
+            with self.subTest(candidate=name):
+                self.assertNotIn(authority.config_sha256, source)
+                self.assertNotIn(authority.executable_sha256, source)
+
+    def test_dependency_aggregate_covers_native_and_required_shared_sources(self):
+        executable_exports = _adapter_executable_exports()
         for name in CANDIDATE_NAMES:
             with self.subTest(candidate=name):
                 authority = self.authorities[name]
@@ -117,8 +215,12 @@ class CandidateAuthorityTests(unittest.TestCase):
                 self.assertEqual(paths[1], EXPECTED_MODELS[name])
                 self.assertEqual(roles[0:2], ("output_adapter", "model"))
                 self.assertEqual(len(paths), len(set(paths)))
-                for required in REQUIRED_COMMON_PATHS:
+                for required in REQUIRED_SHARED_PATHS:
                     self.assertIn(required, paths)
+                for native in executable_exports[name][2]:
+                    self.assertIn(native, paths)
+                for excluded in EXCLUDED_NONEXECUTION_PATHS:
+                    self.assertNotIn(excluded, paths)
                 self.assertEqual(
                     authority.dependency_aggregate_sha256,
                     canonical_sha256([
@@ -132,8 +234,8 @@ class CandidateAuthorityTests(unittest.TestCase):
                 mapping = authority.to_mapping()
                 self.assertEqual(mapping["schema"], AUTHORITY_SCHEMA)
                 self.assertEqual(
-                    bytes.fromhex(mapping["config_bytes_hex"]),
-                    authority.config_bytes,
+                    bytes.fromhex(mapping["executable_bytes_hex"]),
+                    authority.executable_artifact_bytes,
                 )
 
     def test_campaign_api_binds_fixed_candidate_order(self):
@@ -153,45 +255,76 @@ class CandidateAuthorityTests(unittest.TestCase):
         unsigned = dict(reordered)
         unsigned.pop("aggregate_sha256")
         reordered["aggregate_sha256"] = canonical_sha256(unsigned)
-        with self.assertRaisesRegex(
-            CandidateAuthorityError, "manifest order"
-        ):
+        with self.assertRaisesRegex(CandidateAuthorityError, "manifest order"):
             verify_campaign_authority(reordered)
 
-    def test_mutated_dependency_fails_even_with_original_manifest(self):
-        for name in CANDIDATE_NAMES:
-            with self.subTest(candidate=name), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                authority = self.authorities[name]
-                _copy_dependency_tree(authority, root)
-                adapter = root / EXPECTED_ADAPTERS[name]
-                adapter.write_bytes(adapter.read_bytes() + b"\n# mutation\n")
-                with self.assertRaisesRegex(
-                    CandidateAuthorityError, "source digest differs"
+    def test_every_aggregated_source_mutation_fails(self):
+        for name, authority in self.authorities.items():
+            for dependency in authority.dependencies:
+                with (
+                    self.subTest(candidate=name, path=dependency.path),
+                    tempfile.TemporaryDirectory() as tmp,
                 ):
-                    verify_candidate_authority(authority, root)
+                    root = Path(tmp)
+                    _copy_dependency_tree(authority, root)
+                    target = root / dependency.path
+                    target.write_bytes(target.read_bytes() + b"\n# mutation\n")
+                    with self.assertRaisesRegex(
+                        CandidateAuthorityError, "digest differs"
+                    ):
+                        verify_candidate_authority(authority, root)
 
-    def test_new_local_import_changes_the_dependency_closure(self):
-        authority = self.authorities["PLL"]
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _copy_dependency_tree(authority, root)
-            injected_relative = (
-                "benchmarks/redred_mc_wtb_predictor_stage3/injected_dependency.py"
-            )
-            injected = root / injected_relative
-            injected.write_text("INJECTED = True\n", encoding="utf-8")
-            adapter = root / EXPECTED_ADAPTERS["PLL"]
-            adapter.write_bytes(
-                adapter.read_bytes()
-                + b"\nimport benchmarks.redred_mc_wtb_predictor_stage3.injected_dependency\n"
-            )
-            with self.assertRaisesRegex(
-                CandidateAuthorityError, "order or closure differs"
-            ):
-                verify_candidate_authority(authority, root)
+    def test_dependency_drop_extra_and_reorder_fail_after_reseal(self):
+        authority = self.authorities["DSPB"]
+        original = authority.to_mapping()
 
-    def test_missing_dependency_fails_closed(self):
+        dropped = deepcopy(original)
+        dropped["dependencies"].pop()
+        _reseal_manifest(dropped, dependencies_changed=True)
+        with self.assertRaisesRegex(CandidateAuthorityError, "order or closure"):
+            verify_candidate_authority(dropped)
+
+        extra = deepcopy(original)
+        extra["dependencies"].append({
+            "role": "untrusted_extra",
+            "path": "benchmarks/redred_mc_wtb_predictor_stage3/candidate_authority.py",
+            "sha256": hashlib.sha256(
+                (REPO_ROOT / "benchmarks/redred_mc_wtb_predictor_stage3/candidate_authority.py").read_bytes()
+            ).hexdigest(),
+        })
+        _reseal_manifest(extra, dependencies_changed=True)
+        with self.assertRaisesRegex(CandidateAuthorityError, "order or closure"):
+            verify_candidate_authority(extra)
+
+        reordered = deepcopy(original)
+        reordered["dependencies"][0:2] = reversed(reordered["dependencies"][0:2])
+        _reseal_manifest(reordered, dependencies_changed=True)
+        with self.assertRaisesRegex(CandidateAuthorityError, "order or closure"):
+            verify_candidate_authority(reordered)
+
+    def test_config_bytes_are_not_a_replaceable_digest(self):
+        manifest = deepcopy(self.authorities["PLL"].to_mapping())
+        config = bytearray.fromhex(manifest["config_bytes_hex"])
+        config[0] ^= 1
+        manifest["config_bytes_hex"] = bytes(config).hex()
+        manifest["config_sha256"] = hashlib.sha256(bytes(config)).hexdigest()
+        _reseal_manifest(manifest)
+        with self.assertRaisesRegex(CandidateAuthorityError, "config bytes differ"):
+            verify_candidate_authority(manifest)
+
+    def test_executable_artifact_is_not_a_replaceable_digest(self):
+        manifest = deepcopy(self.authorities["RG3"].to_mapping())
+        artifact = bytearray.fromhex(manifest["executable_bytes_hex"])
+        artifact[0] ^= 1
+        manifest["executable_bytes_hex"] = bytes(artifact).hex()
+        manifest["executable_sha256"] = hashlib.sha256(bytes(artifact)).hexdigest()
+        _reseal_manifest(manifest)
+        with self.assertRaisesRegex(
+            CandidateAuthorityError, "executable artifact bytes differ"
+        ):
+            verify_candidate_authority(manifest)
+
+    def test_missing_dependency_and_path_alias_fail_closed(self):
         authority = self.authorities["PLL"]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -200,53 +333,21 @@ class CandidateAuthorityTests(unittest.TestCase):
             with self.assertRaisesRegex(CandidateAuthorityError, "missing"):
                 verify_candidate_authority(authority, root)
 
-    def test_duplicate_dependency_row_fails_before_seal(self):
-        manifest = deepcopy(self.authorities["DSPB"].to_mapping())
-        manifest["dependencies"].insert(1, deepcopy(manifest["dependencies"][0]))
-        with self.assertRaisesRegex(CandidateAuthorityError, "duplicated"):
-            verify_candidate_authority(manifest)
-
-        reordered = deepcopy(self.authorities["DSPB"].to_mapping())
-        reordered["dependencies"][0:2] = reversed(reordered["dependencies"][0:2])
-        reordered["dependency_aggregate_sha256"] = canonical_sha256(
-            reordered["dependencies"]
-        )
-        unsigned = dict(reordered)
-        unsigned.pop("manifest_sha256")
-        reordered["manifest_sha256"] = canonical_sha256(unsigned)
-        with self.assertRaisesRegex(
-            CandidateAuthorityError, "order or closure differs"
-        ):
-            verify_candidate_authority(reordered)
-
-    def test_textual_and_filesystem_path_aliases_fail_closed(self):
         manifest = deepcopy(self.authorities["RG3"].to_mapping())
         path = manifest["dependencies"][0]["path"]
         manifest["dependencies"][0]["path"] = path.replace("/", "//", 1)
         with self.assertRaisesRegex(CandidateAuthorityError, "path alias"):
             verify_candidate_authority(manifest)
 
-        authority = self.authorities["RG3"]
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _copy_dependency_tree(authority, root)
-            model = root / EXPECTED_MODELS["RG3"]
-            alias = root / "model-alias.py"
-            model.rename(alias)
-            model.symlink_to(alias)
-            with self.assertRaisesRegex(CandidateAuthorityError, "path alias"):
-                verify_candidate_authority(authority, root)
+    def test_manifest_exact_schema_rejects_future_or_missing_fields(self):
+        manifest = deepcopy(self.authorities["DSPB"].to_mapping())
+        manifest["future_hash"] = "0" * 64
+        with self.assertRaisesRegex(CandidateAuthorityError, "field schema"):
+            verify_candidate_authority(manifest)
 
-    def test_config_bytes_are_authority_not_a_replaceable_digest(self):
-        manifest = deepcopy(self.authorities["PLL"].to_mapping())
-        config = bytearray.fromhex(manifest["config_bytes_hex"])
-        config[-2] = ord(" ")
-        manifest["config_bytes_hex"] = bytes(config).hex()
-        manifest["config_sha256"] = hashlib.sha256(bytes(config)).hexdigest()
-        unsigned = dict(manifest)
-        unsigned.pop("manifest_sha256")
-        manifest["manifest_sha256"] = canonical_sha256(unsigned)
-        with self.assertRaisesRegex(CandidateAuthorityError, "config bytes differ"):
+        manifest = deepcopy(self.authorities["DSPB"].to_mapping())
+        manifest.pop("executable_bytes_hex")
+        with self.assertRaisesRegex(CandidateAuthorityError, "field schema"):
             verify_candidate_authority(manifest)
 
 
