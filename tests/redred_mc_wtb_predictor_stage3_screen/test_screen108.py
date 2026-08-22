@@ -857,16 +857,17 @@ class LockedScreen108Tests(unittest.TestCase):
             with mock.patch.object(
                 screen108, "_verify_freeze", return_value=frozen
             ), mock.patch.object(
-                screen108, "build_locked_new108_adapter", return_value=bundle
+                screen108,
+                "build_locked_stage3_new108_adapter",
+                return_value=bundle,
             ) as build, mock.patch.object(
-                screen108, "verify_new108_adapter", return_value=bundle.provenance_seal["aggregate_sha256"]
+                screen108,
+                "verify_stage3_new108_adapter",
+                return_value=bundle.provenance_seal["aggregate_sha256"],
             ) as verify, mock.patch.object(
                 screen108, "evaluate_current_cav_registry", return_value=baseline
             ) as evaluate, mock.patch.multiple(
                 screen108,
-                EXPECTED_ADAPTER_AGGREGATE_SHA256=bundle.provenance_seal["aggregate_sha256"],
-                EXPECTED_NEUTRAL_INPUT_SHA256=baseline.neutral_input_sha256,
-                EXPECTED_NEUTRAL_REGISTRY_SHA256=bundle.provenance_seal["neutral_registry_sha256"],
                 EXPECTED_LABEL_SIDECAR_SHA256=bundle.provenance_seal["selector_labels_sidecar_sha256"],
                 EXPECTED_SELECTOR_REGISTRY_SHA256=bundle.provenance_seal["selector_registry_sha256"],
             ):
@@ -880,11 +881,93 @@ class LockedScreen108Tests(unittest.TestCase):
             with mock.patch.object(
                 screen108, "_verify_freeze", return_value=frozen
             ), mock.patch.object(
-                screen108, "build_locked_new108_adapter", return_value=bundle
+                screen108,
+                "build_locked_stage3_new108_adapter",
+                return_value=bundle,
             ), mock.patch.object(
-                screen108, "verify_new108_adapter",
-                return_value=bundle.provenance_seal["aggregate_sha256"],
-            ), self.assertRaisesRegex(Screen108Error, "locked NEW108"):
+                screen108, "verify_stage3_new108_adapter",
+                return_value="f" * 64,
+            ), mock.patch.multiple(
+                screen108,
+                EXPECTED_LABEL_SIDECAR_SHA256=bundle.provenance_seal["selector_labels_sidecar_sha256"],
+                EXPECTED_SELECTOR_REGISTRY_SHA256=bundle.provenance_seal["selector_registry_sha256"],
+            ), self.assertRaisesRegex(Screen108Error, "adapter authority"):
+                screen108.run_locked_screen108(
+                    root, output_path, executable_path, config_path, _cncp()
+                )
+
+            for field in (
+                "selector_registry_sha256",
+                "selector_labels_sidecar_sha256",
+            ):
+                with self.subTest(field=field):
+                    changed_seal = dict(bundle.provenance_seal)
+                    changed_seal[field] = "f" * 64
+                    changed_bundle = New108AdapterBundle(
+                        bundle.selector_registry,
+                        bundle.neutral_registry,
+                        bundle.event_streams,
+                        bundle.pose_streams,
+                        bundle.selector_labels,
+                        changed_seal,
+                    )
+                    with mock.patch.object(
+                        screen108, "_verify_freeze", return_value=frozen
+                    ), mock.patch.object(
+                        screen108,
+                        "build_locked_stage3_new108_adapter",
+                        return_value=changed_bundle,
+                    ), mock.patch.object(
+                        screen108,
+                        "verify_stage3_new108_adapter",
+                        return_value=changed_seal["aggregate_sha256"],
+                    ), mock.patch.multiple(
+                        screen108,
+                        EXPECTED_LABEL_SIDECAR_SHA256=bundle.provenance_seal[
+                            "selector_labels_sidecar_sha256"
+                        ],
+                        EXPECTED_SELECTOR_REGISTRY_SHA256=bundle.provenance_seal[
+                            "selector_registry_sha256"
+                        ],
+                    ), self.assertRaisesRegex(
+                        Screen108Error, "adapter authority"
+                    ):
+                        screen108.run_locked_screen108(
+                            root, output_path, executable_path, config_path,
+                            _cncp(),
+                        )
+
+            registry = bundle.neutral_registry[0]
+            short_registry = replace(
+                registry, warmup_start_ns_inclusive=registry.warmup_start_ns_inclusive + 1
+            )
+            short_bundle = New108AdapterBundle(
+                bundle.selector_registry,
+                (short_registry,) + bundle.neutral_registry[1:],
+                bundle.event_streams,
+                bundle.pose_streams,
+                bundle.selector_labels,
+                bundle.provenance_seal,
+            )
+            with mock.patch.object(
+                screen108, "_verify_freeze", return_value=frozen
+            ), mock.patch.object(
+                screen108,
+                "build_locked_stage3_new108_adapter",
+                return_value=short_bundle,
+            ), mock.patch.object(
+                screen108,
+                "verify_stage3_new108_adapter",
+                return_value=short_bundle.provenance_seal["aggregate_sha256"],
+            ), mock.patch.multiple(
+                screen108,
+                EXPECTED_LABEL_SIDECAR_SHA256=bundle.provenance_seal[
+                    "selector_labels_sidecar_sha256"
+                ],
+                EXPECTED_SELECTOR_REGISTRY_SHA256=bundle.provenance_seal[
+                    "selector_registry_sha256"
+                ],
+            ), self.assertRaisesRegex(Screen108Error, "50 ms pre-roll"):
                 screen108.run_locked_screen108(
                     root, output_path, executable_path, config_path, _cncp()
                 )

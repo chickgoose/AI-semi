@@ -125,6 +125,25 @@ def _fixture(same_edge_angle=None):
     return bundle, baseline
 
 
+def _current_cav_fallback_fixture():
+    bundle, unused = _fixture()
+    del unused
+    window_id = bundle.neutral_registry[0].window_id
+    poses = {window_id: tuple(bundle.pose_streams[window_id][1:])}
+    baseline = evaluate_current_cav_registry(
+        bundle.neutral_registry, bundle.event_streams, poses
+    )
+    fallback_bundle = New108AdapterBundle(
+        bundle.selector_registry,
+        bundle.neutral_registry,
+        bundle.event_streams,
+        poses,
+        bundle.selector_labels,
+        bundle.provenance_seal,
+    )
+    return fallback_bundle, baseline
+
+
 def _cncp():
     return {
         "B_ff": 512,
@@ -169,6 +188,8 @@ def _fake_projection(native_output, config_bytes=None):
             if not native_event["candidate_used"]:
                 row["model_id"] = "CURRENT_CAV"
                 row["world_ray"] = None
+                if row["route"] == "current_cav":
+                    row["fallback_reason"] = "candidate_failure"
             events.append(row)
         windows.append({"window_id": native_window["window_id"], "events": events})
     screen_output = screen108.seal_candidate_output(
@@ -299,7 +320,14 @@ class Campaign108Tests(unittest.TestCase):
             campaign108, "_check_authority_unchanged", return_value=None
         ))
         stack.enter_context(mock.patch.object(
-            campaign108, "build_locked_new108_adapter", return_value=bundle
+            campaign108,
+            "build_locked_stage3_new108_adapter",
+            return_value=bundle,
+        ))
+        stack.enter_context(mock.patch.object(
+            campaign108,
+            "verify_stage3_new108_adapter",
+            return_value=bundle.provenance_seal["aggregate_sha256"],
         ))
         stack.enter_context(mock.patch.object(
             campaign108, "evaluate_current_cav_registry", return_value=baseline
@@ -407,7 +435,9 @@ class Campaign108Tests(unittest.TestCase):
             root = Path(tmp)
             config, cncp = self._files(root, candidate_id)
             config.write_bytes(config.read_bytes() + b"\n")
-            with mock.patch.object(campaign108, "build_locked_new108_adapter") as build:
+            with mock.patch.object(
+                campaign108, "build_locked_stage3_new108_adapter"
+            ) as build:
                 with self.assertRaisesRegex(Campaign108Error, "config bytes"):
                     run_campaign108(
                         candidate_id, root / "dataset", config, cncp, root / "campaign"
@@ -425,6 +455,185 @@ class Campaign108Tests(unittest.TestCase):
                 run_campaign108(
                     candidate_id, root / "dataset", config, cncp, root / "campaign"
                 )
+
+    def test_expected_screen_event_normalizes_detailed_current_cav_failures(self):
+        base = {
+            "event_id": 7,
+            "event_content_sha256": "2" * 64,
+            "occurrence_cycle": 10,
+            "decision_cycle": 11,
+            "model_id": campaign108.RG3_ID,
+            "predictor_state_version": 3,
+            "used_pose_ids": [1, 2],
+            "route": "CURRENT_CAV",
+            "candidate_attempted": True,
+            "candidate_used": False,
+            "fallback_reason": "rate_change_gate",
+            "world_ray": [1.0, 0.0, 0.0],
+        }
+        for detailed_reason in (
+            "rate_change_gate",
+            "pll_unlocked",
+            "selected_expert_invalid:causal_cav",
+        ):
+            with self.subTest(reason=detailed_reason):
+                mutated = dict(base, fallback_reason=detailed_reason)
+                projected = campaign108._expected_screen_event(
+                    mutated, campaign108.RG3_ID
+                )
+                self.assertEqual(projected["fallback_reason"], "candidate_failure")
+                self.assertIsNone(projected["world_ray"])
+
+    def test_expected_screen_event_does_not_relabel_other_fallback_routes(self):
+        base = {
+            "event_id": 7,
+            "event_content_sha256": "2" * 64,
+            "occurrence_cycle": 10,
+            "decision_cycle": 11,
+            "model_id": "CURRENT_CAV",
+            "predictor_state_version": 3,
+            "used_pose_ids": [2],
+            "candidate_attempted": False,
+            "candidate_used": False,
+            "world_ray": None,
+        }
+        cases = (
+            ("FRESH_ZOH", "fresh_zoh_fallback"),
+            ("SENSOR_FIXED", "no_occurrence_pose"),
+            ("SENSOR_FIXED", "invalid_pose"),
+            ("SENSOR_FIXED", "stale_pose"),
+        )
+        for route, reason in cases:
+            with self.subTest(route=route, reason=reason):
+                projected = campaign108._expected_screen_event(
+                    dict(base, route=route, fallback_reason=reason),
+                    campaign108.RG3_ID,
+                )
+                self.assertEqual(projected["fallback_reason"], reason)
+
+    def test_stage3_adapter_verifier_digest_and_prewarm_are_mandatory(self):
+        bundle, unused = _fixture()
+        del unused
+        root = Path("synthetic-stage3-root")
+        with mock.patch.object(
+            campaign108, "build_locked_stage3_new108_adapter", None
+        ), mock.patch.object(
+            campaign108, "verify_stage3_new108_adapter", None
+        ), self.assertRaisesRegex(Campaign108Error, "API is unavailable"):
+            campaign108._build_verified_stage3_adapter(root)
+
+        with mock.patch.object(
+            campaign108, "build_locked_stage3_new108_adapter", return_value=bundle
+        ) as build, mock.patch.object(
+            campaign108,
+            "verify_stage3_new108_adapter",
+            return_value=bundle.provenance_seal["aggregate_sha256"],
+        ) as verify:
+            self.assertIs(campaign108._build_verified_stage3_adapter(root), bundle)
+        build.assert_called_once_with(root)
+        verify.assert_called_once_with(bundle, root)
+
+        with mock.patch.object(
+            campaign108, "build_locked_stage3_new108_adapter", return_value=bundle
+        ), mock.patch.object(
+            campaign108, "verify_stage3_new108_adapter", return_value="f" * 64
+        ), self.assertRaisesRegex(Campaign108Error, "authority differs"):
+            campaign108._build_verified_stage3_adapter(root)
+
+        short_registry = NeutralRegistryWindow(
+            "fixture-window", 1, 50_000_000, 51_000_000
+        )
+        short_bundle = New108AdapterBundle(
+            bundle.selector_registry,
+            (short_registry,),
+            bundle.event_streams,
+            bundle.pose_streams,
+            bundle.selector_labels,
+            bundle.provenance_seal,
+        )
+        with mock.patch.object(
+            campaign108,
+            "build_locked_stage3_new108_adapter",
+            return_value=short_bundle,
+        ), mock.patch.object(
+            campaign108,
+            "verify_stage3_new108_adapter",
+            return_value=short_bundle.provenance_seal["aggregate_sha256"],
+        ), self.assertRaisesRegex(Campaign108Error, "50 ms pre-roll"):
+            campaign108._build_verified_stage3_adapter(root)
+
+    def test_campaign_accepts_normalized_current_cav_and_rejects_detail_leak(self):
+        candidate_id = campaign108.RG3_ID
+        spec = campaign108._candidate(candidate_id)
+        bundle, baseline = _current_cav_fallback_fixture()
+        real_projector = campaign108._project_native_output
+
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            campaign_dir = root / "campaign"
+            self._run_patches(
+                stack, spec, bundle, baseline, real_projector,
+                self._screen(candidate_id),
+            )
+            run_campaign108(
+                candidate_id, root / "dataset", config, cncp, campaign_dir
+            )
+            output = json.loads(
+                campaign108._artifact_paths(campaign_dir, candidate_id)[
+                    "screen_output"
+                ].read_text(encoding="utf-8")
+            )
+            current_rows = [
+                event
+                for window in output["windows"]
+                for event in window["events"]
+                if event["route"] == "current_cav"
+            ]
+            self.assertTrue(current_rows)
+            self.assertEqual(
+                {event["fallback_reason"] for event in current_rows},
+                {"candidate_failure"},
+            )
+
+        def leaking_projector(native):
+            projection = real_projector(native)
+            output = deepcopy(projection.screen_output)
+            native_rows = {
+                event["event_id"]: event
+                for window in native["windows"] for event in window["events"]
+            }
+            event = next(
+                event
+                for window in output["windows"] for event in window["events"]
+                if event["route"] == "current_cav"
+            )
+            event["fallback_reason"] = native_rows[event["event_id"]][
+                "fallback_reason"
+            ]
+            event_body = dict(event)
+            event_body.pop("decision_sha256")
+            event["decision_sha256"] = canonical_sha256(event_body)
+            window = output["windows"][0]
+            window["events_sha256"] = canonical_sha256(window["events"])
+            output = _reseal(output)
+            return replace(projection, screen_output=output)
+
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            root = Path(tmp)
+            config, cncp = self._files(root, candidate_id)
+            screen = mock.Mock()
+            self._run_patches(
+                stack, spec, bundle, baseline, leaking_projector, screen
+            )
+            with self.assertRaisesRegex(
+                Campaign108Error, "decision substitution"
+            ):
+                run_campaign108(
+                    candidate_id, root / "dataset", config, cncp,
+                    root / "campaign",
+                )
+            screen.assert_not_called()
 
     def test_native_id_substitution_fails_before_replay(self):
         candidate_id = campaign108.RG3_ID

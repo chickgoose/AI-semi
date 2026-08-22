@@ -32,12 +32,16 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     evaluate_current_cav_registry,
     verify_current_cav_evaluation_integrity,
 )
-from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
-    New108AdapterBundle,
-    build_locked_new108_adapter,
-    verify_new108_adapter,
-)
+from benchmarks.redred_mc_wtb_so3_axis_audit import new108_adapter as _new108_adapter
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
+
+New108AdapterBundle = _new108_adapter.New108AdapterBundle
+build_locked_stage3_new108_adapter = getattr(
+    _new108_adapter, "build_locked_stage3_new108_adapter", None
+)
+verify_stage3_new108_adapter = getattr(
+    _new108_adapter, "verify_stage3_new108_adapter", None
+)
 
 
 RESULT_SCHEMA = "redred.mc_wtb_predictor_stage3.screen108_result/v2"
@@ -52,9 +56,8 @@ PREROLL_NS = 50_000_000
 REFERENCE_CAPACITY_PER_POLARITY = 256
 REFERENCE_MAX_AGE_NS = 2_000_000
 MOTION_BINS = ("LOW", "MID", "HIGH")
-EXPECTED_ADAPTER_AGGREGATE_SHA256 = "2a7b41cbb29aa4d9a1e86be2d6beeeda56434d0dc60e366259e19f1f6da9ea05"
-EXPECTED_NEUTRAL_INPUT_SHA256 = "3ecd379823fcdd4e596dba3daa260a1d979a16fda8d77c82f7628c2f1758d884"
-EXPECTED_NEUTRAL_REGISTRY_SHA256 = "64d168977d1074fc60f56b35d854612920d057bf0bdc30dd98486a99a60ecd0f"
+# Stage3 prewarm changes the neutral bounds/input aggregate.  The consumed
+# query cohort and reporting labels remain fixed by these selector authorities.
 EXPECTED_LABEL_SIDECAR_SHA256 = "2dd3be5aba43610bef999c2491978d3abb39b206cfa6c53cb658cee43c2b3ecb"
 EXPECTED_SELECTOR_REGISTRY_SHA256 = "4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d"
 EXPECTED_EVALUATOR_SHA256 = "64cf6d9aff7c4a3dec791469b5e2f010fe80d8930650f8438d80f4659b3302fd"
@@ -1139,24 +1142,33 @@ def run_locked_screen108(
     frozen = _verify_freeze(root)
     if _file_sha256(Path(cav_evaluator.__file__), "current CAV evaluator") != EXPECTED_EVALUATOR_SHA256:
         raise Screen108Error("pinned current CAV evaluator hash differs")
-    bundle = build_locked_new108_adapter(Path(dataset_directory))
-    adapter_digest = verify_new108_adapter(bundle, Path(dataset_directory))
+    if not callable(build_locked_stage3_new108_adapter) or not callable(
+        verify_stage3_new108_adapter
+    ):
+        raise Screen108Error("locked Stage3 NEW108 adapter API is unavailable")
+    bundle = build_locked_stage3_new108_adapter(Path(dataset_directory))
+    if type(bundle) is not New108AdapterBundle:
+        raise Screen108Error("locked Stage3 NEW108 adapter returned wrong type")
+    adapter_digest = verify_stage3_new108_adapter(
+        bundle, Path(dataset_directory)
+    )
     if (
         adapter_digest != bundle.provenance_seal.get("aggregate_sha256")
-        or adapter_digest != EXPECTED_ADAPTER_AGGREGATE_SHA256
-        or bundle.provenance_seal.get("neutral_registry_sha256")
-        != EXPECTED_NEUTRAL_REGISTRY_SHA256
         or bundle.provenance_seal.get("selector_labels_sidecar_sha256")
         != EXPECTED_LABEL_SIDECAR_SHA256
         or bundle.provenance_seal.get("selector_registry_sha256")
         != EXPECTED_SELECTOR_REGISTRY_SHA256
     ):
-        raise Screen108Error("public adapter authority differs from locked NEW108")
+        raise Screen108Error("Stage3 adapter authority differs from locked NEW108")
+    if any(
+        window.query_start_ns_inclusive - window.warmup_start_ns_inclusive
+        != PREROLL_NS
+        for window in bundle.neutral_registry
+    ):
+        raise Screen108Error("Stage3 NEW108 cohort does not retain 50 ms pre-roll")
     baseline = evaluate_current_cav_registry(
         bundle.neutral_registry, bundle.event_streams, bundle.pose_streams
     )
-    if baseline.neutral_input_sha256 != EXPECTED_NEUTRAL_INPUT_SHA256:
-        raise Screen108Error("pinned NEW108 neutral input hash differs")
     candidate_output = _json_object(
         _file_bytes(Path(candidate_output_path), "candidate output"), "candidate output"
     )

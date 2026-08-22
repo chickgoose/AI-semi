@@ -24,13 +24,18 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     CAVRegistryEvaluation,
     evaluate_current_cav_registry,
 )
-from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
-    New108AdapterBundle,
-    build_locked_new108_adapter,
-)
+from benchmarks.redred_mc_wtb_so3_axis_audit import new108_adapter as _new108_adapter
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 
 from . import candidate_authority, dspb_output, pll_output, rg3_output, screen108
+
+New108AdapterBundle = _new108_adapter.New108AdapterBundle
+build_locked_stage3_new108_adapter = getattr(
+    _new108_adapter, "build_locked_stage3_new108_adapter", None
+)
+verify_stage3_new108_adapter = getattr(
+    _new108_adapter, "verify_stage3_new108_adapter", None
+)
 
 try:  # The projector is integrated independently of this campaign worker.
     from . import screen_projection as _screen_projection
@@ -199,6 +204,29 @@ def _neutral_view(bundle: New108AdapterBundle) -> NeutralAdapterView:
         }),
         MappingProxyType({"aggregate_sha256": str(aggregate)}),
     )
+
+
+def _build_verified_stage3_adapter(dataset_directory: Path) -> New108AdapterBundle:
+    """Build and authenticate the locked 50 ms Stage3 cohort fail-closed."""
+
+    if not callable(build_locked_stage3_new108_adapter) or not callable(
+        verify_stage3_new108_adapter
+    ):
+        raise Campaign108Error("locked Stage3 NEW108 adapter API is unavailable")
+    root = Path(dataset_directory)
+    bundle = build_locked_stage3_new108_adapter(root)
+    if type(bundle) is not New108AdapterBundle:
+        raise Campaign108Error("locked Stage3 NEW108 adapter returned wrong type")
+    adapter_digest = verify_stage3_new108_adapter(bundle, root)
+    if adapter_digest != bundle.provenance_seal.get("aggregate_sha256"):
+        raise Campaign108Error("locked Stage3 NEW108 adapter authority differs")
+    if any(
+        row.query_start_ns_inclusive - row.warmup_start_ns_inclusive
+        != screen108.PREROLL_NS
+        for row in bundle.neutral_registry
+    ):
+        raise Campaign108Error("Stage3 NEW108 cohort does not retain 50 ms pre-roll")
+    return bundle
 
 
 def _neutral_projection_sha256(view: NeutralAdapterView) -> str:
@@ -460,6 +488,9 @@ def _expected_screen_event(
     used = native_event.get("candidate_used")
     if type(used) is not bool:
         raise Campaign108Error("native candidate-use evidence differs")
+    fallback_reason = native_event.get("fallback_reason")
+    if not used and route == "current_cav":
+        fallback_reason = "candidate_failure"
     return {
         "event_id": native_event.get("event_id"),
         "event_content_sha256": native_event.get("event_content_sha256"),
@@ -471,7 +502,7 @@ def _expected_screen_event(
         "route": route,
         "candidate_attempted": native_event.get("candidate_attempted"),
         "candidate_used": used,
-        "fallback_reason": native_event.get("fallback_reason"),
+        "fallback_reason": fallback_reason,
         "world_ray": native_event.get("world_ray") if used else None,
     }
 
@@ -696,7 +727,7 @@ def run_campaign108(
     _exclusive_write(paths["attempt"], attempt_bytes, "campaign attempt marker")
     _exclusive_write(paths["campaign_authority"], authority_bytes, "campaign authority")
 
-    bundle = build_locked_new108_adapter(Path(dataset_directory))
+    bundle = _build_verified_stage3_adapter(Path(dataset_directory))
     neutral = _neutral_view(bundle)
     full_baseline = evaluate_current_cav_registry(
         neutral.neutral_registry, neutral.event_streams, neutral.pose_streams
