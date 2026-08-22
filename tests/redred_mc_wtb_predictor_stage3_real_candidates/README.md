@@ -57,23 +57,31 @@ external service.
 
 `test_production_mutation_gate.py` additionally invokes RG3, DSPB, and PLL
 through `rg3_output.py`, `dspb_output.py`, and `pll_output.py`.  Its test-only
-`ExactProductionGate` independently checks the exact envelope and nested
-seals, frozen executable/config identity, neutral event identity/order and
-cardinality, strict pose visibility, one-state-per-edge atomicity, fallback
-shape, and byte-exact equality with a pristine production replay.  Every
-mutated envelope is fully resealed before validation, so digest checks alone
-cannot kill it; a mutation with no observable effect fails the test itself.
+`ExactProductionGate` first invokes the candidate-specific exact native replay
+verifier (a second deterministic production replay for RG3), then calls
+`screen_projection.project_native_output()`, and finally submits only the
+returned `ScreenProjection.screen_output` to the exact screen108-v2 validator.
+The native evidence and candidate-neutral scoring receipt are deliberately
+kept distinct.
 
-The added mutations cover noncommuting multi-axis RG3 transport removal,
+Common-row mutations operate only on the projected screen receipt and reseal
+every decision, window, and aggregate digest.  Candidate-specific state,
+reset, transition, forecast, dependency, and configuration evidence remains
+native and must be rejected by the candidate verifier or deterministic replay.
+The gate accepts only classified candidate-output, screen-contract, or exact
+replay rejections; an arbitrary producer or projection crash is a test error,
+not a mutation kill.  Projected fallback taxonomy is exact: a current-CAV
+candidate failure is normalized to `candidate_failure`, fresh ZOH to
+`fresh_zoh_fallback`, and sensor-fixed bypass to the baseline
+`no_occurrence_pose`, `invalid_pose`, or `stale_pose` reason.  Candidate-native
+failure detail belongs only to the projection receipt.
+
+The mutations cover noncommuting multi-axis RG3 transport removal,
 occurrence/decision-cycle substitution, same-edge pose citation, cross-window
 PLL state carry, PLL commit-time anchoring, DSPB hindcast and stale-winner
 selection, unrelated unit rays, candidate/executable/config substitution,
 fallback relabeling, event deletion/reordering/duplication, and retrospective
 outcome-retry rewrite/append behavior.
 
-This is a synthetic, in-process mutation gate.  The public output-v1 schema
-still exposes only one `decision_cycle` and no reset-generation, initial-state,
-pose-update, or fallback-route receipt.  Consequently the gate detects those
-mutations by independent locked replay; it does not turn the current envelope
-into standalone proof of occurrence-to-decision latency, reset provenance,
-commit publication, or exact CAV/ZOH/BYPASS route selection.
+This remains a synthetic, in-process mutation gate.  It uses no real dataset,
+selector label, scorer, filter, RTL, or PPA path.

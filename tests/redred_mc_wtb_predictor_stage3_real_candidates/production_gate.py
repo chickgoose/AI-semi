@@ -1,11 +1,10 @@
-"""Independent exact-output gate for the three production Stage-3 adapters.
+"""Independent native-replay and screen108-v2 gate for production candidates.
 
-The gate deliberately does not regenerate candidate geometry.  A pristine
-production replay is captured once, then this module independently validates
-the public envelope, every nested seal, neutral identity/order/cardinality,
-pose visibility, fallback shape, and finally byte-exact equality with that
-replay.  Mutation tests can therefore reseal dishonest output without gaining
-authority to alter the expected result.
+The production adapters emit candidate-specific native receipts.  This gate
+first authenticates an exact native replay, then invokes the production
+``screen_projection`` boundary, then validates the projected, exact-field
+screen108-v2 receipt.  Common-row mutation tests operate only on that projected
+receipt; candidate-specific evidence mutations remain on the native side.
 """
 
 from __future__ import annotations
@@ -13,26 +12,16 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 import math
-from typing import Dict, Mapping, Sequence, Tuple
+from typing import Mapping, Tuple
 
+from benchmarks.redred_mc_wtb_predictor_stage3 import (
+    dspb_output,
+    pll_output,
+    rg3_output,
+    screen108,
+    screen_projection,
+)
 from benchmarks.redred_mc_wtb_predictor_stage3.dspb import DSPBConfig
-from benchmarks.redred_mc_wtb_predictor_stage3.dspb_output import (
-    generate_dspb_candidate_output,
-    locked_dspb_config_sha256,
-    locked_dspb_executable_sha256,
-)
-from benchmarks.redred_mc_wtb_predictor_stage3.pll_output import (
-    CANDIDATE_ID as PLL_CANDIDATE_ID,
-    generate_locked_pll_output,
-    generator_executable_sha256,
-    locked_config_sha256,
-)
-from benchmarks.redred_mc_wtb_predictor_stage3.rg3_output import (
-    RG3_CONFIG_SHA256,
-    RG3_EXECUTABLE_SHA256,
-    RG3_OUTPUT_CANDIDATE_ID,
-    generate_locked_rg3_output,
-)
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     NeutralEventInput,
     NeutralPoseInput,
@@ -50,33 +39,26 @@ from benchmarks.redred_mc_wtb_stage4_cyclemodel import pose_timestamp_to_cycle
 
 ADAPTER_SHA256 = "6" * 64
 CANDIDATE_NAMES = ("RG3", "DSPB", "PLL")
-OUTPUT_FIELDS = frozenset((
-    "schema",
-    "candidate_id",
-    "adapter_aggregate_sha256",
-    "neutral_input_sha256",
-    "candidate_executable_sha256",
-    "candidate_config_sha256",
-    "windows",
-    "aggregate_sha256",
-))
-WINDOW_FIELDS = frozenset(("window_id", "events", "events_sha256"))
-EVENT_FIELDS = frozenset((
-    "event_id",
-    "event_content_sha256",
-    "decision_cycle",
-    "model_id",
-    "predictor_state_version",
-    "used_pose_ids",
-    "candidate_used",
-    "fallback_reason",
-    "world_ray",
-    "decision_sha256",
-))
 
 
 class GateViolation(AssertionError):
-    """A sealed candidate output failed the independent test-only gate."""
+    """Base class for a classified test-gate rejection."""
+
+
+class NativeReplayViolation(GateViolation):
+    """A candidate without a public verifier differed from deterministic replay."""
+
+
+class ProjectionViolation(GateViolation):
+    """The production projection did not honor its exact public protocol."""
+
+
+class ScreenContractViolation(GateViolation):
+    """The projected receipt was rejected by the exact screen108-v2 validator."""
+
+
+class ScreenReplayViolation(GateViolation):
+    """A validly resealed screen receipt differed from the locked projection."""
 
 
 @dataclass(frozen=True)
@@ -93,6 +75,16 @@ class CandidateAuthority:
     candidate_id: str
     executable_sha256: str
     config_sha256: str
+
+
+@dataclass(frozen=True)
+class VerifiedProductionOutput:
+    """The distinct native and projected artifacts from one exact replay."""
+
+    native_output: Mapping[str, object]
+    native_aggregate_sha256: str
+    projection: object
+    screen_output: Mapping[str, object]
 
 
 def _multiply(left, right):
@@ -227,8 +219,6 @@ def make_noncommuting_rg3_fixture():
         _pose(index, index * 5_000_000, 0, quaternion)
         for index, quaternion in enumerate(quaternions)
     )
-    # A nearby warm-up event supplies the evaluator's same-frame causal
-    # reference; both events still exercise the multi-axis RG3 forecast.
     events = (
         _event(89, 49_000_000, 50_000_000, 0.0, 9),
         _event(90, 50_000_000, 50_000_000, 0.1, 9),
@@ -243,22 +233,53 @@ def make_noncommuting_rg3_fixture():
     return SyntheticFixture(registry, event_streams, pose_streams, baseline, bundle)
 
 
+def make_fallback_taxonomy_fixture():
+    """Force fresh-ZOH and candidate-failure current-CAV projection rows."""
+
+    registry = (NeutralRegistryWindow(
+        "fallback-taxonomy", 0, 50_000_000, 50_500_000
+    ),)
+    poses = tuple(
+        _pose(index, index * 5_000_000, 0, _rotation_z(index * 0.02))
+        for index in range(10)
+    )
+    events = (
+        _event(0, 500_000, 50_000_000, 0.00, 0),
+        _event(1, 5_500_000, 50_000_000, 0.01, 1),
+        _event(2, 10_500_000, 50_000_000, 0.02, 2),
+        _event(3, 49_000_000, 50_000_000, 0.03, 9),
+        _event(4, 50_000_000, 50_000_000, 0.04, 9),
+    )
+    event_streams = {"fallback-taxonomy": events}
+    pose_streams = {"fallback-taxonomy": poses}
+    baseline = evaluate_current_cav_registry(
+        registry, event_streams, pose_streams
+    )
+    bundle = New108AdapterBundle(
+        {}, registry, event_streams, pose_streams, {},
+        {"aggregate_sha256": ADAPTER_SHA256},
+    )
+    return SyntheticFixture(registry, event_streams, pose_streams, baseline, bundle)
+
+
 def authority(candidate_name):
     if candidate_name == "RG3":
         return CandidateAuthority(
-            RG3_OUTPUT_CANDIDATE_ID, RG3_EXECUTABLE_SHA256, RG3_CONFIG_SHA256
+            rg3_output.RG3_OUTPUT_CANDIDATE_ID,
+            rg3_output.RG3_EXECUTABLE_SHA256,
+            rg3_output.RG3_CONFIG_SHA256,
         )
     if candidate_name == "DSPB":
         return CandidateAuthority(
             DSPBConfig().candidate_id,
-            locked_dspb_executable_sha256(),
-            locked_dspb_config_sha256(),
+            dspb_output.locked_dspb_executable_sha256(),
+            dspb_output.locked_dspb_config_sha256(),
         )
     if candidate_name == "PLL":
         return CandidateAuthority(
-            PLL_CANDIDATE_ID,
-            generator_executable_sha256(),
-            locked_config_sha256(),
+            pll_output.CANDIDATE_ID,
+            pll_output.generator_executable_sha256(),
+            pll_output.locked_config_sha256(),
         )
     raise GateViolation("unknown candidate name")
 
@@ -267,26 +288,89 @@ def generate_production_output(candidate_name, fixture):
     """Invoke the selected actual candidate through its production adapter."""
 
     if candidate_name == "RG3":
-        return generate_locked_rg3_output(
+        return rg3_output.generate_locked_rg3_output(
             fixture.registry,
             fixture.event_streams,
             fixture.pose_streams,
             ADAPTER_SHA256,
         )
     if candidate_name == "DSPB":
-        return generate_dspb_candidate_output(
+        return dspb_output.generate_dspb_candidate_output(
             fixture.registry,
             fixture.event_streams,
             fixture.pose_streams,
             ADAPTER_SHA256,
         )
     if candidate_name == "PLL":
-        return generate_locked_pll_output(fixture.bundle, fixture.baseline)
+        return pll_output.generate_locked_pll_output(fixture.bundle, fixture.baseline)
     raise GateViolation("unknown candidate name")
 
 
-def reseal(value):
-    """Reseal a test mutation so digest-only checks cannot kill it."""
+def verify_native_output(candidate_name, fixture, value):
+    """Run the candidate-specific exact verifier before any projection."""
+
+    if candidate_name == "RG3":
+        # RG3 has no separate public verifier.  A fresh call through its locked
+        # production adapter is therefore its deterministic exact replay.
+        expected = generate_production_output("RG3", fixture)
+        if value != expected:
+            raise NativeReplayViolation(
+                "RG3 native output differs from deterministic exact replay"
+            )
+        return expected["aggregate_sha256"]
+    if candidate_name == "DSPB":
+        return dspb_output.verify_dspb_candidate_output(
+            value,
+            fixture.registry,
+            fixture.event_streams,
+            fixture.pose_streams,
+            ADAPTER_SHA256,
+        )
+    if candidate_name == "PLL":
+        return pll_output.verify_locked_pll_output(
+            value, fixture.bundle, fixture.baseline
+        )
+    raise GateViolation("unknown candidate name")
+
+
+def _screen_output(projection):
+    if type(projection) is not screen_projection.ScreenProjection:
+        raise ProjectionViolation("project_native_output returned the wrong type")
+    output = projection.screen_output
+    if not isinstance(output, Mapping):
+        raise ProjectionViolation("ScreenProjection.screen_output is not a mapping")
+    return output
+
+
+def project_verified_native(candidate_name, fixture, native_output):
+    """Authenticate native replay, then project and validate screen108 v2."""
+
+    native_digest = verify_native_output(candidate_name, fixture, native_output)
+    projection = screen_projection.project_native_output(native_output)
+    screen_output = _screen_output(projection)
+    candidate_authority = authority(candidate_name)
+    try:
+        screen108._validate_candidate_output(
+            screen_output,
+            fixture.bundle,
+            fixture.baseline,
+            candidate_authority.executable_sha256,
+            candidate_authority.config_sha256,
+        )
+    except screen108.Screen108Error as exc:
+        raise ScreenContractViolation(
+            "screen108 v2 rejected production projection: %s" % exc
+        ) from exc
+    return VerifiedProductionOutput(
+        deepcopy(native_output),
+        native_digest,
+        projection,
+        deepcopy(screen_output),
+    )
+
+
+def reseal_screen_output(value):
+    """Reseal every event, window, and aggregate seal in a screen mutation."""
 
     output = deepcopy(value)
     for window in output["windows"]:
@@ -301,147 +385,75 @@ def reseal(value):
     return output
 
 
-class ExactProductionGate:
-    """Validate one adapter's public output without calling that adapter."""
+def reseal_native_envelope(value):
+    """Reseal the native aggregate after a top-level evidence mutation."""
 
-    def __init__(self, candidate_name, fixture, pristine):
+    output = deepcopy(value)
+    body = dict(output)
+    body.pop("aggregate_sha256", None)
+    output["aggregate_sha256"] = canonical_sha256(body)
+    return output
+
+
+def reseal_pll_transitions(value):
+    """Reseal PLL transition, window, and aggregate evidence layers."""
+
+    output = deepcopy(value)
+    for window in output["windows"]:
+        for transition in window["state_transitions"]:
+            body = dict(transition)
+            body.pop("transition_sha256", None)
+            transition["transition_sha256"] = canonical_sha256(body)
+        window["state_transitions_sha256"] = canonical_sha256(
+            window["state_transitions"]
+        )
+        body = dict(window)
+        body.pop("window_sha256", None)
+        window["window_sha256"] = canonical_sha256(body)
+    return reseal_native_envelope(output)
+
+
+class ExactProductionGate:
+    """Require exact native replay followed by exact screen108-v2 projection."""
+
+    def __init__(self, candidate_name, fixture, pristine_native):
         self.candidate_name = candidate_name
         self.fixture = fixture
-        self.expected = deepcopy(pristine)
-        self.authority = authority(candidate_name)
+        self.expected = project_verified_native(
+            candidate_name, fixture, pristine_native
+        )
 
-    @staticmethod
-    def _mapping(value, fields, where):
-        if not isinstance(value, Mapping) or frozenset(value) != fields:
-            raise GateViolation("%s field schema differs" % where)
-        return value
+    def validate_native(self, value):
+        """Verify native evidence before projection and exact screen replay."""
 
-    @staticmethod
-    def _digest(value, where):
-        if type(value) is not str or len(value) != 64 or any(
-            character not in "0123456789abcdef" for character in value
-        ):
-            raise GateViolation("%s is not lowercase SHA-256" % where)
+        verified = project_verified_native(self.candidate_name, self.fixture, value)
+        if verified.native_output != self.expected.native_output:
+            raise NativeReplayViolation("native output differs from pristine replay")
+        if verified.screen_output != self.expected.screen_output:
+            raise ScreenReplayViolation("projection differs from pristine locked replay")
+        return verified
 
-    @staticmethod
-    def _unit_ray(value):
-        if not isinstance(value, list) or len(value) != 3:
-            raise GateViolation("candidate world ray shape differs")
-        if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in value):
-            raise GateViolation("candidate world ray is not numeric")
-        norm = math.sqrt(math.fsum(float(item) * float(item) for item in value))
-        if not math.isfinite(norm) or abs(norm - 1.0) > 1.0e-9:
-            raise GateViolation("candidate world ray is not unit length")
+    def validate_screen(self, value):
+        """Validate a separately supplied, fully resealed projected mutation."""
 
-    def validate(self, value):
-        output = self._mapping(value, OUTPUT_FIELDS, "candidate output")
-        if output["schema"] != "redred.mc_wtb_predictor_stage3.candidate_output/v1":
-            raise GateViolation("candidate output schema differs")
-        if output["candidate_id"] != self.authority.candidate_id:
-            raise GateViolation("candidate identity differs")
-        if output["adapter_aggregate_sha256"] != ADAPTER_SHA256:
-            raise GateViolation("adapter identity differs")
-        if output["neutral_input_sha256"] != self.fixture.baseline.neutral_input_sha256:
-            raise GateViolation("neutral input identity differs")
-        if output["candidate_executable_sha256"] != self.authority.executable_sha256:
-            raise GateViolation("candidate executable identity differs")
-        if output["candidate_config_sha256"] != self.authority.config_sha256:
-            raise GateViolation("candidate config identity differs")
-        for field in (
-            "adapter_aggregate_sha256",
-            "neutral_input_sha256",
-            "candidate_executable_sha256",
-            "candidate_config_sha256",
-            "aggregate_sha256",
-        ):
-            self._digest(output[field], field)
-        unsigned = dict(output)
-        supplied = unsigned.pop("aggregate_sha256")
-        if supplied != canonical_sha256(unsigned):
-            raise GateViolation("aggregate seal differs")
-
-        windows = output["windows"]
-        if not isinstance(windows, list):
-            raise GateViolation("candidate windows are not a list")
-        expected_ids = [row.window_id for row in self.fixture.registry]
-        if [row.get("window_id") if isinstance(row, Mapping) else None for row in windows] != expected_ids:
-            raise GateViolation("window identity/order differs")
-
-        for supplied_window, baseline_window in zip(
-            windows, self.fixture.baseline.windows
-        ):
-            window = self._mapping(supplied_window, WINDOW_FIELDS, "candidate window")
-            events = window["events"]
-            if not isinstance(events, list):
-                raise GateViolation("candidate events are not a list")
-            if window["events_sha256"] != canonical_sha256(events):
-                raise GateViolation("window seal differs")
-            expected_events = tuple(baseline_window.input_events)
-            baseline_rows = tuple(baseline_window.simulation.records)
-            if len(events) != len(expected_events):
-                raise GateViolation("event cardinality differs")
-            poses = {pose.pose_id: pose for pose in baseline_window.input_poses}
-            prior_state = None
-            state_by_edge = {}  # type: Dict[int, int]
-            for event, expected_event, baseline_row in zip(
-                events, expected_events, baseline_rows
-            ):
-                row = self._mapping(event, EVENT_FIELDS, "candidate event")
-                body = dict(row)
-                row_digest = body.pop("decision_sha256")
-                if row_digest != canonical_sha256(body):
-                    raise GateViolation("event decision seal differs")
-                if (
-                    row["event_id"] != expected_event.event_id
-                    or row["event_content_sha256"] != expected_event.event_content_sha256
-                ):
-                    raise GateViolation("event identity/order differs")
-                if row["decision_cycle"] != baseline_row.occurrence_cycle:
-                    raise GateViolation("decision edge differs from locked edge")
-                state = row["predictor_state_version"]
-                if isinstance(state, bool) or not isinstance(state, int) or state < 0:
-                    raise GateViolation("predictor state version differs")
-                if prior_state is not None and state < prior_state:
-                    raise GateViolation("predictor state moved backwards")
-                edge_state = state_by_edge.setdefault(row["decision_cycle"], state)
-                if edge_state != state:
-                    raise GateViolation("one decision edge observed multiple states")
-                prior_state = state
-                pose_ids = row["used_pose_ids"]
-                if (
-                    not isinstance(pose_ids, list)
-                    or pose_ids != sorted(set(pose_ids))
-                ):
-                    raise GateViolation("used pose identity/order differs")
-                for pose_id in pose_ids:
-                    pose = poses.get(pose_id)
-                    if (
-                        pose is None
-                        or pose.commit_cycle >= row["decision_cycle"]
-                        or pose.timestamp_ns > expected_event.timestamp_ns
-                        or not pose.value_valid
-                        or not pose.arithmetic_valid
-                    ):
-                        raise GateViolation("same-edge, future, or invalid pose was used")
-                if type(row["candidate_used"]) is not bool:
-                    raise GateViolation("candidate_used type differs")
-                if row["candidate_used"]:
-                    if row["model_id"] != self.authority.candidate_id:
-                        raise GateViolation("candidate row model identity differs")
-                    if not pose_ids or row["fallback_reason"] is not None:
-                        raise GateViolation("candidate row provenance differs")
-                    self._unit_ray(row["world_ray"])
-                else:
-                    if row["model_id"] != "CURRENT_CAV":
-                        raise GateViolation("fallback route was relabeled")
-                    if row["world_ray"] is not None:
-                        raise GateViolation("fallback supplied replacement geometry")
-                    if type(row["fallback_reason"]) is not str or not row["fallback_reason"]:
-                        raise GateViolation("fallback reason differs")
-
-        if value != self.expected:
-            raise GateViolation("output differs from pristine locked replay")
-        return output["aggregate_sha256"]
+        candidate_authority = authority(self.candidate_name)
+        try:
+            digest, _events = screen108._validate_candidate_output(
+                value,
+                self.fixture.bundle,
+                self.fixture.baseline,
+                candidate_authority.executable_sha256,
+                candidate_authority.config_sha256,
+            )
+        except screen108.Screen108Error as exc:
+            raise ScreenContractViolation(
+                "screen108 v2 rejected projected mutation: %s" % exc
+            ) from exc
+        if value != self.expected.screen_output:
+            raise ScreenReplayViolation(
+                "screen output differs from pristine locked projection"
+            )
+        return digest
 
 
 __all__ = (
@@ -449,10 +461,20 @@ __all__ = (
     "CANDIDATE_NAMES",
     "ExactProductionGate",
     "GateViolation",
+    "NativeReplayViolation",
+    "ProjectionViolation",
+    "ScreenContractViolation",
+    "ScreenReplayViolation",
     "SyntheticFixture",
+    "VerifiedProductionOutput",
     "authority",
     "generate_production_output",
+    "make_fallback_taxonomy_fixture",
     "make_motion_fixture",
     "make_noncommuting_rg3_fixture",
-    "reseal",
+    "project_verified_native",
+    "reseal_native_envelope",
+    "reseal_pll_transitions",
+    "reseal_screen_output",
+    "verify_native_output",
 )
