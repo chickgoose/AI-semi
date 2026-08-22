@@ -385,6 +385,13 @@ def _run_verified_execution_snapshot(
         poses = window["poses"]
         if len(events) != len(records) or not events:
             raise PLLQueryStreamCoreError("execution and trace cardinality differs")
+        active_pose_cycles = [
+            pose["commit_cycle"] for pose in poses if pose["commit_cycle"] >= 0
+        ]
+        if len(set(active_pose_cycles)) != len(active_pose_cycles):
+            raise PLLQueryStreamCoreError(
+                "PLL post-reset pose commit cycles must be unique"
+            )
         runtime = _BoundedPLL()
         query_rows = []
         query_transitions = []

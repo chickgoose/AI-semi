@@ -58,6 +58,16 @@ OUTPUT_AUTHORITY_HOLD = {
         "independent closed-schema replay verifier"
     ),
 }
+INPUT_DOMAIN_HOLD = {
+    "status": "HOLD",
+    "post_reset_pose_commit_cycles": "strictly_unique",
+    "unique_pose_commit_cycles_are_execution_input_v3_guaranteed": False,
+    "reason": (
+        "execution_input/v3 permits multiple poses on one post-reset commit "
+        "cycle, while this native PLL development slice requires one pose "
+        "publication per edge and fails closed outside that narrower domain"
+    ),
+}
 NATIVE_TRANSITION_HOLD = {
     "status": "HOLD",
     "complexity": "O(query rows + query transitions)",
@@ -239,6 +249,7 @@ def generate_pll_query_stream(execution_input: object) -> Mapping[str, object]:
             "manifest_sha256"
         ],
         "verified_input_complexity_hold": dict(VERIFIED_INPUT_HOLD),
+        "input_domain_hold": dict(INPUT_DOMAIN_HOLD),
         "native_transition_complexity_hold": dict(NATIVE_TRANSITION_HOLD),
         "batch_provenance_equivalence_hold": dict(
             BATCH_PROVENANCE_EQUIVALENCE_HOLD
@@ -258,6 +269,7 @@ def generate_pll_query_stream(execution_input: object) -> Mapping[str, object]:
 
 __all__ = (
     "BATCH_PROVENANCE_EQUIVALENCE_HOLD",
+    "INPUT_DOMAIN_HOLD",
     "NATIVE_TRANSITION_HOLD",
     "OUTPUT_AUTHORITY_HOLD",
     "PLL_QUERY_STREAM_SCHEMA",

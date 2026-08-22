@@ -24,6 +24,7 @@ from benchmarks.redred_mc_wtb_predictor_stage3.pll_output import (
 )
 from benchmarks.redred_mc_wtb_predictor_stage3.pll_query_stream import (
     BATCH_PROVENANCE_EQUIVALENCE_HOLD,
+    INPUT_DOMAIN_HOLD,
     NATIVE_TRANSITION_HOLD,
     OUTPUT_AUTHORITY_HOLD,
     PLL_QUERY_STREAM_SCHEMA,
@@ -305,6 +306,58 @@ class PLLQueryStreamTests(unittest.TestCase):
         self.assertEqual(row["candidate_dependency_pose_count"], 49)
         self.assertNotIn("state_dependency_pose_ids", row)
 
+    def test_v3_same_cycle_poses_fail_closed_in_narrow_pll_domain(self):
+        start = 0
+        query = 50_000_000
+        window_id = "pll-same-pose-cycle"
+        registry = (NeutralRegistryWindow(
+            window_id, start, query, query + 500_000
+        ),)
+        pose_rows = []
+        for pose_id, timestamp, angle in (
+            (0, query - 1_000, 0.1),
+            (1, query - 999, 0.2),
+        ):
+            quaternion = (
+                0.0,
+                0.0,
+                math.sin(angle / 2.0),
+                math.cos(angle / 2.0),
+            )
+            pose_rows.append(NeutralPoseInput(
+                pose_id,
+                timestamp,
+                pose_timestamp_to_cycle(timestamp, start),
+                quaternion,
+                canonical_pose_value_sha256(pose_id, timestamp, quaternion),
+                True,
+                True,
+            ))
+        self.assertEqual(pose_rows[0].commit_cycle, pose_rows[1].commit_cycle)
+        ray = (1.0, 0.0, 0.0)
+        event_rows = []
+        for event_id, timestamp, is_query in (
+            (2, query - 500, False),
+            (1, query, True),
+        ):
+            digest = canonical_event_content_sha256(
+                event_id, timestamp, 0, is_query, ray, 1, True
+            )
+            event_rows.append(NeutralEventInput(
+                event_id, timestamp, 0, is_query, ray, 1, digest, True
+            ))
+        execution = build_stage3_execution_input(
+            registry,
+            {window_id: tuple(event_rows)},
+            {window_id: tuple(pose_rows)},
+            source_events_authority=source_authority(),
+            repo_root=ROOT,
+        )
+        with self.assertRaisesRegex(
+            PLLQueryStreamError, "post-reset pose commit cycles must be unique"
+        ):
+            generate_pll_query_stream(execution)
+
     def test_verified_v3_query_and_transition_paths_reject_forged_core(self):
         real = pll_query_stream._run_verified_execution_snapshot(self.execution)
         mutations = []
@@ -343,6 +396,13 @@ class PLLQueryStreamTests(unittest.TestCase):
             "repo_root", inspect.signature(generate_pll_query_stream).parameters
         )
         self.assertEqual(output["status"], "DEVELOPMENT_HOLD")
+        self.assertEqual(output["input_domain_hold"], INPUT_DOMAIN_HOLD)
+        self.assertIs(
+            INPUT_DOMAIN_HOLD[
+                "unique_pose_commit_cycles_are_execution_input_v3_guaranteed"
+            ],
+            False,
+        )
         self.assertEqual(output["verified_input_complexity_hold"], VERIFIED_INPUT_HOLD)
         self.assertEqual(output["native_transition_complexity_hold"], NATIVE_TRANSITION_HOLD)
         self.assertEqual(output["output_authority_hold"], OUTPUT_AUTHORITY_HOLD)
