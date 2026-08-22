@@ -49,7 +49,6 @@ MODEL_ACCURACY_FAIL = "MODEL_ACCURACY_FAIL"
 CNCP_EVIDENCE_GRADE = "DECLARED_UNVERIFIED"
 CNCP_VERDICT = "CNCP_HOLD_UNVERIFIED"
 PREROLL_NS = 50_000_000
-POSITIVE_WINDOW_THRESHOLD = 1.0e-6
 REFERENCE_CAPACITY_PER_POLARITY = 256
 REFERENCE_MAX_AGE_NS = 2_000_000
 MOTION_BINS = ("LOW", "MID", "HIGH")
@@ -78,6 +77,14 @@ _OUTPUT_EVENT_FIELDS = frozenset((
 ))
 _ROUTES = frozenset(("candidate", "current_cav", "fresh_zoh", "sensor_fixed"))
 _ROUTE_COUNT_FIELDS = frozenset(_ROUTES)
+_CURRENT_CAV_FALLBACK_REASON = "candidate_failure"
+_FRESH_ZOH_FALLBACK_REASON = "fresh_zoh_fallback"
+_SENSOR_FIXED_FALLBACK_REASONS = frozenset((
+    "no_occurrence_pose", "invalid_pose", "stale_pose",
+))
+_FALLBACK_REASONS = frozenset((
+    _CURRENT_CAV_FALLBACK_REASON, _FRESH_ZOH_FALLBACK_REASON,
+)) | _SENSOR_FIXED_FALLBACK_REASONS
 _CNCP_FIELDS = frozenset((
     "B_ff", "B_sram", "read_ports", "write_ports", "O_pose", "O_event",
     "II_event", "critical_depth", "pipeline_bits", "max_wire_width",
@@ -195,6 +202,21 @@ def _exact_mapping(value: object, fields: frozenset, where: str) -> Mapping[str,
     if not isinstance(value, Mapping) or frozenset(value) != fields:
         raise Screen108Error("%s field schema differs" % where)
     return value
+
+
+def _fallback_reason_counts(value: object, where: str) -> Mapping[str, int]:
+    if not isinstance(value, Mapping) or any(
+        type(reason) is not str or reason not in _FALLBACK_REASONS
+        for reason in value
+    ):
+        raise Screen108Error("%s fallback reason taxonomy differs" % where)
+    checked = {}
+    for reason, count in value.items():
+        checked_count = _nonnegative_int(count, "%s fallback reason count" % where)
+        if checked_count == 0:
+            raise Screen108Error("%s fallback reason count must be positive" % where)
+        checked[reason] = checked_count
+    return checked
 
 
 def _json_object(payload: bytes, where: str) -> Mapping[str, object]:
@@ -489,6 +511,8 @@ def _validate_candidate_output(
                 if route == "current_cav":
                     if (
                         not attempted
+                        or decision["fallback_reason"]
+                        != _CURRENT_CAV_FALLBACK_REASON
                         or baseline_decision.disposition != "corrected_world_ray"
                         or baseline_decision.disposition_reason != "causal_cav"
                         or used_pose_ids != list(baseline_decision.used_pose_ids)
@@ -497,6 +521,8 @@ def _validate_candidate_output(
                 elif route == "fresh_zoh":
                     if (
                         attempted
+                        or decision["fallback_reason"]
+                        != _FRESH_ZOH_FALLBACK_REASON
                         or baseline_decision.disposition != "corrected_world_ray"
                         or baseline_decision.disposition_reason != "fresh_zoh_fallback"
                         or used_pose_ids != list(baseline_decision.used_pose_ids)
@@ -506,6 +532,10 @@ def _validate_candidate_output(
                     if (
                         attempted
                         or baseline_decision.disposition != "raw_bypass"
+                        or baseline_decision.disposition_reason
+                        not in _SENSOR_FIXED_FALLBACK_REASONS
+                        or decision["fallback_reason"]
+                        != baseline_decision.disposition_reason
                         or used_pose_ids != list(baseline_decision.used_pose_ids)
                     ):
                         raise Screen108Error("sensor-fixed route differs from baseline")
@@ -600,8 +630,8 @@ def _window_losses(
         "E_P_S": e_p_s,
         "I_P_A": i_p_a,
         "Delta_P_A": e_p_s - e_a_s,
-        "positive_vs_s": e_p_s > POSITIVE_WINDOW_THRESHOLD,
-        "positive_vs_a": i_p_a > POSITIVE_WINDOW_THRESHOLD,
+        "positive_vs_s": e_p_s > 0.0,
+        "positive_vs_a": i_p_a > 0.0,
         "candidate_use_events": sum(bool(row["candidate_used"]) for row in query),
         "candidate_attempt_events": sum(
             bool(row["candidate_attempted"]) for row in query
@@ -653,8 +683,8 @@ def _summarize_group(group: str, windows: Sequence[Mapping[str, object]]) -> Map
             "Delta_P_A": pooled_p - pooled_a,
         },
         "equal_window": equal,
-        "positive_windows_vs_s": sum(bool(window["positive_vs_s"]) for window in windows),
-        "positive_windows_vs_a": sum(bool(window["positive_vs_a"]) for window in windows),
+        "positive_windows_vs_s": sum(window["E_P_S"] > 0.0 for window in windows),
+        "positive_windows_vs_a": sum(window["I_P_A"] > 0.0 for window in windows),
         "baseline_sensor_waste_events": baseline_waste,
         "baseline_sensor_waste_rate": float(baseline_waste) / len(events),
         "candidate_sensor_waste_events": sensor_waste,
@@ -918,6 +948,9 @@ def verify_screen108_result_envelope(value: object) -> str:
         fallback = _nonnegative_int(
             group["fallback_events"], "screen result fallback count"
         )
+        fallback_reasons = _fallback_reason_counts(
+            group["fallback_reasons"], "screen result group"
+        )
         checked_routes = {
             route: _nonnegative_int(route_counts[route], "screen result route count")
             for route in _ROUTES
@@ -928,6 +961,15 @@ def verify_screen108_result_envelope(value: object) -> str:
             or checked_routes["candidate"] + checked_routes["current_cav"]
             != candidate_attempt
             or candidate_use + fallback != query_count
+            or sum(fallback_reasons.values()) != fallback
+            or fallback_reasons.get(_CURRENT_CAV_FALLBACK_REASON, 0)
+            != checked_routes["current_cav"]
+            or fallback_reasons.get(_FRESH_ZOH_FALLBACK_REASON, 0)
+            != checked_routes["fresh_zoh"]
+            or sum(
+                fallback_reasons.get(reason, 0)
+                for reason in _SENSOR_FIXED_FALLBACK_REASONS
+            ) != checked_routes["sensor_fixed"]
         ):
             raise Screen108Error("screen result route counts differ")
         exact_rates = {
@@ -943,9 +985,89 @@ def verify_screen108_result_envelope(value: object) -> str:
         group_index[group["group"]] = group
     if not isinstance(result["windows"], list) or not result["windows"]:
         raise Screen108Error("screen result windows differ")
+    checked_windows = []
     for row in result["windows"]:
         window = _exact_mapping(row, _WINDOW_RESULT_FIELDS, "screen result window")
-        _exact_mapping(window["route_counts"], _ROUTE_COUNT_FIELDS, "window route counts")
+        route_counts = _exact_mapping(
+            window["route_counts"], _ROUTE_COUNT_FIELDS, "window route counts"
+        )
+        query_count = _nonnegative_int(
+            window["query_event_count"], "screen result window query count"
+        )
+        candidate_use = _nonnegative_int(
+            window["candidate_use_events"], "screen result window candidate-use count"
+        )
+        candidate_attempt = _nonnegative_int(
+            window["candidate_attempt_events"],
+            "screen result window candidate-attempt count",
+        )
+        fallback = _nonnegative_int(
+            window["fallback_events"], "screen result window fallback count"
+        )
+        checked_routes = {
+            route: _nonnegative_int(
+                route_counts[route], "screen result window route count"
+            )
+            for route in _ROUTES
+        }
+        fallback_reasons = _fallback_reason_counts(
+            window["fallback_reasons"], "screen result window"
+        )
+        if (
+            sum(checked_routes.values()) != query_count
+            or checked_routes["candidate"] != candidate_use
+            or checked_routes["candidate"] + checked_routes["current_cav"]
+            != candidate_attempt
+            or candidate_use + fallback != query_count
+            or sum(fallback_reasons.values()) != fallback
+            or fallback_reasons.get(_CURRENT_CAV_FALLBACK_REASON, 0)
+            != checked_routes["current_cav"]
+            or fallback_reasons.get(_FRESH_ZOH_FALLBACK_REASON, 0)
+            != checked_routes["fresh_zoh"]
+            or sum(
+                fallback_reasons.get(reason, 0)
+                for reason in _SENSOR_FIXED_FALLBACK_REASONS
+            ) != checked_routes["sensor_fixed"]
+        ):
+            raise Screen108Error("screen result window route taxonomy differs")
+        s_sum = _finite(window["loss_s_sum"], "screen result window sensor loss")
+        a_sum = _finite(window["loss_a_sum"], "screen result window baseline loss")
+        p_sum = _finite(window["loss_p_sum"], "screen result window candidate loss")
+        expected_effects = {
+            "E_A_S": _effect(a_sum, s_sum, "verified window A:S"),
+            "E_P_S": _effect(p_sum, s_sum, "verified window P:S"),
+            "I_P_A": _effect(p_sum, a_sum, "verified window P:A"),
+        }
+        expected_effects["Delta_P_A"] = (
+            expected_effects["E_P_S"] - expected_effects["E_A_S"]
+        )
+        if any(window[field] != expected_effects[field] for field in _EFFECT_FIELDS):
+            raise Screen108Error("screen result window effects differ from losses")
+        if (
+            type(window["positive_vs_s"]) is not bool
+            or type(window["positive_vs_a"]) is not bool
+            or window["positive_vs_s"] is not (expected_effects["E_P_S"] > 0.0)
+            or window["positive_vs_a"] is not (expected_effects["I_P_A"] > 0.0)
+        ):
+            raise Screen108Error("screen result window positivity differs")
+        checked_windows.append(window)
+    for group_name, group in group_index.items():
+        member_windows = (
+            checked_windows
+            if group_name == "OVERALL"
+            else [window for window in checked_windows if window["motion_bin"] == group_name]
+        )
+        if (
+            _nonnegative_int(group["window_count"], "screen result window count")
+            != len(member_windows)
+            or _nonnegative_int(
+                group["positive_windows_vs_s"], "screen result positive S windows"
+            ) != sum(window["E_P_S"] > 0.0 for window in member_windows)
+            or _nonnegative_int(
+                group["positive_windows_vs_a"], "screen result positive A windows"
+            ) != sum(window["I_P_A"] > 0.0 for window in member_windows)
+        ):
+            raise Screen108Error("screen result positive-window counts differ")
     gate = _exact_mapping(result["gate"], _GATE_FIELDS, "screen result gate")
     accuracy = _exact_mapping(
         gate["accuracy_and_waste"], _ACCURACY_CHECK_FIELDS,

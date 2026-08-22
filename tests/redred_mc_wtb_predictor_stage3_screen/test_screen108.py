@@ -75,11 +75,20 @@ def _event(event_id, timestamp_ns, is_query, angle, pose_id):
 
 def _baseline_route(decision):
     if decision.disposition_reason == "causal_cav":
-        return "current_cav", True, list(decision.used_pose_ids)
+        return (
+            "current_cav", True, list(decision.used_pose_ids),
+            "candidate_failure",
+        )
     if decision.disposition_reason == "fresh_zoh_fallback":
-        return "fresh_zoh", False, list(decision.used_pose_ids)
+        return (
+            "fresh_zoh", False, list(decision.used_pose_ids),
+            "fresh_zoh_fallback",
+        )
     if decision.disposition == "raw_bypass":
-        return "sensor_fixed", False, list(decision.used_pose_ids)
+        return (
+            "sensor_fixed", False, list(decision.used_pose_ids),
+            decision.disposition_reason,
+        )
     raise AssertionError("unexpected fixture baseline route")
 
 
@@ -90,7 +99,9 @@ def _fallback_output(bundle, baseline):
         for event, decision in zip(
             base_window.input_events, base_window.simulation.records
         ):
-            route, attempted, used_pose_ids = _baseline_route(decision)
+            route, attempted, used_pose_ids, fallback_reason = _baseline_route(
+                decision
+            )
             rows.append({
                 "event_id": event.event_id,
                 "event_content_sha256": event.event_content_sha256,
@@ -102,7 +113,7 @@ def _fallback_output(bundle, baseline):
                 "route": route,
                 "candidate_attempted": attempted,
                 "candidate_used": False,
-                "fallback_reason": "FIXTURE_FALLBACK",
+                "fallback_reason": fallback_reason,
                 "world_ray": None,
             })
         unsealed_windows.append({
@@ -258,7 +269,10 @@ class LockedScreen108Tests(unittest.TestCase):
         overall = result["groups"][0]
         self.assertEqual(overall["query_event_count"], 6)
         self.assertEqual(overall["fallback_events"], 6)
-        self.assertEqual(overall["fallback_reasons"], {"FIXTURE_FALLBACK": 6})
+        self.assertEqual(overall["fallback_reasons"], {
+            "candidate_failure": 3,
+            "stale_pose": 3,
+        })
         self.assertEqual(overall["candidate_attempt_events"], 3)
         self.assertEqual(overall["route_counts"], {
             "candidate": 0,
@@ -301,7 +315,14 @@ class LockedScreen108Tests(unittest.TestCase):
         result = self._evaluate()
         self.assertEqual(result["schema"], screen108.RESULT_SCHEMA)
         self.assertTrue(result["schema"].endswith("/v2"))
-        jsonschema.Draft202012Validator(schema).validate(result)
+        validator = jsonschema.Draft202012Validator(schema)
+        validator.validate(result)
+        arbitrary_reason = deepcopy(result)
+        arbitrary_reason["groups"][0]["fallback_reasons"] = {
+            "arbitrary_reason": 6,
+        }
+        with self.assertRaises(jsonschema.ValidationError):
+            validator.validate(arbitrary_reason)
 
     def test_candidate_and_result_v1_envelopes_are_rejected(self):
         bundle, baseline, output, _ = _fixture()
@@ -426,6 +447,7 @@ class LockedScreen108Tests(unittest.TestCase):
             "used_pose_ids": [],
             "route": "sensor_fixed",
             "candidate_attempted": False,
+            "fallback_reason": "no_occurrence_pose",
         })
         screen108._validate_candidate_output(
             _reseal_output(edge_zero_output),
@@ -537,6 +559,68 @@ class LockedScreen108Tests(unittest.TestCase):
             EXECUTABLE_SHA,
             CONFIG_SHA,
         )
+
+    def test_resealed_arbitrary_fallback_reasons_fail_closed(self):
+        bundle, baseline, original, _ = _fixture()
+        current = deepcopy(original)
+        current["windows"][0]["events"][0]["fallback_reason"] = (
+            "pll_phase_unlock_detail"
+        )
+        with self.assertRaisesRegex(Screen108Error, "current-CAV route"):
+            self._evaluate(_reseal_output(current))
+
+        sensor = deepcopy(original)
+        sensor["windows"][0]["events"][2]["fallback_reason"] = (
+            "stale_pose:model_specific_detail"
+        )
+        with self.assertRaisesRegex(Screen108Error, "sensor-fixed route"):
+            self._evaluate(_reseal_output(sensor))
+
+        fresh_pose_streams = {
+            window.registry.window_id: (window.input_poses[-1],)
+            for window in baseline.windows
+        }
+        fresh_baseline = evaluate_current_cav_registry(
+            bundle.neutral_registry, bundle.event_streams, fresh_pose_streams
+        )
+        fresh = _fallback_output(bundle, fresh_baseline)
+        fresh["windows"][0]["events"][1]["fallback_reason"] = "fresh_but_detailed"
+        with self.assertRaisesRegex(Screen108Error, "fresh-ZOH route"):
+            screen108._validate_candidate_output(
+                _reseal_output(fresh),
+                bundle,
+                fresh_baseline,
+                EXECUTABLE_SHA,
+                CONFIG_SHA,
+            )
+
+        result = deepcopy(self._evaluate())
+        result["groups"][0]["fallback_reasons"] = {
+            "candidate_failure": 3,
+            "arbitrary_resealed_reason": 3,
+        }
+        with self.assertRaisesRegex(Screen108Error, "fallback reason taxonomy"):
+            verify_screen108_result_envelope(_reseal_result(result))
+
+    def test_sub_one_micro_effect_is_a_strictly_positive_window(self):
+        bundle, baseline, output, _ = _fixture()
+        _, rows = screen108._validate_candidate_output(
+            output, bundle, baseline, EXECUTABLE_SHA, CONFIG_SHA
+        )
+        base_window = baseline.windows[0]
+        with mock.patch.object(
+            screen108, "_effect", side_effect=(0.0, 5.0e-7, 5.0e-7)
+        ):
+            query, summary = screen108._window_losses(
+                base_window, rows[base_window.registry.window_id]
+            )
+        self.assertTrue(summary["positive_vs_s"])
+        self.assertTrue(summary["positive_vs_a"])
+        group = screen108._summarize_group(
+            "LOW", [dict(summary, events=query, motion_bin="LOW")]
+        )
+        self.assertEqual(group["positive_windows_vs_s"], 1)
+        self.assertEqual(group["positive_windows_vs_a"], 1)
 
     def test_candidate_may_use_any_time_eligible_neutral_pose(self):
         _, baseline, output, _ = _fixture()

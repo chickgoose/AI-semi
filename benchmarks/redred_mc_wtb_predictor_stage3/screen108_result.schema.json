@@ -177,8 +177,13 @@
     },
     "fallback_reasons": {
       "type": "object",
-      "propertyNames": {"minLength": 1},
-      "additionalProperties": {"$ref": "#/$defs/nonnegative_integer"}
+      "propertyNames": {
+        "enum": [
+          "candidate_failure", "fresh_zoh_fallback", "no_occurrence_pose",
+          "invalid_pose", "stale_pose"
+        ]
+      },
+      "additionalProperties": {"type": "integer", "minimum": 1}
     },
     "route_counts": {
       "type": "object",
