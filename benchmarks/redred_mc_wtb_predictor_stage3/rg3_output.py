@@ -356,8 +356,14 @@ def _snapshot_inputs(
     if len(set(identifiers)) != len(identifiers):
         raise RG3OutputError("neutral registry window IDs are duplicated")
     for left, right in zip(windows, windows[1:]):
-        if left.query_end_ns_exclusive > right.warmup_start_ns_inclusive:
-            raise RG3OutputError("neutral registry windows overlap or move backwards")
+        # Stage3 replays each window from an independent 50 ms reset.  Those
+        # score-free warmups may share source events; only scored query
+        # intervals must remain ordered and disjoint.
+        if (
+            left.query_start_ns_inclusive >= right.query_start_ns_inclusive
+            or left.query_end_ns_exclusive > right.query_start_ns_inclusive
+        ):
+            raise RG3OutputError("neutral query windows overlap or move backwards")
     try:
         event_source = dict(event_streams)
         pose_source = dict(pose_streams)

@@ -32,17 +32,14 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     evaluate_current_cav_registry,
     verify_current_cav_evaluation_integrity,
 )
-from benchmarks.redred_mc_wtb_so3_axis_audit import new108_adapter as _new108_adapter
+from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
+    New108AdapterBundle,
+)
+from benchmarks.redred_mc_wtb_so3_axis_audit.stage3_new108_adapter import (
+    build_locked_stage3_new108_adapter,
+    verify_stage3_new108_adapter,
+)
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
-
-New108AdapterBundle = _new108_adapter.New108AdapterBundle
-build_locked_stage3_new108_adapter = getattr(
-    _new108_adapter, "build_locked_stage3_new108_adapter", None
-)
-verify_stage3_new108_adapter = getattr(
-    _new108_adapter, "verify_stage3_new108_adapter", None
-)
-
 
 RESULT_SCHEMA = "redred.mc_wtb_predictor_stage3.screen108_result/v2"
 CANDIDATE_OUTPUT_SCHEMA = "redred.mc_wtb_predictor_stage3.candidate_output/v2"

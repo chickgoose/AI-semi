@@ -24,18 +24,16 @@ from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     CAVRegistryEvaluation,
     evaluate_current_cav_registry,
 )
-from benchmarks.redred_mc_wtb_so3_axis_audit import new108_adapter as _new108_adapter
+from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
+    New108AdapterBundle,
+)
+from benchmarks.redred_mc_wtb_so3_axis_audit.stage3_new108_adapter import (
+    build_locked_stage3_new108_adapter,
+    verify_stage3_new108_adapter,
+)
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 
 from . import candidate_authority, dspb_output, pll_output, rg3_output, screen108
-
-New108AdapterBundle = _new108_adapter.New108AdapterBundle
-build_locked_stage3_new108_adapter = getattr(
-    _new108_adapter, "build_locked_stage3_new108_adapter", None
-)
-verify_stage3_new108_adapter = getattr(
-    _new108_adapter, "verify_stage3_new108_adapter", None
-)
 
 try:  # The projector is integrated independently of this campaign worker.
     from . import screen_projection as _screen_projection

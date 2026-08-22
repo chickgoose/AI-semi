@@ -39,6 +39,7 @@ from .evaluator import (
 )
 from .new108_adapter import (
     New108AdapterBundle,
+    New108AdapterError,
     _CapturedLineStream,
     _authenticate_registry_snapshot,
     _labels,
@@ -555,8 +556,12 @@ def build_locked_stage3_new108_adapter(
     if registry.get("window_count") != EXPECTED_WINDOW_COUNT:
         raise Stage3New108AdapterError("production selector did not return 108 windows")
     sources = validate_sources(root)
-    bundle = _project(registry, sources)
-    verify_stage3_new108_adapter(bundle, root)
+    try:
+        bundle = _project(registry, sources)
+    except New108AdapterError as exc:
+        raise Stage3New108AdapterError(
+            "legacy source authentication failed during Stage3 build"
+        ) from exc
     return bundle
 
 
@@ -594,7 +599,12 @@ def verify_stage3_new108_adapter(
     if registry.get("window_count") != EXPECTED_WINDOW_COUNT:
         raise Stage3New108AdapterError("production selector did not return 108 windows")
     sources = validate_sources(root)
-    return _verify_against_pinned_source(bundle, registry, sources)
+    try:
+        return _verify_against_pinned_source(bundle, registry, sources)
+    except New108AdapterError as exc:
+        raise Stage3New108AdapterError(
+            "legacy source authentication failed during Stage3 verification"
+        ) from exc
 
 
 __all__ = [

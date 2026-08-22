@@ -11,7 +11,12 @@ import unittest
 from unittest import mock
 
 from benchmarks.redred_mc_wtb_predictor_stage3 import screen108
-from benchmarks.redred_mc_wtb_so3_axis_audit import new108_adapter as adapter_module
+from benchmarks.redred_mc_wtb_so3_axis_audit import (
+    stage3_new108_adapter as adapter_module,
+)
+from benchmarks.redred_mc_wtb_so3_axis_audit import (
+    new108_adapter as legacy_adapter_module,
+)
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     canonical_event_content_sha256,
     canonical_pose_value_sha256,
@@ -151,6 +156,7 @@ class SyntheticPinnedSource:
             "contract": {"warmup_ns": ORIGINAL_SELECTOR_WARMUP_NS},
             "bindings": {
                 "selector_py_sha256": "1" * 64,
+                "source_lock_sha256": "a" * 64,
                 "source_member_sha256": {
                     "events": self.validated.pins.events_sha256,
                     "poses": self.validated.pins.groundtruth_sha256,
@@ -302,7 +308,7 @@ class Stage3New108AdapterTests(unittest.TestCase):
             ),
         )
         event_streams[window_id] = tuple(events)
-        with self.assertRaises(adapter_module.New108AdapterError):
+        with self.assertRaises(adapter_module.Stage3New108AdapterError):
             self._verify(replace(bundle, event_streams=event_streams))
 
         pose_streams = dict(bundle.pose_streams)
@@ -319,12 +325,12 @@ class Stage3New108AdapterTests(unittest.TestCase):
             ),
         )
         pose_streams[window_id] = tuple(poses)
-        with self.assertRaises(adapter_module.New108AdapterError):
+        with self.assertRaises(adapter_module.Stage3New108AdapterError):
             self._verify(replace(bundle, pose_streams=pose_streams))
 
         seal = dict(bundle.provenance_seal)
         seal["aggregate_sha256"] = "f" * 64
-        with self.assertRaises(adapter_module.New108AdapterError):
+        with self.assertRaises(adapter_module.Stage3New108AdapterError):
             self._verify(replace(bundle, provenance_seal=seal))
 
     def test_resealed_same_edge_pose_and_query_phase_mutations_fail_closed(self):
@@ -352,7 +358,7 @@ class Stage3New108AdapterTests(unittest.TestCase):
             mutated if row.event_id == event.event_id else row
             for row in source_events
         )
-        with self.assertRaises(adapter_module.New108AdapterError):
+        with self.assertRaises(adapter_module.Stage3New108AdapterError):
             self._verify(replace(bundle, event_streams=changed))
 
         query = next(row for row in source_events if row.event_id == 5)
@@ -374,7 +380,7 @@ class Stage3New108AdapterTests(unittest.TestCase):
             phase_mutant if row.event_id == query.event_id else row
             for row in source_events
         )
-        with self.assertRaises(adapter_module.New108AdapterError):
+        with self.assertRaises(adapter_module.Stage3New108AdapterError):
             self._verify(replace(bundle, event_streams=changed))
 
     def test_verifier_rejects_post_build_event_and_pose_source_mutation(self):
@@ -383,7 +389,7 @@ class Stage3New108AdapterTests(unittest.TestCase):
         self.assertEqual(len(changed), len(self.source.events))
         (self.source.root / "events.txt").write_bytes(changed)
         try:
-            with self.assertRaises(adapter_module.New108AdapterError):
+            with self.assertRaises(adapter_module.Stage3New108AdapterError):
                 self._verify(bundle)
         finally:
             (self.source.root / "events.txt").write_bytes(self.source.events)
@@ -394,7 +400,7 @@ class Stage3New108AdapterTests(unittest.TestCase):
         self.assertEqual(len(changed_pose), len(self.source.poses))
         (self.source.root / "groundtruth.txt").write_bytes(changed_pose)
         try:
-            with self.assertRaises(adapter_module.New108AdapterError):
+            with self.assertRaises(adapter_module.Stage3New108AdapterError):
                 self._verify(bundle)
         finally:
             (self.source.root / "groundtruth.txt").write_bytes(self.source.poses)
@@ -402,7 +408,7 @@ class Stage3New108AdapterTests(unittest.TestCase):
     def test_screen_boundary_rejects_a_real_one_ms_adapter_bundle(self):
         # This is the missing cross-component smoke: no screen bundle mock and
         # no authority-constant mismatch can mask the actual pre-roll check.
-        legacy = adapter_module._project(
+        legacy = legacy_adapter_module._project(
             deepcopy(self.source.registry), self.source.validated
         )
         baseline = evaluate_current_cav_registry(

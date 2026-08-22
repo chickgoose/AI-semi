@@ -893,7 +893,7 @@ class Campaign108Tests(unittest.TestCase):
                 )
                 stack.enter_context(mock.patch.object(
                     campaign108,
-                    "build_locked_new108_adapter",
+                    "_build_verified_stage3_adapter",
                     side_effect=Campaign108Error("shared input mount unavailable"),
                 ))
                 with self.assertRaisesRegex(Campaign108Error, "input mount"):
@@ -1050,7 +1050,7 @@ class Campaign108Tests(unittest.TestCase):
             )
             stack.enter_context(mock.patch.object(
                 campaign108,
-                "build_locked_new108_adapter",
+                "_build_verified_stage3_adapter",
                 side_effect=Campaign108Error("shared preflight failure"),
             ))
             with self.assertRaises(Campaign108Error):
