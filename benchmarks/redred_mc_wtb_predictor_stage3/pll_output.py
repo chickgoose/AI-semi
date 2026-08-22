@@ -319,7 +319,10 @@ def _commit_pose(
     if parent is None:
         parent_sha = str(reset["initial_state_sha256"])
     else:
-        parent_sha = str(states[parent.state_version]["state_sha256"])
+        parent_receipt = states.get(parent.state_version)
+        if parent_receipt is None:
+            raise PLLOutputError("PLL state escaped the current reset generation")
+        parent_sha = str(parent_receipt["state_sha256"])
     try:
         native = model.commit_pose(
             pose.pose_id,

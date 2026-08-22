@@ -136,8 +136,11 @@ class ActualProductionMutationGateTests(unittest.TestCase):
             "SO3PLLModel",
             side_effect=lambda _config: shared,
         ):
-            mutant = generate_production_output("PLL", self.fixture)
-        self._assert_killed("PLL", mutant)
+            with self.assertRaisesRegex(
+                pll_output.PLLOutputError,
+                "escaped the current reset generation",
+            ):
+                generate_production_output("PLL", self.fixture)
 
     def test_pll_commit_time_anchor_mutant_is_killed(self):
         real_commit = so3_pll.SO3PLLModel.commit_pose
