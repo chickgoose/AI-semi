@@ -401,7 +401,11 @@ def _candidate_row(
         "event_id": event.event_id,
         "event_content_sha256": event.event_content_sha256,
         "decision_cycle": baseline.occurrence_cycle,
-        "model_id": decision.geometry_expert_id,
+        # The sealed screen binds every candidate-use row to the top-level
+        # candidate identity.  The selected DSPB expert remains internal
+        # predictor state; exposing it as the model identity would sever the
+        # executable/config binding enforced by screen108.
+        "model_id": DSPBConfig().candidate_id,
         "predictor_state_version": decision.state_version,
         "used_pose_ids": direct_pose_ids,
         "candidate_used": True,

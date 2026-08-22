@@ -296,23 +296,17 @@ class RG3LockedOutputTests(unittest.TestCase):
                 sample.measurement_timestamp_ns <= timestamp_ns for sample in samples
             ))
 
-    def test_old_screen108_two_pose_subset_check_rejects_honest_rg3_receipt(self):
+    def test_screen108_accepts_all_honest_causal_rg3_pose_dependencies(self):
         output = self._generate()
-
-        # P0 compatibility defect assigned to the screen108 owner: its current
-        # validator authenticates candidate pose IDs only against the CAV
-        # cycle-model's intentionally two-pose occurrence snapshot.  RG3 must
-        # not conceal its actual third-pose dependency to pass that check.
-        with self.assertRaisesRegex(
-            screen108.Screen108Error, "same-edge or future pose"
-        ):
-            screen108._validate_candidate_output(
-                output,
-                self.bundle,
-                self.baseline,
-                RG3_EXECUTABLE_SHA256,
-                RG3_CONFIG_SHA256,
-            )
+        candidate_id, checked = screen108._validate_candidate_output(
+            output,
+            self.bundle,
+            self.baseline,
+            RG3_EXECUTABLE_SHA256,
+            RG3_CONFIG_SHA256,
+        )
+        self.assertEqual(candidate_id, RG3_OUTPUT_CANDIDATE_ID)
+        self.assertEqual(len(checked), len(self.baseline.windows))
 
     def test_input_mutations_and_forbidden_fields_fail_closed(self):
         mutated = deepcopy(self.event_streams)
