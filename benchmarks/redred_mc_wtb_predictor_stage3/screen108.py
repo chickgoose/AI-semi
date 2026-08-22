@@ -71,10 +71,13 @@ _OUTPUT_FIELDS = frozenset((
 ))
 _OUTPUT_WINDOW_FIELDS = frozenset(("window_id", "events", "events_sha256"))
 _OUTPUT_EVENT_FIELDS = frozenset((
-    "event_id", "event_content_sha256", "decision_cycle", "model_id",
-    "predictor_state_version", "used_pose_ids", "candidate_used",
-    "fallback_reason", "world_ray", "decision_sha256",
+    "event_id", "event_content_sha256", "occurrence_cycle", "decision_cycle",
+    "model_id", "predictor_state_version", "used_pose_ids", "route",
+    "candidate_attempted", "candidate_used", "fallback_reason", "world_ray",
+    "decision_sha256",
 ))
+_ROUTES = frozenset(("candidate", "current_cav", "fresh_zoh", "sensor_fixed"))
+_ROUTE_COUNT_FIELDS = frozenset(_ROUTES)
 _CNCP_FIELDS = frozenset((
     "B_ff", "B_sram", "read_ports", "write_ports", "O_pose", "O_event",
     "II_event", "critical_depth", "pipeline_bits", "max_wire_width",
@@ -96,6 +99,7 @@ _GROUP_FIELDS = frozenset((
     "baseline_sensor_waste_rate", "candidate_sensor_waste_events",
     "candidate_sensor_waste_rate", "incremental_waste_events",
     "incremental_waste_rate", "candidate_use_events", "candidate_use_rate",
+    "candidate_attempt_events", "candidate_attempt_rate", "route_counts",
     "fallback_events", "fallback_rate", "fallback_reasons",
     "candidate_use_sensor_waste_events", "candidate_use_sensor_waste_rate",
     "quality_harm_mass",
@@ -106,7 +110,7 @@ _WINDOW_RESULT_FIELDS = frozenset((
     "candidate_output_events_sha256", "loss_s_sum", "loss_a_sum", "loss_p_sum",
     "E_A_S", "E_P_S", "I_P_A", "Delta_P_A", "positive_vs_s",
     "positive_vs_a", "candidate_use_events", "fallback_events",
-    "fallback_reasons",
+    "candidate_attempt_events", "route_counts", "fallback_reasons",
 ))
 _ACCURACY_CHECK_FIELDS = frozenset((
     "overall_I_P_A_positive", "MID_I_P_A_positive", "HIGH_I_P_A_positive",
@@ -117,6 +121,11 @@ _GATE_FIELDS = frozenset((
     "model_accuracy_gate_pass", "synthetic_pass_supplied",
     "promotion_authorized", "hardware_estimate_boundary_met",
     "rtl_ppa_authorized",
+))
+_CLAIM_SCOPE_FIELDS = frozenset((
+    "development_only", "candidate_executed_by_runner",
+    "source_selection_changed", "filter_or_selector_evaluated",
+    "external_data_evaluated", "rtl_evaluated", "ppa_evaluated",
 ))
 
 
@@ -396,7 +405,16 @@ def _validate_candidate_output(
                 raise Screen108Error("candidate event decision seal differs")
             if decision["event_id"] != expected_event.event_id or decision["event_content_sha256"] != expected_event.event_content_sha256:
                 raise Screen108Error("candidate event order or content identity differs")
-            cycle = _nonnegative_int(decision["decision_cycle"], "candidate decision cycle")
+            occurrence_cycle = _nonnegative_int(
+                decision["occurrence_cycle"], "candidate occurrence cycle"
+            )
+            cycle = _nonnegative_int(
+                decision["decision_cycle"], "candidate decision cycle"
+            )
+            if occurrence_cycle != cycle - 1 or occurrence_cycle >= cycle:
+                raise Screen108Error(
+                    "candidate occurrence edge must equal decision edge minus one"
+                )
             if cycle != baseline_decision.occurrence_cycle:
                 raise Screen108Error("candidate decision edge differs from occurrence edge")
             state_version = _nonnegative_int(
@@ -427,17 +445,31 @@ def _validate_candidate_output(
                     or not pose.arithmetic_valid
                 ):
                     raise Screen108Error("candidate used an unavailable pose")
+            route = decision["route"]
+            if type(route) is not str or route not in _ROUTES:
+                raise Screen108Error("candidate route differs")
+            if type(decision["candidate_attempted"]) is not bool:
+                raise Screen108Error("candidate_attempted must be an exact bool")
             if type(decision["candidate_used"]) is not bool:
                 raise Screen108Error("candidate_used must be an exact bool")
-            if decision["candidate_used"]:
+            attempted = decision["candidate_attempted"]
+            used = decision["candidate_used"]
+            if used:
+                if route != "candidate" or not attempted:
+                    raise Screen108Error("candidate-use route evidence differs")
                 if not used_pose_ids or decision["fallback_reason"] is not None:
                     raise Screen108Error("candidate-use receipt has fallback fields")
                 if model_id == "CURRENT_CAV":
                     raise Screen108Error("current CAV must be recorded as baseline fallback")
                 if model_id != candidate_id:
                     raise Screen108Error("candidate model identity differs from candidate ID")
-                if baseline_decision.disposition != "corrected_world_ray":
-                    raise Screen108Error("candidate used geometry where current CAV is invalid")
+                if (
+                    baseline_decision.disposition != "corrected_world_ray"
+                    or baseline_decision.disposition_reason != "causal_cav"
+                ):
+                    raise Screen108Error(
+                        "candidate used geometry without exact causal_cav baseline"
+                    )
                 _unit_ray(decision["world_ray"], "candidate world ray")
             else:
                 if model_id != "CURRENT_CAV":
@@ -446,6 +478,31 @@ def _validate_candidate_output(
                     raise Screen108Error("fallback must not supply replacement geometry")
                 if type(decision["fallback_reason"]) is not str or not decision["fallback_reason"]:
                     raise Screen108Error("fallback reason is missing")
+                if route == "current_cav":
+                    if (
+                        not attempted
+                        or baseline_decision.disposition != "corrected_world_ray"
+                        or baseline_decision.disposition_reason != "causal_cav"
+                        or used_pose_ids != list(baseline_decision.used_pose_ids)
+                    ):
+                        raise Screen108Error("current-CAV route differs from baseline")
+                elif route == "fresh_zoh":
+                    if (
+                        attempted
+                        or baseline_decision.disposition != "corrected_world_ray"
+                        or baseline_decision.disposition_reason != "fresh_zoh_fallback"
+                        or used_pose_ids != list(baseline_decision.used_pose_ids)
+                    ):
+                        raise Screen108Error("fresh-ZOH route differs from baseline")
+                elif route == "sensor_fixed":
+                    if (
+                        attempted
+                        or baseline_decision.disposition != "raw_bypass"
+                        or used_pose_ids
+                    ):
+                        raise Screen108Error("sensor-fixed route differs from baseline")
+                else:
+                    raise Screen108Error("fallback route differs")
             values.append(decision)
         checked[window_id] = tuple(values)
     return candidate_id, checked
@@ -510,6 +567,8 @@ def _window_losses(
             "S": float(baseline_event.sensor_loss),
             "A": float(baseline_event.policy_loss),
             "P": p_loss,
+            "route": row["route"],
+            "candidate_attempted": row["candidate_attempted"],
             "candidate_used": row["candidate_used"],
             "fallback_reason": row["fallback_reason"],
         })
@@ -522,6 +581,7 @@ def _window_losses(
     fallback = Counter(
         str(row["fallback_reason"]) for row in query if not row["candidate_used"]
     )
+    routes = Counter(str(row["route"]) for row in query)
     summary = {
         "query_event_count": len(query),
         "query_event_ids_sha256": canonical_sha256([row["event_id"] for row in query]),
@@ -535,6 +595,10 @@ def _window_losses(
         "positive_vs_s": e_p_s > POSITIVE_WINDOW_THRESHOLD,
         "positive_vs_a": i_p_a > POSITIVE_WINDOW_THRESHOLD,
         "candidate_use_events": sum(bool(row["candidate_used"]) for row in query),
+        "candidate_attempt_events": sum(
+            bool(row["candidate_attempted"]) for row in query
+        ),
+        "route_counts": {route: routes[route] for route in sorted(_ROUTES)},
         "fallback_events": sum(not bool(row["candidate_used"]) for row in query),
         "fallback_reasons": dict(sorted(fallback.items())),
     }
@@ -555,6 +619,7 @@ def _summarize_group(group: str, windows: Sequence[Mapping[str, object]]) -> Map
     for field in _EFFECT_FIELDS:
         equal[field] = math.fsum(window[field] for window in windows) / len(windows)
     candidate_use = sum(bool(row["candidate_used"]) for row in events)
+    candidate_attempt = sum(bool(row["candidate_attempted"]) for row in events)
     fallback = len(events) - candidate_use
     baseline_waste = sum(row["A"] >= row["S"] for row in events)
     sensor_waste = sum(row["P"] >= row["S"] for row in events)
@@ -565,6 +630,7 @@ def _summarize_group(group: str, windows: Sequence[Mapping[str, object]]) -> Map
     reasons = Counter(
         str(row["fallback_reason"]) for row in events if not row["candidate_used"]
     )
+    routes = Counter(str(row["route"]) for row in events)
     return {
         "group": group,
         "window_count": len(windows),
@@ -589,6 +655,9 @@ def _summarize_group(group: str, windows: Sequence[Mapping[str, object]]) -> Map
         "incremental_waste_rate": float(incremental_waste) / len(events),
         "candidate_use_events": candidate_use,
         "candidate_use_rate": float(candidate_use) / len(events),
+        "candidate_attempt_events": candidate_attempt,
+        "candidate_attempt_rate": float(candidate_attempt) / len(events),
+        "route_counts": {route: routes[route] for route in sorted(_ROUTES)},
         "fallback_events": fallback,
         "fallback_rate": float(fallback) / len(events),
         "fallback_reasons": dict(sorted(reasons.items())),
@@ -804,14 +873,71 @@ def verify_screen108_result_envelope(value: object) -> str:
     validate_cncp(cncp_result["declared_values"])
     if not isinstance(result["groups"], list) or [row.get("group") for row in result["groups"] if isinstance(row, Mapping)] != ["OVERALL", "LOW", "MID", "HIGH"]:
         raise Screen108Error("screen result metric groups differ")
+    group_index = {}
     for row in result["groups"]:
         group = _exact_mapping(row, _GROUP_FIELDS, "screen result group")
-        _exact_mapping(group["pooled"], _EFFECT_FIELDS, "pooled effects")
+        pooled = _exact_mapping(group["pooled"], _EFFECT_FIELDS, "pooled effects")
         _exact_mapping(group["equal_window"], _EFFECT_FIELDS, "equal-window effects")
+        route_counts = _exact_mapping(
+            group["route_counts"], _ROUTE_COUNT_FIELDS, "group route counts"
+        )
+        for field in _EFFECT_FIELDS:
+            _finite(pooled[field], "screen result pooled %s" % field)
+        query_count = _nonnegative_int(
+            group["query_event_count"], "screen result query event count"
+        )
+        if query_count == 0:
+            raise Screen108Error("screen result group is empty")
+        s_sum = _finite(group["loss_s_sum"], "screen result sensor loss")
+        a_sum = _finite(group["loss_a_sum"], "screen result baseline loss")
+        p_sum = _finite(group["loss_p_sum"], "screen result candidate loss")
+        expected_pooled = {
+            "E_A_S": _effect(a_sum, s_sum, "verified pooled A:S"),
+            "E_P_S": _effect(p_sum, s_sum, "verified pooled P:S"),
+            "I_P_A": _effect(p_sum, a_sum, "verified pooled P:A"),
+        }
+        expected_pooled["Delta_P_A"] = (
+            expected_pooled["E_P_S"] - expected_pooled["E_A_S"]
+        )
+        if dict(pooled) != expected_pooled:
+            raise Screen108Error("screen result pooled effects differ from losses")
+        candidate_use = _nonnegative_int(
+            group["candidate_use_events"], "screen result candidate-use count"
+        )
+        candidate_attempt = _nonnegative_int(
+            group["candidate_attempt_events"], "screen result candidate-attempt count"
+        )
+        fallback = _nonnegative_int(
+            group["fallback_events"], "screen result fallback count"
+        )
+        checked_routes = {
+            route: _nonnegative_int(route_counts[route], "screen result route count")
+            for route in _ROUTES
+        }
+        if (
+            sum(checked_routes.values()) != query_count
+            or checked_routes["candidate"] != candidate_use
+            or checked_routes["candidate"] + checked_routes["current_cav"]
+            != candidate_attempt
+            or candidate_use + fallback != query_count
+        ):
+            raise Screen108Error("screen result route counts differ")
+        exact_rates = {
+            "candidate_use_rate": float(candidate_use) / query_count,
+            "candidate_attempt_rate": float(candidate_attempt) / query_count,
+            "fallback_rate": float(fallback) / query_count,
+        }
+        for field, expected in exact_rates.items():
+            if _finite(group[field], "screen result %s" % field) != expected:
+                raise Screen108Error("screen result event rates differ")
+        for field in ("baseline_sensor_waste_rate", "candidate_sensor_waste_rate"):
+            _finite(group[field], "screen result %s" % field)
+        group_index[group["group"]] = group
     if not isinstance(result["windows"], list) or not result["windows"]:
         raise Screen108Error("screen result windows differ")
     for row in result["windows"]:
-        _exact_mapping(row, _WINDOW_RESULT_FIELDS, "screen result window")
+        window = _exact_mapping(row, _WINDOW_RESULT_FIELDS, "screen result window")
+        _exact_mapping(window["route_counts"], _ROUTE_COUNT_FIELDS, "window route counts")
     gate = _exact_mapping(result["gate"], _GATE_FIELDS, "screen result gate")
     accuracy = _exact_mapping(
         gate["accuracy_and_waste"], _ACCURACY_CHECK_FIELDS,
@@ -819,7 +945,21 @@ def verify_screen108_result_envelope(value: object) -> str:
     )
     if any(type(value) is not bool for value in accuracy.values()):
         raise Screen108Error("screen result accuracy checks must be exact bools")
-    model_accuracy_pass = all(accuracy.values())
+    expected_accuracy = {
+        "overall_I_P_A_positive": group_index["OVERALL"]["pooled"]["I_P_A"] > 0.0,
+        "MID_I_P_A_positive": group_index["MID"]["pooled"]["I_P_A"] > 0.0,
+        "HIGH_I_P_A_positive": group_index["HIGH"]["pooled"]["I_P_A"] > 0.0,
+        "LOW_I_P_A_not_below_minus_0p25pct": (
+            group_index["LOW"]["pooled"]["I_P_A"] >= -0.0025
+        ),
+        "sensor_waste_not_worse_than_A": (
+            group_index["OVERALL"]["candidate_sensor_waste_rate"]
+            <= group_index["OVERALL"]["baseline_sensor_waste_rate"]
+        ),
+    }
+    if dict(accuracy) != expected_accuracy:
+        raise Screen108Error("screen result accuracy checks differ from group metrics")
+    model_accuracy_pass = all(expected_accuracy.values())
     expected_verdict = (
         MODEL_ACCURACY_PASS if model_accuracy_pass else MODEL_ACCURACY_FAIL
     )
@@ -830,7 +970,7 @@ def verify_screen108_result_envelope(value: object) -> str:
         or result["status"] != expected_status
     ):
         raise Screen108Error("screen result model accuracy verdict differs")
-    claim = result["claim_scope"]
+    claim = _exact_mapping(result["claim_scope"], _CLAIM_SCOPE_FIELDS, "screen result claim scope")
     if (
         gate["synthetic_pass_supplied"] is not False
         or gate["promotion_authorized"] is not False
@@ -838,7 +978,15 @@ def verify_screen108_result_envelope(value: object) -> str:
         or gate["rtl_ppa_authorized"] is not False
     ):
         raise Screen108Error("screen result authorization boundary differs")
-    if not isinstance(claim, Mapping) or claim.get("rtl_evaluated") is not False or claim.get("ppa_evaluated") is not False or claim.get("candidate_executed_by_runner") is not False:
+    if (
+        claim["development_only"] is not True
+        or claim["candidate_executed_by_runner"] is not False
+        or claim["source_selection_changed"] is not False
+        or claim["filter_or_selector_evaluated"] is not False
+        or claim["external_data_evaluated"] is not False
+        or claim["rtl_evaluated"] is not False
+        or claim["ppa_evaluated"] is not False
+    ):
         raise Screen108Error("screen result claim boundary differs")
     supplied = _sha256(result["result_sha256"], "result digest")
     unsigned = dict(result)

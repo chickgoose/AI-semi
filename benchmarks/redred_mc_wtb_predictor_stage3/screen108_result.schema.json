@@ -180,6 +180,17 @@
       "propertyNames": {"minLength": 1},
       "additionalProperties": {"$ref": "#/$defs/nonnegative_integer"}
     },
+    "route_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate", "current_cav", "fresh_zoh", "sensor_fixed"],
+      "properties": {
+        "candidate": {"$ref": "#/$defs/nonnegative_integer"},
+        "current_cav": {"$ref": "#/$defs/nonnegative_integer"},
+        "fresh_zoh": {"$ref": "#/$defs/nonnegative_integer"},
+        "sensor_fixed": {"$ref": "#/$defs/nonnegative_integer"}
+      }
+    },
     "group_base": {
       "type": "object",
       "additionalProperties": false,
@@ -190,6 +201,7 @@
         "baseline_sensor_waste_rate", "candidate_sensor_waste_events",
         "candidate_sensor_waste_rate", "incremental_waste_events",
         "incremental_waste_rate", "candidate_use_events", "candidate_use_rate",
+        "candidate_attempt_events", "candidate_attempt_rate", "route_counts",
         "fallback_events", "fallback_rate", "fallback_reasons",
         "candidate_use_sensor_waste_events", "candidate_use_sensor_waste_rate",
         "quality_harm_mass"
@@ -213,6 +225,9 @@
         "incremental_waste_rate": {"$ref": "#/$defs/rate"},
         "candidate_use_events": {"$ref": "#/$defs/nonnegative_integer"},
         "candidate_use_rate": {"$ref": "#/$defs/rate"},
+        "candidate_attempt_events": {"$ref": "#/$defs/nonnegative_integer"},
+        "candidate_attempt_rate": {"$ref": "#/$defs/rate"},
+        "route_counts": {"$ref": "#/$defs/route_counts"},
         "fallback_events": {"$ref": "#/$defs/nonnegative_integer"},
         "fallback_rate": {"$ref": "#/$defs/rate"},
         "fallback_reasons": {"$ref": "#/$defs/fallback_reasons"},
@@ -235,7 +250,7 @@
         "candidate_output_events_sha256", "loss_s_sum", "loss_a_sum", "loss_p_sum",
         "E_A_S", "E_P_S", "I_P_A", "Delta_P_A", "positive_vs_s",
         "positive_vs_a", "candidate_use_events", "fallback_events",
-        "fallback_reasons"
+        "candidate_attempt_events", "route_counts", "fallback_reasons"
       ],
       "properties": {
         "window_id": {"type": "string", "minLength": 1},
@@ -253,6 +268,8 @@
         "positive_vs_s": {"type": "boolean"},
         "positive_vs_a": {"type": "boolean"},
         "candidate_use_events": {"$ref": "#/$defs/nonnegative_integer"},
+        "candidate_attempt_events": {"$ref": "#/$defs/nonnegative_integer"},
+        "route_counts": {"$ref": "#/$defs/route_counts"},
         "fallback_events": {"$ref": "#/$defs/nonnegative_integer"},
         "fallback_reasons": {"$ref": "#/$defs/fallback_reasons"}
       }

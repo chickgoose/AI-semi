@@ -73,6 +73,51 @@ def _event(event_id, timestamp_ns, is_query, angle, pose_id):
     )
 
 
+def _baseline_route(decision):
+    if decision.disposition_reason == "causal_cav":
+        return "current_cav", True, list(decision.used_pose_ids)
+    if decision.disposition_reason == "fresh_zoh_fallback":
+        return "fresh_zoh", False, list(decision.used_pose_ids)
+    if decision.disposition == "raw_bypass":
+        return "sensor_fixed", False, []
+    raise AssertionError("unexpected fixture baseline route")
+
+
+def _fallback_output(bundle, baseline):
+    unsealed_windows = []
+    for base_window in baseline.windows:
+        rows = []
+        for event, decision in zip(
+            base_window.input_events, base_window.simulation.records
+        ):
+            route, attempted, used_pose_ids = _baseline_route(decision)
+            rows.append({
+                "event_id": event.event_id,
+                "event_content_sha256": event.event_content_sha256,
+                "occurrence_cycle": decision.occurrence_cycle - 1,
+                "decision_cycle": decision.occurrence_cycle,
+                "model_id": "CURRENT_CAV",
+                "predictor_state_version": 0,
+                "used_pose_ids": used_pose_ids,
+                "route": route,
+                "candidate_attempted": attempted,
+                "candidate_used": False,
+                "fallback_reason": "FIXTURE_FALLBACK",
+                "world_ray": None,
+            })
+        unsealed_windows.append({
+            "window_id": base_window.registry.window_id, "events": rows,
+        })
+    return seal_candidate_output(
+        "FIXTURE-CANDIDATE",
+        bundle.provenance_seal["aggregate_sha256"],
+        baseline.neutral_input_sha256,
+        EXECUTABLE_SHA,
+        CONFIG_SHA,
+        unsealed_windows,
+    )
+
+
 def _fixture():
     registries = []
     event_streams = {}
@@ -125,34 +170,7 @@ def _fixture():
     bundle = New108AdapterBundle(
         {}, tuple(registries), event_streams, pose_streams, labels, seal
     )
-    unsealed_windows = []
-    for base_window in baseline.windows:
-        rows = []
-        for event, decision in zip(
-            base_window.input_events, base_window.simulation.records
-        ):
-            rows.append({
-                "event_id": event.event_id,
-                "event_content_sha256": event.event_content_sha256,
-                "decision_cycle": decision.occurrence_cycle,
-                "model_id": "CURRENT_CAV",
-                "predictor_state_version": 0,
-                "used_pose_ids": [],
-                "candidate_used": False,
-                "fallback_reason": "FIXTURE_FALLBACK",
-                "world_ray": None,
-            })
-        unsealed_windows.append({
-            "window_id": base_window.registry.window_id, "events": rows,
-        })
-    output = seal_candidate_output(
-        "FIXTURE-CANDIDATE",
-        seal["aggregate_sha256"],
-        baseline.neutral_input_sha256,
-        EXECUTABLE_SHA,
-        CONFIG_SHA,
-        unsealed_windows,
-    )
+    output = _fallback_output(bundle, baseline)
     frozen = {
         "freeze_receipt": ZERO_SHA,
         "benchmarks/redred_mc_wtb_predictor_stage12/source_split_plan.json": ZERO_SHA,
@@ -201,11 +219,20 @@ def _candidate_use_output(output, candidate_id, used_pose_ids, event_index=1):
     changed["candidate_id"] = candidate_id
     event = changed["windows"][0]["events"][event_index]
     event["candidate_used"] = True
+    event["candidate_attempted"] = True
+    event["route"] = "candidate"
     event["fallback_reason"] = None
     event["world_ray"] = [1.0, 0.0, 0.0]
     event["model_id"] = candidate_id
     event["used_pose_ids"] = list(used_pose_ids)
     return _reseal_output(changed)
+
+
+def _reseal_result(result):
+    body = dict(result)
+    body.pop("result_sha256", None)
+    result["result_sha256"] = canonical_sha256(body)
+    return result
 
 
 class LockedScreen108Tests(unittest.TestCase):
@@ -232,6 +259,13 @@ class LockedScreen108Tests(unittest.TestCase):
         self.assertEqual(overall["query_event_count"], 6)
         self.assertEqual(overall["fallback_events"], 6)
         self.assertEqual(overall["fallback_reasons"], {"FIXTURE_FALLBACK": 6})
+        self.assertEqual(overall["candidate_attempt_events"], 3)
+        self.assertEqual(overall["route_counts"], {
+            "candidate": 0,
+            "current_cav": 3,
+            "fresh_zoh": 0,
+            "sensor_fixed": 3,
+        })
         self.assertAlmostEqual(overall["pooled"]["I_P_A"], 0.0)
         self.assertAlmostEqual(overall["equal_window"]["I_P_A"], 0.0)
         self.assertEqual(result["status"], screen108.STATUS_HOLD)
@@ -304,6 +338,8 @@ class LockedScreen108Tests(unittest.TestCase):
         mislabeled_use = deepcopy(original)
         event = mislabeled_use["windows"][0]["events"][1]
         event["candidate_used"] = True
+        event["route"] = "candidate"
+        event["candidate_attempted"] = True
         event["fallback_reason"] = None
         event["world_ray"] = [1.0, 0.0, 0.0]
         event["used_pose_ids"] = [1]
@@ -313,12 +349,89 @@ class LockedScreen108Tests(unittest.TestCase):
         unknown = deepcopy(original)
         event = unknown["windows"][0]["events"][1]
         event["candidate_used"] = True
+        event["route"] = "candidate"
+        event["candidate_attempted"] = True
         event["fallback_reason"] = None
         event["world_ray"] = [1.0, 0.0, 0.0]
         event["model_id"] = "FIXTURE-CANDIDATE"
         event["used_pose_ids"] = [999]
         with self.assertRaisesRegex(Screen108Error, "unavailable pose"):
             self._evaluate(_reseal_output(unknown))
+
+    def test_cycles_are_separate_sealed_evidence_on_the_frozen_edge_mapping(self):
+        _, _, original, _ = _fixture()
+        mutations = []
+        same_edge = deepcopy(original)
+        event = same_edge["windows"][0]["events"][0]
+        event["occurrence_cycle"] = event["decision_cycle"]
+        mutations.append(same_edge)
+        wrong_predecessor = deepcopy(original)
+        event = wrong_predecessor["windows"][0]["events"][0]
+        event["occurrence_cycle"] -= 1
+        mutations.append(wrong_predecessor)
+        wrong_decision = deepcopy(original)
+        event = wrong_decision["windows"][0]["events"][0]
+        event["occurrence_cycle"] += 1
+        event["decision_cycle"] += 1
+        mutations.append(wrong_decision)
+        for changed in mutations:
+            with self.subTest(event=changed["windows"][0]["events"][0]), self.assertRaisesRegex(
+                Screen108Error, "occurrence edge|decision edge"
+            ):
+                self._evaluate(_reseal_output(changed))
+
+    def test_route_and_candidate_attempt_evidence_match_exact_baseline_reason(self):
+        bundle, baseline, original, _ = _fixture()
+        changed = deepcopy(original)
+        changed["windows"][0]["events"][0]["candidate_attempted"] = False
+        with self.assertRaisesRegex(Screen108Error, "current-CAV route"):
+            self._evaluate(_reseal_output(changed))
+
+        changed = deepcopy(original)
+        changed["windows"][0]["events"][0]["route"] = "fresh_zoh"
+        changed["windows"][0]["events"][0]["candidate_attempted"] = False
+        with self.assertRaisesRegex(Screen108Error, "fresh-ZOH route"):
+            self._evaluate(_reseal_output(changed))
+
+        fresh_pose_streams = {
+            window.registry.window_id: (window.input_poses[-1],)
+            for window in baseline.windows
+        }
+        fresh_baseline = evaluate_current_cav_registry(
+            bundle.neutral_registry, bundle.event_streams, fresh_pose_streams
+        )
+        fresh_output = _fallback_output(bundle, fresh_baseline)
+        self.assertEqual(
+            fresh_output["windows"][0]["events"][1]["route"], "fresh_zoh"
+        )
+        screen108._validate_candidate_output(
+            fresh_output, bundle, fresh_baseline, EXECUTABLE_SHA, CONFIG_SHA
+        )
+        pose_id = fresh_baseline.windows[0].input_poses[0].pose_id
+        candidate_on_fresh = _candidate_use_output(
+            fresh_output, RG3_POLICY.candidate_id, [pose_id]
+        )
+        with self.assertRaisesRegex(Screen108Error, "exact causal_cav"):
+            screen108._validate_candidate_output(
+                candidate_on_fresh,
+                bundle,
+                fresh_baseline,
+                EXECUTABLE_SHA,
+                CONFIG_SHA,
+            )
+
+        sensor_event = original["windows"][0]["events"][2]
+        self.assertEqual(sensor_event["route"], "sensor_fixed")
+        self.assertFalse(sensor_event["candidate_attempted"])
+        sensor_as_current = deepcopy(original)
+        event = sensor_as_current["windows"][0]["events"][2]
+        event["route"] = "current_cav"
+        event["candidate_attempted"] = True
+        event["used_pose_ids"] = list(
+            baseline.windows[0].simulation.records[2].used_pose_ids
+        )
+        with self.assertRaisesRegex(Screen108Error, "current-CAV route"):
+            self._evaluate(_reseal_output(sensor_as_current))
 
     def test_candidate_may_use_any_time_eligible_neutral_pose(self):
         _, baseline, output, _ = _fixture()
@@ -456,7 +569,16 @@ class LockedScreen108Tests(unittest.TestCase):
 
         def passing_accuracy(group, windows):
             result = dict(summarize_group(group, windows))
-            result["pooled"] = dict(result["pooled"], I_P_A=0.1)
+            p_sum = 0.9 * result["loss_a_sum"]
+            e_a_s = 1.0 - result["loss_a_sum"] / result["loss_s_sum"]
+            e_p_s = 1.0 - p_sum / result["loss_s_sum"]
+            result["loss_p_sum"] = p_sum
+            result["pooled"] = {
+                "E_A_S": e_a_s,
+                "E_P_S": e_p_s,
+                "I_P_A": 1.0 - p_sum / result["loss_a_sum"],
+                "Delta_P_A": e_p_s - e_a_s,
+            }
             return result
 
         with mock.patch.object(
@@ -505,6 +627,33 @@ class LockedScreen108Tests(unittest.TestCase):
         result["result_sha256"] = canonical_sha256(body)
         with self.assertRaisesRegex(Screen108Error, "CNCP evidence boundary"):
             verify_screen108_result_envelope(result)
+
+    def test_resealed_false_model_pass_cannot_override_group_metrics(self):
+        result = deepcopy(self._evaluate())
+        result["gate"]["accuracy_and_waste"] = {
+            key: True for key in result["gate"]["accuracy_and_waste"]
+        }
+        result["gate"]["model_accuracy_verdict"] = screen108.MODEL_ACCURACY_PASS
+        result["gate"]["model_accuracy_gate_pass"] = True
+        result["status"] = screen108.STATUS_MEASURED
+        with self.assertRaisesRegex(Screen108Error, "differ from group metrics"):
+            verify_screen108_result_envelope(_reseal_result(result))
+
+    def test_resealed_claim_scope_constants_are_all_enforced(self):
+        base = self._evaluate()
+        mutations = {
+            "development_only": False,
+            "source_selection_changed": True,
+            "filter_or_selector_evaluated": True,
+            "external_data_evaluated": True,
+        }
+        for field, value in mutations.items():
+            result = deepcopy(base)
+            result["claim_scope"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                Screen108Error, "claim boundary"
+            ):
+                verify_screen108_result_envelope(_reseal_result(result))
 
     def test_public_runner_reads_but_does_not_execute_candidate(self):
         bundle, baseline, output, frozen = _fixture()
