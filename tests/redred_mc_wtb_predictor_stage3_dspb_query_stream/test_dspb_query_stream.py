@@ -26,6 +26,7 @@ from benchmarks.redred_mc_wtb_predictor_stage3.dspb_output import (
 from benchmarks.redred_mc_wtb_predictor_stage3.dspb_query_stream import (
     DSPB_QUERY_STREAM_SCHEMA,
     DSPBQueryStreamError,
+    INPUT_DOMAIN_HOLD,
     OUTPUT_AUTHORITY_HOLD,
     VERIFIED_INPUT_HOLD,
     generate_dspb_query_stream,
@@ -245,6 +246,8 @@ class DSPBQueryStreamTests(unittest.TestCase):
             {window_id: events},
             {window_id: poses},
         )
+        self.assertEqual(execution["schema"], "redred.mc_wtb_predictor_stage3.execution_input/v3")
+        self.assertEqual(execution["windows"][0]["pose_input_count"], 257)
         with self.assertRaisesRegex(DSPBQueryStreamError, "more than 256 poses"):
             generate_dspb_query_stream(execution)
 
@@ -279,6 +282,16 @@ class DSPBQueryStreamTests(unittest.TestCase):
         self.assertEqual(output["status"], "DEVELOPMENT_HOLD")
         self.assertEqual(output["verified_input_complexity_hold"], VERIFIED_INPUT_HOLD)
         self.assertEqual(output["output_authority_hold"], OUTPUT_AUTHORITY_HOLD)
+        self.assertEqual(output["input_domain_hold"], INPUT_DOMAIN_HOLD)
+        self.assertEqual(INPUT_DOMAIN_HOLD["status"], "HOLD")
+        self.assertEqual(
+            INPUT_DOMAIN_HOLD["valid_v3_inputs_beyond_fixed_caps"],
+            "fail_closed",
+        )
+        self.assertIs(
+            INPUT_DOMAIN_HOLD["caps_are_execution_input_v3_guarantees"],
+            False,
+        )
         self.assertEqual(output["deterministic_replay_count"], 2)
         self.assertIs(output["deterministic_double_replay_verified"], True)
         self.assertEqual(
@@ -332,6 +345,7 @@ class DSPBQueryStreamTests(unittest.TestCase):
             (
                 "DSPB_QUERY_STREAM_SCHEMA",
                 "DSPBQueryStreamError",
+                "INPUT_DOMAIN_HOLD",
                 "OUTPUT_AUTHORITY_HOLD",
                 "VERIFIED_INPUT_HOLD",
                 "generate_dspb_query_stream",
@@ -356,6 +370,23 @@ print(json.dumps(sorted(
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(json.loads(completed.stdout), [])
+
+        core_tree = ast.parse(
+            (MODULE_ROOT / "dspb_query_stream_core.py").read_text(
+                encoding="utf-8"
+            ),
+            feature_version=(3, 8),
+        )
+        events_assignments = [
+            node
+            for node in ast.walk(core_tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "events"
+                for target in node.targets
+            )
+        ]
+        self.assertEqual(len(events_assignments), 1)
 
 
 if __name__ == "__main__":

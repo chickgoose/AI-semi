@@ -64,6 +64,18 @@ OUTPUT_AUTHORITY_HOLD = {
         "or independent closed-schema replay verifier"
     ),
 }
+INPUT_DOMAIN_HOLD = {
+    "status": "HOLD",
+    "maximum_window_pose_occurrences": MAX_WINDOW_POSE_OCCURRENCES,
+    "maximum_equal_time_cluster_events": MAX_EQUAL_TIME_CLUSTER_EVENTS,
+    "valid_v3_inputs_beyond_fixed_caps": "fail_closed",
+    "caps_are_execution_input_v3_guarantees": False,
+    "reason": (
+        "the 256-pose and 8-event-cluster caps are development policy, not "
+        "execution_input/v3 guarantees; otherwise valid v3 inputs beyond "
+        "either fixed cap fail closed"
+    ),
+}
 
 
 class DSPBQueryStreamError(ValueError):
@@ -224,6 +236,7 @@ def generate_dspb_query_stream(execution_input: object) -> Mapping[str, object]:
         ],
         "verified_input_complexity_hold": dict(VERIFIED_INPUT_HOLD),
         "output_authority_hold": dict(OUTPUT_AUTHORITY_HOLD),
+        "input_domain_hold": dict(INPUT_DOMAIN_HOLD),
         "query_path_sha256": expected_query_path["query_path_sha256"],
         "deterministic_replay_count": 2,
         "deterministic_double_replay_verified": True,
@@ -246,6 +259,7 @@ def generate_dspb_query_stream(execution_input: object) -> Mapping[str, object]:
 __all__ = (
     "DSPB_QUERY_STREAM_SCHEMA",
     "DSPBQueryStreamError",
+    "INPUT_DOMAIN_HOLD",
     "OUTPUT_AUTHORITY_HOLD",
     "VERIFIED_INPUT_HOLD",
     "generate_dspb_query_stream",
