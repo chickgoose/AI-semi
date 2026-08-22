@@ -424,6 +424,14 @@ class ExecutionAuthorityTests(unittest.TestCase):
             accepted["aggregate_sha256"],
         )
 
+        stale_v2 = deepcopy(accepted)
+        stale_v2["schema"] = "redred.mc_wtb_predictor_stage3.execution_input/v2"
+        reseal(stale_v2)
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "execution schema differs"
+        ):
+            verify_stage3_execution_input(stale_v2, repo_root=ROOT)
+
     def test_builder_locks_repository_runner_and_exact_stage3_profile(self):
         registry, events, poses = neutral_fixture()
 
