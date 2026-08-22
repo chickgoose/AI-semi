@@ -1,0 +1,52 @@
+{
+  "schema": "redred.mc_wtb_predictor_stage12.checkpoint_a_freeze_receipt/v1",
+  "status": "FROZEN_STAGE1_STAGE2_CHECKPOINT_A",
+  "created_date": "2026-08-22",
+  "content_commit": "4add865a1a3e46fbeb11bcfa49ffa48f0821712e",
+  "implementation_baseline_commit": "2d7d3d128da2436b257ea1ce759bf8cb6c0b2466",
+  "artifacts": [
+    {
+      "path": "benchmarks/redred_mc_wtb_predictor_stage12/source_split_plan.json",
+      "sha256": "654582131fe0d44ea047268163e928d53fd7120493292eda957b8c3180e14a6e"
+    },
+    {
+      "path": "docs/MC_WTB_PREDICTOR_STAGE12_CONTRACT_20260822.md",
+      "sha256": "3b151649404b39557acc57b665d19e28e787368b46d0797ac7d37fad5d60409f"
+    },
+    {
+      "path": "docs/MC_WTB_STAGE12_ARCHITECTURE_CANDIDATES_20260822.md",
+      "sha256": "86be810c63a3e4817af9611c24b6d02283f763c0616e02c12628a92cf4de1178"
+    }
+  ],
+  "approval_basis": "USER_EXPLICITLY_DIRECTED_STAGE_1_AND_STAGE_2_ONLY_AND_CONFIRMED_THAT_SCOPE_DURING_THIS_SESSION",
+  "scope": [
+    "UZH_SOURCE_ROLE_AND_ACCESS_PLAN",
+    "CAUSAL_NO_ORACLE_EVALUATION_CONTRACT",
+    "PREDICTOR_PRIOR_ART_AND_MODEL_ONLY_SHORTLIST",
+    "PREDICTOR_INDEPENDENT_IDEA_ONLY_SHORTLIST",
+    "HARDWARE_COST_BOUNDARY_WITHOUT_RTL_OR_PPA_APPROVAL"
+  ],
+  "external_access_attestation": {
+    "metadata_access": "HTTP_HEAD_AND_REDIRECT_HEADERS_ONLY_BY_THIS_CHECKPOINT_WORK",
+    "new_sequence_archive_body_downloaded": false,
+    "new_sequence_archive_member_opened": false,
+    "new_sequence_outcome_evaluated": false,
+    "global_negative_access_not_proven": true,
+    "custody_receipt_required_before_external_acquisition": true
+  },
+  "review": {
+    "tmux_workers": ["a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9"],
+    "review_type": "PARALLEL_SOURCE_CONTRACT_PRIOR_ART_HARDWARE_AND_RED_TEAM_AUDIT",
+    "known_p0_findings": "INCORPORATED_IN_CONTENT_COMMIT",
+    "predictor_or_innovation_implementation_reviewed": false
+  },
+  "authorization": {
+    "predictor_implementation": false,
+    "feedback_implementation": false,
+    "event_quality_selector_implementation": false,
+    "new_sequence_acquisition_or_unblind": false,
+    "rtl_genus_pnr_or_ppa": false,
+    "next_stage_requires_new_user_direction": true
+  },
+  "checkpoint_verdict": "STAGE1_STAGE2_COMPLETE_SCOPED_NO_IMPLEMENTATION_NO_EXTERNAL_UNBLIND"
+}
