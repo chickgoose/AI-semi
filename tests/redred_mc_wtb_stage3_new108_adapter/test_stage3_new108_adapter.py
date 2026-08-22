@@ -329,6 +329,26 @@ class Stage3New108AdapterTests(unittest.TestCase):
                 ),
             )
 
+        with self.assertRaisesRegex(
+            adapter_module.Stage3New108AdapterError,
+            "boundary is not cycle atomic",
+        ):
+            adapter_module._validate_cycle_atomic_boundary(
+                window,
+                (
+                    retime(warmup, boundary - 1),
+                    retime(query, boundary + 3),
+                ),
+            )
+
+        with self.assertRaisesRegex(
+            adapter_module.Stage3New108AdapterError,
+            "event phase is empty",
+        ):
+            adapter_module._validate_cycle_atomic_boundary(
+                window, (retime(query, boundary),)
+            )
+
         adapter_module._validate_cycle_atomic_boundary(
             window,
             (

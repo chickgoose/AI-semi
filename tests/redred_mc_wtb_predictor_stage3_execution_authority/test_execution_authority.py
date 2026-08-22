@@ -362,6 +362,35 @@ class ExecutionAuthorityTests(unittest.TestCase):
         ):
             verify_stage3_execution_input(pre_fix_artifact, repo_root=ROOT)
 
+        delayed_query = dict(event_streams)
+        delayed_query["w0"] = (
+            event(100, query_start - 1, query_start, 2),
+            event(101, query_start + 3, query_start, 2),
+        )
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "boundary is not cycle atomic"
+        ):
+            build_stage3_execution_input(
+                registry,
+                delayed_query,
+                pose_streams,
+                source_events_authority=source_authority(),
+                repo_root=ROOT,
+            )
+
+        query_only = dict(event_streams)
+        query_only["w0"] = (event(101, query_start, query_start, 2),)
+        with self.assertRaisesRegex(
+            Stage3ExecutionAuthorityError, "event phase is empty"
+        ):
+            build_stage3_execution_input(
+                registry,
+                query_only,
+                pose_streams,
+                source_events_authority=source_authority(),
+                repo_root=ROOT,
+            )
+
         adjacent = dict(event_streams)
         adjacent["w0"] = (
             event(100, query_start - 5, query_start, 2),

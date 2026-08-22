@@ -341,7 +341,15 @@ def _validate_cycle_atomic_boundary(
         timestamp_to_cycle(event.timestamp_ns, window.warmup_start_ns_inclusive)
         for event in events if event.is_query
     ]
-    if warmup_cycles and query_cycles and warmup_cycles[-1] >= query_cycles[0]:
+    if not warmup_cycles or not query_cycles:
+        raise Stage3New108AdapterError("Stage3 window event phase is empty")
+    query_start_cycle = timestamp_to_cycle(
+        window.query_start_ns_inclusive, window.warmup_start_ns_inclusive
+    )
+    if (
+        warmup_cycles[-1] >= query_start_cycle
+        or query_cycles[0] < query_start_cycle
+    ):
         raise Stage3New108AdapterError(
             "warmup/query boundary is not cycle atomic"
         )

@@ -851,7 +851,18 @@ def verify_stage3_execution_input(
             cycle for event, cycle in zip(events, event_cycles)
             if event["is_query"]
         ]
-        if warmup_cycles and query_cycles and warmup_cycles[-1] >= query_cycles[0]:
+        if not warmup_cycles or not query_cycles:
+            raise Stage3ExecutionAuthorityError(
+                "warmup/query event phase is empty"
+            )
+        query_start_cycle = _trace.timestamp_to_cycle(
+            bounds["query_start_ns_inclusive"],
+            bounds["warmup_start_ns_inclusive"],
+        )
+        if (
+            warmup_cycles[-1] >= query_start_cycle
+            or query_cycles[0] < query_start_cycle
+        ):
             raise Stage3ExecutionAuthorityError(
                 "warmup/query boundary is not cycle atomic"
             )
@@ -862,7 +873,7 @@ def verify_stage3_execution_input(
             raise Stage3ExecutionAuthorityError("window poses are not source ordered")
         warmup_ids = [event["event_id"] for event in events if not event["is_query"]]
         window_query = [event["event_id"] for event in events if event["is_query"]]
-        if not window_query or any(item in query_seen for item in window_query):
+        if any(item in query_seen for item in window_query):
             raise Stage3ExecutionAuthorityError("query event IDs are absent or repeated")
         query_seen.update(window_query)
         negative = [pose["pose_id"] for pose in poses if pose["commit_cycle"] < 0]
