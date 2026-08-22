@@ -19,6 +19,7 @@ from benchmarks.redred_mc_wtb_predictor_stage3.reference_prime import (
 from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import RG3_POLICY
 from benchmarks.redred_mc_wtb_predictor_stage3.so3_pll import SO3PLLConfig
 from benchmarks.redred_mc_wtb_predictor_stage3.warmup_transcript import (
+    BOUNDARY_CLOSE_SCHEMA,
     NATIVE_REPLAY_AUTHORITY_SHA256,
     PENDING_TRANSITION_SCHEMA,
     QUERY_START_STATE_SCHEMA,
@@ -149,6 +150,46 @@ def query_state():
     }, "query_start_state_receipt_sha256")
 
 
+def boundary_close(
+    source=None, *, transition_rows=None, bound=None, binding=None,
+    first_query_event_id=100, first_query_timestamp_ns=1_100,
+):
+    if source is None:
+        source = occurrences()
+    if bound is None:
+        bound = bounds()
+    if binding is None:
+        binding = bindings([row["event_id"] for row in source])
+    if transition_rows is None:
+        transition_rows = transitions()
+    last = source[-1]
+    last_transition_timestamp = max(
+        (row["measurement_timestamp_ns"] for row in transition_rows), default=None
+    )
+    last_cluster_timestamp = max(
+        last["timestamp_ns"],
+        last_transition_timestamp
+        if last_transition_timestamp is not None else last["timestamp_ns"],
+    )
+    return sealed({
+        "schema": BOUNDARY_CLOSE_SCHEMA,
+        "window_id": bound["window_id"],
+        "query_start_ns_inclusive": bound["query_start_ns_inclusive"],
+        "last_warmup_occurrence_ordinal": last["occurrence_ordinal"],
+        "last_warmup_event_id": last["event_id"],
+        "last_warmup_timestamp_ns": last["timestamp_ns"],
+        "warmup_transition_count": len(transition_rows),
+        "last_warmup_transition_measurement_timestamp_ns": last_transition_timestamp,
+        "last_warmup_cluster_timestamp_ns": last_cluster_timestamp,
+        "first_query_source_ordinal": len(source),
+        "first_query_event_id": first_query_event_id,
+        "first_query_timestamp_ns": first_query_timestamp_ns,
+        "execution_input_aggregate_sha256": binding["execution_input_aggregate_sha256"],
+        "ordered_warmup_event_ids_sha256": binding["ordered_warmup_event_ids_sha256"],
+        "native_replay_authority_sha256": binding["native_replay_authority_sha256"],
+    }, "boundary_close_sha256")
+
+
 def transitions():
     return [
         {
@@ -250,6 +291,7 @@ def build(**overrides):
         "transport_policy": transport_policy(),
         "reset": reset(),
         "query_start_state": query_state(),
+        "boundary_close_authority": boundary_close(),
         "warmup_occurrences": occurrences(),
         "state_transitions": transitions(),
     }
@@ -265,6 +307,7 @@ def verify(receipt, **overrides):
         "transport_policy": transport_policy(),
         "reset": reset(),
         "query_start_state": query_state(),
+        "boundary_close_authority": boundary_close(),
         "warmup_occurrences": occurrences(),
         "state_transitions": transitions(),
     }
@@ -373,6 +416,11 @@ class WarmupTranscriptTests(unittest.TestCase):
         receipt = build(
             bindings=bindings([10]),
             bounds=sparse_bounds,
+            boundary_close_authority=boundary_close(
+                sparse_source, transition_rows=[], bound=sparse_bounds,
+                binding=bindings([10]),
+                first_query_event_id=20, first_query_timestamp_ns=5_000_000,
+            ),
             reference_prime_policy=reference_policy(),
             query_start_state=empty_query,
             warmup_occurrences=sparse_source,
@@ -396,6 +444,48 @@ class WarmupTranscriptTests(unittest.TestCase):
         self.assertFalse(actual.reference_available)
         self.assertEqual(actual, legacy)
 
+    def test_authenticated_boundary_rejects_equal_timestamp_cluster_split(self):
+        split = boundary_close(first_query_timestamp_ns=900)
+        with self.assertRaisesRegex(
+            WarmupTranscriptError, "equal-timestamp warmup/query cluster",
+        ):
+            build(boundary_close_authority=split)
+
+        builder = begin_warmup_transcript(
+            bindings=bindings([10]), bounds=bounds(),
+            reference_prime_policy=reference_policy(),
+            transport_policy=transport_policy(), reset=reset(),
+        )
+        builder.update_occurrence(occurrences()[0])
+        empty_query = sealed({
+            "schema": QUERY_START_STATE_SCHEMA,
+            "predictor_state_version": 0,
+            "predictor_state_sha256": SHA_A,
+            "dependency_pose_count": 0,
+            "dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
+            "last_dependency_pose_id": None,
+        }, "query_start_state_receipt_sha256")
+        with self.assertRaisesRegex(WarmupTranscriptError, "field schema"):
+            builder.finalize(empty_query)
+
+        wrong_source_boundary = boundary_close()
+        wrong_source_boundary["first_query_source_ordinal"] += 1
+        unsigned = dict(wrong_source_boundary)
+        unsigned.pop("boundary_close_sha256")
+        wrong_source_boundary["boundary_close_sha256"] = canonical_sha256(unsigned)
+        with self.assertRaisesRegex(WarmupTranscriptError, "source order"):
+            build(boundary_close_authority=wrong_source_boundary)
+
+        omitted_transition = boundary_close()
+        omitted_transition["warmup_transition_count"] -= 1
+        omitted_transition_body = dict(omitted_transition)
+        omitted_transition_body.pop("boundary_close_sha256")
+        omitted_transition["boundary_close_sha256"] = canonical_sha256(
+            omitted_transition_body
+        )
+        with self.assertRaisesRegex(WarmupTranscriptError, "transition endpoint"):
+            build(boundary_close_authority=omitted_transition)
+
     def test_production_window_and_native_candidate_identifiers_are_accepted(self):
         production_bounds = bounds()
         production_bounds["window_id"] = "shapes_rotation/query_start_ns=41590000000"
@@ -406,6 +496,9 @@ class WarmupTranscriptTests(unittest.TestCase):
                 receipt = build(
                     bindings=production_bindings,
                     bounds=production_bounds,
+                    boundary_close_authority=boundary_close(
+                        bound=production_bounds, binding=production_bindings,
+                    ),
                 )
                 self.assertEqual(receipt["bounds"]["window_id"], production_bounds["window_id"])
                 self.assertEqual(receipt["bindings"]["candidate_id"], candidate_id)
@@ -526,12 +619,18 @@ class WarmupTranscriptTests(unittest.TestCase):
         for row, event_id in zip(source, replacement_ids):
             row["event_id"] = event_id
         source_bindings = bindings(replacement_ids)
-        receipt = build(bindings=source_bindings, warmup_occurrences=source)
+        source_boundary = boundary_close(source, binding=source_bindings)
+        receipt = build(
+            bindings=source_bindings,
+            boundary_close_authority=source_boundary,
+            warmup_occurrences=source,
+        )
         self.assertEqual(receipt["first_warmup_occurrence"]["event_id"], 90)
         self.assertEqual(receipt["last_warmup_occurrence"]["event_id"], 50)
         self.assertEqual(
             verify(
                 receipt, bindings=source_bindings,
+                boundary_close_authority=source_boundary,
                 warmup_occurrences=(row for row in source),
             ),
             receipt["receipt_sha256"],
@@ -540,7 +639,11 @@ class WarmupTranscriptTests(unittest.TestCase):
         duplicate = deepcopy(source)
         duplicate[-1]["event_id"] = duplicate[0]["event_id"]
         with self.assertRaises(WarmupTranscriptError):
-            verify(receipt, bindings=source_bindings, warmup_occurrences=duplicate)
+            verify(
+                receipt, bindings=source_bindings,
+                boundary_close_authority=source_boundary,
+                warmup_occurrences=duplicate,
+            )
 
     def test_fixed_native_replay_authority_is_required_and_resealed_mutations_fail(self):
         bad_bindings = bindings()
@@ -584,13 +687,24 @@ class WarmupTranscriptTests(unittest.TestCase):
             "native_transition_sha256": "9" * 64,
         }
         replay_transitions = transitions() + [pending]
-        receipt = build(state_transitions=replay_transitions)
+        receipt = build(
+            boundary_close_authority=boundary_close(
+                transition_rows=replay_transitions,
+            ),
+            state_transitions=replay_transitions,
+        )
         preserved = receipt["pending_query_transition"]
         self.assertEqual(preserved["schema"], PENDING_TRANSITION_SCHEMA)
         self.assertEqual(preserved["effective_cycle"], 12)
         self.assertEqual(preserved["next_state_sha256"], SHA_D)
         self.assertEqual(
-            verify(receipt, state_transitions=replay_transitions),
+            verify(
+                receipt,
+                boundary_close_authority=boundary_close(
+                    transition_rows=replay_transitions,
+                ),
+                state_transitions=replay_transitions,
+            ),
             receipt["receipt_sha256"],
         )
 
@@ -600,7 +714,13 @@ class WarmupTranscriptTests(unittest.TestCase):
         removed_body.pop("receipt_sha256")
         removed["receipt_sha256"] = canonical_sha256(removed_body)
         with self.assertRaises(WarmupTranscriptError):
-            verify(removed, state_transitions=replay_transitions)
+            verify(
+                removed,
+                boundary_close_authority=boundary_close(
+                    transition_rows=replay_transitions,
+                ),
+                state_transitions=replay_transitions,
+            )
 
     def test_snapshot_never_exceeds_256_per_polarity(self):
         large = []
@@ -633,6 +753,12 @@ class WarmupTranscriptTests(unittest.TestCase):
         receipt = build(
             bindings=bindings([row["event_id"] for row in large]),
             bounds=large_bounds,
+            boundary_close_authority=boundary_close(
+                large, transition_rows=[], bound=large_bounds,
+                binding=bindings([row["event_id"] for row in large]),
+                first_query_event_id=99_999,
+                first_query_timestamp_ns=2_000,
+            ),
             reference_prime_policy=reference_policy(),
             transport_policy=transport_policy(capacity=1),
             query_start_state=empty_query,
@@ -683,7 +809,24 @@ class WarmupTranscriptTests(unittest.TestCase):
             "dependency_pose_chain_sha256": EMPTY_DEPENDENCY_CHAIN,
             "last_dependency_pose_id": None,
         }, "query_start_state_receipt_sha256")
-        receipt = builder.finalize(empty_query)
+        stream_boundary = sealed({
+            "schema": BOUNDARY_CLOSE_SCHEMA,
+            "window_id": stream_bounds["window_id"],
+            "query_start_ns_inclusive": stream_bounds["query_start_ns_inclusive"],
+            "last_warmup_occurrence_ordinal": 1_999,
+            "last_warmup_event_id": 21_999,
+            "last_warmup_timestamp_ns": 2_000,
+            "warmup_transition_count": 0,
+            "last_warmup_transition_measurement_timestamp_ns": None,
+            "last_warmup_cluster_timestamp_ns": 2_000,
+            "first_query_source_ordinal": 2_000,
+            "first_query_event_id": 30_000,
+            "first_query_timestamp_ns": 5_000,
+            "execution_input_aggregate_sha256": bindings()["execution_input_aggregate_sha256"],
+            "ordered_warmup_event_ids_sha256": bindings(range(20_000, 22_000))["ordered_warmup_event_ids_sha256"],
+            "native_replay_authority_sha256": NATIVE_REPLAY_AUTHORITY_SHA256,
+        }, "boundary_close_sha256")
+        receipt = builder.finalize(empty_query, stream_boundary)
         self.assertEqual(receipt["warmup_occurrence_count"], 2_000)
         self.assertEqual(
             receipt["query_start_reference_snapshot"]["occupancy"], [256, 256]

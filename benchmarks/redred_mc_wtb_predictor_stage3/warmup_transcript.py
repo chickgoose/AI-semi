@@ -23,7 +23,7 @@ from typing import Deque, Dict, Iterable, Iterator, List, Mapping, Optional, Seq
 from benchmarks.redred_mc_wtb_stage4_contract import canonical_sha256
 
 
-WARMUP_TRANSCRIPT_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_transcript/v1"
+WARMUP_TRANSCRIPT_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_transcript/v2"
 REFERENCE_PRIME_POLICY_SCHEMA = "redred.mc_wtb_predictor_stage3.reference_prime_policy/v1"
 TRANSPORT_POLICY_SCHEMA = "redred.mc_wtb_predictor_stage3.transport_diagnostic_policy/v1"
 RESET_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_reset/v1"
@@ -31,6 +31,7 @@ QUERY_START_STATE_SCHEMA = "redred.mc_wtb_predictor_stage3.query_start_state/v1"
 REFERENCE_SNAPSHOT_SCHEMA = "redred.mc_wtb_predictor_stage3.query_start_reference_snapshot/v1"
 PENDING_TRANSITION_SCHEMA = "redred.mc_wtb_predictor_stage3.pending_query_transition/v1"
 REPLAY_AUTHORITY_SCHEMA = "redred.mc_wtb_predictor_stage3.native_replay_authority/v1"
+BOUNDARY_CLOSE_SCHEMA = "redred.mc_wtb_predictor_stage3.warmup_boundary_close/v1"
 
 _REPLAY_AUTHORITY_SEMANTICS = {
     "schema": REPLAY_AUTHORITY_SCHEMA,
@@ -123,6 +124,16 @@ _SNAPSHOT_FIELDS = frozenset((
     "observation_count", "occupancy", "snapshot_sha256",
 ))
 _ENDPOINT_FIELDS = frozenset(("occurrence_ordinal", "event_id", "timestamp_ns"))
+_BOUNDARY_CLOSE_FIELDS = frozenset((
+    "schema", "window_id", "query_start_ns_inclusive",
+    "last_warmup_occurrence_ordinal", "last_warmup_event_id",
+    "last_warmup_timestamp_ns", "warmup_transition_count",
+    "last_warmup_transition_measurement_timestamp_ns",
+    "last_warmup_cluster_timestamp_ns", "first_query_source_ordinal",
+    "first_query_event_id", "first_query_timestamp_ns",
+    "execution_input_aggregate_sha256", "ordered_warmup_event_ids_sha256",
+    "native_replay_authority_sha256", "boundary_close_sha256",
+))
 _PENDING_TRANSITION_FIELDS = frozenset((
     "schema", "transition_ordinal", "pose_id", "pose_content_sha256",
     "commit_cycle", "publication_cycle", "effective_cycle",
@@ -145,7 +156,8 @@ _RECEIPT_FIELDS = frozenset((
     "transport_cycle_violation_count", "warmup_occurrence_chain_sha256",
     "same_edge_cluster_chain_sha256", "state_transition_chain_sha256",
     "transport_cycle_violation_chain_sha256", "first_warmup_occurrence",
-    "last_warmup_occurrence", "pending_query_transition",
+    "last_warmup_occurrence", "boundary_close_authority",
+    "pending_query_transition",
     "native_replay_authority", "query_start_reference_snapshot",
     "receipt_sha256",
 ))
@@ -509,6 +521,111 @@ def _normalize_native_replay_authority(
     return dict(row)
 
 
+def _normalize_boundary_close(
+    value: object, bindings: Mapping[str, object], bounds: Mapping[str, object],
+    last_endpoint: Mapping[str, object], occurrence_count: int,
+    transition_count: int, last_transition_timestamp: Optional[int],
+) -> Dict[str, object]:
+    row = _sealed_mapping(
+        value, _BOUNDARY_CLOSE_FIELDS, "boundary_close_sha256",
+        "warmup boundary-close authority",
+    )
+    if row["schema"] != BOUNDARY_CLOSE_SCHEMA:
+        raise WarmupTranscriptError("warmup boundary-close schema differs")
+    result = {
+        "schema": BOUNDARY_CLOSE_SCHEMA,
+        "window_id": _window_identifier(row["window_id"], "boundary window ID"),
+        "query_start_ns_inclusive": _integer(
+            row["query_start_ns_inclusive"], "boundary query start"
+        ),
+        "last_warmup_occurrence_ordinal": _integer(
+            row["last_warmup_occurrence_ordinal"], "boundary last warmup ordinal"
+        ),
+        "last_warmup_event_id": _integer(
+            row["last_warmup_event_id"], "boundary last warmup event ID"
+        ),
+        "last_warmup_timestamp_ns": _integer(
+            row["last_warmup_timestamp_ns"], "boundary last warmup timestamp"
+        ),
+        "warmup_transition_count": _integer(
+            row["warmup_transition_count"], "boundary warmup transition count"
+        ),
+        "last_warmup_transition_measurement_timestamp_ns": (
+            None if row["last_warmup_transition_measurement_timestamp_ns"] is None
+            else _integer(
+                row["last_warmup_transition_measurement_timestamp_ns"],
+                "boundary last transition measurement timestamp",
+            )
+        ),
+        "last_warmup_cluster_timestamp_ns": _integer(
+            row["last_warmup_cluster_timestamp_ns"], "boundary last cluster timestamp"
+        ),
+        "first_query_source_ordinal": _integer(
+            row["first_query_source_ordinal"], "boundary first query source ordinal"
+        ),
+        "first_query_event_id": _integer(
+            row["first_query_event_id"], "boundary first query event ID"
+        ),
+        "first_query_timestamp_ns": _integer(
+            row["first_query_timestamp_ns"], "boundary first query timestamp"
+        ),
+        "execution_input_aggregate_sha256": _sha256(
+            row["execution_input_aggregate_sha256"], "boundary execution input"
+        ),
+        "ordered_warmup_event_ids_sha256": _sha256(
+            row["ordered_warmup_event_ids_sha256"], "boundary warmup event IDs"
+        ),
+        "native_replay_authority_sha256": _sha256(
+            row["native_replay_authority_sha256"], "boundary replay authority"
+        ),
+        "boundary_close_sha256": row["boundary_close_sha256"],
+    }
+    if (
+        result["window_id"] != bounds["window_id"]
+        or result["query_start_ns_inclusive"] != bounds["query_start_ns_inclusive"]
+        or result["execution_input_aggregate_sha256"]
+        != bindings["execution_input_aggregate_sha256"]
+        or result["ordered_warmup_event_ids_sha256"]
+        != bindings["ordered_warmup_event_ids_sha256"]
+        or result["native_replay_authority_sha256"]
+        != bindings["native_replay_authority_sha256"]
+    ):
+        raise WarmupTranscriptError("warmup boundary-close authority binding differs")
+    observed_last = (
+        result["last_warmup_occurrence_ordinal"],
+        result["last_warmup_event_id"],
+        result["last_warmup_timestamp_ns"],
+    )
+    expected_last = (
+        last_endpoint["occurrence_ordinal"], last_endpoint["event_id"],
+        last_endpoint["timestamp_ns"],
+    )
+    if observed_last != expected_last:
+        raise WarmupTranscriptError("warmup boundary-close last occurrence differs")
+    if (
+        result["warmup_transition_count"] != transition_count
+        or result["last_warmup_transition_measurement_timestamp_ns"]
+        != last_transition_timestamp
+    ):
+        raise WarmupTranscriptError("warmup boundary-close transition endpoint differs")
+    expected_cluster_timestamp = max(
+        last_endpoint["timestamp_ns"],
+        last_transition_timestamp
+        if last_transition_timestamp is not None else last_endpoint["timestamp_ns"],
+    )
+    if result["last_warmup_cluster_timestamp_ns"] != expected_cluster_timestamp:
+        raise WarmupTranscriptError("warmup boundary-close cluster endpoint differs")
+    if result["first_query_source_ordinal"] != occurrence_count:
+        raise WarmupTranscriptError("first query does not immediately follow warmup source order")
+    if result["last_warmup_cluster_timestamp_ns"] == result["first_query_timestamp_ns"]:
+        raise WarmupTranscriptError("equal-timestamp warmup/query cluster was split")
+    if result["last_warmup_cluster_timestamp_ns"] > result["first_query_timestamp_ns"]:
+        raise WarmupTranscriptError("warmup/query timestamp order differs")
+    if result["first_query_timestamp_ns"] < bounds["query_start_ns_inclusive"]:
+        raise WarmupTranscriptError("first query precedes the query interval")
+    return result
+
+
 def _snapshot_hash(polarity: int, values: Sequence[Mapping[str, object]]) -> str:
     return canonical_sha256({"domain": _SNAPSHOT_DOMAINS[polarity], "observations": list(values)})
 
@@ -567,6 +684,7 @@ class WarmupTranscriptBuilder:
         self._last_timestamp = None  # type: Optional[int]
         self._last_transition_commit = None  # type: Optional[int]
         self._last_transition_pose_id = None  # type: Optional[int]
+        self._last_transition_measurement_timestamp = None  # type: Optional[int]
         self._first_endpoint = None  # type: Optional[Dict[str, object]]
         self._last_endpoint = None  # type: Optional[Dict[str, object]]
         self._cluster_key = None  # type: Optional[Tuple[int, int, int, int, str, int, str, Optional[int]]]
@@ -839,9 +957,18 @@ class WarmupTranscriptBuilder:
         self._last_action_was_transition = True
         self._last_transition_commit = cycle
         self._last_transition_pose_id = pose_id
+        measurement_timestamp = transition["measurement_timestamp_ns"]
+        if (
+            self._last_transition_measurement_timestamp is None
+            or measurement_timestamp > self._last_transition_measurement_timestamp
+        ):
+            self._last_transition_measurement_timestamp = measurement_timestamp
         self._transition_count += 1
 
-    def finalize(self, query_start_state: Mapping[str, object]) -> Mapping[str, object]:
+    def finalize(
+        self, query_start_state: Mapping[str, object],
+        boundary_close_authority: object = None,
+    ) -> Mapping[str, object]:
         """Seal the query-boundary state and bounded reference snapshot."""
 
         self._ensure_open()
@@ -855,6 +982,11 @@ class WarmupTranscriptBuilder:
             raise WarmupTranscriptError(
                 "warmup event IDs differ from authoritative source order"
             )
+        checked_boundary = _normalize_boundary_close(
+            boundary_close_authority, self._bindings, self._bounds,
+            self._last_endpoint, self._occurrence_count,
+            self._transition_count, self._last_transition_measurement_timestamp,
+        )
         self._publish_pending(self._bounds["query_start_decision_cycle"])
         checked_query_state = _normalize_query_state(query_start_state)
         observed_query_state = (
@@ -908,6 +1040,7 @@ class WarmupTranscriptBuilder:
             "transport_cycle_violation_chain_sha256": self._transport_chain,
             "first_warmup_occurrence": self._first_endpoint,
             "last_warmup_occurrence": self._last_endpoint,
+            "boundary_close_authority": checked_boundary,
             "pending_query_transition": self._pending_transition_receipt,
             "native_replay_authority": _native_replay_authority(self._bindings),
             "query_start_reference_snapshot": snapshot,
@@ -959,6 +1092,7 @@ def build_warmup_transcript(
     reference_prime_policy: Mapping[str, object],
     transport_policy: Mapping[str, object], reset: Mapping[str, object],
     query_start_state: Mapping[str, object],
+    boundary_close_authority: Mapping[str, object],
     warmup_occurrences: Iterable[Mapping[str, object]],
     state_transitions: Iterable[Mapping[str, object]],
 ) -> Mapping[str, object]:
@@ -993,7 +1127,7 @@ def build_warmup_transcript(
                 builder.update_occurrence(occurrences.pop())
             else:
                 builder.update_state_transition(transitions.pop())
-    return builder.finalize(query_start_state)
+    return builder.finalize(query_start_state, boundary_close_authority)
 
 
 def _validate_snapshot(value: object, policy: Mapping[str, object], bounds: Mapping[str, object]) -> Dict[str, object]:
@@ -1098,6 +1232,23 @@ def _validate_receipt(value: object) -> Dict[str, object]:
         timestamp = _integer(endpoint["timestamp_ns"], field + " timestamp")
         if not bounds["warmup_start_ns_inclusive"] <= timestamp < bounds["query_start_ns_inclusive"]:
             raise WarmupTranscriptError("transcript endpoint crosses warmup bounds")
+    boundary_raw = _mapping(
+        row["boundary_close_authority"], _BOUNDARY_CLOSE_FIELDS,
+        "warmup boundary-close authority",
+    )
+    boundary_last_transition = boundary_raw[
+        "last_warmup_transition_measurement_timestamp_ns"
+    ]
+    if boundary_last_transition is not None:
+        boundary_last_transition = _integer(
+            boundary_last_transition,
+            "boundary last transition measurement timestamp",
+        )
+    boundary_close = _normalize_boundary_close(
+        boundary_raw, bindings, bounds, row["last_warmup_occurrence"],
+        row["warmup_occurrence_count"], row["state_transition_count"],
+        boundary_last_transition,
+    )
     snapshot = _validate_snapshot(row["query_start_reference_snapshot"], reference_policy, bounds)
     if snapshot["last_warmup_timestamp_ns"] != row["last_warmup_occurrence"]["timestamp_ns"]:
         raise WarmupTranscriptError("reference snapshot last-warmup binding differs")
@@ -1130,6 +1281,7 @@ def _validate_receipt(value: object) -> Dict[str, object]:
         "reference_prime_policy": reference_policy,
         "transport_policy": transport_policy, "reset": reset,
         "query_start_state": query_state,
+        "boundary_close_authority": boundary_close,
         "pending_query_transition": pending_transition,
         "native_replay_authority": replay_authority,
         "query_start_reference_snapshot": snapshot,
@@ -1142,6 +1294,7 @@ def verify_warmup_transcript(
     reference_prime_policy: Mapping[str, object],
     transport_policy: Mapping[str, object], reset: Mapping[str, object],
     query_start_state: Mapping[str, object],
+    boundary_close_authority: Mapping[str, object],
     warmup_occurrences: Iterable[Mapping[str, object]],
     state_transitions: Iterable[Mapping[str, object]],
 ) -> str:
@@ -1158,6 +1311,7 @@ def verify_warmup_transcript(
         reference_prime_policy=reference_prime_policy,
         transport_policy=transport_policy, reset=reset,
         query_start_state=query_start_state,
+        boundary_close_authority=boundary_close_authority,
         warmup_occurrences=warmup_occurrences,
         state_transitions=state_transitions,
     )
@@ -1167,7 +1321,8 @@ def verify_warmup_transcript(
 
 
 __all__ = (
-    "NATIVE_REPLAY_AUTHORITY_SHA256", "PENDING_TRANSITION_SCHEMA",
+    "BOUNDARY_CLOSE_SCHEMA", "NATIVE_REPLAY_AUTHORITY_SHA256",
+    "PENDING_TRANSITION_SCHEMA",
     "QUERY_START_STATE_SCHEMA", "REFERENCE_PRIME_POLICY_SCHEMA",
     "REFERENCE_SNAPSHOT_SCHEMA", "REPLAY_AUTHORITY_SCHEMA", "RESET_SCHEMA",
     "TRANSPORT_POLICY_SCHEMA", "WARMUP_TRANSCRIPT_SCHEMA", "WarmupTranscriptBuilder",
