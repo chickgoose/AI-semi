@@ -4,10 +4,13 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from benchmarks.redred_cluster2_cav_bridge import source_crosswalk as crosswalk_module
 from benchmarks.redred_cluster2_cav_bridge.source_crosswalk import (
     BIN_NS,
     SourceCrosswalkError,
+    derive_official_uzh_source_crosswalk_files,
     derive_source_crosswalk,
     derive_source_crosswalk_files,
 )
@@ -105,6 +108,194 @@ class SourceCrosswalkTests(unittest.TestCase):
         raw = b"1.000000001 110 85 0\n"
         with self.assertRaisesRegex(SourceCrosswalkError, "invalid cyclemask"):
             crosswalk(raw, b"1000 0000\n")
+
+    def test_crlf_cyclemask_preserves_raw_authority_and_semantics(self):
+        raw = b"1.000000001 110 85 0\n"
+        cyclemask = b"1000 0001\r\n"
+        rows = crosswalk(raw, cyclemask)
+        self.assertEqual(
+            [(row.event_id, row.source_index, row.occurrence_cycle) for row in rows],
+            [(0, 0, 1000)],
+        )
+
+    def test_official_authorities_are_exact_internal_constants(self):
+        self.assertEqual(crosswalk_module._OFFICIAL_UZH_EVENTS_SIZE_BYTES, 509_907_771)
+        self.assertEqual(
+            crosswalk_module._OFFICIAL_UZH_EVENTS_SHA256,
+            "d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda",
+        )
+        self.assertEqual(
+            crosswalk_module._OFFICIAL_CYCLEMASK_SHA256,
+            (
+                ("LF", "850049ea794fa80295ca9c0023d5549f2b7a8557776f37355b277aaccfde25ea"),
+                ("CRLF", "a50866f95430e3fe8d8af775c2e9692353e1e6bc9a1ecfedfed620143be48313"),
+            ),
+        )
+
+    def test_official_wrapper_rejects_caller_self_authorized_fixture(self):
+        raw = b"1.000000001 110 85 0\n"
+        cyclemask = b"1000 0001\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw_path = root / "events.txt"
+            cyclemask_path = root / "trace.cyclemask"
+            raw_path.write_bytes(raw)
+            cyclemask_path.write_bytes(cyclemask)
+            with self.assertRaisesRegex(SourceCrosswalkError, "accepted SHA-256"):
+                derive_official_uzh_source_crosswalk_files(raw_path, cyclemask_path)
+            with mock.patch.object(
+                crosswalk_module,
+                "_OFFICIAL_CYCLEMASK_SHA256",
+                (("synthetic-test-only", digest(cyclemask)),),
+            ):
+                with self.assertRaisesRegex(SourceCrosswalkError, "official size"):
+                    derive_official_uzh_source_crosswalk_files(raw_path, cyclemask_path)
+
+    def test_official_wrapper_accepts_only_its_internal_lf_crlf_allowlist(self):
+        raw = b"1.000000001 110 85 0\n"
+        encodings = (b"1000 0001\n", b"1000 0001\r\n")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw_path = root / "events.txt"
+            cyclemask_path = root / "trace.cyclemask"
+            raw_path.write_bytes(raw)
+            with mock.patch.object(
+                crosswalk_module, "_OFFICIAL_UZH_EVENTS_SIZE_BYTES", len(raw)
+            ), mock.patch.object(
+                crosswalk_module, "_OFFICIAL_UZH_EVENTS_SHA256", digest(raw)
+            ), mock.patch.object(
+                crosswalk_module,
+                "_OFFICIAL_CYCLEMASK_SHA256",
+                (("LF", digest(encodings[0])), ("CRLF", digest(encodings[1]))),
+            ):
+                for cyclemask in encodings:
+                    with self.subTest(cyclemask=cyclemask):
+                        cyclemask_path.write_bytes(cyclemask)
+                        rows = derive_official_uzh_source_crosswalk_files(
+                            raw_path, cyclemask_path
+                        )
+                        self.assertEqual(len(rows), 1)
+
+    def test_bytes_apis_reject_byte_limits_before_hash_or_parse(self):
+        raw = b"1.000000001 110 85 0\n"
+        cyclemask = b"1000 0001\n"
+        with mock.patch.object(crosswalk_module, "MAX_RAW_EVENTS_BYTES", len(raw) - 1):
+            with self.assertRaisesRegex(SourceCrosswalkError, "raw events exceeds"):
+                crosswalk(raw, cyclemask)
+        with mock.patch.object(
+            crosswalk_module, "MAX_CYCLEMASK_BYTES", len(cyclemask) - 1
+        ):
+            with self.assertRaisesRegex(SourceCrosswalkError, "cyclemask exceeds"):
+                crosswalk(raw, cyclemask)
+
+    def test_file_apis_reject_stat_size_before_stream_hash(self):
+        raw = b"1.000000001 110 85 0\n"
+        cyclemask = b"1000 0001\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw_path = root / "events.txt"
+            cyclemask_path = root / "trace.cyclemask"
+            raw_path.write_bytes(raw)
+            cyclemask_path.write_bytes(cyclemask)
+            with mock.patch.object(
+                crosswalk_module, "MAX_RAW_EVENTS_BYTES", len(raw) - 1
+            ), mock.patch.object(
+                crosswalk_module, "_stream_sha256"
+            ) as stream_sha256:
+                with self.assertRaisesRegex(SourceCrosswalkError, "raw events exceeds"):
+                    derive_source_crosswalk_files(
+                        raw_path, cyclemask_path, digest(raw), digest(cyclemask)
+                    )
+                stream_sha256.assert_not_called()
+
+            with mock.patch.object(
+                crosswalk_module, "MAX_CYCLEMASK_BYTES", len(cyclemask) - 1
+            ):
+                with self.assertRaisesRegex(SourceCrosswalkError, "cyclemask exceeds"):
+                    derive_source_crosswalk_files(
+                        raw_path, cyclemask_path, digest(raw), digest(cyclemask)
+                    )
+
+    def test_patch_slot_cap_precedes_set_construction(self):
+        raw = b"1.000000001 110 85 0\n1.001000001 111 85 0\n"
+        cyclemask = b"1000 0001\n1001 0002\n"
+        with mock.patch.object(crosswalk_module, "MAX_PATCH_SLOTS", 1):
+            with self.assertRaisesRegex(SourceCrosswalkError, "slot count exceeds"):
+                crosswalk(raw, cyclemask)
+
+        one_raw_slot = b"1.000000001 110 85 0\n"
+        with mock.patch.object(crosswalk_module, "MAX_PATCH_SLOTS", 1):
+            with self.assertRaisesRegex(
+                SourceCrosswalkError, "cyclemask patch slot count exceeds"
+            ):
+                crosswalk(one_raw_slot, cyclemask)
+
+    def test_raw_mutation_between_hash_and_parse_fails_closed(self):
+        raw = b"1.000000001 110 85 0\n"
+        mutated = b"1.000000001 110 85 1\n"
+        cyclemask = b"1000 0001\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw_path = root / "events.txt"
+            cyclemask_path = root / "trace.cyclemask"
+            raw_path.write_bytes(raw)
+            cyclemask_path.write_bytes(cyclemask)
+
+            def mutate_after_authority_read(stream, maximum_bytes, where):
+                self.assertEqual(where, "raw events")
+                raw_path.write_bytes(mutated)
+                return digest(raw)
+
+            with mock.patch.object(
+                crosswalk_module,
+                "_stream_sha256",
+                side_effect=mutate_after_authority_read,
+            ):
+                with self.assertRaisesRegex(SourceCrosswalkError, "changed during read"):
+                    derive_source_crosswalk_files(
+                        raw_path, cyclemask_path, digest(raw), digest(cyclemask)
+                    )
+
+    def test_cyclemask_mutation_during_bounded_read_fails_closed(self):
+        raw = b"1.000000001 110 85 0\n"
+        cyclemask = b"1000 0001\n"
+        mutated = b"1000 0002\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw_path = root / "events.txt"
+            cyclemask_path = root / "trace.cyclemask"
+            raw_path.write_bytes(raw)
+            cyclemask_path.write_bytes(cyclemask)
+            real_open_regular = crosswalk_module._open_regular
+
+            class MutatingCyclemaskStream:
+                def __init__(self, stream):
+                    self.stream = stream
+
+                def read(self, maximum):
+                    payload = self.stream.read(maximum)
+                    cyclemask_path.write_bytes(mutated)
+                    return payload
+
+                def fileno(self):
+                    return self.stream.fileno()
+
+                def close(self):
+                    self.stream.close()
+
+            def open_then_mutate(path, where):
+                stream, identity = real_open_regular(path, where)
+                if where == "cyclemask":
+                    stream = MutatingCyclemaskStream(stream)
+                return stream, identity
+
+            with mock.patch.object(
+                crosswalk_module, "_open_regular", side_effect=open_then_mutate
+            ):
+                with self.assertRaisesRegex(SourceCrosswalkError, "changed during read"):
+                    derive_source_crosswalk_files(
+                        raw_path, cyclemask_path, digest(raw), digest(cyclemask)
+                    )
 
     def test_streaming_file_api_uses_the_same_caller_bound_contract(self):
         raw = b"1.000000001 110 85 0\n1.001000001 113 88 1\n"
