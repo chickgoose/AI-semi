@@ -13,12 +13,13 @@
     "sensor_ray": {"items": {"type": "number"}, "maxItems": 3, "minItems": 3, "type": "array"},
     "source_index": {"maximum": 15, "minimum": 0, "type": "integer"},
     "timestamp_ns": {"minimum": 0, "type": "integer"},
+    "transform_guard_valid": {"type": "boolean"},
     "window_id": {"$ref": "#/$defs/identifier"}
   },
   "required": [
     "schema", "event_id", "ordinal", "timestamp_ns", "source_index",
     "polarity", "window_id", "is_query", "sensor_ray",
-    "causal_pose_source_index", "event_content_sha256"
+    "causal_pose_source_index", "transform_guard_valid", "event_content_sha256"
   ],
   "title": "REDRED Cluster2/CAV source sidecar event v1",
   "type": "object",

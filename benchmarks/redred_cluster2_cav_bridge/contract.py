@@ -23,10 +23,11 @@ MANIFEST_SCHEMA = "redred.cluster2_cav_bridge.manifest/v1"
 PROJECTION_SCHEMA = "redred.cluster2_cav_bridge.four_view_projection/v1"
 CANONICAL_JSONL_FORMAT = "canonical-jsonl/v1"
 TIMESTAMP_TO_OCCURRENCE_RULE = (
-    "ceil_div((timestamp_ns-cycle_zero_timestamp_ns)*1000,clock_period_ps)"
+    "ceil_div((timestamp_ns-aer_cycle_zero_timestamp_ns)*1000,aer_clock_period_ps)"
 )
 VIEW_ORDER = ("RAW4X4_ALL", "RAW4X4_MATCHED", "AER_OCC", "AER_RET")
 GANGHEE_AUTHORITY_ROLE = "ganghee_cluster2_top"
+OBSERVATIONAL_JOIN_LABEL = "SOURCE_EVENT_OBSERVATIONAL_JOIN_NOT_AER_PAYLOAD"
 
 MAX_JSON_BYTES = 4 * 1024 * 1024
 MAX_STREAM_BYTES = 64 * 1024 * 1024
@@ -38,22 +39,23 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _SOURCE_FIELDS = frozenset((
     "schema", "event_id", "ordinal", "timestamp_ns", "source_index",
     "polarity", "window_id", "is_query", "sensor_ray",
-    "causal_pose_source_index", "event_content_sha256",
+    "causal_pose_source_index", "transform_guard_valid", "event_content_sha256",
 ))
 _OUTCOME_FIELDS = frozenset((
     "schema", "event_id", "source_index", "occurrence_cycle", "outcome",
-    "retire_cycle", "retire_lane",
+    "retire_cycle", "retire_native_lane", "retire_col",
 ))
 _MANIFEST_FIELDS = frozenset((
     "schema", "bridge_id", "source_events", "transport_outcomes",
-    "mapping_authority", "rtl_authorities", "clock_period_ps",
-    "cycle_zero_timestamp_ns", "timestamp_to_occurrence_cycle_rule",
-    "projection",
+    "mapping_authority", "source_registry_authority", "pose_stream_authority",
+    "native_transport_receipt_authority", "rtl_authorities",
+    "aer_clock_period_ps", "aer_cycle_zero_timestamp_ns",
+    "timestamp_to_occurrence_cycle_rule", "projection",
 ))
 _STREAM_FIELDS = frozenset(("format", "path", "sha256", "event_count"))
 _ARTIFACT_FIELDS = frozenset(("path", "sha256"))
 _RTL_FIELDS = frozenset(("role", "path", "sha256"))
-_PROJECTION_FIELDS = frozenset(("schema", "views"))
+_PROJECTION_FIELDS = frozenset(("schema", "views", "aer_projection_semantics"))
 
 
 class BridgeValidationError(ValueError):
@@ -278,6 +280,28 @@ def load_canonical_jsonl(path: Path, expected_sha256: str) -> Tuple[Mapping[str,
     return tuple(rows)
 
 
+def canonical_event_content_sha256(
+    event_id: int,
+    timestamp_ns: int,
+    polarity: int,
+    is_query: bool,
+    sensor_ray: Sequence[float],
+    causal_pose_source_index: int,
+    transform_guard_valid: bool,
+) -> str:
+    """Match the exact current-CAV neutral event digest preimage."""
+
+    return hashlib.sha256(canonical_json_bytes({
+        "event_id": event_id,
+        "timestamp_ns": timestamp_ns,
+        "polarity": polarity,
+        "is_query": is_query,
+        "sensor_ray": list(sensor_ray),
+        "causal_pose_source_index": causal_pose_source_index,
+        "transform_guard_valid": transform_guard_valid,
+    })).hexdigest()
+
+
 def validate_source_event(value: object) -> Mapping[str, object]:
     event = _exact_mapping(value, _SOURCE_FIELDS, "source event")
     if event["schema"] != SOURCE_EVENT_SCHEMA:
@@ -296,15 +320,36 @@ def validate_source_event(value: object) -> Mapping[str, object]:
     ray = event["sensor_ray"]
     if not isinstance(ray, list) or len(ray) != 3:
         raise BridgeValidationError("source event sensor_ray must have three numbers")
+    converted_ray = []  # type: List[float]
     for index, coordinate in enumerate(ray):
-        if type(coordinate) not in (int, float):
+        if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)):
             raise BridgeValidationError("source event sensor_ray[%d] is not numeric" % index)
-        if type(coordinate) is float and not math.isfinite(coordinate):
+        converted = float(coordinate)
+        if not math.isfinite(converted):
             raise BridgeValidationError("source event sensor_ray[%d] is not finite" % index)
+        converted_ray.append(converted)
+    norm = math.sqrt(math.fsum(component * component for component in converted_ray))
+    if not math.isfinite(norm) or abs(norm - 1.0) > 1.0e-9:
+        raise BridgeValidationError("source event sensor_ray must have unit norm")
     _nonnegative_int(
         event["causal_pose_source_index"], "source event causal_pose_source_index"
     )
-    _sha256(event["event_content_sha256"], "source event content authority")
+    if type(event["transform_guard_valid"]) is not bool:
+        raise BridgeValidationError("source event transform_guard_valid must be boolean")
+    supplied_digest = _sha256(
+        event["event_content_sha256"], "source event content authority"
+    )
+    expected_digest = canonical_event_content_sha256(
+        event["event_id"],  # type: ignore[arg-type]
+        event["timestamp_ns"],  # type: ignore[arg-type]
+        event["polarity"],  # type: ignore[arg-type]
+        event["is_query"],  # type: ignore[arg-type]
+        ray,  # type: ignore[arg-type]
+        event["causal_pose_source_index"],  # type: ignore[arg-type]
+        event["transform_guard_valid"],  # type: ignore[arg-type]
+    )
+    if supplied_digest != expected_digest:
+        raise BridgeValidationError("source event content digest differs")
     return event
 
 
@@ -319,12 +364,35 @@ def validate_transport_outcome(value: object) -> Mapping[str, object]:
     _nonnegative_int(outcome["occurrence_cycle"], "transport outcome occurrence_cycle")
     if outcome["outcome"] == "DELIVERED":
         _nonnegative_int(outcome["retire_cycle"], "transport outcome retire_cycle")
-        lane = _nonnegative_int(outcome["retire_lane"], "transport outcome retire_lane")
-        if lane > 1:
-            raise BridgeValidationError("transport outcome retire_lane must be 0 or 1")
+        lane = _nonnegative_int(
+            outcome["retire_native_lane"],
+            "transport outcome retire_native_lane",
+        )
+        if lane not in (0, 1):
+            raise BridgeValidationError(
+                "transport outcome retire_native_lane must be 0 or 1"
+            )
+        retire_col = _nonnegative_int(
+            outcome["retire_col"], "transport outcome retire_col"
+        )
+        if retire_col > 3 or retire_col != source_index % 4:
+            raise BridgeValidationError(
+                "transport outcome retire_col differs from source_index modulo four"
+            )
+        source_row = source_index // 4
+        if (lane == 0 and source_row not in (1, 2)) or (
+            lane == 1 and source_row not in (0, 3)
+        ):
+            raise BridgeValidationError(
+                "transport outcome native lane cannot emit the source row"
+            )
     elif outcome["outcome"] == "OVERRUN":
-        if outcome["retire_cycle"] is not None or outcome["retire_lane"] is not None:
-            raise BridgeValidationError("OVERRUN retire fields must both be null")
+        if (
+            outcome["retire_cycle"] is not None
+            or outcome["retire_native_lane"] is not None
+            or outcome["retire_col"] is not None
+        ):
+            raise BridgeValidationError("OVERRUN retire fields must all be null")
     else:
         raise BridgeValidationError("transport outcome must be DELIVERED or OVERRUN")
     return outcome
@@ -353,18 +421,28 @@ def validate_manifest(value: object) -> Mapping[str, object]:
     )
     if source_stream["event_count"] != outcome_stream["event_count"]:
         raise BridgeValidationError("manifest stream event counts differ")
-    mapping = _exact_mapping(
-        manifest["mapping_authority"], _ARTIFACT_FIELDS, "manifest mapping_authority"
+    opaque_authorities = (
+        ("mapping_authority", "mapping authority"),
+        ("source_registry_authority", "source registry authority"),
+        ("pose_stream_authority", "pose stream authority"),
+        ("native_transport_receipt_authority", "native transport receipt authority"),
     )
-    _relative_path(mapping["path"], "manifest mapping authority path")
-    _sha256(mapping["sha256"], "manifest mapping authority digest")
+    authority_rows = []  # type: List[Mapping[str, object]]
+    for field, label in opaque_authorities:
+        authority = _exact_mapping(
+            manifest[field], _ARTIFACT_FIELDS, "manifest " + label
+        )
+        _relative_path(authority["path"], "manifest " + label + " path")
+        _sha256(authority["sha256"], "manifest " + label + " digest")
+        authority_rows.append(authority)
     rtl_rows = manifest["rtl_authorities"]
     if not isinstance(rtl_rows, list) or not rtl_rows:
         raise BridgeValidationError("manifest rtl_authorities must be non-empty")
     roles = set()
-    paths = {source_stream["path"], outcome_stream["path"], mapping["path"]}
-    if len(paths) != 3:
-        raise BridgeValidationError("manifest stream and mapping paths must be distinct")
+    paths = {source_stream["path"], outcome_stream["path"]}
+    paths.update(authority["path"] for authority in authority_rows)
+    if len(paths) != 2 + len(authority_rows):
+        raise BridgeValidationError("manifest streams and opaque authority paths must be unique")
     for index, raw_rtl in enumerate(rtl_rows):
         rtl = _exact_mapping(raw_rtl, _RTL_FIELDS, "manifest rtl_authorities[%d]" % index)
         role = _identifier(rtl["role"], "manifest RTL role")
@@ -378,9 +456,10 @@ def validate_manifest(value: object) -> Mapping[str, object]:
         raise BridgeValidationError(
             "manifest must bind caller-supplied ganghee_cluster2_top authority"
         )
-    _positive_int(manifest["clock_period_ps"], "manifest clock_period_ps")
+    _positive_int(manifest["aer_clock_period_ps"], "manifest aer_clock_period_ps")
     _nonnegative_int(
-        manifest["cycle_zero_timestamp_ns"], "manifest cycle_zero_timestamp_ns"
+        manifest["aer_cycle_zero_timestamp_ns"],
+        "manifest aer_cycle_zero_timestamp_ns",
     )
     if manifest["timestamp_to_occurrence_cycle_rule"] != TIMESTAMP_TO_OCCURRENCE_RULE:
         raise BridgeValidationError("manifest timestamp-to-occurrence rule differs")
@@ -391,6 +470,8 @@ def validate_manifest(value: object) -> Mapping[str, object]:
         raise BridgeValidationError("manifest projection schema differs")
     if projection["views"] != list(VIEW_ORDER):
         raise BridgeValidationError("manifest projection view order differs")
+    if projection["aer_projection_semantics"] != OBSERVATIONAL_JOIN_LABEL:
+        raise BridgeValidationError("manifest AER projection semantics label differs")
     return manifest
 
 
@@ -417,7 +498,7 @@ def _retire_timestamp_ns(retire_cycle: int, zero_ns: int, period_ps: int) -> int
 class JoinedEvent:
     source: Mapping[str, object]
     transport: Mapping[str, object]
-    retire_timestamp_ns: object
+    derived_retire_timestamp_ns: object
 
 
 def _join_streams(
@@ -449,11 +530,12 @@ def _join_streams(
         outcomes_by_id[outcome["event_id"]] = outcome
     if source_ids != set(outcomes_by_id):
         raise BridgeValidationError("source and transport event IDs do not partition exactly")
-    zero_ns = manifest["cycle_zero_timestamp_ns"]
-    period_ps = manifest["clock_period_ps"]
+    zero_ns = manifest["aer_cycle_zero_timestamp_ns"]
+    period_ps = manifest["aer_clock_period_ps"]
     assert isinstance(zero_ns, int) and isinstance(period_ps, int)
     occurrence_slots = set()
     retire_slots = set()
+    native_rows_by_cycle_lane = {}  # type: Dict[Tuple[int, int], int]
     last_retire_by_source = {}  # type: Dict[object, int]
     joined = []  # type: List[JoinedEvent]
     delivered_count = 0
@@ -483,9 +565,22 @@ def _join_streams(
             if previous_retire is not None and retire_cycle <= previous_retire:
                 raise BridgeValidationError("per-source FIFO retire order differs")
             last_retire_by_source[source_index] = retire_cycle
-            retire_slot = (retire_cycle, outcome["retire_lane"])
+            native_lane = outcome["retire_native_lane"]
+            retire_col = outcome["retire_col"]
+            assert isinstance(native_lane, int) and isinstance(retire_col, int)
+            source_row = source_index // 4  # type: ignore[operator]
+            bitmap_key = (retire_cycle, native_lane)
+            prior_row = native_rows_by_cycle_lane.get(bitmap_key)
+            if prior_row is not None and prior_row != source_row:
+                raise BridgeValidationError(
+                    "one native lane-cycle contains more than one row"
+                )
+            native_rows_by_cycle_lane[bitmap_key] = source_row
+            retire_slot = (retire_cycle, native_lane, retire_col)
             if retire_slot in retire_slots:
-                raise BridgeValidationError("two events occupy one retire lane-cycle slot")
+                raise BridgeValidationError(
+                    "two events occupy one native cycle-lane-column slot"
+                )
             retire_slots.add(retire_slot)
             retire_ns = _retire_timestamp_ns(retire_cycle, zero_ns, period_ps)
         else:
@@ -505,9 +600,18 @@ def _project_joined(joined: Sequence[JoinedEvent]) -> Mapping[str, List[Mapping[
     delivered = [row for row in joined if row.transport["outcome"] == "DELIVERED"]
     raw_matched = [_copy_mapping(row.source) for row in delivered]
     aer_occ = [{
+        "projection_semantics": OBSERVATIONAL_JOIN_LABEL,
         "event_id": row.transport["event_id"],
         "source_index": row.transport["source_index"],
         "occurrence_cycle": row.transport["occurrence_cycle"],
+        "timestamp_ns": row.source["timestamp_ns"],
+        "window_id": row.source["window_id"],
+        "is_query": row.source["is_query"],
+        "polarity": row.source["polarity"],
+        "sensor_ray": list(row.source["sensor_ray"]),  # type: ignore[arg-type]
+        "causal_pose_source_index": row.source["causal_pose_source_index"],
+        "transform_guard_valid": row.source["transform_guard_valid"],
+        "event_content_sha256": row.source["event_content_sha256"],
     } for row in delivered]
     raw_keys = [(row["event_id"], row["source_index"]) for row in raw_matched]
     aer_keys = [(row["event_id"], row["source_index"]) for row in aer_occ]
@@ -516,17 +620,21 @@ def _project_joined(joined: Sequence[JoinedEvent]) -> Mapping[str, List[Mapping[
             "RAW4X4_MATCHED and AER_OCC identity/coordinate projection differs"
         )
     aer_ret = [{
+        "projection_semantics": OBSERVATIONAL_JOIN_LABEL,
         "event_id": row.transport["event_id"],
         "source_index": row.transport["source_index"],
         "occurrence_cycle": row.transport["occurrence_cycle"],
+        "occurrence_timestamp_ns": row.source["timestamp_ns"],
         "retire_cycle": row.transport["retire_cycle"],
-        "retire_lane": row.transport["retire_lane"],
-        "retire_timestamp_ns": row.retire_timestamp_ns,
+        "retire_native_lane": row.transport["retire_native_lane"],
+        "retire_col": row.transport["retire_col"],
+        "derived_retire_timestamp_ns": row.derived_retire_timestamp_ns,
         "window_id": row.source["window_id"],
         "is_query": row.source["is_query"],
         "polarity": row.source["polarity"],
         "sensor_ray": list(row.source["sensor_ray"]),  # type: ignore[arg-type]
         "causal_pose_source_index": row.source["causal_pose_source_index"],
+        "transform_guard_valid": row.source["transform_guard_valid"],
         "event_content_sha256": row.source["event_content_sha256"],
     } for row in delivered]
     return {
@@ -567,9 +675,17 @@ def load_bridge_bundle(manifest_path: Path, manifest_authority_sha256: str) -> B
     manifest_value = load_canonical_json(Path(manifest_path), manifest_sha)
     manifest = validate_manifest(manifest_value)
     root = Path(manifest_path).parent
-    mapping = manifest["mapping_authority"]
-    assert isinstance(mapping, Mapping)
-    artifacts = [(mapping["path"], mapping["sha256"], "mapping authority")]
+    opaque_authorities = (
+        ("mapping_authority", "mapping authority"),
+        ("source_registry_authority", "source registry authority"),
+        ("pose_stream_authority", "pose stream authority"),
+        ("native_transport_receipt_authority", "native transport receipt authority"),
+    )
+    artifacts = []
+    for field, label in opaque_authorities:
+        authority = manifest[field]
+        assert isinstance(authority, Mapping)
+        artifacts.append((authority["path"], authority["sha256"], label))
     rtl_rows = manifest["rtl_authorities"]
     assert isinstance(rtl_rows, list)
     artifacts.extend(

@@ -10,11 +10,13 @@ import unittest
 
 from benchmarks.redred_cluster2_cav_bridge import (
     MANIFEST_SCHEMA,
+    OBSERVATIONAL_JOIN_LABEL,
     PROJECTION_SCHEMA,
     SOURCE_EVENT_SCHEMA,
     TIMESTAMP_TO_OCCURRENCE_RULE,
     TRANSPORT_OUTCOME_SCHEMA,
     BridgeValidationError,
+    canonical_event_content_sha256,
     canonical_json_bytes,
     canonical_jsonl_bytes,
     load_bridge_bundle,
@@ -23,14 +25,20 @@ from benchmarks.redred_cluster2_cav_bridge import (
     validate_source_event,
     validate_transport_outcome,
 )
+from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
+    canonical_event_content_sha256 as current_cav_event_content_sha256,
+)
 
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def source_event(event_id, ordinal, timestamp_ns, source_index=3):
-    return {
+def source_event(
+    event_id, ordinal, timestamp_ns, source_index=4, ray=None, guard=True
+):
+    sensor_ray = [0.6, 0.0, 0.8] if ray is None else list(ray)
+    row = {
         "schema": SOURCE_EVENT_SCHEMA,
         "event_id": event_id,
         "ordinal": ordinal,
@@ -39,13 +47,26 @@ def source_event(event_id, ordinal, timestamp_ns, source_index=3):
         "polarity": ordinal % 2,
         "window_id": "synthetic-window",
         "is_query": True,
-        "sensor_ray": [0.25, -0.5, 1],
+        "sensor_ray": sensor_ray,
         "causal_pose_source_index": 7,
-        "event_content_sha256": ("%x" % ((ordinal % 15) + 1)) * 64,
+        "transform_guard_valid": guard,
     }
+    row["event_content_sha256"] = canonical_event_content_sha256(
+        row["event_id"],
+        row["timestamp_ns"],
+        row["polarity"],
+        row["is_query"],
+        row["sensor_ray"],
+        row["causal_pose_source_index"],
+        row["transform_guard_valid"],
+    )
+    return row
 
 
-def delivered(event_id, source_index, occurrence_cycle, retire_cycle, lane):
+def delivered(
+    event_id, source_index, occurrence_cycle, retire_cycle,
+    native_lane, retire_col,
+):
     return {
         "schema": TRANSPORT_OUTCOME_SCHEMA,
         "event_id": event_id,
@@ -53,7 +74,8 @@ def delivered(event_id, source_index, occurrence_cycle, retire_cycle, lane):
         "occurrence_cycle": occurrence_cycle,
         "outcome": "DELIVERED",
         "retire_cycle": retire_cycle,
-        "retire_lane": lane,
+        "retire_native_lane": native_lane,
+        "retire_col": retire_col,
     }
 
 
@@ -65,25 +87,28 @@ def overrun(event_id, source_index, occurrence_cycle):
         "occurrence_cycle": occurrence_cycle,
         "outcome": "OVERRUN",
         "retire_cycle": None,
-        "retire_lane": None,
+        "retire_native_lane": None,
+        "retire_col": None,
     }
 
 
 def fixture_rows():
     sources = (
-        source_event(11, 0, 1000, 3),
-        source_event(12, 1, 1001, 4),
-        source_event(13, 2, 1002, 3),
+        source_event(11, 0, 1000, 4),
+        source_event(12, 1, 1001, 0),
+        source_event(13, 2, 1002, 5),
+        source_event(14, 3, 1003, 12),
     )
     outcomes = (
-        delivered(13, 3, 2, 4, 1),
-        delivered(11, 3, 0, 2, 0),
-        overrun(12, 4, 1),
+        delivered(14, 12, 3, 3, 1, 0),
+        delivered(13, 5, 2, 2, 0, 1),
+        delivered(11, 4, 0, 2, 0, 0),
+        overrun(12, 0, 1),
     )
     return sources, outcomes
 
 
-def manifest_for(source_bytes, outcome_bytes, mapping_bytes, rtl_bytes, count):
+def manifest_for(source_bytes, outcome_bytes, authority_bytes, count):
     return {
         "schema": MANIFEST_SCHEMA,
         "bridge_id": "synthetic-bridge",
@@ -101,19 +126,32 @@ def manifest_for(source_bytes, outcome_bytes, mapping_bytes, rtl_bytes, count):
         },
         "mapping_authority": {
             "path": "authority/mapping.txt",
-            "sha256": digest(mapping_bytes),
+            "sha256": digest(authority_bytes["mapping"]),
+        },
+        "source_registry_authority": {
+            "path": "authority/source_registry.bin",
+            "sha256": digest(authority_bytes["source_registry"]),
+        },
+        "pose_stream_authority": {
+            "path": "authority/pose_stream.bin",
+            "sha256": digest(authority_bytes["pose_stream"]),
+        },
+        "native_transport_receipt_authority": {
+            "path": "authority/native_transport_receipt.bin",
+            "sha256": digest(authority_bytes["native_transport_receipt"]),
         },
         "rtl_authorities": [{
             "role": "ganghee_cluster2_top",
             "path": "authority/cluster2_top.v",
-            "sha256": digest(rtl_bytes),
+            "sha256": digest(authority_bytes["rtl"]),
         }],
-        "clock_period_ps": 1000,
-        "cycle_zero_timestamp_ns": 1000,
+        "aer_clock_period_ps": 1000,
+        "aer_cycle_zero_timestamp_ns": 1000,
         "timestamp_to_occurrence_cycle_rule": TIMESTAMP_TO_OCCURRENCE_RULE,
         "projection": {
             "schema": PROJECTION_SCHEMA,
             "views": ["RAW4X4_ALL", "RAW4X4_MATCHED", "AER_OCC", "AER_RET"],
+            "aer_projection_semantics": OBSERVATIONAL_JOIN_LABEL,
         },
     }
 
@@ -126,21 +164,32 @@ class BundleFixture:
         self.outcomes = tuple(default_outcomes if outcomes is None else outcomes)
         self.source_bytes = canonical_jsonl_bytes(self.sources)
         self.outcome_bytes = canonical_jsonl_bytes(self.outcomes)
-        self.mapping_bytes = b"synthetic exact-ID and clock mapping\n"
-        self.rtl_bytes = b"module synthetic_cluster2; endmodule\n"
+        self.authority_bytes = {
+            "mapping": b"synthetic exact-ID and AER clock mapping\n",
+            "source_registry": b"opaque synthetic source registry\n",
+            "pose_stream": b"opaque synthetic pose stream\n",
+            "native_transport_receipt": b"opaque synthetic native simulator receipt\n",
+            "rtl": b"module synthetic_cluster2; endmodule\n",
+        }
         self.manifest = manifest_for(
             self.source_bytes,
             self.outcome_bytes,
-            self.mapping_bytes,
-            self.rtl_bytes,
+            self.authority_bytes,
             len(self.sources),
         )
 
     def write(self):
         authority = self.root / "authority"
         authority.mkdir()
-        (authority / "mapping.txt").write_bytes(self.mapping_bytes)
-        (authority / "cluster2_top.v").write_bytes(self.rtl_bytes)
+        paths = {
+            "mapping": "mapping.txt",
+            "source_registry": "source_registry.bin",
+            "pose_stream": "pose_stream.bin",
+            "native_transport_receipt": "native_transport_receipt.bin",
+            "rtl": "cluster2_top.v",
+        }
+        for name, basename in paths.items():
+            (authority / basename).write_bytes(self.authority_bytes[name])
         (self.root / "source_events.jsonl").write_bytes(self.source_bytes)
         (self.root / "transport_outcomes.jsonl").write_bytes(self.outcome_bytes)
         manifest_bytes = canonical_json_bytes(self.manifest)
@@ -149,122 +198,197 @@ class BundleFixture:
         return manifest_path, digest(manifest_bytes)
 
 
-class MinimumContractTests(unittest.TestCase):
-    def test_positive_two_stream_join_and_four_views(self):
+class CurrentCAVCompatibilityTests(unittest.TestCase):
+    def test_digest_matches_exact_current_cav_neutral_preimage(self):
+        row = source_event(91, 0, 123456, 4, ray=[0.0, 0.0, 1.0], guard=False)
+        expected = current_cav_event_content_sha256(
+            row["event_id"],
+            row["timestamp_ns"],
+            row["polarity"],
+            row["is_query"],
+            row["sensor_ray"],
+            row["causal_pose_source_index"],
+            row["transform_guard_valid"],
+        )
+        self.assertEqual(row["event_content_sha256"], expected)
+        self.assertIs(validate_source_event(row), row)
+
+    def test_digest_ray_and_guard_mutations_fail_closed(self):
+        row = source_event(1, 0, 1000)
+        bad_digest = dict(row, event_content_sha256="0" * 64)
+        changed_guard = dict(row, transform_guard_valid=False)
+        missing_guard = dict(row)
+        del missing_guard["transform_guard_valid"]
+        wrong_guard = dict(row, transform_guard_valid=1)
+        nonunit = source_event(1, 0, 1000, ray=[0.5, 0.0, 0.5])
+        for mutation in (
+            bad_digest, changed_guard, missing_guard, wrong_guard, nonunit,
+        ):
+            with self.subTest(mutation=mutation), self.assertRaises(BridgeValidationError):
+                validate_source_event(mutation)
+
+
+class ProjectionTests(unittest.TestCase):
+    def test_positive_join_is_deterministic_and_explicitly_observational(self):
         with tempfile.TemporaryDirectory() as temporary:
             fixture = BundleFixture(Path(temporary))
             manifest_path, manifest_sha = fixture.write()
             bundle = load_bridge_bundle(manifest_path, manifest_sha)
-            views = bundle.project()
-
-        self.assertEqual(tuple(views), (
+            first = bundle.project()
+            second = bundle.project()
+        self.assertEqual(first, second)
+        self.assertEqual(tuple(first), (
             "RAW4X4_ALL", "RAW4X4_MATCHED", "AER_OCC", "AER_RET"
         ))
-        self.assertEqual([row["event_id"] for row in views["RAW4X4_ALL"]], [11, 12, 13])
-        self.assertEqual([row["event_id"] for row in views["RAW4X4_MATCHED"]], [11, 13])
-        raw_keys = [
-            (row["event_id"], row["source_index"])
-            for row in views["RAW4X4_MATCHED"]
-        ]
-        aer_keys = [
-            (row["event_id"], row["source_index"])
-            for row in views["AER_OCC"]
-        ]
-        self.assertEqual(raw_keys, aer_keys)
-        self.assertEqual([row["retire_timestamp_ns"] for row in views["AER_RET"]], [1002, 1004])
+        self.assertEqual(
+            [row["event_id"] for row in first["RAW4X4_MATCHED"]],
+            [11, 13, 14],
+        )
+        for view in ("AER_OCC", "AER_RET"):
+            self.assertTrue(first[view])
+            self.assertTrue(all(
+                row["projection_semantics"] == OBSERVATIONAL_JOIN_LABEL
+                for row in first[view]
+            ))
+        self.assertEqual(first["AER_OCC"][0]["timestamp_ns"], 1000)
+        self.assertEqual(first["AER_OCC"][0]["transform_guard_valid"], True)
+        self.assertEqual(first["AER_RET"][0]["occurrence_timestamp_ns"], 1000)
+        self.assertEqual(first["AER_RET"][0]["derived_retire_timestamp_ns"], 1002)
+        self.assertNotIn("retire_timestamp_ns", first["AER_RET"][0])
 
-    def test_negative_transport_outcome_cannot_carry_source_sidecar(self):
-        mutation = delivered(11, 3, 0, 2, 0)
-        for field, value in (
-            ("timestamp_ns", 1000),
-            ("polarity", 1),
-            ("sensor_ray", [0, 0, 1]),
-            ("causal_pose_source_index", 7),
-        ):
-            row = dict(mutation)
-            row[field] = value
-            with self.subTest(field=field), self.assertRaises(BridgeValidationError):
+    def test_manifest_and_projection_cannot_claim_native_aer_payload(self):
+        sources, outcomes = fixture_rows()
+        authority_bytes = {
+            "mapping": b"m", "source_registry": b"s", "pose_stream": b"p",
+            "native_transport_receipt": b"n", "rtl": b"r",
+        }
+        manifest = manifest_for(
+            canonical_jsonl_bytes(sources), canonical_jsonl_bytes(outcomes),
+            authority_bytes, len(sources),
+        )
+        manifest["projection"]["aer_projection_semantics"] = "AER_PAYLOAD"
+        with self.assertRaises(BridgeValidationError):
+            validate_manifest(manifest)
+
+
+class NativeBitmapTests(unittest.TestCase):
+    def test_delivered_coordinates_follow_native_lane_row_and_column(self):
+        valid = (
+            delivered(1, 4, 0, 1, 0, 0),
+            delivered(2, 11, 0, 1, 0, 3),
+            delivered(3, 0, 0, 1, 1, 0),
+            delivered(4, 15, 0, 1, 1, 3),
+        )
+        for row in valid:
+            self.assertIs(validate_transport_outcome(row), row)
+
+        invalid = (
+            delivered(1, 4, 0, 1, 1, 0),
+            delivered(1, 0, 0, 1, 0, 0),
+            delivered(1, 4, 0, 1, 0, 1),
+            delivered(1, 4, 0, 1, 2, 0),
+        )
+        for row in invalid:
+            with self.subTest(row=row), self.assertRaises(BridgeValidationError):
                 validate_transport_outcome(row)
 
+    def test_overrun_requires_all_native_retire_fields_null(self):
+        base = overrun(1, 4, 0)
+        for field, value in (
+            ("retire_cycle", 1),
+            ("retire_native_lane", 0),
+            ("retire_col", 0),
+        ):
+            with self.subTest(field=field), self.assertRaises(BridgeValidationError):
+                validate_transport_outcome(dict(base, **{field: value}))
 
-class SchemaAndAuthorityTests(unittest.TestCase):
-    def test_source_and_outcome_exact_shapes_are_disjoint(self):
-        source = source_event(1, 0, 1000)
-        outcome = delivered(1, 3, 0, 1, 0)
-        self.assertIs(validate_source_event(source), source)
-        self.assertIs(validate_transport_outcome(outcome), outcome)
-        with self.assertRaises(BridgeValidationError):
-            validate_source_event(dict(source, occurrence_cycle=0))
-        with self.assertRaises(BridgeValidationError):
-            validate_transport_outcome(dict(outcome, window_id="forbidden"))
-
-    def test_outcome_discriminator_requires_retire_pair_or_two_nulls(self):
-        mutations = (
-            dict(delivered(1, 3, 0, 1, 0), retire_cycle=None),
-            dict(delivered(1, 3, 0, 1, 0), retire_lane=None),
-            dict(overrun(1, 3, 0), retire_cycle=1),
-            dict(overrun(1, 3, 0), retire_lane=0),
+    def test_same_native_lane_cycle_must_share_row(self):
+        sources = (
+            source_event(1, 0, 1000, 4),
+            source_event(2, 1, 1001, 8),
         )
-        for mutation in mutations:
-            with self.subTest(mutation=mutation), self.assertRaises(BridgeValidationError):
-                validate_transport_outcome(mutation)
+        outcomes = (
+            delivered(1, 4, 0, 2, 0, 0),
+            delivered(2, 8, 1, 2, 0, 0),
+        )
+        self._assert_bundle_rejected(sources, outcomes)
 
-    def test_manifest_binds_two_streams_authorities_clock_rule_and_views(self):
+    def test_two_native_bitmaps_expand_to_eight_events_in_one_cycle(self):
+        source_indices = tuple(range(4, 8)) + tuple(range(0, 4))
+        sources = tuple(
+            source_event(index + 1, index, 1000, source_index)
+            for index, source_index in enumerate(source_indices)
+        )
+        outcomes = tuple(
+            delivered(
+                index + 1, source_index, 0, 1,
+                0 if source_index // 4 == 1 else 1,
+                source_index % 4,
+            )
+            for index, source_index in enumerate(source_indices)
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = BundleFixture(Path(temporary), sources, outcomes)
+            manifest_path, manifest_sha = fixture.write()
+            views = load_bridge_bundle(manifest_path, manifest_sha).project()
+        self.assertEqual(len(views["AER_RET"]), 8)
+        self.assertEqual({row["retire_native_lane"] for row in views["AER_RET"]}, {0, 1})
+
+    def _assert_bundle_rejected(self, sources, outcomes):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = BundleFixture(Path(temporary), sources, outcomes)
+            manifest_path, manifest_sha = fixture.write()
+            with self.assertRaises(BridgeValidationError):
+                load_bridge_bundle(manifest_path, manifest_sha)
+
+
+class ManifestAuthorityTests(unittest.TestCase):
+    def test_manifest_requires_unique_relative_full_sha_opaque_authorities(self):
         sources, outcomes = fixture_rows()
         source_bytes = canonical_jsonl_bytes(sources)
         outcome_bytes = canonical_jsonl_bytes(outcomes)
-        manifest = manifest_for(source_bytes, outcome_bytes, b"map", b"rtl", 3)
+        authority_bytes = {
+            "mapping": b"m", "source_registry": b"s", "pose_stream": b"p",
+            "native_transport_receipt": b"n", "rtl": b"r",
+        }
+        manifest = manifest_for(source_bytes, outcome_bytes, authority_bytes, 4)
         self.assertIs(validate_manifest(manifest), manifest)
-        mutations = []
-        no_top = deepcopy(manifest)
-        no_top["rtl_authorities"][0]["role"] = "not_the_top"
-        mutations.append(no_top)
-        wrong_rule = deepcopy(manifest)
-        wrong_rule["timestamp_to_occurrence_cycle_rule"] = "floor"
-        mutations.append(wrong_rule)
-        wrong_views = deepcopy(manifest)
-        wrong_views["projection"]["views"][0] = "transport"
-        mutations.append(wrong_views)
-        partial_sha = deepcopy(manifest)
-        partial_sha["mapping_authority"]["sha256"] = "a" * 12
-        mutations.append(partial_sha)
-        for mutation in mutations:
+        for field in (
+            "source_registry_authority", "pose_stream_authority",
+            "native_transport_receipt_authority",
+        ):
+            missing = deepcopy(manifest)
+            del missing[field]
+            with self.subTest(field=field), self.assertRaises(BridgeValidationError):
+                validate_manifest(missing)
+        aliased = deepcopy(manifest)
+        aliased["pose_stream_authority"]["path"] = aliased[
+            "source_registry_authority"
+        ]["path"]
+        traversal = deepcopy(manifest)
+        traversal["source_registry_authority"]["path"] = "../registry"
+        partial = deepcopy(manifest)
+        partial["native_transport_receipt_authority"]["sha256"] = "a" * 12
+        for mutation in (aliased, traversal, partial):
             with self.subTest(mutation=mutation), self.assertRaises(BridgeValidationError):
                 validate_manifest(mutation)
 
-    def test_loader_requires_full_manifest_sha_and_checks_mapping_and_rtl_bytes(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            fixture = BundleFixture(root)
-            manifest_path, manifest_sha = fixture.write()
-            for authority in (None, "", manifest_sha[:16], "0" * 64):
-                with self.subTest(authority=authority), self.assertRaises(BridgeValidationError):
-                    load_bridge_bundle(manifest_path, authority)
-            (root / "authority" / "mapping.txt").write_bytes(b"changed\n")
-            with self.assertRaises(BridgeValidationError):
-                load_bridge_bundle(manifest_path, manifest_sha)
-
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            fixture = BundleFixture(root)
-            manifest_path, manifest_sha = fixture.write()
-            (root / "authority" / "cluster2_top.v").write_bytes(b"changed\n")
-            with self.assertRaises(BridgeValidationError):
-                load_bridge_bundle(manifest_path, manifest_sha)
-
-    def test_json_schemas_match_runtime_versions_and_do_not_mix_sidecar(self):
-        package = Path(__file__).resolve().parents[2] / "benchmarks" / "redred_cluster2_cav_bridge"
-        source_schema = json.loads((package / "source_event.schema.json").read_text())
-        outcome_schema = json.loads((package / "transport_outcome.schema.json").read_text())
-        manifest_schema = json.loads((package / "manifest.schema.json").read_text())
-        self.assertEqual(source_schema["properties"]["schema"]["const"], SOURCE_EVENT_SCHEMA)
-        self.assertEqual(outcome_schema["properties"]["schema"]["const"], TRANSPORT_OUTCOME_SCHEMA)
-        self.assertEqual(manifest_schema["properties"]["schema"]["const"], MANIFEST_SCHEMA)
-        for forbidden in ("timestamp_ns", "polarity", "sensor_ray", "causal_pose_source_index"):
-            self.assertNotIn(forbidden, outcome_schema["properties"])
+    def test_loader_rejects_each_tampered_opaque_authority(self):
+        names = (
+            "mapping.txt", "source_registry.bin", "pose_stream.bin",
+            "native_transport_receipt.bin", "cluster2_top.v",
+        )
+        for basename in names:
+            with self.subTest(basename=basename), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                fixture = BundleFixture(root)
+                manifest_path, manifest_sha = fixture.write()
+                (root / "authority" / basename).write_bytes(b"tampered\n")
+                with self.assertRaises(BridgeValidationError):
+                    load_bridge_bundle(manifest_path, manifest_sha)
 
 
-class JoinInvariantTests(unittest.TestCase):
+class RemainingInvariantTests(unittest.TestCase):
     def _assert_bundle_rejected(self, sources, outcomes, mutate_manifest=None):
         with tempfile.TemporaryDirectory() as temporary:
             fixture = BundleFixture(Path(temporary), sources, outcomes)
@@ -274,71 +398,63 @@ class JoinInvariantTests(unittest.TestCase):
             with self.assertRaises(BridgeValidationError):
                 load_bridge_bundle(manifest_path, manifest_sha)
 
-    def test_exact_id_partition_rejects_missing_extra_and_duplicate(self):
+    def test_exact_id_coordinate_and_ceil_join(self):
         sources, outcomes = fixture_rows()
-        self._assert_bundle_rejected(sources, outcomes[:-1])
-        duplicate = (outcomes[0], outcomes[0], outcomes[2])
-        self._assert_bundle_rejected(sources, duplicate)
-        extra = (outcomes[0], outcomes[1], delivered(99, 4, 1, 3, 0))
-        self._assert_bundle_rejected(sources, extra)
+        wrong_id = list(outcomes)
+        wrong_id[0] = dict(wrong_id[0], event_id=99)
+        self._assert_bundle_rejected(sources, wrong_id)
+        wrong_coordinate = list(outcomes)
+        wrong_coordinate[0] = dict(wrong_coordinate[0], source_index=13, retire_col=1)
+        self._assert_bundle_rejected(sources, wrong_coordinate)
+        wrong_occurrence = list(outcomes)
+        wrong_occurrence[0] = dict(wrong_occurrence[0], occurrence_cycle=4)
+        self._assert_bundle_rejected(sources, wrong_occurrence)
 
-    def test_join_rejects_coordinate_mismatch_and_wrong_ceil_occurrence(self):
-        sources, outcomes = fixture_rows()
-        coordinate = list(outcomes)
-        coordinate[1] = dict(coordinate[1], source_index=9)
-        self._assert_bundle_rejected(sources, coordinate)
-        occurrence = list(outcomes)
-        occurrence[1] = dict(occurrence[1], occurrence_cycle=1)
-        self._assert_bundle_rejected(sources, occurrence)
-
-    def test_occurrence_must_not_exceed_retire_and_retire_slots_are_unique(self):
-        sources, outcomes = fixture_rows()
-        early = list(outcomes)
-        early[0] = dict(early[0], retire_cycle=1)
-        self._assert_bundle_rejected(sources, early)
-        same_slot = list(outcomes)
-        same_slot[0] = dict(same_slot[0], retire_cycle=2, retire_lane=0)
-        self._assert_bundle_rejected(sources, same_slot)
-
-    def test_per_source_fifo_retire_order_is_strict(self):
-        sources, outcomes = fixture_rows()
-        reordered = list(outcomes)
-        reordered[0] = dict(reordered[0], retire_cycle=2, retire_lane=1)
-        reordered[1] = dict(reordered[1], retire_cycle=3, retire_lane=0)
+    def test_occurrence_fifo_and_integer_retire_time(self):
+        sources = (
+            source_event(1, 0, 1000, 4),
+            source_event(2, 1, 1001, 4),
+        )
+        reordered = (
+            delivered(1, 4, 0, 3, 0, 0),
+            delivered(2, 4, 1, 2, 0, 0),
+        )
         self._assert_bundle_rejected(sources, reordered)
-
-    def test_fractional_cav_retire_nanoseconds_fail_closed(self):
-        sources = (source_event(1, 0, 1000),)
-        outcomes = (delivered(1, 3, 0, 1, 0),)
+        early = (delivered(1, 4, 0, 0, 0, 0), delivered(2, 4, 1, 0, 0, 0))
+        self._assert_bundle_rejected(sources, early)
+        one_source = (source_event(1, 0, 1000, 4),)
+        fractional = (delivered(1, 4, 0, 1, 0, 0),)
         self._assert_bundle_rejected(
-            sources,
-            outcomes,
-            lambda manifest: manifest.update(clock_period_ps=1500),
+            one_source, fractional,
+            lambda manifest: manifest.update(aer_clock_period_ps=1500),
         )
 
-    def test_ceil_mapping_accepts_nonintegral_source_delta_cycle(self):
-        sources = (source_event(1, 0, 1001),)
-        outcomes = (delivered(1, 3, 1, 2, 0),)
+    def test_ceil_mapping_with_aer_named_clock_fields(self):
+        sources = (source_event(1, 0, 1001, 4),)
+        outcomes = (delivered(1, 4, 1, 2, 0, 0),)
         with tempfile.TemporaryDirectory() as temporary:
             fixture = BundleFixture(Path(temporary), sources, outcomes)
-            fixture.manifest["clock_period_ps"] = 1500
+            fixture.manifest["aer_clock_period_ps"] = 1500
             manifest_path, manifest_sha = fixture.write()
-            bundle = load_bridge_bundle(manifest_path, manifest_sha)
-            self.assertEqual(bundle.project()["AER_RET"][0]["retire_timestamp_ns"], 1003)
-
-    def test_source_bitmap_slot_cannot_represent_multiplicity(self):
-        sources = (
-            source_event(1, 0, 1000, 3),
-            source_event(2, 1, 1000, 3),
-        )
-        outcomes = (
-            overrun(1, 3, 0),
-            overrun(2, 3, 0),
-        )
-        self._assert_bundle_rejected(sources, outcomes)
+            row = load_bridge_bundle(manifest_path, manifest_sha).project()["AER_RET"][0]
+        self.assertEqual(row["occurrence_timestamp_ns"], 1001)
+        self.assertEqual(row["derived_retire_timestamp_ns"], 1003)
 
 
-class IsolationTests(unittest.TestCase):
+class SchemaAndIsolationTests(unittest.TestCase):
+    def test_schemas_match_runtime_and_native_coordinate_names(self):
+        package = Path(__file__).resolve().parents[2] / "benchmarks" / "redred_cluster2_cav_bridge"
+        source_schema = json.loads((package / "source_event.schema.json").read_text())
+        outcome_schema = json.loads((package / "transport_outcome.schema.json").read_text())
+        manifest_schema = json.loads((package / "manifest.schema.json").read_text())
+        self.assertEqual(source_schema["properties"]["schema"]["const"], SOURCE_EVENT_SCHEMA)
+        self.assertIn("transform_guard_valid", source_schema["required"])
+        self.assertEqual(outcome_schema["properties"]["schema"]["const"], TRANSPORT_OUTCOME_SCHEMA)
+        self.assertIn("retire_native_lane", outcome_schema["required"])
+        self.assertIn("retire_col", outcome_schema["required"])
+        self.assertNotIn("retire_lane", outcome_schema["properties"])
+        self.assertEqual(manifest_schema["properties"]["schema"]["const"], MANIFEST_SCHEMA)
+
     def test_contract_has_no_scorer_or_evaluator_import(self):
         contract_path = (
             Path(__file__).resolve().parents[2]
