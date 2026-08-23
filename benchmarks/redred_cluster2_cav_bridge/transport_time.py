@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 
 TRANSPORT_TIME_SEMANTICS = "TRANSPORT_LATENCY_INJECTION_NOT_PHYSICAL_REPLAY"
+MAX_NATIVE_CYCLE = (1 << 63) - 1
+MAX_SERIALIZED_TIMESTAMP_NS = (1 << 64) - 1
 
 
 class TransportTimeValidationError(ValueError):
@@ -24,6 +26,23 @@ def _nonnegative_integer(value: object, where: str) -> int:
             "%s must be a non-negative integer" % where
         )
     return value
+
+
+def _bounded_integer(value: object, where: str, maximum: int) -> int:
+    number = _nonnegative_integer(value, where)
+    if number > maximum:
+        raise TransportTimeValidationError(
+            "%s exceeds maximum %d" % (where, maximum)
+        )
+    return number
+
+
+def _native_cycle(value: object, where: str) -> int:
+    return _bounded_integer(value, where, MAX_NATIVE_CYCLE)
+
+
+def _serialized_ns(value: object, where: str) -> int:
+    return _bounded_integer(value, where, MAX_SERIALIZED_TIMESTAMP_NS)
 
 
 def _whole_ns_clock(clock_period_ps: object) -> int:
@@ -47,7 +66,7 @@ class DualTimeEvent:
     clock_period_ps: int
     latency_cycles: int
     latency_ns: int
-    derived_retire_timestamp_ns: int
+    latency_injected_timestamp_ns: int
     semantics_label: str = TRANSPORT_TIME_SEMANTICS
 
     def __post_init__(self) -> None:
@@ -65,18 +84,18 @@ def validate_dual_time_event(value: object) -> DualTimeEvent:
 
     if type(value) is not DualTimeEvent:
         raise TransportTimeValidationError("value must be an exact DualTimeEvent")
-    event_timestamp_ns = _nonnegative_integer(
+    event_timestamp_ns = _serialized_ns(
         value.event_timestamp_ns, "event_timestamp_ns"
     )
-    occurrence_cycle = _nonnegative_integer(
+    occurrence_cycle = _native_cycle(
         value.occurrence_cycle, "occurrence_cycle"
     )
-    retire_cycle = _nonnegative_integer(value.retire_cycle, "retire_cycle")
+    retire_cycle = _native_cycle(value.retire_cycle, "retire_cycle")
     clock_ns = _whole_ns_clock(value.clock_period_ps)
-    latency_cycles = _nonnegative_integer(value.latency_cycles, "latency_cycles")
-    latency_ns = _nonnegative_integer(value.latency_ns, "latency_ns")
-    derived = _nonnegative_integer(
-        value.derived_retire_timestamp_ns, "derived_retire_timestamp_ns"
+    latency_cycles = _native_cycle(value.latency_cycles, "latency_cycles")
+    latency_ns = _serialized_ns(value.latency_ns, "latency_ns")
+    injected = _serialized_ns(
+        value.latency_injected_timestamp_ns, "latency_injected_timestamp_ns"
     )
     if retire_cycle < occurrence_cycle:
         raise TransportTimeValidationError(
@@ -88,14 +107,22 @@ def validate_dual_time_event(value: object) -> DualTimeEvent:
             "latency_cycles must equal retire_cycle - occurrence_cycle"
         )
     expected_latency_ns = latency_cycles * clock_ns
+    if expected_latency_ns > MAX_SERIALIZED_TIMESTAMP_NS:
+        raise TransportTimeValidationError(
+            "latency_cycles * clock_ns exceeds serialized timestamp range"
+        )
     if latency_ns != expected_latency_ns:
         raise TransportTimeValidationError(
             "latency_ns must equal latency_cycles * clock_ns"
         )
-    expected_derived = event_timestamp_ns + latency_ns
-    if derived != expected_derived:
+    expected_injected = event_timestamp_ns + latency_ns
+    if expected_injected > MAX_SERIALIZED_TIMESTAMP_NS:
         raise TransportTimeValidationError(
-            "derived_retire_timestamp_ns must inject only transport latency"
+            "event_timestamp_ns + latency_ns exceeds serialized timestamp range"
+        )
+    if injected != expected_injected:
+        raise TransportTimeValidationError(
+            "latency_injected_timestamp_ns must inject only transport latency"
         )
     if value.semantics_label != TRANSPORT_TIME_SEMANTICS:
         raise TransportTimeValidationError("transport-time semantics label differs")
@@ -110,9 +137,9 @@ def build_dual_time_event(
 ) -> DualTimeEvent:
     """Build a record without interpreting absolute workload cycles as time."""
 
-    timestamp = _nonnegative_integer(event_timestamp_ns, "event_timestamp_ns")
-    occurrence = _nonnegative_integer(occurrence_cycle, "occurrence_cycle")
-    retire = _nonnegative_integer(retire_cycle, "retire_cycle")
+    timestamp = _serialized_ns(event_timestamp_ns, "event_timestamp_ns")
+    occurrence = _native_cycle(occurrence_cycle, "occurrence_cycle")
+    retire = _native_cycle(retire_cycle, "retire_cycle")
     clock_ns = _whole_ns_clock(clock_period_ps)
     if retire < occurrence:
         raise TransportTimeValidationError(
@@ -126,12 +153,14 @@ def build_dual_time_event(
         clock_period_ps=clock_period_ps,
         latency_cycles=latency,
         latency_ns=latency * clock_ns,
-        derived_retire_timestamp_ns=timestamp + latency * clock_ns,
+        latency_injected_timestamp_ns=timestamp + latency * clock_ns,
     )
 
 
 __all__ = (
     "DualTimeEvent",
+    "MAX_NATIVE_CYCLE",
+    "MAX_SERIALIZED_TIMESTAMP_NS",
     "TRANSPORT_TIME_SEMANTICS",
     "TransportTimeValidationError",
     "build_dual_time_event",
