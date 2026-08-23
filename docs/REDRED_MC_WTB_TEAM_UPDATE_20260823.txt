@@ -1,0 +1,341 @@
+REDRED MC-WTB / CAV+ 팀 현황 업데이트
+기준 시각: 2026-08-23 21:23 KST
+제출 예정일: 2026-08-28
+문서 성격: 팀원 공유용 중간 상태. 후보 winner 또는 물리 PASS 선언이 아님.
+
+0. 한 줄 요약
+
+우리는 supplied pose를 strict-past causal하게 사용해 sensor event를 world coordinate로
+안정화하는 rotation-only MC-WTB를 개발하고 있다. current CAV 기준선은 실제 UZH
+NEW108에서 양의 효과가 확인됐고, MID/HIGH motion 효과를 더 높이기 위해 RG3-CAV,
+DSPB, SO3-PLL 세 후보를 구현했다. 현재 후보 성능 측정 전 실행 메모리 문제를 해결하는
+마지막 단계이며, prediction winner 이후에는 경량 residual feedback과 fail-safe gating을
+통합한다. depth/translation/parallax는 8월 28일 제출 범위에서 제외한다.
+
+1. 제출 범위와 문제 정의
+
+이번 제출에서 실제로 구현·검증할 범위:
+
+- rotation CAV+ 핵심 회로
+- pan(yaw), tilt(pitch), roll 및 일반 3축 SO(3) pose 입력
+- supplied motion/pose parameter를 사용하는 strict-past causal prediction
+- 과거 pose residual만 이용하는 경량 feedback
+- 급정지·반전·pose 불안정 시 보정 강도를 낮추거나 bypass하는 causal gating
+- world-tile aggregation/transport로 연결되는 명확한 시스템 interface
+- 교육용 45 nm PDK의 Genus 합성, timing, area, power 및 Innovus P&R
+
+이번 제출에서 해결했다고 주장하지 않을 범위:
+
+- depth 추정
+- translation/parallax 보상
+- 독립적으로 움직이는 물체의 multi-motion segmentation
+- 학습형 feedback 또는 대규모 online training
+- 모든 scene/센서에 대한 일반화
+
+교수님 Q&A와의 연결:
+
+- 문제와 핵심 병목을 먼저 정의한다.
+- sensor coordinate와 world coordinate 변환을 고려한다.
+- 초기 구현에서는 motion parameter가 공급된다고 가정할 수 있다.
+- 시나리오 기반으로 기능과 성능을 검증한다.
+- 핵심 기능을 먼저 완성한 뒤 시스템 범위를 확장한다.
+- 기능 성립 후 timing·area·power와 실제 구현 가능성을 검증한다.
+
+저장소 근거:
+
+- docs/AI_SEMI_QNA_REDRED_GOAL_20260819.md
+- docs/MC_WTB_STAGE1_QNA_TRACEABILITY_20260820.md
+- docs/MC_WTB_PREDICTOR_STAGE12_CONTRACT_20260822.md
+
+2. 팀원이 현재 확인할 수 있는 공개 기준
+
+Repository:
+https://github.com/chickgoose/AI-semi
+
+기능·후보 publication branch:
+origin/dev/mcwtb-cavplus-stage3
+
+Publication commit:
+c050edb5b426a34cf825ba6447758699c41785ae
+
+1차 bounded-memory 호환성 branch:
+origin/dev/mcwtb-campaign-memory-bounded
+
+1차 호환성 test head:
+f1bad9ac217805cf88a5d4fd84ad829d95ee255e
+
+주의:
+
+- 현재 projection/screen process-isolation 수정은 clean commit·독립 감사 전이다.
+- 따라서 아직 팀원이 clone할 공식 최신 실행 branch로 제시하지 않는다.
+- 검토가 끝나면 공개 branch와 정확한 commit을 이 문서에 추가한다.
+- 외부 UZH 원본 데이터는 Git에 넣지 않는다.
+
+핵심 코드 위치:
+
+- NEW108 selector/label sidecar:
+  benchmarks/redred_mc_wtb_so3_axis_audit/selector.py
+- NEW108 Stage3 adapter:
+  benchmarks/redred_mc_wtb_so3_axis_audit/stage3_new108_adapter.py
+- current CAV trace:
+  benchmarks/redred_mc_wtb_predictor_stage3/current_cav_trace.py
+- RG3-CAV:
+  benchmarks/redred_mc_wtb_predictor_stage3/rg3.py
+- DSPB:
+  benchmarks/redred_mc_wtb_predictor_stage3/dspb.py
+- SO3-PLL:
+  benchmarks/redred_mc_wtb_predictor_stage3/so3_pll.py
+- candidate campaign/receipt:
+  benchmarks/redred_mc_wtb_predictor_stage3/campaign108.py
+- 공통 metric/gate:
+  benchmarks/redred_mc_wtb_predictor_stage3/screen108.py
+
+3. current CAV 실제 기준선
+
+고정 UZH DAVIS240C shapes_rotation 한 recording의 NEW108 development 결과:
+
+- windows: 108
+- selected events: 88,028
+- query events: 44,029
+- selected pose packets: 456
+- overall pooled effect: +4.908276%
+- equal-window mean effect: +3.865125%
+- positive windows: 97/108
+- enable rate: 100%
+- quality-waste rate: 38.252061%
+- added latency: 0 cycle
+
+axis/motion-bin pooled effect:
+
+- X: LOW +1.794626%, MID +3.022676%, HIGH +10.448977%
+- Y: LOW +0.903890%, MID +3.061778%, HIGH +6.847854%
+- Z: LOW +0.340709%, MID +2.711681%, HIGH +6.437565%
+
+정확한 해석:
+
+- 이 consumed recording에서는 motion이 커질수록 CAV 이득이 커지는 경향이 있다.
+- pan/tilt/roll에 대응하는 3축 rotation 입력 구조는 포함한다.
+- axis/sign/bin은 offline 평가 sidecar이며 실제 RTL 분류 회로가 아니다.
+- 복합 pan+tilt, 다른 scene, translation/parallax 일반화는 아직 증거가 없다.
+- 약 38.25% quality-waste 때문에 predictor와 gating 개선 여지가 크다.
+
+근거:
+results/redred_mc_wtb_so3_axis_audit/current_cav_axis_motion_checkpoint_20260822.json
+
+4. 실측할 세 후보
+
+RG3-CAV:
+
+- 최근 세 committed pose로 bounded angular acceleration을 추정
+- cadence/residual/direction/magnitude guard가 불안정하면 exact current CAV fallback
+- 장점 후보: 가속·감속 구간 예측력
+- 위험: second-difference noise 민감도
+
+DSPB:
+
+- current CAV, EWMA, bounded RG3, signed-speed의 네 expert
+- 미래 event 결과가 아니라 과거 pose forecast residual만으로 다음 expert를 선택
+- 장점 후보: motion regime별 적응
+- 위험: 상태·비교기 비용과 regime-change 지연
+
+SO3-PLL:
+
+- 과거 forecast residual을 bounded P/I correction으로 다음 epoch에 반영
+- predictor와 residual feedback의 결합에 가장 가까운 후보
+- 장점 후보: velocity noise·systematic lag 완화
+- 위험: gain/lock/dropout/quantized limit cycle
+
+세 후보는 현재 Python model-only다. fixed-point, predictor RTL, 후보별 Genus/Innovus
+결과는 아직 없다.
+
+5. 고정 내부 판정 기준
+
+세 후보는 동일 NEW108, 동일 config, 동일 metric, 동일 8 GiB 제한에서 순차 실행한다.
+사전에 고정한 AND gate:
+
+- OVERALL pooled effect > 0
+- MID pooled effect > 0
+- HIGH pooled effect > 0
+- LOW pooled effect >= -0.25%
+- 전체 quality-waste가 current CAV보다 악화되지 않음
+
+추가 비교 항목:
+
+- stop/reversal/dropout 안정성
+- candidate-use/fallback 비율
+- deterministic replay와 receipt 무결성
+- 예상 state/operator/latency 비용
+- fixed-point와 RTL 변환 위험
+
+모든 후보가 gate를 통과하지 못하면 억지로 winner를 만들지 않고 current CAV 유지 또는
+전 후보 STOP으로 판정한다. 이 판정은 다음 RTL 구현 대상을 고르는 내부 engineering
+결정이며, 공식 대회 winner나 일반화 증거가 아니다.
+
+6. 실제 실행 문제와 현재 수정 상태
+
+1차 actual RG3 8 GiB acceptance 결과:
+
+- elapsed: 42:03.27
+- maximum RSS: 8,260,256 KiB
+- exit: fail-closed MemoryError
+- failure stage: PRODUCTION_ADAPTER
+- screen started: false
+- score computed: false
+- labels accessed: false
+- verified failure receipt SHA-256:
+  8d42143b0a7c8942c749512bc8422a7cabd86559e947c1fec427204423d386f2
+
+이 실패는 후보 성능 실패가 아니다. score와 label을 보기 전에 종료됐으며 원인은 다음
+Python object lifetime 중첩이었다.
+
+- compact baseline
+- candidate native output graph
+- canonical JSON 전체 복사본
+
+완료된 2차 수정 범위:
+
+- production과 verification을 별도 process로 격리
+- parent preflight baseline을 production 전에 해제
+- canonical hash/output serialization을 streaming화
+- worker source, Python runtime, execution context, production/verification response digest를
+  receipt/verifier까지 결속
+- phase timeout을 600초에서 고정 3600초로 수정
+- timeout·kill/wait·append-only 관련 집중 테스트 PASS
+
+새로 발견해 현재 수정 중인 잔여 위험:
+
+- parent에서 full native parse와 projection graph를 만든 뒤 같은 process에서 screen
+  baseline을 재구축하면 allocator high-water가 겹칠 수 있음
+
+현재 구현 중인 해결책:
+
+- projection을 별도 child process로 실행
+- projection child가 완전히 종료된 뒤 screen을 별도 child process로 실행
+- screen child만 label에 접근
+- parent는 compact identity와 digest만 유지
+- 기존 projection/screen artifact byte는 변경하지 않음
+- 각 child의 worker/runtime/input/output digest를 final receipt/verifier에 결속
+
+현재 직접 fixture 증거:
+
+- production/verification 기반 scoped campaign tests: PASS
+- projection과 screen이 서로 다른 PID에서 순차 실행: PASS
+- projection process 종료 후 screen process 시작: PASS
+- projection response labels_accessed=false: PASS
+- screen response labels_accessed=true: PASS
+- 기존 projection·screen-output·executable artifact exact-byte equality: PASS
+- 중간 artifact mutation 시 screen result 생성 거부: PASS
+- parent rich native/projection object lifetime release: PASS
+
+단, 위 process-isolation 수정은 아직 전체 suite·독립 red-team·fresh clone 전이므로
+SCOPED_IMPLEMENTATION_IN_PROGRESS다. 실제 NEW108 8 GiB PASS로 쓰면 안 된다.
+
+7. 현재 증거 등급
+
+Evidence class | Current status
+current-CAV NEW108 baseline | DESCRIPTIVE_MEASUREMENT_PRESENT
+three candidate model/query/fallback code | PRESENT_AND_SCOPED_TESTED
+candidate NEW108 score/result | NOT_PRODUCED
+first 8 GiB RG3 attempt | FAIL_CLOSED_PRE_SCORE_MEMORY_ERROR
+production/verification process isolation | IMPLEMENTED_AND_SCOPED_TESTED
+projection/screen process isolation | IMPLEMENTATION_IN_PROGRESS
+cross-candidate engineering winner | PENDING
+pan/tilt/roll 3-axis interface | INCLUDED_BY_SO3_MODEL
+complex pan+tilt generalization | HOLD
+depth/translation/parallax | OUT_OF_SUBMISSION_SCOPE
+lightweight residual feedback | PLANNED_AFTER_PREDICTOR_SELECTION
+fixed-point/bit-true | NOT_STARTED
+predictor RTL | NOT_STARTED
+mapped Genus/PPA | NOT_EVALUATED
+Innovus P&R/post-route | NOT_EVALUATED
+
+8. 혁신성의 정확한 경계
+
+event warping, constant velocity/acceleration, model bank, PLL/feedback은 각각 알려진
+기술이다. 이를 단독 혁신으로 주장하지 않는다.
+
+현재 차별화 가설은 다음을 묶은 hardware/system contract다.
+
+- supplied-pose authority
+- strict-past causal eligibility
+- equal-edge/equal-timestamp atomicity
+- immutable past decision
+- exact-once event semantics와 exact fallback
+- event outcome을 보지 않는 pose-residual prediction/feedback
+- fail-safe causal gating
+- world-tile aggregation/transport interface
+- latency/state/PPA를 전부 charge하는 45 nm complete-endpoint co-design
+
+현재 claim은 SYSTEM_CONTRACT_DIFFERENTIATION_HYPOTHESIS_ONLY다. broad novelty 또는
+특허성을 확립했다고 주장하지 않는다.
+
+주요 참고자료:
+
+- UZH Event-Camera Dataset and Simulator:
+  https://rpg.ifi.uzh.ch/davis_data.html
+- Mueggler et al., IJRR 2017:
+  https://doi.org/10.1177/0278364917691115
+- Gallego and Scaramuzza, RA-L 2017:
+  https://doi.org/10.1109/LRA.2016.2647639
+- Gallego et al., CVPR 2018:
+  https://openaccess.thecvf.com/content_cvpr_2018/html/Gallego_A_Unifying_Contrast_CVPR_2018_paper.html
+- Ryu, Industrial DVS Design, CVPRW 2019:
+  https://rpg.ifi.uzh.ch/docs/CVPR19workshop/CVPRW19_Eric_Ryu_Samsung.pdf
+
+9. 8월 28일까지 압축 일정
+
+8월 23일:
+
+- process-isolation 구현·전체 테스트·독립 감사 완료
+- 새 public branch/commit과 fresh-clone 재현
+- RG3 NEW108 단일 실측 시작
+- 동시에 candidate-neutral RTL shell/verification/45 nm flow 계약 준비
+
+8월 24일:
+
+- RG3, DSPB, SO3-PLL 순차 측정
+- 내부 engineering winner 또는 STOP 고정
+- fixed-point 폭·파이프라인·feedback interface freeze
+
+8월 25일:
+
+- winner 핵심 RTL과 testbench
+- strict-causal, reset, backpressure, overflow, fallback 검증
+
+8월 26일:
+
+- Genus 합성, timing, area, vectorless power
+- timing/area 구조 수정
+
+8월 27일:
+
+- Innovus P&R, post-route timing, congestion/DRC/connectivity
+- 결과표와 발표자료 작성
+
+8월 28일:
+
+- 코드·결과 freeze
+- fresh-clone 및 서버 재현
+- 제출물 최종 검수
+
+이 일정은 공격적이다. depth/parallax와 학습형 feedback을 제외하고, rotation
+CAV+ 핵심 회로와 실제 45 nm PPA/P&R에 집중해야 성립한다.
+
+10. 바로 다음 작업
+
+1) projection/screen process-isolation 전체 scoped suite 완료
+2) clean commit과 hostile red-team
+3) public branch push 및 fresh-clone 재현
+4) 기존 failure receipt를 결속한 새 epoch의 RG3 8 GiB 단일 측정
+5) 성공 receipt 검증 후 DSPB, SO3-PLL 순차 측정
+6) 내부 winner/STOP 결정
+7) winner fixed-point + lightweight residual feedback/gating 계약
+8) RTL, Genus, Innovus 순서로 진행
+
+11. 현재 한 줄 판정
+
+current CAV의 rotation NEW108 기준 효과는 확인됐고 세 prediction/feedback 후보의
+model-only 구현도 존재한다. 그러나 후보 실측값과 winner는 아직 없으며, 현재는 실측
+중복 메모리를 제거하는 마지막 process-isolation 검증 단계다. depth/parallax는 제출
+범위에서 제외하고 pan/tilt/roll rotation + predictor + 경량 residual feedback + gating을
+최종 목표로 한다.
