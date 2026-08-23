@@ -32,7 +32,11 @@ from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
     canonical_pose_value_sha256,
 )
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import pose_timestamp_to_cycle
-from tests.redred_cluster2_cav_bridge.test_contract import BundleFixture
+from tests.redred_cluster2_cav_bridge.test_contract import (
+    BundleFixture,
+    delivered,
+    source_event,
+)
 
 
 def pose_input(
@@ -227,6 +231,33 @@ class CommonNeutralProjectionTests(unittest.TestCase):
             [row.neutral_input.sensor_ray for row in raw.events],
         )
 
+    def test_non_grid_timestamp_keeps_physical_and_injected_time_distinct(self):
+        sources = (source_event(1, 0, 1001, 4),)
+        outcomes = (delivered(1, 4, 1, 2, 0, 0),)
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = BundleFixture(Path(temporary), sources, outcomes)
+            manifest_path, manifest_sha256 = fixture.write()
+            bundle = load_bridge_bundle(manifest_path, manifest_sha256)
+            projected_retire = bundle.project()["AER_RET"][0]
+            result = project_bridge_bundle_to_cav(
+                bundle,
+                (NeutralRegistryWindow("synthetic-window", 0, 999, 2000),),
+                {"synthetic-window": (pose_input(7, 900),)},
+            )
+
+        sidecar = result.view("AER_RET").transport_sidecar[0]
+        self.assertEqual(projected_retire["occurrence_timestamp_ns"], 1001)
+        self.assertEqual(projected_retire["physical_retire_timestamp_ns"], 1004)
+        self.assertEqual(projected_retire["latency_injected_timestamp_ns"], 1003)
+        self.assertEqual(projected_retire["latency_cycles"], 1)
+        self.assertEqual(projected_retire["latency_ns"], 2)
+        self.assertEqual(sidecar.event_timestamp_ns, 1001)
+        self.assertEqual(sidecar.latency_injected_timestamp_ns, 1003)
+        self.assertEqual(sidecar.latency_cycles, 1)
+        self.assertEqual(sidecar.latency_ns, 2)
+        self.assertEqual(sidecar.semantics_label, TRANSPORT_TIME_SEMANTICS)
+        self.assertFalse(hasattr(sidecar, "physical_retire_timestamp_ns"))
+
 
 class FailClosedAdapterTests(unittest.TestCase):
     def _assert_projection_rejected(self, mutate):
@@ -347,6 +378,33 @@ class FailClosedAdapterTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len(mutations), 9)
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self._assert_projection_rejected(mutation)
+
+    def test_v2_physical_and_dual_time_mutations_fail_closed(self):
+        def last_retire(rows):
+            return rows["AER_RET"][-1]
+
+        def replace_physical_with_old_field(rows):
+            row = last_retire(rows)
+            physical_timestamp = row.pop("physical_retire_timestamp_ns")
+            row["derived_retire_timestamp_ns"] = physical_timestamp
+
+        mutations = (
+            lambda rows: last_retire(rows).__setitem__(
+                "physical_retire_timestamp_ns", 1005
+            ),
+            lambda rows: last_retire(rows).__setitem__(
+                "latency_injected_timestamp_ns", 1006
+            ),
+            lambda rows: last_retire(rows).__setitem__("latency_cycles", 2),
+            lambda rows: last_retire(rows).__setitem__("latency_ns", 3),
+            lambda rows: last_retire(rows).__setitem__(
+                "transport_time_semantics", "PHYSICAL_REPLAY"
+            ),
+            replace_physical_with_old_field,
+        )
         for mutation in mutations:
             with self.subTest(mutation=mutation):
                 self._assert_projection_rejected(mutation)

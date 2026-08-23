@@ -62,9 +62,11 @@ _AER_OCC_FIELDS = frozenset((
 _AER_RET_FIELDS = frozenset((
     "projection_semantics", "event_id", "source_index", "occurrence_cycle",
     "occurrence_timestamp_ns", "retire_cycle", "retire_native_lane",
-    "retire_row", "retire_col", "derived_retire_timestamp_ns", "window_id",
-    "is_query", "polarity", "sensor_ray", "causal_pose_source_index",
-    "transform_guard_valid", "event_content_sha256",
+    "retire_row", "retire_col", "physical_retire_timestamp_ns",
+    "latency_injected_timestamp_ns", "latency_cycles", "latency_ns",
+    "transport_time_semantics", "window_id", "is_query", "polarity",
+    "sensor_ray", "causal_pose_source_index", "transform_guard_valid",
+    "event_content_sha256",
 ))
 _REGISTRY_FIELDS = frozenset((
     "window_id", "warmup_start_ns_inclusive", "query_start_ns_inclusive",
@@ -582,15 +584,35 @@ def _neutral_population(
             row["occurrence_timestamp_ns"], "occurrence_timestamp_ns"
         )
         physical_timestamp = _nonnegative_int(
-            row["derived_retire_timestamp_ns"],
-            "contract derived_retire_timestamp_ns",
+            row["physical_retire_timestamp_ns"],
+            "contract physical_retire_timestamp_ns",
         )
         expected_physical = zero_ns + retire_cycle * (period_ps // 1000)
         if physical_timestamp != expected_physical:
             _fail("contract physical retire timestamp differs from manifest")
-        dual_time_by_id[event_id] = build_dual_time_event(
+        dual_time = build_dual_time_event(
             event_timestamp, occurrence_cycle, retire_cycle, period_ps
         )
+        supplied_latency_cycles = _nonnegative_int(
+            row["latency_cycles"], "contract latency_cycles"
+        )
+        supplied_latency_ns = _nonnegative_int(
+            row["latency_ns"], "contract latency_ns"
+        )
+        supplied_injected_timestamp = _nonnegative_int(
+            row["latency_injected_timestamp_ns"],
+            "contract latency_injected_timestamp_ns",
+        )
+        if row["transport_time_semantics"] != dual_time.semantics_label:
+            _fail("contract transport-time semantics label differs")
+        if (
+            supplied_latency_cycles != dual_time.latency_cycles
+            or supplied_latency_ns != dual_time.latency_ns
+            or supplied_injected_timestamp
+            != dual_time.latency_injected_timestamp_ns
+        ):
+            _fail("contract latency-injected transport time differs")
+        dual_time_by_id[event_id] = dual_time
 
     expected_retire_order = tuple(sorted(
         ret_rows,
