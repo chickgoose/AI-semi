@@ -10,11 +10,14 @@ import unittest
 
 from benchmarks.redred_cluster2_cav_bridge import (
     MANIFEST_SCHEMA,
+    MAX_NATIVE_CYCLE,
+    MAX_SERIALIZED_TIMESTAMP_NS,
     OBSERVATIONAL_JOIN_LABEL,
     PROJECTION_SCHEMA,
     SOURCE_EVENT_SCHEMA,
     TIMESTAMP_TO_OCCURRENCE_RULE,
     TRANSPORT_OUTCOME_SCHEMA,
+    TRANSPORT_TIME_SEMANTICS,
     BridgeValidationError,
     canonical_event_content_sha256,
     canonical_json_bytes,
@@ -272,7 +275,15 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual([row["event_id"] for row in first["AER_OCC"]], [11, 13, 14])
         self.assertEqual([row["event_id"] for row in first["AER_RET"]], [13, 11, 14])
         self.assertEqual(first["AER_RET"][0]["occurrence_timestamp_ns"], 1002)
-        self.assertEqual(first["AER_RET"][0]["derived_retire_timestamp_ns"], 1004)
+        self.assertEqual(first["AER_RET"][0]["physical_retire_timestamp_ns"], 1004)
+        self.assertEqual(first["AER_RET"][0]["latency_injected_timestamp_ns"], 1004)
+        self.assertEqual(first["AER_RET"][0]["latency_cycles"], 1)
+        self.assertEqual(first["AER_RET"][0]["latency_ns"], 2)
+        self.assertEqual(
+            first["AER_RET"][0]["transport_time_semantics"],
+            TRANSPORT_TIME_SEMANTICS,
+        )
+        self.assertNotIn("derived_retire_timestamp_ns", first["AER_RET"][0])
         self.assertNotIn("retire_timestamp_ns", first["AER_RET"][0])
 
     def test_manifest_and_projection_cannot_claim_native_aer_payload(self):
@@ -403,7 +414,15 @@ class ManifestAuthorityTests(unittest.TestCase):
         traversal["source_registry_authority"]["path"] = "../registry"
         partial = deepcopy(manifest)
         partial["native_transport_receipt_authority"]["sha256"] = "a" * 12
-        for mutation in (aliased, traversal, partial):
+        legacy_manifest = deepcopy(manifest)
+        legacy_manifest["schema"] = "redred.cluster2_cav_bridge.manifest/v1"
+        legacy_projection = deepcopy(manifest)
+        legacy_projection["projection"]["schema"] = (
+            "redred.cluster2_cav_bridge.four_view_projection/v1"
+        )
+        for mutation in (
+            aliased, traversal, partial, legacy_manifest, legacy_projection,
+        ):
             with self.subTest(mutation=mutation), self.assertRaises(BridgeValidationError):
                 validate_manifest(mutation)
 
@@ -486,7 +505,64 @@ class RemainingInvariantTests(unittest.TestCase):
             manifest_path, manifest_sha = fixture.write()
             row = load_bridge_bundle(manifest_path, manifest_sha).project()["AER_RET"][0]
         self.assertEqual(row["occurrence_timestamp_ns"], 1001)
-        self.assertEqual(row["derived_retire_timestamp_ns"], 1004)
+        self.assertEqual(row["physical_retire_timestamp_ns"], 1004)
+        self.assertEqual(row["latency_injected_timestamp_ns"], 1003)
+        self.assertEqual(row["latency_cycles"], 1)
+        self.assertEqual(row["latency_ns"], 2)
+        self.assertEqual(row["transport_time_semantics"], TRANSPORT_TIME_SEMANTICS)
+        self.assertNotIn("derived_retire_timestamp_ns", row)
+
+    def test_cycle_and_timestamp_bounds_apply_to_contract_inputs(self):
+        with self.assertRaises(BridgeValidationError):
+            validate_source_event(source_event(
+                1, 0, MAX_SERIALIZED_TIMESTAMP_NS + 1, 4
+            ))
+        with self.assertRaises(BridgeValidationError):
+            validate_transport_outcome(delivered(
+                1, 4, MAX_NATIVE_CYCLE + 1, MAX_NATIVE_CYCLE + 1, 0, 0
+            ))
+        with self.assertRaises(BridgeValidationError):
+            validate_transport_outcome(delivered(
+                1, 4, MAX_NATIVE_CYCLE, MAX_NATIVE_CYCLE + 1, 0, 0
+            ))
+
+        sources, outcomes = fixture_rows()
+        authority_bytes = {
+            "mapping": b"m", "source_registry": b"s", "pose_stream": b"p",
+            "native_transport_receipt": b"n", "rtl": b"r",
+        }
+        manifest = manifest_for(
+            canonical_jsonl_bytes(sources), canonical_jsonl_bytes(outcomes),
+            authority_bytes, len(sources),
+        )
+        manifest["aer_cycle_zero_timestamp_ns"] = MAX_SERIALIZED_TIMESTAMP_NS + 1
+        with self.assertRaises(BridgeValidationError):
+            validate_manifest(manifest)
+
+    def test_exact_limits_pass_and_join_arithmetic_overflow_fails_closed(self):
+        source = (source_event(1, 0, 1, 4),)
+        outcome = (delivered(1, 4, 0, MAX_NATIVE_CYCLE, 0, 0),)
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = BundleFixture(Path(temporary), source, outcome)
+            fixture.manifest["aer_cycle_zero_timestamp_ns"] = 1
+            manifest_path, manifest_sha = fixture.write()
+            row = load_bridge_bundle(manifest_path, manifest_sha).project()["AER_RET"][0]
+        self.assertEqual(
+            row["physical_retire_timestamp_ns"], MAX_SERIALIZED_TIMESTAMP_NS
+        )
+        self.assertEqual(
+            row["latency_injected_timestamp_ns"], MAX_SERIALIZED_TIMESTAMP_NS
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = BundleFixture(Path(temporary), source, outcome)
+            fixture.manifest["aer_cycle_zero_timestamp_ns"] = 2
+            fixture.sources = (source_event(1, 0, 2, 4),)
+            fixture.source_bytes = canonical_jsonl_bytes(fixture.sources)
+            fixture.manifest["source_events"]["sha256"] = digest(fixture.source_bytes)
+            manifest_path, manifest_sha = fixture.write()
+            with self.assertRaises(BridgeValidationError):
+                load_bridge_bundle(manifest_path, manifest_sha)
 
 
 class SchemaAndIsolationTests(unittest.TestCase):
@@ -496,13 +572,35 @@ class SchemaAndIsolationTests(unittest.TestCase):
         outcome_schema = json.loads((package / "transport_outcome.schema.json").read_text())
         manifest_schema = json.loads((package / "manifest.schema.json").read_text())
         self.assertEqual(source_schema["properties"]["schema"]["const"], SOURCE_EVENT_SCHEMA)
+        self.assertEqual(
+            source_schema["properties"]["timestamp_ns"]["maximum"],
+            MAX_SERIALIZED_TIMESTAMP_NS,
+        )
         self.assertIn("transform_guard_valid", source_schema["required"])
         self.assertEqual(outcome_schema["properties"]["schema"]["const"], TRANSPORT_OUTCOME_SCHEMA)
         self.assertIn("retire_native_lane", outcome_schema["required"])
         self.assertIn("retire_row", outcome_schema["required"])
         self.assertIn("retire_col", outcome_schema["required"])
+        self.assertEqual(
+            outcome_schema["properties"]["occurrence_cycle"]["maximum"],
+            MAX_NATIVE_CYCLE,
+        )
+        self.assertEqual(
+            outcome_schema["properties"]["retire_cycle"]["maximum"],
+            MAX_NATIVE_CYCLE,
+        )
         self.assertNotIn("retire_lane", outcome_schema["properties"])
         self.assertEqual(manifest_schema["properties"]["schema"]["const"], MANIFEST_SCHEMA)
+        self.assertEqual(
+            manifest_schema["properties"]["projection"]["properties"]
+            ["schema"]["const"],
+            PROJECTION_SCHEMA,
+        )
+        self.assertEqual(
+            manifest_schema["properties"]["aer_cycle_zero_timestamp_ns"]
+            ["maximum"],
+            MAX_SERIALIZED_TIMESTAMP_NS,
+        )
         self.assertEqual(
             manifest_schema["properties"]["aer_clock_period_ps"]["multipleOf"],
             1000,

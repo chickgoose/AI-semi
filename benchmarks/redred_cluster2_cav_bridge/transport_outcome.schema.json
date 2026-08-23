@@ -6,7 +6,11 @@
     {
       "if": {"properties": {"outcome": {"const": "DELIVERED"}}},
       "then": {"properties": {
-        "retire_cycle": {"minimum": 0, "type": "integer"},
+        "retire_cycle": {
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "type": "integer"
+        },
         "retire_col": {"maximum": 3, "minimum": 0, "type": "integer"},
         "retire_native_lane": {"maximum": 1, "minimum": 0, "type": "integer"},
         "retire_row": {"maximum": 3, "minimum": 0, "type": "integer"}
@@ -24,9 +28,16 @@
   ],
   "properties": {
     "event_id": {"minimum": 0, "type": "integer"},
-    "occurrence_cycle": {"minimum": 0, "type": "integer"},
+    "occurrence_cycle": {
+      "maximum": 9223372036854775807,
+      "minimum": 0,
+      "type": "integer"
+    },
     "outcome": {"enum": ["DELIVERED", "OVERRUN"]},
-    "retire_cycle": {"type": ["integer", "null"]},
+    "retire_cycle": {
+      "maximum": 9223372036854775807,
+      "type": ["integer", "null"]
+    },
     "retire_col": {"type": ["integer", "null"]},
     "retire_native_lane": {"type": ["integer", "null"]},
     "retire_row": {"type": ["integer", "null"]},

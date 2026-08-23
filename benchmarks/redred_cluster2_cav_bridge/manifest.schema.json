@@ -1,11 +1,15 @@
 {
-  "$id": "https://redred.invalid/schemas/cluster2_cav_bridge_manifest_v1.json",
+  "$id": "https://redred.invalid/schemas/cluster2_cav_bridge_manifest_v2.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
     "bridge_id": {"$ref": "#/$defs/identifier"},
     "aer_clock_period_ps": {"minimum": 1000, "multipleOf": 1000, "type": "integer"},
-    "aer_cycle_zero_timestamp_ns": {"minimum": 0, "type": "integer"},
+    "aer_cycle_zero_timestamp_ns": {
+      "maximum": 18446744073709551615,
+      "minimum": 0,
+      "type": "integer"
+    },
     "mapping_authority": {"$ref": "#/$defs/artifact"},
     "native_transport_receipt_authority": {"$ref": "#/$defs/artifact"},
     "pose_stream_authority": {"$ref": "#/$defs/artifact"},
@@ -15,7 +19,7 @@
         "aer_projection_semantics": {
           "const": "SOURCE_EVENT_OBSERVATIONAL_JOIN_NOT_AER_PAYLOAD"
         },
-        "schema": {"const": "redred.cluster2_cav_bridge.four_view_projection/v1"},
+        "schema": {"const": "redred.cluster2_cav_bridge.four_view_projection/v2"},
         "views": {"const": ["RAW4X4_ALL", "RAW4X4_MATCHED", "AER_OCC", "AER_RET"]}
       },
       "required": ["schema", "views", "aer_projection_semantics"],
@@ -32,7 +36,7 @@
       "type": "array",
       "uniqueItems": true
     },
-    "schema": {"const": "redred.cluster2_cav_bridge.manifest/v1"},
+    "schema": {"const": "redred.cluster2_cav_bridge.manifest/v2"},
     "source_registry_authority": {"$ref": "#/$defs/artifact"},
     "source_events": {"$ref": "#/$defs/stream"},
     "timestamp_to_occurrence_cycle_rule": {
@@ -46,7 +50,7 @@
     "native_transport_receipt_authority", "rtl_authorities", "aer_clock_period_ps",
     "aer_cycle_zero_timestamp_ns", "timestamp_to_occurrence_cycle_rule", "projection"
   ],
-  "title": "REDRED Cluster2/CAV two-stream manifest v1",
+  "title": "REDRED Cluster2/CAV two-stream manifest v2",
   "type": "object",
   "$defs": {
     "artifact": {

@@ -12,7 +12,11 @@
     "schema": {"const": "redred.cluster2_cav_bridge.source_event/v1"},
     "sensor_ray": {"items": {"type": "number"}, "maxItems": 3, "minItems": 3, "type": "array"},
     "source_index": {"maximum": 15, "minimum": 0, "type": "integer"},
-    "timestamp_ns": {"minimum": 0, "type": "integer"},
+    "timestamp_ns": {
+      "maximum": 18446744073709551615,
+      "minimum": 0,
+      "type": "integer"
+    },
     "transform_guard_valid": {"type": "boolean"},
     "window_id": {"$ref": "#/$defs/identifier"}
   },

@@ -14,13 +14,22 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
-from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+from .transport_time import (
+    MAX_NATIVE_CYCLE,
+    MAX_SERIALIZED_TIMESTAMP_NS,
+    TRANSPORT_TIME_SEMANTICS,
+    DualTimeEvent,
+    TransportTimeValidationError,
+    build_dual_time_event,
+)
 
 
 SOURCE_EVENT_SCHEMA = "redred.cluster2_cav_bridge.source_event/v1"
 TRANSPORT_OUTCOME_SCHEMA = "redred.cluster2_cav_bridge.transport_outcome/v1"
-MANIFEST_SCHEMA = "redred.cluster2_cav_bridge.manifest/v1"
-PROJECTION_SCHEMA = "redred.cluster2_cav_bridge.four_view_projection/v1"
+MANIFEST_SCHEMA = "redred.cluster2_cav_bridge.manifest/v2"
+PROJECTION_SCHEMA = "redred.cluster2_cav_bridge.four_view_projection/v2"
 CANONICAL_JSONL_FORMAT = "canonical-jsonl/v1"
 TIMESTAMP_TO_OCCURRENCE_RULE = (
     "ceil_div((timestamp_ns-aer_cycle_zero_timestamp_ns)*1000,aer_clock_period_ps)"
@@ -78,6 +87,21 @@ def _nonnegative_int(value: object, where: str) -> int:
     if type(value) is not int or value < 0:
         raise BridgeValidationError("%s must be a non-negative integer" % where)
     return value
+
+
+def _bounded_nonnegative_int(value: object, where: str, maximum: int) -> int:
+    number = _nonnegative_int(value, where)
+    if number > maximum:
+        raise BridgeValidationError("%s exceeds maximum %d" % (where, maximum))
+    return number
+
+
+def _native_cycle(value: object, where: str) -> int:
+    return _bounded_nonnegative_int(value, where, MAX_NATIVE_CYCLE)
+
+
+def _serialized_timestamp_ns(value: object, where: str) -> int:
+    return _bounded_nonnegative_int(value, where, MAX_SERIALIZED_TIMESTAMP_NS)
 
 
 def _positive_int(value: object, where: str) -> int:
@@ -308,7 +332,7 @@ def validate_source_event(value: object) -> Mapping[str, object]:
         raise BridgeValidationError("source event schema differs")
     _nonnegative_int(event["event_id"], "source event event_id")
     _nonnegative_int(event["ordinal"], "source event ordinal")
-    _nonnegative_int(event["timestamp_ns"], "source event timestamp_ns")
+    _serialized_timestamp_ns(event["timestamp_ns"], "source event timestamp_ns")
     source_index = _nonnegative_int(event["source_index"], "source event source_index")
     if source_index > 15:
         raise BridgeValidationError("source event source_index must be in [0, 15]")
@@ -361,9 +385,9 @@ def validate_transport_outcome(value: object) -> Mapping[str, object]:
     source_index = _nonnegative_int(outcome["source_index"], "transport outcome source_index")
     if source_index > 15:
         raise BridgeValidationError("transport outcome source_index must be in [0, 15]")
-    _nonnegative_int(outcome["occurrence_cycle"], "transport outcome occurrence_cycle")
+    _native_cycle(outcome["occurrence_cycle"], "transport outcome occurrence_cycle")
     if outcome["outcome"] == "DELIVERED":
-        _nonnegative_int(outcome["retire_cycle"], "transport outcome retire_cycle")
+        _native_cycle(outcome["retire_cycle"], "transport outcome retire_cycle")
         lane = _nonnegative_int(
             outcome["retire_native_lane"],
             "transport outcome retire_native_lane",
@@ -470,7 +494,7 @@ def validate_manifest(value: object) -> Mapping[str, object]:
         raise BridgeValidationError(
             "manifest aer_clock_period_ps must be whole nanoseconds"
         )
-    _nonnegative_int(
+    _serialized_timestamp_ns(
         manifest["aer_cycle_zero_timestamp_ns"],
         "manifest aer_cycle_zero_timestamp_ns",
     )
@@ -497,21 +521,28 @@ def _ceil_occurrence_cycle(timestamp_ns: int, zero_ns: int, period_ps: int) -> i
     if timestamp_ns < zero_ns:
         raise BridgeValidationError("source timestamp precedes cycle zero")
     delta_ps = (timestamp_ns - zero_ns) * 1000
-    return (delta_ps + period_ps - 1) // period_ps
+    cycle = (delta_ps + period_ps - 1) // period_ps
+    return _native_cycle(cycle, "derived occurrence cycle")
 
 
-def _retire_timestamp_ns(retire_cycle: int, zero_ns: int, period_ps: int) -> int:
+def _physical_retire_timestamp_ns(
+    retire_cycle: int, zero_ns: int, period_ps: int
+) -> int:
     retire_delta_ps = retire_cycle * period_ps
     if retire_delta_ps % 1000:
         raise BridgeValidationError("CAV retire timestamp is not an integer nanosecond")
-    return zero_ns + retire_delta_ps // 1000
+    return _serialized_timestamp_ns(
+        zero_ns + retire_delta_ps // 1000,
+        "physical_retire_timestamp_ns",
+    )
 
 
 @dataclass(frozen=True)
 class JoinedEvent:
     source: Mapping[str, object]
     transport: Mapping[str, object]
-    derived_retire_timestamp_ns: object
+    physical_retire_timestamp_ns: Optional[int]
+    dual_time: Optional[DualTimeEvent]
 
 
 def _join_streams(
@@ -566,7 +597,8 @@ def _join_streams(
         if occurrence_slot in occurrence_slots:
             raise BridgeValidationError("multiple source events occupy one bitmap occurrence slot")
         occurrence_slots.add(occurrence_slot)
-        retire_ns = None  # type: object
+        physical_retire_ns = None  # type: Optional[int]
+        dual_time = None  # type: Optional[DualTimeEvent]
         if outcome["outcome"] == "DELIVERED":
             delivered_count += 1
             retire_cycle = outcome["retire_cycle"]
@@ -606,10 +638,25 @@ def _join_streams(
                     "two events occupy one native cycle-lane-column slot"
                 )
             retire_slots.add(retire_slot)
-            retire_ns = _retire_timestamp_ns(retire_cycle, zero_ns, period_ps)
+            physical_retire_ns = _physical_retire_timestamp_ns(
+                retire_cycle, zero_ns, period_ps
+            )
+            try:
+                dual_time = build_dual_time_event(
+                    event_timestamp_ns=source["timestamp_ns"],  # type: ignore[arg-type]
+                    occurrence_cycle=outcome["occurrence_cycle"],  # type: ignore[arg-type]
+                    retire_cycle=retire_cycle,
+                    clock_period_ps=period_ps,
+                )
+            except TransportTimeValidationError as error:
+                raise BridgeValidationError(
+                    "joined transport dual-time validation failed"
+                ) from error
         else:
             overrun_count += 1
-        joined.append(JoinedEvent(source, outcome, retire_ns))
+        joined.append(JoinedEvent(
+            source, outcome, physical_retire_ns, dual_time
+        ))
     if delivered_count + overrun_count != len(sources):
         raise BridgeValidationError("DELIVERED and OVERRUN do not partition the source stream")
     return tuple(joined)
@@ -652,25 +699,37 @@ def _project_joined(joined: Sequence[JoinedEvent]) -> Mapping[str, List[Mapping[
             row.transport["event_id"],
         ),
     )
-    aer_ret = [{
-        "projection_semantics": OBSERVATIONAL_JOIN_LABEL,
-        "event_id": row.transport["event_id"],
-        "source_index": row.transport["source_index"],
-        "occurrence_cycle": row.transport["occurrence_cycle"],
-        "occurrence_timestamp_ns": row.source["timestamp_ns"],
-        "retire_cycle": row.transport["retire_cycle"],
-        "retire_native_lane": row.transport["retire_native_lane"],
-        "retire_row": row.transport["retire_row"],
-        "retire_col": row.transport["retire_col"],
-        "derived_retire_timestamp_ns": row.derived_retire_timestamp_ns,
-        "window_id": row.source["window_id"],
-        "is_query": row.source["is_query"],
-        "polarity": row.source["polarity"],
-        "sensor_ray": list(row.source["sensor_ray"]),  # type: ignore[arg-type]
-        "causal_pose_source_index": row.source["causal_pose_source_index"],
-        "transform_guard_valid": row.source["transform_guard_valid"],
-        "event_content_sha256": row.source["event_content_sha256"],
-    } for row in retired]
+    aer_ret = []  # type: List[Mapping[str, object]]
+    for row in retired:
+        dual_time = row.dual_time
+        physical_retire_ns = row.physical_retire_timestamp_ns
+        if dual_time is None or physical_retire_ns is None:
+            raise BridgeValidationError("delivered row lacks dual-time validation")
+        aer_ret.append({
+            "projection_semantics": OBSERVATIONAL_JOIN_LABEL,
+            "transport_time_semantics": TRANSPORT_TIME_SEMANTICS,
+            "event_id": row.transport["event_id"],
+            "source_index": row.transport["source_index"],
+            "occurrence_cycle": row.transport["occurrence_cycle"],
+            "occurrence_timestamp_ns": row.source["timestamp_ns"],
+            "retire_cycle": row.transport["retire_cycle"],
+            "retire_native_lane": row.transport["retire_native_lane"],
+            "retire_row": row.transport["retire_row"],
+            "retire_col": row.transport["retire_col"],
+            "physical_retire_timestamp_ns": physical_retire_ns,
+            "latency_cycles": dual_time.latency_cycles,
+            "latency_ns": dual_time.latency_ns,
+            "latency_injected_timestamp_ns": (
+                dual_time.latency_injected_timestamp_ns
+            ),
+            "window_id": row.source["window_id"],
+            "is_query": row.source["is_query"],
+            "polarity": row.source["polarity"],
+            "sensor_ray": list(row.source["sensor_ray"]),  # type: ignore[arg-type]
+            "causal_pose_source_index": row.source["causal_pose_source_index"],
+            "transform_guard_valid": row.source["transform_guard_valid"],
+            "event_content_sha256": row.source["event_content_sha256"],
+        })
     return {
         "RAW4X4_ALL": raw_all,
         "RAW4X4_MATCHED": raw_matched,

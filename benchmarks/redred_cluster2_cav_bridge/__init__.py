@@ -39,6 +39,15 @@ from .native_ledger import (
     parse_native_ledger,
     verify_faer_checkout,
 )
+from .transport_time import (
+    MAX_NATIVE_CYCLE,
+    MAX_SERIALIZED_TIMESTAMP_NS,
+    TRANSPORT_TIME_SEMANTICS,
+    DualTimeEvent,
+    TransportTimeValidationError,
+    build_dual_time_event,
+    validate_dual_time_event,
+)
 
 __all__ = (
     "BridgeBundle",
@@ -76,4 +85,11 @@ __all__ = (
     "load_native_authority",
     "parse_native_ledger",
     "verify_faer_checkout",
+    "MAX_NATIVE_CYCLE",
+    "MAX_SERIALIZED_TIMESTAMP_NS",
+    "TRANSPORT_TIME_SEMANTICS",
+    "DualTimeEvent",
+    "TransportTimeValidationError",
+    "build_dual_time_event",
+    "validate_dual_time_event",
 )

@@ -6,8 +6,8 @@ manifest; the manifest hash-binds both JSONL streams, mapping, source-registry,
 pose-stream, native transport/simulator receipt, and all RTL artifacts
 (including `ganghee_cluster2_top`). Each authority is an opaque unique relative
 path plus full SHA-256. It also binds `aer_clock_period_ps`,
-`aer_cycle_zero_timestamp_ns`, the exact ceil mapping rule, and four projection
-names. There is no embedded or inferred latest Ganghee digest.
+`aer_cycle_zero_timestamp_ns`, the exact ceil mapping rule, and the v2 four-view
+projection contract. There is no embedded or inferred latest Ganghee digest.
 
 This scoped existing-CAV bridge accepts only whole-nanosecond AER clocks:
 `aer_clock_period_ps % 1000 == 0`. The intended bridge demonstration uses
@@ -54,8 +54,20 @@ Projection produces exactly:
 - `RAW4X4_ALL`: every source event;
 - `RAW4X4_MATCHED`: source events whose outcome is `DELIVERED`;
 - `AER_OCC`: occurrence cycle plus original timestamp and source sidecars;
-- `AER_RET`: occurrence timestamp retained separately from a labeled derived
-  integer-nanosecond retirement timestamp, plus the same source sidecars.
+- `AER_RET`: occurrence timestamp, physical cycle-derived retirement timestamp,
+  and latency-injected timestamp retained as three distinct values, plus the
+  same source sidecars and explicit transport latency.
+
+Projection v2 never overloads a derived timestamp name. For a whole-nanosecond
+clock period `P`, `physical_retire_timestamp_ns` is
+`aer_cycle_zero_timestamp_ns + retire_cycle * P`, while
+`latency_injected_timestamp_ns` is
+`occurrence_timestamp_ns + (retire_cycle - occurrence_cycle) * P`.
+`latency_cycles` and `latency_ns` record the latter interval separately. Every
+`AER_RET` row binds this interpretation with the exact label
+`TRANSPORT_LATENCY_INJECTION_NOT_PHYSICAL_REPLAY`. Native cycles are limited to
+`0..2^63-1`; serialized timestamps and nanosecond latency values are limited to
+`0..2^64-1`. The ambiguous v1 field `derived_retire_timestamp_ns` is absent.
 
 `AER_RET` rows are deterministic native retirement order:
 `(retire_cycle, retire_native_lane, retire_col, event_id)`. RAW diagnostics and
