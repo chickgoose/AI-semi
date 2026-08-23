@@ -9,8 +9,9 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
+import weakref
 
-from benchmarks.redred_mc_wtb_predictor_stage3 import screen108
+from benchmarks.redred_mc_wtb_predictor_stage3 import logical_cav_evaluator, screen108
 from benchmarks.redred_mc_wtb_predictor_stage3.rg3 import RG3_POLICY
 from benchmarks.redred_mc_wtb_predictor_stage3.screen108 import (
     Screen108Error,
@@ -21,6 +22,8 @@ from benchmarks.redred_mc_wtb_predictor_stage3.screen108 import (
 from benchmarks.redred_mc_wtb_predictor_stage3.so3_pll import SO3PLLConfig
 from benchmarks.redred_mc_wtb_predictor_stage3.logical_cav_evaluator import (
     evaluate_current_cav_registry,
+    evaluate_current_cav_registry_bounded,
+    verify_current_cav_evaluation_integrity_bounded,
 )
 from benchmarks.redred_mc_wtb_so3_axis_audit.evaluator import (
     NeutralEventInput,
@@ -170,13 +173,19 @@ def _fixture():
         },
         "selector_registry_sha256": ZERO_SHA,
         "selector_implementation_sha256": ZERO_SHA,
-        "projection_implementation_sha256": ZERO_SHA,
+        "projection_dependency_manifest": [{
+            "path": (
+                "benchmarks/redred_mc_wtb_so3_axis_audit/"
+                "stage3_new108_adapter.py"
+            ),
+            "sha256": ZERO_SHA,
+        }],
         "neutral_registry_sha256": canonical_sha256([
             row.to_mapping() for row in registries
         ]),
         "selector_labels_sidecar_sha256": canonical_sha256(labels),
         "window_count": 3,
-        "selected_event_count": 9,
+        "source_window_event_count": 9,
         "selected_pose_packet_count": 9,
         "aggregate_sha256": "1" * 64,
     }
@@ -298,6 +307,149 @@ class LockedScreen108Tests(unittest.TestCase):
         self.assertFalse(result["gate"]["rtl_ppa_authorized"])
         self.assertFalse(result["claim_scope"]["candidate_executed_by_runner"])
         self.assertRegex(verify_screen108_result_envelope(result), r"^[0-9a-f]{64}$")
+
+    def test_bounded_baseline_is_byte_equivalent_and_releases_partials(self):
+        bundle, full, output, frozen = _fixture()
+        real_evaluate = logical_cav_evaluator.evaluate_current_cav_registry
+        real_verify = logical_cav_evaluator.verify_current_cav_evaluation_integrity
+        evaluated_sizes = []
+        verified_sizes = []
+        partial_refs = []
+
+        def evaluate(registry, events, poses):
+            evaluated_sizes.append(len(registry))
+            result = real_evaluate(registry, events, poses)
+            partial_refs.append((
+                weakref.ref(result),
+                weakref.ref(result.windows[0].simulation),
+            ))
+            return result
+
+        def verify(partial):
+            verified_sizes.append(len(partial.windows))
+            return real_verify(partial)
+
+        with mock.patch.object(
+            logical_cav_evaluator, "evaluate_current_cav_registry", new=evaluate
+        ), mock.patch.object(
+            logical_cav_evaluator,
+            "verify_current_cav_evaluation_integrity",
+            new=verify,
+        ):
+            bounded = evaluate_current_cav_registry_bounded(
+                bundle.neutral_registry,
+                bundle.event_streams,
+                bundle.pose_streams,
+            )
+
+        self.assertEqual(evaluated_sizes, [1, 1, 1])
+        self.assertEqual(verified_sizes, [])
+        self.assertTrue(all(
+            evaluation() is None and simulation() is None
+            for evaluation, simulation in partial_refs
+        ))
+        self.assertEqual(bounded.registry_sha256, full.registry_sha256)
+        self.assertEqual(bounded.neutral_input_sha256, full.neutral_input_sha256)
+        self.assertEqual(bounded.query_events, full.query_events)
+        for compact, original in zip(bounded.windows, full.windows):
+            self.assertEqual(compact.registry, original.registry)
+            self.assertEqual(compact.input_events, original.input_events)
+            self.assertEqual(compact.input_poses, original.input_poses)
+            self.assertEqual(compact.query_events, original.query_events)
+            self.assertEqual(
+                compact.query_decisions_sha256,
+                original.query_decisions_sha256,
+            )
+            self.assertEqual(compact.simulation.records, original.simulation.records)
+            self.assertEqual(
+                compact.simulation.cycle_receipts_sha256,
+                original.simulation.cycle_receipts_sha256,
+            )
+            self.assertEqual(compact.simulation.cycle_receipts, ())
+            self.assertEqual(
+                compact.simulation,
+                replace(original.simulation, cycle_receipts=()),
+            )
+        replay_sizes = []
+
+        def replay(registry, events, poses):
+            replay_sizes.append(len(registry))
+            return real_evaluate(registry, events, poses)
+
+        with mock.patch.object(
+            logical_cav_evaluator, "evaluate_current_cav_registry", new=replay
+        ), mock.patch.object(
+            logical_cav_evaluator,
+            "verify_current_cav_evaluation_integrity",
+            side_effect=AssertionError("bounded verifier called the full verifier"),
+        ):
+            self.assertEqual(
+                verify_current_cav_evaluation_integrity_bounded(bounded),
+                full.neutral_input_sha256,
+            )
+        self.assertEqual(replay_sizes, [1, 1, 1])
+        full_result = screen108._evaluate_verified(
+            bundle, full, output, EXECUTABLE_SHA, CONFIG_SHA, _cncp(), frozen,
+            Path(__file__).resolve().parents[2],
+        )
+        bounded_result = screen108._evaluate_verified(
+            bundle, bounded, output, EXECUTABLE_SHA, CONFIG_SHA, _cncp(), frozen,
+            Path(__file__).resolve().parents[2],
+        )
+        self.assertEqual(bounded_result, full_result)
+
+    def test_v3_adapter_event_count_and_implementation_manifest_fail_closed(self):
+        bundle, baseline, output, frozen = _fixture()
+
+        def evaluate(seal):
+            return screen108._evaluate_verified(
+                replace(bundle, provenance_seal=seal),
+                baseline,
+                output,
+                EXECUTABLE_SHA,
+                CONFIG_SHA,
+                _cncp(),
+                frozen,
+                Path(__file__).resolve().parents[2],
+            )
+
+        for mutation in ("missing", "wrong"):
+            seal = deepcopy(bundle.provenance_seal)
+            if mutation == "missing":
+                del seal["source_window_event_count"]
+            else:
+                seal["source_window_event_count"] = 8
+            with self.subTest(event_count=mutation), self.assertRaisesRegex(
+                Screen108Error, "sealed event count"
+            ):
+                evaluate(seal)
+
+        target = (
+            "benchmarks/redred_mc_wtb_so3_axis_audit/"
+            "stage3_new108_adapter.py"
+        )
+        manifest_mutations = {
+            "missing_manifest": None,
+            "missing_target": [{"path": "wrong.py", "sha256": ZERO_SHA}],
+            "duplicate_target": [
+                {"path": target, "sha256": ZERO_SHA},
+                {"path": target, "sha256": ZERO_SHA},
+            ],
+            "extra_field": [
+                {"path": target, "sha256": ZERO_SHA, "extra": True},
+            ],
+            "bad_hash": [{"path": target, "sha256": "not-a-sha"}],
+        }
+        for mutation, manifest in manifest_mutations.items():
+            seal = deepcopy(bundle.provenance_seal)
+            if manifest is None:
+                del seal["projection_dependency_manifest"]
+            else:
+                seal["projection_dependency_manifest"] = manifest
+            with self.subTest(manifest=mutation), self.assertRaisesRegex(
+                Screen108Error, "dependency|SHA-256"
+            ):
+                evaluate(seal)
 
     def test_result_matches_exact_json_schema(self):
         try:
@@ -867,7 +1019,7 @@ class LockedScreen108Tests(unittest.TestCase):
                 "verify_stage3_new108_adapter",
                 return_value=bundle.provenance_seal["aggregate_sha256"],
             ) as verify, mock.patch.object(
-                screen108, "evaluate_current_cav_registry", return_value=baseline
+                screen108, "evaluate_current_cav_registry_bounded", return_value=baseline
             ) as evaluate, mock.patch.multiple(
                 screen108,
                 EXPECTED_LABEL_SIDECAR_SHA256=bundle.provenance_seal["selector_labels_sidecar_sha256"],

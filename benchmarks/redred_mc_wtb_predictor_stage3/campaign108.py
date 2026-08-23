@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import gc
 import hashlib
 import json
 import os
@@ -22,7 +23,7 @@ from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 from benchmarks.redred_mc_wtb_predictor_stage3.logical_cav_evaluator import (
     CAVRegistryEvaluation,
-    evaluate_current_cav_registry,
+    evaluate_current_cav_registry_bounded,
 )
 from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
     New108AdapterBundle,
@@ -324,6 +325,23 @@ def _neutral_baseline_view(
             NeutralCycleView(tuple(row.simulation.records)),
         ))
     return NeutralBaselineView(tuple(projected), _sha256(digest, "neutral input digest"))
+
+
+def _compact_neutral_baseline_view(
+    neutral: NeutralAdapterView,
+) -> NeutralBaselineView:
+    """Evaluate and compact one frozen baseline window at a time."""
+
+    compact = evaluate_current_cav_registry_bounded(
+        neutral.neutral_registry,
+        neutral.event_streams,
+        neutral.pose_streams,
+    )
+    try:
+        return _neutral_baseline_view(compact, neutral)
+    finally:
+        del compact
+        gc.collect()
 
 
 def _dispatch_rg3(
@@ -1126,10 +1144,7 @@ def _run_campaign108_attempt(
     bundle = _build_verified_stage3_adapter(Path(dataset_directory))
     neutral = _neutral_view(bundle)
     progress.failure_stage = "BASELINE_BUILD"
-    full_baseline = evaluate_current_cav_registry(
-        neutral.neutral_registry, neutral.event_streams, neutral.pose_streams,
-    )
-    baseline = _neutral_baseline_view(full_baseline, neutral)
+    baseline = _compact_neutral_baseline_view(neutral)
     progress.failure_stage = "NEUTRAL_BINDING"
     neutral_digest = _neutral_projection_sha256(neutral)
     if neutral_digest != baseline.neutral_input_sha256:

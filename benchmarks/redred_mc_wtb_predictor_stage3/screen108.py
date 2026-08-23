@@ -29,8 +29,8 @@ from benchmarks.redred_mc_wtb_predictor_stage3 import logical_cav_evaluator as c
 from benchmarks.redred_mc_wtb_predictor_stage3.logical_cav_evaluator import (
     CAVRegistryEvaluation,
     CurrentCAVEvaluationError,
-    evaluate_current_cav_registry,
-    verify_current_cav_evaluation_integrity,
+    evaluate_current_cav_registry_bounded,
+    verify_current_cav_evaluation_integrity_bounded,
 )
 from benchmarks.redred_mc_wtb_so3_axis_audit.new108_adapter import (
     New108AdapterBundle,
@@ -57,7 +57,10 @@ MOTION_BINS = ("LOW", "MID", "HIGH")
 # query cohort and reporting labels remain fixed by these selector authorities.
 EXPECTED_LABEL_SIDECAR_SHA256 = "2dd3be5aba43610bef999c2491978d3abb39b206cfa6c53cb658cee43c2b3ecb"
 EXPECTED_SELECTOR_REGISTRY_SHA256 = "4d022cfde62c609c19c275add2e374d656babde3d4e1e6e1a849c5f384bb7e0d"
-EXPECTED_EVALUATOR_SHA256 = "c27228df4dabb4db4db345c2f184edf9411086654cda653aaccd0ccb3e83ba33"
+EXPECTED_EVALUATOR_SHA256 = "e6d23fd426817c14f41052f288841bfe11750d8b96eec5f02eb7e557c82aa462"
+_STAGE3_ADAPTER_IMPLEMENTATION_PATH = (
+    "benchmarks/redred_mc_wtb_so3_axis_audit/stage3_new108_adapter.py"
+)
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTIFIER = re.compile(
@@ -165,6 +168,22 @@ def _identifier(value: object, where: str) -> str:
     if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
         raise Screen108Error("%s is not a canonical identifier" % where)
     return value
+
+
+def _adapter_implementation_sha256(seal: Mapping[str, object]) -> str:
+    dependencies = seal.get("projection_dependency_manifest")
+    if not isinstance(dependencies, list):
+        raise Screen108Error("adapter projection dependency manifest differs")
+    matches = [
+        row for row in dependencies
+        if isinstance(row, Mapping)
+        and row.get("path") == _STAGE3_ADAPTER_IMPLEMENTATION_PATH
+    ]
+    if len(matches) != 1 or frozenset(matches[0]) != frozenset(("path", "sha256")):
+        raise Screen108Error("adapter implementation dependency differs")
+    return _sha256(
+        matches[0].get("sha256"), "adapter implementation dependency digest"
+    )
 
 
 def _nonnegative_int(value: object, where: str) -> int:
@@ -754,7 +773,7 @@ def _evaluate_verified(
     if type(bundle) is not New108AdapterBundle:
         raise Screen108Error("NEW108 adapter bundle type differs")
     try:
-        verified_input = verify_current_cav_evaluation_integrity(baseline)
+        verified_input = verify_current_cav_evaluation_integrity_bounded(baseline)
     except CurrentCAVEvaluationError as exc:
         raise Screen108Error("current CAV evaluation integrity differs") from exc
     if verified_input != baseline.neutral_input_sha256:
@@ -773,10 +792,13 @@ def _evaluate_verified(
     seal = bundle.provenance_seal
     if seal.get("window_count") != len(baseline.windows):
         raise Screen108Error("adapter sealed window count differs")
-    if seal.get("selected_event_count") != sum(len(window.input_events) for window in baseline.windows):
+    if seal.get("source_window_event_count") != sum(
+        len(window.input_events) for window in baseline.windows
+    ):
         raise Screen108Error("adapter sealed event count differs")
     if seal.get("selector_labels_sidecar_sha256") != canonical_sha256(bundle.selector_labels):
         raise Screen108Error("selector label sidecar seal differs")
+    adapter_implementation_sha256 = _adapter_implementation_sha256(seal)
 
     metric_windows = []
     result_windows = []
@@ -845,7 +867,7 @@ def _evaluate_verified(
         "selector_registry_sha256": seal["selector_registry_sha256"],
         "selector_implementation_sha256": seal["selector_implementation_sha256"],
         "adapter_aggregate_sha256": seal["aggregate_sha256"],
-        "adapter_implementation_sha256": seal["projection_implementation_sha256"],
+        "adapter_implementation_sha256": adapter_implementation_sha256,
         "neutral_registry_sha256": seal["neutral_registry_sha256"],
         "selector_labels_sidecar_sha256": seal["selector_labels_sidecar_sha256"],
         "neutral_input_sha256": baseline.neutral_input_sha256,
@@ -1163,7 +1185,7 @@ def run_locked_screen108(
         for window in bundle.neutral_registry
     ):
         raise Screen108Error("Stage3 NEW108 cohort does not retain 50 ms pre-roll")
-    baseline = evaluate_current_cav_registry(
+    baseline = evaluate_current_cav_registry_bounded(
         bundle.neutral_registry, bundle.event_streams, bundle.pose_streams,
     )
     candidate_output = _json_object(

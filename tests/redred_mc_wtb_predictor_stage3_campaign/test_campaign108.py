@@ -332,7 +332,7 @@ class Campaign108Tests(unittest.TestCase):
             return_value=bundle.provenance_seal["aggregate_sha256"],
         ))
         stack.enter_context(mock.patch.object(
-            campaign108, "evaluate_current_cav_registry", return_value=baseline
+            campaign108, "evaluate_current_cav_registry_bounded", return_value=baseline
         ))
         stack.enter_context(mock.patch.object(
             campaign108, "_project_native_output", side_effect=projector

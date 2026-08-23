@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+import gc
 import hashlib
 import importlib.util
 from pathlib import Path
@@ -165,6 +167,73 @@ def evaluate_current_cav_registry(
     return result
 
 
+def _compact_window(window: object) -> object:
+    """Drop replayed cycle receipts after their digest has been verified."""
+
+    return CAVWindowEvaluation(
+        window.registry,  # type: ignore[attr-defined]
+        window.input_events,  # type: ignore[attr-defined]
+        window.input_poses,  # type: ignore[attr-defined]
+        replace(window.simulation, cycle_receipts=()),  # type: ignore[attr-defined]
+        window.query_events,  # type: ignore[attr-defined]
+        window.query_decisions_sha256,  # type: ignore[attr-defined]
+    )
+
+
+def _aggregate_compact_windows(windows: Sequence[object]) -> object:
+    event_ids = tuple(
+        event.decision.event_id  # type: ignore[attr-defined]
+        for window in windows
+        for event in window.query_events  # type: ignore[attr-defined]
+    )
+    if len(set(event_ids)) != len(event_ids):
+        raise CurrentCAVEvaluationError(
+            "query event IDs repeat across registry windows"
+        )
+    registry_mapping = [
+        window.registry.to_mapping() for window in windows  # type: ignore[attr-defined]
+    ]
+    result = CAVRegistryEvaluation(
+        canonical_sha256(registry_mapping),
+        canonical_sha256(_IMPLEMENTATION._neutral_input_mapping(windows)),
+        tuple(windows),
+    )
+    _ = result.all_event_effect
+    return result
+
+
+def evaluate_current_cav_registry_bounded(
+    registry: Sequence[object],
+    event_streams: Mapping[str, Sequence[object]],
+    pose_streams: Mapping[str, Sequence[object]],
+) -> object:
+    """Evaluate, verify, and compact an ordered registry one window at a time."""
+
+    rows = tuple(registry)
+    if not rows:
+        raise CurrentCAVEvaluationError("registry must contain neutral windows")
+    identifiers = tuple(row.window_id for row in rows)  # type: ignore[attr-defined]
+    expected = set(identifiers)
+    if len(expected) != len(identifiers):
+        raise CurrentCAVEvaluationError("neutral registry window IDs are duplicated")
+    if set(event_streams) != expected or set(pose_streams) != expected:
+        raise CurrentCAVEvaluationError(
+            "stream window IDs differ from neutral registry"
+        )
+
+    compact_windows = []
+    for row, identifier in zip(rows, identifiers):
+        partial = evaluate_current_cav_registry(
+            (row,),
+            {identifier: event_streams[identifier]},
+            {identifier: pose_streams[identifier]},
+        )
+        compact_windows.append(_compact_window(partial.windows[0]))
+        del partial
+        gc.collect()
+    return _aggregate_compact_windows(compact_windows)
+
+
 def verify_current_cav_evaluation_integrity(evaluation: object) -> str:
     """Replay a Stage3 logical evaluation without profile auto-detection."""
 
@@ -172,6 +241,46 @@ def verify_current_cav_evaluation_integrity(evaluation: object) -> str:
     result = module.verify_current_cav_evaluation_integrity(evaluation)
     _verify_frozen_evaluator()
     return result
+
+
+def verify_current_cav_evaluation_integrity_bounded(evaluation: object) -> str:
+    """Reopen a full or receipt-compacted evaluation by singleton replay."""
+
+    if (
+        type(evaluation) is not CAVRegistryEvaluation
+        or frozenset(vars(evaluation))
+        != frozenset(("registry_sha256", "neutral_input_sha256", "windows"))
+        or type(evaluation.windows) is not tuple
+        or not evaluation.windows
+    ):
+        raise CurrentCAVEvaluationError("registry evaluation shape differs")
+
+    supplied_windows = evaluation.windows
+    for supplied in supplied_windows:
+        if type(supplied) is not CAVWindowEvaluation:
+            raise CurrentCAVEvaluationError("window evaluation shape differs")
+        identifier = supplied.registry.window_id
+        replayed = evaluate_current_cav_registry(
+            (supplied.registry,),
+            {identifier: supplied.input_events},
+            {identifier: supplied.input_poses},
+        )
+        expected = replayed.windows[0]
+        compact = _compact_window(expected)
+        if supplied != expected and supplied != compact:
+            raise CurrentCAVEvaluationError(
+                "%s compact evaluation differs from singleton replay" % identifier
+            )
+        del compact, expected, replayed
+        gc.collect()
+
+    aggregate = _aggregate_compact_windows(supplied_windows)
+    if (
+        evaluation.registry_sha256 != aggregate.registry_sha256
+        or evaluation.neutral_input_sha256 != aggregate.neutral_input_sha256
+    ):
+        raise CurrentCAVEvaluationError("aggregate compact evaluation differs")
+    return evaluation.neutral_input_sha256
 
 
 def logical_evaluator_authority() -> Dict[str, object]:
@@ -205,6 +314,8 @@ __all__ = (
     "NeutralPoseInput",
     "NeutralRegistryWindow",
     "evaluate_current_cav_registry",
+    "evaluate_current_cav_registry_bounded",
     "logical_evaluator_authority",
     "verify_current_cav_evaluation_integrity",
+    "verify_current_cav_evaluation_integrity_bounded",
 )
