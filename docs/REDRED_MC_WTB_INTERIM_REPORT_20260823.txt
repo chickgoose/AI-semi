@@ -130,6 +130,17 @@ SO3-PLL:
 - screen108도 같은 full baseline을 다시 만들고 전체 replay 검증하므로 campaign만
   고치면 두 번째 OOM이 발생할 수 있음
 
+후속 source audit에서 별도의 fail-closed schema mismatch도 확인됐다.
+
+- Stage3 adapter v3 seal은 event count를 source_window_event_count로 제공
+- 현재 screen108은 존재하지 않는 selected_event_count를 조회
+- adapter implementation hash도 top-level 필드가 아니라 sealed dependency manifest에
+  있는데 screen108이 존재하지 않는 projection_implementation_sha256을 조회
+
+따라서 memory 문제만 없었어도 현재 publication commit의 real screen은 provenance
+검증 단계에서 중단됐을 가능성이 높다. 이 항목도 metric·후보 로직과 분리된 공통
+infrastructure compatibility fix로 함께 수정하고 mutation test를 추가한다.
+
 7. 현재 수정 중인 범위
 
 목표는 metric이나 후보 파라미터를 바꾸는 것이 아니라 동일 결과를 bounded memory로
