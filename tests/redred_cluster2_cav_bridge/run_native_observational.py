@@ -87,9 +87,9 @@ def _run(command, log_path: Path, output_root: Path) -> str:
 def _git_worktree_status(root: Path, required: bool):
     try:
         completed = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain=v1",
-             "--untracked-files=all", "-z"],
+            ["git", "status", "--porcelain=v1", "--untracked-files=all", "-z"],
             check=False,
+            cwd=str(root),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
