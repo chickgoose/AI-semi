@@ -1,5 +1,5 @@
 REDRED MC-WTB / CAV+ 중간보고
-기준 시각: 2026-08-23 16:00 KST
+기준 시각: 2026-08-23 16:20 KST
 문서 성격: 팀 미팅 전 공유용 중간 상태, 최종 후보 판정 아님
 
 1. 한 줄 요약
@@ -30,8 +30,16 @@ c050edb5b426a34cf825ba6447758699c41785ae
 - execution_input/v3 query path
 - deterministic replay, HOLD-only refreeze, clean-process 및 post-output oracle 코드
 
-현재 진행 중인 memory-bounded 수정은 아직 publication commit에 포함되지 않았다.
-수정·회귀검증이 끝난 뒤 별도 공개 commit으로 올릴 예정이다.
+Memory-bounded compatibility fix:
+
+- public branch: origin/dev/mcwtb-campaign-memory-bounded
+- code commit: f4463e066cafd983e9adbb876e0410baad76248c
+- current branch head with independent contract tests:
+  f1bad9ac217805cf88a5d4fd84ad829d95ee255e
+
+이 수정은 별도 공개 commit으로 올라갔고 synthetic 회귀검증까지 통과했다. 다만 실제
+NEW108 capped-memory 재실행은 아직 하지 않았으므로 publication source를 대체하거나
+16 GiB 호환성이 실증됐다고 주장하지 않는다.
 
 3. 교수님 Q&A와 문제 정의
 
@@ -141,21 +149,35 @@ SO3-PLL:
 검증 단계에서 중단됐을 가능성이 높다. 이 항목도 metric·후보 로직과 분리된 공통
 infrastructure compatibility fix로 함께 수정하고 mutation test를 추가한다.
 
-7. 현재 수정 중인 범위
+7. Memory-bounded compatibility fix 상태
 
 목표는 metric이나 후보 파라미터를 바꾸는 것이 아니라 동일 결과를 bounded memory로
 재현하는 것이다.
 
-- 기존 frozen evaluator를 window별 singleton 입력으로 그대로 호출
-- 각 window를 독립 integrity verification
+- 기존 frozen evaluator를 window별 singleton 입력으로 그대로 호출해 compact 결과 생성
+- screen 단계의 bounded verifier가 각 window를 singleton replay로 별도 검증
 - 다음 window로 넘어가기 전에 대형 cycle receipt 폐기
 - exact registry/input/query decision/loss와 simulation record digest는 보존
 - campaign108과 screen108가 같은 compact baseline builder/verifier를 사용
-- 원래 결과·artifact·receipt byte equivalence를 synthetic fixture에서 검증
+- full/compact screen 결과와 native artifact의 의미·직렬화 동등성을 synthetic fixture에서 검증
 - Python 3.8 grammar와 append-only/fail-closed 동작 유지
 - 실제 NEW108 재실행 전 peak RSS 기준을 확인
 
 이 수정은 모델 성능 튜닝이 아니라 로컬·서버 간 실행 호환성을 위한 infrastructure fix다.
+코드와 synthetic 검증에서 현재 확인된 범위는 다음과 같다.
+
+- synthetic tests total: 55 PASS, 1 SKIP
+- campaign108 + screen108: 42 PASS
+- Stage3 adapter + screen projection: 13 PASS, 1 SKIP
+- independent bounded-lifetime/entry-path contract tests: 3 PASS
+- full/compact screen 결과 byte-equivalence: PASS on synthetic fixtures
+- singleton rich evaluation release weak-reference check: PASS
+- synthetic measured maximum RSS: 40,108 KiB
+- code commit: f4463e066cafd983e9adbb876e0410baad76248c
+- tested branch head: f1bad9ac217805cf88a5d4fd84ad829d95ee255e
+
+위 synthetic RSS는 실제 88,028-event NEW108 최대 메모리의 증거가 아니다. real NEW108를
+별도 recovery output에서 한 후보씩 순차 실행해 OOM이 재발하지 않는지 확인해야 한다.
 
 8. 현재 증거 상태
 
@@ -166,7 +188,9 @@ SO(3) axis audit | PASS: 61/67, 6 skip, 0 failure
 public fresh-clone core regression | PASS: 89/90, 1 skip
 current-CAV NEW108 baseline | DESCRIPTIVE_MEASUREMENT_PRESENT
 candidate NEW108 score/result | NOT_PRODUCED_PRE_SCORE_OOM
-memory-bounded compatibility fix | IN_PROGRESS
+memory-bounded compatibility code | COMMITTED_AND_PUBLIC
+synthetic bounded-memory regression | PASS
+real NEW108 capped-memory acceptance | NOT_RUN
 cross-candidate comparison authority | NOT_AUTHORIZED
 full-stream stability | NOT_IMPLEMENTED
 generalization | HOLD
@@ -221,12 +245,11 @@ event warping, constant-velocity/acceleration, model bank, PLL/feedback 자체�
 
 11. 다음 작업과 오늘 목표
 
-1) bounded-memory 공통 baseline builder/verifier 구현
-2) synthetic byte-equivalence, mutation, Python 3.8, peak-lifetime 검증
-3) score를 보지 못한 세 후보를 순차 resource-recovery measurement
-4) fixed metric gate로 최대 두 engineering finalist 또는 전 후보 STOP 권고
-5) 상세 현황·브리프·결과 요약을 공개 commit으로 push
-6) fresh clone에서 문서·코드·핵심 테스트 재검증
+1) 실제 NEW108 단일후보 dry-run으로 capped-memory acceptance 확인
+2) score를 보지 못한 세 후보를 한 번에 하나씩 순차 resource-recovery measurement
+3) fixed metric gate로 최대 두 engineering finalist 또는 전 후보 STOP 권고
+4) 상세 현황·브리프·결과 요약을 공개 commit으로 push
+5) fresh clone에서 문서·코드·핵심 테스트 재검증
 
 오늘 가능한 최대 결론은 consumed development cohort에서의 descriptive engineering
 recommendation이다. cross-candidate 공식 comparison authority는 없고, sole development
