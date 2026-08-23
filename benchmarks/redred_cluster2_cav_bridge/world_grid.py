@@ -105,6 +105,23 @@ def _elevation_bin(elevation: float, height: int) -> int:
     return result
 
 
+def _exact_finite_angle(
+    value: object,
+    where: str,
+    lower: float,
+    upper: float,
+    upper_inclusive: bool,
+) -> float:
+    """Return an exact built-in float before any caller-controlled operation."""
+
+    if type(value) is not float or not math.isfinite(value):
+        raise WorldGridError("%s must be an exact finite float" % where)
+    in_range = lower <= value <= upper if upper_inclusive else lower <= value < upper
+    if not in_range:
+        raise WorldGridError("%s lies outside its spherical range" % where)
+    return value
+
+
 @dataclass(frozen=True)
 class WorldGridCoordinate:
     """One validated cell in the explicit equirectangular convention."""
@@ -127,25 +144,19 @@ class WorldGridCoordinate:
             raise WorldGridError("y lies outside the world grid")
         if type(self.index) is not int or self.index != self.y * width + self.x:
             raise WorldGridError("index differs from row-major x/y coordinates")
-        if (
-            not isinstance(self.azimuth_rad, float)
-            or not math.isfinite(self.azimuth_rad)
-            or not -math.pi <= self.azimuth_rad < math.pi
-        ):
-            raise WorldGridError("azimuth lies outside [-pi, pi)")
-        if (
-            not isinstance(self.elevation_rad, float)
-            or not math.isfinite(self.elevation_rad)
-            or not -0.5 * math.pi <= self.elevation_rad <= 0.5 * math.pi
-        ):
-            raise WorldGridError("elevation lies outside [-pi/2, pi/2]")
+        azimuth = _exact_finite_angle(
+            self.azimuth_rad, "azimuth", -math.pi, math.pi, False
+        )
+        elevation = _exact_finite_angle(
+            self.elevation_rad, "elevation", -_HALF_PI, _HALF_PI, True
+        )
         if self.coordinate_convention != COORDINATE_CONVENTION:
             raise WorldGridError("coordinate convention differs")
-        exact_pole = abs(self.elevation_rad) == _HALF_PI
-        if exact_pole and (self.azimuth_rad != -math.pi or self.x != 0):
+        exact_pole = abs(elevation) == _HALF_PI
+        if exact_pole and (azimuth != -math.pi or self.x != 0):
             raise WorldGridError("exact poles must use canonical azimuth and x=0")
-        expected_x = _azimuth_bin(self.azimuth_rad, width)
-        expected_y = _elevation_bin(self.elevation_rad, height)
+        expected_x = _azimuth_bin(azimuth, width)
+        expected_y = _elevation_bin(elevation, height)
         if self.x != expected_x or self.y != expected_y:
             raise WorldGridError("x/y differ from the supplied spherical angles")
 

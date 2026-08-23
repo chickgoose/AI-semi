@@ -172,6 +172,39 @@ class WorldGridQuantizationTest(unittest.TestCase):
                 with self.assertRaises(WorldGridError):
                     WorldGridCoordinate(**mutation)
 
+    def test_direct_constructor_rejects_float_subclass_operator_overrides(self):
+        class AddMutatingFloat(float):
+            def __add__(self, other):
+                return 0.0
+
+        class ComparisonMutatingFloat(float):
+            def __le__(self, other):
+                return True
+
+            def __lt__(self, other):
+                return True
+
+            def __ge__(self, other):
+                return True
+
+        base = dict(
+            x=2,
+            y=1,
+            index=6,
+            width=4,
+            height=3,
+            azimuth_rad=0.0,
+            elevation_rad=0.0,
+        )
+        mutations = (
+            dict(base, x=0, index=4, azimuth_rad=AddMutatingFloat(0.0)),
+            dict(base, elevation_rad=ComparisonMutatingFloat(0.0)),
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(WorldGridError):
+                    WorldGridCoordinate(**mutation)
+
 
 if __name__ == "__main__":
     unittest.main()
