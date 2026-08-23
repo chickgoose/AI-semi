@@ -1,14 +1,15 @@
 REDRED MC-WTB / CAV+ 중간보고
-기준 시각: 2026-08-23 16:20 KST
+기준 시각: 2026-08-23 19:35 KST
 문서 성격: 팀 미팅 전 공유용 중간 상태, 최종 후보 판정 아님
 
 1. 한 줄 요약
 
 rotation-only MC-WTB baseline과 RG3-CAV·DSPB·SO3-PLL model/query 경로는 구현됐고
-current CAV의 NEW108 효과도 측정됐다. 그러나 세 후보 실측 runner가 108-window의
-대형 cycle receipt를 한 프로세스에 보존해 16 GiB 환경에서 score 이전 OOM이 발생했다.
-현재 후보 알고리즘을 튜닝하는 것이 아니라 동일 결과를 유지하는 bounded-memory 공통
-baseline 생성·검증 경로를 수정하고 있다.
+current CAV의 NEW108 효과도 측정됐다. 1차 bounded-memory 수정은 cycle receipt 전체
+누적을 줄였지만, actual RG3에서 살아 있는 compact baseline과 native output 전체
+canonical serialization이 겹쳐 8 GiB 안전 제한에 도달했다. score·label 접근 전
+fail-closed 종료됐으며, 현재 후보 알고리즘이 아니라 phase lifetime과 streaming
+serialization을 수정하고 있다.
 
 2. 팀원이 확인할 공개 코드 기준
 
@@ -179,6 +180,23 @@ infrastructure compatibility fix로 함께 수정하고 mutation test를 추가�
 위 synthetic RSS는 실제 88,028-event NEW108 최대 메모리의 증거가 아니다. real NEW108를
 별도 recovery output에서 한 후보씩 순차 실행해 OOM이 재발하지 않는지 확인해야 한다.
 
+2026-08-23 actual RG3 8 GiB acceptance 결과:
+
+- elapsed wall time: 42:03.27
+- maximum RSS: 8,260,256 KiB
+- exit: fail-closed MemoryError
+- failure stage: PRODUCTION_ADAPTER
+- native output sealed: false
+- screen started: false
+- score computed: false
+- labels accessed: false
+- verified failure receipt SHA-256:
+  8d42143b0a7c8942c749512bc8422a7cabd86559e947c1fec427204423d386f2
+
+즉 1차 수정은 baseline receipt 누적 문제를 줄였지만 complete campaign 8 GiB 호환성은
+FAIL이다. 다음 수정은 parent compact baseline, candidate rich body, canonical JSON 전체
+복사본의 lifetime을 겹치지 않게 하고 worker/source authority를 receipt에 결속해야 한다.
+
 8. 현재 증거 상태
 
 Evidence class | Current status
@@ -190,7 +208,7 @@ current-CAV NEW108 baseline | DESCRIPTIVE_MEASUREMENT_PRESENT
 candidate NEW108 score/result | NOT_PRODUCED_PRE_SCORE_OOM
 memory-bounded compatibility code | COMMITTED_AND_PUBLIC
 synthetic bounded-memory regression | PASS
-real NEW108 capped-memory acceptance | NOT_RUN
+real NEW108 capped-memory acceptance | FAIL_AT_8_GiB_PRE_SCORE
 cross-candidate comparison authority | NOT_AUTHORIZED
 full-stream stability | NOT_IMPLEMENTED
 generalization | HOLD
@@ -245,11 +263,12 @@ event warping, constant-velocity/acceleration, model bank, PLL/feedback 자체�
 
 11. 다음 작업과 오늘 목표
 
-1) 실제 NEW108 단일후보 dry-run으로 capped-memory acceptance 확인
-2) score를 보지 못한 세 후보를 한 번에 하나씩 순차 resource-recovery measurement
-3) fixed metric gate로 최대 두 engineering finalist 또는 전 후보 STOP 권고
-4) 상세 현황·브리프·결과 요약을 공개 commit으로 push
-5) fresh clone에서 문서·코드·핵심 테스트 재검증
+1) baseline/candidate/screen lifetime 분리와 bounded canonical serialization 구현
+2) worker source/runtime/response digest를 append-only receipt authority에 결속
+3) 새 authority에서 actual RG3 capped-memory acceptance 재실행
+4) 성공 후 세 후보를 한 번에 하나씩 순차 resource-recovery measurement
+5) fixed metric gate로 최대 두 engineering finalist 또는 전 후보 STOP 권고
+6) 상세 현황·브리프·결과 요약 공개 및 fresh-clone 재검증
 
 오늘 가능한 최대 결론은 consumed development cohort에서의 descriptive engineering
 recommendation이다. cross-candidate 공식 comparison authority는 없고, sole development
