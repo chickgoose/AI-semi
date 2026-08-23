@@ -1,0 +1,86 @@
+{
+  "$id": "https://redred.invalid/schemas/cluster2_cav_bridge_manifest_v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bridge_id": {"$ref": "#/$defs/identifier"},
+    "clock_period_ps": {"minimum": 1, "type": "integer"},
+    "cycle_zero_timestamp_ns": {"minimum": 0, "type": "integer"},
+    "mapping_authority": {"$ref": "#/$defs/artifact"},
+    "projection": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {"const": "redred.cluster2_cav_bridge.four_view_projection/v1"},
+        "views": {"const": ["RAW4X4_ALL", "RAW4X4_MATCHED", "AER_OCC", "AER_RET"]}
+      },
+      "required": ["schema", "views"],
+      "type": "object"
+    },
+    "rtl_authorities": {
+      "contains": {
+        "properties": {"role": {"const": "ganghee_cluster2_top"}},
+        "required": ["role"]
+      },
+      "items": {"$ref": "#/$defs/rtlArtifact"},
+      "minContains": 1,
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "schema": {"const": "redred.cluster2_cav_bridge.manifest/v1"},
+    "source_events": {"$ref": "#/$defs/stream"},
+    "timestamp_to_occurrence_cycle_rule": {
+      "const": "ceil_div((timestamp_ns-cycle_zero_timestamp_ns)*1000,clock_period_ps)"
+    },
+    "transport_outcomes": {"$ref": "#/$defs/stream"}
+  },
+  "required": [
+    "schema", "bridge_id", "source_events", "transport_outcomes",
+    "mapping_authority", "rtl_authorities", "clock_period_ps",
+    "cycle_zero_timestamp_ns", "timestamp_to_occurrence_cycle_rule", "projection"
+  ],
+  "title": "REDRED Cluster2/CAV two-stream manifest v1",
+  "type": "object",
+  "$defs": {
+    "artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "required": ["path", "sha256"],
+      "type": "object"
+    },
+    "identifier": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", "type": "string"},
+    "relativePath": {
+      "allOf": [
+        {"not": {"pattern": "(^|/)\\.\\.?(/|$)"}},
+        {"not": {"pattern": "^/|\\\\"}}
+      ],
+      "minLength": 1,
+      "type": "string"
+    },
+    "rtlArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "role": {"$ref": "#/$defs/identifier"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "required": ["role", "path", "sha256"],
+      "type": "object"
+    },
+    "sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "stream": {
+      "additionalProperties": false,
+      "properties": {
+        "event_count": {"maximum": 1000000, "minimum": 1, "type": "integer"},
+        "format": {"const": "canonical-jsonl/v1"},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "required": ["format", "path", "sha256", "event_count"],
+      "type": "object"
+    }
+  }
+}

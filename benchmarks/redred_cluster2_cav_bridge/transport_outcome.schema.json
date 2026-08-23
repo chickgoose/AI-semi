@@ -1,0 +1,36 @@
+{
+  "$id": "https://redred.invalid/schemas/cluster2_cav_bridge_transport_outcome_v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"outcome": {"const": "DELIVERED"}}},
+      "then": {"properties": {
+        "retire_cycle": {"minimum": 0, "type": "integer"},
+        "retire_lane": {"maximum": 1, "minimum": 0, "type": "integer"}
+      }}
+    },
+    {
+      "if": {"properties": {"outcome": {"const": "OVERRUN"}}},
+      "then": {"properties": {
+        "retire_cycle": {"type": "null"},
+        "retire_lane": {"type": "null"}
+      }}
+    }
+  ],
+  "properties": {
+    "event_id": {"minimum": 0, "type": "integer"},
+    "occurrence_cycle": {"minimum": 0, "type": "integer"},
+    "outcome": {"enum": ["DELIVERED", "OVERRUN"]},
+    "retire_cycle": {"type": ["integer", "null"]},
+    "retire_lane": {"type": ["integer", "null"]},
+    "schema": {"const": "redred.cluster2_cav_bridge.transport_outcome/v1"},
+    "source_index": {"maximum": 15, "minimum": 0, "type": "integer"}
+  },
+  "required": [
+    "schema", "event_id", "source_index", "occurrence_cycle", "outcome",
+    "retire_cycle", "retire_lane"
+  ],
+  "title": "REDRED Cluster2 transport outcome v1",
+  "type": "object"
+}
