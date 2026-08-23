@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import tarfile
+import zlib
 from typing import Dict, List, Mapping, Sequence, Tuple
 
 
@@ -38,8 +39,10 @@ SEALED_BUNDLE_SHA256 = (
 
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
-MAX_EXPANDED_BYTES = 128 * 1024 * 1024
+MAX_DECOMPRESSED_TAR_BYTES = 16 * 1024 * 1024
+MAX_EXPANDED_BYTES = 16 * 1024 * 1024
 MAX_TAR_HEADER_BYTES = 64 * 1024
+GZIP_INPUT_CHUNK_BYTES = 64 * 1024
 MAX_RECORDS = 1_000_000
 MAX_CYCLE = (1 << 63) - 1
 NATIVE_DRAIN_LIMIT = 100_000
@@ -406,10 +409,77 @@ def _validate_receipt(value: object) -> Mapping[str, object]:
     return receipt
 
 
+def _bounded_gzip_tar(payload: bytes) -> bytes:
+    if not payload or len(payload) > MAX_FILE_BYTES:
+        _fail("gzip artifact bundle must be non-empty and bounded")
+    output = []  # type: List[bytes]
+    produced_bytes = 0
+    offset = 0
+    try:
+        decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        while offset < len(payload):
+            if decompressor.eof:
+                _fail("gzip artifact bundle contains trailing or multiple streams")
+            pending = payload[offset:offset + GZIP_INPUT_CHUNK_BYTES]
+            offset += len(pending)
+            while pending:
+                prior_length = len(pending)
+                produced = decompressor.decompress(
+                    pending,
+                    MAX_DECOMPRESSED_TAR_BYTES - produced_bytes + 1,
+                )
+                if produced:
+                    output.append(produced)
+                    produced_bytes += len(produced)
+                    if produced_bytes > MAX_DECOMPRESSED_TAR_BYTES:
+                        _fail("decompressed tar exceeds explicit byte limit")
+                pending = decompressor.unconsumed_tail
+                if decompressor.unused_data:
+                    _fail("gzip artifact bundle contains trailing or multiple streams")
+                if decompressor.eof:
+                    if pending or offset != len(payload):
+                        _fail(
+                            "gzip artifact bundle contains trailing or multiple streams"
+                        )
+                    break
+                if pending and len(pending) >= prior_length and not produced:
+                    _fail("gzip artifact bundle decompressor made no progress")
+
+        flushed = decompressor.flush(
+            MAX_DECOMPRESSED_TAR_BYTES - produced_bytes + 1
+        )
+        if flushed:
+            output.append(flushed)
+            produced_bytes += len(flushed)
+        if produced_bytes > MAX_DECOMPRESSED_TAR_BYTES:
+            _fail("decompressed tar exceeds explicit byte limit")
+        if (
+            not decompressor.eof
+            or decompressor.unused_data
+            or decompressor.unconsumed_tail
+        ):
+            _fail("gzip artifact bundle is truncated or malformed")
+        raw_tar = b"".join(output)
+    except NativeOutcomeBundleError:
+        raise
+    except MemoryError as error:
+        raise NativeOutcomeBundleError(
+            "gzip artifact bundle exhausted bounded memory"
+        ) from error
+    except (OverflowError, ValueError, zlib.error) as error:
+        raise NativeOutcomeBundleError(
+            "gzip artifact bundle is malformed"
+        ) from error
+    if not raw_tar or len(raw_tar) != produced_bytes:
+        _fail("decompressed tar byte accounting differs")
+    return raw_tar
+
+
 def _read_bundle_members(payload: bytes) -> Dict[str, bytes]:
     artifacts = {}  # type: Dict[str, bytes]
     try:
-        with tarfile.open(fileobj=io.BytesIO(payload), mode="r|gz") as archive:
+        raw_tar = _bounded_gzip_tar(payload)
+        with tarfile.open(fileobj=io.BytesIO(raw_tar), mode="r|") as archive:
             expanded = 0
             for expected_name in _MEMBERS:
                 member = archive.next()
@@ -445,8 +515,12 @@ def _read_bundle_members(payload: bytes) -> Dict[str, bytes]:
                 _fail("native bundle contains an extra member")
     except NativeOutcomeBundleError:
         raise
+    except MemoryError as error:
+        raise NativeOutcomeBundleError(
+            "bounded raw tar exhausted memory"
+        ) from error
     except (EOFError, OSError, tarfile.TarError) as error:
-        raise NativeOutcomeBundleError("artifact bundle is not a valid gzip tar") from error
+        raise NativeOutcomeBundleError("artifact bundle is not a valid raw tar") from error
     return artifacts
 
 

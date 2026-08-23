@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import json
@@ -7,6 +8,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 import benchmarks.redred_cluster2_cav_bridge.native_outcome_bundle as bundle_module
 from benchmarks.redred_cluster2_cav_bridge.native_outcome_bundle import (
@@ -52,6 +54,10 @@ class BundleFixture:
                 self.artifacts[member.name] = archive.extractfile(member).read()
         self.member_types = {}
         self.member_pax_headers = {}
+        self.member_linknames = {}
+        self.tar_format = tarfile.PAX_FORMAT
+        self.bundle_suffix = b""
+        self.truncate_bytes = 0
 
     def write(self, root):
         for field, member in bundle_module._DIGEST_MEMBER_BY_FIELD.items():
@@ -59,7 +65,9 @@ class BundleFixture:
                 self.artifacts[member]
             )
         buffer = io.BytesIO()
-        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        with tarfile.open(
+            fileobj=buffer, mode="w:gz", format=self.tar_format
+        ) as archive:
             for name in self.names:
                 info = tarfile.TarInfo(name)
                 info.mtime = 0
@@ -67,6 +75,7 @@ class BundleFixture:
                 payload = self.artifacts[name]
                 info.size = len(payload)
                 info.pax_headers = self.member_pax_headers.get(name, {})
+                info.linkname = self.member_linknames.get(name, "")
                 if name in self.member_types:
                     info.type = self.member_types[name]
                     info.linkname = "native_ledger.psv"
@@ -75,6 +84,9 @@ class BundleFixture:
                 else:
                     archive.addfile(info, io.BytesIO(payload))
         bundle_payload = buffer.getvalue()
+        if self.truncate_bytes:
+            bundle_payload = bundle_payload[:-self.truncate_bytes]
+        bundle_payload += self.bundle_suffix
         self.receipt["artifact_bundle"]["sha256"] = sha256(bundle_payload)
         receipt_payload = (
             json.dumps(
@@ -143,6 +155,9 @@ def bind_cyclemask_authority(fixture):
 
 class SealedBundlePositiveTests(unittest.TestCase):
     def test_abaa094_bundle_returns_exact_native_cycle_latency_rows(self):
+        raw_tar_size = len(gzip.decompress(BUNDLE_PATH.read_bytes()))
+        self.assertEqual(raw_tar_size, 2334720)
+        self.assertLess(raw_tar_size, bundle_module.MAX_DECOMPRESSED_TAR_BYTES)
         outcomes = load_abaa094_native_outcomes(ROOT)
 
         self.assertEqual(len(outcomes), 8503)
@@ -423,13 +438,90 @@ class FailClosedBundleTests(unittest.TestCase):
                         root, SEALED_RECEIPT_RELATIVE_PATH, authority
                     )
 
+    def test_redteam_pax_and_gnu_metadata_bombs_hit_raw_tar_cap_first(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            normal_root = Path(temporary) / "normal"
+            normal = BundleFixture()
+            normal.write(normal_root)
+            normal_bundle = (
+                normal_root / SEALED_BUNDLE_RELATIVE_PATH
+            ).read_bytes()
+            small_cap = len(gzip.decompress(normal_bundle))
+
+        bomb_bytes = bundle_module.MAX_TAR_HEADER_BYTES * 2 + 1
+        pax_bomb = BundleFixture()
+        pax_bomb.member_pax_headers["native_ledger.psv"] = {
+            "comment": "x" * bomb_bytes,
+        }
+
+        gnu_bomb = BundleFixture()
+        gnu_bomb.tar_format = tarfile.GNU_FORMAT
+        gnu_bomb.member_linknames["native_ledger.psv"] = "x" * bomb_bytes
+
+        for fixture in (pax_bomb, gnu_bomb):
+            with self.subTest(fixture=fixture), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                authority = fixture.write(root)
+                raw_size = len(gzip.decompress(
+                    (root / SEALED_BUNDLE_RELATIVE_PATH).read_bytes()
+                ))
+                self.assertGreater(raw_size, small_cap)
+                with mock.patch.object(
+                    bundle_module,
+                    "MAX_DECOMPRESSED_TAR_BYTES",
+                    small_cap,
+                ), mock.patch.object(
+                    bundle_module.tarfile,
+                    "open",
+                    side_effect=AssertionError("tar parser ran before gzip cap"),
+                ), self.assertRaisesRegex(
+                    NativeOutcomeBundleError,
+                    "decompressed tar exceeds explicit byte limit",
+                ):
+                    load_native_outcome_bundle(
+                        root, SEALED_RECEIPT_RELATIVE_PATH, authority
+                    )
+
+    def test_gzip_trailing_multistream_malformed_and_memory_fail_closed(self):
+        trailing = BundleFixture()
+        trailing.bundle_suffix = b"trailing-junk"
+
+        multistream = BundleFixture()
+        multistream.bundle_suffix = gzip.compress(b"second gzip stream")
+
+        malformed = BundleFixture()
+        malformed.truncate_bytes = 8
+
+        for fixture in (trailing, multistream, malformed):
+            with self.subTest(fixture=fixture):
+                self.assert_fixture_rejected(fixture)
+
+        fixture = BundleFixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            authority = fixture.write(root)
+            with mock.patch.object(
+                bundle_module.zlib,
+                "decompressobj",
+                side_effect=MemoryError("red-team allocation fault"),
+            ), self.assertRaisesRegex(
+                NativeOutcomeBundleError,
+                "exhausted bounded memory",
+            ):
+                load_native_outcome_bundle(
+                    root, SEALED_RECEIPT_RELATIVE_PATH, authority
+                )
+
     def test_parser_uses_bounded_streaming_tar_iteration(self):
         parser = (
             ROOT
             / "benchmarks/redred_cluster2_cav_bridge/native_outcome_bundle.py"
         ).read_text(encoding="ascii")
         self.assertNotIn("getmembers", parser)
-        self.assertIn('mode="r|gz"', parser)
+        self.assertNotIn('mode="r|gz"', parser)
+        self.assertIn('mode="r|"', parser)
+        self.assertIn("_bounded_gzip_tar(payload)", parser)
+        self.assertIn("MAX_DECOMPRESSED_TAR_BYTES", parser)
         self.assertIn("MAX_TAR_HEADER_BYTES", parser)
 
 
