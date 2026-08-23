@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import ast
 from copy import deepcopy
+import json
 import math
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -11,23 +14,22 @@ from unittest.mock import patch
 from benchmarks.redred_cluster2_cav_bridge.cav_adapter import (
     OBSERVATIONAL_SIDECAR_ASSISTED,
     SENSOR_FIXED_FRAME,
-    TRANSPORT_LATENCY_SEPARATE,
+    TRANSPORT_TIME_SEMANTICS,
     WORLD_FRAME,
     CAVAdapterError,
+    NeutralEventInput,
+    NeutralPoseInput,
+    NeutralRegistryWindow,
     project_bridge_bundle_to_cav,
 )
 from benchmarks.redred_cluster2_cav_bridge.contract import (
     BridgeBundle,
+    canonical_event_content_sha256,
     load_bridge_bundle,
 )
 from benchmarks.redred_mc_wtb_pose_recovery import RecoveryMode
 from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
     canonical_pose_value_sha256,
-)
-from benchmarks.redred_mc_wtb_predictor_stage3.logical_cav_evaluator import (
-    NeutralEventInput,
-    NeutralPoseInput,
-    NeutralRegistryWindow,
 )
 from benchmarks.redred_mc_wtb_stage4_cyclemodel import pose_timestamp_to_cycle
 from tests.redred_cluster2_cav_bridge.test_contract import BundleFixture
@@ -49,6 +51,32 @@ def pose_input(
         value_valid,
         arithmetic_valid,
     )
+
+
+def rehash_projected_event(row):
+    timestamp = row.get("timestamp_ns", row.get("occurrence_timestamp_ns"))
+    row["event_content_sha256"] = canonical_event_content_sha256(
+        row["event_id"],
+        timestamp,
+        row["polarity"],
+        row["is_query"],
+        row["sensor_ray"],
+        row["causal_pose_source_index"],
+        row["transform_guard_valid"],
+    )
+
+
+def set_projected_identity_field(rows, event_id, field, value):
+    for view_name in ("RAW4X4_ALL", "RAW4X4_MATCHED", "AER_OCC", "AER_RET"):
+        for row in rows[view_name]:
+            if row["event_id"] == event_id:
+                row[field] = value
+                if field in {
+                    "event_id", "timestamp_ns", "occurrence_timestamp_ns",
+                    "polarity", "is_query", "sensor_ray",
+                    "causal_pose_source_index", "transform_guard_valid",
+                }:
+                    rehash_projected_event(row)
 
 
 class AdapterFixture:
@@ -133,7 +161,7 @@ class CommonNeutralProjectionTests(unittest.TestCase):
         self.assertEqual(
             retired.measurement_class, OBSERVATIONAL_SIDECAR_ASSISTED
         )
-        self.assertEqual(retired.latency_semantics, TRANSPORT_LATENCY_SEPARATE)
+        self.assertEqual(retired.latency_semantics, TRANSPORT_TIME_SEMANTICS)
         self.assertEqual(
             [row.event_id for row in retired.transport_sidecar], [13, 11, 14]
         )
@@ -147,20 +175,33 @@ class CommonNeutralProjectionTests(unittest.TestCase):
             [row.latency_cycles for row in retired.transport_sidecar], [1, 3, 1]
         )
         self.assertEqual(
-            [row.latency_ns for row in retired.transport_sidecar], [2, 6, 3]
+            [row.latency_ns for row in retired.transport_sidecar], [2, 6, 2]
         )
         self.assertEqual(
-            [row.occurrence_timestamp_ns for row in retired.transport_sidecar],
+            [row.event_timestamp_ns for row in retired.transport_sidecar],
             [1002, 1000, 1003],
         )
+        self.assertEqual(
+            [row.latency_injected_timestamp_ns for row in retired.transport_sidecar],
+            [1004, 1006, 1005],
+        )
+        self.assertTrue(all(
+            row.semantics_label == TRANSPORT_TIME_SEMANTICS
+            for row in retired.transport_sidecar
+        ))
+        self.assertTrue(all(
+            not hasattr(row, "occurrence_timestamp_ns")
+            and not hasattr(row, "derived_retire_timestamp_ns")
+            for row in retired.transport_sidecar
+        ))
         # Retire timestamps never replace the shared geometry timestamps.
         self.assertEqual(
             [row.neutral_input.timestamp_ns for row in retired.events],
             [1000, 1002, 1003],
         )
-        self.assertNotEqual(
-            [row.derived_retire_timestamp_ns for row in retired.transport_sidecar],
-            [row.neutral_input.timestamp_ns for row in retired.events],
+        self.assertEqual(
+            retired.transport_sidecar[-1].latency_injected_timestamp_ns,
+            1005,
         )
 
     def test_raw_bypass_is_never_labeled_as_world_coordinates(self):
@@ -234,33 +275,115 @@ class FailClosedAdapterTests(unittest.TestCase):
                     fixture.bundle, wrong_bounds, fixture.poses
                 )
 
-    def test_adapter_has_no_scorer_selector_or_evaluator_call(self):
+    def test_same_cycle_pose_is_strictly_past_and_cannot_be_claimed(self):
+        with AdapterFixture() as fixture:
+            projection = deepcopy(fixture.bundle.project())
+            set_projected_identity_field(
+                projection, 13, "causal_pose_source_index", 8
+            )
+            set_projected_identity_field(
+                projection, 14, "causal_pose_source_index", 8
+            )
+            poses = {
+                "synthetic-window": fixture.poses["synthetic-window"] + (
+                    pose_input(8, 1000),
+                ),
+            }
+            with patch.object(
+                BridgeBundle, "project", return_value=projection
+            ):
+                result = project_bridge_bundle_to_cav(
+                    fixture.bundle, fixture.registry, poses
+                )
+            self.assertEqual(
+                [row.used_pose_ids for row in result.view("AER_OCC").rays],
+                [(6, 7), (7, 8), (7, 8)],
+            )
+
+            set_projected_identity_field(
+                projection, 11, "causal_pose_source_index", 8
+            )
+            with patch.object(
+                BridgeBundle, "project", return_value=projection
+            ):
+                with self.assertRaises(CAVAdapterError):
+                    project_bridge_bundle_to_cav(
+                        fixture.bundle, fixture.registry, poses
+                    )
+
+    def test_nine_projection_seam_mutations_fail_closed(self):
+        def event_row(rows, view_name, event_id):
+            return next(
+                row for row in rows[view_name]
+                if row["event_id"] == event_id
+            )
+
+        mutations = (
+            lambda rows: rows["RAW4X4_ALL"][0].__setitem__(
+                "schema", "not-source-event/v1"
+            ),
+            lambda rows: rows["RAW4X4_ALL"][0].__setitem__(
+                "source_index", 999
+            ),
+            lambda rows: set_projected_identity_field(
+                rows, 11, "source_index", 16
+            ),
+            lambda rows: (
+                event_row(rows, "AER_OCC", 13).__setitem__(
+                    "occurrence_cycle", 0
+                ),
+                event_row(rows, "AER_RET", 13).__setitem__(
+                    "occurrence_cycle", 0
+                ),
+            ),
+            lambda rows: rows["AER_RET"][0].__setitem__(
+                "retire_native_lane", 2
+            ),
+            lambda rows: rows["AER_RET"][0].__setitem__("retire_row", 4),
+            lambda rows: rows["AER_RET"][0].__setitem__("retire_col", 4),
+            lambda rows: rows["AER_RET"][0].__setitem__("retire_row", 0),
+            lambda rows: rows["AER_RET"][0].__setitem__(
+                "derived_retire_timestamp_ns", 1005
+            ),
+        )
+        self.assertEqual(len(mutations), 9)
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                self._assert_projection_rejected(mutation)
+
+    def test_adapter_is_python38_and_clean_subprocess_loads_no_evaluator(self):
         module_path = (
             Path(__file__).parents[2]
             / "benchmarks/redred_cluster2_cav_bridge/cav_adapter.py"
         )
-        tree = ast.parse(module_path.read_text(encoding="utf-8"))
-        imported = set()
-        called = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                imported.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.Call):
-                function = node.func
-                if isinstance(function, ast.Name):
-                    called.add(function.id)
-                elif isinstance(function, ast.Attribute):
-                    called.add(function.attr)
-        forbidden = {
-            "evaluate_current_cav_registry",
-            "evaluate_current_cav_registry_bounded",
-            "CausalReferenceBank",
-            "load_stage3_label_authority",
-            "select_candidate",
-            "score_candidate",
-        }
-        self.assertFalse(forbidden & imported)
-        self.assertFalse(forbidden & called)
+        ast.parse(
+            module_path.read_text(encoding="utf-8"),
+            filename=str(module_path),
+            feature_version=(3, 8),
+        )
+        repository = Path(__file__).resolve().parents[2]
+        source = """
+import json
+import sys
+import benchmarks.redred_cluster2_cav_bridge.cav_adapter
+terms = (\"evaluator\", \"reference\", \"score\", \"selector\")
+loaded = sorted(
+    name for name in sys.modules
+    if name.startswith(\"benchmarks.\")
+    and any(term in name.lower() for term in terms)
+)
+print(json.dumps(loaded))
+raise SystemExit(1 if loaded else 0)
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", source],
+            cwd=str(repository),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout), [])
 
 
 if __name__ == "__main__":
