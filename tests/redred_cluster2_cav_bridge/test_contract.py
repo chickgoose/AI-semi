@@ -65,8 +65,9 @@ def source_event(
 
 def delivered(
     event_id, source_index, occurrence_cycle, retire_cycle,
-    native_lane, retire_col,
+    native_lane, retire_col, retire_row=None,
 ):
+    observed_row = source_index // 4 if retire_row is None else retire_row
     return {
         "schema": TRANSPORT_OUTCOME_SCHEMA,
         "event_id": event_id,
@@ -75,6 +76,7 @@ def delivered(
         "outcome": "DELIVERED",
         "retire_cycle": retire_cycle,
         "retire_native_lane": native_lane,
+        "retire_row": observed_row,
         "retire_col": retire_col,
     }
 
@@ -88,6 +90,7 @@ def overrun(event_id, source_index, occurrence_cycle):
         "outcome": "OVERRUN",
         "retire_cycle": None,
         "retire_native_lane": None,
+        "retire_row": None,
         "retire_col": None,
     }
 
@@ -100,9 +103,9 @@ def fixture_rows():
         source_event(14, 3, 1003, 12),
     )
     outcomes = (
-        delivered(14, 12, 3, 3, 1, 0),
-        delivered(13, 5, 2, 2, 0, 1),
-        delivered(11, 4, 0, 2, 0, 0),
+        delivered(14, 12, 2, 3, 1, 0),
+        delivered(13, 5, 1, 2, 0, 1),
+        delivered(11, 4, 0, 3, 0, 0),
         overrun(12, 0, 1),
     )
     return sources, outcomes
@@ -145,7 +148,7 @@ def manifest_for(source_bytes, outcome_bytes, authority_bytes, count):
             "path": "authority/cluster2_top.v",
             "sha256": digest(authority_bytes["rtl"]),
         }],
-        "aer_clock_period_ps": 1000,
+        "aer_clock_period_ps": 2000,
         "aer_cycle_zero_timestamp_ns": 1000,
         "timestamp_to_occurrence_cycle_rule": TIMESTAMP_TO_OCCURRENCE_RULE,
         "projection": {
@@ -213,6 +216,20 @@ class CurrentCAVCompatibilityTests(unittest.TestCase):
         self.assertEqual(row["event_content_sha256"], expected)
         self.assertIs(validate_source_event(row), row)
 
+    def test_integer_json_ray_hashes_current_cav_float_normalized_preimage(self):
+        row = source_event(92, 0, 123457, 4, ray=[0, 0, 1])
+        expected = current_cav_event_content_sha256(
+            row["event_id"],
+            row["timestamp_ns"],
+            row["polarity"],
+            row["is_query"],
+            [0.0, 0.0, 1.0],
+            row["causal_pose_source_index"],
+            row["transform_guard_valid"],
+        )
+        self.assertEqual(row["event_content_sha256"], expected)
+        self.assertIs(validate_source_event(row), row)
+
     def test_digest_ray_and_guard_mutations_fail_closed(self):
         row = source_event(1, 0, 1000)
         bad_digest = dict(row, event_content_sha256="0" * 64)
@@ -252,8 +269,10 @@ class ProjectionTests(unittest.TestCase):
             ))
         self.assertEqual(first["AER_OCC"][0]["timestamp_ns"], 1000)
         self.assertEqual(first["AER_OCC"][0]["transform_guard_valid"], True)
-        self.assertEqual(first["AER_RET"][0]["occurrence_timestamp_ns"], 1000)
-        self.assertEqual(first["AER_RET"][0]["derived_retire_timestamp_ns"], 1002)
+        self.assertEqual([row["event_id"] for row in first["AER_OCC"]], [11, 13, 14])
+        self.assertEqual([row["event_id"] for row in first["AER_RET"]], [13, 11, 14])
+        self.assertEqual(first["AER_RET"][0]["occurrence_timestamp_ns"], 1002)
+        self.assertEqual(first["AER_RET"][0]["derived_retire_timestamp_ns"], 1004)
         self.assertNotIn("retire_timestamp_ns", first["AER_RET"][0])
 
     def test_manifest_and_projection_cannot_claim_native_aer_payload(self):
@@ -274,9 +293,11 @@ class ProjectionTests(unittest.TestCase):
 class NativeBitmapTests(unittest.TestCase):
     def test_delivered_coordinates_follow_native_lane_row_and_column(self):
         valid = (
+            delivered(5, 0, 0, 1, 0, 0),
             delivered(1, 4, 0, 1, 0, 0),
             delivered(2, 11, 0, 1, 0, 3),
             delivered(3, 0, 0, 1, 1, 0),
+            delivered(6, 8, 0, 1, 1, 0),
             delivered(4, 15, 0, 1, 1, 3),
         )
         for row in valid:
@@ -284,9 +305,10 @@ class NativeBitmapTests(unittest.TestCase):
 
         invalid = (
             delivered(1, 4, 0, 1, 1, 0),
-            delivered(1, 0, 0, 1, 0, 0),
+            delivered(1, 12, 0, 1, 0, 0),
             delivered(1, 4, 0, 1, 0, 1),
             delivered(1, 4, 0, 1, 2, 0),
+            delivered(1, 4, 0, 1, 0, 0, retire_row=2),
         )
         for row in invalid:
             with self.subTest(row=row), self.assertRaises(BridgeValidationError):
@@ -297,6 +319,7 @@ class NativeBitmapTests(unittest.TestCase):
         for field, value in (
             ("retire_cycle", 1),
             ("retire_native_lane", 0),
+            ("retire_row", 1),
             ("retire_col", 0),
         ):
             with self.subTest(field=field), self.assertRaises(BridgeValidationError):
@@ -310,6 +333,17 @@ class NativeBitmapTests(unittest.TestCase):
         outcomes = (
             delivered(1, 4, 0, 2, 0, 0),
             delivered(2, 8, 1, 2, 0, 0),
+        )
+        self._assert_bundle_rejected(sources, outcomes)
+
+    def test_two_native_lanes_cannot_select_same_row_in_one_cycle(self):
+        sources = (
+            source_event(1, 0, 1000, 0),
+            source_event(2, 1, 1001, 1),
+        )
+        outcomes = (
+            delivered(1, 0, 0, 2, 0, 0),
+            delivered(2, 1, 1, 2, 1, 1),
         )
         self._assert_bundle_rejected(sources, outcomes)
 
@@ -410,7 +444,7 @@ class RemainingInvariantTests(unittest.TestCase):
         wrong_occurrence[0] = dict(wrong_occurrence[0], occurrence_cycle=4)
         self._assert_bundle_rejected(sources, wrong_occurrence)
 
-    def test_occurrence_fifo_and_integer_retire_time(self):
+    def test_occurrence_fifo_and_fractional_clock_manifest_gate(self):
         sources = (
             source_event(1, 0, 1000, 4),
             source_event(2, 1, 1001, 4),
@@ -429,16 +463,30 @@ class RemainingInvariantTests(unittest.TestCase):
             lambda manifest: manifest.update(aer_clock_period_ps=1500),
         )
 
+        sources_default, outcomes_default = fixture_rows()
+        authority_bytes = {
+            "mapping": b"m", "source_registry": b"s", "pose_stream": b"p",
+            "native_transport_receipt": b"n", "rtl": b"r",
+        }
+        manifest = manifest_for(
+            canonical_jsonl_bytes(sources_default),
+            canonical_jsonl_bytes(outcomes_default),
+            authority_bytes,
+            len(sources_default),
+        )
+        manifest["aer_clock_period_ps"] = 1500
+        with self.assertRaises(BridgeValidationError):
+            validate_manifest(manifest)
+
     def test_ceil_mapping_with_aer_named_clock_fields(self):
         sources = (source_event(1, 0, 1001, 4),)
         outcomes = (delivered(1, 4, 1, 2, 0, 0),)
         with tempfile.TemporaryDirectory() as temporary:
             fixture = BundleFixture(Path(temporary), sources, outcomes)
-            fixture.manifest["aer_clock_period_ps"] = 1500
             manifest_path, manifest_sha = fixture.write()
             row = load_bridge_bundle(manifest_path, manifest_sha).project()["AER_RET"][0]
         self.assertEqual(row["occurrence_timestamp_ns"], 1001)
-        self.assertEqual(row["derived_retire_timestamp_ns"], 1003)
+        self.assertEqual(row["derived_retire_timestamp_ns"], 1004)
 
 
 class SchemaAndIsolationTests(unittest.TestCase):
@@ -451,9 +499,14 @@ class SchemaAndIsolationTests(unittest.TestCase):
         self.assertIn("transform_guard_valid", source_schema["required"])
         self.assertEqual(outcome_schema["properties"]["schema"]["const"], TRANSPORT_OUTCOME_SCHEMA)
         self.assertIn("retire_native_lane", outcome_schema["required"])
+        self.assertIn("retire_row", outcome_schema["required"])
         self.assertIn("retire_col", outcome_schema["required"])
         self.assertNotIn("retire_lane", outcome_schema["properties"])
         self.assertEqual(manifest_schema["properties"]["schema"]["const"], MANIFEST_SCHEMA)
+        self.assertEqual(
+            manifest_schema["properties"]["aer_clock_period_ps"]["multipleOf"],
+            1000,
+        )
 
     def test_contract_has_no_scorer_or_evaluator_import(self):
         contract_path = (

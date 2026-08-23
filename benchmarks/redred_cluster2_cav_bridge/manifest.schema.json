@@ -4,7 +4,7 @@
   "additionalProperties": false,
   "properties": {
     "bridge_id": {"$ref": "#/$defs/identifier"},
-    "aer_clock_period_ps": {"minimum": 1, "type": "integer"},
+    "aer_clock_period_ps": {"minimum": 1000, "multipleOf": 1000, "type": "integer"},
     "aer_cycle_zero_timestamp_ns": {"minimum": 0, "type": "integer"},
     "mapping_authority": {"$ref": "#/$defs/artifact"},
     "native_transport_receipt_authority": {"$ref": "#/$defs/artifact"},

@@ -43,7 +43,7 @@ _SOURCE_FIELDS = frozenset((
 ))
 _OUTCOME_FIELDS = frozenset((
     "schema", "event_id", "source_index", "occurrence_cycle", "outcome",
-    "retire_cycle", "retire_native_lane", "retire_col",
+    "retire_cycle", "retire_native_lane", "retire_row", "retire_col",
 ))
 _MANIFEST_FIELDS = frozenset((
     "schema", "bridge_id", "source_events", "transport_outcomes",
@@ -296,7 +296,7 @@ def canonical_event_content_sha256(
         "timestamp_ns": timestamp_ns,
         "polarity": polarity,
         "is_query": is_query,
-        "sensor_ray": list(sensor_ray),
+        "sensor_ray": [float(component) for component in sensor_ray],
         "causal_pose_source_index": causal_pose_source_index,
         "transform_guard_valid": transform_guard_valid,
     })).hexdigest()
@@ -375,13 +375,19 @@ def validate_transport_outcome(value: object) -> Mapping[str, object]:
         retire_col = _nonnegative_int(
             outcome["retire_col"], "transport outcome retire_col"
         )
-        if retire_col > 3 or retire_col != source_index % 4:
+        retire_row = _nonnegative_int(
+            outcome["retire_row"], "transport outcome retire_row"
+        )
+        if retire_col > 3 or retire_row > 3:
             raise BridgeValidationError(
-                "transport outcome retire_col differs from source_index modulo four"
+                "transport outcome retire row or column is out of range"
             )
-        source_row = source_index // 4
-        if (lane == 0 and source_row not in (1, 2)) or (
-            lane == 1 and source_row not in (0, 3)
+        if source_index != retire_row * 4 + retire_col:
+            raise BridgeValidationError(
+                "transport outcome native row/column differs from source_index"
+            )
+        if (lane == 0 and retire_row not in (0, 1, 2)) or (
+            lane == 1 and retire_row not in (0, 2, 3)
         ):
             raise BridgeValidationError(
                 "transport outcome native lane cannot emit the source row"
@@ -390,6 +396,7 @@ def validate_transport_outcome(value: object) -> Mapping[str, object]:
         if (
             outcome["retire_cycle"] is not None
             or outcome["retire_native_lane"] is not None
+            or outcome["retire_row"] is not None
             or outcome["retire_col"] is not None
         ):
             raise BridgeValidationError("OVERRUN retire fields must all be null")
@@ -456,7 +463,13 @@ def validate_manifest(value: object) -> Mapping[str, object]:
         raise BridgeValidationError(
             "manifest must bind caller-supplied ganghee_cluster2_top authority"
         )
-    _positive_int(manifest["aer_clock_period_ps"], "manifest aer_clock_period_ps")
+    aer_clock_period_ps = _positive_int(
+        manifest["aer_clock_period_ps"], "manifest aer_clock_period_ps"
+    )
+    if aer_clock_period_ps % 1000:
+        raise BridgeValidationError(
+            "manifest aer_clock_period_ps must be whole nanoseconds"
+        )
     _nonnegative_int(
         manifest["aer_cycle_zero_timestamp_ns"],
         "manifest aer_cycle_zero_timestamp_ns",
@@ -566,16 +579,27 @@ def _join_streams(
                 raise BridgeValidationError("per-source FIFO retire order differs")
             last_retire_by_source[source_index] = retire_cycle
             native_lane = outcome["retire_native_lane"]
+            retire_row = outcome["retire_row"]
             retire_col = outcome["retire_col"]
-            assert isinstance(native_lane, int) and isinstance(retire_col, int)
-            source_row = source_index // 4  # type: ignore[operator]
+            assert (
+                isinstance(native_lane, int)
+                and isinstance(retire_row, int)
+                and isinstance(retire_col, int)
+            )
             bitmap_key = (retire_cycle, native_lane)
             prior_row = native_rows_by_cycle_lane.get(bitmap_key)
-            if prior_row is not None and prior_row != source_row:
+            if prior_row is not None and prior_row != retire_row:
                 raise BridgeValidationError(
                     "one native lane-cycle contains more than one row"
                 )
-            native_rows_by_cycle_lane[bitmap_key] = source_row
+            other_lane_row = native_rows_by_cycle_lane.get(
+                (retire_cycle, 1 - native_lane)
+            )
+            if other_lane_row == retire_row:
+                raise BridgeValidationError(
+                    "two native lanes select the same row in one retire cycle"
+                )
+            native_rows_by_cycle_lane[bitmap_key] = retire_row
             retire_slot = (retire_cycle, native_lane, retire_col)
             if retire_slot in retire_slots:
                 raise BridgeValidationError(
@@ -619,6 +643,15 @@ def _project_joined(joined: Sequence[JoinedEvent]) -> Mapping[str, List[Mapping[
         raise BridgeValidationError(
             "RAW4X4_MATCHED and AER_OCC identity/coordinate projection differs"
         )
+    retired = sorted(
+        delivered,
+        key=lambda row: (
+            row.transport["retire_cycle"],
+            row.transport["retire_native_lane"],
+            row.transport["retire_col"],
+            row.transport["event_id"],
+        ),
+    )
     aer_ret = [{
         "projection_semantics": OBSERVATIONAL_JOIN_LABEL,
         "event_id": row.transport["event_id"],
@@ -627,6 +660,7 @@ def _project_joined(joined: Sequence[JoinedEvent]) -> Mapping[str, List[Mapping[
         "occurrence_timestamp_ns": row.source["timestamp_ns"],
         "retire_cycle": row.transport["retire_cycle"],
         "retire_native_lane": row.transport["retire_native_lane"],
+        "retire_row": row.transport["retire_row"],
         "retire_col": row.transport["retire_col"],
         "derived_retire_timestamp_ns": row.derived_retire_timestamp_ns,
         "window_id": row.source["window_id"],
@@ -636,7 +670,7 @@ def _project_joined(joined: Sequence[JoinedEvent]) -> Mapping[str, List[Mapping[
         "causal_pose_source_index": row.source["causal_pose_source_index"],
         "transform_guard_valid": row.source["transform_guard_valid"],
         "event_content_sha256": row.source["event_content_sha256"],
-    } for row in delivered]
+    } for row in retired]
     return {
         "RAW4X4_ALL": raw_all,
         "RAW4X4_MATCHED": raw_matched,
