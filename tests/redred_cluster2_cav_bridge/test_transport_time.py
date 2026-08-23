@@ -126,6 +126,24 @@ class DualTimeEventTests(unittest.TestCase):
                 derived_retire_timestamp_ns=11,
             )
 
+    def test_validator_rejects_injected_old_and_extra_instance_fields(self):
+        for field_name in ("derived_retire_timestamp_ns", "unexpected_field"):
+            record = build_dual_time_event(10, 2, 3, 1_000)
+            object.__setattr__(record, field_name, 11)
+            with self.subTest(field_name=field_name):
+                with self.assertRaisesRegex(
+                    TransportTimeValidationError, "field schema differs"
+                ):
+                    validate_dual_time_event(record)
+
+    def test_validator_rejects_deleted_instance_field(self):
+        record = build_dual_time_event(10, 2, 3, 1_000)
+        object.__delattr__(record, "latency_ns")
+        with self.assertRaisesRegex(
+            TransportTimeValidationError, "field schema differs"
+        ):
+            validate_dual_time_event(record)
+
     def test_accepts_exact_native_cycle_and_serialized_timestamp_limits(self):
         record = build_dual_time_event(
             event_timestamp_ns=1,

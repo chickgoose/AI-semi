@@ -79,11 +79,25 @@ class DualTimeEvent:
         return self.clock_period_ps // 1000
 
 
+_DUAL_TIME_EVENT_FIELDS = frozenset((
+    "event_timestamp_ns",
+    "occurrence_cycle",
+    "retire_cycle",
+    "clock_period_ps",
+    "latency_cycles",
+    "latency_ns",
+    "latency_injected_timestamp_ns",
+    "semantics_label",
+))
+
+
 def validate_dual_time_event(value: object) -> DualTimeEvent:
     """Validate exact preservation and derivation of one dual-time record."""
 
     if type(value) is not DualTimeEvent:
         raise TransportTimeValidationError("value must be an exact DualTimeEvent")
+    if frozenset(vars(value)) != _DUAL_TIME_EVENT_FIELDS:
+        raise TransportTimeValidationError("DualTimeEvent field schema differs")
     event_timestamp_ns = _serialized_ns(
         value.event_timestamp_ns, "event_timestamp_ns"
     )
