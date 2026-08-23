@@ -123,14 +123,18 @@ HEAD or object database: `git_commit=5ac1f0e...` records the provenance of the
 canonical scoped content and is not a claim about the stale server repository
 state. Optional `CLEAN_GIT_AUTHORITY` additionally requires the exact commit,
 origin identity (allowing Git's conventional trailing `.git` spelling), and a
-clean tracked checkout. The runner never writes the Ganghee checkout. Exact
-verified raw bytes are hash-checked again into a private temporary snapshot
-before compilation. The observational TB is likewise checked against the
-runner-pinned full SHA-256 and compiled only from its exact private snapshot.
+clean tracked checkout. The runner configures no output path under the Ganghee
+checkout, but it does not claim host-wide zero-write coverage. Exact verified
+raw bytes are hash-checked again into a private temporary snapshot before
+compilation. The observational TB is likewise checked against the runner-pinned
+full SHA-256 and compiled only from its exact private snapshot.
 Every simulator subprocess runs with its working directory and `TMPDIR` under
-the output root; pre/post Git-status snapshots protect the bridge worktree and,
-when the caller root exposes usable Git status, the FAER worktree. Caller
-authority bytes are independently reverified after the run. Invoke
+the output root. The caller must select a system temporary directory outside
+both repositories; the runner does not claim global zero-write coverage for an
+arbitrary host. Pre/post Git-status snapshots detect status changes in the
+bridge worktree and, when the caller root exposes usable Git status, the FAER
+worktree. The six caller-authority byte identities are independently reverified
+after the run. Invoke
 the server-compatible mode from this repository root as:
 
 ```text
@@ -142,17 +146,20 @@ python3 tests/redred_cluster2_cav_bridge/run_native_observational.py \
 
 The runner auto-detects Cadence Xcelium `xrun` (including the server installation
 at `/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun`), then Verilator, then
-Icarus Verilog plus `vvp`; each can also be explicitly selected. All compile,
-snapshot, log, ledger, and outcome paths are outside the caller FAER root. If no
+Icarus Verilog plus `vvp`; each can also be explicitly selected. For an external
+system temporary directory, all compile, snapshot, log, ledger, and outcome
+paths are outside the caller FAER root. If no
 supported simulator is available it returns status 2 with `NATIVE_OBSERVATIONAL_SKIP
 simulator_unavailable`; it does not emit a fabricated run. Logs, the native
 ledger, and validated transport outcomes go to a newly created temporary
 directory printed on PASS or failure.
 
-A runner PASS is an unsealed local observational result, not a committed native
-receipt or release authority. The runner itself, this TB, simulator identity,
-commands, logs, ledger, and derived outcomes are not yet gathered into a
-hash-bound receipt. Likewise, the pinned converter plus tracked cyclemask bind
+A runner PASS by itself is an unsealed local observational result, not a native
+release authority. The scoped server execution at bridge commit `ca446aa...` is
+separately preserved by `server_native_observation_receipt.json` and its
+hash-bound evidence bundle. That receipt remains native-observational evidence,
+not common-seam, CAV, or PPA evidence. Likewise, the pinned converter plus
+tracked cyclemask bind
 only those repository bytes; no official UZH archive/member or source-to-
 cyclemask reproduction receipt is bound or claimed here.
 The present TB ledger expands native bitmaps directly to `EVENT` rows instead

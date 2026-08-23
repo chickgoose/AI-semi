@@ -1,0 +1,109 @@
+{
+  "artifact_bundle": {
+    "path": "benchmarks/redred_cluster2_cav_bridge/evidence/server_native_observation_ca446aa.tgz",
+    "sha256": "63565e95dfc29bbc651e206a49a55dcd0ef15b37b5aec903d8ff89c458021460"
+  },
+  "artifact_digests": {
+    "bridge_commit_txt_sha256": "2748af3bade85416c1f1fe26ff6d7cf14b4693f051db23b61559e891d2fabd6d",
+    "compiled_arbiter2_sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684",
+    "compiled_arbiter4_tree_sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31",
+    "compiled_cluster2_steal_buf_rtl_sha256": "56fdb33a634ea8716b60e3e3b8d54c3435a5d808785e097dbab5a3bdd6dddf96",
+    "native_ledger_psv_sha256": "1ade904efa97e74925c1b0bfaecfca84355a09531be777a1e51aa3155c90e826",
+    "cyclemask_input_sha256": "a50866f95430e3fe8d8af775c2e9692353e1e6bc9a1ecfedfed620143be48313",
+    "outer_runner_exitcode_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "outer_runner_stdout_sha256": "74f7ee59da2ec0f4da8ed6ccbb0ffe1cd7c70c78d2be7aafd1f50d9ee70d293c",
+    "observational_tb_sha256": "50750a75f9730e2ec6f62a7850362431d4855b7305f7277cf84d3175ab91f035",
+    "run_log_sha256": "ab74297a7a8ffdb9985356f90967569a07a8c59416d407144ab0f29207444609",
+    "transport_outcomes_jsonl_sha256": "28b7c3035998fac1fa5de4c97a7f09ce575851c4849e3cf582e374ef0cdf5570",
+    "xrun_log_sha256": "ebc48c24419697354a7b99fd4b94b4b3a6a870bb4ac9fac47839f57c400ad8eb"
+  },
+  "authority": {
+    "bridge_commit": "ca446aa45f4b838435fda9f47dade925f7951e5b",
+    "ganghee_content_provenance_commit": "5ac1f0e3c0e6991558afa699e64680f708ff625d",
+    "mode": "FILE_BYTES_AUTHORITY",
+    "repository": "https://github.com/chickgoose/AI-semi",
+    "source_repository": "https://github.com/GangHeeJo/AI-SEMI"
+  },
+  "server_reported_completed_at": "2026-08-24T02:07:31+09:00",
+  "counts": {
+    "delivered": 8503,
+    "generated": 8503,
+    "native_ledger_lines": 8505,
+    "overrun": 0,
+    "transport_outcome_rows": 8503
+  },
+  "execution": {
+    "errors": 0,
+    "fatals": 0,
+    "host_python": "3.8.10",
+    "outer_runner_environment_warnings": {
+      "setlocale_C_UTF_8": 9
+    },
+    "simulator": "Cadence Xcelium xrun(64)",
+    "simulator_version": "23.09-s013",
+    "timestamp_authority": "xrun_log_server_clock",
+    "status": "PASS",
+    "warnings_by_code": {
+      "DLCPTH": 165
+    },
+    "warnings_disposition": "The xrun log contains only 165 environment cds.lib invalid-path warnings. The outer combined stream additionally contains nine host setlocale warnings. No design, compile, elaboration, or simulation error/fatal was observed."
+  },
+  "input_authority": {
+    "code_files": [
+      {
+        "path": "rtl/aer_tx16_trad_rowcol_fovea_cluster2_steal_buf.v",
+        "sha256": "56fdb33a634ea8716b60e3e3b8d54c3435a5d808785e097dbab5a3bdd6dddf96"
+      },
+      {
+        "path": "rtl/arbiter2.v",
+        "sha256": "25d2ffcfe9fbddda4925627e91d52249ee495a1ba91eb40c22b157993da9a684"
+      },
+      {
+        "path": "rtl/arbiter4_tree.v",
+        "sha256": "108d3ddfd386c2e537ee4eb757dfcd0a6c1d3a50b22c41cbbacc34741bd86e31"
+      },
+      {
+        "path": "tb/tb_steal_buf_trace_phantom_debug.v",
+        "sha256": "06123cc83e1682e7175c220a762fd3ff75bd40fd7795565e5f381ac55167556e"
+      },
+      {
+        "path": "scripts/convert_uzh_to_cyclemask.py",
+        "sha256": "321002a527f7286f1c43fce45ae125983dbfb855509e614e178f8057f29714d7"
+      }
+    ],
+    "cyclemask": {
+      "canonical_semantic_lf_sha256": "850049ea794fa80295ca9c0023d5549f2b7a8557776f37355b277aaccfde25ea",
+      "line_endings": "CRLF",
+      "path": "common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt",
+      "raw_sha256": "a50866f95430e3fe8d8af775c2e9692353e1e6bc9a1ecfedfed620143be48313"
+    }
+  },
+  "invariants": {
+    "conservation": "generated == delivered + overrun",
+    "conservation_holds": true,
+    "event_id_partition_exact": true,
+    "native_lane_row_bitmap_rules_hold": true,
+    "no_duplicate_retirement": true,
+    "no_phantom_retirement": true,
+    "per_source_fifo_order_holds": true,
+    "pre_edge_overrun_rule_holds": true,
+    "source_index_mapping": "source_index == row*4 + col"
+  },
+  "post_run_observations": {
+    "execution_workspace_observed": "external_ephemeral_directory",
+    "faer_global_zero_write": "NOT_CLAIMED",
+    "outer_runner_exit_code": 0,
+    "outer_runner_final_pass_count": 1,
+    "post_run_scoped_authority_reverification": "PASS"
+  },
+  "schema": "redred.cluster2_cav_bridge.server_native_observation_receipt/v1",
+  "scope": {
+    "arrival_semantics": "one-cycle native pulse; overrun is terminal for this observational scope",
+    "cav_functional": "HOLD_NOT_EVALUATED",
+    "common_held_valid_seam": "HOLD_NOT_EVALUATED",
+    "physical_time_interpretation": "HOLD; 1 ms dataset bins are workload indices, not 2 ns hardware timestamps",
+    "ppa": "HOLD_NOT_EVALUATED",
+    "uzh_raw_source_reproduction": "SEPARATE_AUDIT_NOT_BOUND_TO_THIS_RECEIPT",
+    "wire_complete_cav": "HOLD_NOT_EVALUATED"
+  }
+}
