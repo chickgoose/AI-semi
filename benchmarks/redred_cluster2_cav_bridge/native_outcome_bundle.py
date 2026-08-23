@@ -39,8 +39,10 @@ SEALED_BUNDLE_SHA256 = (
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_MEMBER_BYTES = 64 * 1024 * 1024
 MAX_EXPANDED_BYTES = 128 * 1024 * 1024
+MAX_TAR_HEADER_BYTES = 64 * 1024
 MAX_RECORDS = 1_000_000
 MAX_CYCLE = (1 << 63) - 1
+NATIVE_DRAIN_LIMIT = 100_000
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
@@ -54,6 +56,10 @@ _RECEIPT_FIELDS = frozenset((
 _COUNT_FIELDS = frozenset((
     "delivered", "generated", "native_ledger_lines", "overrun",
     "transport_outcome_rows",
+))
+_INPUT_AUTHORITY_FIELDS = frozenset(("code_files", "cyclemask"))
+_CYCLEMASK_AUTHORITY_FIELDS = frozenset((
+    "canonical_semantic_lf_sha256", "line_endings", "path", "raw_sha256",
 ))
 _OUTCOME_FIELDS = frozenset((
     "schema", "event_id", "source_index", "occurrence_cycle", "outcome",
@@ -73,6 +79,11 @@ _MEMBERS = (
     "owner-native-ca446aa.exitcode",
     "owner-bridge-commit-ca446aa.txt",
 )
+_CYCLEMASK_SOURCE_PATH = "common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt"
+_CYCLEMASK_MEMBER = "faer_snapshot/" + _CYCLEMASK_SOURCE_PATH
+_LEGAL_TWO_VALID_ROW_PAIRS = frozenset((
+    (0, 3), (1, 0), (1, 2), (1, 3), (2, 0), (2, 3),
+))
 _DIGEST_MEMBER_BY_FIELD = {
     "bridge_commit_txt_sha256": "owner-bridge-commit-ca446aa.txt",
     "compiled_arbiter2_sha256": "faer_snapshot/rtl/arbiter2.v",
@@ -131,6 +142,30 @@ class NativeOutcome:
             "retire_cycle": self.retire_cycle,
             "latency": self.latency,
         }
+
+
+@dataclass(frozen=True)
+class _LedgerRecord:
+    event_id: int
+    source_index: int
+    occurrence_cycle: int
+    outcome: str
+    retire_cycle: object
+    retire_native_lane: object
+    retire_row: object
+    retire_col: object
+
+    def identity(self) -> Tuple[object, ...]:
+        return (
+            self.event_id,
+            self.source_index,
+            self.occurrence_cycle,
+            self.outcome,
+            self.retire_cycle,
+            self.retire_native_lane,
+            self.retire_row,
+            self.retire_col,
+        )
 
 
 def _fail(message: str) -> None:
@@ -289,6 +324,31 @@ def _validate_receipt(value: object) -> Mapping[str, object]:
     for field, digest in digests.items():
         _sha256(digest, "artifact digest %s" % field)
 
+    input_authority = _exact_mapping(
+        receipt["input_authority"],
+        _INPUT_AUTHORITY_FIELDS,
+        "input_authority",
+    )
+    code_files = input_authority["code_files"]
+    if not isinstance(code_files, list) or not code_files:
+        _fail("input_authority.code_files must be a non-empty list")
+    cyclemask = _exact_mapping(
+        input_authority["cyclemask"],
+        _CYCLEMASK_AUTHORITY_FIELDS,
+        "input_authority.cyclemask",
+    )
+    if (
+        _relative_path(cyclemask["path"], "cyclemask authority")
+        != _CYCLEMASK_SOURCE_PATH
+        or cyclemask["line_endings"] not in ("LF", "CRLF")
+    ):
+        _fail("cyclemask path or line-ending authority differs")
+    _sha256(cyclemask["raw_sha256"], "cyclemask raw authority")
+    _sha256(
+        cyclemask["canonical_semantic_lf_sha256"],
+        "cyclemask semantic LF authority",
+    )
+
     counts = _exact_mapping(receipt["counts"], _COUNT_FIELDS, "counts")
     checked_counts = dict(
         (field, _nonnegative_int(counts[field], "counts.%s" % field))
@@ -349,30 +409,40 @@ def _validate_receipt(value: object) -> Mapping[str, object]:
 def _read_bundle_members(payload: bytes) -> Dict[str, bytes]:
     artifacts = {}  # type: Dict[str, bytes]
     try:
-        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
-            members = archive.getmembers()
-            if tuple(member.name for member in members) != _MEMBERS:
-                _fail("native bundle member set/order differs")
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r|gz") as archive:
             expanded = 0
-            for member in members:
+            for expected_name in _MEMBERS:
+                member = archive.next()
+                if member is None or member.name != expected_name:
+                    _fail("native bundle member set/order differs")
+                header_bytes = member.offset_data - member.offset
                 if (
                     not member.isfile()
                     or _relative_path(member.name, "tar member") != member.name
                     or type(member.size) is not int
                     or member.size < 0
                     or member.size > MAX_MEMBER_BYTES
+                    or type(header_bytes) is not int
+                    or header_bytes < tarfile.BLOCKSIZE
+                    or header_bytes > MAX_TAR_HEADER_BYTES
+                    or header_bytes % tarfile.BLOCKSIZE != 0
                 ):
-                    _fail("native bundle contains a non-regular or oversized member")
+                    _fail("native bundle member header/type/size differs")
                 expanded += member.size
                 if expanded > MAX_EXPANDED_BYTES:
                     _fail("native bundle expanded byte limit exceeded")
                 stream = archive.extractfile(member)
                 if stream is None:
                     _fail("native bundle member is unreadable")
-                member_payload = stream.read(MAX_MEMBER_BYTES + 1)
+                try:
+                    member_payload = stream.read(MAX_MEMBER_BYTES + 1)
+                finally:
+                    stream.close()
                 if len(member_payload) != member.size:
                     _fail("native bundle member size differs")
                 artifacts[member.name] = member_payload
+            if archive.next() is not None:
+                _fail("native bundle contains an extra member")
     except NativeOutcomeBundleError:
         raise
     except (EOFError, OSError, tarfile.TarError) as error:
@@ -397,18 +467,54 @@ def _validate_member_digests(
         _fail("bundled bridge commit authority differs")
 
 
-def _strict_lines(payload: bytes, where: str, allow_crlf: bool = False) -> Tuple[str, ...]:
+def _cyclemask_encoding(payload: bytes) -> Tuple[str, str, str, bytes]:
     if not payload or len(payload) > MAX_MEMBER_BYTES:
-        _fail("%s must be non-empty and bounded" % where)
-    if allow_crlf and b"\r\n" in payload:
+        _fail("cyclemask must be non-empty and bounded")
+    if b"\r\n" in payload:
+        without_crlf = payload.replace(b"\r\n", b"")
         if (
-            b"\r" in payload.replace(b"\r\n", b"")
-            or b"\n" in payload.replace(b"\r\n", b"")
+            b"\r" in without_crlf
+            or b"\n" in without_crlf
             or not payload.endswith(b"\r\n")
         ):
-            _fail("%s has mixed line endings" % where)
-        payload = payload.replace(b"\r\n", b"\n")
-    elif b"\r" in payload or not payload.endswith(b"\n"):
+            _fail("cyclemask contains mixed or malformed line endings")
+        line_endings = "CRLF"
+        canonical_lf = payload.replace(b"\r\n", b"\n")
+    else:
+        if b"\r" in payload or not payload.endswith(b"\n"):
+            _fail("cyclemask contains mixed or malformed line endings")
+        line_endings = "LF"
+        canonical_lf = payload
+    _strict_lines(canonical_lf, "cyclemask semantic LF")
+    return (
+        line_endings,
+        hashlib.sha256(payload).hexdigest(),
+        hashlib.sha256(canonical_lf).hexdigest(),
+        canonical_lf,
+    )
+
+
+def _validate_cyclemask_authority(
+    receipt: Mapping[str, object], artifacts: Mapping[str, bytes]
+) -> None:
+    input_authority = receipt["input_authority"]
+    assert isinstance(input_authority, Mapping)
+    cyclemask = input_authority["cyclemask"]
+    assert isinstance(cyclemask, Mapping)
+    observed = _cyclemask_encoding(artifacts[_CYCLEMASK_MEMBER])
+    expected = (
+        cyclemask["line_endings"],
+        cyclemask["raw_sha256"],
+        cyclemask["canonical_semantic_lf_sha256"],
+    )
+    if observed[:3] != expected:
+        _fail("cyclemask member differs from receipt input authority")
+
+
+def _strict_lines(payload: bytes, where: str) -> Tuple[str, ...]:
+    if not payload or len(payload) > MAX_MEMBER_BYTES:
+        _fail("%s must be non-empty and bounded" % where)
+    if b"\r" in payload or not payload.endswith(b"\n"):
         _fail("%s must use uniform terminal LF" % where)
     try:
         text = payload.decode("ascii", errors="strict")
@@ -429,8 +535,9 @@ def _uint_token(token: str, where: str) -> int:
 def _derive_occurrences(cyclemask: bytes) -> Tuple[Tuple[int, int, int], ...]:
     occurrences = []  # type: List[Tuple[int, int, int]]
     previous_cycle = -1
+    canonical_lf = _cyclemask_encoding(cyclemask)[3]
     for line_number, line in enumerate(
-        _strict_lines(cyclemask, "cyclemask", allow_crlf=True), 1
+        _strict_lines(canonical_lf, "cyclemask semantic LF"), 1
     ):
         match = _CYCLEMASK_LINE.fullmatch(line)
         if match is None:
@@ -498,7 +605,11 @@ def _parse_transport_outcomes(payload: bytes) -> Tuple[Mapping[str, object], ...
     return tuple(rows)
 
 
-def _ledger_rows(payload: bytes) -> Tuple[Dict[int, Tuple[object, ...]], Tuple[int, int, int]]:
+def _ledger_rows(payload: bytes) -> Tuple[
+    Tuple[_LedgerRecord, ...],
+    Dict[int, _LedgerRecord],
+    Tuple[int, int, int],
+]:
     lines = _strict_lines(payload, "native ledger")
     if len(lines) < 2 or lines[0] != "SCHEMA|" + LEDGER_SCHEMA:
         _fail("native ledger schema header differs")
@@ -508,7 +619,12 @@ def _ledger_rows(payload: bytes) -> Tuple[Dict[int, Tuple[object, ...]], Tuple[i
     counts = tuple(
         _uint_token(token, "native ledger summary") for token in summary[1:]
     )
-    result = {}  # type: Dict[int, Tuple[object, ...]]
+    records = []  # type: List[_LedgerRecord]
+    result = {}  # type: Dict[int, _LedgerRecord]
+    observation_keys = []  # type: List[Tuple[int, int, int, int, int]]
+    rows_by_cycle_lane = {}  # type: Dict[Tuple[int, int], int]
+    retire_slots = set()
+    delivered_per_cycle = {}  # type: Dict[int, int]
     for line_number, line in enumerate(lines[1:-1], 2):
         fields = line.split("|")
         if len(fields) != 9 or fields[0] != "EVENT":
@@ -518,32 +634,163 @@ def _ledger_rows(payload: bytes) -> Tuple[Dict[int, Tuple[object, ...]], Tuple[i
             for token in fields[1:4]
         )
         event_id, source, occurrence = values
-        if event_id in result or fields[4] != "DELIVERED":
-            _fail("native ledger IDs/outcomes differ")
-        retire_values = tuple(
-            _uint_token(token, "native ledger retire field")
-            for token in fields[5:9]
+        if event_id in result or source > 15:
+            _fail("native ledger IDs/sources differ")
+        outcome = fields[4]
+        if outcome == "DELIVERED":
+            retire_values = tuple(
+                _uint_token(token, "native ledger retire field")
+                for token in fields[5:9]
+            )
+            retire, lane, native_row, column = retire_values
+            if (
+                lane not in (0, 1)
+                or native_row > 3
+                or column > 3
+                or source != native_row * 4 + column
+                or occurrence > retire
+            ):
+                _fail("native ledger retirement coordinate/time differs")
+            if (lane == 0 and native_row not in (0, 1, 2)) or (
+                lane == 1 and native_row not in (0, 2, 3)
+            ):
+                _fail("native ledger lane cannot emit the observed row")
+            record = _LedgerRecord(
+                event_id, source, occurrence, outcome,
+                retire, lane, native_row, column,
+            )
+            bitmap_key = (retire, lane)
+            prior_row = rows_by_cycle_lane.get(bitmap_key)
+            if prior_row is not None and prior_row != native_row:
+                _fail("one native lane-cycle selects multiple rows")
+            other_row = rows_by_cycle_lane.get((retire, 1 - lane))
+            if other_row == native_row:
+                _fail("two native lanes select the same row in one cycle")
+            rows_by_cycle_lane[bitmap_key] = native_row
+            slot = (retire, lane, column)
+            if slot in retire_slots:
+                _fail("native retire cycle/lane/column slot is duplicated")
+            retire_slots.add(slot)
+            delivered_per_cycle[retire] = delivered_per_cycle.get(retire, 0) + 1
+            if delivered_per_cycle[retire] > 8:
+                _fail("more than eight native events retire in one cycle")
+            observation_keys.append((retire, 1, lane, column, event_id))
+        elif outcome == "OVERRUN":
+            if fields[5:9] != ["-", "-", "-", "-"]:
+                _fail("OVERRUN ledger retire fields must all be null")
+            record = _LedgerRecord(
+                event_id, source, occurrence, outcome,
+                None, None, None, None,
+            )
+            observation_keys.append((occurrence, 0, source, 0, event_id))
+        else:
+            _fail("native ledger outcome differs")
+        records.append(record)
+        result[event_id] = record
+        if len(records) > MAX_RECORDS:
+            _fail("native ledger record count exceeds limit")
+
+    if observation_keys != sorted(observation_keys):
+        _fail("native ledger rows are not in deterministic observation order")
+    lane_rows_by_cycle = {}  # type: Dict[int, Dict[int, int]]
+    for (cycle, lane), native_row in rows_by_cycle_lane.items():
+        lane_rows_by_cycle.setdefault(cycle, {})[lane] = native_row
+    for lane_rows in lane_rows_by_cycle.values():
+        if set(lane_rows) == {0, 1}:
+            pair = (lane_rows[0], lane_rows[1])
+            if pair not in _LEGAL_TWO_VALID_ROW_PAIRS:
+                _fail("native two-valid row pair is impossible")
+        elif set(lane_rows) == {0} and lane_rows[0] not in (1, 2):
+            _fail("native lane0-only row is impossible")
+        elif set(lane_rows) == {1} and lane_rows[1] not in (0, 3):
+            _fail("native lane1-only row is impossible")
+
+    delivered_count = sum(record.outcome == "DELIVERED" for record in records)
+    overrun_count = len(records) - delivered_count
+    if counts != (len(records), delivered_count, overrun_count):
+        _fail("native ledger count/conservation summary differs")
+    return tuple(records), result, counts  # type: ignore[return-value]
+
+
+def _replay_native_ledger(
+    occurrences: Tuple[Tuple[int, int, int], ...],
+    records: Tuple[_LedgerRecord, ...],
+    records_by_id: Mapping[int, _LedgerRecord],
+) -> None:
+    expected_by_id = dict((row[0], row) for row in occurrences)
+    if set(records_by_id) != set(expected_by_id):
+        _fail("native ledger does not exactly partition cyclemask event IDs")
+    for event_id, source, occurrence in occurrences:
+        record = records_by_id[event_id]
+        if (
+            record.source_index != source
+            or record.occurrence_cycle != occurrence
+        ):
+            _fail("native ledger ID/source/occurrence differs from cyclemask")
+
+    latest_occurrence = max(row[2] for row in occurrences)
+    for record in records:
+        if (
+            type(record.retire_cycle) is int
+            and record.retire_cycle > latest_occurrence + NATIVE_DRAIN_LIMIT
+        ):
+            _fail("native ledger retirement exceeds bounded drain")
+
+    occurrences_by_cycle = {}  # type: Dict[int, List[Tuple[int, int, int]]]
+    deliveries_by_cycle = {}  # type: Dict[int, List[_LedgerRecord]]
+    for occurrence in occurrences:
+        occurrences_by_cycle.setdefault(occurrence[2], []).append(occurrence)
+    for record in records:
+        if record.outcome == "DELIVERED":
+            assert isinstance(record.retire_cycle, int)
+            deliveries_by_cycle.setdefault(record.retire_cycle, []).append(record)
+
+    queues = [[] for _ in range(16)]  # type: List[List[int]]
+    cycles = sorted(set(occurrences_by_cycle) | set(deliveries_by_cycle))
+    for cycle in cycles:
+        current_occurrences = occurrences_by_cycle.get(cycle, [])
+        for event_id, source, _ in current_occurrences:
+            record = records_by_id[event_id]
+            is_full = len(queues[source]) == 2
+            if is_full != (record.outcome == "OVERRUN"):
+                _fail("native ledger overrun differs from pre-edge depth-2 state")
+
+        current_deliveries = sorted(
+            deliveries_by_cycle.get(cycle, []),
+            key=lambda record: (
+                record.retire_native_lane,
+                record.retire_col,
+                record.event_id,
+            ),
         )
-        result[event_id] = (
-            event_id, source, occurrence, fields[4],
-            retire_values[0], retire_values[1], retire_values[2], retire_values[3],
-        )
-    return result, counts  # type: ignore[return-value]
+        for record in current_deliveries:
+            queue = queues[record.source_index]
+            if not queue or queue[0] != record.event_id:
+                _fail("native ledger contains phantom retirement or FIFO reorder")
+            queue.pop(0)
+        for event_id, source, _ in current_occurrences:
+            if records_by_id[event_id].outcome == "DELIVERED":
+                queues[source].append(event_id)
+                if len(queues[source]) > 2:
+                    _fail("native ledger exceeds per-source depth two")
+    if any(queues):
+        _fail("native ledger drain is incomplete")
 
 
 def _cross_validate(
     receipt: Mapping[str, object], artifacts: Mapping[str, bytes]
 ) -> Tuple[NativeOutcome, ...]:
     rows = _parse_transport_outcomes(artifacts["transport_outcomes.jsonl"])
-    cyclemask_member = (
-        "faer_snapshot/common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt"
-    )
-    occurrences = _derive_occurrences(artifacts[cyclemask_member])
+    _validate_cyclemask_authority(receipt, artifacts)
+    occurrences = _derive_occurrences(artifacts[_CYCLEMASK_MEMBER])
     if len(rows) != len(occurrences):
         _fail("cyclemask and transport population sizes differ")
-    ledger_by_id, ledger_counts = _ledger_rows(artifacts["native_ledger.psv"])
+    ledger_records, ledger_by_id, ledger_counts = _ledger_rows(
+        artifacts["native_ledger.psv"]
+    )
     if len(ledger_by_id) != len(rows) or set(ledger_by_id) != set(range(len(rows))):
         _fail("native ledger does not exactly partition transport event IDs")
+    _replay_native_ledger(occurrences, ledger_records, ledger_by_id)
 
     outcomes = []  # type: List[NativeOutcome]
     for row, expected in zip(rows, occurrences):
@@ -557,7 +804,7 @@ def _cross_validate(
             row["outcome"], row["retire_cycle"], row["retire_native_lane"],
             row["retire_row"], row["retire_col"],
         )
-        if ledger_by_id[event_id] != ledger_identity:
+        if ledger_by_id[event_id].identity() != ledger_identity:
             _fail("transport outcome differs from native ledger")
         occurrence = row["occurrence_cycle"]
         retire = row["retire_cycle"]
