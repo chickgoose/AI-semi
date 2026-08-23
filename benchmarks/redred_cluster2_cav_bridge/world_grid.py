@@ -22,6 +22,13 @@ from typing import Sequence, Tuple
 
 Ray = Tuple[float, float, float]
 UNIT_RAY_TOLERANCE = 1.0e-9
+MAX_GRID_DIMENSION = (1 << 31) - 1
+# Python 3.8 has no math.nextafter.  This is the binary64 value immediately
+# below math.pi and keeps a positive, non-zero seam offset in the last bin
+# even when libm atan2 rounds that offset to +pi.
+PREVIOUS_PI = float.fromhex("0x1.921fb54442d17p+1")
+_HALF_PI = 0.5 * math.pi
+_PREVIOUS_HALF_PI = float.fromhex("0x1.921fb54442d17p+0")
 COORDINATE_CONVENTION = (
     "WORLD_XYZ_ACTIVE_RAY;azimuth=atan2(+Y,+X)_range[-pi,pi);"
     "elevation=atan2(+Z,hypot(X,Y))_range[-pi/2,pi/2];"
@@ -36,7 +43,7 @@ class WorldGridError(ValueError):
 
 
 def _positive_dimension(value: object, where: str) -> int:
-    if type(value) is not int or value <= 0:
+    if type(value) is not int or not 0 < value <= MAX_GRID_DIMENSION:
         raise WorldGridError("%s must be a positive integer" % where)
     return value
 
@@ -48,7 +55,12 @@ def _unit_world_ray(value: object) -> Ray:
     for index, component in enumerate(value):  # type: ignore[union-attr]
         if isinstance(component, bool) or not isinstance(component, (int, float)):
             raise WorldGridError("world_ray[%d] must be a finite number" % index)
-        number = float(component)
+        try:
+            number = float(component)
+        except (OverflowError, ValueError) as exc:
+            raise WorldGridError(
+                "world_ray[%d] must be a finite number" % index
+            ) from exc
         if not math.isfinite(number):
             raise WorldGridError("world_ray[%d] must be a finite number" % index)
         components.append(number)
@@ -57,6 +69,40 @@ def _unit_world_ray(value: object) -> Ray:
     if not math.isfinite(norm) or abs(norm - 1.0) > UNIT_RAY_TOLERANCE:
         raise WorldGridError("world_ray must be normalized within 1e-9")
     return ray  # type: ignore[return-value]
+
+
+def _azimuth_bin(azimuth: float, width: int) -> int:
+    if azimuth == -math.pi:
+        return 0
+    if azimuth == PREVIOUS_PI:
+        return width - 1
+    scaled = ((azimuth + math.pi) / (2.0 * math.pi)) * width
+    try:
+        result = int(math.floor(scaled))
+    except (OverflowError, ValueError) as exc:
+        raise WorldGridError("azimuth cannot be quantized") from exc
+    if result == width:
+        return width - 1
+    if not 0 <= result < width:
+        raise WorldGridError("derived azimuth bin lies outside the world grid")
+    return result
+
+
+def _elevation_bin(elevation: float, height: int) -> int:
+    if elevation == _HALF_PI:
+        return 0
+    if elevation == -_HALF_PI:
+        return height - 1
+    scaled = ((_HALF_PI - elevation) / math.pi) * height
+    try:
+        result = int(math.floor(scaled))
+    except (OverflowError, ValueError) as exc:
+        raise WorldGridError("elevation cannot be quantized") from exc
+    if result == height:
+        return height - 1
+    if not 0 <= result < height:
+        raise WorldGridError("derived elevation bin lies outside the world grid")
+    return result
 
 
 @dataclass(frozen=True)
@@ -95,6 +141,13 @@ class WorldGridCoordinate:
             raise WorldGridError("elevation lies outside [-pi/2, pi/2]")
         if self.coordinate_convention != COORDINATE_CONVENTION:
             raise WorldGridError("coordinate convention differs")
+        exact_pole = abs(self.elevation_rad) == _HALF_PI
+        if exact_pole and (self.azimuth_rad != -math.pi or self.x != 0):
+            raise WorldGridError("exact poles must use canonical azimuth and x=0")
+        expected_x = _azimuth_bin(self.azimuth_rad, width)
+        expected_y = _elevation_bin(self.elevation_rad, height)
+        if self.x != expected_x or self.y != expected_y:
+            raise WorldGridError("x/y differ from the supplied spherical angles")
 
 
 def quantize_world_ray(
@@ -115,22 +168,23 @@ def quantize_world_ray(
     if horizontal == 0.0:
         azimuth = -math.pi
         x = 0
+    elif x_world < 0.0 and y_world == 0.0:
+        # Only the exact signed-zero seam is canonical column zero.  A
+        # positive non-zero Y, however tiny, belongs immediately before +pi.
+        azimuth = -math.pi
+        x = 0
     else:
         azimuth = math.atan2(y_world, x_world)
         if azimuth >= math.pi:
-            azimuth = -math.pi
-        azimuth_fraction = (azimuth + math.pi) / (2.0 * math.pi)
-        x = int(math.floor(azimuth_fraction * checked_width))
-        # A value immediately below +pi can round to a unit fraction.  It is
-        # still on the last half-open bin, not on the canonical seam.
-        if x == checked_width:
-            x = checked_width - 1
+            azimuth = PREVIOUS_PI
+        x = _azimuth_bin(azimuth, checked_width)
 
     elevation = math.atan2(z_world, horizontal)
-    elevation_fraction = (0.5 * math.pi - elevation) / math.pi
-    y = int(math.floor(elevation_fraction * checked_height))
-    if y == checked_height:
-        y = checked_height - 1
+    if horizontal != 0.0 and elevation >= _HALF_PI:
+        elevation = _PREVIOUS_HALF_PI
+    elif horizontal != 0.0 and elevation <= -_HALF_PI:
+        elevation = -_PREVIOUS_HALF_PI
+    y = _elevation_bin(elevation, checked_height)
 
     if not (
         -math.pi <= azimuth < math.pi
@@ -153,6 +207,8 @@ def quantize_world_ray(
 
 __all__ = [
     "COORDINATE_CONVENTION",
+    "MAX_GRID_DIMENSION",
+    "PREVIOUS_PI",
     "UNIT_RAY_TOLERANCE",
     "WorldGridCoordinate",
     "WorldGridError",

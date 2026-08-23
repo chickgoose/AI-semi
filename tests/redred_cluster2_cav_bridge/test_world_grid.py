@@ -5,6 +5,8 @@ import unittest
 
 from benchmarks.redred_cluster2_cav_bridge.world_grid import (
     COORDINATE_CONVENTION,
+    MAX_GRID_DIMENSION,
+    PREVIOUS_PI,
     WorldGridCoordinate,
     WorldGridError,
     quantize_world_ray,
@@ -37,6 +39,13 @@ class WorldGridQuantizationTest(unittest.TestCase):
         self.assertEqual(positive.azimuth_rad, -math.pi)
         self.assertEqual(negative.azimuth_rad, -math.pi)
         self.assertEqual((north.x, south.x), (0, 0))
+
+    def test_positive_minimum_subnormal_before_seam_uses_last_column(self):
+        minimum_subnormal = float.fromhex("0x0.0000000000001p-1022")
+        result = quantize_world_ray((-1.0, minimum_subnormal, 0.0), 16, 8)
+        self.assertEqual(result.x, 15)
+        self.assertEqual(result.azimuth_rad, PREVIOUS_PI)
+        self.assertLess(result.azimuth_rad, math.pi)
 
     def test_returned_angles_bind_the_axis_convention(self):
         positive_x = quantize_world_ray((1.0, 0.0, 0.0), 8, 4)
@@ -83,6 +92,8 @@ class WorldGridQuantizationTest(unittest.TestCase):
         invalid = (
             (0, 1), (-1, 1), (1, 0), (1, -1),
             (True, 1), (1, False), (1.0, 1),
+            (MAX_GRID_DIMENSION + 1, 1),
+            (1, 10 ** 10_000),
         )
         for width, height in invalid:
             with self.subTest(width=width, height=height):
@@ -101,6 +112,7 @@ class WorldGridQuantizationTest(unittest.TestCase):
             (0.0, 0.0, 0.0),
             (2.0, 0.0, 0.0),
             (1.0 + 2.0e-9, 0.0, 0.0),
+            (10 ** 10_000, 0, 0),
         )
         for ray in invalid:
             with self.subTest(ray=ray):
@@ -131,8 +143,31 @@ class WorldGridQuantizationTest(unittest.TestCase):
             # later) while still probing just beyond the closed pole range.
             dict(valid, elevation_rad=math.pi / 2.0 + 1.0e-12),
             dict(valid, coordinate_convention="swapped axes"),
+            # All fields are individually in range, but the coordinates do
+            # not describe the supplied angles.
+            dict(valid, x=1, index=5),
+            dict(valid, y=0, index=2),
         )
         for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(WorldGridError):
+                    WorldGridCoordinate(**mutation)
+
+    def test_direct_constructor_revalidates_exact_pole_convention(self):
+        north = dict(
+            x=0,
+            y=0,
+            index=0,
+            width=4,
+            height=3,
+            azimuth_rad=-math.pi,
+            elevation_rad=math.pi / 2.0,
+        )
+        WorldGridCoordinate(**north)
+        for mutation in (
+            dict(north, x=1, index=1),
+            dict(north, azimuth_rad=0.0),
+        ):
             with self.subTest(mutation=mutation):
                 with self.assertRaises(WorldGridError):
                     WorldGridCoordinate(**mutation)
