@@ -370,6 +370,10 @@ class ParserMutationTests(unittest.TestCase):
 class SourceGuardTests(unittest.TestCase):
     def test_tb_identity_state_is_observational_only_and_overrun_is_preedge(self):
         source = TB.read_text(encoding="utf-8")
+        self.assertEqual(
+            hashlib.sha256(TB.read_bytes()).hexdigest(),
+            runner_module.OBSERVATIONAL_TB_SHA256,
+        )
         instance_start = source.index(
             "aer_tx16_trad_rowcol_fovea_cluster2_steal_buf dut ("
         )
@@ -384,6 +388,32 @@ class SourceGuardTests(unittest.TestCase):
         self.assertNotRegex(source, r"arrival\s*=.*(?:fifo|event_id)")
         self.assertIn("fifo_event_id [0:15][0:1]", source)
         self.assertIn("pre-edge overrun differs from arrival-and-full", source)
+        native_check = source.index("task automatic check_native_lanes;")
+        first_lane_logic = source.index("if (valid0 &&", native_check)
+        for signal in ("valid0", "row0", "col_mask0", "valid1", "row1", "col_mask1"):
+            with self.subTest(native_signal=signal):
+                known_check = source.index(
+                    "if ((^%s) === 1'bx)" % signal, native_check
+                )
+                self.assertLess(known_check, first_lane_logic)
+        self.assertEqual(source.count("if ((^sampled_overrun) === 1'bx)"), 2)
+        for assignment, use_marker in (
+            (
+                source.index("sampled_overrun = overrun;", source.index("while (have_next)")),
+                "if ((sampled_overrun & ~arrival)",
+            ),
+            (
+                source.index(
+                    "sampled_overrun = overrun;",
+                    source.index("while ((total_fifo_count()"),
+                ),
+                "if (sampled_overrun != 16'b0)",
+            ),
+        ):
+            known_check = source.index("if ((^sampled_overrun) === 1'bx)", assignment)
+            first_use = source.index(use_marker, known_check)
+            self.assertLess(assignment, known_check)
+            self.assertLess(known_check, first_use)
         id_order = source.index(
             "for (source_index = 0; source_index < 16; source_index = source_index + 1)",
             source.index("if (next_cycle == cycle_number)"),

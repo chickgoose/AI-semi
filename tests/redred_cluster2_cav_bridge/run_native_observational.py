@@ -50,7 +50,7 @@ TB_PATH = (
 )
 TOP = "redred_cluster2_native_observational_tb"
 OBSERVATIONAL_TB_SHA256 = (
-    "c09beab94cb68103d9c052967f04e99d75aa3ac8d85d10a642194cac738c2569"
+    "50750a75f9730e2ec6f62a7850362431d4855b7305f7277cf84d3175ab91f035"
 )
 
 

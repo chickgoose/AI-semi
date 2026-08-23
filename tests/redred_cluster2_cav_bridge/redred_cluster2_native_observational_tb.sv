@@ -79,6 +79,18 @@ module redred_cluster2_native_observational_tb;
 
   task automatic check_native_lanes;
     begin
+      if ((^valid0) === 1'bx)
+        $fatal(1, "native valid0 contains X/Z cycle=%0d", cycle_number);
+      if ((^row0) === 1'bx)
+        $fatal(1, "native row0 contains X/Z cycle=%0d", cycle_number);
+      if ((^col_mask0) === 1'bx)
+        $fatal(1, "native col_mask0 contains X/Z cycle=%0d", cycle_number);
+      if ((^valid1) === 1'bx)
+        $fatal(1, "native valid1 contains X/Z cycle=%0d", cycle_number);
+      if ((^row1) === 1'bx)
+        $fatal(1, "native row1 contains X/Z cycle=%0d", cycle_number);
+      if ((^col_mask1) === 1'bx)
+        $fatal(1, "native col_mask1 contains X/Z cycle=%0d", cycle_number);
       if (valid0 && !((row0 == 2'd0) || (row0 == 2'd1) || (row0 == 2'd2)))
         $fatal(1, "lane0 selected forbidden row=%0d cycle=%0d", row0, cycle_number);
       if (valid1 && !((row1 == 2'd0) || (row1 == 2'd2) || (row1 == 2'd3)))
@@ -213,6 +225,8 @@ module redred_cluster2_native_observational_tb;
       // Snapshot the combinational rejection one time unit before admission.
       #4;
       sampled_overrun = overrun;
+      if ((^sampled_overrun) === 1'bx)
+        $fatal(1, "sampled overrun contains X/Z cycle=%0d", cycle_number);
       if ((sampled_overrun & ~arrival) != 16'b0)
         $fatal(1, "DUT overrun escaped the presented arrival bitmap");
       accepted_mask = arrival & ~sampled_overrun;
@@ -260,6 +274,9 @@ module redred_cluster2_native_observational_tb;
       arrival = 16'b0;
       #4;
       sampled_overrun = overrun;
+      if ((^sampled_overrun) === 1'bx)
+        $fatal(1, "sampled overrun contains X/Z during drain cycle=%0d",
+               cycle_number);
       if (sampled_overrun != 16'b0)
         $fatal(1, "overrun asserted during empty-input drain");
       @(posedge clk);
