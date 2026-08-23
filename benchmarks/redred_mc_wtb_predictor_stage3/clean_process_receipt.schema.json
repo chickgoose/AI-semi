@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred.mc_wtb_predictor_stage3.clean_process_receipt/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "authority_go", "candidate_id",
+    "candidate_output_schema", "execution_input_aggregate_sha256",
+    "neutral_input_sha256", "ordered_query_event_ids_sha256",
+    "refreeze_contract_sha256", "candidate_manifest_sha256",
+    "config_manifest_sha256", "candidate_safe_core_manifest_sha256",
+    "coordinator_manifest_sha256", "runtime_manifest",
+    "runtime_manifest_sha256", "child_response_sha256",
+    "candidate_output_sha256", "candidate_output_aggregate_sha256",
+    "candidate_replay_sha256", "query_path_sha256", "windows_sha256",
+    "query_event_count", "warmup_rows_emitted",
+    "runtime_isolation_evidence", "external_runner_authority_hold",
+    "code_signing_hold",
+    "candidate_domain_hold", "candidate_domain_hold_sha256",
+    "output_authority_hold", "filesystem_publication_hold",
+    "post_output_verification", "post_output_verification_sha256",
+    "aggregate_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.clean_process_receipt/v2"},
+    "status": {"const": "DEVELOPMENT_HOLD"},
+    "authority_go": {"const": false},
+    "candidate_id": {"$ref": "#/$defs/candidateId"},
+    "candidate_output_schema": {
+      "enum": [
+        "redred.mc_wtb_predictor_stage3.rg3_query_stream/v1",
+        "redred.mc_wtb_predictor_stage3.dspb_query_stream/v1",
+        "redred.mc_wtb_predictor_stage3.pll_query_stream/v1"
+      ]
+    },
+    "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+    "neutral_input_sha256": {"$ref": "#/$defs/sha256"},
+    "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+    "refreeze_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "config_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_safe_core_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "coordinator_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "runtime_manifest": {"$ref": "#/$defs/runtimeManifest"},
+    "runtime_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "child_response_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_output_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_output_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_replay_sha256": {"$ref": "#/$defs/sha256"},
+    "query_path_sha256": {"$ref": "#/$defs/sha256"},
+    "windows_sha256": {"$ref": "#/$defs/sha256"},
+    "query_event_count": {"type": "integer", "minimum": 0},
+    "warmup_rows_emitted": {"const": 0},
+    "runtime_isolation_evidence": {"$ref": "#/$defs/runtimeEvidence"},
+    "external_runner_authority_hold": {"$ref": "#/$defs/authorityHold"},
+    "code_signing_hold": {"$ref": "#/$defs/authorityHold"},
+    "candidate_domain_hold": {"$ref": "#/$defs/domainHold"},
+    "candidate_domain_hold_sha256": {"$ref": "#/$defs/sha256"},
+    "output_authority_hold": {"$ref": "#/$defs/outputHold"},
+    "filesystem_publication_hold": {"$ref": "#/$defs/publicationHold"},
+    "post_output_verification": {"$ref": "#/$defs/postOutputReceipt"},
+    "post_output_verification_sha256": {"$ref": "#/$defs/sha256"},
+    "aggregate_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"candidate_id": {"const": "redred.mc_wtb_predictor_stage3.rg3_cav/body_transport3_cadence10ms_nearpi1em6_residual0p5_dircos0_accel0p25/v1"}}},
+      "then": {"properties": {
+        "candidate_output_schema": {"const": "redred.mc_wtb_predictor_stage3.rg3_query_stream/v1"},
+        "candidate_domain_hold": {"$ref": "#/$defs/rg3DomainHold"}
+      }}
+    },
+    {
+      "if": {"properties": {"candidate_id": {"const": "DSPB-A4-E0E1E2E3-V1"}}},
+      "then": {"properties": {
+        "candidate_output_schema": {"const": "redred.mc_wtb_predictor_stage3.dspb_query_stream/v1"},
+        "candidate_domain_hold": {"$ref": "#/$defs/dspbDomainHold"}
+      }}
+    },
+    {
+      "if": {"properties": {"candidate_id": {"const": "SO3_PLL_A5_V1:0.25,0.02,0.034906585039886591,0.52359877559829882,9.9999999999999995e-07,34.906585039886593,8.7266462599716483,69.813170079773187,0.0008726646259971648,-0.94999999999999996:20000000,5000000,5000000,1000000,2"}}},
+      "then": {"properties": {
+        "candidate_output_schema": {"const": "redred.mc_wtb_predictor_stage3.pll_query_stream/v1"},
+        "candidate_domain_hold": {"$ref": "#/$defs/pllDomainHold"}
+      }}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "candidateId": {
+      "enum": [
+        "redred.mc_wtb_predictor_stage3.rg3_cav/body_transport3_cadence10ms_nearpi1em6_residual0p5_dircos0_accel0p25/v1",
+        "DSPB-A4-E0E1E2E3-V1",
+        "SO3_PLL_A5_V1:0.25,0.02,0.034906585039886591,0.52359877559829882,9.9999999999999995e-07,34.906585039886593,8.7266462599716483,69.813170079773187,0.0008726646259971648,-0.94999999999999996:20000000,5000000,5000000,1000000,2"
+      ]
+    },
+    "runtimeManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "python_executable_path", "python_executable_sha256", "python_executable_size_bytes", "python_version", "python_implementation", "python_cache_tag", "isolated", "no_site", "dont_write_bytecode", "repository_root", "worker_path", "worker_sha256"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.clean_process_runtime/v1"},
+        "python_executable_path": {"type": "string", "minLength": 1},
+        "python_executable_sha256": {"$ref": "#/$defs/sha256"},
+        "python_executable_size_bytes": {"type": "integer", "minimum": 1},
+        "python_version": {"type": "string", "minLength": 1},
+        "python_implementation": {"const": "cpython"},
+        "python_cache_tag": {"type": "string", "minLength": 1},
+        "isolated": {"const": true}, "no_site": {"const": true},
+        "dont_write_bytecode": {"const": true},
+        "repository_root": {"type": "string", "minLength": 1},
+        "worker_path": {"type": "string", "minLength": 1},
+        "worker_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "runtimeEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "fixed_sys_executable", "isolated_python", "no_site", "dont_write_bytecode", "sanitized_environment", "fixed_repository_root_and_cwd", "fixed_candidate_id_dispatch", "separate_child_execution_count", "canonical_child_responses_byte_identical"],
+      "properties": {
+        "status": {"const": "PASS"}, "fixed_sys_executable": {"const": true},
+        "isolated_python": {"const": true}, "no_site": {"const": true},
+        "dont_write_bytecode": {"const": true}, "sanitized_environment": {"const": true},
+        "fixed_repository_root_and_cwd": {"const": true},
+        "fixed_candidate_id_dispatch": {"const": true},
+        "separate_child_execution_count": {"const": 2},
+        "canonical_child_responses_byte_identical": {"const": true}
+      }
+    },
+    "authorityHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "authority_go", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "authority_go": {"const": false},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "outputHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "publicationHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "publication_allowed", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "publication_allowed": {"const": false},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "postOutputReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "status", "authority_go", "candidate_id", "candidate_output_schema", "execution_input_aggregate_sha256", "refreeze_contract_sha256", "candidate_output_sha256", "candidate_output_aggregate_sha256", "candidate_child_response_sha256", "runtime_manifest", "runtime_manifest_sha256", "verification_mode", "batch_output_schema", "batch_output_aggregate_sha256", "batch_query_projection_sha256", "candidate_query_projection_sha256", "window_count", "query_event_count", "all_nested_self_seals_verified", "query_projection_verified", "provenance_verification", "output_authority_hold", "external_oracle_release_hold", "resource_ppa_hold", "filesystem_publication_hold", "aggregate_sha256"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.post_output_oracle_receipt/v1"},
+        "status": {"const": "DEVELOPMENT_HOLD"},
+        "authority_go": {"const": false},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_output_schema": {"enum": ["redred.mc_wtb_predictor_stage3.rg3_query_stream/v1", "redred.mc_wtb_predictor_stage3.dspb_query_stream/v1", "redred.mc_wtb_predictor_stage3.pll_query_stream/v1"]},
+        "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "refreeze_contract_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_output_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_output_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_child_response_sha256": {"$ref": "#/$defs/sha256"},
+        "runtime_manifest": {"$ref": "#/$defs/oracleRuntimeManifest"},
+        "runtime_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "verification_mode": {"enum": ["exact_ordered_query_row_projection", "published_semantics_plus_dependency_count_and_direct_anchor"]},
+        "batch_output_schema": {"enum": ["redred.mc_wtb_predictor_stage3.rg3_output/v2", "redred.mc_wtb_predictor_stage3.dspb_output/v2", "redred.mc_wtb_predictor_stage3.pll_output/v2"]},
+        "batch_output_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+        "batch_query_projection_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_query_projection_sha256": {"$ref": "#/$defs/sha256"},
+        "window_count": {"type": "integer", "minimum": 1},
+        "query_event_count": {"type": "integer", "minimum": 1},
+        "all_nested_self_seals_verified": {"const": true},
+        "query_projection_verified": {"const": true},
+        "provenance_verification": {"oneOf": [{"$ref": "#/$defs/exactProjectionPass"}, {"$ref": "#/$defs/outputHold"}]},
+        "output_authority_hold": {"$ref": "#/$defs/outputHold"},
+        "external_oracle_release_hold": {"$ref": "#/$defs/authorityHold"},
+        "resource_ppa_hold": {"$ref": "#/$defs/resourcePpaHold"},
+        "filesystem_publication_hold": {"$ref": "#/$defs/publicationHold"},
+        "aggregate_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"candidate_id": {"const": "redred.mc_wtb_predictor_stage3.rg3_cav/body_transport3_cadence10ms_nearpi1em6_residual0p5_dircos0_accel0p25/v1"}}},
+          "then": {"properties": {"candidate_output_schema": {"const": "redred.mc_wtb_predictor_stage3.rg3_query_stream/v1"}, "batch_output_schema": {"const": "redred.mc_wtb_predictor_stage3.rg3_output/v2"}, "verification_mode": {"const": "exact_ordered_query_row_projection"}, "provenance_verification": {"$ref": "#/$defs/exactProjectionPass"}}}
+        },
+        {
+          "if": {"properties": {"candidate_id": {"const": "DSPB-A4-E0E1E2E3-V1"}}},
+          "then": {"properties": {"candidate_output_schema": {"const": "redred.mc_wtb_predictor_stage3.dspb_query_stream/v1"}, "batch_output_schema": {"const": "redred.mc_wtb_predictor_stage3.dspb_output/v2"}, "verification_mode": {"const": "exact_ordered_query_row_projection"}, "provenance_verification": {"$ref": "#/$defs/exactProjectionPass"}}}
+        },
+        {
+          "if": {"properties": {"candidate_id": {"const": "SO3_PLL_A5_V1:0.25,0.02,0.034906585039886591,0.52359877559829882,9.9999999999999995e-07,34.906585039886593,8.7266462599716483,69.813170079773187,0.0008726646259971648,-0.94999999999999996:20000000,5000000,5000000,1000000,2"}}},
+          "then": {"properties": {"candidate_output_schema": {"const": "redred.mc_wtb_predictor_stage3.pll_query_stream/v1"}, "batch_output_schema": {"const": "redred.mc_wtb_predictor_stage3.pll_output/v2"}, "verification_mode": {"const": "published_semantics_plus_dependency_count_and_direct_anchor"}, "provenance_verification": {"$ref": "#/$defs/outputHold"}}}
+        }
+      ]
+    },
+    "oracleRuntimeManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "python_executable_path", "python_executable_sha256", "python_executable_size_bytes", "python_version", "python_implementation", "python_cache_tag", "isolated", "no_site", "dont_write_bytecode", "repository_root", "worker_path", "worker_sha256"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.post_output_oracle_runtime/v1"},
+        "python_executable_path": {"type": "string", "minLength": 1},
+        "python_executable_sha256": {"$ref": "#/$defs/sha256"},
+        "python_executable_size_bytes": {"type": "integer", "minimum": 1},
+        "python_version": {"type": "string", "minLength": 1},
+        "python_implementation": {"const": "cpython"},
+        "python_cache_tag": {"type": "string", "minLength": 1},
+        "isolated": {"const": true}, "no_site": {"const": true},
+        "dont_write_bytecode": {"const": true},
+        "repository_root": {"type": "string", "minLength": 1},
+        "worker_path": {"type": "string", "minLength": 1},
+        "worker_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "exactProjectionPass": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "mode"],
+      "properties": {"status": {"const": "PASS"}, "mode": {"const": "exact_ordered_query_row_projection"}}
+    },
+    "resourcePpaHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "resource_go", "ppa_go", "reason"],
+      "properties": {"status": {"const": "HOLD"}, "resource_go": {"const": false}, "ppa_go": {"const": false}, "reason": {"type": "string", "minLength": 1}}
+    },
+    "domainHold": {
+      "oneOf": [
+        {"$ref": "#/$defs/rg3DomainHold"},
+        {"$ref": "#/$defs/dspbDomainHold"},
+        {"$ref": "#/$defs/pllDomainHold"}
+      ]
+    },
+    "rg3DomainHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "complexity", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "complexity": {"const": "O(N)"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "dspbDomainHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "maximum_window_pose_occurrences", "maximum_equal_time_cluster_events", "valid_v3_inputs_beyond_fixed_caps", "caps_are_execution_input_v3_guarantees", "post_reset_pose_commit_cycles", "unique_pose_commit_cycles_are_execution_input_v3_guaranteed", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "maximum_window_pose_occurrences": {"const": 256},
+        "maximum_equal_time_cluster_events": {"const": 8},
+        "valid_v3_inputs_beyond_fixed_caps": {"const": "fail_closed"},
+        "caps_are_execution_input_v3_guarantees": {"const": false},
+        "post_reset_pose_commit_cycles": {"const": "strictly_unique"},
+        "unique_pose_commit_cycles_are_execution_input_v3_guaranteed": {"const": false},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "pllDomainHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "post_reset_pose_commit_cycles", "unique_pose_commit_cycles_are_execution_input_v3_guaranteed", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"},
+        "post_reset_pose_commit_cycles": {"const": "strictly_unique"},
+        "unique_pose_commit_cycles_are_execution_input_v3_guaranteed": {"const": false},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
