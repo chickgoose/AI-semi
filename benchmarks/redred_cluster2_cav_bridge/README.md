@@ -125,7 +125,12 @@ state. Optional `CLEAN_GIT_AUTHORITY` additionally requires the exact commit,
 origin identity (allowing Git's conventional trailing `.git` spelling), and a
 clean tracked checkout. The runner never writes the Ganghee checkout. Exact
 verified raw bytes are hash-checked again into a private temporary snapshot
-before compilation, and the caller bytes are reverified after the run. Invoke
+before compilation. The observational TB is likewise checked against the
+runner-pinned full SHA-256 and compiled only from its exact private snapshot.
+Every simulator subprocess runs with its working directory and `TMPDIR` under
+the output root; pre/post Git-status snapshots protect the bridge worktree and,
+when the caller root exposes usable Git status, the FAER worktree. Caller
+authority bytes are independently reverified after the run. Invoke
 the server-compatible mode from this repository root as:
 
 ```text

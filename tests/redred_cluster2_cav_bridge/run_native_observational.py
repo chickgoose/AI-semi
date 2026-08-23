@@ -5,11 +5,16 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+
+
+# Keep importing this runner from creating bridge-worktree bytecode artifacts.
+sys.dont_write_bytecode = True
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -44,17 +49,26 @@ TB_PATH = (
     / "redred_cluster2_native_observational_tb.sv"
 )
 TOP = "redred_cluster2_native_observational_tb"
+OBSERVATIONAL_TB_SHA256 = (
+    "c09beab94cb68103d9c052967f04e99d75aa3ac8d85d10a642194cac738c2569"
+)
 
 
 class RunnerError(RuntimeError):
     pass
 
 
-def _run(command, log_path: Path) -> str:
+def _run(command, log_path: Path, output_root: Path) -> str:
+    temporary_root = output_root / "tmp"
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    simulator_environment = os.environ.copy()
+    simulator_environment["TMPDIR"] = str(temporary_root)
     try:
         completed = subprocess.run(
             [str(part) for part in command],
             check=False,
+            cwd=str(output_root),
+            env=simulator_environment,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -68,6 +82,62 @@ def _run(command, log_path: Path) -> str:
             % (completed.returncode, log_path)
         )
     return completed.stdout
+
+
+def _git_worktree_status(root: Path, required: bool):
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain=v1",
+             "--untracked-files=all", "-z"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except OSError as error:
+        if required:
+            raise RunnerError("cannot inspect bridge worktree status") from error
+        return None
+    if completed.returncode != 0:
+        if required:
+            raise RunnerError("cannot inspect bridge worktree status")
+        return None
+    return completed.stdout
+
+
+def _assert_worktrees_unchanged(bridge_before, faer_root: Path, faer_before):
+    bridge_after = _git_worktree_status(PROJECT_ROOT, required=True)
+    if bridge_after != bridge_before:
+        raise RunnerError("bridge worktree status changed during simulator run")
+    if faer_before is not None:
+        faer_after = _git_worktree_status(faer_root, required=False)
+        if faer_after is None or faer_after != faer_before:
+            raise RunnerError("FAER worktree status changed during simulator run")
+
+
+def _assert_post_run_state(options, bridge_before, faer_before):
+    verify_faer_checkout(
+        options.faer_root, AUTHORITY_PATH, options.cyclemask_relative,
+        options.authority_mode,
+    )
+    _assert_worktrees_unchanged(
+        bridge_before, options.faer_root, faer_before
+    )
+
+
+def _read_xrun_completion_log(tool_log: Path, output_root: Path) -> str:
+    expected_path = output_root / "xrun.log"
+    if tool_log != expected_path:
+        raise RunnerError("xrun completion log path is not pinned")
+    try:
+        payload = tool_log.read_bytes()
+    except OSError as error:
+        raise RunnerError("xrun completion log is unavailable") from error
+    if not payload or len(payload) > 64 * 1024 * 1024:
+        raise RunnerError("xrun completion log byte size is invalid")
+    try:
+        return payload.decode("utf-8", errors="strict")
+    except UnicodeError as error:
+        raise RunnerError("xrun completion log is not UTF-8") from error
 
 
 def _select_simulator(requested: str):
@@ -127,6 +197,22 @@ def _stage_verified_files(verified, output_root: Path):
     if staged_encoding != trace_encoding:
         raise RunnerError("staged cyclemask raw provenance differs")
     staged["tracked_cyclemask"] = trace_destination
+    try:
+        tb_payload = TB_PATH.read_bytes()
+    except OSError as error:
+        raise RunnerError("observational TB became unreadable") from error
+    if hashlib.sha256(tb_payload).hexdigest() != OBSERVATIONAL_TB_SHA256:
+        raise RunnerError("observational TB bytes differ from runner pin")
+    tb_destination = output_root / "bridge_snapshot" / TB_PATH.name
+    tb_destination.parent.mkdir(parents=True, exist_ok=True)
+    tb_destination.write_bytes(tb_payload)
+    staged_tb_payload = tb_destination.read_bytes()
+    if (
+        staged_tb_payload != tb_payload
+        or hashlib.sha256(staged_tb_payload).hexdigest() != OBSERVATIONAL_TB_SHA256
+    ):
+        raise RunnerError("staged observational TB bytes differ")
+    staged["observational_tb"] = tb_destination
     return staged, trace_encoding
 
 
@@ -163,6 +249,13 @@ def main(arguments=None) -> int:
         print("NATIVE_OBSERVATIONAL_SKIP simulator_unavailable", file=sys.stderr)
         return 2
 
+    try:
+        bridge_status_before = _git_worktree_status(PROJECT_ROOT, required=True)
+        faer_status_before = _git_worktree_status(options.faer_root, required=False)
+    except RunnerError as error:
+        print("NATIVE_OBSERVATIONAL_FAIL: %s" % error, file=sys.stderr)
+        return 1
+
     output_root = Path(tempfile.mkdtemp(prefix="redred-cluster2-native-"))
     ledger_path = output_root / "native_ledger.psv"
     compile_log = output_root / "compile.log"
@@ -178,6 +271,7 @@ def main(arguments=None) -> int:
         staged["arbiter4_tree"],
         staged["cluster2_steal_buf_rtl"],
     ]
+    staged_tb_path = staged["observational_tb"]
     simulator_name, simulator = selected
     try:
         trace_path = staged["tracked_cyclemask"]
@@ -195,9 +289,9 @@ def main(arguments=None) -> int:
                 "-xmlibdirname", xcelium_root,
                 "-l", tool_log,
                 *rtl_paths,
-                TB_PATH,
+                staged_tb_path,
                 *plusargs,
-            ], run_log)
+            ], run_log, output_root)
         elif simulator_name == "verilator":
             object_root = output_root / "obj"
             _run([
@@ -207,40 +301,48 @@ def main(arguments=None) -> int:
                 "--top-module", TOP,
                 "--Mdir", object_root,
                 *rtl_paths,
-                TB_PATH,
-            ], compile_log)
+                staged_tb_path,
+            ], compile_log, output_root)
             executable = object_root / ("V" + TOP)
-            run_output = _run([executable, *plusargs], run_log)
+            run_output = _run([executable, *plusargs], run_log, output_root)
         else:
             iverilog, vvp = simulator
             executable = output_root / "native_tb.vvp"
             _run([
                 iverilog, "-g2012", "-s", TOP, "-o", executable,
                 *rtl_paths,
-                TB_PATH,
-            ], compile_log)
-            run_output = _run([vvp, executable, *plusargs], run_log)
+                staged_tb_path,
+            ], compile_log, output_root)
+            run_output = _run([vvp, executable, *plusargs], run_log, output_root)
         rows = parse_native_ledger(trace_path.read_bytes(), ledger_path.read_bytes())
         delivered_count = sum(row["outcome"] == "DELIVERED" for row in rows)
         expected_pass = (
             "REDRED_CLUSTER2_NATIVE_LEDGER_PASS generated=%d delivered=%d overrun=%d"
             % (len(rows), delivered_count, len(rows) - delivered_count)
         )
-        run_lines = run_output.splitlines()
+        completion_output = run_output
+        completion_path = run_log
+        if simulator_name == "xrun" and expected_pass not in run_output.splitlines():
+            completion_output = _read_xrun_completion_log(tool_log, output_root)
+            completion_path = tool_log
+        run_lines = completion_output.splitlines()
         failure_markers = ("$fatal", "native_ledger_fail", "*e,", "*f,")
         if run_lines.count(expected_pass) != 1 or any(
             token in line.lower()
             for line in run_lines
             for token in failure_markers
         ):
-            raise RunnerError("simulator completion marker differs; see %s" % run_log)
+            raise RunnerError(
+                "simulator completion marker differs; see %s" % completion_path
+            )
         outcome_path = output_root / "transport_outcomes.jsonl"
         outcome_path.write_bytes(canonical_transport_outcome_jsonl(rows))
-        verify_faer_checkout(
-            options.faer_root, AUTHORITY_PATH, options.cyclemask_relative,
-            options.authority_mode,
-        )
+        _assert_post_run_state(options, bridge_status_before, faer_status_before)
     except (OSError, NativeLedgerError, RunnerError) as error:
+        try:
+            _assert_post_run_state(options, bridge_status_before, faer_status_before)
+        except (NativeLedgerError, RunnerError) as status_error:
+            error = status_error
         print("NATIVE_OBSERVATIONAL_FAIL: %s" % error, file=sys.stderr)
         print("output_root=%s" % output_root, file=sys.stderr)
         return 1

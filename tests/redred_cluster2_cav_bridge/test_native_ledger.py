@@ -6,11 +6,13 @@ import ast
 import hashlib
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
 import benchmarks.redred_cluster2_cav_bridge.native_ledger as native_ledger_module
+import tests.redred_cluster2_cav_bridge.run_native_observational as runner_module
 from benchmarks.redred_cluster2_cav_bridge.native_ledger import (
     AUTHORITY_SCHEMA,
     CLEAN_GIT_AUTHORITY,
@@ -434,6 +436,19 @@ class SourceGuardTests(unittest.TestCase):
         self.assertIn("/tools/cadence/XCELIUMMAIN2309/tools/bin/64bit/xrun", source)
         self.assertIn('"-timescale", "1ns/1ps"', source)
         self.assertIn("trace_destination.write_bytes(trace_payload)", source)
+        self.assertIn('staged["tracked_cyclemask"] = trace_destination', source)
+        self.assertIn('staged["observational_tb"] = tb_destination', source)
+        self.assertIn('staged_tb_path = staged["observational_tb"]', source)
+        self.assertNotIn("*rtl_paths,\n                TB_PATH,", source)
+        self.assertIn('cwd=str(output_root)', source)
+        self.assertIn('simulator_environment["TMPDIR"] = str(temporary_root)', source)
+        self.assertIn("sys.dont_write_bytecode = True", source)
+        self.assertEqual(source.count("_run(["), 5)
+        self.assertEqual(source.count("], run_log, output_root)"), 3)
+        self.assertEqual(source.count("], compile_log, output_root)"), 2)
+        self.assertIn("_assert_post_run_state(", source)
+        self.assertIn("_read_xrun_completion_log(tool_log, output_root)", source)
+        self.assertIn('expected_path = output_root / "xrun.log"', source)
         for forbidden in ("git clone", "git fetch", "git checkout", "git reset"):
             self.assertNotIn(forbidden, source)
         self.assertIn("normalized path relative to faer_root", source)
@@ -459,6 +474,72 @@ class SourceGuardTests(unittest.TestCase):
             "transform_guard", "window_id", "is_query",
         ):
             self.assertNotIn(forbidden, tb_source)
+
+
+class RunnerIsolationTests(unittest.TestCase):
+    def test_run_forces_output_cwd_and_private_tmpdir(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output_root = Path(temporary).resolve()
+            log_path = output_root / "probe.log"
+            output = runner_module._run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import os; print(os.getcwd()); print(os.environ['TMPDIR'])",
+                ],
+                log_path,
+                output_root,
+            )
+            self.assertEqual(
+                output.splitlines(),
+                [str(output_root), str(output_root / "tmp")],
+            )
+            self.assertEqual(log_path.read_text(encoding="utf-8"), output)
+
+    def test_stage_preserves_crlf_trace_and_pins_private_tb_copy(self):
+        trace_payload = b"0 0001\r\n"
+        tb_payload = b"module observational_copy; endmodule\n"
+        trace_encoding = inspect_cyclemask_encoding(trace_payload)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            source_trace = root / "source.cyclemask"
+            source_tb = root / "source_tb.sv"
+            output_root = root / "output"
+            source_trace.write_bytes(trace_payload)
+            source_tb.write_bytes(tb_payload)
+            with ExitStack() as stack:
+                stack.enter_context(mock.patch.object(
+                    runner_module, "EXPECTED_CODE_FILES", {}
+                ))
+                stack.enter_context(mock.patch.object(
+                    runner_module, "TRACKED_CYCLEMASK_PATH", "trace.cyclemask"
+                ))
+                stack.enter_context(mock.patch.object(
+                    runner_module,
+                    "TRACKED_CYCLEMASK_RAW_SHA256",
+                    {"CRLF": trace_encoding.raw_sha256},
+                ))
+                stack.enter_context(mock.patch.object(
+                    runner_module,
+                    "TRACKED_CYCLEMASK_SEMANTIC_LF_SHA256",
+                    trace_encoding.canonical_semantic_lf_sha256,
+                ))
+                stack.enter_context(mock.patch.object(
+                    runner_module, "TB_PATH", source_tb
+                ))
+                stack.enter_context(mock.patch.object(
+                    runner_module,
+                    "OBSERVATIONAL_TB_SHA256",
+                    hashlib.sha256(tb_payload).hexdigest(),
+                ))
+                staged, observed = runner_module._stage_verified_files(
+                    {"tracked_cyclemask": source_trace}, output_root
+                )
+            self.assertEqual(observed, trace_encoding)
+            self.assertEqual(staged["tracked_cyclemask"].read_bytes(), trace_payload)
+            self.assertEqual(staged["observational_tb"].read_bytes(), tb_payload)
+            self.assertIn(output_root, staged["tracked_cyclemask"].parents)
+            self.assertIn(output_root, staged["observational_tb"].parents)
 
 
 if __name__ == "__main__":
