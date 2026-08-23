@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "redred.mc_wtb_predictor_stage3.refreeze_v4_contract/v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "authority_decision", "execution_input_schema",
+    "execution_input_aggregate_sha256", "neutral_input_sha256",
+    "ordered_query_event_ids_sha256", "candidate_manifest",
+    "candidate_manifest_sha256", "callable_runtime_isolation_hold",
+    "capabilities", "aggregate_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "redred.mc_wtb_predictor_stage3.refreeze_v4_contract/v4"},
+    "status": {"const": "DEVELOPMENT_HOLD"},
+    "authority_decision": {"const": "HOLD"},
+    "execution_input_schema": {"const": "redred.mc_wtb_predictor_stage3.execution_input/v3"},
+    "execution_input_aggregate_sha256": {"$ref": "#/$defs/sha256"},
+    "neutral_input_sha256": {"$ref": "#/$defs/sha256"},
+    "ordered_query_event_ids_sha256": {"$ref": "#/$defs/sha256"},
+    "candidate_manifest": {"$ref": "#/$defs/candidateManifest"},
+    "candidate_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "callable_runtime_isolation_hold": {"$ref": "#/$defs/runtimeHold"},
+    "capabilities": {"$ref": "#/$defs/capabilities"},
+    "aggregate_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "coreManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "candidate_id", "entrypoint", "files", "manifest_sha256"],
+      "properties": {
+        "schema": {"type": "string", "minLength": 1},
+        "candidate_id": {"type": "string", "minLength": 1},
+        "entrypoint": {"type": "string", "minLength": 1},
+        "files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "coordinatorManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "candidate_id", "entrypoint", "files", "candidate_safe_core_manifest_sha256", "manifest_sha256"],
+      "properties": {
+        "schema": {"type": "string", "minLength": 1},
+        "candidate_id": {"type": "string", "minLength": 1},
+        "entrypoint": {"type": "string", "minLength": 1},
+        "files": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/file"}},
+        "candidate_safe_core_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "candidateManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "candidate_id", "candidate_schema", "config_manifest", "config_manifest_sha256", "candidate_safe_core_manifest", "candidate_safe_core_manifest_sha256", "coordinator_manifest", "coordinator_manifest_sha256", "candidate_domain_hold", "candidate_domain_hold_sha256", "manifest_sha256"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.refreeze_v4_candidate_manifest/v1"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_schema": {
+          "enum": [
+            "redred.mc_wtb_predictor_stage3.rg3_query_stream/v1",
+            "redred.mc_wtb_predictor_stage3.dspb_query_stream/v1",
+            "redred.mc_wtb_predictor_stage3.pll_query_stream/v1"
+          ]
+        },
+        "config_manifest": {"$ref": "#/$defs/configManifest"},
+        "config_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_safe_core_manifest": {"$ref": "#/$defs/coreManifest"},
+        "candidate_safe_core_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "coordinator_manifest": {"$ref": "#/$defs/coordinatorManifest"},
+        "coordinator_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_domain_hold": {"$ref": "#/$defs/domainHold"},
+        "candidate_domain_hold_sha256": {"$ref": "#/$defs/sha256"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "candidateId": {
+      "enum": [
+        "redred.mc_wtb_predictor_stage3.rg3_cav/body_transport3_cadence10ms_nearpi1em6_residual0p5_dircos0_accel0p25/v1",
+        "DSPB-A4-E0E1E2E3-V1",
+        "SO3_PLL_A5_V1:0.25,0.02,0.034906585039886591,0.52359877559829882,9.9999999999999995e-07,34.906585039886593,8.7266462599716483,69.813170079773187,0.0008726646259971648,-0.94999999999999996:20000000,5000000,5000000,1000000,2"
+      ]
+    },
+    "configManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "candidate_id", "configuration", "configuration_canonical_sha256", "candidate_native_config_sha256", "manifest_sha256"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.refreeze_v4_config_manifest/v1"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "configuration": {"$ref": "#/$defs/configuration"},
+        "configuration_canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "candidate_native_config_sha256": {"$ref": "#/$defs/sha256"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "configuration": {
+      "oneOf": [
+        {"$ref": "#/$defs/rg3Config"},
+        {"$ref": "#/$defs/dspbConfig"},
+        {"$ref": "#/$defs/pllConfig"}
+      ]
+    },
+    "rg3Config": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "policy"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.rg3_query_stream_config/v1"},
+        "policy": {
+          "type": "object", "additionalProperties": false,
+          "required": ["candidate_id", "maximum_pose_interval_ns", "near_pi_margin_rad", "maximum_rate_change_ratio", "minimum_direction_cosine", "maximum_acceleration_contribution_ratio"],
+          "properties": {
+            "candidate_id": {"$ref": "#/$defs/candidateId"},
+            "maximum_pose_interval_ns": {"type": "integer"},
+            "near_pi_margin_rad": {"type": "number"},
+            "maximum_rate_change_ratio": {"type": "number"},
+            "minimum_direction_cosine": {"type": "number"},
+            "maximum_acceleration_contribution_ratio": {"type": "number"}
+          }
+        }
+      }
+    },
+    "dspbConfig": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_id", "max_horizon_ns", "zoh_max_age_ns", "ewma_rate_alpha", "credit_ewma_alpha", "minimum_credit_samples", "credit_tie_tolerance_rad", "winner_switch_margin_rad", "disagreement_probe_ns", "maximum_expert_disagreement_rad", "maximum_rate_rad_s", "maximum_rg3_acceleration_rad_s2", "maximum_cadence_ratio", "rg3_minimum_direction_cosine", "rg3_maximum_prior_residual_rad", "axis_minimum_coherence", "minimum_signed_speed_rad_s", "near_pi_margin_rad"],
+      "properties": {
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "max_horizon_ns": {"type": "integer"}, "zoh_max_age_ns": {"type": "integer"},
+        "ewma_rate_alpha": {"type": "number"}, "credit_ewma_alpha": {"type": "number"},
+        "minimum_credit_samples": {"type": "integer"}, "credit_tie_tolerance_rad": {"type": "number"},
+        "winner_switch_margin_rad": {"type": "number"}, "disagreement_probe_ns": {"type": "integer"},
+        "maximum_expert_disagreement_rad": {"type": "number"}, "maximum_rate_rad_s": {"type": "number"},
+        "maximum_rg3_acceleration_rad_s2": {"type": "number"}, "maximum_cadence_ratio": {"type": "number"},
+        "rg3_minimum_direction_cosine": {"type": "number"}, "rg3_maximum_prior_residual_rad": {"type": "number"},
+        "axis_minimum_coherence": {"type": "number"}, "minimum_signed_speed_rad_s": {"type": "number"},
+        "near_pi_margin_rad": {"type": "number"}
+      }
+    },
+    "pllConfig": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "candidate_id", "pll", "pre_roll_ns", "reset", "event_edge", "same_edge_priority", "candidate_gate", "fallback_routes"],
+      "properties": {
+        "schema": {"const": "redred.mc_wtb_predictor_stage3.so3_pll_config/v2"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "pll": {
+          "type": "object", "additionalProperties": false,
+          "required": ["proportional_gain", "integral_gain", "lock_residual_max_rad", "phase_jump_max_rad", "near_pi_margin_rad", "max_proportional_correction_rad_s", "max_integral_correction_rad_s", "max_angular_rate_rad_s", "limit_cycle_min_residual_rad", "limit_cycle_cosine_max", "max_gap_ns", "max_prediction_horizon_ns", "cav_max_horizon_ns", "zoh_max_age_ns", "lock_count"],
+          "properties": {
+            "proportional_gain": {"type": "number"}, "integral_gain": {"type": "number"},
+            "lock_residual_max_rad": {"type": "number"}, "phase_jump_max_rad": {"type": "number"},
+            "near_pi_margin_rad": {"type": "number"}, "max_proportional_correction_rad_s": {"type": "number"},
+            "max_integral_correction_rad_s": {"type": "number"}, "max_angular_rate_rad_s": {"type": "number"},
+            "limit_cycle_min_residual_rad": {"type": "number"}, "limit_cycle_cosine_max": {"type": "number"},
+            "max_gap_ns": {"type": "integer"}, "max_prediction_horizon_ns": {"type": "integer"},
+            "cav_max_horizon_ns": {"type": "integer"}, "zoh_max_age_ns": {"type": "integer"},
+            "lock_count": {"type": "integer"}
+          }
+        },
+        "pre_roll_ns": {"type": "integer"}, "reset": {"type": "string"},
+        "event_edge": {"type": "string"}, "same_edge_priority": {"type": "string"},
+        "candidate_gate": {"type": "string"},
+        "fallback_routes": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "string"}}
+      }
+    },
+    "domainHold": {
+      "oneOf": [
+        {"$ref": "#/$defs/rg3DomainHold"},
+        {"$ref": "#/$defs/dspbDomainHold"},
+        {"$ref": "#/$defs/pllDomainHold"}
+      ]
+    },
+    "rg3DomainHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "complexity", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "complexity": {"const": "O(N)"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "dspbDomainHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "maximum_window_pose_occurrences", "maximum_equal_time_cluster_events", "valid_v3_inputs_beyond_fixed_caps", "caps_are_execution_input_v3_guarantees", "post_reset_pose_commit_cycles", "unique_pose_commit_cycles_are_execution_input_v3_guaranteed", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "maximum_window_pose_occurrences": {"const": 256},
+        "maximum_equal_time_cluster_events": {"const": 8},
+        "valid_v3_inputs_beyond_fixed_caps": {"const": "fail_closed"},
+        "caps_are_execution_input_v3_guarantees": {"const": false},
+        "post_reset_pose_commit_cycles": {"const": "strictly_unique"},
+        "unique_pose_commit_cycles_are_execution_input_v3_guaranteed": {"const": false},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "pllDomainHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "post_reset_pose_commit_cycles", "unique_pose_commit_cycles_are_execution_input_v3_guaranteed", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"},
+        "post_reset_pose_commit_cycles": {"const": "strictly_unique"},
+        "unique_pose_commit_cycles_are_execution_input_v3_guaranteed": {"const": false},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "runtimeHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "authority_go", "fresh_process_runner_implemented", "required_runtime", "reason"],
+      "properties": {
+        "status": {"const": "HOLD"}, "authority_go": {"const": false},
+        "fresh_process_runner_implemented": {"const": false},
+        "required_runtime": {"const": "fixed_sys_executable_clean_subprocess_with_fixed_candidate_id_dispatch"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "capabilities": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_callable_execution", "arbitrary_callback_api", "label_api", "scoring_api", "filesystem_publication_api"],
+      "properties": {
+        "candidate_callable_execution": {"const": false},
+        "arbitrary_callback_api": {"const": false},
+        "label_api": {"const": false}, "scoring_api": {"const": false},
+        "filesystem_publication_api": {"const": false}
+      }
+    }
+  }
+}
