@@ -451,9 +451,10 @@ class SourceGuardTests(unittest.TestCase):
         self.assertIn('expected_path = output_root / "xrun.log"', source)
         self.assertNotIn('["git", "-C"', source)
         self.assertIn(
-            '["git", "status", "--porcelain=v1", "--untracked-files=all", "-z"]',
+            '["git", "status", "--porcelain", "--untracked-files=all", "-z"]',
             source,
         )
+        self.assertNotIn('"--porcelain=v1"', source)
         self.assertIn('cwd=str(root)', source)
         for forbidden in ("git clone", "git fetch", "git checkout", "git reset"):
             self.assertNotIn(forbidden, source)
