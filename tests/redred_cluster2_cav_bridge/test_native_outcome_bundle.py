@@ -43,6 +43,21 @@ def canonical_jsonl(rows):
     )
 
 
+def last_member_padded_end(raw_tar):
+    with tarfile.open(fileobj=io.BytesIO(raw_tar), mode="r:") as archive:
+        last_member = None
+        for last_member in archive:
+            pass
+    if last_member is None:
+        raise AssertionError("test fixture tar has no members")
+    data_end = last_member.offset_data + last_member.size
+    return (
+        (data_end + tarfile.BLOCKSIZE - 1)
+        // tarfile.BLOCKSIZE
+        * tarfile.BLOCKSIZE
+    )
+
+
 class BundleFixture:
     def __init__(self):
         self.receipt = json.loads(RECEIPT_PATH.read_text(encoding="ascii"))
@@ -56,6 +71,7 @@ class BundleFixture:
         self.member_pax_headers = {}
         self.member_linknames = {}
         self.tar_format = tarfile.PAX_FORMAT
+        self.raw_tar_mutator = None
         self.bundle_suffix = b""
         self.truncate_bytes = 0
 
@@ -66,7 +82,7 @@ class BundleFixture:
             )
         buffer = io.BytesIO()
         with tarfile.open(
-            fileobj=buffer, mode="w:gz", format=self.tar_format
+            fileobj=buffer, mode="w:", format=self.tar_format
         ) as archive:
             for name in self.names:
                 info = tarfile.TarInfo(name)
@@ -83,7 +99,10 @@ class BundleFixture:
                     archive.addfile(info)
                 else:
                     archive.addfile(info, io.BytesIO(payload))
-        bundle_payload = buffer.getvalue()
+        raw_tar = buffer.getvalue()
+        if self.raw_tar_mutator is not None:
+            raw_tar = self.raw_tar_mutator(raw_tar)
+        bundle_payload = gzip.compress(raw_tar)
         if self.truncate_bytes:
             bundle_payload = bundle_payload[:-self.truncate_bytes]
         bundle_payload += self.bundle_suffix
@@ -511,6 +530,42 @@ class FailClosedBundleTests(unittest.TestCase):
                 load_native_outcome_bundle(
                     root, SEALED_RECEIPT_RELATIVE_PATH, authority
                 )
+
+    def test_raw_tar_eoa_padding_is_exact_and_contains_no_smuggled_data(self):
+        def nonzero_trailing(raw_tar):
+            return raw_tar[:-1] + b"\x01"
+
+        def misaligned_eoa(raw_tar):
+            return raw_tar + b"\x00"
+
+        def insufficient_eoa(raw_tar):
+            payload_end = last_member_padded_end(raw_tar)
+            return raw_tar[:payload_end + tarfile.BLOCKSIZE]
+
+        def concatenated_raw_tar(raw_tar):
+            return raw_tar + raw_tar
+
+        mutations = (
+            nonzero_trailing,
+            misaligned_eoa,
+            insufficient_eoa,
+            concatenated_raw_tar,
+        )
+        for mutation in mutations:
+            fixture = BundleFixture()
+            fixture.raw_tar_mutator = mutation
+            with self.subTest(
+                mutation=mutation.__name__
+            ), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                authority = fixture.write(root)
+                with self.assertRaisesRegex(
+                    NativeOutcomeBundleError,
+                    "raw tar EOA/padding differs",
+                ):
+                    load_native_outcome_bundle(
+                        root, SEALED_RECEIPT_RELATIVE_PATH, authority
+                    )
 
     def test_parser_uses_bounded_streaming_tar_iteration(self):
         parser = (

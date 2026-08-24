@@ -475,12 +475,37 @@ def _bounded_gzip_tar(payload: bytes) -> bytes:
     return raw_tar
 
 
+def _validate_raw_tar_eoa(
+    raw_tar: bytes, last_data_end: int, last_padded_end: int
+) -> None:
+    block_size = tarfile.BLOCKSIZE
+    if (
+        len(raw_tar) % block_size != 0
+        or last_data_end < 0
+        or last_padded_end < last_data_end
+        or last_padded_end % block_size != 0
+        or last_padded_end > len(raw_tar)
+    ):
+        _fail("raw tar EOA/padding differs")
+    if any(raw_tar[last_data_end:last_padded_end]):
+        _fail("raw tar EOA/padding differs")
+    trailing = raw_tar[last_padded_end:]
+    if (
+        len(trailing) < 2 * block_size
+        or len(trailing) % block_size != 0
+        or any(trailing)
+    ):
+        _fail("raw tar EOA/padding differs")
+
+
 def _read_bundle_members(payload: bytes) -> Dict[str, bytes]:
     artifacts = {}  # type: Dict[str, bytes]
     try:
         raw_tar = _bounded_gzip_tar(payload)
         with tarfile.open(fileobj=io.BytesIO(raw_tar), mode="r|") as archive:
             expanded = 0
+            last_data_end = -1
+            last_padded_end = -1
             for expected_name in _MEMBERS:
                 member = archive.next()
                 if member is None or member.name != expected_name:
@@ -511,8 +536,17 @@ def _read_bundle_members(payload: bytes) -> Dict[str, bytes]:
                 if len(member_payload) != member.size:
                     _fail("native bundle member size differs")
                 artifacts[member.name] = member_payload
+                last_data_end = member.offset_data + member.size
+                last_padded_end = (
+                    (last_data_end + tarfile.BLOCKSIZE - 1)
+                    // tarfile.BLOCKSIZE
+                    * tarfile.BLOCKSIZE
+                )
             if archive.next() is not None:
                 _fail("native bundle contains an extra member")
+            _validate_raw_tar_eoa(
+                raw_tar, last_data_end, last_padded_end
+            )
     except NativeOutcomeBundleError:
         raise
     except MemoryError as error:
