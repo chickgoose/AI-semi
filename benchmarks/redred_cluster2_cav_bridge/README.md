@@ -15,9 +15,10 @@ This scoped existing-CAV bridge accepts only whole-nanosecond AER clocks:
 pending a picosecond-resolution CAV interface**, and are rejected at manifest
 validation before any event is loaded.
 
-The three new opaque authorities are byte-integrity bindings only. Semantic
-verification of real source-registry, pose-stream, and native
-transport/simulator receipt artifacts is **HOLD pending Ganghee refresh**.
+The base bridge manifest's three opaque authorities are byte-integrity bindings
+when that manifest is used alone.  The pinned native receipt/bundle and the
+official functional runner described below add a separate, semantic replay path;
+they do not silently promote arbitrary caller-supplied manifest authorities.
 
 `source_event` contains only raw identity and CAV sidecar fields. Its sensor ray
 must have unit norm within `1e-9`; `transform_guard_valid` is mandatory; and
@@ -180,8 +181,27 @@ stream and binding the committed TB, parser, runner, and outputs in a semantic
 receipt remains **HOLD**; this checkpoint does not promote an unsealed runner
 PASS to common-seam evidence.
 
-Semantic parsing stops at this native observational ledger. Full source-event,
-pose, mapping, and CAV binding remains **HOLD pending Ganghee refresh**; no
-semantic native receipt beyond this exact pinned TB/trace is claimed.
-PPA remains **HOLD_NOT_EVALUATED**: this integration claims no synthesis, STA,
-power, or physical-design compatibility evidence.
+## Official UZH-to-world functional replay
+
+`official_functional_run.py` binds the exact official UZH events,
+ground-truth poses and calibration; the accepted LF/CRLF cyclemask; the sealed
+Xcelium native receipt and outcome bundle; and the 30 repository Python files
+loaded by this execution path.  The canonical result is committed at
+`results/official_uzh_cluster2_cav_result.json`.  Its public validator always
+rehashes the repository authorities, including when the caller omits an
+explicit repository root.
+
+For the pinned input, the runner reproduces an exact 8,503-event native join
+with zero native overrun.  Software CAV produces 8,420 WORLD rays; 83 events
+take the explicit SENSOR_FIXED bypass.  The 512 by 256 world grid contains
+8,420 quantized events in 821 unique cells.  Original occurrence timestamps
+drive geometry in all three comparison views.  Native retirement contributes
+only the separately labelled observational latency sidecar: 6,393 events at
+one cycle, 2,077 at two cycles and 33 at three cycles.
+
+This is scoped functional extension and interface-compatibility evidence.  It
+is not a claim that scalability is guaranteed, that native scheduling improves
+CAV accuracy, or that CAV ran in RTL.  Wire-complete CAV/world RTL, physical
+latency-quality replay, and CAV/world synthesis, STA, power and P&R remain
+explicit **HOLD** items.  Any separate PPA evidence for the native Ganghee AER
+endpoint is outside this software-CAV result.
