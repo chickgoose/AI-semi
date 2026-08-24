@@ -498,6 +498,19 @@ def _validate_raw_tar_eoa(
         _fail("raw tar EOA/padding differs")
 
 
+def _validate_raw_tar_member_padding(
+    raw_tar: bytes, data_end: int, padded_end: int
+) -> None:
+    if (
+        data_end < 0
+        or padded_end < data_end
+        or padded_end % tarfile.BLOCKSIZE != 0
+        or padded_end > len(raw_tar)
+        or any(raw_tar[data_end:padded_end])
+    ):
+        _fail("raw tar member padding differs")
+
+
 def _read_bundle_members(payload: bytes) -> Dict[str, bytes]:
     artifacts = {}  # type: Dict[str, bytes]
     try:
@@ -535,13 +548,18 @@ def _read_bundle_members(payload: bytes) -> Dict[str, bytes]:
                     stream.close()
                 if len(member_payload) != member.size:
                     _fail("native bundle member size differs")
-                artifacts[member.name] = member_payload
-                last_data_end = member.offset_data + member.size
-                last_padded_end = (
-                    (last_data_end + tarfile.BLOCKSIZE - 1)
+                data_end = member.offset_data + member.size
+                padded_end = (
+                    (data_end + tarfile.BLOCKSIZE - 1)
                     // tarfile.BLOCKSIZE
                     * tarfile.BLOCKSIZE
                 )
+                _validate_raw_tar_member_padding(
+                    raw_tar, data_end, padded_end
+                )
+                artifacts[member.name] = member_payload
+                last_data_end = data_end
+                last_padded_end = padded_end
             if archive.next() is not None:
                 _fail("native bundle contains an extra member")
             _validate_raw_tar_eoa(

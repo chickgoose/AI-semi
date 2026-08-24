@@ -567,6 +567,44 @@ class FailClosedBundleTests(unittest.TestCase):
                         root, SEALED_RECEIPT_RELATIVE_PATH, authority
                     )
 
+    def test_nonfinal_member_padding_cannot_smuggle_data(self):
+        def mutate_nonfinal_padding(raw_tar):
+            with tarfile.open(
+                fileobj=io.BytesIO(raw_tar), mode="r:"
+            ) as archive:
+                members = list(archive)
+            for member in members[:-1]:
+                data_end = member.offset_data + member.size
+                padded_end = (
+                    (data_end + tarfile.BLOCKSIZE - 1)
+                    // tarfile.BLOCKSIZE
+                    * tarfile.BLOCKSIZE
+                )
+                if padded_end > data_end:
+                    if any(raw_tar[data_end:padded_end]):
+                        raise AssertionError(
+                            "test fixture member padding is not zero"
+                        )
+                    mutated = bytearray(raw_tar)
+                    mutated[data_end] = 1
+                    return bytes(mutated)
+            raise AssertionError(
+                "test fixture has no padded non-final member"
+            )
+
+        fixture = BundleFixture()
+        fixture.raw_tar_mutator = mutate_nonfinal_padding
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            authority = fixture.write(root)
+            with self.assertRaisesRegex(
+                NativeOutcomeBundleError,
+                "raw tar member padding differs",
+            ):
+                load_native_outcome_bundle(
+                    root, SEALED_RECEIPT_RELATIVE_PATH, authority
+                )
+
     def test_parser_uses_bounded_streaming_tar_iteration(self):
         parser = (
             ROOT
