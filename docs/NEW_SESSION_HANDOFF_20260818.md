@@ -1,8 +1,11 @@
 # AI-semi 새 대화 세션 인수인계
 
-> 2026-08-20 update: 현재 코드·정량 결과·검증 명령은
-> `docs/REDRED_TEAM_STATUS_20260820.txt`를 먼저 적용한다. 아래 2026-08-18
-> 내용은 운영 진입점과 역사 복구 기록이다.
+> 2026-08-24 update: 현재 1차 중심 통합 코드·정량 결과·검증 명령은
+> `docs/REDRED_CLUSTER2_CAV_1ST_ROUND_STATUS_20260824.txt`와 이 문서의
+> 14절을 먼저 적용한다. 2026-08-20 이전 내용은 운영 진입점과 역사 복구
+> 기록이며, 1차 Cluster2→CAV evidence 범위에서 충돌하면 최신 절의
+> PASS/HOLD 경계를 우선한다. 전체 system goal·release authority는 계속
+> `contracts/redred_system_goal/active_goal.json`이며 이 갱신이 덮어쓰지 않는다.
 
 기준 시각: 2026-08-18 KST
 목적: 과거 작업을 자동 재개하기 위한 문서가 아니라, 새 대화가 검증된 핵심 사실과 운영 환경을 잃지 않고 **새 목표부터 다시 시작**하게 하는 로컬 영구 메모리다.
@@ -484,3 +487,75 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
   Mapped/organizer legality authority, authenticated freshness, semantic
   equivalence, final selected-interface CDC/RDC, 공식 A2/A3 선택과 team
   release는 HOLD다.
+
+## 14. 2026-08-24 1차 중심 Cluster2→CAV 통합 체크포인트
+
+사용자의 최신 발표 방향 결정은 다음과 같다.
+
+- 1차 발표 중심 결과는 강희의 `cluster2_steal_buf` AER이다.
+- 기존 causal-CAV baseline은 2차 world-coordinate 기능으로 이어지는
+  보조 functional-extension evidence다.
+- predictor, online feedback, depth/translation/parallax와 CAV/world RTL·PPA는
+  이번 1차 범위에서 HOLD다.
+- “확장성 보장” 또는 “wire-level 호환성 입증”이 아니라
+  “event-identity 수준 software functional-extension feasibility 확인”으로
+  발표한다.
+
+공개 검토 authority:
+
+- repository: `https://github.com/chickgoose/AI-semi.git`
+- branch: `integration/cluster2-steal-buf-cav-bridge`
+- functional/team-status checkpoint:
+  `160e7dc379463e0050f053171b28447a76bea8df` (이 handoff 갱신 전 마지막
+  code/team-status commit이며 이후 문서 전용 commit이 올 수 있음)
+- team status: `docs/REDRED_CLUSTER2_CAV_1ST_ROUND_STATUS_20260824.txt`
+- official result:
+  `benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json`
+- official runner:
+  `benchmarks/redred_cluster2_cav_bridge/official_functional_run.py`
+
+검증된 실제 경계:
+
+- 입력은 hash-pinned UZH DAVIS240C `shapes_rotation` events, ground truth,
+  calibration이다.
+- pinned 4×4 cyclemask와 converter bytes는 각각 존재하지만, 이번 official
+  runner는 source-to-cyclemask converter 실행을 재현하지 않는다.
+- native transport는 pinned `cluster2_steal_buf` RTL bytes를 observational TB와
+  Cadence Xcelium으로 시뮬레이션한 sealed trace다. 칩 측정이나 post-route
+  simulation이 아니다.
+- TB-side event ID는 AER wire payload가 아니다. 8,503건 join은 observational
+  software exact join이다.
+- CAV와 512×256 world grid는 software다. CAV/world RTL이 아니다.
+
+공식 pinned 결과:
+
+- selected events 8,503; poses 11,883; native exact join 8,503; overrun 0
+- causal-CAV WORLD rays 8,420; fresh-ZOH 0; SENSOR_FIXED bypass 83
+- retire latency histogram: 1 cycle 6,393; 2 cycles 2,077; 3 cycles 33
+- software grid: 8,420 quantized events, 821 unique cells
+- result seal:
+  `caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309`
+
+네 시간축을 혼용하지 않는다.
+
+1. `event_timestamp_ns`: 원본 UZH sensor time
+2. `native_occurrence_cycle`: converter 규칙의 1 ms workload bin
+3. `cav_occurrence_cycle`: 6.5 ns software logical cycle
+4. `retire_cycle`: Xcelium native retirement observation
+
+Geometry는 원본 event timestamp와 software CAV cycle만 사용한다. Native
+retire cycle/latency는 관측 sidecar일 뿐이며, latency-quality 결과가 아니다.
+
+최종 fresh-clone 검증:
+
+- 공개 branch history가 위 `160e7dc...`를 ancestor로 포함
+- clean fresh clone에서 bridge suite 144개 중 141 PASS, 3 environment-gated
+  SKIP
+- tracked sealed bundle의 CRLF cyclemask를 문서 절차로 명시적으로 LF로
+  canonicalize하고 hash를 확인한 뒤, 공식 8,503-event golden replay PASS
+- 최종 통합 worktree와 public remote ref 일치
+
+다음 작업 전에 먼저 위 team status 문서를 끝까지 읽는다. 강희 native AER의
+별도 PPA/P&R 자료를 사용할 때는 원본 report authority, RTL hash,
+corner/constraints, activity 조건과 signoff 한계를 함께 제시하며 software CAV
+PPA로 합치지 않는다.
