@@ -28,11 +28,6 @@ native 출력을 motion-aware CAV와 world-coordinate grid로 연결하려면
 이 1차 결과의 질문은 **연결 가능성**이다. AER scheduling이 CAV
 정확도나 영상 품질을 개선했는지는 측정하지 않았다.
 
-> 그림 1 placeholder — [문제와 증거 경계](figures/cluster2_cav_problem_boundary.svg)
-> 작성 메모: native RTL observation, observational join, software replay,
-> HOLD 경계를 서로 다른 색으로 표시한다. 파일이 추가되기 전에는
-> 발표 자료에서 링크를 제거한다.
-
 ## 2. 검증한 architecture flow
 
 ```text
@@ -81,7 +76,7 @@ presentation order와 native retire cycle/latency를 보존한다. native
 lane/row/column은 sealed evidence에만 남고 public functional sidecar가
 재구성하지 않는다. scorer/selector label은 이 경로의 입력이 아니다.
 
-> 그림 2 placeholder — [end-to-end architecture flow](figures/cluster2_cav_architecture_flow.svg)
+> 그림 1 — [population flow](assets/cluster2_cav_population_flow.svg)
 > data source: [official result](../../benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json),
 > [native authority](../../benchmarks/redred_cluster2_cav_bridge/ganghee_cluster2_native_authority.json)
 
@@ -131,11 +126,13 @@ lane/row/column은 sealed evidence에만 남고 public functional sidecar가
 | world grid | `f5cb124031b2a343b55a85f92902bd8b764bc865298d9de58ee86f60e49048e0` |
 | official result seal | `caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309` |
 
-> 그림 3 placeholder — [native latency histogram](figures/cluster2_native_latency_histogram.svg)
-> 그림 4 placeholder — [WORLD grid occupancy](figures/cluster2_cav_world_grid.svg)
-> 작성 메모: 막대 그래프는 `6,393/2,077/33`, grid는 8,420 input·821
-> unique cell·83 bypass를 함께 표기한다. 미생성 placeholder를 결과 그림으로
-> 소개하지 않는다.
+> 그림 2 — [native latency histogram](assets/cluster2_cav_latency_histogram.svg)
+>
+> 그림 3 — [WORLD grid full-domain bounding range](assets/cluster2_cav_world_grid_coverage.svg)
+>
+> 그림 3은 전체 512×256 domain 안에서 관측된 `x=238..298`,
+> `y=93..165` bounding range를 보여주는 시각화이다. cell별 발생량,
+> 밀도 또는 강도를 표현하는 occupancy heatmap으로 해석하지 않는다.
 
 ## 4. 서로 바꾸어 쓰면 안 되는 네 시간축
 
@@ -155,11 +152,6 @@ semantics는 `TRANSPORT_LATENCY_INJECTION_NOT_PHYSICAL_REPLAY`이며, 다섯 번
 geometry는 `event_timestamp_ns`와 `cav_occurrence_cycle`만 참조한다. native
 occurrence/retire와 latency는 geometry에 주입하지 않고 `AER-RET-CAV`의
 separate observational sidecar에만 보존한다.
-
-> 그림 5 placeholder — [four-time-axis separation](figures/cluster2_cav_four_time_axes.svg)
-> 작성 메모: `event_timestamp_ns`/`cav_occurrence_cycle`은 geometry 박스,
-> native occurrence/retire는 sidecar 박스에 두고 retire→geometry 화살표에
-> 금지 표시를 넣는다.
 
 ## 5. PASS / HOLD
 
