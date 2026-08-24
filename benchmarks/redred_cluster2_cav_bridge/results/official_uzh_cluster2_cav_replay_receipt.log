@@ -1,0 +1,7 @@
+SANITIZED_UNITTEST_LOG v1
+test_exact_official_replay_matches_committed_golden (tests.redred_cluster2_cav_bridge.test_official_functional_run.EnvironmentGatedOfficialGoldenReplay.test_exact_official_replay_matches_committed_golden) ... ok
+----------------------------------------------------------------------
+Ran 1 test
+
+OK
+sanitization=ELAPSED_SECONDS_AND_LOCAL_INPUT_PATH_VALUES_OMITTED
