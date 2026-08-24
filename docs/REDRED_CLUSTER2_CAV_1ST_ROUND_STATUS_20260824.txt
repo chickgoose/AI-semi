@@ -1,0 +1,256 @@
+팀 REDRED 1차 중심 통합 현황 — cluster2_steal_buf → CAV → world grid
+작성일: 2026-08-24
+
+0. 결론
+
+이번 1차 발표의 중심 결과는 강희의 cluster2_steal_buf AER이다.
+준영의 CAV baseline은 메인 AER 뒤에 연결 가능한 2차 확장 경로를
+실제 데이터로 보여주는 보조 증거로 사용한다.
+
+현재 다음 경로가 scoped observational/software replay로 PASS했다.
+
+  공식 UZH shapes_rotation raw event/pose/calibration
+    → pinned 4×4 cyclemask
+       (converter bytes도 별도 pinned됐지만 생성 과정 재현은 이번 evidence에
+        포함되지 않으며, runner도 converter 자체를 다시 실행하지 않음)
+    → pinned cluster2_steal_buf의 sealed Xcelium RTL simulation 관측 결과
+    → TB-side event ID를 이용한 observational software exact join
+    → software causal-CAV baseline
+    → 512×256 world-coordinate grid
+
+정확한 발표 표현은 “event-identity 수준의 software functional extension
+feasibility를 실제 데이터로 확인했다”이다. TB-side event ID는 native AER
+payload가 아니다. “확장성이 보장됐다”, “wire-level 인터페이스 호환성이
+입증됐다”, “CAV까지 RTL로 구현했다”,
+“AER 스케줄링이 CAV 정확도를 개선했다”라고 말하면 안 된다.
+
+
+1. 검토할 저장소와 브랜치
+
+저장소:
+  https://github.com/chickgoose/AI-semi.git
+
+검토 브랜치:
+  integration/cluster2-steal-buf-cav-bridge
+
+최소 포함 커밋:
+  7713ee6  Add official Cluster2 CAV functional runner
+  6db92a6  Harden official functional result authority
+  87b9604  Document official UZH to world replay scope
+
+팀원은 다른 과거 A2/A3/A6/MC-WTB 실험 브랜치를 섞지 말고 이 브랜치만
+먼저 확인한다. 위 주소는 공개 GitHub 주소이며, 문서 안의 모든 코드·결과
+경로는 저장소 루트 기준 상대경로다.
+
+
+2. 데이터와 코드 출처
+
+외부 데이터:
+  UZH Robotics and Perception Group Event-Camera Dataset
+  sequence: DAVIS240C shapes_rotation
+  landing page: https://rpg.ifi.uzh.ch/davis_data.html
+  archive: https://rpg.ifi.uzh.ch/datasets/davis/shapes_rotation.zip
+  dataset paper: https://doi.org/10.1177/0278364917691115
+
+입력 파일 authority:
+  events.txt
+    SHA-256 d0b66503613354d1d274c56c979dfd89ba80b256c31eaba459a52adb7d03ffda
+    509,907,771 bytes
+  groundtruth.txt
+    SHA-256 bb62c320a51c1be412e17065eb86cfffa9041841290d439c23e447f1991aabdb
+    1,379,205 bytes
+  calib.txt
+    SHA-256 ab797c55a990c03656fbddac2473d3eace2a22f87fea4ca3b0497862b50545cd
+    128 bytes
+
+강희 AER authority:
+  공개 원본 계보: https://github.com/GangHeeJo/AI-SEMI
+  pinned source commit: 5ac1f0e3c0e6991558afa699e64680f708ff625d
+  authority 파일:
+    benchmarks/redred_cluster2_cav_bridge/ganghee_cluster2_native_authority.json
+  sealed native receipt:
+    benchmarks/redred_cluster2_cav_bridge/server_native_observation_receipt.json
+  sealed native evidence bundle:
+    benchmarks/redred_cluster2_cav_bridge/evidence/server_native_observation_ca446aa.tgz
+
+중요: native outcome은 임의로 만든 latency가 아니라 pinned
+cluster2_steal_buf RTL bytes를 observational TB와 Cadence Xcelium으로
+시뮬레이션한 sealed trace다. 실제 칩 측정, post-route simulation 또는
+CAV RTL 실행을 뜻하지 않는다.
+
+
+3. 현재 완성된 결과
+
+공식 결과 파일:
+  benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json
+
+공식 runner:
+  benchmarks/redred_cluster2_cav_bridge/official_functional_run.py
+
+입력/처리 개수:
+  UZH selected event       8,503
+  pose packet             11,883
+  observational exact join 8,503
+  native overrun               0
+  causal-CAV WORLD ray     8,420
+  fresh-ZOH fallback           0
+  SENSOR_FIXED bypass         83
+
+native retirement latency 관측:
+  1 cycle  6,393 events
+  2 cycles 2,077 events
+  3 cycles    33 events
+
+software world grid:
+  크기              512×256
+  WORLD 입력         8,420
+  unique cells          821
+  x 범위            238..298
+  y 범위             93..165
+  row-major index  47,876..84,754
+
+결과 digest:
+  event join
+    bfbd23b607cc7d68371133e7d67da43c2302641391b4cdeac572013eaab256b2
+  geometry
+    3f6b09f3208582907b588ad679bd60871c694ec31eff46423b0240ceb2f15747
+  retire sidecar
+    c29d9b980674da62d48e3a4cb0dc26618d08a3658997a7a5e90eb15ef81b6897
+  world grid
+    f5cb124031b2a343b55a85f92902bd8b764bc865298d9de58ee86f60e49048e0
+  official result seal
+    caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309
+
+
+4. occurrence와 retire를 구분한 이유
+
+event_timestamp_ns는 원본 UZH 센서 시각이고, native_occurrence_cycle은
+converter 규칙으로 만든 1 ms workload bin이다. cav_occurrence_cycle은
+6.5 ns software logical-cycle 값이며, retire_cycle은 Xcelium에서 관측한
+native retirement cycle이다. 이 네 시각을 서로 바꾸어 쓰면 안 된다.
+Geometry는 원본 event timestamp와 software CAV cycle만 사용하고, native
+retire cycle과 중재 latency는 관측 sidecar에만 보존한다.
+
+RAW-CAV, AER-OCC-CAV, AER-RET-CAV는 동일한 event ID와 occurrence-time
+geometry를 가진다. AER-RET-CAV에만 native retire cycle과 latency를 별도
+관측 sidecar로 보존한다. 따라서 현재 결과는 transport latency가 영상 품질에
+주는 영향을 측정한 결과가 아니다.
+
+
+5. PASS와 HOLD 경계
+
+PASS:
+  - sealed Xcelium native RTL simulation 관측 8,503건을 bundle에서 재검증
+  - source/TB-side event ID/native occurrence의 8,503건 observational exact join
+  - native overrun 0, latency histogram 보존
+  - 동일 원본 UZH event timestamp 입력에 대한 software causal-CAV replay
+  - 8,420 WORLD ray의 512×256 software world-grid mapping
+  - 결과 JSON의 canonical encoding, seal, 입력 hash, 30-file 실행 코드
+    authority 재검증
+  - 외부 입력 없이 전체 bridge suite 141개 PASS, 환경-gated 3개 SKIP
+  - 공식 외부 입력을 켠 8,503-event golden replay PASS
+
+HOLD:
+  - CAV/world 변환의 wire-complete RTL
+  - CAV/world RTL의 Genus 합성, STA, power, Innovus P&R
+  - retire timestamp를 실제 CAV geometry에 주입한 품질 비교
+  - predictor, online feedback, depth/translation/parallax 보정
+  - native AER이 CAV 정확도를 높인다는 주장
+  - 다른 UZH sequence 및 pan/tilt 세기 구간에 대한 일반화 결론
+
+강희 native AER의 기존 PPA/P&R 자료는 이 공식 software-CAV result의
+authority에 포함되지 않는다. 현재 브랜치에서 CAV PPA는 HOLD이며, 별도
+native PPA/P&R 수치를 쓰려면 강희가 원본 report 상대경로, RTL hash,
+corner/constraint, vectorless 또는 VCD 조건과 signoff 한계를 함께 제시해야
+한다. 별도 native 자료를 software CAV의 PPA로 합쳐 말하면 안 된다.
+
+
+6. 팀원이 먼저 볼 파일
+
+통합 설명:
+  benchmarks/redred_cluster2_cav_bridge/README.md
+
+공식 결과와 runner:
+  benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json
+  benchmarks/redred_cluster2_cav_bridge/official_functional_run.py
+
+실제 native 증거:
+  benchmarks/redred_cluster2_cav_bridge/ganghee_cluster2_native_authority.json
+  benchmarks/redred_cluster2_cav_bridge/server_native_observation_receipt.json
+  benchmarks/redred_cluster2_cav_bridge/evidence/server_native_observation_ca446aa.tgz
+  benchmarks/redred_cluster2_cav_bridge/native_outcome_bundle.py
+
+UZH→CAV→world 구현:
+  benchmarks/redred_cluster2_cav_bridge/functional_source.py
+  benchmarks/redred_cluster2_cav_bridge/source_crosswalk.py
+  benchmarks/redred_cluster2_cav_bridge/functional_assay.py
+  benchmarks/redred_cluster2_cav_bridge/world_grid.py
+
+핵심 테스트:
+  tests/redred_cluster2_cav_bridge/test_official_functional_run.py
+  tests/redred_cluster2_cav_bridge/test_functional_assay.py
+  tests/redred_cluster2_cav_bridge/test_native_outcome_bundle.py
+  tests/redred_cluster2_cav_bridge/test_source_crosswalk.py
+  tests/redred_cluster2_cav_bridge/test_world_grid.py
+
+
+7. 재검증 명령
+
+저장소 clone과 checkout:
+
+  git clone https://github.com/chickgoose/AI-semi.git
+  cd AI-semi
+  git switch integration/cluster2-steal-buf-cav-bridge
+
+외부 데이터 없이 committed authority와 unit/integration test 확인:
+
+  python3 -B -m unittest discover \
+    -s tests/redred_cluster2_cav_bridge -p 'test_*.py' -q
+
+tracked sealed bundle에서 pinned cyclemask를 별도 빈 디렉터리로 추출:
+
+  mkdir -p <new-empty-evidence-directory>
+  tar -xzf \
+    benchmarks/redred_cluster2_cav_bridge/evidence/server_native_observation_ca446aa.tgz \
+    -C <new-empty-evidence-directory> \
+    faer_snapshot/common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt
+
+공식 UZH source와 위 cyclemask까지 준비된 경우 exact golden replay:
+
+  REDRED_RUN_CLUSTER2_FUNCTIONAL_ASSAY_OFFICIAL=1 \
+  REDRED_UZH_SHAPES_ROTATION_ROOT=<official-shapes_rotation-directory> \
+  REDRED_CLUSTER2_CYCLEMASK_PATH=<new-empty-evidence-directory>/faer_snapshot/common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt \
+  python3 -B -m unittest \
+    tests.redred_cluster2_cav_bridge.test_official_functional_run.EnvironmentGatedOfficialGoldenReplay \
+    -v
+
+공식 실행 flag를 설정하지 않으면 전체 suite에서 환경-gated 3개가 SKIP되는
+것이 정상이다. flag를 1로 설정하고 dataset 또는 cyclemask 경로를 빠뜨리면
+의도적으로 FAIL한다. committed result 자체의 seal과 저장소 코드 authority
+검증은 외부 입력이 없는 일반 테스트에서도 수행된다.
+
+
+8. 발표 역할 분담 권고
+
+강희:
+  cluster2_steal_buf 문제정의와 구조, sealed native simulation 결과 설명.
+  PPA/P&R를 사용할 경우 원본 report authority와 qualification을 별도 제시
+
+준영:
+  UZH raw→native outcomes→CAV→world grid 통합 흐름, occurrence/retire 구분,
+  1차 메인과 2차 확장 경계 설명
+
+현수:
+  공개 브랜치 fresh-clone 재현, 공식 JSON/그래프 확인, 발표 슬라이드의
+  PASS/HOLD 문구와 수치 교차검증
+
+
+9. 발표용 한 문장
+
+“REDRED 1차는 최대 두 행을 병렬 retire하는 pinned cluster2_steal_buf의
+sealed Xcelium RTL simulation 관측을 중심 결과로 제시한다. 공식 UZH
+8,503개 이벤트와 TB-side native identity를 observational software join하여
+기존 causal-CAV software baseline으로 재생했고, 8,420개 WORLD ray의
+512×256 software grid mapping을 확인했다. 이는 event-identity 수준의
+software functional extension feasibility이며, wire-complete CAV RTL,
+latency-quality 평가, CAV/world PPA와 predictor/feedback은 후속 HOLD다.”
