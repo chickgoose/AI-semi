@@ -215,11 +215,26 @@ tracked sealed bundle에서 pinned cyclemask를 별도 빈 디렉터리로 추�
     -C <new-empty-evidence-directory> \
     faer_snapshot/common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt
 
-공식 UZH source와 위 cyclemask까지 준비된 경우 exact golden replay:
+bundle 안의 snapshot은 accepted CRLF encoding이다. committed golden은 LF
+encoding을 기록하므로, exact golden replay 전 다음처럼 LF 변환을 명시적으로
+수행하고 hash를 확인한다. 이는 숨은 provenance 변경이 아니라 CRLF와 LF가
+각각 별도 accepted authority로 기록된 변환이다.
+
+  tr -d '\r' \
+    < <new-empty-evidence-directory>/faer_snapshot/common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt \
+    > <new-empty-evidence-directory>/uzh_shapes_rotation_patch.cyclemask.lf.txt
+
+  sha256sum \
+    <new-empty-evidence-directory>/uzh_shapes_rotation_patch.cyclemask.lf.txt
+
+예상 SHA-256:
+  850049ea794fa80295ca9c0023d5549f2b7a8557776f37355b277aaccfde25ea
+
+공식 UZH source와 LF cyclemask까지 준비된 경우 exact golden replay:
 
   REDRED_RUN_CLUSTER2_FUNCTIONAL_ASSAY_OFFICIAL=1 \
   REDRED_UZH_SHAPES_ROTATION_ROOT=<official-shapes_rotation-directory> \
-  REDRED_CLUSTER2_CYCLEMASK_PATH=<new-empty-evidence-directory>/faer_snapshot/common_traces_uzh/uzh_shapes_rotation_patch.cyclemask.txt \
+  REDRED_CLUSTER2_CYCLEMASK_PATH=<new-empty-evidence-directory>/uzh_shapes_rotation_patch.cyclemask.lf.txt \
   python3 -B -m unittest \
     tests.redred_cluster2_cav_bridge.test_official_functional_run.EnvironmentGatedOfficialGoldenReplay \
     -v
