@@ -107,20 +107,7 @@ class SyntheticOfficialFunctionalRunTests(unittest.TestCase):
         }
 
     def _repository(self):
-        return {
-            "sealed_native_receipt": _artifact(
-                module.SEALED_RECEIPT_RELATIVE_PATH,
-                module.SEALED_RECEIPT_SHA256,
-            ),
-            "sealed_native_bundle": _artifact(
-                module.SEALED_BUNDLE_RELATIVE_PATH,
-                module.SEALED_BUNDLE_SHA256,
-            ),
-            "core_code": [
-                _artifact(path, str(index + 1) * 64)
-                for index, path in enumerate(module.CORE_CODE_PATHS)
-            ],
-        }
+        return module._repository_authorities(ROOT)
 
     def _patched(self, order=None):
         if order is None:
@@ -237,6 +224,99 @@ class SyntheticOfficialFunctionalRunTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(module.OfficialFunctionalRunError):
                     module.validate_official_functional_summary(value)
+
+    def test_every_json_value_requires_exact_builtin_schema_type(self):
+        class IntSubclass(int):
+            pass
+
+        class StrSubclass(str):
+            pass
+
+        class DictSubclass(dict):
+            pass
+
+        class ListSubclass(list):
+            pass
+
+        with self._patched():
+            baseline = module.build_official_functional_summary(
+                self.dataset, self.cyclemask, ROOT
+            )
+        mutations = []
+        for replacement in (8503.0, IntSubclass(8503)):
+            changed = copy.deepcopy(baseline)
+            changed["population"]["events"] = replacement
+            mutations.append(changed)
+        changed = copy.deepcopy(baseline)
+        changed["population"]["zoh_fallback"] = False
+        mutations.append(changed)
+        changed = copy.deepcopy(baseline)
+        changed["status"] = StrSubclass(changed["status"])
+        mutations.append(changed)
+        changed = DictSubclass(copy.deepcopy(baseline))
+        mutations.append(changed)
+        changed = copy.deepcopy(baseline)
+        changed["world_grid"]["x_range_inclusive"] = ListSubclass([238, 298])
+        mutations.append(changed)
+        for value in mutations:
+            with self.subTest(replacement=type(value).__name__):
+                with self.assertRaises(module.OfficialFunctionalRunError):
+                    module.validate_official_functional_summary(value)
+
+    def test_public_validator_always_rehashes_default_current_repository(self):
+        with self._patched():
+            baseline = module.build_official_functional_summary(
+                self.dataset, self.cyclemask, ROOT
+            )
+        original = module._repository_authorities
+        with mock.patch.object(module, "_repository_authorities",
+                               wraps=original) as observed:
+            module.validate_official_functional_summary(baseline)
+        observed.assert_called_once_with(Path(module.__file__).parents[2])
+
+        changed = copy.deepcopy(baseline)
+        changed["input_authority"]["core_code"][0]["sha256"] = "e" * 64
+        body = dict(changed)
+        body.pop("seal")
+        changed["seal"]["sha256"] = module._canonical_sha256(body)
+        with self.assertRaisesRegex(
+            module.OfficialFunctionalRunError, "actual files"
+        ):
+            module.validate_official_functional_summary(changed)
+
+    def test_core_code_is_exact_loaded_in_repo_python_module_closure(self):
+        import subprocess
+        import sys
+
+        program = r'''
+import json
+import sys
+from pathlib import Path
+root = Path('.').resolve()
+import benchmarks.redred_cluster2_cav_bridge.official_functional_run as runner
+loaded = []
+for value in sys.modules.values():
+    filename = getattr(value, '__file__', None)
+    if not filename:
+        continue
+    try:
+        relative = Path(filename).resolve().relative_to(root)
+    except (OSError, ValueError):
+        continue
+    if relative.suffix == '.py':
+        loaded.append(relative.as_posix())
+print(json.dumps({'loaded': sorted(set(loaded)),
+                  'authority': sorted(runner.CORE_CODE_PATHS)}))
+'''
+        completed = subprocess.run(
+            [sys.executable, "-c", program], cwd=ROOT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            universal_newlines=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        closure = json.loads(completed.stdout)
+        self.assertEqual(len(module.CORE_CODE_PATHS), 30)
+        self.assertEqual(closure["loaded"], closure["authority"])
 
     def test_absolute_and_noncanonical_authority_paths_fail_closed(self):
         with self._patched():

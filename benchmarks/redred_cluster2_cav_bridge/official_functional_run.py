@@ -76,6 +76,31 @@ CORE_CODE_PATHS = (
     "benchmarks/redred_cluster2_cav_bridge/native_outcome_bundle.py",
     "benchmarks/redred_cluster2_cav_bridge/functional_assay.py",
     "benchmarks/redred_cluster2_cav_bridge/world_grid.py",
+    "benchmarks/redred_cluster2_cav_bridge/__init__.py",
+    "benchmarks/redred_cluster2_cav_bridge/cav_adapter.py",
+    "benchmarks/redred_cluster2_cav_bridge/contract.py",
+    "benchmarks/redred_cluster2_cav_bridge/native_ledger.py",
+    "benchmarks/redred_cluster2_cav_bridge/source_crosswalk.py",
+    "benchmarks/redred_cluster2_cav_bridge/transport_time.py",
+    "benchmarks/redred_mc_wtb_causal_reference/__init__.py",
+    "benchmarks/redred_mc_wtb_causal_reference/development.py",
+    "benchmarks/redred_mc_wtb_causal_reference/reference.py",
+    "benchmarks/redred_mc_wtb_causal_reference/routing.py",
+    "benchmarks/redred_mc_wtb_motion_qualification/__init__.py",
+    "benchmarks/redred_mc_wtb_motion_qualification/controller.py",
+    "benchmarks/redred_mc_wtb_pose_recovery/__init__.py",
+    "benchmarks/redred_mc_wtb_pose_recovery/geometry.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/__init__.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/framework.py",
+    "benchmarks/redred_mc_wtb_predictor_stage3/logical_cycle_replay.py",
+    "benchmarks/redred_mc_wtb_stage4_assay/__init__.py",
+    "benchmarks/redred_mc_wtb_stage4_assay/generator.py",
+    "benchmarks/redred_mc_wtb_stage4_assay/source.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/__init__.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/contract.py",
+    "benchmarks/redred_mc_wtb_stage4_contract/receipt.py",
+    "benchmarks/redred_mc_wtb_stage4_cyclemodel/__init__.py",
+    "benchmarks/redred_mc_wtb_stage4_cyclemodel/model.py",
 )
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -95,6 +120,42 @@ def _fail(message: str) -> None:
 
 def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def _exact_json_tree(value: object, where: str = "summary") -> None:
+    """Reject subclasses and every scalar kind absent from this receipt."""
+
+    if type(value) is dict:
+        for key, child in value.items():  # type: ignore[union-attr]
+            if type(key) is not str:
+                _fail("%s object keys must be exact str" % where)
+            _exact_json_tree(child, "%s.%s" % (where, key))
+        return
+    if type(value) is list:
+        for index, child in enumerate(value):  # type: ignore[union-attr]
+            _exact_json_tree(child, "%s[%d]" % (where, index))
+        return
+    if type(value) not in (str, int, bool):
+        _fail("%s has a non-exact or unsupported JSON type" % where)
+
+
+def _typed_equal(value: object, expected: object, where: str) -> None:
+    """Compare fixed evidence without Python's bool/int or int/float equality."""
+
+    if type(value) is not type(expected):
+        _fail("%s type differs" % where)
+    if type(expected) is dict:
+        if frozenset(value) != frozenset(expected):  # type: ignore[arg-type]
+            _fail("%s fields differ" % where)
+        for key, expected_child in expected.items():  # type: ignore[union-attr]
+            _typed_equal(value[key], expected_child, "%s.%s" % (where, key))  # type: ignore[index]
+    elif type(expected) is list:
+        if len(value) != len(expected):  # type: ignore[arg-type]
+            _fail("%s length differs" % where)
+        for index, expected_child in enumerate(expected):  # type: ignore[union-attr]
+            _typed_equal(value[index], expected_child, "%s[%d]" % (where, index))  # type: ignore[index]
+    elif value != expected:
+        _fail("%s value differs" % where)
 
 
 def _relative_path(value: object, where: str) -> str:
@@ -243,7 +304,7 @@ def _summary_body(
     views = result.views  # type: ignore[attr-defined]
     return {
         "schema": SCHEMA,
-        "status": "COMPLETE",
+        "status": "COMPLETE_SCOPED_OBSERVATIONAL_AND_SOFTWARE_RESULT_WITH_HOLDS",
         "input_authority": {
             "official_sources": list(sources),
             "cyclemask": dict(cyclemask),
@@ -301,12 +362,24 @@ def _summary_body(
             ),
         },
         "claim_scope": {
-            "actual_native_rtl_observation": "PASS",
-            "software_cav_replay": "PASS",
-            "world_functional_mapping": "PASS",
-            "wire_complete_cav_rtl": "HOLD_NOT_IMPLEMENTED_OR_OBSERVED",
-            "rtl_ppa": "HOLD_NOT_EVALUATED",
-            "latency_quality": "HOLD_OBSERVATIONAL_SIDECAR_ONLY",
+            "actual_native_rtl_observation": (
+                "PASS_SEALED_XCELIUM_NATIVE_OBSERVATION_ONLY"
+            ),
+            "software_cav_replay": (
+                "PASS_SOFTWARE_CAV_FUNCTIONAL_REPLAY_ONLY_NOT_RTL"
+            ),
+            "world_functional_mapping": (
+                "PASS_SOFTWARE_WORLD_RAY_GRID_MAPPING_ONLY_NOT_RTL"
+            ),
+            "latency_quality": (
+                "HOLD_OBSERVATIONAL_LATENCY_SIDECAR_ONLY_NOT_PHYSICAL_REPLAY_OR_QUALITY"
+            ),
+            "wire_complete_cav_rtl": (
+                "HOLD_WIRE_COMPLETE_CAV_RTL_NOT_IMPLEMENTED_OR_OBSERVED"
+            ),
+            "rtl_ppa": (
+                "HOLD_CAV_WORLD_RTL_PPA_NOT_IMPLEMENTED_OR_EVALUATED"
+            ),
         },
     }
 
@@ -323,12 +396,17 @@ def _sealed(body: Mapping[str, object]) -> Mapping[str, object]:
 def validate_official_functional_summary(
     value: object, repository_root: Optional[Path] = None
 ) -> Mapping[str, object]:
-    """Validate the exact official contract, seal, and optional repo files."""
+    """Validate the exact contract, seal, and current or supplied repo files."""
 
+    _exact_json_tree(value)
     if type(value) is not dict or frozenset(value) != _TOP_FIELDS:
         _fail("summary top-level fields differ")
     summary = value
-    if summary["schema"] != SCHEMA or summary["status"] != "COMPLETE":
+    if (
+        summary["schema"] != SCHEMA
+        or summary["status"]
+        != "COMPLETE_SCOPED_OBSERVATIONAL_AND_SOFTWARE_RESULT_WITH_HOLDS"
+    ):
         _fail("summary schema/status differs")
     population = summary["population"]
     expected_population = {
@@ -336,20 +414,18 @@ def validate_official_functional_summary(
         "decisions": 8_503, "causal_cav": 8_420, "zoh_fallback": 0,
         "sensor_fixed_bypass": 83, "native_overrun": 0,
     }
-    if population != expected_population:
-        _fail("official population differs")
+    _typed_equal(population, expected_population, "official population")
     latency = summary["latency"]
     if type(latency) is not dict or frozenset(latency) != frozenset((
         "semantics", "native_clock_period_ps", "histogram_cycles", "event_count"
     )):
         _fail("latency fields differ")
-    if (
-        latency["native_clock_period_ps"] != 2_000
-        or latency["event_count"] != 8_503
-        or latency["histogram_cycles"] != [[1, 6_393], [2, 2_077], [3, 33]]
-        or latency["semantics"] != TRANSPORT_TIME_SEMANTICS
-    ):
-        _fail("official latency evidence differs")
+    _typed_equal(latency, {
+        "semantics": TRANSPORT_TIME_SEMANTICS,
+        "native_clock_period_ps": 2_000,
+        "histogram_cycles": [[1, 6_393], [2, 2_077], [3, 33]],
+        "event_count": 8_503,
+    }, "official latency evidence")
     grid = summary["world_grid"]
     if type(grid) is not dict or frozenset(grid) != frozenset((
         "width", "height", "input_frame", "excluded_frame", "quantized_count",
@@ -357,19 +433,19 @@ def validate_official_functional_summary(
         "y_range_inclusive", "index_range_inclusive", "coordinate_convention",
     )):
         _fail("world-grid fields differ")
-    if (
-        grid["width"] != 512 or grid["height"] != 256
-        or grid["input_frame"] != "WORLD"
-        or grid["excluded_frame"] != "SENSOR_FIXED"
-        or grid["quantized_count"] != 8_420
-        or grid["excluded_sensor_fixed_count"] != 83
-        or grid["unique_cell_count"] != 821
-        or grid["x_range_inclusive"] != [238, 298]
-        or grid["y_range_inclusive"] != [93, 165]
-        or grid["index_range_inclusive"] != [47_876, 84_754]
-        or grid["coordinate_convention"] != COORDINATE_CONVENTION
-    ):
-        _fail("official world-grid evidence differs")
+    _typed_equal(grid, {
+        "width": 512,
+        "height": 256,
+        "input_frame": "WORLD",
+        "excluded_frame": "SENSOR_FIXED",
+        "quantized_count": 8_420,
+        "excluded_sensor_fixed_count": 83,
+        "unique_cell_count": 821,
+        "x_range_inclusive": [238, 298],
+        "y_range_inclusive": [93, 165],
+        "index_range_inclusive": [47_876, 84_754],
+        "coordinate_convention": COORDINATE_CONVENTION,
+    }, "official world-grid evidence")
     digests = summary["digests"]
     if type(digests) is not dict or frozenset(digests) != frozenset((
         "join_identity_sha256", "geometry_sha256", "retire_sidecar_sha256",
@@ -378,8 +454,7 @@ def validate_official_functional_summary(
         _fail("digest fields differ")
     for name, digest in digests.items():
         _sha256(digest, name)
-    if digests != EXPECTED_RESULT_DIGESTS:
-        _fail("official result digests differ")
+    _typed_equal(digests, EXPECTED_RESULT_DIGESTS, "official result digests")
     equality = summary["three_view_equality"]
     if type(equality) is not dict or equality.get("view_order") != list(VIEW_ORDER):
         _fail("three-view order differs")
@@ -405,15 +480,24 @@ def validate_official_functional_summary(
     ):
         _fail("three-view geometry equality differs")
     claims = summary["claim_scope"]
-    if claims != {
-        "actual_native_rtl_observation": "PASS",
-        "software_cav_replay": "PASS",
-        "world_functional_mapping": "PASS",
-        "wire_complete_cav_rtl": "HOLD_NOT_IMPLEMENTED_OR_OBSERVED",
-        "rtl_ppa": "HOLD_NOT_EVALUATED",
-        "latency_quality": "HOLD_OBSERVATIONAL_SIDECAR_ONLY",
-    }:
-        _fail("claim scope differs")
+    _typed_equal(claims, {
+        "actual_native_rtl_observation": (
+            "PASS_SEALED_XCELIUM_NATIVE_OBSERVATION_ONLY"
+        ),
+        "software_cav_replay": (
+            "PASS_SOFTWARE_CAV_FUNCTIONAL_REPLAY_ONLY_NOT_RTL"
+        ),
+        "world_functional_mapping": (
+            "PASS_SOFTWARE_WORLD_RAY_GRID_MAPPING_ONLY_NOT_RTL"
+        ),
+        "latency_quality": (
+            "HOLD_OBSERVATIONAL_LATENCY_SIDECAR_ONLY_NOT_PHYSICAL_REPLAY_OR_QUALITY"
+        ),
+        "wire_complete_cav_rtl": (
+            "HOLD_WIRE_COMPLETE_CAV_RTL_NOT_IMPLEMENTED_OR_OBSERVED"
+        ),
+        "rtl_ppa": "HOLD_CAV_WORLD_RTL_PPA_NOT_IMPLEMENTED_OR_EVALUATED",
+    }, "claim scope")
     authority = summary["input_authority"]
     if type(authority) is not dict or frozenset(authority) != frozenset((
         "official_sources", "cyclemask", "sealed_native_receipt",
@@ -500,17 +584,17 @@ def validate_official_functional_summary(
     body.pop("seal")
     if not hmac.compare_digest(supplied, _canonical_sha256(body)):
         _fail("summary seal differs")
-    if repository_root is not None:
-        if not isinstance(repository_root, Path):
-            _fail("repository root must be a pathlib.Path")
-        actual_repository = _repository_authorities(repository_root)
-        expected_repository = {
-            "sealed_native_receipt": authority["sealed_native_receipt"],
-            "sealed_native_bundle": authority["sealed_native_bundle"],
-            "core_code": authority["core_code"],
-        }
-        if actual_repository != expected_repository:
-            _fail("recorded repository authorities differ from actual files")
+    root = Path(__file__).parents[2] if repository_root is None else repository_root
+    if not isinstance(root, Path):
+        _fail("repository root must be a pathlib.Path")
+    actual_repository = _repository_authorities(root)
+    expected_repository = {
+        "sealed_native_receipt": authority["sealed_native_receipt"],
+        "sealed_native_bundle": authority["sealed_native_bundle"],
+        "core_code": authority["core_code"],
+    }
+    if actual_repository != expected_repository:
+        _fail("recorded repository authorities differ from actual files")
     return summary
 
 
