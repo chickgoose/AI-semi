@@ -59,6 +59,8 @@ EXPECTED_BYPASS_COUNT = 83
 GRID_WIDTH = 512
 GRID_HEIGHT = 256
 NATIVE_CLOCK_PERIOD_PS = 2_000
+LATENCY_SIDECAR_ONLY = "LATENCY_SIDECAR_ONLY"
+SIDECAR_ORDER = ("retire_cycle", "event_id")
 
 RAW_CAV_VIEW = "RAW-CAV"
 AER_OCC_CAV_VIEW = "AER-OCC-CAV"
@@ -217,7 +219,12 @@ class FunctionalGeometryRecord:
 
 @dataclass(frozen=True)
 class FunctionalRetireObservation:
-    """Exact native join identity plus observational transport time only."""
+    """Public latency-only observation, without sealed native retire geometry.
+
+    ``NativeOutcome`` exposes event/source/occurrence/retire/latency only.
+    Native retire lane, row, and column remain in the separate sealed evidence;
+    this core neither reads nor reconstructs them.
+    """
 
     event_id: int
     source_index: int
@@ -291,6 +298,20 @@ class FunctionalAssayView:
                 _fail("AER-RET-CAV must retain its observational sidecar")
         elif self.transport_sidecar:
             _fail("only AER-RET-CAV may carry a transport sidecar")
+
+    @property
+    def sidecar_semantics(self) -> Optional[str]:
+        """Identify the intentionally limited public transport projection."""
+
+        if self.view_name == AER_RET_CAV_VIEW:
+            return LATENCY_SIDECAR_ONLY
+        return None
+
+    @property
+    def latency_sidecar(self) -> Tuple[FunctionalRetireObservation, ...]:
+        """Return the public latency sidecar without implying native geometry."""
+
+        return self.transport_sidecar
 
 
 @dataclass(frozen=True)
@@ -444,6 +465,12 @@ class FunctionalAssayResult:
     def retire_sidecar(self) -> Tuple[FunctionalRetireObservation, ...]:
         return self.views[2].transport_sidecar
 
+    @property
+    def latency_sidecar(self) -> Tuple[FunctionalRetireObservation, ...]:
+        """Return the explicitly latency-only AER retirement observations."""
+
+        return self.views[2].transport_sidecar
+
 
 @dataclass(frozen=True)
 class _ReplayEvent:
@@ -577,6 +604,8 @@ def _exact_join(
 
     outcome_by_id = {}  # type: Dict[int, NativeOutcome]
     for row in outcomes:
+        # This exact public schema intentionally excludes sealed RTL retire
+        # lane/row/column.  Do not infer those coordinates in this assay.
         if frozenset(vars(row)) != frozenset((
             "event_id", "source", "occurrence_cycle", "retire_cycle", "latency"
         )):
@@ -757,6 +786,13 @@ def _build_sidecar(
         Tuple[NeutralEventInput, NativeEventIdentity, NativeOutcome], ...
     ],
 ) -> Tuple[FunctionalRetireObservation, ...]:
+    """Build the public latency-only sidecar in ``SIDECAR_ORDER``.
+
+    The parser's sealed evidence retains native lane/row/column separately;
+    the public ``NativeOutcome`` does not expose them, so they are neither
+    copied nor reconstructed here.
+    """
+
     rows = []
     for event, identity, outcome in joined:
         dual = build_dual_time_event(
@@ -773,7 +809,10 @@ def _build_sidecar(
             native_occurrence_cycle=identity.native_occurrence_cycle,
             dual_time=dual,
         ))
-    return tuple(sorted(rows, key=lambda row: (row.retire_cycle, row.event_id)))
+    return tuple(sorted(
+        rows,
+        key=lambda row: (row.retire_cycle, row.event_id),
+    ))
 
 
 def _build_statistics(
@@ -935,9 +974,11 @@ __all__ = (
     "FunctionalRetireObservation",
     "GRID_HEIGHT",
     "GRID_WIDTH",
+    "LATENCY_SIDECAR_ONLY",
     "NATIVE_CLOCK_PERIOD_PS",
     "RAW_CAV_VIEW",
     "SENSOR_FIXED_FRAME",
+    "SIDECAR_ORDER",
     "VIEW_ORDER",
     "WORLD_FRAME",
     "run_functional_assay",

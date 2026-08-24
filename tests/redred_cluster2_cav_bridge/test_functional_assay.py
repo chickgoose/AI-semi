@@ -180,6 +180,13 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         self.assertEqual(result.views[0].transport_sidecar, ())
         self.assertEqual(result.views[1].transport_sidecar, ())
         self.assertIs(result.views[2].transport_sidecar, result.retire_sidecar)
+        self.assertIs(result.latency_sidecar, result.retire_sidecar)
+        self.assertIs(result.views[2].latency_sidecar, result.retire_sidecar)
+        self.assertIsNone(result.views[0].sidecar_semantics)
+        self.assertIsNone(result.views[1].sidecar_semantics)
+        self.assertEqual(
+            result.views[2].sidecar_semantics, module.LATENCY_SIDECAR_ONLY
+        )
         self.assertEqual(
             result.statistics.mode_counts,
             (
@@ -256,6 +263,16 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         )
         by_id = dict((row.event_id, row) for row in result.retire_sidecar)
         original_by_id = dict((row.event_id, row) for row in source.events)
+        self.assertEqual(
+            module.SIDECAR_ORDER, ("retire_cycle", "event_id")
+        )
+        self.assertEqual(
+            tuple((row.retire_cycle, row.event_id) for row in result.retire_sidecar),
+            tuple(sorted(
+                (row.retire_cycle, row.event_id)
+                for row in result.retire_sidecar
+            )),
+        )
         for event_id, row in by_id.items():
             self.assertEqual(row.latency_ns, row.latency_cycles * 2)
             self.assertEqual(
@@ -265,6 +282,12 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
             self.assertEqual(
                 row.dual_time.semantics_label, TRANSPORT_TIME_SEMANTICS
             )
+            self.assertFalse(any(hasattr(row, name) for name in (
+                "retire_ordinal",
+                "retire_native_lane",
+                "retire_row",
+                "retire_col",
+            )))
         self.assertTrue(all(
             not hasattr(row, "native_occurrence_cycle")
             and not hasattr(row, "retire_cycle")
