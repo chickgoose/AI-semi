@@ -311,6 +311,148 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         ):
             replace(result.views[0], transport_sidecar=result.retire_sidecar)
 
+    def test_direct_world_grid_must_be_recomputed_from_the_ray(self):
+        source, outcomes = _synthetic_inputs()
+        with _synthetic_authority():
+            result = module.run_functional_assay(source, outcomes)
+        world = result.geometry[0]
+        unrelated = module.quantize_world_ray(
+            (0.0, 1.0, 0.0), module.GRID_WIDTH, module.GRID_HEIGHT
+        )
+        if unrelated == world.world_grid:
+            unrelated = module.quantize_world_ray(
+                (-1.0, 0.0, 0.0), module.GRID_WIDTH, module.GRID_HEIGHT
+            )
+        self.assertNotEqual(unrelated, world.world_grid)
+        with self.assertRaisesRegex(
+            module.FunctionalAssayError,
+            "WORLD grid differs from quantized geometry ray",
+        ):
+            replace(world, world_grid=unrelated)
+
+    def test_direct_result_recomputes_all_digests_and_row_statistics(self):
+        source, outcomes = _synthetic_inputs()
+        with _synthetic_authority():
+            result = module.run_functional_assay(source, outcomes)
+        fake = "0" * 64
+        if fake == result.statistics.geometry_sha256:
+            fake = "1" * 64
+
+        with _synthetic_authority():
+            fake_statistics = replace(
+                result.statistics,
+                geometry_sha256=fake,
+                view_geometry_sha256=tuple(
+                    (name, fake) for name in module.VIEW_ORDER
+                ),
+            )
+            fake_views = tuple(
+                replace(view, geometry_sha256=fake) for view in result.views
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "geometry_sha256 differs from actual rows",
+            ):
+                module.FunctionalAssayResult(fake_views, fake_statistics)
+
+            for field in (
+                "join_identity_sha256",
+                "retire_sidecar_sha256",
+                "grid_sha256",
+            ):
+                with self.subTest(field=field):
+                    fake_statistics = replace(
+                        result.statistics, **{field: fake}
+                    )
+                    with self.assertRaisesRegex(
+                        module.FunctionalAssayError,
+                        "%s differs from actual rows" % field,
+                    ):
+                        module.FunctionalAssayResult(
+                            result.views, fake_statistics
+                        )
+
+            fake_statistics = replace(
+                result.statistics, latency_histogram=((1, 3),)
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "latency_histogram differs from actual rows",
+            ):
+                module.FunctionalAssayResult(result.views, fake_statistics)
+
+            fake_statistics = replace(result.statistics, grid_unique_count=1)
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "grid_unique_count differs from actual rows",
+            ):
+                module.FunctionalAssayResult(result.views, fake_statistics)
+
+            for field, value in (
+                ("event_count", 2),
+                ("pose_count", 1),
+                (
+                    "mode_counts",
+                    (("causal_cav", 0), ("zoh_fallback", 2),
+                     ("sensor_fixed_bypass", 1)),
+                ),
+                ("frame_counts", (("WORLD", 1), ("SENSOR_FIXED", 2))),
+            ):
+                with self.subTest(official_field=field):
+                    forged_statistics = replace(result.statistics)
+                    object.__setattr__(forged_statistics, field, value)
+                    with self.assertRaises(module.FunctionalAssayError):
+                        module.FunctionalAssayResult(
+                            result.views, forged_statistics
+                        )
+
+    def test_direct_result_rejects_forged_event_populations(self):
+        source, outcomes = _synthetic_inputs()
+        with _synthetic_authority():
+            result = module.run_functional_assay(source, outcomes)
+
+            duplicate_geometry = list(result.geometry)
+            duplicate_geometry[1] = replace(
+                duplicate_geometry[1], event_id=duplicate_geometry[0].event_id
+            )
+            duplicate_geometry_tuple = tuple(duplicate_geometry)
+            duplicate_views = tuple(replace(
+                view, geometry=duplicate_geometry_tuple
+            ) for view in result.views)
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "geometry event IDs are not exactly contiguous",
+            ):
+                module.FunctionalAssayResult(
+                    duplicate_views, result.statistics
+                )
+
+            duplicate_sidecar = list(result.retire_sidecar)
+            duplicate_sidecar[1] = replace(
+                duplicate_sidecar[1], event_id=duplicate_sidecar[0].event_id
+            )
+            retired_view = replace(
+                result.views[2], transport_sidecar=tuple(duplicate_sidecar)
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "sidecar event IDs are not exactly contiguous",
+            ):
+                module.FunctionalAssayResult(
+                    result.views[:2] + (retired_view,), result.statistics
+                )
+
+            shortened = result.geometry[:-1]
+            shortened_views = tuple(
+                replace(view, geometry=shortened) for view in result.views
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError, "geometry cardinality"
+            ):
+                module.FunctionalAssayResult(
+                    shortened_views, result.statistics
+                )
+
     def test_core_is_python38_and_has_no_io_or_forbidden_imports(self):
         path = Path(module.__file__)
         source = path.read_text(encoding="utf-8")

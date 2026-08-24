@@ -208,6 +208,16 @@ class FunctionalGeometryRecord:
                 _fail("corrected geometry must use WORLD frame")
             if type(self.world_grid) is not WorldGridCoordinate:
                 _fail("WORLD geometry must have an exact grid coordinate")
+            try:
+                expected_grid = quantize_world_ray(
+                    self.ray_xyz, GRID_WIDTH, GRID_HEIGHT
+                )
+            except WorldGridError as error:
+                raise FunctionalAssayError(
+                    "WORLD geometry ray cannot be quantized"
+                ) from error
+            if self.world_grid != expected_grid:
+                _fail("WORLD grid differs from quantized geometry ray")
         elif self.recovery_mode is RecoveryMode.BYPASS:
             if self.coordinate_frame != SENSOR_FIXED_FRAME:
                 _fail("bypass geometry must use SENSOR_FIXED frame")
@@ -357,6 +367,14 @@ class FunctionalAssayStatistics:
         )
         if any(type(value) is not int or value < 0 for value in counts):
             _fail("statistics counts must be non-negative integers")
+        if (
+            self.event_count != EXPECTED_EVENT_COUNT
+            or self.exact_join_count != EXPECTED_EVENT_COUNT
+            or self.decision_count != EXPECTED_EVENT_COUNT
+        ):
+            _fail("statistics event/join/decision count differs from official")
+        if self.pose_count != EXPECTED_POSE_COUNT:
+            _fail("statistics pose count differs from official")
         modes = _exact_counter(
             self.mode_counts,
             (
@@ -369,6 +387,17 @@ class FunctionalAssayStatistics:
         frames = _exact_counter(
             self.frame_counts, (WORLD_FRAME, SENSOR_FIXED_FRAME), "frame_counts"
         )
+        if modes != (
+            (RecoveryMode.CAV.value, EXPECTED_CAUSAL_CAV_COUNT),
+            (RecoveryMode.ZOH.value, EXPECTED_ZOH_COUNT),
+            (RecoveryMode.BYPASS.value, EXPECTED_BYPASS_COUNT),
+        ):
+            _fail("statistics mode counts differ from official")
+        if frames != (
+            (WORLD_FRAME, EXPECTED_CAUSAL_CAV_COUNT + EXPECTED_ZOH_COUNT),
+            (SENSOR_FIXED_FRAME, EXPECTED_BYPASS_COUNT),
+        ):
+            _fail("statistics frame counts differ from official")
         if sum(value for _, value in modes) != self.decision_count:
             _fail("mode counts do not sum to decision_count")
         if sum(value for _, value in frames) != self.decision_count:
@@ -434,6 +463,9 @@ class FunctionalAssayResult:
             _fail("result views differ from the exact three-view order")
         if type(self.statistics) is not FunctionalAssayStatistics:
             _fail("result statistics must have exact type")
+        for view in self.views:
+            FunctionalAssayView(**vars(view))
+        FunctionalAssayStatistics(**vars(self.statistics))
         geometry = self.views[0].geometry
         digest = self.views[0].geometry_sha256
         if any(view.geometry is not geometry for view in self.views):
@@ -447,6 +479,112 @@ class FunctionalAssayResult:
         sidecar = self.views[2].transport_sidecar
         if len(sidecar) != self.statistics.exact_join_count:
             _fail("retire sidecar cardinality differs from exact join")
+        for row in geometry:
+            FunctionalGeometryRecord(**vars(row))
+        for row in sidecar:
+            FunctionalRetireObservation(**vars(row))
+
+        expected_ids = set(range(EXPECTED_EVENT_COUNT))
+        geometry_ids = tuple(row.event_id for row in geometry)
+        sidecar_ids = tuple(row.event_id for row in sidecar)
+        if len(set(geometry_ids)) != len(geometry_ids) or set(
+            geometry_ids
+        ) != expected_ids:
+            _fail("result geometry event IDs are not exactly contiguous")
+        if len(set(sidecar_ids)) != len(sidecar_ids) or set(
+            sidecar_ids
+        ) != expected_ids:
+            _fail("result sidecar event IDs are not exactly contiguous")
+        native_slots = tuple(
+            (row.native_occurrence_cycle, row.source_index) for row in sidecar
+        )
+        if len(set(native_slots)) != len(native_slots):
+            _fail("result sidecar native occurrence/source slots repeat")
+        if any(
+            (right.event_timestamp_ns, right.event_id)
+            <= (left.event_timestamp_ns, left.event_id)
+            for left, right in zip(geometry, geometry[1:])
+        ):
+            _fail("result geometry is not strict timestamp-then-event-ID order")
+        if tuple((row.retire_cycle, row.event_id) for row in sidecar) != tuple(
+            sorted((row.retire_cycle, row.event_id) for row in sidecar)
+        ):
+            _fail("result sidecar differs from SIDECAR_ORDER")
+        geometry_by_id = dict((row.event_id, row) for row in geometry)
+        if any(
+            row.event_timestamp_ns
+            != geometry_by_id[row.event_id].event_timestamp_ns
+            for row in sidecar
+        ):
+            _fail("result sidecar event timestamp differs from geometry")
+
+        derived = _derive_row_statistics(geometry, sidecar)
+        statistics = self.statistics
+        comparisons = (
+            (statistics.event_count, len(geometry), "event_count"),
+            (statistics.exact_join_count, len(sidecar), "exact_join_count"),
+            (statistics.decision_count, len(geometry), "decision_count"),
+            (statistics.mode_counts, derived["mode_counts"], "mode_counts"),
+            (statistics.frame_counts, derived["frame_counts"], "frame_counts"),
+            (
+                statistics.latency_histogram,
+                derived["latency_histogram"],
+                "latency_histogram",
+            ),
+            (
+                statistics.grid_quantized_count,
+                derived["grid_quantized_count"],
+                "grid_quantized_count",
+            ),
+            (
+                statistics.grid_unique_count,
+                derived["grid_unique_count"],
+                "grid_unique_count",
+            ),
+            (statistics.grid_x_min, derived["grid_x_min"], "grid_x_min"),
+            (statistics.grid_x_max, derived["grid_x_max"], "grid_x_max"),
+            (statistics.grid_y_min, derived["grid_y_min"], "grid_y_min"),
+            (statistics.grid_y_max, derived["grid_y_max"], "grid_y_max"),
+            (
+                statistics.grid_index_min,
+                derived["grid_index_min"],
+                "grid_index_min",
+            ),
+            (
+                statistics.grid_index_max,
+                derived["grid_index_max"],
+                "grid_index_max",
+            ),
+            (
+                statistics.join_identity_sha256,
+                derived["join_identity_sha256"],
+                "join_identity_sha256",
+            ),
+            (
+                statistics.geometry_sha256,
+                derived["geometry_sha256"],
+                "geometry_sha256",
+            ),
+            (
+                statistics.retire_sidecar_sha256,
+                derived["retire_sidecar_sha256"],
+                "retire_sidecar_sha256",
+            ),
+            (statistics.grid_sha256, derived["grid_sha256"], "grid_sha256"),
+        )
+        for actual, expected, name in comparisons:
+            if actual != expected:
+                _fail("result statistics %s differs from actual rows" % name)
+        expected_view_digests = tuple(
+            (name, derived["geometry_sha256"]) for name in VIEW_ORDER
+        )
+        if statistics.view_geometry_sha256 != expected_view_digests:
+            _fail("result view geometry digest statistics differ from actual rows")
+        if any(
+            view.geometry_sha256 != derived["geometry_sha256"]
+            for view in self.views
+        ):
+            _fail("view geometry digest differs from actual rows")
 
     def view(self, name: str) -> FunctionalAssayView:
         if type(name) is not str:
@@ -781,6 +919,74 @@ def _sidecar_mapping(row: FunctionalRetireObservation) -> Mapping[str, object]:
     }
 
 
+def _derive_row_statistics(
+    geometry: Tuple[FunctionalGeometryRecord, ...],
+    sidecar: Tuple[FunctionalRetireObservation, ...],
+) -> Mapping[str, object]:
+    """Recompute every row-derived statistic and digest from first principles."""
+
+    mode_counts = tuple(
+        (mode.value, sum(row.recovery_mode is mode for row in geometry))
+        for mode in (RecoveryMode.CAV, RecoveryMode.ZOH, RecoveryMode.BYPASS)
+    )
+    frame_counts = (
+        (
+            WORLD_FRAME,
+            sum(row.coordinate_frame == WORLD_FRAME for row in geometry),
+        ),
+        (
+            SENSOR_FIXED_FRAME,
+            sum(row.coordinate_frame == SENSOR_FIXED_FRAME for row in geometry),
+        ),
+    )
+    latency_counts = {}  # type: Dict[int, int]
+    for row in sidecar:
+        latency_counts[row.latency_cycles] = latency_counts.get(
+            row.latency_cycles, 0
+        ) + 1
+    latency_histogram = tuple(sorted(latency_counts.items()))
+    grids = tuple(
+        row.world_grid for row in geometry if row.world_grid is not None
+    )
+    if not grids:
+        _fail("official functional population has no WORLD grid records")
+    grid_rows = tuple({
+        "event_id": row.event_id,
+        "x": row.world_grid.x,  # type: ignore[union-attr]
+        "y": row.world_grid.y,  # type: ignore[union-attr]
+        "index": row.world_grid.index,  # type: ignore[union-attr]
+    } for row in geometry if row.world_grid is not None)
+    geometry_digest = _canonical_sha256([
+        _geometry_mapping(row) for row in geometry
+    ])
+    join_digest = _canonical_sha256([{
+        "event_id": row.event_id,
+        "source_index": row.source_index,
+        "native_occurrence_cycle": row.native_occurrence_cycle,
+    } for row in sorted(sidecar, key=lambda value: value.event_id)])
+    sidecar_digest = _canonical_sha256([
+        _sidecar_mapping(row) for row in sidecar
+    ])
+    grid_digest = _canonical_sha256(list(grid_rows))
+    return {
+        "mode_counts": mode_counts,
+        "frame_counts": frame_counts,
+        "latency_histogram": latency_histogram,
+        "grid_quantized_count": len(grids),
+        "grid_unique_count": len(set(grid.index for grid in grids)),
+        "grid_x_min": min(grid.x for grid in grids),
+        "grid_x_max": max(grid.x for grid in grids),
+        "grid_y_min": min(grid.y for grid in grids),
+        "grid_y_max": max(grid.y for grid in grids),
+        "grid_index_min": min(grid.index for grid in grids),
+        "grid_index_max": max(grid.index for grid in grids),
+        "join_identity_sha256": join_digest,
+        "geometry_sha256": geometry_digest,
+        "retire_sidecar_sha256": sidecar_digest,
+        "grid_sha256": grid_digest,
+    }
+
+
 def _build_sidecar(
     joined: Tuple[
         Tuple[NeutralEventInput, NativeEventIdentity, NativeOutcome], ...
@@ -823,17 +1029,9 @@ def _build_statistics(
     geometry: Tuple[FunctionalGeometryRecord, ...],
     sidecar: Tuple[FunctionalRetireObservation, ...],
 ) -> FunctionalAssayStatistics:
-    mode_counts = tuple(
-        (mode.value, sum(row.recovery_mode is mode for row in geometry))
-        for mode in (RecoveryMode.CAV, RecoveryMode.ZOH, RecoveryMode.BYPASS)
-    )
-    frame_counts = (
-        (WORLD_FRAME, sum(row.coordinate_frame == WORLD_FRAME for row in geometry)),
-        (
-            SENSOR_FIXED_FRAME,
-            sum(row.coordinate_frame == SENSOR_FIXED_FRAME for row in geometry),
-        ),
-    )
+    derived = _derive_row_statistics(geometry, sidecar)
+    mode_counts = derived["mode_counts"]
+    frame_counts = derived["frame_counts"]
     if mode_counts != (
         (RecoveryMode.CAV.value, source.causal_cav_eligible_count),
         (RecoveryMode.ZOH.value, source.fresh_zoh_fallback_count),
@@ -847,35 +1045,7 @@ def _build_statistics(
     }:
         _fail("current-CAV frames differ from source disposition authority")
 
-    latency_counts = {}  # type: Dict[int, int]
-    for row in sidecar:
-        latency_counts[row.latency_cycles] = latency_counts.get(
-            row.latency_cycles, 0
-        ) + 1
-    latency_histogram = tuple(sorted(latency_counts.items()))
-    grids = tuple(
-        row.world_grid for row in geometry if row.world_grid is not None
-    )
-    if not grids:
-        _fail("official functional population has no WORLD grid records")
-    grid_rows = tuple({
-        "event_id": row.event_id,
-        "x": row.world_grid.x,  # type: ignore[union-attr]
-        "y": row.world_grid.y,  # type: ignore[union-attr]
-        "index": row.world_grid.index,  # type: ignore[union-attr]
-    } for row in geometry if row.world_grid is not None)
-    geometry_digest = _canonical_sha256([
-        _geometry_mapping(row) for row in geometry
-    ])
-    join_digest = _canonical_sha256([{
-        "event_id": identity.event_id,
-        "source_index": identity.source_index,
-        "native_occurrence_cycle": identity.native_occurrence_cycle,
-    } for _, identity, _ in sorted(joined, key=lambda row: row[0].event_id)])
-    sidecar_digest = _canonical_sha256([
-        _sidecar_mapping(row) for row in sidecar
-    ])
-    grid_digest = _canonical_sha256(list(grid_rows))
+    geometry_digest = derived["geometry_sha256"]
     return FunctionalAssayStatistics(
         event_count=len(source.events),
         pose_count=len(source.poses),
@@ -883,21 +1053,21 @@ def _build_statistics(
         decision_count=len(geometry),
         mode_counts=mode_counts,
         frame_counts=frame_counts,
-        latency_histogram=latency_histogram,
+        latency_histogram=derived["latency_histogram"],
         grid_width=GRID_WIDTH,
         grid_height=GRID_HEIGHT,
-        grid_quantized_count=len(grids),
-        grid_unique_count=len(set(grid.index for grid in grids)),
-        grid_x_min=min(grid.x for grid in grids),
-        grid_x_max=max(grid.x for grid in grids),
-        grid_y_min=min(grid.y for grid in grids),
-        grid_y_max=max(grid.y for grid in grids),
-        grid_index_min=min(grid.index for grid in grids),
-        grid_index_max=max(grid.index for grid in grids),
-        join_identity_sha256=join_digest,
+        grid_quantized_count=derived["grid_quantized_count"],
+        grid_unique_count=derived["grid_unique_count"],
+        grid_x_min=derived["grid_x_min"],
+        grid_x_max=derived["grid_x_max"],
+        grid_y_min=derived["grid_y_min"],
+        grid_y_max=derived["grid_y_max"],
+        grid_index_min=derived["grid_index_min"],
+        grid_index_max=derived["grid_index_max"],
+        join_identity_sha256=derived["join_identity_sha256"],
         geometry_sha256=geometry_digest,
-        retire_sidecar_sha256=sidecar_digest,
-        grid_sha256=grid_digest,
+        retire_sidecar_sha256=derived["retire_sidecar_sha256"],
+        grid_sha256=derived["grid_sha256"],
         view_geometry_sha256=tuple(
             (name, geometry_digest) for name in VIEW_ORDER
         ),
