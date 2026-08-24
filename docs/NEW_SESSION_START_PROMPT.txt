@@ -15,33 +15,23 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 짧게 요약하되, 과거 작업을 시작하지 말고 내가 이번 새 세션에서 제시하는 목표를
 기준으로 계획을 세워.
 
-이번 새 목표: 교육용 GPDK045에서 주최 측이 허용하는 셀·클록 구조만으로
-16-source pending/accept부터 retire까지의 완전한 single-edge AER 디지털
-endpoint를 구성한다. A2를 aggregate-weighted 성능 주후보, A3를 exact
-scalar-prefix 의미 fallback으로 두고, 동일 조건의 팀 canonical synthetic 및
-제공·공개 데이터 campaign에서 accepted-event exact-once, source
-overrun·throughput·latency, complete-boundary post-route timing·area와 mapped
-vectorless power를 입증한다. Known-motion world↔sensor 좌표 변환은 endpoint
-PPA와 분리된 system demo로 검증한다. P6/multi-edge는 superseded/noncurrent
-연구 비교이며 현재 후보·interface·release 선택 근거로 사용하지 않는다.
+이번 새 목표의 기준은 2026-08-24~25에 확정한 1차 발표 방향이다. 중심 결과는
+강희의 pinned `cluster2_steal_buf` AER이고, causal-CAV와 512x256 world grid는
+official UZH event를 이용한 보조 software functional-extension feasibility다.
+Predictor, online feedback, depth/translation/parallax, wire-complete CAV/world
+RTL과 그 PPA는 자동 재개하지 말고 HOLD로 유지한다.
 
-현재 판정과 증거 경계는 docs/REDRED_TEAM_STATUS_20260820.txt와
-docs/AI_SEMI_QNA_REDRED_SINGLE_EDGE_STATUS_20260819.md를 기준으로 삼는다.
-실제 Genus/Innovus 진단 결과는 확보됐지만 organizer-authoritative PDK 수치,
-controlled producer/freshness 및 최종 mapped PDK/CDC authority가 닫히기 전에는
-공식 A2/A3 선택이나 release를 선언하지 않는다.
+공개 authority는 `integration/cluster2-steal-buf-cav-bridge`이며, 먼저
+`docs/REDRED_CLUSTER2_CAV_1ST_ROUND_STATUS_20260824.txt`,
+`docs/presentation/cluster2_cav_first_round_briefing.md`,
+`docs/presentation/cluster2_cav_evidence_matrix_20260824.md`를 끝까지 읽어.
+Evidence-package checkpoint는
+`f5109974236d297b5b60b0f1c18aecc4c1d184e6`이고 public fresh clone에서
+153 tests = 150 PASS + environment-gated 3 SKIP, official 8,503-event exact
+golden replay PASS까지 확인됐다.
 
-2026-08-20 최신 진행 상태: A2 onehot timing-cone 개선 RTL authority
-eb298fe1416a4312269a6f9232e1445f8958dda2는
-integration/redred-system-goal 계보에 포함되어 있다. Local endpoint evidence
-53/53, 200,000-cycle model lockstep과 RTL mutation 6/6이 PASS했다. 실제
-GPDK045/6.5 ns fresh Genus/Innovus diagnostic에서 A2는 setup WNS
-+0.0329976 ns, hold WNS +0.00057663 ns, violation 0/0, DRC/antenna/connectivity
-0, area 1962.738, 747 instances, post-route vectorless 0.07962 mW를 기록했다.
-A3도 setup/hold를 닫았고 setup WNS +0.0237889 ns, hold WNS +0.00103348 ns,
-area 1628.262, 580 instances, vectorless 0.06556542 mW다. 동일 environment
-snapshot의 A2/A3 cohort와 mapped/post-route structural CDC diagnostic도
-hash-bound PASS다. 최신 RTL full50 100회와 mutation 8개도 PASS했으며
-scalar-free Pareto는 [A2,A3], 팀 조건부 추천은 A2, exact-prefix fallback은
-A3다. 그러나 producer/freshness와 organizer PDK/I/O authority가 없으므로
-공식 candidate는 여전히 NONE이고 release는 HOLD다.
+발표에서는 “확장성 보장”, “wire-level CAV 호환”, “CAV RTL/PPA 완료”,
+“AER이 CAV 정확도를 개선”이라고 말하지 않는다. Pinned 원본 AER의 Genus
+screening과 별도 polarity-extended top의 Innovus 관측도 합치지 않는다.
+과거 개발을 임의로 재개하지 말고 사용자가 새로 지정하는 발표·검증 작업부터
+진행해.

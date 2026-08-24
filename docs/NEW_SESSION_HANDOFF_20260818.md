@@ -505,10 +505,15 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 
 - repository: `https://github.com/chickgoose/AI-semi.git`
 - branch: `integration/cluster2-steal-buf-cav-bridge`
-- functional/team-status checkpoint:
-  `160e7dc379463e0050f053171b28447a76bea8df` (이 handoff 갱신 전 마지막
-  code/team-status commit이며 이후 문서 전용 commit이 올 수 있음)
+- final first-round evidence-package checkpoint:
+  `f5109974236d297b5b60b0f1c18aecc4c1d184e6`
 - team status: `docs/REDRED_CLUSTER2_CAV_1ST_ROUND_STATUS_20260824.txt`
+- presentation briefing:
+  `docs/presentation/cluster2_cav_first_round_briefing.md`
+- claim/evidence matrix:
+  `docs/presentation/cluster2_cav_evidence_matrix_20260824.md`
+- Ganghee native PPA diagnostic handoff:
+  `docs/presentation/ganghee_cluster2_ppa_diagnostic_handoff_20260824.md`
 - official result:
   `benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json`
 - official runner:
@@ -566,3 +571,25 @@ retire cycle/latency는 관측 sidecar일 뿐이며, latency-quality 결과가 �
 별도 PPA/P&R 자료를 사용할 때는 원본 report authority, RTL hash,
 corner/constraints, activity 조건과 signoff 한계를 함께 제시하며 software CAV
 PPA로 합치지 않는다.
+
+## 15. 2026-08-25 종료 전 저장 체크포인트
+
+- `integration/cluster2-steal-buf-cav-bridge`의 evidence-package checkpoint
+  `f5109974236d297b5b60b0f1c18aecc4c1d184e6`는 public origin에 push됐고,
+  public fresh clone에서 HEAD와 remote ref가 일치했다.
+- fresh clone bridge suite는 153개 중 150 PASS, environment-gated 3 SKIP였다.
+  공식 UZH source와 accepted LF cyclemask를 켠 8,503-event exact golden replay
+  1개도 별도로 PASS했다.
+- presentation SVG 3개는 committed generator로 재생성한 뒤 byte 변경이 없었고,
+  최종 red-team 재감사는 GO였다.
+- 다음 세션은 predictor/feedback/depth 개발을 자동 재개하지 않는다. 1차 발표
+  중심은 pinned `cluster2_steal_buf`이고 software CAV/world는 보조 feasibility다.
+  우선 team status, briefing, evidence matrix를 읽고 사용자가 지정하는 다음
+  발표 작업을 수행한다.
+- pinned 원본 `cluster2_steal_buf`에는 Genus mapped screening만 release 후보로
+  검토할 수 있고, 별도 polarity-extended top의 Innovus 관측치를 원본에 귀속하지
+  않는다. Native PPA release authority와 CAV/world RTL·PPA는 계속 HOLD다.
+- 종료 당시 tmux `ai-semi:3` agents window는 a2~a9 여덟 pane의 4-column ×
+  2-row layout이었다. 전원 종료 후에는 session 자체가 사라지므로
+  `scripts/bootstrap_codex_team_tmux.sh ai-semi --launch-workers`로 재생성하고
+  `tmux capture-pane`으로 실제 worker 상태를 확인한다.
