@@ -42,6 +42,7 @@ from .transport_time import (
     TRANSPORT_TIME_SEMANTICS,
     TransportTimeValidationError,
     build_dual_time_event,
+    validate_dual_time_event,
 )
 from .world_grid import (
     COORDINATE_CONVENTION,
@@ -165,12 +166,18 @@ def _finite_unit_ray(value: object, where: str) -> Tuple[float, float, float]:
 def _exact_counter(
     value: object, expected_keys: Tuple[object, ...], where: str
 ) -> Tuple[Tuple[object, int], ...]:
-    if type(value) is not tuple or tuple(  # type: ignore[union-attr]
-        key for key, _ in value
-    ) != expected_keys:
+    if type(value) is not tuple:
+        _fail("%s keys/order differ" % where)
+    if len(value) != len(expected_keys):  # type: ignore[arg-type]
         _fail("%s keys/order differ" % where)
     result = []
-    for key, count in value:  # type: ignore[union-attr]
+    for index, pair in enumerate(value):  # type: ignore[union-attr]
+        if type(pair) is not tuple or len(pair) != 2:
+            _fail("%s rows must be exact key/count tuples" % where)
+        key, count = pair
+        expected_key = expected_keys[index]
+        if type(key) is not type(expected_key) or key != expected_key:
+            _fail("%s keys/order differ" % where)
         result.append((key, _nonnegative_int(count, "%s count" % where)))
     return tuple(result)
 
@@ -195,6 +202,8 @@ class FunctionalGeometryRecord:
         _nonnegative_int(self.cav_occurrence_cycle, "CAV occurrence cycle")
         if type(self.recovery_mode) is not RecoveryMode:
             _fail("geometry recovery_mode must be exact RecoveryMode")
+        if type(self.coordinate_frame) is not str:
+            _fail("geometry coordinate_frame must be exact str")
         ray = _finite_unit_ray(self.ray_xyz, "geometry ray")
         object.__setattr__(self, "ray_xyz", ray)
         if type(self.used_pose_ids) is not tuple or any(
@@ -209,13 +218,16 @@ class FunctionalGeometryRecord:
             if type(self.world_grid) is not WorldGridCoordinate:
                 _fail("WORLD geometry must have an exact grid coordinate")
             try:
+                checked_grid = WorldGridCoordinate(**vars(self.world_grid))
                 expected_grid = quantize_world_ray(
                     self.ray_xyz, GRID_WIDTH, GRID_HEIGHT
                 )
-            except WorldGridError as error:
+            except (TypeError, WorldGridError) as error:
                 raise FunctionalAssayError(
-                    "WORLD geometry ray cannot be quantized"
+                    "WORLD geometry grid cannot be exactly revalidated"
                 ) from error
+            if type(checked_grid.coordinate_convention) is not str:
+                _fail("WORLD grid coordinate convention must be exact str")
             if self.world_grid != expected_grid:
                 _fail("WORLD grid differs from quantized geometry ray")
         elif self.recovery_mode is RecoveryMode.BYPASS:
@@ -252,6 +264,14 @@ class FunctionalRetireObservation:
         )
         if type(self.dual_time) is not DualTimeEvent:
             _fail("sidecar dual_time must be exact DualTimeEvent")
+        try:
+            validate_dual_time_event(self.dual_time)
+        except TransportTimeValidationError as error:
+            raise FunctionalAssayError(
+                "sidecar DualTimeEvent validation failed"
+            ) from error
+        if type(self.dual_time.semantics_label) is not str:
+            _fail("sidecar transport semantics must be exact str")
         if self.dual_time.occurrence_cycle != occurrence:
             _fail("sidecar native occurrence differs from DualTimeEvent")
         if self.dual_time.clock_period_ps != NATIVE_CLOCK_PERIOD_PS:
@@ -291,6 +311,8 @@ class FunctionalAssayView:
 
     def __post_init__(self) -> None:
         _exact_fields(self, FunctionalAssayView, _VIEW_FIELDS, "view")
+        if type(self.view_name) is not str:
+            _fail("view_name must be exact str")
         if self.view_name not in VIEW_ORDER:
             _fail("unknown functional assay view")
         if type(self.geometry) is not tuple or not self.geometry or any(
@@ -362,8 +384,16 @@ class FunctionalAssayStatistics:
             self.pose_count,
             self.exact_join_count,
             self.decision_count,
+            self.grid_width,
+            self.grid_height,
             self.grid_quantized_count,
             self.grid_unique_count,
+            self.grid_x_min,
+            self.grid_x_max,
+            self.grid_y_min,
+            self.grid_y_max,
+            self.grid_index_min,
+            self.grid_index_max,
         )
         if any(type(value) is not int or value < 0 for value in counts):
             _fail("statistics counts must be non-negative integers")
@@ -405,7 +435,10 @@ class FunctionalAssayStatistics:
         if type(self.latency_histogram) is not tuple or not self.latency_histogram:
             _fail("latency histogram must be non-empty")
         prior = -1
-        for latency, count in self.latency_histogram:
+        for pair in self.latency_histogram:
+            if type(pair) is not tuple or len(pair) != 2:
+                _fail("latency histogram rows must be exact tuples")
+            latency, count = pair
             latency = _nonnegative_int(latency, "latency histogram key")
             _positive_int(count, "latency histogram count")
             if latency <= prior:
@@ -413,7 +446,12 @@ class FunctionalAssayStatistics:
             prior = latency
         if sum(value for _, value in self.latency_histogram) != self.event_count:
             _fail("latency histogram does not cover the event population")
-        if self.grid_width != GRID_WIDTH or self.grid_height != GRID_HEIGHT:
+        if (
+            type(self.grid_width) is not int
+            or type(self.grid_height) is not int
+            or self.grid_width != GRID_WIDTH
+            or self.grid_height != GRID_HEIGHT
+        ):
             _fail("statistics grid dimensions differ from 512x256")
         if self.grid_quantized_count != dict(frames)[WORLD_FRAME]:
             _fail("only WORLD records may be grid quantized")
@@ -431,24 +469,37 @@ class FunctionalAssayStatistics:
             "retire_sidecar_sha256", "grid_sha256",
         ):
             _sha256(getattr(self, name), name)
-        if type(self.view_geometry_sha256) is not tuple or tuple(
-            name for name, _ in self.view_geometry_sha256
-        ) != VIEW_ORDER:
+        if type(self.view_geometry_sha256) is not tuple or len(
+            self.view_geometry_sha256
+        ) != len(VIEW_ORDER):
             _fail("view geometry digest names/order differ")
-        if any(
-            _sha256(digest, "view geometry digest") != self.geometry_sha256
-            for _, digest in self.view_geometry_sha256
+        for index, pair in enumerate(self.view_geometry_sha256):
+            if type(pair) is not tuple or len(pair) != 2:
+                _fail("view geometry digest rows must be exact tuples")
+            name, digest = pair
+            if type(name) is not str or name != VIEW_ORDER[index]:
+                _fail("view geometry digest names/order differ")
+            if _sha256(digest, "view geometry digest") != self.geometry_sha256:
+                _fail("three view geometry digests differ")
+        if (
+            type(self.transport_time_semantics) is not str
+            or self.transport_time_semantics != TRANSPORT_TIME_SEMANTICS
         ):
-            _fail("three view geometry digests differ")
-        if self.transport_time_semantics != TRANSPORT_TIME_SEMANTICS:
             _fail("statistics transport semantics differ")
-        if self.coordinate_convention != COORDINATE_CONVENTION:
+        if (
+            type(self.coordinate_convention) is not str
+            or self.coordinate_convention != COORDINATE_CONVENTION
+        ):
             _fail("statistics coordinate convention differs")
 
 
 @dataclass(frozen=True)
 class FunctionalAssayResult:
-    """Fail-closed three-view result sharing exactly one geometry population."""
+    """Structurally consistent three-view result over one geometry population.
+
+    Construction checks internal consistency only.  Bind a result to source
+    inputs with :func:`validate_functional_assay_result`.
+    """
 
     views: Tuple[FunctionalAssayView, ...]
     statistics: FunctionalAssayStatistics
@@ -1128,6 +1179,47 @@ def run_functional_assay(
         ) from error
 
 
+def _canonical_result_sha256(result: FunctionalAssayResult) -> str:
+    """Bind exact binary64 rows, metadata, and statistics for replay compare."""
+
+    return _canonical_sha256({
+        "view_names_and_geometry_sha256": [
+            [view.view_name, view.geometry_sha256] for view in result.views
+        ],
+        "geometry": [_geometry_mapping(row) for row in result.geometry],
+        "latency_sidecar": [
+            _sidecar_mapping(row) for row in result.latency_sidecar
+        ],
+        "statistics": dict(vars(result.statistics)),
+    })
+
+
+def validate_functional_assay_result(
+    result: FunctionalAssayResult,
+    source: FunctionalSourceBundle,
+    native_outcomes: Sequence[NativeOutcome],
+) -> FunctionalAssayResult:
+    """Approve a structural result only if exact replay reproduces every row.
+
+    Dataclass construction cannot establish input provenance.  This validator
+    re-runs the public assay from ``source`` and ``native_outcomes``, then
+    compares both full dataclass equality and a canonical representation that
+    distinguishes binary64 signed zero.
+    """
+
+    if type(result) is not FunctionalAssayResult:
+        _fail("result must be an exact FunctionalAssayResult")
+    FunctionalAssayResult(**vars(result))
+    expected = run_functional_assay(source, native_outcomes)
+    if (
+        result != expected
+        or _canonical_result_sha256(result)
+        != _canonical_result_sha256(expected)
+    ):
+        _fail("functional assay result differs from exact input replay")
+    return result
+
+
 __all__ = (
     "AER_OCC_CAV_VIEW",
     "AER_RET_CAV_VIEW",
@@ -1152,4 +1244,5 @@ __all__ = (
     "VIEW_ORDER",
     "WORLD_FRAME",
     "run_functional_assay",
+    "validate_functional_assay_result",
 )

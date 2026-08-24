@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 import hashlib
 import inspect
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -127,6 +128,42 @@ def _synthetic_authority():
         EXPECTED_BYPASS_COUNT=1,
     ):
         yield
+
+
+def _coherent_geometry_result(result, index, ray):
+    """Build an internally coherent result around one alternate geometry ray."""
+
+    geometry = list(result.geometry)
+    grid = module.quantize_world_ray(ray, module.GRID_WIDTH, module.GRID_HEIGHT)
+    geometry[index] = replace(geometry[index], ray_xyz=ray, world_grid=grid)
+    geometry = tuple(geometry)
+    derived = module._derive_row_statistics(geometry, result.retire_sidecar)
+    digest = derived["geometry_sha256"]
+    statistics = replace(
+        result.statistics,
+        mode_counts=derived["mode_counts"],
+        frame_counts=derived["frame_counts"],
+        latency_histogram=derived["latency_histogram"],
+        grid_quantized_count=derived["grid_quantized_count"],
+        grid_unique_count=derived["grid_unique_count"],
+        grid_x_min=derived["grid_x_min"],
+        grid_x_max=derived["grid_x_max"],
+        grid_y_min=derived["grid_y_min"],
+        grid_y_max=derived["grid_y_max"],
+        grid_index_min=derived["grid_index_min"],
+        grid_index_max=derived["grid_index_max"],
+        join_identity_sha256=derived["join_identity_sha256"],
+        geometry_sha256=digest,
+        retire_sidecar_sha256=derived["retire_sidecar_sha256"],
+        grid_sha256=derived["grid_sha256"],
+        view_geometry_sha256=tuple(
+            (name, digest) for name in module.VIEW_ORDER
+        ),
+    )
+    views = tuple(replace(
+        view, geometry=geometry, geometry_sha256=digest
+    ) for view in result.views)
+    return module.FunctionalAssayResult(views, statistics)
 
 
 class FunctionalAssaySyntheticTests(unittest.TestCase):
@@ -453,6 +490,123 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
                     shortened_views, result.statistics
                 )
 
+    def test_nested_records_and_builtin_subclasses_fail_structurally(self):
+        class IntegerSubclass(int):
+            pass
+
+        class TextSubclass(str):
+            pass
+
+        source, outcomes = _synthetic_inputs()
+        with _synthetic_authority():
+            result = module.run_functional_assay(source, outcomes)
+
+            mutated_dual = replace(result.retire_sidecar[0].dual_time)
+            object.__setattr__(
+                mutated_dual, "latency_ns", mutated_dual.latency_ns + 2
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "DualTimeEvent validation failed",
+            ):
+                replace(result.retire_sidecar[0], dual_time=mutated_dual)
+
+            subclass_dual = replace(
+                result.retire_sidecar[0].dual_time,
+                semantics_label=TextSubclass(TRANSPORT_TIME_SEMANTICS),
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "transport semantics must be exact str",
+            ):
+                replace(result.retire_sidecar[0], dual_time=subclass_dual)
+
+            world = result.geometry[0]
+            subclass_grid = replace(
+                world.world_grid,
+                coordinate_convention=TextSubclass(
+                    world.world_grid.coordinate_convention
+                ),
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "coordinate convention must be exact str",
+            ):
+                replace(world, world_grid=subclass_grid)
+
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError, "view_name must be exact str"
+            ):
+                replace(
+                    result.views[0],
+                    view_name=TextSubclass(module.RAW_CAV_VIEW),
+                )
+            with self.assertRaises(module.FunctionalAssayError):
+                replace(
+                    result.statistics,
+                    grid_width=IntegerSubclass(module.GRID_WIDTH),
+                )
+            subclass_modes = (
+                (TextSubclass("causal_cav"), 1),
+                ("zoh_fallback", 1),
+                ("sensor_fixed_bypass", 1),
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError, "mode_counts keys/order differ"
+            ):
+                replace(result.statistics, mode_counts=subclass_modes)
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "statistics transport semantics differ",
+            ):
+                replace(
+                    result.statistics,
+                    transport_time_semantics=TextSubclass(
+                        TRANSPORT_TIME_SEMANTICS
+                    ),
+                )
+
+    def test_replay_validator_rejects_signed_zero_and_coherent_alternate_ray(self):
+        source, outcomes = _synthetic_inputs()
+        with _synthetic_authority():
+            result = module.run_functional_assay(source, outcomes)
+            self.assertIs(
+                module.validate_functional_assay_result(
+                    result, source, outcomes
+                ),
+                result,
+            )
+
+            original_ray = result.geometry[0].ray_xyz
+            signed_ray = list(original_ray)
+            zero_index = next(
+                index for index, value in enumerate(signed_ray) if value == 0.0
+            )
+            signed_ray[zero_index] = (
+                -0.0
+                if math.copysign(1.0, signed_ray[zero_index]) > 0.0
+                else 0.0
+            )
+            signed_result = _coherent_geometry_result(
+                result, 0, tuple(signed_ray)
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError, "differs from exact input replay"
+            ):
+                module.validate_functional_assay_result(
+                    signed_result, source, outcomes
+                )
+
+            alternate = _coherent_geometry_result(
+                result, 0, (0.0, 0.0, 1.0)
+            )
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError, "differs from exact input replay"
+            ):
+                module.validate_functional_assay_result(
+                    alternate, source, outcomes
+                )
+
     def test_core_is_python38_and_has_no_io_or_forbidden_imports(self):
         path = Path(module.__file__)
         source = path.read_text(encoding="utf-8")
@@ -511,6 +665,12 @@ class OfficialFunctionalAssaySmoke(unittest.TestCase):
         )
         outcomes = load_abaa094_native_outcomes(repository_root)
         result = module.run_functional_assay(source, outcomes)
+        self.assertIs(
+            module.validate_functional_assay_result(
+                result, source, outcomes
+            ),
+            result,
+        )
 
         statistics = result.statistics
         self.assertEqual(statistics.event_count, 8_503)
