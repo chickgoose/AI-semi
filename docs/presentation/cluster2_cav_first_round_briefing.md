@@ -125,6 +125,13 @@ lane/row/column은 sealed evidence에만 남고 public functional sidecar가
 | retire sidecar | `c29d9b980674da62d48e3a4cb0dc26618d08a3658997a7a5e90eb15ef81b6897` |
 | world grid | `f5cb124031b2a343b55a85f92902bd8b764bc865298d9de58ee86f60e49048e0` |
 | official result seal | `caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309` |
+| scoped replay receipt file | `e2dd7854d5ed1e2d1428426cdd983c4c7c04f796702d1d305a401efe23050b56` |
+| scoped replay receipt seal | `9ac2e279f1a0010db1391cc084262eb12b15c63ef9d61e970f4e1571cbe7f623` |
+
+공식 외부 source와 accepted LF cyclemask를 사용한 exact golden replay도
+재실행해 sanitized log와 canonical receipt로 봉인했다. 이 판정은
+`PASS_LOCAL_EXACT_GOLDEN_REPLAY_NOT_SIGNED_OR_HARDWARE_ATTESTATION`이며,
+서명된 제3자 attestation이나 hardware/CAV RTL/PPA/performance 증거가 아니다.
 
 > 그림 2 — [native latency histogram](assets/cluster2_cav_latency_histogram.svg)
 >
@@ -175,6 +182,19 @@ result authority에 포함되지 않는다. 수치를 쓸 경우에는 원본 re
 상대경로, RTL hash, corner/constraint, activity 조건, signoff 한계를
 별도로 밝혀야 한다. native PPA를 software CAV PPA로 합쳐 말하지
 않는다.
+
+### Native PPA 현재 진단
+
+| 대상 | 현재 말할 수 있는 범위 | 현재 HOLD |
+| --- | --- | --- |
+| pinned 원본 `cluster2_steal_buf` | 2.0 ns Genus mapped screening: area 700.074, setup +0.224 ns, vectorless 0.127932 mW | 원본 Innovus P&R, exact Fmax, activity power |
+| 별도 polarity-extended top | 3.5 ns server-local Innovus observation: area 1254.114, setup/hold +0.454/+0.167 ns, vectorless 0.10738887 mW, internal DRC/antenna 0 | 원본 top으로의 귀속, release authority, signoff 확대 |
+
+polarity-extended top은 source별 2-slot polarity FIFO와 polarity I/O를 추가한
+다른 RTL이며 pinned 원본과 같은 후보로 합치면 안 된다. 두 자료의 조건,
+상대경로, SHA와 금지 주장은
+[PPA diagnostic handoff](ganghee_cluster2_ppa_diagnostic_handoff_20260824.md)에
+분리했다. 공개 report bundle이 봉인되기 전 native PPA의 release 판정은 HOLD다.
 
 ## 6. 발표 역할 분담
 
@@ -238,8 +258,12 @@ result authority에 포함되지 않는다. 수치를 쓸 경우에는 원본 re
 ## 9. Committed evidence index
 
 - [1차 상태 문서](../REDRED_CLUSTER2_CAV_1ST_ROUND_STATUS_20260824.txt)
+- [발표 claim evidence matrix](cluster2_cav_evidence_matrix_20260824.md)
+- [Ganghee native PPA diagnostic handoff](ganghee_cluster2_ppa_diagnostic_handoff_20260824.md)
 - [bridge 계약과 범위](../../benchmarks/redred_cluster2_cav_bridge/README.md)
 - [official canonical result](../../benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json)
+- [scoped local exact-replay receipt](../../benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_replay_receipt.json)
+- [sanitized exact-replay log](../../benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_replay_receipt.log)
 - [official runner](../../benchmarks/redred_cluster2_cav_bridge/official_functional_run.py)
 - [native source/interface authority](../../benchmarks/redred_cluster2_cav_bridge/ganghee_cluster2_native_authority.json)
 - [sealed Xcelium receipt](../../benchmarks/redred_cluster2_cav_bridge/server_native_observation_receipt.json)

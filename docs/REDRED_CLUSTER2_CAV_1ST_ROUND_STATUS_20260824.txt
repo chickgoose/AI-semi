@@ -4,8 +4,9 @@
 0. 결론
 
 이번 1차 발표의 중심 결과는 강희의 cluster2_steal_buf AER이다.
-준영의 CAV baseline은 메인 AER 뒤에 연결 가능한 2차 확장 경로를
-실제 데이터로 보여주는 보조 증거로 사용한다.
+준영의 CAV baseline은 메인 AER의 native outcome을 TB-side identity로
+observational software join해 재생하는 2차 확장 feasibility의 보조 증거로
+사용한다. Wire-level CAV 연결은 아직 구현·검증하지 않았다.
 
 현재 다음 경로가 scoped observational/software replay로 PASS했다.
 
@@ -84,6 +85,10 @@ CAV RTL 실행을 뜻하지 않는다.
 공식 결과 파일:
   benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json
 
+공식 exact-replay 관측 receipt와 sanitized log:
+  benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_replay_receipt.json
+  benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_replay_receipt.log
+
 공식 runner:
   benchmarks/redred_cluster2_cav_bridge/official_functional_run.py
 
@@ -120,6 +125,8 @@ software world grid:
     f5cb124031b2a343b55a85f92902bd8b764bc865298d9de58ee86f60e49048e0
   official result seal
     caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309
+  scoped local replay receipt seal
+    9ac2e279f1a0010db1391cc084262eb12b15c63ef9d61e970f4e1571cbe7f623
 
 
 4. occurrence와 retire를 구분한 이유
@@ -147,8 +154,10 @@ PASS:
   - 8,420 WORLD ray의 512×256 software world-grid mapping
   - 결과 JSON의 canonical encoding, seal, 입력 hash, 30-file 실행 코드
     authority 재검증
-  - 외부 입력 없이 전체 bridge suite 141개 PASS, 환경-gated 3개 SKIP
-  - 공식 외부 입력을 켠 8,503-event golden replay PASS
+  - 외부 입력 없이 전체 bridge suite 150개 PASS, 환경-gated 3개 SKIP
+  - 공식 외부 입력을 켠 8,503-event exact golden replay의 scoped local
+    observation receipt PASS. 이 receipt는 unsigned이며 hardware attestation,
+    CAV RTL/PPA, performance 또는 Python 3.8 runtime 증거가 아님
 
 HOLD:
   - CAV/world 변환의 wire-complete RTL
@@ -172,6 +181,8 @@ corner/constraint, vectorless 또는 VCD 조건과 signoff 한계를 함께 제�
 
 공식 결과와 runner:
   benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_result.json
+  benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_replay_receipt.json
+  benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_replay_receipt.log
   benchmarks/redred_cluster2_cav_bridge/official_functional_run.py
 
 실제 native 증거:
@@ -192,6 +203,17 @@ UZH→CAV→world 구현:
   tests/redred_cluster2_cav_bridge/test_native_outcome_bundle.py
   tests/redred_cluster2_cav_bridge/test_source_crosswalk.py
   tests/redred_cluster2_cav_bridge/test_world_grid.py
+  tests/redred_cluster2_cav_bridge/test_presentation_assets.py
+  tests/redred_cluster2_cav_bridge/test_official_functional_replay_receipt.py
+
+발표 브리핑·evidence matrix·결정론적 그림:
+  docs/presentation/cluster2_cav_first_round_briefing.md
+  docs/presentation/cluster2_cav_evidence_matrix_20260824.md
+  docs/presentation/ganghee_cluster2_ppa_diagnostic_handoff_20260824.md
+  docs/presentation/assets/cluster2_cav_population_flow.svg
+  docs/presentation/assets/cluster2_cav_latency_histogram.svg
+  docs/presentation/assets/cluster2_cav_world_grid_coverage.svg
+  scripts/generate_cluster2_cav_presentation_assets.py
 
 
 7. 재검증 명령

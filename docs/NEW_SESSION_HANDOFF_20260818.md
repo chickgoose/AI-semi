@@ -549,10 +549,17 @@ retire cycle/latency는 관측 sidecar일 뿐이며, latency-quality 결과가 �
 최종 fresh-clone 검증:
 
 - 공개 branch history가 위 `160e7dc...`를 ancestor로 포함
-- clean fresh clone에서 bridge suite 144개 중 141 PASS, 3 environment-gated
+- 당시 clean fresh clone에서 bridge suite 144개 중 141 PASS, 3
+  environment-gated SKIP. 이후 presentation-assets 회귀 5개와 replay-receipt
+  회귀 4개가 추가되어 현재 suite는 153개 중 150 PASS, 3 environment-gated
   SKIP
 - tracked sealed bundle의 CRLF cyclemask를 문서 절차로 명시적으로 LF로
   canonicalize하고 hash를 확인한 뒤, 공식 8,503-event golden replay PASS
+- 위 exact replay는
+  `benchmarks/redred_cluster2_cav_bridge/results/official_uzh_cluster2_cav_replay_receipt.json`
+  과 sanitized log에 봉인됐다. 판정은
+  `PASS_LOCAL_EXACT_GOLDEN_REPLAY_NOT_SIGNED_OR_HARDWARE_ATTESTATION`이며
+  Python 3.8 runtime, hardware/CAV RTL/PPA/performance는 HOLD다.
 - 최종 통합 worktree와 public remote ref 일치
 
 다음 작업 전에 먼저 위 team status 문서를 끝까지 읽는다. 강희 native AER의
