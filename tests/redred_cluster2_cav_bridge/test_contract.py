@@ -28,6 +28,9 @@ from benchmarks.redred_cluster2_cav_bridge import (
     validate_source_event,
     validate_transport_outcome,
 )
+from benchmarks.redred_cluster2_cav_bridge.contract import (
+    TRANSPORT_OUTCOME_POLARITY_SCHEMA,
+)
 from benchmarks.redred_mc_wtb_predictor_stage3.current_cav_trace import (
     canonical_event_content_sha256 as current_cav_event_content_sha256,
 )
@@ -96,6 +99,26 @@ def overrun(event_id, source_index, occurrence_cycle):
         "retire_row": None,
         "retire_col": None,
     }
+
+
+def delivered_with_hardware_polarity(
+    event_id, source_index, occurrence_cycle, retire_cycle,
+    native_lane, retire_col, retire_polarity, retire_row=None,
+):
+    row = delivered(
+        event_id, source_index, occurrence_cycle, retire_cycle,
+        native_lane, retire_col, retire_row,
+    )
+    row["schema"] = TRANSPORT_OUTCOME_POLARITY_SCHEMA
+    row["retire_polarity"] = retire_polarity
+    return row
+
+
+def overrun_with_hardware_polarity(event_id, source_index, occurrence_cycle):
+    row = overrun(event_id, source_index, occurrence_cycle)
+    row["schema"] = TRANSPORT_OUTCOME_POLARITY_SCHEMA
+    row["retire_polarity"] = None
+    return row
 
 
 def fixture_rows():
@@ -302,6 +325,78 @@ class ProjectionTests(unittest.TestCase):
 
 
 class NativeBitmapTests(unittest.TestCase):
+    def test_versioned_hardware_polarity_is_bound_but_not_inferred_from_sidecar(self):
+        for polarity in (0, 1):
+            row = delivered_with_hardware_polarity(
+                1, 4, 0, 1, 0, 0, polarity,
+            )
+            with self.subTest(polarity=polarity):
+                self.assertIs(validate_transport_outcome(row), row)
+
+        source = (source_event(1, 0, 1000, 4),)
+        outcome = (delivered_with_hardware_polarity(
+            1, 4, 0, 1, 0, 0, 1,
+        ),)
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = BundleFixture(Path(temporary), source, outcome)
+            manifest_path, manifest_sha = fixture.write()
+            bundle = load_bridge_bundle(manifest_path, manifest_sha)
+            views = bundle.project()
+        self.assertEqual(source[0]["polarity"], 0)
+        self.assertEqual(bundle.transport_outcomes[0]["retire_polarity"], 1)
+        self.assertEqual(views["AER_OCC"][0]["polarity"], 0)
+        self.assertEqual(views["AER_RET"][0]["polarity"], 0)
+        self.assertNotIn("retire_polarity", views["AER_OCC"][0])
+        self.assertNotIn("retire_polarity", views["AER_RET"][0])
+        self.assertEqual(
+            views["AER_RET"][0]["projection_semantics"],
+            OBSERVATIONAL_JOIN_LABEL,
+        )
+
+    def test_versioned_hardware_polarity_rejects_invalid_or_missing_values(self):
+        base = delivered_with_hardware_polarity(1, 4, 0, 1, 0, 0, 0)
+        for polarity in (None, -1, 2, True, False, "0"):
+            with self.subTest(polarity=polarity), self.assertRaises(
+                BridgeValidationError
+            ):
+                validate_transport_outcome(dict(base, retire_polarity=polarity))
+        missing = dict(base)
+        del missing["retire_polarity"]
+        with self.assertRaises(BridgeValidationError):
+            validate_transport_outcome(missing)
+
+        legacy_with_polarity = delivered(1, 4, 0, 1, 0, 0)
+        legacy_with_polarity["retire_polarity"] = 0
+        with self.assertRaises(BridgeValidationError):
+            validate_transport_outcome(legacy_with_polarity)
+
+    def test_versioned_overrun_requires_hardware_polarity_null(self):
+        row = overrun_with_hardware_polarity(1, 4, 0)
+        self.assertIs(validate_transport_outcome(row), row)
+        for field, value in (
+            ("retire_cycle", 1),
+            ("retire_native_lane", 0),
+            ("retire_row", 1),
+            ("retire_col", 0),
+            ("retire_polarity", 0),
+            ("retire_polarity", 1),
+        ):
+            with self.subTest(field=field, value=value), self.assertRaises(
+                BridgeValidationError
+            ):
+                validate_transport_outcome(dict(row, **{field: value}))
+
+    def test_transport_outcome_stream_cannot_mix_v1_and_v2(self):
+        sources = (
+            source_event(1, 0, 1000, 4),
+            source_event(2, 1, 1001, 5),
+        )
+        outcomes = (
+            delivered(1, 4, 0, 2, 0, 0),
+            delivered_with_hardware_polarity(2, 5, 1, 3, 0, 1, 1),
+        )
+        self._assert_bundle_rejected(sources, outcomes)
+
     def test_delivered_coordinates_follow_native_lane_row_and_column(self):
         valid = (
             delivered(5, 0, 0, 1, 0, 0),
@@ -570,6 +665,9 @@ class SchemaAndIsolationTests(unittest.TestCase):
         package = Path(__file__).resolve().parents[2] / "benchmarks" / "redred_cluster2_cav_bridge"
         source_schema = json.loads((package / "source_event.schema.json").read_text())
         outcome_schema = json.loads((package / "transport_outcome.schema.json").read_text())
+        polarity_outcome_schema = json.loads(
+            (package / "transport_outcome_v2.schema.json").read_text()
+        )
         manifest_schema = json.loads((package / "manifest.schema.json").read_text())
         self.assertEqual(source_schema["properties"]["schema"]["const"], SOURCE_EVENT_SCHEMA)
         self.assertEqual(
@@ -590,6 +688,22 @@ class SchemaAndIsolationTests(unittest.TestCase):
             MAX_NATIVE_CYCLE,
         )
         self.assertNotIn("retire_lane", outcome_schema["properties"])
+        self.assertNotIn("retire_polarity", outcome_schema["properties"])
+        self.assertEqual(
+            polarity_outcome_schema["properties"]["schema"]["const"],
+            TRANSPORT_OUTCOME_POLARITY_SCHEMA,
+        )
+        self.assertIn("retire_polarity", polarity_outcome_schema["required"])
+        delivered_polarity = polarity_outcome_schema["allOf"][0]["then"][
+            "properties"
+        ]["retire_polarity"]
+        self.assertEqual(delivered_polarity["enum"], [0, 1])
+        self.assertEqual(delivered_polarity["type"], "integer")
+        self.assertEqual(
+            polarity_outcome_schema["allOf"][1]["then"]["properties"]
+            ["retire_polarity"]["type"],
+            "null",
+        )
         self.assertEqual(manifest_schema["properties"]["schema"]["const"], MANIFEST_SCHEMA)
         self.assertEqual(
             manifest_schema["properties"]["projection"]["properties"]
