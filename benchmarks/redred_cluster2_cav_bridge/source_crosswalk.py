@@ -121,7 +121,10 @@ def _parse_raw_line(raw: bytes, line_number: int) -> Tuple[int, int, int, int, i
 
 def _read_raw_stream(
     stream: BinaryIO,
+    digest=None,
 ) -> Dict[Tuple[int, int], Tuple[int, int, int, int]]:
+    """Parse and optionally hash the exact same immutable line snapshots."""
+
     raw_by_slot = {}  # type: Dict[Tuple[int, int], Tuple[int, int, int, int]]
     line_number = 0
     total_bytes = 0
@@ -131,6 +134,8 @@ def _read_raw_stream(
             break
         total_bytes += len(raw)
         _check_byte_count(total_bytes, MAX_RAW_EVENTS_BYTES, "raw events")
+        if digest is not None:
+            digest.update(raw)
         line_number += 1
         timestamp_ns, x, y, polarity, occurrence_cycle = _parse_raw_line(
             raw, line_number
@@ -249,19 +254,6 @@ def _open_regular(path: Path, where: str) -> Tuple[BinaryIO, os.stat_result]:
         raise SourceCrosswalkError("cannot open %s: %s" % (where, error)) from error
 
 
-def _stream_sha256(stream: BinaryIO, maximum_bytes: int, where: str) -> str:
-    digest = hashlib.sha256()
-    total = 0
-    while True:
-        remaining = maximum_bytes + 1 - total
-        chunk = stream.read(min(1024 * 1024, remaining))
-        if not chunk:
-            return digest.hexdigest()
-        total += len(chunk)
-        _check_byte_count(total, maximum_bytes, where)
-        digest.update(chunk)
-
-
 def _derive_source_crosswalk_files(
     raw_events_path: Path,
     cyclemask_path: Path,
@@ -301,15 +293,17 @@ def _derive_source_crosswalk_files(
         _check_byte_count(raw_before.st_size, MAX_RAW_EVENTS_BYTES, "raw events")
         if expected_raw_size >= 0 and raw_before.st_size != expected_raw_size:
             raise SourceCrosswalkError("raw events size differs from pinned official size")
-        actual_raw_sha256 = _stream_sha256(
-            raw_stream, MAX_RAW_EVENTS_BYTES, "raw events"
-        )
+        # Hash and parse each returned bytes object once.  Rewinding and
+        # parsing the live descriptor in a second pass would let a same-size
+        # immediate overwrite substitute different semantic bytes when file
+        # metadata cannot distinguish the two states.
+        raw_digest = hashlib.sha256()
+        raw_by_slot = _read_raw_stream(raw_stream, raw_digest)
+        actual_raw_sha256 = raw_digest.hexdigest()
         if not hmac.compare_digest(actual_raw_sha256, expected_raw_sha256):
             raise SourceCrosswalkError(
                 "raw events bytes differ from accepted SHA-256 authority"
             )
-        raw_stream.seek(0)
-        raw_by_slot = _read_raw_stream(raw_stream)
         raw_after = os.fstat(raw_stream.fileno())
     finally:
         raw_stream.close()
