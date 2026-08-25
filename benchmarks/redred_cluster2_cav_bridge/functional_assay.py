@@ -2,8 +2,9 @@
 
 The core accepts already validated in-memory objects.  It performs no file,
 path, receipt, scorer, or label I/O.  Original UZH timestamps drive the CAV
-geometry path; native occurrence and retirement cycles remain an observational
-2 ns transport sidecar and can never replace a geometry timestamp.
+geometry path; hardware-observed polarity and native occurrence/retirement
+cycles remain an observational transport sidecar and can never replace a
+geometry timestamp.
 """
 
 from __future__ import annotations
@@ -60,7 +61,8 @@ EXPECTED_BYPASS_COUNT = 83
 GRID_WIDTH = 512
 GRID_HEIGHT = 256
 NATIVE_CLOCK_PERIOD_PS = 2_000
-LATENCY_SIDECAR_ONLY = "LATENCY_SIDECAR_ONLY"
+HARDWARE_CARRIED_POLARITY = "HARDWARE_CARRIED_POLARITY"
+TRANSPORT_SIDECAR_SEMANTICS = "LATENCY_AND_HARDWARE_CARRIED_POLARITY"
 SIDECAR_ORDER = ("retire_cycle", "event_id")
 
 RAW_CAV_VIEW = "RAW-CAV"
@@ -77,7 +79,8 @@ _GEOMETRY_FIELDS = frozenset((
     "world_grid",
 ))
 _RETIRE_FIELDS = frozenset((
-    "event_id", "source_index", "native_occurrence_cycle", "dual_time",
+    "event_id", "source_index", "native_occurrence_cycle",
+    "hardware_observed_polarity", "polarity_semantics", "dual_time",
 ))
 _VIEW_FIELDS = frozenset((
     "view_name", "geometry", "geometry_sha256", "transport_sidecar",
@@ -241,16 +244,19 @@ class FunctionalGeometryRecord:
 
 @dataclass(frozen=True)
 class FunctionalRetireObservation:
-    """Public latency-only observation, without sealed native retire geometry.
+    """Public hardware transport observation, without retire geometry.
 
-    ``NativeOutcome`` exposes event/source/occurrence/retire/latency only.
-    Native retire lane, row, and column remain in the separate sealed evidence;
-    this core neither reads nor reconstructs them.
+    ``hardware_observed_polarity`` is carried by the native RTL observation and
+    has already been checked against the source event polarity.  Native retire
+    lane, row, and column remain in separate sealed evidence; this core neither
+    reads nor reconstructs them.
     """
 
     event_id: int
     source_index: int
     native_occurrence_cycle: int
+    hardware_observed_polarity: int
+    polarity_semantics: str
     dual_time: DualTimeEvent
 
     def __post_init__(self) -> None:
@@ -262,6 +268,17 @@ class FunctionalRetireObservation:
         occurrence = _nonnegative_int(
             self.native_occurrence_cycle, "sidecar native occurrence cycle"
         )
+        polarity = _nonnegative_int(
+            self.hardware_observed_polarity,
+            "sidecar hardware-observed polarity",
+        )
+        if polarity > 1:
+            _fail("sidecar hardware-observed polarity must be 0 or 1")
+        if (
+            type(self.polarity_semantics) is not str
+            or self.polarity_semantics != HARDWARE_CARRIED_POLARITY
+        ):
+            _fail("sidecar polarity semantics differ")
         if type(self.dual_time) is not DualTimeEvent:
             _fail("sidecar dual_time must be exact DualTimeEvent")
         try:
@@ -333,15 +350,15 @@ class FunctionalAssayView:
 
     @property
     def sidecar_semantics(self) -> Optional[str]:
-        """Identify the intentionally limited public transport projection."""
+        """Identify the explicit public hardware transport projection."""
 
         if self.view_name == AER_RET_CAV_VIEW:
-            return LATENCY_SIDECAR_ONLY
+            return TRANSPORT_SIDECAR_SEMANTICS
         return None
 
     @property
     def latency_sidecar(self) -> Tuple[FunctionalRetireObservation, ...]:
-        """Return the public latency sidecar without implying native geometry."""
+        """Compatibility alias for the polarity-bearing transport sidecar."""
 
         return self.transport_sidecar
 
@@ -656,7 +673,7 @@ class FunctionalAssayResult:
 
     @property
     def latency_sidecar(self) -> Tuple[FunctionalRetireObservation, ...]:
-        """Return the explicitly latency-only AER retirement observations."""
+        """Compatibility alias for the polarity-bearing transport sidecar."""
 
         return self.views[2].transport_sidecar
 
@@ -793,14 +810,16 @@ def _exact_join(
 
     outcome_by_id = {}  # type: Dict[int, NativeOutcome]
     for row in outcomes:
-        # This exact public schema intentionally excludes sealed RTL retire
-        # lane/row/column.  Do not infer those coordinates in this assay.
+        # This exact public adapter input intentionally excludes sealed RTL
+        # retire lane/row/column.  Do not infer those coordinates here.
         if frozenset(vars(row)) != frozenset((
-            "event_id", "source", "occurrence_cycle", "retire_cycle", "latency"
+            "event_id", "source", "occurrence_cycle", "retire_cycle",
+            "latency", "retire_polarity",
         )):
             _fail("NativeOutcome field schema differs")
         for name in (
-            "event_id", "source", "occurrence_cycle", "retire_cycle", "latency"
+            "event_id", "source", "occurrence_cycle", "retire_cycle",
+            "latency", "retire_polarity",
         ):
             _nonnegative_int(getattr(row, name), "native outcome %s" % name)
         if row.source > 15:
@@ -809,6 +828,8 @@ def _exact_join(
             _fail("native outcome retirement must strictly follow occurrence")
         if row.latency != row.retire_cycle - row.occurrence_cycle:
             _fail("native outcome latency differs from retire-occurrence")
+        if row.retire_polarity > 1:
+            _fail("native outcome retire_polarity must be 0 or 1")
         outcome_by_id[row.event_id] = row
 
     if any(type(row) is not NativeEventIdentity for row in source.native_identities):
@@ -827,6 +848,8 @@ def _exact_join(
             or identity.native_occurrence_cycle != outcome.occurrence_cycle
         ):
             _fail("event_id/source/native occurrence exact join differs")
+        if event.polarity != outcome.retire_polarity:
+            _fail("hardware-observed polarity differs from source polarity")
         slot = (identity.native_occurrence_cycle, identity.source_index)
         if slot in slots:
             _fail("native occurrence/source slot repeats")
@@ -960,6 +983,8 @@ def _sidecar_mapping(row: FunctionalRetireObservation) -> Mapping[str, object]:
         "event_id": row.event_id,
         "source_index": row.source_index,
         "native_occurrence_cycle": row.native_occurrence_cycle,
+        "hardware_observed_polarity": row.hardware_observed_polarity,
+        "polarity_semantics": row.polarity_semantics,
         "event_timestamp_ns": dual.event_timestamp_ns,
         "retire_cycle": dual.retire_cycle,
         "clock_period_ps": dual.clock_period_ps,
@@ -1043,11 +1068,11 @@ def _build_sidecar(
         Tuple[NeutralEventInput, NativeEventIdentity, NativeOutcome], ...
     ],
 ) -> Tuple[FunctionalRetireObservation, ...]:
-    """Build the public latency-only sidecar in ``SIDECAR_ORDER``.
+    """Build the public hardware transport sidecar in ``SIDECAR_ORDER``.
 
     The parser's sealed evidence retains native lane/row/column separately;
-    the public ``NativeOutcome`` does not expose them, so they are neither
-    copied nor reconstructed here.
+    they are neither copied nor reconstructed here.  Polarity is copied from
+    the hardware observation only after the exact source comparison.
     """
 
     rows = []
@@ -1064,6 +1089,8 @@ def _build_sidecar(
             event_id=event.event_id,
             source_index=identity.source_index,
             native_occurrence_cycle=identity.native_occurrence_cycle,
+            hardware_observed_polarity=outcome.retire_polarity,
+            polarity_semantics=HARDWARE_CARRIED_POLARITY,
             dual_time=dual,
         ))
     return tuple(sorted(
@@ -1236,11 +1263,12 @@ __all__ = (
     "FunctionalRetireObservation",
     "GRID_HEIGHT",
     "GRID_WIDTH",
-    "LATENCY_SIDECAR_ONLY",
+    "HARDWARE_CARRIED_POLARITY",
     "NATIVE_CLOCK_PERIOD_PS",
     "RAW_CAV_VIEW",
     "SENSOR_FIXED_FRAME",
     "SIDECAR_ORDER",
+    "TRANSPORT_SIDECAR_SEMANTICS",
     "VIEW_ORDER",
     "WORLD_FRAME",
     "run_functional_assay",

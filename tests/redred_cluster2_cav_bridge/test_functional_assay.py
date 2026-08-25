@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import hashlib
 import inspect
 import math
@@ -60,11 +60,11 @@ def _pose(pose_id, timestamp_ns):
     )
 
 
-def _event(event_id, timestamp_ns, sensor_ray):
+def _event(event_id, timestamp_ns, sensor_ray, polarity=1):
     digest = canonical_event_content_sha256(
         event_id,
         timestamp_ns,
-        1,
+        polarity,
         True,
         sensor_ray,
         1,
@@ -73,7 +73,7 @@ def _event(event_id, timestamp_ns, sensor_ray):
     return NeutralEventInput(
         event_id,
         timestamp_ns,
-        1,
+        polarity,
         True,
         sensor_ray,
         1,
@@ -82,12 +82,32 @@ def _event(event_id, timestamp_ns, sensor_ray):
     )
 
 
+@dataclass(frozen=True)
+class _PolarityNativeOutcome:
+    """Expected producer interface, isolated until its upstream commit lands."""
+
+    event_id: int
+    source: int
+    occurrence_cycle: int
+    retire_cycle: int
+    latency: int
+    retire_polarity: int
+
+    @property
+    def source_index(self):
+        return self.source
+
+    @property
+    def latency_cycles(self):
+        return self.latency
+
+
 def _synthetic_inputs():
     # IDs deliberately differ from CAV timestamp order so the assay cannot
     # accidentally zip source events to event-ID-ordered native outcomes.
     events = (
         _event(1, 1_000, (1.0, 0.0, 0.0)),
-        _event(0, 2_000, (0.0, 1.0, 0.0)),
+        _event(0, 2_000, (0.0, 1.0, 0.0), polarity=0),
         _event(2, 2_000_000, (0.0, 0.0, 1.0)),
     )
     identities = (
@@ -110,9 +130,9 @@ def _synthetic_inputs():
         stale_pose_count=1,
     )
     outcomes = (
-        NativeOutcome(0, 1, 20, 22, 2),
-        NativeOutcome(1, 0, 10, 11, 1),
-        NativeOutcome(2, 2, 30, 33, 3),
+        _PolarityNativeOutcome(0, 1, 20, 22, 2, 0),
+        _PolarityNativeOutcome(1, 0, 10, 11, 1, 1),
+        _PolarityNativeOutcome(2, 2, 30, 33, 3, 1),
     )
     return source, outcomes
 
@@ -121,6 +141,7 @@ def _synthetic_inputs():
 def _synthetic_authority():
     with mock.patch.multiple(
         module,
+        NativeOutcome=_PolarityNativeOutcome,
         EXPECTED_EVENT_COUNT=3,
         EXPECTED_POSE_COUNT=2,
         EXPECTED_CAUSAL_CAV_COUNT=1,
@@ -189,6 +210,18 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         geometry.assert_not_called()
 
         changed = list(outcomes)
+        changed[0] = replace(changed[0], retire_polarity=1)
+        with _synthetic_authority(), mock.patch.object(
+            module, "_run_geometry"
+        ) as geometry:
+            with self.assertRaisesRegex(
+                module.FunctionalAssayError,
+                "hardware-observed polarity differs from source polarity",
+            ):
+                module.run_functional_assay(source, tuple(changed))
+        geometry.assert_not_called()
+
+        changed = list(outcomes)
         changed[0] = replace(changed[0], occurrence_cycle=21, retire_cycle=23)
         with _synthetic_authority(), mock.patch.object(
             module, "_run_geometry"
@@ -222,8 +255,20 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         self.assertIsNone(result.views[0].sidecar_semantics)
         self.assertIsNone(result.views[1].sidecar_semantics)
         self.assertEqual(
-            result.views[2].sidecar_semantics, module.LATENCY_SIDECAR_ONLY
+            result.views[2].sidecar_semantics,
+            module.TRANSPORT_SIDECAR_SEMANTICS,
         )
+        self.assertEqual(
+            dict(
+                (row.event_id, row.hardware_observed_polarity)
+                for row in result.retire_sidecar
+            ),
+            {0: 0, 1: 1, 2: 1},
+        )
+        self.assertTrue(all(
+            row.polarity_semantics == module.HARDWARE_CARRIED_POLARITY
+            for row in result.retire_sidecar
+        ))
         self.assertEqual(
             result.statistics.mode_counts,
             (
@@ -273,7 +318,7 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         identities[1] = NativeEventIdentity(0, 3, 25, 113, 85)
         identity_source = replace(source, native_identities=tuple(identities))
         identity_outcomes = list(outcomes)
-        identity_outcomes[0] = NativeOutcome(0, 3, 25, 27, 2)
+        identity_outcomes[0] = _PolarityNativeOutcome(0, 3, 25, 27, 2, 0)
         with _synthetic_authority():
             rejoined = module.run_functional_assay(
                 identity_source, tuple(identity_outcomes)
@@ -288,6 +333,26 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         )
         self.assertNotEqual(
             rejoined.statistics.retire_sidecar_sha256,
+            baseline.statistics.retire_sidecar_sha256,
+        )
+
+        polarity_events = list(source.events)
+        polarity_events[1] = _event(0, 2_000, (0.0, 1.0, 0.0), polarity=1)
+        polarity_source = replace(source, events=tuple(polarity_events))
+        polarity_outcomes = list(outcomes)
+        polarity_outcomes[0] = replace(
+            polarity_outcomes[0], retire_polarity=1
+        )
+        with _synthetic_authority():
+            polarity_changed = module.run_functional_assay(
+                polarity_source, tuple(polarity_outcomes)
+            )
+        self.assertEqual(
+            polarity_changed.statistics.geometry_sha256,
+            baseline.statistics.geometry_sha256,
+        )
+        self.assertNotEqual(
+            polarity_changed.statistics.retire_sidecar_sha256,
             baseline.statistics.retire_sidecar_sha256,
         )
 
@@ -318,6 +383,13 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
             )
             self.assertEqual(
                 row.dual_time.semantics_label, TRANSPORT_TIME_SEMANTICS
+            )
+            self.assertEqual(
+                row.hardware_observed_polarity,
+                original_by_id[event_id].polarity,
+            )
+            self.assertEqual(
+                row.polarity_semantics, module.HARDWARE_CARRIED_POLARITY
             )
             self.assertFalse(any(hasattr(row, name) for name in (
                 "retire_ordinal",
