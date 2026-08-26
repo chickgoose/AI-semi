@@ -177,7 +177,7 @@ def validate_archives():
         if any(name.lower().endswith("vbaproject.bin") for name in names):
             raise SystemExit("HOLD macro-enabled PPTX content is forbidden")
         slides = [name for name in names if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)]
-        if len(slides) != 11:
+        if len(slides) != 9:
             raise SystemExit("HOLD PPTX slide-count mismatch")
 
 
