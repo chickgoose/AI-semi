@@ -408,7 +408,7 @@ class PolarityReleaseGateTests(unittest.TestCase):
             "explicit integration authority differs",
         )
 
-    def test_duplicate_json_nonfinite_and_cli_hold_fail_closed(self) -> None:
+    def test_duplicate_json_nonfinite_and_cli_statuses_fail_closed(self) -> None:
         with self.assertRaisesRegex(gate.ReleaseHold, "duplicate JSON key"):
             gate.parse_canonical_json(b'{"a":1,"a":2}\n', "duplicate")
         with self.assertRaisesRegex(gate.ReleaseHold, "non-finite"):
@@ -417,8 +417,17 @@ class PolarityReleaseGateTests(unittest.TestCase):
             [sys.executable, str(GATE_PATH), "--root", str(ROOT), "--json"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
         )
-        self.assertEqual(completed.returncode, 2, completed.stderr)
-        self.assertEqual(json.loads(completed.stdout)["status"], "HOLD")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["status"], "GO")
+        missing = subprocess.run(
+            [
+                sys.executable, str(GATE_PATH), "--root", str(ROOT), "--json",
+                "--manifest", "missing-polarity-manifest.json",
+            ],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False,
+        )
+        self.assertEqual(missing.returncode, 2, missing.stderr)
+        self.assertEqual(json.loads(missing.stdout)["status"], "HOLD")
 
 
 if __name__ == "__main__":
