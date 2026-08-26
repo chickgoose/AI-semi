@@ -479,13 +479,13 @@
     },
     {
       "path": "presentation/cluster2_digital_first_round_20260828.pptx",
-      "bytes": 55119,
-      "sha256": "2d280f1cfff08efdbc169f3f6bd3474042e8d10806dcca1b29cd6f8f6b911b22"
+      "bytes": 59960,
+      "sha256": "393eaf6134f98a8ba2c3076dc949887e6dffdd06fc290c833bf9f5c317ec7c03"
     },
     {
       "path": "presentation/cluster2_digital_first_round_slides.md",
-      "bytes": 5212,
-      "sha256": "f35c9e755f9123d2896b36beaec9018c12ab341c0a5d584e94d6ba3aa3189ffe"
+      "bytes": 9220,
+      "sha256": "5c5e385cd654a22f15e55b6c0ce3dfad6004a399f808578233c1ec95e9f3966c"
     },
     {
       "path": "presentation/ganghee_cluster2_ppa_diagnostic_handoff_20260824.md",
@@ -544,8 +544,8 @@
     },
     {
       "path": "tools/build_presentation.py",
-      "bytes": 22638,
-      "sha256": "5eda603b36204625abb404278973c4d3978289057a33fd1890910ac0d2ecc8c6"
+      "bytes": 24918,
+      "sha256": "19aaa1bc7e9f2ed8e1f0e3e657878580749614c6c4bff5e1d1038c94f2b370ab"
     },
     {
       "path": "tools/requirements.txt",
@@ -555,7 +555,7 @@
     {
       "path": "tools/verify_submission.py",
       "bytes": 17408,
-      "sha256": "0ef10daa5f44a135da5f4c6563f49e4514eccf78680a1ec642f4279b540df5c5"
+      "sha256": "927db50c4c80c1a768608417ed0fe163b8ea884787552578b7febc0f126e23d3"
     }
   ]
 }
