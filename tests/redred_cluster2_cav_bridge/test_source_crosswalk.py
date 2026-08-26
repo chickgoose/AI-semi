@@ -200,13 +200,13 @@ class SourceCrosswalkTests(unittest.TestCase):
             with mock.patch.object(
                 crosswalk_module, "MAX_RAW_EVENTS_BYTES", len(raw) - 1
             ), mock.patch.object(
-                crosswalk_module, "_read_raw_stream"
-            ) as read_raw_stream:
+                crosswalk_module, "_stream_sha256"
+            ) as stream_sha256:
                 with self.assertRaisesRegex(SourceCrosswalkError, "raw events exceeds"):
                     derive_source_crosswalk_files(
                         raw_path, cyclemask_path, digest(raw), digest(cyclemask)
                     )
-                read_raw_stream.assert_not_called()
+                stream_sha256.assert_not_called()
 
             with mock.patch.object(
                 crosswalk_module, "MAX_CYCLEMASK_BYTES", len(cyclemask) - 1
@@ -230,10 +230,9 @@ class SourceCrosswalkTests(unittest.TestCase):
             ):
                 crosswalk(one_raw_slot, cyclemask)
 
-    def test_same_size_immediate_overwrite_cannot_substitute_parsed_bytes(self):
+    def test_raw_mutation_between_hash_and_parse_fails_closed(self):
         raw = b"1.000000001 110 85 0\n"
         mutated = b"1.000000001 110 85 1\n"
-        self.assertEqual(len(raw), len(mutated))
         cyclemask = b"1000 0001\n"
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -241,61 +240,21 @@ class SourceCrosswalkTests(unittest.TestCase):
             cyclemask_path = root / "trace.cyclemask"
             raw_path.write_bytes(raw)
             cyclemask_path.write_bytes(cyclemask)
-            real_open_regular = crosswalk_module._open_regular
-            mutation = {"performed": False}
 
-            class SameSizeImmediateOverwriteStream:
-                def __init__(self, stream):
-                    self.stream = stream
-
-                def _overwrite_after_snapshot(self, payload):
-                    if payload and not mutation["performed"]:
-                        raw_path.write_bytes(mutated)
-                        mutation["performed"] = True
-                    return payload
-
-                def read(self, maximum=-1):
-                    return self._overwrite_after_snapshot(self.stream.read(maximum))
-
-                def readline(self, maximum=-1):
-                    return self._overwrite_after_snapshot(
-                        self.stream.readline(maximum)
-                    )
-
-                def seek(self, *args):
-                    return self.stream.seek(*args)
-
-                def fileno(self):
-                    return self.stream.fileno()
-
-                def close(self):
-                    self.stream.close()
-
-            def open_then_overwrite(path, where):
-                stream, identity = real_open_regular(path, where)
-                if where == "raw events":
-                    stream = SameSizeImmediateOverwriteStream(stream)
-                return stream, identity
-
-            def identity_without_change_timestamps(value):
-                # Deterministically model a filesystem on which this
-                # same-size immediate overwrite is metadata-indistinguishable.
-                return (value.st_dev, value.st_ino, value.st_mode, value.st_size)
+            def mutate_after_authority_read(stream, maximum_bytes, where):
+                self.assertEqual(where, "raw events")
+                raw_path.write_bytes(mutated)
+                return digest(raw)
 
             with mock.patch.object(
-                crosswalk_module, "_open_regular", side_effect=open_then_overwrite
-            ), mock.patch.object(
                 crosswalk_module,
-                "_file_identity",
-                side_effect=identity_without_change_timestamps,
+                "_stream_sha256",
+                side_effect=mutate_after_authority_read,
             ):
-                rows = derive_source_crosswalk_files(
-                    raw_path, cyclemask_path, digest(raw), digest(cyclemask)
-                )
-
-            self.assertTrue(mutation["performed"])
-            self.assertEqual(raw_path.read_bytes(), mutated)
-            self.assertEqual(rows[0].polarity, 0)
+                with self.assertRaisesRegex(SourceCrosswalkError, "changed during read"):
+                    derive_source_crosswalk_files(
+                        raw_path, cyclemask_path, digest(raw), digest(cyclemask)
+                    )
 
     def test_cyclemask_mutation_during_bounded_read_fails_closed(self):
         raw = b"1.000000001 110 85 0\n"
