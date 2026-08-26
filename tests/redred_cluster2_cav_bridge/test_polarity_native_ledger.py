@@ -164,8 +164,9 @@ class MutationTests(unittest.TestCase):
 
 
 class IsolationAndCliTests(unittest.TestCase):
-    def test_parser_is_independent_of_existing_join_runner_and_identity_parsers(self):
-        tree = ast.parse(PARSER.read_text(encoding="utf-8"))
+    def test_parser_is_python38_and_independent_of_join_runner_and_identity_parsers(self):
+        source = PARSER.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(PARSER), feature_version=(3, 8))
         imported = {
             alias.name
             for node in ast.walk(tree)

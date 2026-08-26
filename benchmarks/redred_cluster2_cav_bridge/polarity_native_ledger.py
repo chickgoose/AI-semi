@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 import re
 import sys
-from typing import Deque, Dict, Sequence, Tuple
+from typing import Deque, Dict, Optional, Sequence, Tuple
 
 
 LEDGER_SCHEMA = "redred.cluster2_cav_bridge.polarity_native_ledger/v1"
@@ -351,7 +351,7 @@ def verify_polarity_native_ledger(
     )
 
 
-def main(arguments: Sequence[str] | None = None) -> int:
+def main(arguments: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("addrpol_trace", type=Path)
     parser.add_argument("raw_polarity_ledger", type=Path)
