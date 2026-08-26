@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="580" viewBox="0 0 1000 580" role="img" aria-labelledby="title desc">
+<title id="title">Cluster2 native latency histogram</title>
+<desc id="desc">Generated only from the sealed official Cluster2 CAV functional result.</desc>
+<style>
+text{font-family:Arial,sans-serif;fill:#172033}.title{font-size:28px;font-weight:700}.subtitle{font-size:15px;fill:#526075}.label{font-size:18px;font-weight:700}.value{font-size:30px;font-weight:700}.small{font-size:14px;fill:#526075}.axis{stroke:#8793a6;stroke-width:1}.box{fill:#f4f7fb;stroke:#526075;stroke-width:2}.world{fill:#dff5ed;stroke:#16856b;stroke-width:2}.bypass{fill:#fff0dc;stroke:#c97512;stroke-width:2}.accent{fill:#3167d5}.muted{fill:#a9b6c8}.hold{fill:#fff8e8;stroke:#c98a16;stroke-width:1.5}.arrow{stroke:#526075;stroke-width:2;fill:none;marker-end:url(#arrow)}
+</style>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#526075"/></marker></defs>
+
+<text x="50" y="55" class="title">Native latency histogram</text>
+<text x="50" y="82" class="subtitle">8503 events • 2000 ps native clock</text>
+<line x1="100" y1="410" x2="950" y2="410" class="axis"/>
+<rect x="166.667" y="140" width="150" height="270" rx="6" class="accent"/><text x="241.667" y="128" text-anchor="middle" class="value">6393</text><text x="241.667" y="445" text-anchor="middle" class="label">1 cycle</text><text x="241.667" y="470" text-anchor="middle" class="small">2 ns sidecar</text>
+<rect x="450" y="322.281" width="150" height="87.719" rx="6" class="accent"/><text x="525" y="310.281" text-anchor="middle" class="value">2077</text><text x="525" y="445" text-anchor="middle" class="label">2 cycles</text><text x="525" y="470" text-anchor="middle" class="small">4 ns sidecar</text>
+<rect x="733.333" y="408.606" width="150" height="1.394" rx="6" class="accent"/><text x="808.333" y="396.606" text-anchor="middle" class="value">33</text><text x="808.333" y="445" text-anchor="middle" class="label">3 cycles</text><text x="808.333" y="470" text-anchor="middle" class="small">6 ns sidecar</text>
+<rect x="50" y="500" width="900" height="50" rx="8" class="hold"/>
+<text x="500" y="531" text-anchor="middle" class="small">Observational latency sidecar only — not physical replay or latency quality</text>
+
+</svg>

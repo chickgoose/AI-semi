@@ -1,0 +1,5 @@
+period_ns	frequency_mhz	setup_slack_ns	hold_slack_ns	pnr_area_raw	instances	power_mw	result
+4.5	222.222	1.349	0.166	1265.058	602	0.08497222	PASS
+4.0	250.000	0.849	0.166	1265.058	602	0.09559035	PASS
+3.5	285.714	0.454	0.167	1254.114	596	0.10738887	PASS
+3.0	333.333	-0.004	0.169	1261.980	599	0.12577530	FAIL_SETUP
