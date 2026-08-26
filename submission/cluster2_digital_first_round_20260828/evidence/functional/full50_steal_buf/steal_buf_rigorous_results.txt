@@ -1,0 +1,150 @@
+TRACE=common_traces_full50/core_simultaneous_identity.cyclemask.txt generated=16 delivered=16 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 150656000 (1ps)
+TRACE=common_traces_full50/core_sparse_identity.cyclemask.txt generated=16 delivered=16 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 154826000 (1ps)
+TRACE=common_traces_full50/core_sparse_rotate180.cyclemask.txt generated=16 delivered=16 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 154826000 (1ps)
+TRACE=common_traces_full50/elephant_mouse_affine.cyclemask.txt generated=1827 delivered=1827 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/elephant_mouse_identity.cyclemask.txt generated=1827 delivered=1827 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/global_fanin_identity.cyclemask.txt generated=512 delivered=512 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 169856000 (1ps)
+TRACE=common_traces_full50/mixed_phase_always_ready_bit_reverse.cyclemask.txt generated=9228 delivered=9223 dropped_overrun=5 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 190966000 (1ps)
+TRACE=common_traces_full50/mixed_phase_always_ready_identity.cyclemask.txt generated=9228 delivered=8731 dropped_overrun=497 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 190966000 (1ps)
+TRACE=common_traces_full50/moving_hotspot_multi_column_s3301.cyclemask.txt generated=1821 delivered=1821 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/moving_hotspot_multi_disperse_s3301.cyclemask.txt generated=1821 delivered=1821 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/moving_hotspot_multi_row_s3301.cyclemask.txt generated=1821 delivered=1821 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/moving_hotspot_single_s3301.cyclemask.txt generated=1821 delivered=1821 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/moving_hotspot_single_s3302.cyclemask.txt generated=1827 delivered=1827 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/pairwise_contention_affine.cyclemask.txt generated=480 delivered=480 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 169146000 (1ps)
+TRACE=common_traces_full50/pairwise_contention_identity.cyclemask.txt generated=480 delivered=480 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 169146000 (1ps)
+TRACE=common_traces_full50/phase_transition_s3501.cyclemask.txt generated=3139 delivered=3139 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 185816000 (1ps)
+TRACE=common_traces_full50/phase_transition_s3502.cyclemask.txt generated=3167 delivered=3167 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 185726000 (1ps)
+TRACE=common_traces_full50/retrigger_affine.cyclemask.txt generated=512 delivered=512 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 169246000 (1ps)
+TRACE=common_traces_full50/retrigger_identity.cyclemask.txt generated=512 delivered=512 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 169246000 (1ps)
+TRACE=common_traces_full50/rotating_victim_affine.cyclemask.txt generated=4217 delivered=4217 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 190966000 (1ps)
+TRACE=common_traces_full50/rotating_victim_identity.cyclemask.txt generated=4217 delivered=4217 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 190966000 (1ps)
+TRACE=common_traces_full50/shape_b1.cyclemask.txt generated=2048 delivered=2048 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 190956000 (1ps)
+TRACE=common_traces_full50/shape_b16.cyclemask.txt generated=2048 delivered=2048 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 190656000 (1ps)
+TRACE=common_traces_full50/shape_b4.cyclemask.txt generated=2048 delivered=2048 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 190896000 (1ps)
+TRACE=common_traces_full50/spatial_dispersed.cyclemask.txt generated=1536 delivered=1536 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170436000 (1ps)
+TRACE=common_traces_full50/spatial_local.cyclemask.txt generated=1536 delivered=1536 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170436000 (1ps)
+TRACE=common_traces_full50/spatial_local_mirror.cyclemask.txt generated=1536 delivered=1536 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170436000 (1ps)
+TRACE=common_traces_full50/timing_pair_s3901.cyclemask.txt generated=1259 delivered=1259 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170476000 (1ps)
+TRACE=common_traces_full50/timing_pair_s3902.cyclemask.txt generated=1279 delivered=1279 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l0p125_s2001.cyclemask.txt generated=251 delivered=251 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170256000 (1ps)
+TRACE=common_traces_full50/uniform_l0p125_s2002.cyclemask.txt generated=261 delivered=261 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170226000 (1ps)
+TRACE=common_traces_full50/uniform_l0p125_s2003.cyclemask.txt generated=231 delivered=231 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170386000 (1ps)
+TRACE=common_traces_full50/uniform_l0p50_s2001.cyclemask.txt generated=982 delivered=982 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170466000 (1ps)
+TRACE=common_traces_full50/uniform_l0p50_s2002.cyclemask.txt generated=1038 delivered=1038 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170476000 (1ps)
+TRACE=common_traces_full50/uniform_l0p50_s2003.cyclemask.txt generated=1032 delivered=1032 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l0p90_s2001.cyclemask.txt generated=1868 delivered=1868 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l0p90_s2002.cyclemask.txt generated=1851 delivered=1851 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l0p90_s2003.cyclemask.txt generated=1837 delivered=1837 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p00_s2001.cyclemask.txt generated=2048 delivered=2048 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p00_s2002.cyclemask.txt generated=2048 delivered=2048 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p00_s2003.cyclemask.txt generated=2048 delivered=2048 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p25_s2001.cyclemask.txt generated=2536 delivered=2536 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p25_s2002.cyclemask.txt generated=2574 delivered=2574 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p25_s2003.cyclemask.txt generated=2550 delivered=2550 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p50_s2001.cyclemask.txt generated=3039 delivered=3039 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p50_s2002.cyclemask.txt generated=3094 delivered=3094 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l1p50_s2003.cyclemask.txt generated=3045 delivered=3045 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l2p00_s2001.cyclemask.txt generated=4096 delivered=4096 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l2p00_s2002.cyclemask.txt generated=4096 delivered=4096 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)
+TRACE=common_traces_full50/uniform_l2p00_s2003.cyclemask.txt generated=4096 delivered=4096 dropped_overrun=0 phantom=0 collisions=0
+PHANTOM_DEBUG_PASS
+tb/tb_steal_buf_trace_phantom_debug.v:132: $finish called at 170486000 (1ps)

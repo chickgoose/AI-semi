@@ -31,6 +31,8 @@ vectorless 추정값이다.
 - `source/tb/`: polarity native observational TB와 runner
 - `source/testdata/`: 고정 polarity 입력 trace
 - `evidence/functional/`: source authority, release receipt, ledger, 원시 evidence archive
+- `evidence/functional/full50_steal_buf/`: 기본 Cluster2 대비 steal_buf의
+  공식 50-workload 손실 비교 TB·원시 결과·범위 설명
 - `evidence/ppa/upstream_9b0d951/`: 4.5/4.0/3.5/3.0 ns Genus/Innovus sweep 원본
 - `presentation/`: 발표 대본, 근거 문서, 그림 및 생성된 PPTX
 - `tools/`: PPTX 생성 및 패키지 검증 도구

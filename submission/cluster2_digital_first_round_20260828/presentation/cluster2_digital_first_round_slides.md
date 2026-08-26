@@ -1,101 +1,133 @@
-# Cluster2 Polarity AER
+# Cluster2 Steal-Buffer Polarity AER
 
 디지털 1차 설계 결과 · 2026-08-28
-
 최종 top: `aer_tx16_trad_rowcol_fovea_cluster2_steal_buf_polarity`
 
----
-
-## 1. 제출 범위와 결론
-
-- RTL, functional verification, synthesis, timing sweep, area, power, 동작 주파수
-- 3.5 ns / 285.714 MHz에서 post-route setup·hold 통과
-- functional replay: generated=delivered=8,503
-- polarity를 포함한 최종 RTL과 PPA top을 일치시킴
-- exact Fmax와 workload-activity power는 후속 범위
+발표의 중심은 기존 AER 병목을 여러 RTL 메커니즘으로 완화하고, 기능·물리
+구현·CAV 확장 가능성을 함께 검증한 과정이다. steal-buffer 비교는 이 전체
+흐름 안에서 source 재발생과 traffic 불균형을 해결한 핵심 정량 근거다.
 
 ---
 
-## 2. 설계 구조
+## 1. 전체 이야기
 
-- 16개 event source
-- source별 depth-2 event/polarity storage
-- 중심/주변 두 개의 row-bitmap retire lane
-- cycle당 최대 8 event 표현
-- polarity는 선택된 `col_mask` bit에 대응하는 `pol_mask`로 전달
-
----
-
-## 3. RTL 및 기능 검증
-
-- Xcelium 23.09-s013
-- generated 8,503 / delivered 8,503 / overrun 0
-- phantom 0 / duplicate 0 / drain-empty true
-- raw trace와 cycle ledger를 독립 verifier로 보존성 재검증
-- event identity는 TB sidecar이며 DUT payload가 아님
+- AER의 병목을 출력 직렬화, source 재발생, traffic 불균형, polarity 정렬로 구체화
+- depth-2 FIFO, row bitmap, conditional steal, polarity lockstep을 각각 대응
+- 최종 polarity RTL은 UZH trace 8,503개를 손실·polarity mismatch 없이 전달
+- 285.714 MHz post-route clean point와 CAV software 확장 경로까지 확인
 
 ---
 
-## 4. 합성 조건
+## 2. AER 병목 정의
 
-- Genus 23.14-s090_1
-- GPDK045 slow, 0.9 V, 125 °C
-- clock uncertainty 0.100 ns
-- input/output delay 0.250 ns, output load 0.010
-- 3.5 ns mapped area 1156.644 / 544 cells
-- Genus vectorless power 0.0505898 mW
+Ryu가 정리한 여섯 한계는 주소 overhead, bandwidth, arbitration latency,
+unfairness, timestamp, motion artifact다. 이번 1차 RTL은 이 중 bandwidth,
+arbitration latency, unfairness를 직접 개선하고 주소 overhead와 motion
+artifact를 부분 대응했다. timestamp 보존은 후속 범위다.
 
----
+이를 구현 관점에서 네 병목으로 구체화했다.
 
-## 5. Timing 최적화 sweep
-
-| Period | Frequency | Setup | Hold | 판정 |
-| ---: | ---: | ---: | ---: | --- |
-| 4.5 ns | 222.222 MHz | +1.349 ns | +0.166 ns | PASS |
-| 4.0 ns | 250.000 MHz | +0.849 ns | +0.166 ns | PASS |
-| 3.5 ns | 285.714 MHz | +0.454 ns | +0.167 ns | PASS |
-| 3.0 ns | 333.333 MHz | -0.004 ns | +0.169 ns | FAIL |
-
-검증 동작점은 285.714 MHz이며 exact Fmax는 미확정이다.
+1. 여러 source가 동시에 발생하지만 출력은 직렬화된다.
+2. grant 전에 같은 source가 재발생하면 local full로 overrun이 생긴다.
+3. center/peripheral traffic이 한쪽에 몰리면 고정 lane 처리력이 논다.
+4. 주소와 polarity를 따로 저장·pop하면 event 의미가 어긋날 수 있다.
 
 ---
 
-## 6. Post-route area와 layout
+## 3. 기존 scalar Fovea에서 손실이 생기는 과정
 
-- 3.5 ns: 596 instances, area raw 1254.114
-- 3.0 ns: 599 instances, area raw 1261.980
-- target utilization 0.5, aspect ratio 1.0
-- internal DRC 0, antenna 0
-- area report에 물리 단위가 명시되지 않아 `area raw`로 표기
-
----
-
-## 7. Power
-
-- 3.5 ns post-route total: 0.10738887 mW
-- internal 0.07647953 mW
-- switching 0.03088277 mW
-- leakage 0.00002657 mW
-- sequential/primary-input activity 0.2의 vectorless estimate
-- VCD/SAIF workload power 또는 energy/event가 아님
+- 동시 입력이 공유 arbitration의 한 출력 순서를 기다린다.
+- full50 106,416 events 중 78,229 accepted, 28,187 overrun
+- fixed-window throughput 0.673901 EPC
+- 발생률이 서비스율을 넘으면 직렬 출력이 source-local loss로 연결된다.
 
 ---
 
-## 8. 근거 한계
+## 4. 제안 구조
 
-- timing: slow view 하나, Non-OCV, SI off
-- check_timing: ideal-clock warning 1, no-drive warning 34
-- power: activity file 없음
-- report header: No SPEF/RCDB
-- Innovus `write_db` 종료 오류가 있으나 앞선 reports/GDS는 생성됨
-- foundry signoff, LVS/ERC/IR/EM, silicon measurement를 주장하지 않음
+- 16개 source마다 depth-2 event/polarity FIFO
+- center/peripheral 두 row-bitmap retire lane
+- 선택된 한 row에서 최대 4개 column을 bitmap으로 표현
+- 두 lane 합계 cycle당 최대 8 events retire
+- 출력 계약: `row + col_mask[3:0] + pol_mask[3:0]`
 
 ---
 
-## 9. 최종 결론
+## 5. 병목별 RTL 해법
 
-- polarity 포함 RTL 기능 검증 완료
-- 285.714 MHz clean operating point 확보
-- synthesis/P&R area·timing·power 원본 report 봉인
-- 333.333 MHz에서 첫 setup fail 관측
-- 제출 가능한 1차 디지털 결과이며 exact Fmax와 activity-based power는 후속 과제
+| 병목 | RTL 해법 | 직접 효과 |
+| --- | --- | --- |
+| 1 event/cycle | 두 row-bitmap lane | 최대 8 events/cycle |
+| source 재발생 | source별 depth-2 FIFO | 두 번째 event 흡수 |
+| class 쏠림 | conditional lane steal | idle 처리력 재사용 |
+| address–polarity 분리 | lockstep FIFO | polarity mismatch 방지 |
+
+주소 overhead 후속안은 별도다. row-trim은 기본 Cluster2에서 link bit
+14.29%를 줄이지만 steal_buf의 확장 row 범위에는 안전하게 적용할 수 없다.
+repeat-flag는 steal_buf에 적용 가능하며 link bit 15.61% 감소를 확인했다.
+
+---
+
+## 6. 정량 개선
+
+동일한 공식 full50 106,416-event 기준:
+
+- scalar Fovea → 기본 Cluster2: accepted 78,229 → 94,157 (+20.4%)
+- scalar Fovea → 기본 Cluster2: overrun 28,187 → 12,259 (−56.5%)
+- scalar Fovea → 기본 Cluster2: EPC 0.6739 → 0.8116 (+20.4%)
+- 기본 Cluster2 → steal_buf: loss 12,259 → 502
+- loss rate 11.52% → 0.47%, 손실 수 기준 24.42배 감소
+
+마지막 비교는 architecture-family full50 결과이며, 다음 장의 최종 polarity-v1
+UZH 8,503-event 검증과 분모를 섞지 않는다.
+
+---
+
+## 7. 실제 RTL 시뮬레이션
+
+- simulator: Xcelium 23.09-s013
+- TB: `redred_cluster2_polarity_v1_native_observational_tb.sv`
+- UZH trace: generated 8,503 / delivered 8,503 / overrun 0
+- phantom 0 / duplicate 0 / polarity mismatch 0 / drain-empty true
+- cycle 4162에서 두 lane이 네 events를 동시에 retire하는 실제 ledger 확인
+- raw trace와 cycle ledger를 독립 verifier로 재검증, order violations 0
+
+---
+
+## 8. 합성·P&R·Timing·Power
+
+- Genus 23.14-s090_1, Innovus, GPDK045 slow 0.9 V 125 °C
+- 3.5 ns / 285.714 MHz: setup +0.454 ns, hold +0.167 ns PASS
+- 3.0 ns / 333.333 MHz: setup −0.004 ns로 첫 faster FAIL
+- post-route area raw 1254.114, 596 instances
+- post-route vectorless power 0.10738887 mW, default activity 0.2
+- internal DRC 0 / antenna 0
+
+285.714 MHz는 fastest tested PASS이지 exact Fmax가 아니다. power도
+VCD/SAIF workload power가 아니라 vectorless estimate다.
+
+---
+
+## 9. CAV 확장성
+
+주소-only legacy bridge에서 UZH events와 pose를 exact identity로 join했다.
+
+- input/join: 8,503 / 8,503
+- WORLD: 8,420 → 512×256 grid, 821 cells
+- SENSOR_FIXED bypass: 83
+- geometry는 occurrence time, retire cycle은 latency sidecar로 보존
+
+이는 CAV software functional extension 검증이다. 최종 polarity-v1과 독립된
+경로이며 CAV RTL/PPA를 주장하지 않는다.
+
+---
+
+## 10. 결론과 2차 과제
+
+- 네 RTL 병목을 FIFO, bitmap, steal, polarity lockstep으로 각각 완화
+- 최종 RTL에서 8,503 / 8,503 보존, 285.714 MHz post-route PASS
+- 별도 CAV software 경로에서 8,503 events 전수 분기 검증
+
+2차 과제는 repeat-flag 통합, polarity→CAV full replay와 CAV RTL화,
+activity-based power, exact Fmax 탐색이다. row-trim은 기본 Cluster2 전용으로
+유지하며 steal_buf에 직접 적용하지 않는다.

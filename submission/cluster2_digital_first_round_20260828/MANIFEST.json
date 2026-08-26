@@ -1,6 +1,6 @@
 {
   "schema": "cluster2-digital-first-round-manifest-v1",
-  "file_count": 108,
+  "file_count": 111,
   "files": [
     {
       "path": "DESIGN_MANIFEST.json",
@@ -19,8 +19,23 @@
     },
     {
       "path": "README.md",
-      "bytes": 4310,
-      "sha256": "47b1532062c76a402f3da7a500e4bca72bddd033b4a134cfab39df3abb7cf31e"
+      "bytes": 4457,
+      "sha256": "7fd44a7e49b4f2667ece22c0b888a69951fc1f7822f9769b9f204a05a1f4cc78"
+    },
+    {
+      "path": "evidence/functional/full50_steal_buf/README.md",
+      "bytes": 1510,
+      "sha256": "99ad17a7412a6c67cad980fe46177fcc2a696b241a6e95369380f432f8cbb648"
+    },
+    {
+      "path": "evidence/functional/full50_steal_buf/steal_buf_rigorous_results.txt",
+      "bytes": 11464,
+      "sha256": "7aa6e6da4b443903337f09e2c9c457723e37f1991523cd3829e30079e1dccde4"
+    },
+    {
+      "path": "evidence/functional/full50_steal_buf/tb_steal_buf_trace_phantom_debug.v",
+      "bytes": 4674,
+      "sha256": "06123cc83e1682e7175c220a762fd3ff75bd40fd7795565e5f381ac55167556e"
     },
     {
       "path": "evidence/functional/ganghee_cluster2_polarity_v1_authority.json",
@@ -464,13 +479,13 @@
     },
     {
       "path": "presentation/cluster2_digital_first_round_20260828.pptx",
-      "bytes": 54342,
-      "sha256": "2dfb15bcfab169a78b0e8d95d7b69e430938b9f9949d360e619d66a3ac00d0eb"
+      "bytes": 55119,
+      "sha256": "2d280f1cfff08efdbc169f3f6bd3474042e8d10806dcca1b29cd6f8f6b911b22"
     },
     {
       "path": "presentation/cluster2_digital_first_round_slides.md",
-      "bytes": 2848,
-      "sha256": "a907f7311f1eea1c13e59ee917c7a41c890d1de643b31d2bdc1ddecb236e656a"
+      "bytes": 5212,
+      "sha256": "f35c9e755f9123d2896b36beaec9018c12ab341c0a5d584e94d6ba3aa3189ffe"
     },
     {
       "path": "presentation/ganghee_cluster2_ppa_diagnostic_handoff_20260824.md",
@@ -529,8 +544,8 @@
     },
     {
       "path": "tools/build_presentation.py",
-      "bytes": 21355,
-      "sha256": "e26f672123f30160f45e7318691dce0c4d9483e54d239e3cd28c69578c4ae045"
+      "bytes": 22638,
+      "sha256": "5eda603b36204625abb404278973c4d3978289057a33fd1890910ac0d2ecc8c6"
     },
     {
       "path": "tools/requirements.txt",

@@ -111,8 +111,10 @@ def build():
     text(slide, "2026-08-28  |  Xcelium · Genus · Innovus", 0.84, 6.85, 11.2, 0.22, 10, MUTED)
 
     # 2. Bottleneck taxonomy — make the multiple native problems explicit first.
-    slide = header(prs, "01  병목", "우리 AER이 겨냥한 병목은 네 가지다", 2,
-                   "Source: final polarity RTL contract and bottleneck audit")
+    slide = header(prs, "01  병목", "Ryu의 6문제에서 우리가 구체화한 네 RTL 병목", 2,
+                   "Source: Ryu CVPRW 2019 · final polarity RTL contract · bottleneck audit")
+    text(slide, "Ryu: ① 주소 overhead  ② bandwidth  ③ arbitration latency  ④ unfairness  ⑤ timestamp  ⑥ motion artifact",
+         0.92, 0.99, 11.50, 0.20, 9, MUTED, True, PP_ALIGN.CENTER)
     bottlenecks = [
         (0.78, 1.28, RED, "① 출력 직렬화", "여러 source가 동시에 발생", "한 cycle에 1 event만 retire"),
         (6.82, 1.28, ORANGE, "② SOURCE 재발생", "grant 전에 같은 source 재발생", "local full → overrun"),
@@ -124,7 +126,7 @@ def build():
         text(slide, label, x + 0.26, y + 0.20, 5.18, 0.30, 16, accent, True)
         text(slide, cause, x + 0.26, y + 0.66, 5.18, 0.30, 17, WHITE, True)
         text(slide, symptom, x + 0.26, y + 1.20, 5.18, 0.25, 12, MUTED)
-    takeaway(slide, "대역폭 · buffer · 자원 활용 · metadata 정렬이 서로 다른 병목으로 연결된다", ORANGE)
+    takeaway(slide, "직접 개선 ②③④ · 부분 대응 ①⑥ · HOLD ⑤ — 이를 네 RTL 병목으로 구체화", ORANGE)
 
     # 3. Measured baseline mechanism — serialization turns into local loss.
     slide = header(prs, "01  병목", "① 출력 직렬화가 ② source-local overrun으로 이어진다", 3,
@@ -201,6 +203,8 @@ def build():
         arrow_text(slide, 8.50, y + 0.16, 0.48, CYAN, 24)
         shape(slide, 9.06, y, 3.30, 0.76, CARD, True, accent)
         text(slide, effect, 9.24, y + 0.20, 2.94, 0.30, 14, accent, True, PP_ALIGN.CENTER)
+    text(slide, "주소 overhead 후속: row-trim −14.29%(기본 Cluster2 전용)  |  repeat-flag −15.61%(steal_buf 적용 가능)",
+         1.12, 5.78, 11.10, 0.20, 9, ORANGE, True, PP_ALIGN.CENTER)
     takeaway(slide, "한 가지 큰 개선이 아니라, 네 병목을 네 메커니즘으로 각각 완화했다", GREEN)
 
     # 6. Improvement — three paired metrics, no duplicate charts/cards.
@@ -223,8 +227,11 @@ def build():
         text(slide, after, 6.69, y + 0.42, 2.54, 0.34, 22, after_c, True)
         shape(slide, 9.92, y, 2.40, 0.98, after_c)
         text(slide, delta, 10.10, y + 0.30, 2.02, 0.38, 24, BG, True, PP_ALIGN.CENTER)
-    takeaway(slide, "구조군 비교 결과: accepted +15,928 events  =  overrun 15,928건 감소", GREEN)
-    text(slide, "※ 최종 polarity-v1 trace의 exact head-to-head 개선율이 아니라 원본 구조군 비교", 1.20, 6.91, 10.95, 0.17, 8, ORANGE, True, PP_ALIGN.CENTER)
+    shape(slide, 2.05, 5.43, 9.25, 0.55, CARD, True, GREEN)
+    text(slide, "추가 핵심: 기본 Cluster2 11.52% → steal_buf 0.47%  ·  loss 12,259 → 502  ·  24.42배 감소",
+         2.28, 5.58, 8.79, 0.24, 13, GREEN, True, PP_ALIGN.CENTER)
+    takeaway(slide, "기본 구조의 대역폭 개선 위에 depth-2·steal이 재발화/불균형 손실을 더 줄였다", GREEN)
+    text(slide, "※ 최종 polarity-v1 trace의 exact head-to-head 개선율이 아니라 원본 구조군 비교", 1.20, 6.00, 10.95, 0.15, 8, ORANGE, True, PP_ALIGN.CENTER)
 
     # 7. Functional proof — one equation, three checks.
     slide = header(prs, "03  결과", "최종 trace에서 buffer·polarity 오류 0", 7,
@@ -247,6 +254,11 @@ def build():
         text(slide, "✓", x + 0.25, 3.65, 0.60, 0.45, 26, accent, True, PP_ALIGN.CENTER)
         text(slide, label, x + 0.94, 3.57, 2.20, 0.30, 17, WHITE, True)
         text(slide, note, x + 0.94, 4.08, 2.20, 0.24, 11, MUTED)
+    shape(slide, 1.02, 4.98, 11.28, 0.90, CARD)
+    text(slide, "Xcelium 23.09  |  TB: redred_cluster2_polarity_v1_native_observational_tb.sv",
+         1.25, 5.10, 10.82, 0.20, 9, MUTED, True, PP_ALIGN.CENTER)
+    text(slide, "CYCLE 4162  |  lane0 row2 col=0x6 pol=0x0  |  lane1 row0 col=0x1 pol=0x1  →  4 events retire",
+         1.25, 5.43, 10.82, 0.25, 12, WHITE, True, PP_ALIGN.CENTER)
     takeaway(slide, "generated = delivered + overrun · phantom 0 · duplicate 0", GREEN)
 
     # 8. Physical feasibility — the clean point and discrete sweep.
@@ -323,7 +335,9 @@ def build():
         text(slide, line2, x + 0.24, 2.80, 3.04, 0.38, 18, accent, True, PP_ALIGN.CENTER)
     shape(slide, 0.78, 4.28, 11.40, 1.10, CARD)
     text(slide, "NEXT", 1.08, 4.60, 1.05, 0.24, 12, ORANGE, True)
-    text(slide, "final-trace 직접 비교  ·  CAV RTL  ·  activity power  ·  signoff", 2.15, 4.50, 9.55, 0.38, 18, WHITE, True, PP_ALIGN.CENTER)
+    text(slide, "repeat-flag  ·  polarity→CAV full replay/RTL  ·  activity power  ·  exact Fmax", 2.15, 4.50, 9.55, 0.38, 17, WHITE, True, PP_ALIGN.CENTER)
+    text(slide, "row-trim −14.29%는 기본 Cluster2 전용 · steal_buf에는 적용 불가",
+         2.15, 4.98, 9.55, 0.20, 9, ORANGE, True, PP_ALIGN.CENTER)
     takeaway(slide, "GO: polarity RTL·TB·PPA evidence 제출  |  HOLD: exact Fmax·CAV RTL·signoff", GREEN)
 
     # Restamp the header above every content object. PowerPoint's batch renderer
