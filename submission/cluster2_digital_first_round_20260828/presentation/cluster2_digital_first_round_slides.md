@@ -13,7 +13,7 @@
 
 ---
 
-## 1. 병목을 줄이고 의미를 보존하는 AER
+## 1. Cluster2 Steal-Buffer Polarity AER
 
 - AER 병목: 직렬 출력, 같은 source 재발생, class capacity 불균형
 - 제안 구조: row bitmap, source-local depth-2, conditional lane steal
@@ -27,7 +27,7 @@ evidence population이다.
 
 ---
 
-## 2. Ryu의 문제 흐름을 여섯 요구사항으로 분해
+## 2. Ryu의 문제 흐름을 여섯 설계 요구로 분해했다
 
 이는 Ryu 논문의 문제 흐름을 팀이 발표용 여섯 항목으로 분해한 것이며, 논문이
 그대로 번호를 붙인 여섯 항목이라고 주장하지 않는다.
@@ -47,7 +47,7 @@ backpressure에서 문제를 제거했다는 뜻은 아니다. polarity integrit
 
 ---
 
-## 3. scalar 출력이 loss를 만드는 과정
+## 3. 직렬 출력과 source 재발생이 loss를 만든다
 
 동시 입력 → 하나의 공유 arbitration → 한 cycle 한 event 서비스 → 대기 누적 →
 grant 전 같은 source 재발생 → local full → source-overrun으로 이어진다.
@@ -62,7 +62,7 @@ common full50 106,416 offered events에서 scalar Fovea 회수 진단값:
 
 ---
 
-## 4. 최종 통합 구조
+## 4. 최종 구조는 네 단계로 읽힌다
 
 ```text
 16 arrival/polarity sources
@@ -82,7 +82,7 @@ slot이 source별 상태다.
 
 ---
 
-## 5. Bitmap과 depth-2의 역할
+## 5. bitmap은 직렬화를, depth-2는 재발생을 줄인다
 
 ### Row bitmap
 
@@ -98,7 +98,7 @@ slot에 저장한다. 따라서 출력 폭 개선과 local 재발생 흡수가 �
 
 ---
 
-## 6. Conditional steal과 polarity lockstep
+## 6. steal은 capacity를, lockstep은 의미를 지킨다
 
 ### Conditional lane steal
 
@@ -114,7 +114,7 @@ global fairness 개선율이나 starvation bound를 별도로 측정했다는 �
 
 ---
 
-## 7. 주소 overhead 확장
+## 7. 주소 절감은 제출 RTL과 후속 실험을 분리했다
 
 최종 제출 RTL은 `row + col_mask + pol_mask` 방식이다. 아래 수치는 별도
 address-only codec 실험이며 최종 polarity link 절감률이 아니다.
@@ -130,7 +130,7 @@ address-only codec 실험이며 최종 polarity link 절감률이 아니다.
 
 ---
 
-## 8. full50 source-overrun 개선
+## 8. full50 source-overrun: 12,259 → 502
 
 같은 50-workload, 같은 106,416 offered-event denominator:
 
@@ -153,7 +153,7 @@ final polarity-v1 UZH 결과와 하나의 head-to-head campaign으로 합치지 
 
 ---
 
-## 9. Xcelium TB와 실제 retire cycle
+## 9. cycle 4,162: 두 lane이 3 events를 retire했다
 
 - simulator: Xcelium 23.09-s013
 - TB: `redred_cluster2_polarity_v1_native_observational_tb.sv`
@@ -179,7 +179,7 @@ lane1: valid=1 row=0 col_mask=0x1 pol_mask=0x1 → 1 selected event
 
 ---
 
-## 10. Synthesis·Timing·Area·Power
+## 10. 최종 top: 285.714 MHz post-route PASS
 
 환경: Genus 23.14-s090_1, Innovus 23.14-s088_1, GPDK045 slow 0.9 V,
 125 °C. 각 period에서 Genus generic→map→opt와 Innovus place→CTS→route를
@@ -198,7 +198,7 @@ area 단위는 report에 명시되지 않았으며 power는 workload VCD/SAIF po
 
 ---
 
-## 11. CAV software 확장성
+## 11. CAV 확장 경로: 8,503 events 전수 분기
 
 최종 polarity-v1과 별개인 sealed legacy address-only software path:
 
@@ -217,7 +217,7 @@ CAV 정확도 향상은 HOLD다.
 
 ---
 
-## 12. 결론과 2차 과제
+## 12. 1차 성과 세 가지와 2차 검증 세 가지
 
 1차 결과:
 
