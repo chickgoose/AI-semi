@@ -77,6 +77,24 @@ class PositiveTests(unittest.TestCase):
         self.assertFalse(report.identity_order_independence_claimed)
         self.assertIn("IDENTICAL_SAME_SOURCE_EQUAL_POLARITY_EVENTS_UNOBSERVABLE", report.identity_scope)
 
+    def test_valid_lane_ignores_unselected_polarity_bits_but_checks_selected_bits(self):
+        trace = b"0 0060 0060\n"
+        ledger = (
+            "SCHEMA|%s\nSCOPE|%s\n"
+            "CYCLE|0|0000|0|0|0|0|0|0|0|0\n"
+            "CYCLE|1|0000|1|1|6|7|0|0|0|0\n"
+            "CYCLE|2|0000|0|0|0|0|0|0|0|0\n"
+            "SUMMARY|2|2|0|0|0|1\n" % (LEDGER_SCHEMA, IDENTITY_SCOPE)
+        ).encode("ascii")
+        report = verify_polarity_native_ledger(trace, ledger)
+        self.assertEqual((report.generated, report.delivered), (2, 2))
+
+        selected_bit_mismatch = ledger.replace(
+            b"CYCLE|1|0000|1|1|6|7", b"CYCLE|1|0000|1|1|6|3"
+        )
+        with self.assertRaises(PolarityNativeLedgerError):
+            verify_polarity_native_ledger(trace, selected_bit_mismatch)
+
 
 class MutationTests(unittest.TestCase):
     def assertRejected(self, trace: bytes, ledger: bytes) -> None:
@@ -121,9 +139,9 @@ class MutationTests(unittest.TestCase):
                 b"CYCLE|3|0000|0|0|0|0|1|0|1|1",
                 b"CYCLE|3|0000|1|0|1|1|0|0|0|0",
             ),
-            "polarity_outside_col": base.replace(
-                b"CYCLE|3|0000|0|0|0|0|1|0|1|1",
-                b"CYCLE|3|0000|0|0|0|0|1|0|1|3",
+            "invalid_lane_nonzero_polarity": base.replace(
+                b"CYCLE|0|0000|0|0|0|0|0|0|0|0",
+                b"CYCLE|0|0000|0|0|0|1|0|0|0|0",
             ),
         }
         for name, mutation in mutations.items():

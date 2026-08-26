@@ -193,8 +193,9 @@ def _parse_lane(fields: Sequence[str], offset: int, lane: int, line_number: int)
     else:
         if not observation.col_mask:
             raise PolarityNativeLedgerError("valid native lane has an empty column mask")
-        if observation.pol_mask & ~observation.col_mask:
-            raise PolarityNativeLedgerError("hw_polarity is asserted outside the observed column mask")
+        # The RTL exposes the full pol_front_bus slice for the selected row.
+        # Only columns selected by col_mask carry a retirement this cycle;
+        # polarity bits at other columns are therefore semantically unobserved.
     return observation
 
 
