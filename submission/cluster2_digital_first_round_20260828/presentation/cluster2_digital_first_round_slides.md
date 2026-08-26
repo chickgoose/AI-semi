@@ -114,7 +114,23 @@ global fairness 개선율이나 starvation bound를 별도로 측정했다는 �
 
 ---
 
-## 7. 주소 절감은 제출 RTL과 후속 실험을 분리했다
+## 7. 동작 시각화: 두 lane의 row bitmap retire
+
+팀 제공 random-traffic visualizer를 슬라이드 쇼에서 재생한다.
+
+- 16개 source tile: 발생·pending 상태
+- teal 중심 lane / amber 주변 lane
+- 하단 lane0·lane1: 선택된 `row + col_mask` 출력
+- 우측 counter: generated, delivered, overrun의 누적
+
+이 GIF는 구조 동작을 설명하는 visualization이며 공식 full50 또는 최종 UZH
+campaign이 아니다. 화면에서 보이는 손실률을 제출 정량 결과로 인용하지 않는다.
+원본 SHA-256은
+`0a6c502387b2d504d5b7daf4a653d81ad1a4f69155f8b95cbc448ac0fb83136a`다.
+
+---
+
+## 8. 주소 절감은 제출 RTL과 후속 실험을 분리했다
 
 최종 제출 RTL은 `row + col_mask + pol_mask` 방식이다. 아래 수치는 별도
 address-only codec 실험이며 최종 polarity link 절감률이 아니다.
@@ -130,7 +146,7 @@ address-only codec 실험이며 최종 polarity link 절감률이 아니다.
 
 ---
 
-## 8. full50 source-overrun: 12,259 → 502
+## 9. full50 source-overrun: 12,259 → 502
 
 같은 50-workload, 같은 106,416 offered-event denominator:
 
@@ -153,7 +169,7 @@ final polarity-v1 UZH 결과와 하나의 head-to-head campaign으로 합치지 
 
 ---
 
-## 9. cycle 4,162: 두 lane이 3 events를 retire했다
+## 10. cycle 4,162: 두 lane이 3 events를 retire했다
 
 - simulator: Xcelium 23.09-s013
 - TB: `redred_cluster2_polarity_v1_native_observational_tb.sv`
@@ -179,7 +195,7 @@ lane1: valid=1 row=0 col_mask=0x1 pol_mask=0x1 → 1 selected event
 
 ---
 
-## 10. 최종 top: 285.714 MHz post-route PASS
+## 11. 최종 top: 285.714 MHz post-route PASS
 
 환경: Genus 23.14-s090_1, Innovus 23.14-s088_1, GPDK045 slow 0.9 V,
 125 °C. 각 period에서 Genus generic→map→opt와 Innovus place→CTS→route를
@@ -198,7 +214,7 @@ area 단위는 report에 명시되지 않았으며 power는 workload VCD/SAIF po
 
 ---
 
-## 11. World 좌표계 방향 ray 확장: 8,503 events
+## 12. World 좌표계 방향 ray 확장: 8,503 events
 
 최종 polarity-v1과 별개인 팀 정의 software projection path다. 본 자료에서
 기존 파일명에 남아 있는 `CAV`는 외부 표준이나 연계 대상을 뜻하지 않고,
@@ -221,7 +237,7 @@ stream을 입력으로 한 full replay, wire-complete converter RTL/PPA, 투영 
 
 ---
 
-## 12. 1차 성과 세 가지와 2차 검증 세 가지
+## 13. 1차 성과 세 가지와 2차 검증 세 가지
 
 1차 결과:
 

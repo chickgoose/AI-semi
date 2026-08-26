@@ -10,6 +10,7 @@ from pptx.util import Inches, Pt
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "presentation" / "cluster2_digital_first_round_20260828.pptx"
+VISUALIZER = ROOT / "presentation" / "assets" / "cluster2_random_traffic_visualizer.gif"
 
 PAPER = RGBColor(247, 249, 252)
 WHITE = RGBColor(255, 255, 255)
@@ -248,8 +249,27 @@ def build():
     text(s, "동시 push · 동시 pop · 의미 보존", 7.46, 5.00, 4.52, 0.20, 14, WHITE, True, PP_ALIGN.CENTER)
     takeaway(s, "steal은 capacity 낭비를 줄이고, lockstep은 selected event의 의미를 보존한다")
 
-    # 07. Encoding boundary.
-    s = header(prs, "02 구조", "주소 절감은 제출 RTL과 후속 실험을 분리했다", 7,
+    # 07. Animated operation visualizer.
+    s = header(prs, "02 구조", "동작 시각화: 두 lane의 row bitmap retire", 7,
+               "Source: team-provided random-traffic visualizer · illustration only, not official full50/UZH evidence")
+    s.shapes.add_picture(str(VISUALIZER), Inches(0.72), Inches(1.28), width=Inches(8.45), height=Inches(4.44))
+    box(s, 9.45, 1.28, 3.17, 4.44, WHITE, LINE, True, 1.2)
+    pill(s, "SLIDE SHOW", 9.73, 1.58, 1.36, PURPLE)
+    text(s, "무엇을 볼까", 9.73, 2.10, 2.62, 0.30, 19, INK, True)
+    for y, num, label, body, accent in [
+        (2.64, "1", "PENDING", "16 source의 발생·대기 상태", SLATE),
+        (3.34, "2", "TWO LANES", "row + col_mask 동시 출력", TEAL),
+        (4.04, "3", "COUNTERS", "generated / delivered / overrun", ORANGE),
+    ]:
+        pill(s, num, 9.73, y, 0.44, accent)
+        text(s, label, 10.34, y + 0.02, 1.74, 0.20, 12, accent, True)
+        text(s, body, 10.34, y + 0.30, 1.94, 0.30, 13, INK, True)
+    box(s, 9.73, 4.90, 2.60, 0.54, RED_P, None)
+    text(s, "설명용 · 공식 수치 아님", 9.91, 5.05, 2.24, 0.24, 12, RED, True, PP_ALIGN.CENTER)
+    takeaway(s, "row bitmap과 두 lane의 동작을 애니메이션으로 확인 — 정량 증거는 별도 campaign")
+
+    # 08. Encoding boundary.
+    s = header(prs, "02 구조", "주소 절감은 제출 RTL과 후속 실험을 분리했다", 8,
                "Source: row-trim/repeat-flag address-only studies · final polarity boundary")
     cards = [(0.72, "SUBMIT", "ROW + MASK", "현재 최종 RTL", "pol_mask 포함", TEAL, TEAL_P),
              (4.76, "STUDY", "ROW-TRIM", "−14.29%", "base Cluster2 전용", SLATE, PALE),
@@ -261,8 +281,8 @@ def build():
         box(s, x + 0.32, 4.15, 3.00, 0.76, pale, None); text(s, note, x + 0.46, 4.39, 2.72, 0.28, 14, accent, True, PP_ALIGN.CENTER)
     takeaway(s, "2차 codec 후보는 repeat-flag — polarity 포함 end-to-end 검증 후 통합", ORANGE, ORANGE_P)
 
-    # 08. Hero result.
-    s = header(prs, "03 결과", "full50 source-overrun: 12,259 → 502", 8,
+    # 09. Hero result.
+    s = header(prs, "03 결과", "full50 source-overrun: 12,259 → 502", 9,
                "Scope: 106,416 events/design · separate campaigns · 502 = address-only steal_buf, not final polarity-v1")
     box(s, 0.72, 1.22, 8.15, 4.66)
     data = [("SCALAR\nFOVEA", 26.49, "28,187", RED), ("BASE\nCLUSTER2", 11.52, "12,259", ORANGE),
@@ -283,8 +303,8 @@ def build():
     text(s, "48 / 50 traces: overrun 0", 9.42, 5.14, 2.94, 0.24, 13, WHITE, True, PP_ALIGN.CENTER)
     takeaway(s, "steal-buffer의 핵심 효과: 기본 Cluster2의 남은 재발생 손실을 직접 줄였다")
 
-    # 09. Simulator and actual cycle.
-    s = header(prs, "03 결과", "cycle 4,162: 두 lane이 3 events를 retire했다", 9,
+    # 10. Simulator and actual cycle.
+    s = header(prs, "03 결과", "cycle 4,162: 두 lane이 3 events를 retire했다", 10,
                "Source: Xcelium 23.09-s013 · redred_cluster2_polarity_v1_native_observational_tb.sv")
     flow = [("INPUT", "UZH 4×4 patch\n8,503 events", BLUE), ("SIM", "Xcelium\nRTL + TB", ORANGE),
             ("LEDGER", "raw cycle trace\nindependent Python", PURPLE), ("RESULT", "8,503 / 8,503\nPASS", TEAL)]
@@ -305,8 +325,8 @@ def build():
     text(s, "phantom 0 · duplicate 0\npolarity mismatch 0 · drain empty", 8.94, 4.88, 3.34, 0.58, 14, TEAL, True, PP_ALIGN.CENTER)
     takeaway(s, "TB의 PASS 문자열이 아니라 raw ledger를 독립 경로로 재해석했다", NAVY, PALE)
 
-    # 10. Physical implementation.
-    s = header(prs, "04 구현", "최종 top: 285.714 MHz post-route PASS", 12,
+    # 11. Physical implementation.
+    s = header(prs, "04 구현", "최종 top: 285.714 MHz post-route PASS", 11,
                "Source: Genus 23.14-s090_1 · Innovus 23.14-s088_1 · GPDK045 slow 0.9 V 125 °C")
     box(s, 0.72, 1.26, 7.65, 3.18); card_head(s, "POST-ROUTE TIMING", "fastest tested passing point", 0.72, 1.26, 7.65, TEAL)
     rule(s, 1.20, 3.42, 7.86, 3.42, SLATE, 2.0)
@@ -326,7 +346,7 @@ def build():
     text(s, "internal DRC 0 · antenna 0", 2.84, 5.45, 9.46, 0.22, 13, GREEN, True, PP_ALIGN.CENTER)
     takeaway(s, "1차 제출 범위: 동작 RTL + tested timing/area/power — signoff 과장은 하지 않는다", NAVY, PALE)
 
-    # 11. World-coordinate extension path.
+    # 12. World-coordinate extension path.
     s = header(prs, "05 확장", "World 좌표계 방향 ray 확장: 8,503 events", 12,
                "Source: team-defined software projection path · separate from final polarity RTL/PPA")
     top = [(0.72, 3.05, "UZH EVENTS + POSE", "8,503 occurrences", BLUE),
@@ -348,8 +368,8 @@ def build():
         if note: text(s, note, x + 0.28, 4.56, w - 0.56, 0.22, 13, accent if accent == RED else SLATE, True, PP_ALIGN.CENTER)
     takeaway(s, "event + timestamp + pose의 world-frame 방향 ray 투영을 software로 확인했다", PURPLE, PALE)
 
-    # 12. Proven outcomes and next gates.
-    s = header(prs, "06 결론", "1차 성과 세 가지와 2차 검증 세 가지", 12,
+    # 13. Proven outcomes and next gates.
+    s = header(prs, "06 결론", "1차 성과 세 가지와 2차 검증 세 가지", 13,
                "Evidence: full50 family diagnostic · final UZH polarity replay · tested physical flow")
     proofs = [("LOSS", "−95.9%", "base Cluster2 → steal_buf", TEAL),
               ("MEANING", "8,503 / 8,503", "polarity mismatch 0", BLUE),

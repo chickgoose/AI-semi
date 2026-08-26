@@ -25,6 +25,7 @@ POLARITY_JSONL_SHA256 = "518a2a5ba977516ea687fdc23a9246ff9cfe90fbf3d013efdd35820
 POLARITY_JSONL_GIT_BLOB = "f43e0c41bf2b2ed15e826e191a7aeee3ee33638c"
 INTEGRATION_COMMIT = "fbb053f5e6ae3b8178a479a1a50e7bce50eb6b9f"
 PPA_COMMIT = "9b0d95121cf88ba55bee13cf0e5d444d688010b6"
+VISUALIZER_SHA256 = "0a6c502387b2d504d5b7daf4a653d81ad1a4f69155f8b95cbc448ac0fb83136a"
 
 
 def sha256(path):
@@ -236,8 +237,13 @@ def validate_archives():
         if any(name.lower().endswith("vbaproject.bin") for name in names):
             raise SystemExit("HOLD macro-enabled PPTX content is forbidden")
         slides = [name for name in names if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)]
-        if len(slides) != 12:
+        if len(slides) != 13:
             raise SystemExit("HOLD PPTX slide-count mismatch")
+        gif_members = [name for name in names if name.startswith("ppt/media/") and name.lower().endswith(".gif")]
+        if len(gif_members) != 1:
+            raise SystemExit("HOLD PPTX animated visualizer inventory mismatch")
+        if hashlib.sha256(archive.read(gif_members[0])).hexdigest() != VISUALIZER_SHA256:
+            raise SystemExit("HOLD PPTX animated visualizer SHA-256 mismatch")
 
 
 def validate_payload():
@@ -267,6 +273,9 @@ def validate_payload():
     require(ROOT / "DESIGN_MANIFEST.json")
     require(ROOT / "NOTICE.md")
     require(ROOT / "presentation" / "cluster2_digital_first_round_20260828.pptx")
+    visualizer = require(ROOT / "presentation" / "assets" / "cluster2_random_traffic_visualizer.gif")
+    if sha256(visualizer) != VISUALIZER_SHA256:
+        raise SystemExit("HOLD visualizer GIF SHA-256 mismatch")
 
     require_text(ROOT / "evidence" / "functional" / "polarity_v1_release_receipt.json", '"generated":8503')
     require_text(ROOT / "evidence" / "functional" / "polarity_v1_release_receipt.json", '"delivered":8503')

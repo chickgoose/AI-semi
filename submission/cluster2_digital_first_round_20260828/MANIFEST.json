@@ -1,6 +1,6 @@
 {
   "schema": "cluster2-digital-first-round-manifest-v1",
-  "file_count": 111,
+  "file_count": 112,
   "files": [
     {
       "path": "DESIGN_MANIFEST.json",
@@ -468,6 +468,11 @@
       "sha256": "bbffa2ea9d14e66c0c39d60cf569fd1929b53c3c1a85528dda9cface207b6645"
     },
     {
+      "path": "presentation/assets/cluster2_random_traffic_visualizer.gif",
+      "bytes": 14678772,
+      "sha256": "0a6c502387b2d504d5b7daf4a653d81ad1a4f69155f8b95cbc448ac0fb83136a"
+    },
+    {
       "path": "presentation/cluster2_cav_first_round_briefing.md",
       "bytes": 16785,
       "sha256": "7a816eb94a09cd190e98d4ce7ea44bb492659867691f53b3ef629078830cb382"
@@ -479,13 +484,13 @@
     },
     {
       "path": "presentation/cluster2_digital_first_round_20260828.pptx",
-      "bytes": 61287,
-      "sha256": "8507c3324df1feedd6943625887be44015491afb7bab723a492b5ffb78a672b9"
+      "bytes": 14744599,
+      "sha256": "323e24d0578601586cd025069ef01fcd0b406736dd8e7cd6f4743679340bb4fe"
     },
     {
       "path": "presentation/cluster2_digital_first_round_slides.md",
-      "bytes": 9928,
-      "sha256": "4a886db7a7ae436ed6767193c8bf9a98764b000335dc5958a7c7bf4c85c9fadd"
+      "bytes": 10556,
+      "sha256": "d6bfd75c29765390215b3736ccd50211bc51749755cb69360dd3d56199051105"
     },
     {
       "path": "presentation/ganghee_cluster2_ppa_diagnostic_handoff_20260824.md",
@@ -544,8 +549,8 @@
     },
     {
       "path": "tools/build_presentation.py",
-      "bytes": 25162,
-      "sha256": "3d1c70450e36a1ee426e315305902520efdf4ea0bebdd376cfdfb7d9534d2052"
+      "bytes": 26522,
+      "sha256": "b0afa6e143c154b777ea1c1517763453306e2fa605ae557523d629010023ddff"
     },
     {
       "path": "tools/requirements.txt",
@@ -554,8 +559,8 @@
     },
     {
       "path": "tools/verify_submission.py",
-      "bytes": 17408,
-      "sha256": "927db50c4c80c1a768608417ed0fe163b8ea884787552578b7febc0f126e23d3"
+      "bytes": 18108,
+      "sha256": "234f730afd20f18abe658820742a5a37d1be6f9d829cf9267aac566145a8c1c6"
     }
   ]
 }
