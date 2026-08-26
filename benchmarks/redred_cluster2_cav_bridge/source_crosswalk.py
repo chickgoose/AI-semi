@@ -16,7 +16,7 @@ import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Dict, Tuple
+from typing import BinaryIO, Dict, Optional, Tuple
 
 from benchmarks.redred_cluster2_cav_bridge.native_ledger import (
     NativeLedgerError,
@@ -249,17 +249,82 @@ def _open_regular(path: Path, where: str) -> Tuple[BinaryIO, os.stat_result]:
         raise SourceCrosswalkError("cannot open %s: %s" % (where, error)) from error
 
 
-def _stream_sha256(stream: BinaryIO, maximum_bytes: int, where: str) -> str:
+def _scan_authenticated_raw_stream(
+    stream: BinaryIO,
+) -> Tuple[
+    Dict[Tuple[int, int], Tuple[int, int, int, int]],
+    str,
+    Optional[SourceCrosswalkError],
+]:
+    """Hash and provisionally parse the same bounded chunk snapshots.
+
+    Semantic errors are deferred until the complete digest is available so a
+    caller-authority mismatch remains the primary failure, as it was in the
+    former hash-then-parse implementation.  No live descriptor is rewound.
+    """
+
     digest = hashlib.sha256()
-    total = 0
+    raw_by_slot = {}  # type: Dict[Tuple[int, int], Tuple[int, int, int, int]]
+    tail = b""
+    line_number = 0
+    total_bytes = 0
+    semantic_error = None  # type: Optional[SourceCrosswalkError]
+
     while True:
-        remaining = maximum_bytes + 1 - total
+        remaining = MAX_RAW_EVENTS_BYTES + 1 - total_bytes
         chunk = stream.read(min(1024 * 1024, remaining))
         if not chunk:
-            return digest.hexdigest()
-        total += len(chunk)
-        _check_byte_count(total, maximum_bytes, where)
+            break
+        total_bytes += len(chunk)
+        _check_byte_count(total_bytes, MAX_RAW_EVENTS_BYTES, "raw events")
         digest.update(chunk)
+
+        if semantic_error is not None:
+            continue
+        payload = tail + chunk
+        parts = payload.split(b"\n")
+        tail = parts.pop()
+        lines = [part + b"\n" for part in parts]
+
+        try:
+            for raw in lines:
+                line_number += 1
+                timestamp_ns, x, y, polarity, occurrence_cycle = _parse_raw_line(
+                    raw, line_number
+                )
+                if not (
+                    PATCH_X_MIN <= x <= PATCH_X_MAX
+                    and PATCH_Y_MIN <= y <= PATCH_Y_MAX
+                ):
+                    continue
+                source_index = (y - PATCH_Y_MIN) * 4 + (x - PATCH_X_MIN)
+                slot = (occurrence_cycle, source_index)
+                if slot in raw_by_slot:
+                    raise SourceCrosswalkError(
+                        "raw events collide at cycle %d source %d" % slot
+                    )
+                if len(raw_by_slot) >= MAX_PATCH_SLOTS:
+                    raise SourceCrosswalkError("raw patch slot count exceeds limit")
+                raw_by_slot[slot] = (timestamp_ns, x, y, polarity)
+            if len(tail) > _MAX_RAW_LINE_BYTES:
+                raise SourceCrosswalkError(
+                    "raw event line %d exceeds byte limit" % (line_number + 1)
+                )
+        except SourceCrosswalkError as error:
+            semantic_error = error
+            tail = b""
+
+    if semantic_error is None:
+        try:
+            if tail:
+                line_number += 1
+                _parse_raw_line(tail, line_number)
+            if line_number == 0:
+                raise SourceCrosswalkError("raw events payload is empty")
+        except SourceCrosswalkError as error:
+            semantic_error = error
+
+    return raw_by_slot, digest.hexdigest(), semantic_error
 
 
 def _derive_source_crosswalk_files(
@@ -301,15 +366,15 @@ def _derive_source_crosswalk_files(
         _check_byte_count(raw_before.st_size, MAX_RAW_EVENTS_BYTES, "raw events")
         if expected_raw_size >= 0 and raw_before.st_size != expected_raw_size:
             raise SourceCrosswalkError("raw events size differs from pinned official size")
-        actual_raw_sha256 = _stream_sha256(
-            raw_stream, MAX_RAW_EVENTS_BYTES, "raw events"
+        raw_by_slot, actual_raw_sha256, raw_semantic_error = (
+            _scan_authenticated_raw_stream(raw_stream)
         )
         if not hmac.compare_digest(actual_raw_sha256, expected_raw_sha256):
             raise SourceCrosswalkError(
                 "raw events bytes differ from accepted SHA-256 authority"
             )
-        raw_stream.seek(0)
-        raw_by_slot = _read_raw_stream(raw_stream)
+        if raw_semantic_error is not None:
+            raise raw_semantic_error
         raw_after = os.fstat(raw_stream.fileno())
     finally:
         raw_stream.close()

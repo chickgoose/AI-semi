@@ -539,7 +539,7 @@ supervisor만 통합과 최종 판단을 해. 21-pane 레이아웃은 과거 기
 - retire latency histogram: 1 cycle 6,393; 2 cycles 2,077; 3 cycles 33
 - software grid: 8,420 quantized events, 821 unique cells
 - result seal:
-  `caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309`
+  `b967c0bde609a5660abded586832355c214c907a3dd69b036d20f01fdb0ea123`
 
 네 시간축을 혼용하지 않는다.
 
@@ -589,9 +589,11 @@ PPA로 합치지 않는다.
   중심은 pinned `cluster2_steal_buf`이고 software CAV/world는 보조 feasibility다.
   우선 team status, briefing, evidence matrix를 읽고 사용자가 지정하는 다음
   발표 작업을 수행한다.
-- pinned 원본 `cluster2_steal_buf`에는 Genus mapped screening만 release 후보로
-  검토할 수 있고, 별도 polarity-extended top의 Innovus 관측치를 원본에 귀속하지
-  않는다. Native PPA release authority와 CAV/world RTL·PPA는 계속 HOLD다.
+- pinned 원본 `cluster2_steal_buf`와 별도 polarity-extended top의 관측치를
+  서로 귀속하지 않는다. 2026-08-26 제출 패키지는 polarity top의
+  `9b0d951...` raw PPA bundle과 SHA-256 manifest를 봉인했으므로 README에 적힌
+  제한된 3.5 ns 관측값은 제출 가능하다. Exact Fmax, workload power, foundry
+  signoff, 원본 non-polarity top 및 CAV/world RTL·PPA는 계속 HOLD다.
 - 종료 당시 tmux `ai-semi:3` agents window는 a2~a9 여덟 pane의 4-column ×
   2-row layout이었다. 전원 종료 후에는 session 자체가 사라지므로
   `scripts/bootstrap_codex_team_tmux.sh ai-semi --launch-workers`로 재생성하고

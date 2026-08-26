@@ -454,8 +454,8 @@
     },
     {
       "path": "presentation/cluster2_cav_first_round_briefing.md",
-      "bytes": 15278,
-      "sha256": "159b9bb723333a2d486d06347bb730b24032a8543b7ee7ef75ae8cbc77f666e7"
+      "bytes": 15507,
+      "sha256": "68155cb204506bd445cfed0fd97f56b8fccb9ee15c14bd2ab49454de86bd7899"
     },
     {
       "path": "presentation/cluster2_cav_polarity_v1_integration_evidence_matrix_20260826.md",
@@ -474,8 +474,8 @@
     },
     {
       "path": "presentation/ganghee_cluster2_ppa_diagnostic_handoff_20260824.md",
-      "bytes": 6959,
-      "sha256": "8e9aeaf99789275aee5272345077bf30ff5aed98cb1a488e21c5f92cf4a44170"
+      "bytes": 7316,
+      "sha256": "8991365bb242ca5676ca2e5f3612ca9b4259a615bbb51c08603ee8c1e97ec4f1"
     },
     {
       "path": "source/rtl/aer_tx16_trad_rowcol_fovea_cluster2_steal_buf_polarity.v",

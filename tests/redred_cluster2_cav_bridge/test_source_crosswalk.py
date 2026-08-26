@@ -200,13 +200,13 @@ class SourceCrosswalkTests(unittest.TestCase):
             with mock.patch.object(
                 crosswalk_module, "MAX_RAW_EVENTS_BYTES", len(raw) - 1
             ), mock.patch.object(
-                crosswalk_module, "_stream_sha256"
-            ) as stream_sha256:
+                crosswalk_module, "_scan_authenticated_raw_stream"
+            ) as raw_scanner:
                 with self.assertRaisesRegex(SourceCrosswalkError, "raw events exceeds"):
                     derive_source_crosswalk_files(
                         raw_path, cyclemask_path, digest(raw), digest(cyclemask)
                     )
-                stream_sha256.assert_not_called()
+                raw_scanner.assert_not_called()
 
             with mock.patch.object(
                 crosswalk_module, "MAX_CYCLEMASK_BYTES", len(cyclemask) - 1
@@ -230,7 +230,7 @@ class SourceCrosswalkTests(unittest.TestCase):
             ):
                 crosswalk(one_raw_slot, cyclemask)
 
-    def test_raw_mutation_between_hash_and_parse_fails_closed(self):
+    def test_same_size_raw_overwrite_cannot_substitute_parsed_bytes(self):
         raw = b"1.000000001 110 85 0\n"
         mutated = b"1.000000001 110 85 1\n"
         cyclemask = b"1000 0001\n"
@@ -241,22 +241,47 @@ class SourceCrosswalkTests(unittest.TestCase):
             raw_path.write_bytes(raw)
             cyclemask_path.write_bytes(cyclemask)
 
-            def mutate_after_authority_read(stream, maximum_bytes, where):
-                self.assertEqual(where, "raw events")
-                raw_path.write_bytes(mutated)
-                return digest(raw)
+            real_open_regular = crosswalk_module._open_regular
+            mutation = {"performed": False}
+
+            class MutatingRawStream:
+                def __init__(self, stream):
+                    self.stream = stream
+
+                def read(self, maximum=-1):
+                    payload = self.stream.read(maximum)
+                    if payload and not mutation["performed"]:
+                        raw_path.write_bytes(mutated)
+                        mutation["performed"] = True
+                    return payload
+
+                def fileno(self):
+                    return self.stream.fileno()
+
+                def close(self):
+                    self.stream.close()
+
+            def open_then_overwrite(path, where):
+                stream, identity = real_open_regular(path, where)
+                if where == "raw events":
+                    stream = MutatingRawStream(stream)
+                return stream, identity
+
+            def stable_identity(value):
+                return (value.st_dev, value.st_ino, value.st_mode, value.st_size)
 
             with mock.patch.object(
-                crosswalk_module,
-                "_stream_sha256",
-                side_effect=mutate_after_authority_read,
+                crosswalk_module, "_open_regular", side_effect=open_then_overwrite
+            ), mock.patch.object(
+                crosswalk_module, "_file_identity", side_effect=stable_identity
             ):
-                with self.assertRaisesRegex(SourceCrosswalkError, "changed during read"):
-                    derive_source_crosswalk_files(
-                        raw_path, cyclemask_path, digest(raw), digest(cyclemask)
-                    )
+                rows = derive_source_crosswalk_files(
+                    raw_path, cyclemask_path, digest(raw), digest(cyclemask)
+                )
+            self.assertTrue(mutation["performed"])
+            self.assertEqual(rows[0].polarity, 0)
 
-    def test_cyclemask_mutation_during_bounded_read_fails_closed(self):
+    def test_cyclemask_uses_its_authenticated_captured_payload(self):
         raw = b"1.000000001 110 85 0\n"
         cyclemask = b"1000 0001\n"
         mutated = b"1000 0002\n"
@@ -291,11 +316,66 @@ class SourceCrosswalkTests(unittest.TestCase):
 
             with mock.patch.object(
                 crosswalk_module, "_open_regular", side_effect=open_then_mutate
+            ), mock.patch.object(
+                crosswalk_module,
+                "_file_identity",
+                side_effect=lambda value: (
+                    value.st_dev,
+                    value.st_ino,
+                    value.st_mode,
+                    value.st_size,
+                ),
             ):
-                with self.assertRaisesRegex(SourceCrosswalkError, "changed during read"):
-                    derive_source_crosswalk_files(
-                        raw_path, cyclemask_path, digest(raw), digest(cyclemask)
-                    )
+                rows = derive_source_crosswalk_files(
+                    raw_path, cyclemask_path, digest(raw), digest(cyclemask)
+                )
+            self.assertEqual(
+                [(row.source_index, row.occurrence_cycle) for row in rows],
+                [(0, 1000)],
+            )
+
+    def test_file_api_preserves_authority_before_raw_syntax_errors(self):
+        malformed = b"1.0 110 85 0\n"
+        cyclemask = b"1000 0001\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw_path = root / "events.txt"
+            mask_path = root / "trace.cyclemask"
+            raw_path.write_bytes(malformed)
+            mask_path.write_bytes(cyclemask)
+            with self.assertRaisesRegex(SourceCrosswalkError, "accepted SHA-256"):
+                derive_source_crosswalk_files(
+                    raw_path, mask_path, "0" * 64, digest(cyclemask)
+                )
+            with self.assertRaisesRegex(SourceCrosswalkError, "not canonical"):
+                derive_source_crosswalk_files(
+                    raw_path, mask_path, digest(malformed), digest(cyclemask)
+                )
+
+    def test_authenticated_raw_scanner_is_single_pass_and_chunk_bounded(self):
+        raw = b"1.000000001 110 85 0\n1.001000001 111 85 1\n"
+
+        class NoSeekShortReads:
+            def __init__(self, payload):
+                self.payload = payload
+                self.offset = 0
+                self.read_sizes = []
+
+            def read(self, maximum):
+                self.read_sizes.append(maximum)
+                chunk = self.payload[self.offset:self.offset + 7]
+                self.offset += len(chunk)
+                return chunk
+
+            def seek(self, *args):
+                raise AssertionError("scanner must not seek")
+
+        stream = NoSeekShortReads(raw)
+        slots, actual, error = crosswalk_module._scan_authenticated_raw_stream(stream)
+        self.assertIsNone(error)
+        self.assertEqual(actual, digest(raw))
+        self.assertEqual(len(slots), 2)
+        self.assertTrue(all(size <= 1024 * 1024 for size in stream.read_sizes))
 
     def test_streaming_file_api_uses_the_same_caller_bound_contract(self):
         raw = b"1.000000001 110 85 0\n1.001000001 113 88 1\n"

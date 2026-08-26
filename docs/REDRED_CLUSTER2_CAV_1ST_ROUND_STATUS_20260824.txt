@@ -124,9 +124,9 @@ software world grid:
   world grid
     f5cb124031b2a343b55a85f92902bd8b764bc865298d9de58ee86f60e49048e0
   official result seal
-    caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309
+    b967c0bde609a5660abded586832355c214c907a3dd69b036d20f01fdb0ea123
   scoped local replay receipt seal
-    9ac2e279f1a0010db1391cc084262eb12b15c63ef9d61e970f4e1571cbe7f623
+    f7cfd24a05e664e36a99b06ab48fd193a7ff811f078cfbcb7e10c37c598b7a3e
 
 
 4. occurrence와 retire를 구분한 이유
@@ -171,9 +171,11 @@ HOLD:
 
 강희 native AER의 기존 PPA/P&R 자료는 이 공식 software-CAV result의
 authority에 포함되지 않는다. 현재 브랜치에서 CAV PPA는 HOLD이며, 별도
-native PPA/P&R 수치를 쓰려면 강희가 원본 report 상대경로, RTL hash,
-corner/constraint, vectorless 또는 VCD 조건과 signoff 한계를 함께 제시해야
-한다. 별도 native 자료를 software CAV의 PPA로 합쳐 말하면 안 된다.
+polarity-top PPA/P&R 자료는 2026-08-26 제출 패키지의 `upstream_9b0d951`
+report bundle, provenance, 전체 SHA-256 manifest로 봉인됐다. 따라서 패키지
+README의 3.5 ns clean-point 수치는 제한된 제출 관측값으로 사용할 수 있다.
+exact Fmax, workload power, foundry signoff, 원본 non-polarity top 및 CAV/world
+RTL PPA는 HOLD이며, 별도 native 자료를 software CAV PPA로 합쳐 말하면 안 된다.
 
 
 6. 팀원이 먼저 볼 파일

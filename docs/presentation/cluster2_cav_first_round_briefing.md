@@ -124,9 +124,9 @@ lane/row/column은 sealed evidence에만 남고 public functional sidecar가
 | geometry | `3f6b09f3208582907b588ad679bd60871c694ec31eff46423b0240ceb2f15747` |
 | retire sidecar | `c29d9b980674da62d48e3a4cb0dc26618d08a3658997a7a5e90eb15ef81b6897` |
 | world grid | `f5cb124031b2a343b55a85f92902bd8b764bc865298d9de58ee86f60e49048e0` |
-| official result seal | `caf75dc9add39273ba410521a8aaff6dfec4ec5eb7a290d55581b81d58374309` |
-| scoped replay receipt file | `e2dd7854d5ed1e2d1428426cdd983c4c7c04f796702d1d305a401efe23050b56` |
-| scoped replay receipt seal | `9ac2e279f1a0010db1391cc084262eb12b15c63ef9d61e970f4e1571cbe7f623` |
+| official result seal | `b967c0bde609a5660abded586832355c214c907a3dd69b036d20f01fdb0ea123` |
+| scoped replay receipt file | `2b64c3ea333ba60e11444a682064dba4b9b9017779393d5a9a0387a0d607cd3b` |
+| scoped replay receipt seal | `f7cfd24a05e664e36a99b06ab48fd193a7ff811f078cfbcb7e10c37c598b7a3e` |
 
 공식 외부 source와 accepted LF cyclemask를 사용한 exact golden replay도
 재실행해 sanitized log와 canonical receipt로 봉인했다. 이 판정은
@@ -188,13 +188,16 @@ result authority에 포함되지 않는다. 수치를 쓸 경우에는 원본 re
 | 대상 | 현재 말할 수 있는 범위 | 현재 HOLD |
 | --- | --- | --- |
 | pinned 원본 `cluster2_steal_buf` | 2.0 ns Genus mapped screening: area 700.074, setup +0.224 ns, vectorless 0.127932 mW | 원본 Innovus P&R, exact Fmax, activity power |
-| 별도 polarity-extended top | 3.5 ns server-local Innovus observation: area 1254.114, setup/hold +0.454/+0.167 ns, vectorless 0.10738887 mW, internal DRC/antenna 0 | 원본 top으로의 귀속, release authority, signoff 확대 |
+| 별도 polarity-extended top | 제출 패키지에 봉인된 3.5 ns Innovus observation: area 1254.114, setup/hold +0.454/+0.167 ns, vectorless 0.10738887 mW, internal DRC/antenna 0 | 원본 top으로의 귀속, exact Fmax, workload power, signoff 확대 |
 
 polarity-extended top은 source별 2-slot polarity FIFO와 polarity I/O를 추가한
 다른 RTL이며 pinned 원본과 같은 후보로 합치면 안 된다. 두 자료의 조건,
 상대경로, SHA와 금지 주장은
 [PPA diagnostic handoff](ganghee_cluster2_ppa_diagnostic_handoff_20260824.md)에
-분리했다. 공개 report bundle이 봉인되기 전 native PPA의 release 판정은 HOLD다.
+분리했다. 현재 `submission/cluster2_digital_first_round_20260828/evidence/ppa/`
+아래에 `9b0d951...` 원본 report bundle과 전체 SHA-256 manifest가 봉인되어
+있으므로 polarity top의 위 제한된 관측값은 제출할 수 있다. 다만 exact Fmax,
+VCD/SAIF workload power, foundry signoff와 CAV/world RTL PPA는 계속 HOLD다.
 
 ## 6. 발표 역할 분담
 

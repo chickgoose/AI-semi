@@ -1,7 +1,13 @@
 # Ganghee Cluster2 PPA 진단 인수인계
 
 기준일: 2026-08-24  
-판정: **서버 관측 screening 자료; release-bound native PPA authority는 HOLD**
+판정(2026-08-24 당시): **서버 관측 screening 자료; release-bound native PPA authority는 HOLD**
+
+2026-08-26 갱신: polarity top의 `9b0d951...` raw Genus/Innovus bundle은
+`submission/cluster2_digital_first_round_20260828/`의 provenance와 전체 파일
+manifest에 봉인됐다. 따라서 패키지 README의 제한된 3.5 ns 관측값은 제출
+가능하다. exact Fmax, workload power, foundry signoff, 원본 non-polarity top과
+CAV/world RTL PPA는 여전히 HOLD다.
 
 이 문서는 현수가 1차 발표용 물리 증거를 패키징할 때 원본 top과 확장 top을
 혼동하지 않도록 현재 서버 자료를 분리한 인수인계다. 아래 report 자체는 아직
