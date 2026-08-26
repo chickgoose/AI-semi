@@ -1,82 +1,101 @@
-# Cluster2 Steal-Buffer Polarity AER
+# Cluster2 Polarity AER
 
 디지털 1차 설계 결과 · 2026-08-28
 
-## 1. AER 손실을 24.42배 줄인 구조
+최종 top: `aer_tx16_trad_rowcol_fovea_cluster2_steal_buf_polarity`
 
-- 기본 Cluster2: 11.52% loss
-- conditional steal + source별 depth-2 FIFO
-- Cluster2 steal_buf: 0.47% loss
-- 공식 50-workload 동일 106,416-event 기준
+---
 
-## 2. Ryu의 전통 AER 6문제에 대한 대응
+## 1. 제출 범위와 결론
 
-1. 주소 오버헤드: 부분 대응, row bitmap; 2차 repeat-flag 후보
-2. 공유채널 대역폭: N=16에서 두 lane, 최대 8 events/cycle
-3. 중재 지연: row batching과 병렬 retire로 감소
-4. 중재 불공정: 분리 arbiter와 conditional steal로 감소
-5. timestamp 왜곡: 고부하 해법 미완료, HOLD
-6. motion artifact: 같은 row/다른 lane 동시성은 보존, 고부하 HOLD
+- RTL, functional verification, synthesis, timing sweep, area, power, 동작 주파수
+- 3.5 ns / 285.714 MHz에서 post-route setup·hold 통과
+- functional replay: generated=delivered=8,503
+- polarity를 포함한 최종 RTL과 PPA top을 일치시킴
+- exact Fmax와 workload-activity power는 후속 범위
 
-## 3. 기본 Cluster2와 steal_buf
+---
 
-- 기본 Cluster2는 source당 pending 1개여서 빠른 재발화가 overrun으로 이어짐
-- steal_buf는 source별 depth-2 FIFO로 두 번째 event를 흡수
-- idle lane을 반대 class가 조건부로 빌려 traffic imbalance를 완화
-- 12,259 loss → 502 loss
+## 2. 설계 구조
 
-## 4. 최종 RTL 구조
+- 16개 event source
+- source별 depth-2 event/polarity storage
+- 중심/주변 두 개의 row-bitmap retire lane
+- cycle당 최대 8 event 표현
+- polarity는 선택된 `col_mask` bit에 대응하는 `pol_mask`로 전달
 
-- 16 source × depth-2 event/polarity FIFO
-- center/peripheral row-bitmap retire lane 두 개
-- cycle당 최대 8 events
-- 출력: `row + col_mask[3:0] + pol_mask[3:0]`
+---
 
-## 5. 병목별 RTL 메커니즘
+## 3. RTL 및 기능 검증
 
-- 직렬화 → two row-bitmap lanes
-- source 재발화 → depth-2/source
-- class 쏠림 → conditional lane steal
-- 주소/polarity 분리 → lockstep polarity FIFO
+- Xcelium 23.09-s013
+- generated 8,503 / delivered 8,503 / overrun 0
+- phantom 0 / duplicate 0 / drain-empty true
+- raw trace와 cycle ledger를 독립 verifier로 보존성 재검증
+- event identity는 TB sidecar이며 DUT payload가 아님
 
-## 6. 공식 50-workload 정량 비교
+---
 
-| 구조 | 손실률 | 손실 건수 |
-| --- | ---: | ---: |
-| Fovea | 26.49% | 28,187 |
-| Cluster2 | 11.52% | 12,259 |
-| Cluster2 + steal | 10.89% | 11,593 |
-| Cluster2 + steal_buf | 0.47% | 502 |
+## 4. 합성 조건
 
-Cluster2 대비 손실 건수 24.42배 감소, 상대 감소율 95.9%.
-
-## 7. 실제 시뮬레이터와 TB
-
-- Simulator: Xcelium 23.09-s013
-- full50 비교: `tb_steal_buf_trace_phantom_debug.v`, 50/50 PASS
-- 최종 polarity: `redred_cluster2_polarity_v1_native_observational_tb.sv`
-- trace → source FIFO → arbiter/steal → row/col/pol retire → raw cycle ledger
-- Python 독립 verifier: generated 8,503 = delivered 8,503 + overrun 0
-- phantom/duplicate/polarity mismatch 0, drain empty
-
-## 8. 물리 구현
-
+- Genus 23.14-s090_1
 - GPDK045 slow, 0.9 V, 125 °C
-- 3.5 ns / 285.714 MHz setup +0.454 ns, hold +0.167 ns
-- P&R area raw 1254.114, 596 instances
-- vectorless power 0.10738887 mW
-- 3.0 ns / 333.333 MHz setup −0.004 ns
+- clock uncertainty 0.100 ns
+- input/output delay 0.250 ns, output load 0.010
+- 3.5 ns mapped area 1156.644 / 544 cells
+- Genus vectorless power 0.0505898 mW
 
-## 9. CAV 확장성
+---
 
-- legacy address-only track: 8,503/8,503 exact join
-- WORLD 8,420, SENSOR_FIXED 83
-- 512×256 grid의 821 cells
-- polarity full replay, CAV RTL과 CAV PPA는 HOLD
+## 5. Timing 최적화 sweep
 
-## 10. 2차 확장 계획
+| Period | Frequency | Setup | Hold | 판정 |
+| ---: | ---: | ---: | ---: | --- |
+| 4.5 ns | 222.222 MHz | +1.349 ns | +0.166 ns | PASS |
+| 4.0 ns | 250.000 MHz | +0.849 ns | +0.166 ns | PASS |
+| 3.5 ns | 285.714 MHz | +0.454 ns | +0.167 ns | PASS |
+| 3.0 ns | 333.333 MHz | -0.004 ns | +0.169 ns | FAIL |
 
-- steal_buf + repeat-flag: 검증 후보 link bits −15.61%
-- polarity→CAV full replay와 wire-complete RTL
-- timestamp jitter 해법, VCD/SAIF power, exact Fmax
-- row-trim −14.29%는 기본 Cluster2 전용이며 steal_buf에는 적용 불가
+검증 동작점은 285.714 MHz이며 exact Fmax는 미확정이다.
+
+---
+
+## 6. Post-route area와 layout
+
+- 3.5 ns: 596 instances, area raw 1254.114
+- 3.0 ns: 599 instances, area raw 1261.980
+- target utilization 0.5, aspect ratio 1.0
+- internal DRC 0, antenna 0
+- area report에 물리 단위가 명시되지 않아 `area raw`로 표기
+
+---
+
+## 7. Power
+
+- 3.5 ns post-route total: 0.10738887 mW
+- internal 0.07647953 mW
+- switching 0.03088277 mW
+- leakage 0.00002657 mW
+- sequential/primary-input activity 0.2의 vectorless estimate
+- VCD/SAIF workload power 또는 energy/event가 아님
+
+---
+
+## 8. 근거 한계
+
+- timing: slow view 하나, Non-OCV, SI off
+- check_timing: ideal-clock warning 1, no-drive warning 34
+- power: activity file 없음
+- report header: No SPEF/RCDB
+- Innovus `write_db` 종료 오류가 있으나 앞선 reports/GDS는 생성됨
+- foundry signoff, LVS/ERC/IR/EM, silicon measurement를 주장하지 않음
+
+---
+
+## 9. 최종 결론
+
+- polarity 포함 RTL 기능 검증 완료
+- 285.714 MHz clean operating point 확보
+- synthesis/P&R area·timing·power 원본 report 봉인
+- 333.333 MHz에서 첫 setup fail 관측
+- 제출 가능한 1차 디지털 결과이며 exact Fmax와 activity-based power는 후속 과제
