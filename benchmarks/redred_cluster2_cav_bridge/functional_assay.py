@@ -3,8 +3,7 @@
 The core accepts already validated in-memory objects.  It performs no file,
 path, receipt, scorer, or label I/O.  Original UZH timestamps drive the CAV
 geometry path; native occurrence and retirement cycles remain an observational
-2 ns transport sidecar and can never replace a geometry timestamp.  A separate
-v2 adapter adds hardware-observed polarity without changing the legacy path.
+2 ns transport sidecar and can never replace a geometry timestamp.
 """
 
 from __future__ import annotations
@@ -62,10 +61,6 @@ GRID_WIDTH = 512
 GRID_HEIGHT = 256
 NATIVE_CLOCK_PERIOD_PS = 2_000
 LATENCY_SIDECAR_ONLY = "LATENCY_SIDECAR_ONLY"
-HARDWARE_CARRIED_POLARITY = "HARDWARE_CARRIED_POLARITY"
-TRANSPORT_OUTCOME_POLARITY_SCHEMA = (
-    "redred.cluster2_cav_bridge.transport_outcome/v2"
-)
 SIDECAR_ORDER = ("retire_cycle", "event_id")
 
 RAW_CAV_VIEW = "RAW-CAV"
@@ -83,16 +78,6 @@ _GEOMETRY_FIELDS = frozenset((
 ))
 _RETIRE_FIELDS = frozenset((
     "event_id", "source_index", "native_occurrence_cycle", "dual_time",
-))
-_POLARITY_OUTCOME_FIELDS = frozenset((
-    "schema", "event_id", "source", "occurrence_cycle", "retire_cycle",
-    "latency", "retire_polarity",
-))
-_POLARITY_OBSERVATION_FIELDS = frozenset((
-    "event_id", "hardware_observed_polarity", "semantics_label",
-))
-_POLARITY_RESULT_FIELDS = frozenset((
-    "functional_result", "hardware_polarity_sidecar",
 ))
 _VIEW_FIELDS = frozenset((
     "view_name", "geometry", "geometry_sha256", "transport_sidecar",
@@ -313,95 +298,6 @@ class FunctionalRetireObservation:
     @property
     def latency_injected_timestamp_ns(self) -> int:
         return self.dual_time.latency_injected_timestamp_ns
-
-
-@dataclass(frozen=True)
-class HardwarePolarityOutcomeV2:
-    """Versioned functional adapter for a delivered transport_outcome/v2 row."""
-
-    schema: str
-    event_id: int
-    source: int
-    occurrence_cycle: int
-    retire_cycle: int
-    latency: int
-    retire_polarity: int
-
-    def __post_init__(self) -> None:
-        _exact_fields(
-            self,
-            HardwarePolarityOutcomeV2,
-            _POLARITY_OUTCOME_FIELDS,
-            "hardware polarity outcome",
-        )
-        if (
-            type(self.schema) is not str
-            or self.schema != TRANSPORT_OUTCOME_POLARITY_SCHEMA
-        ):
-            _fail("hardware polarity outcome schema differs from transport_outcome/v2")
-        for name in (
-            "event_id", "source", "occurrence_cycle", "retire_cycle",
-            "latency", "retire_polarity",
-        ):
-            _nonnegative_int(
-                getattr(self, name), "hardware polarity outcome %s" % name
-            )
-        if self.source > 15:
-            _fail("hardware polarity outcome source exceeds 15")
-        if self.retire_cycle <= self.occurrence_cycle:
-            _fail("hardware polarity outcome retirement must follow occurrence")
-        if self.latency != self.retire_cycle - self.occurrence_cycle:
-            _fail("hardware polarity outcome latency differs from retire-occurrence")
-        if self.retire_polarity > 1:
-            _fail("hardware polarity outcome retire_polarity must be 0 or 1")
-
-    @property
-    def source_index(self) -> int:
-        return self.source
-
-    @property
-    def latency_cycles(self) -> int:
-        return self.latency
-
-    def legacy_outcome(self) -> NativeOutcome:
-        """Project only v1 fields; polarity is never synthesized on this path."""
-
-        return NativeOutcome(
-            self.event_id,
-            self.source,
-            self.occurrence_cycle,
-            self.retire_cycle,
-            self.latency,
-        )
-
-
-@dataclass(frozen=True)
-class HardwarePolarityObservation:
-    """One checked hardware-carried polarity result."""
-
-    event_id: int
-    hardware_observed_polarity: int
-    semantics_label: str
-
-    def __post_init__(self) -> None:
-        _exact_fields(
-            self,
-            HardwarePolarityObservation,
-            _POLARITY_OBSERVATION_FIELDS,
-            "hardware polarity observation",
-        )
-        _nonnegative_int(self.event_id, "hardware polarity event_id")
-        polarity = _nonnegative_int(
-            self.hardware_observed_polarity,
-            "hardware-observed polarity",
-        )
-        if polarity > 1:
-            _fail("hardware-observed polarity must be 0 or 1")
-        if (
-            type(self.semantics_label) is not str
-            or self.semantics_label != HARDWARE_CARRIED_POLARITY
-        ):
-            _fail("hardware polarity semantics differ")
 
 
 @dataclass(frozen=True)
@@ -766,57 +662,6 @@ class FunctionalAssayResult:
 
 
 @dataclass(frozen=True)
-class HardwarePolarityAssayResult:
-    """Legacy functional result plus separately proven v2 hardware polarity."""
-
-    functional_result: FunctionalAssayResult
-    hardware_polarity_sidecar: Tuple[HardwarePolarityObservation, ...]
-
-    def __post_init__(self) -> None:
-        _exact_fields(
-            self,
-            HardwarePolarityAssayResult,
-            _POLARITY_RESULT_FIELDS,
-            "hardware polarity assay result",
-        )
-        if type(self.functional_result) is not FunctionalAssayResult:
-            _fail("hardware polarity result has an invalid functional result")
-        FunctionalAssayResult(**vars(self.functional_result))
-        if (
-            type(self.hardware_polarity_sidecar) is not tuple
-            or any(
-                type(row) is not HardwarePolarityObservation
-                for row in self.hardware_polarity_sidecar
-            )
-        ):
-            _fail("hardware polarity sidecar must be an exact observation tuple")
-        for row in self.hardware_polarity_sidecar:
-            HardwarePolarityObservation(**vars(row))
-        expected_ids = tuple(
-            row.event_id for row in self.functional_result.retire_sidecar
-        )
-        actual_ids = tuple(row.event_id for row in self.hardware_polarity_sidecar)
-        if actual_ids != expected_ids:
-            _fail("hardware polarity sidecar order/population differs from retirement")
-
-    @property
-    def geometry(self) -> Tuple[FunctionalGeometryRecord, ...]:
-        return self.functional_result.geometry
-
-    @property
-    def retire_sidecar(self) -> Tuple[FunctionalRetireObservation, ...]:
-        return self.functional_result.retire_sidecar
-
-    @property
-    def statistics(self) -> FunctionalAssayStatistics:
-        return self.functional_result.statistics
-
-    @property
-    def views(self) -> Tuple[FunctionalAssayView, ...]:
-        return self.functional_result.views
-
-
-@dataclass(frozen=True)
 class _ReplayEvent:
     event_id: int
     timestamp_ns: int
@@ -948,8 +793,8 @@ def _exact_join(
 
     outcome_by_id = {}  # type: Dict[int, NativeOutcome]
     for row in outcomes:
-        # This exact public adapter input intentionally excludes sealed RTL
-        # retire lane/row/column.  Do not infer those coordinates here.
+        # This exact public schema intentionally excludes sealed RTL retire
+        # lane/row/column.  Do not infer those coordinates in this assay.
         if frozenset(vars(row)) != frozenset((
             "event_id", "source", "occurrence_cycle", "retire_cycle", "latency"
         )):
@@ -1334,54 +1179,6 @@ def run_functional_assay(
         ) from error
 
 
-def run_hardware_polarity_functional_assay(
-    source: FunctionalSourceBundle,
-    hardware_outcomes: Sequence[HardwarePolarityOutcomeV2],
-) -> HardwarePolarityAssayResult:
-    """Run the assay with explicit transport_outcome/v2 polarity evidence.
-
-    The v2 population is validated and compared with source polarity before
-    the legacy assay can enter geometry.  Geometry and latency remain the
-    unchanged v1 result; the additional sidecar is populated only from the
-    hardware ``retire_polarity`` field.
-    """
-
-    if (
-        type(hardware_outcomes) is not tuple
-        or len(hardware_outcomes) != EXPECTED_EVENT_COUNT
-    ):
-        _fail(
-            "hardware polarity outcomes must be the exact %d-row tuple"
-            % EXPECTED_EVENT_COUNT
-        )
-    if any(type(row) is not HardwarePolarityOutcomeV2 for row in hardware_outcomes):
-        _fail("hardware polarity outcomes contain an invalid adapter type")
-    for row in hardware_outcomes:
-        HardwarePolarityOutcomeV2(**vars(row))
-    if tuple(row.event_id for row in hardware_outcomes) != tuple(
-        range(EXPECTED_EVENT_COUNT)
-    ):
-        _fail("hardware polarity outcome IDs/order are not exactly contiguous")
-
-    legacy_outcomes = tuple(row.legacy_outcome() for row in hardware_outcomes)
-    checked_source, _ = _exact_join(source, legacy_outcomes)
-    by_id = dict((row.event_id, row) for row in hardware_outcomes)
-    for event in checked_source.events:
-        if event.polarity != by_id[event.event_id].retire_polarity:
-            _fail("hardware-observed polarity differs from source polarity")
-
-    functional_result = run_functional_assay(checked_source, legacy_outcomes)
-    hardware_sidecar = tuple(
-        HardwarePolarityObservation(
-            row.event_id,
-            by_id[row.event_id].retire_polarity,
-            HARDWARE_CARRIED_POLARITY,
-        )
-        for row in functional_result.retire_sidecar
-    )
-    return HardwarePolarityAssayResult(functional_result, hardware_sidecar)
-
-
 def _canonical_result_sha256(result: FunctionalAssayResult) -> str:
     """Bind exact binary64 rows, metadata, and statistics for replay compare."""
 
@@ -1423,22 +1220,6 @@ def validate_functional_assay_result(
     return result
 
 
-def validate_hardware_polarity_assay_result(
-    result: HardwarePolarityAssayResult,
-    source: FunctionalSourceBundle,
-    hardware_outcomes: Sequence[HardwarePolarityOutcomeV2],
-) -> HardwarePolarityAssayResult:
-    """Bind a polarity result to an exact replay of its v2 adapter inputs."""
-
-    if type(result) is not HardwarePolarityAssayResult:
-        _fail("polarity result must be an exact HardwarePolarityAssayResult")
-    HardwarePolarityAssayResult(**vars(result))
-    expected = run_hardware_polarity_functional_assay(source, hardware_outcomes)
-    if result != expected:
-        _fail("hardware polarity assay result differs from exact input replay")
-    return result
-
-
 __all__ = (
     "AER_OCC_CAV_VIEW",
     "AER_RET_CAV_VIEW",
@@ -1455,20 +1236,13 @@ __all__ = (
     "FunctionalRetireObservation",
     "GRID_HEIGHT",
     "GRID_WIDTH",
-    "HARDWARE_CARRIED_POLARITY",
-    "HardwarePolarityAssayResult",
-    "HardwarePolarityObservation",
-    "HardwarePolarityOutcomeV2",
     "LATENCY_SIDECAR_ONLY",
     "NATIVE_CLOCK_PERIOD_PS",
     "RAW_CAV_VIEW",
     "SENSOR_FIXED_FRAME",
     "SIDECAR_ORDER",
-    "TRANSPORT_OUTCOME_POLARITY_SCHEMA",
     "VIEW_ORDER",
     "WORLD_FRAME",
     "run_functional_assay",
-    "run_hardware_polarity_functional_assay",
     "validate_functional_assay_result",
-    "validate_hardware_polarity_assay_result",
 )

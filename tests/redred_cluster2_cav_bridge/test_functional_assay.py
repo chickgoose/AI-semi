@@ -60,11 +60,11 @@ def _pose(pose_id, timestamp_ns):
     )
 
 
-def _event(event_id, timestamp_ns, sensor_ray, polarity=1):
+def _event(event_id, timestamp_ns, sensor_ray):
     digest = canonical_event_content_sha256(
         event_id,
         timestamp_ns,
-        polarity,
+        1,
         True,
         sensor_ray,
         1,
@@ -73,7 +73,7 @@ def _event(event_id, timestamp_ns, sensor_ray, polarity=1):
     return NeutralEventInput(
         event_id,
         timestamp_ns,
-        polarity,
+        1,
         True,
         sensor_ray,
         1,
@@ -87,7 +87,7 @@ def _synthetic_inputs():
     # accidentally zip source events to event-ID-ordered native outcomes.
     events = (
         _event(1, 1_000, (1.0, 0.0, 0.0)),
-        _event(0, 2_000, (0.0, 1.0, 0.0), polarity=0),
+        _event(0, 2_000, (0.0, 1.0, 0.0)),
         _event(2, 2_000_000, (0.0, 0.0, 1.0)),
     )
     identities = (
@@ -115,20 +115,6 @@ def _synthetic_inputs():
         NativeOutcome(2, 2, 30, 33, 3),
     )
     return source, outcomes
-
-
-def _hardware_outcomes():
-    return (
-        module.HardwarePolarityOutcomeV2(
-            module.TRANSPORT_OUTCOME_POLARITY_SCHEMA, 0, 1, 20, 22, 2, 0
-        ),
-        module.HardwarePolarityOutcomeV2(
-            module.TRANSPORT_OUTCOME_POLARITY_SCHEMA, 1, 0, 10, 11, 1, 1
-        ),
-        module.HardwarePolarityOutcomeV2(
-            module.TRANSPORT_OUTCOME_POLARITY_SCHEMA, 2, 2, 30, 33, 3, 1
-        ),
-    )
 
 
 @contextmanager
@@ -213,82 +199,6 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
             ):
                 module.run_functional_assay(source, tuple(changed))
         geometry.assert_not_called()
-
-    def test_hardware_polarity_v2_is_explicit_checked_and_separate(self):
-        source, legacy_outcomes = _synthetic_inputs()
-        hardware_outcomes = _hardware_outcomes()
-        with _synthetic_authority():
-            legacy = module.run_functional_assay(source, legacy_outcomes)
-            result = module.run_hardware_polarity_functional_assay(
-                source, hardware_outcomes
-            )
-
-        self.assertEqual(result.functional_result, legacy)
-        self.assertEqual(result.statistics, legacy.statistics)
-        self.assertIs(result.geometry, result.functional_result.geometry)
-        self.assertEqual(
-            tuple(
-                (row.event_id, row.hardware_observed_polarity)
-                for row in result.hardware_polarity_sidecar
-            ),
-            ((1, 1), (0, 0), (2, 1)),
-        )
-        self.assertTrue(all(
-            row.semantics_label == module.HARDWARE_CARRIED_POLARITY
-            for row in result.hardware_polarity_sidecar
-        ))
-        self.assertTrue(all(
-            not hasattr(row, "hardware_observed_polarity")
-            for row in legacy.retire_sidecar
-        ))
-        self.assertEqual(
-            legacy.views[2].sidecar_semantics, module.LATENCY_SIDECAR_ONLY
-        )
-        with _synthetic_authority():
-            self.assertIs(
-                module.validate_hardware_polarity_assay_result(
-                    result, source, hardware_outcomes
-                ),
-                result,
-            )
-
-    def test_hardware_polarity_mismatch_fails_before_geometry(self):
-        source, _ = _synthetic_inputs()
-        changed = list(_hardware_outcomes())
-        changed[0] = replace(changed[0], retire_polarity=1)
-        with _synthetic_authority(), mock.patch.object(
-            module, "_run_geometry"
-        ) as geometry:
-            with self.assertRaisesRegex(
-                module.FunctionalAssayError,
-                "hardware-observed polarity differs from source polarity",
-            ):
-                module.run_hardware_polarity_functional_assay(
-                    source, tuple(changed)
-                )
-        geometry.assert_not_called()
-
-    def test_v1_and_v2_outcome_types_cannot_be_mixed_or_substituted(self):
-        source, legacy_outcomes = _synthetic_inputs()
-        hardware_outcomes = _hardware_outcomes()
-        with _synthetic_authority():
-            with self.assertRaisesRegex(
-                module.FunctionalAssayError, "non-NativeOutcome"
-            ):
-                module.run_functional_assay(source, hardware_outcomes)
-            with self.assertRaisesRegex(
-                module.FunctionalAssayError, "invalid adapter type"
-            ):
-                module.run_hardware_polarity_functional_assay(
-                    source, legacy_outcomes
-                )
-        with self.assertRaisesRegex(
-            module.FunctionalAssayError, "transport_outcome/v2"
-        ):
-            module.HardwarePolarityOutcomeV2(
-                "redred.cluster2_cav_bridge.transport_outcome/v1",
-                0, 1, 20, 22, 2, 0,
-            )
 
     def test_three_views_share_geometry_and_bypass_never_enters_world_grid(self):
         source, outcomes = _synthetic_inputs()
@@ -378,22 +288,6 @@ class FunctionalAssaySyntheticTests(unittest.TestCase):
         )
         self.assertNotEqual(
             rejoined.statistics.retire_sidecar_sha256,
-            baseline.statistics.retire_sidecar_sha256,
-        )
-
-        polarity_events = list(source.events)
-        polarity_events[1] = _event(0, 2_000, (0.0, 1.0, 0.0), polarity=1)
-        polarity_source = replace(source, events=tuple(polarity_events))
-        with _synthetic_authority():
-            polarity_changed = module.run_functional_assay(
-                polarity_source, outcomes
-            )
-        self.assertEqual(
-            polarity_changed.statistics.geometry_sha256,
-            baseline.statistics.geometry_sha256,
-        )
-        self.assertEqual(
-            polarity_changed.statistics.retire_sidecar_sha256,
             baseline.statistics.retire_sidecar_sha256,
         )
 
