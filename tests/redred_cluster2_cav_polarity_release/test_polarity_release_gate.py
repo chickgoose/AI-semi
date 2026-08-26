@@ -292,9 +292,13 @@ class PolarityReleaseGateTests(unittest.TestCase):
         with self.assertRaisesRegex(gate.ReleaseHold, "canonical LF"):
             gate.verify_raw_cycle_evidence(trace, ledger.replace(b"\n", b"\r\n"))
 
-    def test_current_tree_and_missing_actual_receipt_hold(self) -> None:
+    def test_current_tree_go_and_missing_actual_receipt_hold(self) -> None:
         result = gate.evaluate_repository(ROOT)
-        self.assertEqual(result["status"], "HOLD")
+        self.assertEqual(result["status"], "GO")
+        self.assertEqual(
+            (result["generated"], result["delivered"], result["overrun"]),
+            (8503, 8503, 0),
+        )
         fixture = self.fixture()
         (fixture.root / fixture.paths["receipt"]).unlink()
         missing = gate.evaluate_repository(fixture.root)
@@ -376,6 +380,10 @@ class PolarityReleaseGateTests(unittest.TestCase):
         self.assertIn(
             "identity_order_independence_claimed=false output_root=%s", runner
         )
+
+        verifier = (fixture.root / fixture.paths["verifier"]).read_text()
+        self.assertIn("SOURCE_FIFO_POLARITY_SEQUENCE_ONLY", verifier)
+        self.assertIn("EVENT_ID_ORDER_INDEPENDENCE_NOT_CLAIMED", verifier)
 
     def test_source_filelist_is_exact_ordered_and_wildcard_free(self) -> None:
         fixture = self.fixture()

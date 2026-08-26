@@ -516,7 +516,12 @@ def validate_release(root: Path, document: Mapping[str, object]) -> Mapping[str,
         _capture_binding(root, binding, "source file %d" % index)
     _verify_filelist(filelist_normalized, source_files)
 
-    rtl_text = normalized_by_role["polarity_v1_rtl"].decode("ascii", errors="strict")
+    try:
+        rtl_text = normalized_by_role["polarity_v1_rtl"].decode(
+            "utf-8", errors="strict"
+        )
+    except UnicodeError as error:
+        raise ReleaseHold("polarity-v1 RTL is not strict UTF-8 text") from error
     for token in ("module " + EXPECTED_TOP, "polarity_in", "pol_mask0", "pol_mask1"):
         if token not in rtl_text:
             raise ReleaseHold("polarity-v1 RTL token is absent: %s" % token)
@@ -539,7 +544,12 @@ def validate_release(root: Path, document: Mapping[str, object]) -> Mapping[str,
         if token not in runner_text:
             raise ReleaseHold("polarity-v1 observational runner token is absent: %s" % token)
     verifier_text = normalized_by_role["polarity_v1_independent_verifier"].decode("ascii", errors="strict")
-    for token in (RAW_LEDGER_SCHEMA, IDENTITY_SCOPE, "verify_polarity_native_ledger"):
+    for token in (
+        RAW_LEDGER_SCHEMA,
+        "SOURCE_FIFO_POLARITY_SEQUENCE_ONLY",
+        "EVENT_ID_ORDER_INDEPENDENCE_NOT_CLAIMED",
+        "verify_polarity_native_ledger",
+    ):
         if token not in verifier_text:
             raise ReleaseHold("independent verifier compatibility token is absent")
 
