@@ -236,7 +236,7 @@ def build():
 
     # 08. Hero result.
     s = header(prs, "03 결과", "full50 source-overrun: 12,259 → 502", 8,
-               "Source: same 50 traces · 106,416 offered events/design · family diagnostic")
+               "Scope: 106,416 events/design · separate campaigns · 502 = address-only steal_buf, not final polarity-v1")
     box(s, 0.72, 1.22, 8.15, 4.66)
     data = [("SCALAR\nFOVEA", 26.49, "28,187", RED), ("BASE\nCLUSTER2", 11.52, "12,259", ORANGE),
             ("CLUSTER2\nSTEAL_BUF", 0.47, "502", TEAL)]
