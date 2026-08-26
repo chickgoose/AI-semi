@@ -290,7 +290,7 @@ def verify_polarity_native_ledger(
             raise PolarityNativeLedgerError("pre-edge overrun is asserted without an arrival")
         if observation.preedge_overrun != expected_overrun:
             raise PolarityNativeLedgerError("pre-edge overrun differs from arrival-and-full")
-        overrun += observation.preedge_overrun.bit_count()
+        overrun += bin(observation.preedge_overrun).count("1")
 
         sources_this_cycle = set()
         for lane_number, lane in enumerate((observation.lane0, observation.lane1)):

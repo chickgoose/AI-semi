@@ -182,6 +182,12 @@ class MutationTests(unittest.TestCase):
 
 
 class IsolationAndCliTests(unittest.TestCase):
+    def test_python38_popcount_is_source_guarded_and_runtime_exact(self):
+        source = PARSER.read_text(encoding="utf-8")
+        self.assertNotIn(".bit_count(", source)
+        report = verify_polarity_native_ledger(positive_trace(), positive_ledger())
+        self.assertEqual(report.overrun, 1)
+
     def test_parser_is_python38_and_independent_of_join_runner_and_identity_parsers(self):
         source = PARSER.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(PARSER), feature_version=(3, 8))
