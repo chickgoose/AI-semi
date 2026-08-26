@@ -459,8 +459,8 @@
     },
     {
       "path": "presentation/cluster2_digital_first_round_20260828.pptx",
-      "bytes": 51267,
-      "sha256": "9f090cf72a86ea0b3392c5a14f87bb2e77629307a8482352e7af8024189bdbd2"
+      "bytes": 54342,
+      "sha256": "2dfb15bcfab169a78b0e8d95d7b69e430938b9f9949d360e619d66a3ac00d0eb"
     },
     {
       "path": "presentation/cluster2_digital_first_round_slides.md",
@@ -524,8 +524,8 @@
     },
     {
       "path": "tools/build_presentation.py",
-      "bytes": 19468,
-      "sha256": "1a0c971027cda4a4166670be3a8cfd2943c89f38988bb4ef322dbd9aea0cc3ab"
+      "bytes": 21355,
+      "sha256": "e26f672123f30160f45e7318691dce0c4d9483e54d239e3cd28c69578c4ae045"
     },
     {
       "path": "tools/requirements.txt",
@@ -534,8 +534,8 @@
     },
     {
       "path": "tools/verify_submission.py",
-      "bytes": 13689,
-      "sha256": "8d6ecf0ebce74c28bde927bd90858ab875dfa719c3c2740d60c0b6e1a8f1e80e"
+      "bytes": 13690,
+      "sha256": "96ea13e5c053f916faca805e033a85d65c772320f06347f62822cba52fa98a75"
     }
   ]
 }

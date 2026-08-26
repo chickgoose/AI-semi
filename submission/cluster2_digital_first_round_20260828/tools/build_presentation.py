@@ -92,26 +92,42 @@ def build():
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     slide.background.fill.solid(); slide.background.fill.fore_color.rgb = BG
     shape(slide, 0, 0, 0.18, 7.5, CYAN, False)
-    text(slide, "AER 병목을 2-lane row-bitmap으로 완화", 0.82, 0.78, 11.8, 0.72, 36, WHITE, True)
+    text(slide, "AER의 네 병목을 네 구조로 완화", 0.82, 0.78, 11.8, 0.72, 36, WHITE, True)
     text(slide, "Cluster2 Steal-Buffer Polarity AER", 0.84, 1.63, 11.0, 0.36, 19, CYAN, True)
     # single, central transformation
     shape(slide, 1.10, 2.55, 3.10, 1.55, CARD)
-    text(slide, "기존", 1.34, 2.80, 0.70, 0.26, 12, MUTED, True)
-    text(slide, "1 event/cycle", 1.34, 3.16, 2.55, 0.46, 28, RED, True, PP_ALIGN.CENTER)
+    text(slide, "문제", 1.34, 2.80, 0.70, 0.26, 12, MUTED, True)
+    text(slide, "4 bottlenecks", 1.34, 3.16, 2.55, 0.46, 27, RED, True, PP_ALIGN.CENTER)
     arrow_text(slide, 4.52, 3.05, 0.80, CYAN, 38)
     shape(slide, 5.65, 2.35, 3.55, 1.95, CARD, True, CYAN)
-    text(slide, "CLUSTER2", 5.95, 2.67, 2.95, 0.28, 13, CYAN, True, PP_ALIGN.CENTER)
-    text(slide, "2 lanes × 4 columns", 5.92, 3.13, 3.02, 0.45, 25, WHITE, True, PP_ALIGN.CENTER)
+    text(slide, "4 RTL IDEAS", 5.95, 2.67, 2.95, 0.28, 13, CYAN, True, PP_ALIGN.CENTER)
+    text(slide, "FIFO · bitmap\nsteal · polarity", 5.92, 3.03, 3.02, 0.72, 21, WHITE, True, PP_ALIGN.CENTER)
     arrow_text(slide, 9.48, 3.05, 0.80, CYAN, 38)
     shape(slide, 10.55, 2.55, 1.75, 1.55, GREEN)
-    text(slide, "최대", 10.82, 2.80, 1.20, 0.24, 12, BG, True, PP_ALIGN.CENTER)
-    text(slide, "8", 10.82, 3.05, 1.20, 0.60, 38, BG, True, PP_ALIGN.CENTER)
-    text(slide, "events/cycle", 10.76, 3.68, 1.32, 0.20, 9, BG, True, PP_ALIGN.CENTER)
+    text(slide, "최종 RTL", 10.76, 2.80, 1.32, 0.24, 11, BG, True, PP_ALIGN.CENTER)
+    text(slide, "8,503", 10.72, 3.12, 1.40, 0.48, 27, BG, True, PP_ALIGN.CENTER)
+    text(slide, "무손실", 10.76, 3.68, 1.32, 0.20, 10, BG, True, PP_ALIGN.CENTER)
     text(slide, "병목 정의  ·  구조 아이디어  ·  개선 수치  ·  물리 구현  ·  CAV 확장", 1.0, 5.15, 11.3, 0.38, 18, MUTED, True, PP_ALIGN.CENTER)
     text(slide, "2026-08-28  |  Xcelium · Genus · Innovus", 0.84, 6.85, 11.2, 0.22, 10, MUTED)
 
-    # 2. Problem — burst into a scalar funnel.
-    slide = header(prs, "01  병목", "문제는 입력 burst가 아니라 1-event/cycle 출력이다", 2,
+    # 2. Bottleneck taxonomy — make the multiple native problems explicit first.
+    slide = header(prs, "01  병목", "우리 AER이 겨냥한 병목은 네 가지다", 2,
+                   "Source: final polarity RTL contract and bottleneck audit")
+    bottlenecks = [
+        (0.78, 1.28, RED, "① 출력 직렬화", "여러 source가 동시에 발생", "한 cycle에 1 event만 retire"),
+        (6.82, 1.28, ORANGE, "② SOURCE 재발생", "grant 전에 같은 source 재발생", "local full → overrun"),
+        (0.78, 3.62, PURPLE, "③ TRAFFIC 불균형", "center 또는 peripheral에 집중", "고정 lane이 놀며 처리력 낭비"),
+        (6.82, 3.62, BLUE, "④ POLARITY 정렬", "주소와 polarity의 저장·pop 분리", "event 의미 mismatch 위험"),
+    ]
+    for x, y, accent, label, cause, symptom in bottlenecks:
+        shape(slide, x, y, 5.72, 1.72, CARD, True, accent)
+        text(slide, label, x + 0.26, y + 0.20, 5.18, 0.30, 16, accent, True)
+        text(slide, cause, x + 0.26, y + 0.66, 5.18, 0.30, 17, WHITE, True)
+        text(slide, symptom, x + 0.26, y + 1.20, 5.18, 0.25, 12, MUTED)
+    takeaway(slide, "대역폭 · buffer · 자원 활용 · metadata 정렬이 서로 다른 병목으로 연결된다", ORANGE)
+
+    # 3. Measured baseline mechanism — serialization turns into local loss.
+    slide = header(prs, "01  병목", "① 출력 직렬화가 ② source-local overrun으로 이어진다", 3,
                    "Source: recovered scalar Fovea Xcelium full50 diagnostics")
     # visual funnel
     text(slide, "동시 입력", 0.80, 1.25, 2.20, 0.28, 14, BLUE, True, PP_ALIGN.CENTER)
@@ -131,8 +147,8 @@ def build():
     card(slide, 8.40, 4.08, 3.82, 1.35, "THROUGHPUT", "0.673901 EPC", RED, "fixed-window", 27)
     takeaway(slide, "발생률이 서비스율을 넘는 순간, scalar 출력이 손실의 원인이 된다", ORANGE)
 
-    # 3. Architecture — one left-to-right pipeline.
-    slide = header(prs, "02  구조", "두 row-bitmap lane이 최대 8 events를 동시에 retire한다", 3,
+    # 4. Architecture — one left-to-right pipeline.
+    slide = header(prs, "02  구조", "두 row-bitmap lane이 최대 8 events를 동시에 retire한다", 4,
                    "Source: final polarity RTL SHA-256 20d601a9…")
     # source grid
     text(slide, "16 SOURCES", 0.68, 1.22, 2.15, 0.26, 13, MUTED, True, PP_ALIGN.CENTER)
@@ -163,24 +179,32 @@ def build():
     text(slide, "출력  =  row  +  col_mask[3:0]  +  pol_mask[3:0]", 1.66, 4.92, 10.03, 0.36, 20, WHITE, True, PP_ALIGN.CENTER)
     takeaway(slide, "핵심 변화: event를 하나씩 고르지 않고, 선택된 row를 bitmap으로 묶어 보낸다", GREEN)
 
-    # 4. Four ideas only — no prose matrix.
-    slide = header(prs, "02  구조", "네 아이디어로 네 병목을 끊는다", 4,
+    # 5. Explicit problem-to-solution map.
+    slide = header(prs, "02  구조", "각 병목에 대응하는 RTL 해법이 다르다", 5,
                    "Source: polarity RTL lines 33–153 · arbiter2/arbiter4_tree")
-    ideas = [
-        (0.78, 1.30, BLUE, "① DEPTH-2 / SOURCE", "두 번째 event까지 저장", "국소 포화 완화"),
-        (6.82, 1.30, CYAN, "② ROW BITMAP", "한 row의 4 columns 동시 pop", "직렬화 완화"),
-        (0.78, 3.62, PURPLE, "③ LANE STEAL", "idle lane을 반대 class에 재배치", "불균형 완화"),
-        (6.82, 3.62, ORANGE, "④ POLARITY LOCKSTEP", "주소와 polarity를 함께 push/pop", "event 의미 보존"),
+    mapping = [
+        (RED, "① 1-event/cycle", "ROW BITMAP × 2 LANES", "최대 8 events/cycle"),
+        (ORANGE, "② source 재발생", "DEPTH-2 / SOURCE", "두 번째 event 흡수"),
+        (PURPLE, "③ class 쏠림", "CONDITIONAL LANE STEAL", "idle 처리력 재사용"),
+        (BLUE, "④ addr–pol 분리", "POLARITY LOCKSTEP FIFO", "polarity mismatch 0"),
     ]
-    for x, y, accent, label, mechanism, effect in ideas:
-        shape(slide, x, y, 5.72, 1.70, CARD, True, accent)
-        text(slide, label, x + 0.28, y + 0.22, 5.15, 0.30, 15, accent, True)
-        text(slide, mechanism, x + 0.28, y + 0.70, 5.15, 0.36, 18, WHITE, True)
-        text(slide, effect, x + 0.28, y + 1.23, 5.15, 0.25, 12, MUTED)
-    takeaway(slide, "buffer · 병렬화 · 자원 공유 · metadata 정렬을 한 datapath 안에서 해결", GREEN)
+    text(slide, "병목", 0.84, 1.13, 2.85, 0.24, 11, MUTED, True, PP_ALIGN.CENTER)
+    text(slide, "RTL 해법", 4.18, 1.13, 4.18, 0.24, 11, MUTED, True, PP_ALIGN.CENTER)
+    text(slide, "직접 효과", 9.18, 1.13, 3.18, 0.24, 11, MUTED, True, PP_ALIGN.CENTER)
+    for i, (accent, problem, mechanism, effect) in enumerate(mapping):
+        y = 1.52 + i * 1.12
+        shape(slide, 0.78, y, 2.95, 0.76, CARD, True, accent)
+        text(slide, problem, 0.98, y + 0.20, 2.55, 0.30, 14, accent, True, PP_ALIGN.CENTER)
+        arrow_text(slide, 3.82, y + 0.16, 0.48, CYAN, 24)
+        shape(slide, 4.38, y, 4.02, 0.76, CARD, True, accent)
+        text(slide, mechanism, 4.58, y + 0.20, 3.62, 0.30, 14, WHITE, True, PP_ALIGN.CENTER)
+        arrow_text(slide, 8.50, y + 0.16, 0.48, CYAN, 24)
+        shape(slide, 9.06, y, 3.30, 0.76, CARD, True, accent)
+        text(slide, effect, 9.24, y + 0.20, 2.94, 0.30, 14, accent, True, PP_ALIGN.CENTER)
+    takeaway(slide, "한 가지 큰 개선이 아니라, 네 병목을 네 메커니즘으로 각각 완화했다", GREEN)
 
-    # 5. Improvement — three paired metrics, no duplicate charts/cards.
-    slide = header(prs, "03  결과", "accepted +20.4% · overrun −56.5%", 5,
+    # 6. Improvement — three paired metrics, no duplicate charts/cards.
+    slide = header(prs, "03  결과", "대역폭·overflow 병목은 수치로 개선됐다", 6,
                    "Source: recovered Xcelium full50 · scalar Fovea vs original Cluster2 architecture family")
     metrics = [
         ("ACCEPTED", "78,229", "94,157", "+20.4%", ORANGE, GREEN),
@@ -202,8 +226,8 @@ def build():
     takeaway(slide, "구조군 비교 결과: accepted +15,928 events  =  overrun 15,928건 감소", GREEN)
     text(slide, "※ 최종 polarity-v1 trace의 exact head-to-head 개선율이 아니라 원본 구조군 비교", 1.20, 6.91, 10.95, 0.17, 8, ORANGE, True, PP_ALIGN.CENTER)
 
-    # 6. Functional proof — one equation, three checks.
-    slide = header(prs, "03  결과", "최종 RTL: 8,503 events 무손실", 6,
+    # 7. Functional proof — one equation, three checks.
+    slide = header(prs, "03  결과", "최종 trace에서 buffer·polarity 오류 0", 7,
                    "Source: polarity_v1_release_receipt.json · Xcelium 23.09-s013")
     text(slide, "8,503", 0.92, 1.40, 3.20, 0.80, 48, BLUE, True, PP_ALIGN.CENTER)
     text(slide, "GENERATED", 1.45, 2.18, 2.12, 0.28, 12, MUTED, True, PP_ALIGN.CENTER)
@@ -225,8 +249,8 @@ def build():
         text(slide, note, x + 0.94, 4.08, 2.20, 0.24, 11, MUTED)
     takeaway(slide, "generated = delivered + overrun · phantom 0 · duplicate 0", GREEN)
 
-    # 7. Physical feasibility — the clean point and discrete sweep.
-    slide = header(prs, "04  구현", "P&R에서 285.714 MHz가 setup·hold를 모두 통과했다", 7,
+    # 8. Physical feasibility — the clean point and discrete sweep.
+    slide = header(prs, "04  구현", "P&R에서 285.714 MHz가 setup·hold를 모두 통과했다", 8,
                    "Source: Innovus slow 0.9 V 125 °C · discrete timing sweep")
     card(slide, 0.78, 1.28, 3.35, 1.42, "FASTEST TESTED PASS", "285.714 MHz", GREEN, "setup +0.454 ns · hold +0.167 ns", 30)
     # discrete frequency rail
@@ -250,8 +274,8 @@ def build():
     text(slide, "Internal DRC 0 · antenna 0", 9.05, 5.12, 3.05, 0.30, 15, GREEN, True, PP_ALIGN.CENTER)
     takeaway(slide, "285.714 MHz PASS · 다음 측정점 333.333 MHz FAIL · 중간 주파수는 미측정", ORANGE)
 
-    # 8. CAV — separate authority and an explicit branch, not a false linear funnel.
-    slide = header(prs, "05  확장", "CAV software 경로: 8,503 events 전수 분기", 8,
+    # 9. CAV — separate authority and an explicit branch, not a false linear funnel.
+    slide = header(prs, "05  확장", "CAV software 경로: 8,503 events 전수 분기", 9,
                    "Source: sealed legacy address-only official UZH→CAV result")
     shape(slide, 0.78, 1.18, 11.75, 0.44, CARD_2)
     text(slide, "LEGACY ADDRESS-ONLY TRACK  ·  최종 polarity-v1과 독립된 검증", 1.05, 1.29, 11.20, 0.20, 11, PURPLE, True, PP_ALIGN.CENTER)
@@ -284,11 +308,11 @@ def build():
     text(slide, "retire cycle은 latency sidecar로만 보존", 6.92, 4.87, 4.80, 0.20, 9, MUTED, False, PP_ALIGN.CENTER)
     takeaway(slide, "입증: software functional extension · HOLD: polarity→CAV full replay / CAV RTL / CAV PPA", ORANGE)
 
-    # 9. Close — distinguish proved, directional, and next.
-    slide = header(prs, "SUMMARY", "결론: 최종 RTL은 기능·P&R 1차 제출 후보", 9,
+    # 10. Close — distinguish proved, directional, and next.
+    slide = header(prs, "SUMMARY", "결론: 네 병목을 구조적으로 분리해 완화했다", 10,
                    "Source bundle: receipts · raw reports · SHA256SUMS · PROVENANCE.json")
     claims = [
-        (0.78, CYAN, "구조 해법", "2-lane row-bitmap", "최대 8 events/cycle"),
+        (0.78, CYAN, "네 병목 → 네 해법", "FIFO · bitmap · steal", "polarity lockstep"),
         (4.72, GREEN, "최종 RTL 증명", "8,503 / 8,503 보존", "285.714 MHz PASS"),
         (8.66, PURPLE, "별도 확장 경로", "legacy 8,503 join", "8,420 WORLD + 83 bypass"),
     ]
