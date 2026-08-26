@@ -49,7 +49,9 @@ def raw_cycle_evidence(crlf_trace: bool = False):
         retire = bool(queue) and cycle % 2 == 1
         if retire:
             hw_polarity = queue.popleft()
-            lane1 = "1|0|1|%x" % hw_polarity
+            # The RTL exposes the full row polarity bus.  Bit 1 is deliberately
+            # nonzero even though only col_mask bit 0 retires an event.
+            lane1 = "1|0|1|%x" % (hw_polarity | 0x2)
             delivered += 1
         else:
             lane1 = "0|0|0|0"
@@ -305,11 +307,28 @@ class PolarityReleaseGateTests(unittest.TestCase):
         for index, line in enumerate(lines):
             if line.startswith("CYCLE|") and line.split("|")[7] == "1":
                 fields = line.split("|")
-                fields[10] = "1" if fields[10] == "0" else "0"
+                fields[10] = "%x" % (int(fields[10], 16) ^ 1)
                 lines[index] = "|".join(fields)
                 break
         mutated = ("\n".join(lines) + "\n").encode("ascii")
         with self.assertRaisesRegex(gate.ReleaseHold, "hw_polarity differs"):
+            gate.verify_raw_cycle_evidence(trace, mutated)
+
+    def test_valid_lane_allows_unselected_row_polarity_but_invalid_lane_is_zero(self) -> None:
+        trace, ledger = raw_cycle_evidence()
+        report = gate.verify_raw_cycle_evidence(trace, ledger)
+        self.assertEqual(report["generated"], gate.EXPECTED_GENERATED)
+        self.assertIn(b"|1|0|1|2\n", ledger)
+
+        lines = ledger.decode("ascii").splitlines()
+        for index, line in enumerate(lines):
+            if line.startswith("CYCLE|") and line.split("|")[3] == "0":
+                fields = line.split("|")
+                fields[6] = "1"
+                lines[index] = "|".join(fields)
+                break
+        mutated = ("\n".join(lines) + "\n").encode("ascii")
+        with self.assertRaisesRegex(gate.ReleaseHold, "invalid native lane must be canonical all-zero"):
             gate.verify_raw_cycle_evidence(trace, mutated)
 
     def test_manifest_cannot_predeclare_counts_or_omit_roles(self) -> None:

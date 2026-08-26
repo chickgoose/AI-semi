@@ -20,8 +20,9 @@ The v2 manifest binds full raw and semantic SHA-256 values for:
   `NATIVE_POLARITY_V1_BOUND`.
 
 All text declares canonical `LF`, or (for an input that supports it) exact
-`CRLF` raw bytes plus a normalized-LF digest. The da329e3-compatible raw CYCLE
-ledger itself is canonical LF.
+`CRLF` raw bytes plus a normalized-LF digest. The raw CYCLE ledger uses
+canonical LF and the framing introduced by `da329e3`; its lane-polarity
+interpretation follows the pinned RTL semantics described below.
 
 Authority has three stages. Ganghee commit
 `44f8918c6e0085f7b75bb90fbe6c099abe1882cc` is pinned as external source
@@ -35,10 +36,14 @@ reconstructs the two-entry per-source polarity FIFOs from the cycle-complete
 ledger contract introduced by `da329e3`. The raw trace must expand to 8,503
 generated occurrences. Delivered and overrun totals are not assumed: they are
 derived only after replay and must conserve `generated = delivered + overrun`.
-Every native retirement must match the FIFO-front polarity; phantom,
-duplicate, incomplete-drain, malformed-geometry, and polarity failures hold the
-release. JSONL `EVENT` IDs and predeclared manifest counters have no release
-authority.
+For a valid lane, the pinned RTL emits the full four-bit `pol_front_bus` slice
+for the selected row. Consequently, `pol_mask` bits outside `col_mask` are
+permitted and carry no retirement meaning. Every asserted `col_mask` bit must
+still match that source FIFO's front polarity. An invalid lane must remain
+canonical all-zero, including its row, column mask, and polarity mask. Phantom,
+duplicate, incomplete-drain, malformed-geometry, and selected-column polarity
+failures hold the release. JSONL `EVENT` IDs and predeclared manifest counters
+have no release authority.
 
 The TB binding follows the actual native observational interface and markers:
 the `redred_cluster2_polarity_v1_native_observational_tb` top, native

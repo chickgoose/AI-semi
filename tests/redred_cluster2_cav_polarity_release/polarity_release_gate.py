@@ -313,8 +313,11 @@ def _parse_lane(fields: Sequence[str], offset: int, lane: int, number: int) -> T
     parsed = (int(valid), int(row), int(columns, 16), int(polarity, 16))
     if not parsed[0] and any(parsed[1:]):
         raise ReleaseHold("invalid native lane must be canonical all-zero")
-    if parsed[0] and (not parsed[2] or parsed[3] & ~parsed[2]):
-        raise ReleaseHold("valid native lane masks are invalid")
+    # The pinned RTL registers the full four-bit pol_front_bus slice for the
+    # selected row.  Bits outside col_mask are therefore observable but do not
+    # represent retirements; only selected columns have polarity meaning.
+    if parsed[0] and not parsed[2]:
+        raise ReleaseHold("valid native lane has an empty column mask")
     return parsed
 
 
@@ -364,7 +367,7 @@ def _validate_geometry(lane0: Tuple[int, int, int, int], lane1: Tuple[int, int, 
 
 
 def verify_raw_cycle_evidence(trace_payload: bytes, ledger_payload: bytes) -> Mapping[str, object]:
-    """Rebuild native FIFO state using the da329e3 CYCLE-ledger contract."""
+    """Replay da329e3 CYCLE framing with the pinned RTL's full-row polarity semantics."""
     occurrences, endings = _parse_trace(trace_payload)
     observations, summary = _parse_ledger(ledger_payload)
     latest = max(cycle for cycle, _, _ in occurrences)
@@ -557,7 +560,7 @@ def validate_release(root: Path, document: Mapping[str, object]) -> Mapping[str,
         "identity_scope": IDENTITY_SCOPE,
         "counts_source": "INDEPENDENT_RAW_TRACE_PLUS_CYCLE_LEDGER_REPLAY",
     }:
-        raise ReleaseHold("polarity receipt is not compatible with da329e3 raw-cycle verification")
+        raise ReleaseHold("polarity receipt raw-cycle compatibility provenance differs")
     receipt_binding_roles = (
         "polarity_v1_rtl", "polarity_v1_tb", "polarity_v1_runner",
         "polarity_v1_trace", "polarity_v1_cycle_ledger",
