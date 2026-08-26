@@ -79,6 +79,13 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _popcount16(value: int) -> int:
+    """Return the exact population count of one raw four-hex-digit mask."""
+    if type(value) is not int or not 0 <= value <= 0xFFFF:
+        raise ReleaseHold("popcount input must be one 16-bit unsigned mask")
+    return sum((value >> bit) & 1 for bit in range(16))
+
+
 def canonical_json(value: object) -> bytes:
     try:
         encoded = json.dumps(
@@ -392,7 +399,7 @@ def verify_raw_cycle_evidence(trace_payload: bytes, ledger_payload: bytes) -> Ma
             raise ReleaseHold("pre-edge overrun is asserted without an arrival")
         if observed_overrun != expected_overrun:
             raise ReleaseHold("pre-edge overrun differs from arrival-and-full")
-        overrun += observed_overrun.bit_count()
+        overrun += _popcount16(observed_overrun)
         sources_this_cycle = set()
         for lane in (lane0, lane1):
             if not lane[0]:

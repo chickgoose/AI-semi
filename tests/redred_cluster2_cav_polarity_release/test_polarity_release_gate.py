@@ -256,6 +256,16 @@ class PolarityReleaseGateTests(unittest.TestCase):
         with self.assertRaisesRegex(gate.ReleaseHold, pattern):
             gate.validate_release(fixture.root, document)
 
+    def test_python38_compatible_exact_16_bit_popcount(self) -> None:
+        for value, expected in (
+            (0x0000, 0), (0x0001, 1), (0x8000, 1),
+            (0xA5A5, 8), (0xFFFF, 16),
+        ):
+            self.assertEqual(gate._popcount16(value), expected)
+        for invalid in (-1, 0x10000, True):
+            with self.assertRaisesRegex(gate.ReleaseHold, "16-bit unsigned mask"):
+                gate._popcount16(invalid)
+
     def test_complete_release_derives_conserving_nonzero_overrun(self) -> None:
         fixture = self.fixture()
         result = gate.validate_release(fixture.root, fixture.document)
