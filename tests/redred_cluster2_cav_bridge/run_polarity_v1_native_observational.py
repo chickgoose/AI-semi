@@ -100,7 +100,7 @@ def verify_source_checkout(root: Path, trace_relative: str):
         raise RunnerError("FAER HEAD differs from pinned public main")
     if _git(root, ["rev-parse", PUBLIC_REF]).decode("ascii").strip() != PINNED_COMMIT:
         raise RunnerError("FAER origin/main differs from pinned public main")
-    origin = _git(root, ["remote", "get-url", "origin"]).decode("utf-8").strip()
+    origin = _git(root, ["config", "--get", "remote.origin.url"]).decode("utf-8").strip()
     if _normalize_repository_url(origin) != REPOSITORY_URL:
         raise RunnerError("FAER origin URL differs from public authority")
     status = _git(root, ["status", "--porcelain", "--untracked-files=all", "-z"])

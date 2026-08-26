@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from benchmarks.redred_cluster2_cav_bridge.polarity_native_ledger import (
     IDENTITY_SCOPE,
@@ -145,8 +146,42 @@ class PolarityV1SourceAuthorityTests(unittest.TestCase):
         self.assertLess(simulator, execution)
         for forbidden in ("git clone", "git fetch", "git checkout", "git reset"):
             self.assertNotIn(forbidden, source)
+        self.assertIn('["config", "--get", "remote.origin.url"]', source)
+        self.assertNotIn('["remote", "get-url", "origin"]', source)
         self.assertIn('["status", "--porcelain", "--untracked-files=all", "-z"]', source)
         self.assertIn('environment["TMPDIR"] = str(temporary)', source)
+
+    def test_old_git_origin_lookup_remains_exact_and_fail_closed(self):
+        def wrong_origin(_root, arguments):
+            if arguments in (["rev-parse", "HEAD"], ["rev-parse", runner.PUBLIC_REF]):
+                return (runner.PINNED_COMMIT + "\n").encode("ascii")
+            if arguments == ["config", "--get", "remote.origin.url"]:
+                return b"https://github.com/GangHeeJo/not-AI-SEMI.git\n"
+            self.fail("unexpected Git command: %r" % (arguments,))
+
+        with mock.patch.object(runner, "_git", side_effect=wrong_origin):
+            with self.assertRaisesRegex(runner.RunnerError, "origin URL differs"):
+                runner.verify_source_checkout(UPSTREAM, runner.TRACE_PATH)
+
+        def missing_origin(_root, arguments):
+            if arguments in (["rev-parse", "HEAD"], ["rev-parse", runner.PUBLIC_REF]):
+                return (runner.PINNED_COMMIT + "\n").encode("ascii")
+            if arguments == ["config", "--get", "remote.origin.url"]:
+                raise runner.RunnerError("Git provenance check failed")
+            self.fail("unexpected Git command: %r" % (arguments,))
+
+        with mock.patch.object(runner, "_git", side_effect=missing_origin):
+            with self.assertRaisesRegex(runner.RunnerError, "Git provenance check failed"):
+                runner.verify_source_checkout(UPSTREAM, runner.TRACE_PATH)
+
+        self.assertEqual(
+            runner._normalize_repository_url(runner.REPOSITORY_URL + ".git"),
+            runner.REPOSITORY_URL,
+        )
+        self.assertNotEqual(
+            runner._normalize_repository_url("git@github.com:GangHeeJo/AI-SEMI.git"),
+            runner.REPOSITORY_URL,
+        )
 
 
 class PolarityV1TestbenchTests(unittest.TestCase):
