@@ -299,12 +299,12 @@ def build():
     text(s, "internal DRC 0 · antenna 0", 2.84, 5.45, 9.46, 0.22, 13, GREEN, True, PP_ALIGN.CENTER)
     takeaway(s, "1차 제출 범위: 동작 RTL + tested timing/area/power — signoff 과장은 하지 않는다", NAVY, PALE)
 
-    # 11. CAV fork.
-    s = header(prs, "05 확장", "CAV 확장 경로: 8,503 events 전수 분기", 12,
-               "Source: sealed legacy address-only CAV software path · separate from final polarity RTL/PPA")
+    # 11. World-coordinate extension path.
+    s = header(prs, "05 확장", "World 좌표계 방향 ray 확장: 8,503 events", 12,
+               "Source: team-defined software projection path · separate from final polarity RTL/PPA")
     top = [(0.72, 3.05, "UZH EVENTS + POSE", "8,503 occurrences", BLUE),
            (4.65, 3.56, "IDENTITY JOIN", "8,503 / 8,503", PURPLE),
-           (9.08, 3.54, "CAUSAL-CAV", "occurrence-time geometry", TEAL)]
+           (9.08, 3.54, "WORLD-FRAME RAY", "occurrence-time pose", TEAL)]
     for i, (x, w, tag, body, accent) in enumerate(top):
         box(s, x, 1.26, w, 1.32, WHITE, accent, True, 1.5)
         text(s, tag, x + 0.20, 1.57, w - 0.40, 0.22, 12, accent, True, PP_ALIGN.CENTER)
@@ -312,14 +312,14 @@ def build():
         if i < 2: arrow(s, x + w + 0.20, 1.76, 0.44, 0.26)
     rule(s, 10.85, 2.60, 10.85, 3.18, TEAL, 2.0); rule(s, 7.30, 3.18, 11.62, 3.18, TEAL, 2.0)
     rule(s, 7.30, 3.18, 7.30, 3.48, TEAL, 2.0); rule(s, 11.62, 3.18, 11.62, 3.48, TEAL, 2.0)
-    for x, w, tag, value, note, accent in [(0.72, 4.44, "현재 증거 범위", "software feasibility", "polarity→CAV RTL/PPA는 HOLD", RED),
+    for x, w, tag, value, note, accent in [(0.72, 4.44, "현재 증거 범위", "software feasibility", "변환기 RTL/PPA는 HOLD", RED),
                                            (5.64, 3.32, "WORLD", "8,420 events", "821 grid cells", GREEN),
                                            (9.92, 2.70, "SENSOR_FIXED", "83 bypass", "", ORANGE)]:
         box(s, x, 3.46, w, 1.54, RED_P if accent == RED else WHITE, accent if accent != RED else None, True, 1.5)
         text(s, tag, x + 0.28, 3.78, w - 0.56, 0.22, 12, accent, True, PP_ALIGN.CENTER)
         text(s, value, x + 0.28, 4.17, w - 0.56, 0.26, 17, INK, True, PP_ALIGN.CENTER)
         if note: text(s, note, x + 0.28, 4.56, w - 0.56, 0.22, 13, accent if accent == RED else SLATE, True, PP_ALIGN.CENTER)
-    takeaway(s, "확장 경로는 확인했지만 final polarity proof chain과 섞지 않았다", PURPLE, PALE)
+    takeaway(s, "event + timestamp + pose의 world-frame 방향 ray 투영을 software로 확인했다", PURPLE, PALE)
 
     # 12. Proven outcomes and next gates.
     s = header(prs, "06 결론", "1차 성과 세 가지와 2차 검증 세 가지", 12,
@@ -334,7 +334,7 @@ def build():
         text(s, note, x + 0.24, 2.72, 3.24, 0.28, 13, SLATE, True, PP_ALIGN.CENTER)
     text(s, "2차 과제", 0.76, 3.78, 1.44, 0.30, 18, NAVY, True)
     roadmap = [("01", "LINK", "repeat-flag + polarity grammar", ORANGE),
-               ("02", "CAV", "source timestamp + full replay", PURPLE),
+               ("02", "WORLD", "timestamp + pose full replay", PURPLE),
                ("03", "PPA", "activity power + exact Fmax", TEAL)]
     for i, (num, tag, body, accent) in enumerate(roadmap):
         x = 0.72 + i * 4.02; box(s, x, 4.22, 3.72, 1.38, PALE, None)
@@ -344,7 +344,7 @@ def build():
     takeaway(s, "Cluster2 위에 depth-2·steal·polarity를 통합해 손실과 의미를 함께 다뤘다", NAVY, PALE)
 
     prs.core_properties.title = "Cluster2 Steal-Buffer Polarity AER"
-    prs.core_properties.subject = "Ground-up bottleneck, architecture, evidence, physical implementation, and CAV extension"
+    prs.core_properties.subject = "Ground-up bottleneck, architecture, evidence, physical implementation, and world-coordinate extensibility"
     prs.core_properties.author = "AI-semi team"
     OUT.parent.mkdir(parents=True, exist_ok=True); prs.save(OUT)
     print(f"WROTE {OUT} ({len(prs.slides)} slides)")

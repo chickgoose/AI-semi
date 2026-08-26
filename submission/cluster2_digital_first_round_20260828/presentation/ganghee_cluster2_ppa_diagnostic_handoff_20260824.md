@@ -6,7 +6,7 @@
 2026-08-26 갱신: polarity top의 `9b0d951...` raw Genus/Innovus bundle은 이
 제출 패키지의 provenance와 전체 파일 manifest에 봉인됐다. 따라서 README의
 제한된 3.5 ns 관측값은 제출 가능하다. exact Fmax, workload power, foundry
-signoff, 원본 non-polarity top과 CAV/world RTL PPA는 여전히 HOLD다.
+signoff, 원본 non-polarity top과 world-coordinate converter RTL PPA는 여전히 HOLD다.
 
 이 문서는 현수가 1차 발표용 물리 증거를 패키징할 때 원본 top과 확장 top을
 혼동하지 않도록 현재 서버 자료를 분리한 인수인계다. 아래 report 자체는 아직
@@ -163,7 +163,7 @@ Ganghee server `redred-faer` repository 기준 상대경로:
 - internal DRC/antenna 0을 foundry signoff, LVS/connectivity, ERC, IR/EM,
   SI/OCV signoff로 확대한다.
 - Innovus run이 error-free였다고 말한다.
-- 이 수치를 CAV/world RTL PPA로 합친다.
+- 이 수치를 world-coordinate converter RTL PPA로 합친다.
 
 ## 4. 현수의 release 패키징 완료 조건
 

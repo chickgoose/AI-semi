@@ -198,22 +198,26 @@ area 단위는 report에 명시되지 않았으며 power는 workload VCD/SAIF po
 
 ---
 
-## 11. CAV 확장 경로: 8,503 events 전수 분기
+## 11. World 좌표계 방향 ray 확장: 8,503 events
 
-최종 polarity-v1과 별개인 sealed legacy address-only software path:
+최종 polarity-v1과 별개인 팀 정의 software projection path다. 본 자료에서
+기존 파일명에 남아 있는 `CAV`는 외부 표준이나 연계 대상을 뜻하지 않고,
+event와 occurrence-time pose를 결합하는 내부 world-frame 방향 ray 투영 경로를
+가리키는 식별자다.
 
 ```text
 UZH events + pose
   → TB-side observational identity join 8,503 / 8,503
-  → causal-CAV occurrence-time geometry
+  → occurrence-time pose 기반 world-frame direction-ray projection
   ├─ WORLD 8,420 → 512×256 grid, 821 cells
   └─ SENSOR_FIXED bypass 83
 ```
 
 event ID는 RTL payload로 전달된 값이 아니다. geometry는 occurrence time을 쓰고
-retire cycle은 latency sidecar로 보존한다. 입증 범위는 software functional
-extension feasibility이며 polarity→CAV replay, wire-complete CAV RTL/PPA,
-CAV 정확도 향상은 HOLD다.
+retire cycle은 latency sidecar로 보존한다. 입증 범위는 world-frame direction-ray와
+world-grid downstream으로 확장할 수 있다는 software functional feasibility다. 최종 polarity
+stream을 입력으로 한 full replay, wire-complete converter RTL/PPA, 투영 정확도
+향상과 depth·translation을 포함한 metric 3D world-point 변환은 HOLD다.
 
 ---
 
@@ -225,13 +229,13 @@ CAV 정확도 향상은 HOLD다.
 - full50 구조군: base Cluster2 대비 source-overrun 95.9% 감소
 - 최종 polarity-v1: UZH 4×4 patch 8,503 / 8,503, selected polarity mismatch 0
 - 물리 구현: 285.714 MHz fastest tested PASS
-- 별도 CAV software path: 8,503 events 전수 분기
+- 별도 world-frame direction-ray software path: 8,503 events 전수 연결·분기
 
 2차 과제:
 
 1. repeat-flag를 polarity grammar와 함께 최종 top에 통합·재검증
-2. source timestamp를 포함한 polarity→CAV full replay
-3. wire-complete CAV RTL과 동일 boundary PPA
+2. source timestamp·pose를 포함한 polarity→world-frame ray full replay
+3. wire-complete world-frame projection converter RTL과 동일 boundary PPA
 4. workload activity power와 energy/event
 5. exact Fmax 탐색 및 signoff 수준 corner 확대
 

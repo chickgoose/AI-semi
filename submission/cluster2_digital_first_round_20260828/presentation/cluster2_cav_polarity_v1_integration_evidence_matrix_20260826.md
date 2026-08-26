@@ -1,4 +1,11 @@
-# Cluster2 CAV polarity-v1 final integration evidence matrix
+# Cluster2 polarity-v1 world-frame extension evidence matrix
+
+Terminology boundary: `CAV` in historical filenames, schemas, and receipt IDs is
+the team's internal identifier for the occurrence-time pose-based world-frame
+direction-ray software path. It is not an external standard, product, or
+interoperability target. This matrix proves scoped software world-coordinate
+extensibility, not integration with an established CAV system or metric 3D
+world-point reconstruction.
 
 Date: 2026-08-26
 
@@ -25,7 +32,7 @@ and native-authority JSON SHA-256
 `90e659358423368ce6a27850cdffa36a0eb85cea508babc66e72ecafb8e70530`.
 
 That authority remains valid only for its sealed address-only native
-observation and observational CAV/world projection. It has no native polarity
+observation and observational world-coordinate software projection. It has no native polarity
 payload. The polarity-v1 result below neither adds polarity to those legacy
 records nor changes their counts, digests, receipt, or canonical result.
 
@@ -118,9 +125,9 @@ Invalid lanes remain canonical all-zero as required by the release gate.
 4. If a claim concerns polarity-v1 P&R availability, upstream `9b0d951...`
    establishes artifact availability: **GO for existence only**.
 5. If a claim concerns polarity-v1 PPA/signoff, exact Fmax, workload-activity
-   power, or wire-complete CAV/world RTL/PPA, the functional release evidence
+   power, or wire-complete world-coordinate converter RTL/PPA, the functional release evidence
    does not establish it: **HOLD pending separate qualified physical or system
    authority**.
 
 Functional polarity GO does not imply physical signoff, PPA qualification, or
-wire-complete CAV/world implementation.
+wire-complete world-coordinate converter implementation.

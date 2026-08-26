@@ -6,6 +6,15 @@
 이 디렉터리는 디지털 1차 제출 요구사항인 RTL, synthesis, timing 최적화,
 area, power, 동작 frequency를 한 묶음으로 보존한다.
 
+발표 자료의 확장성 항목은 외부 `CAV` 표준 또는 시스템과의 연동을 주장하지
+않는다. 기존 증거 파일명에 남아 있는 `CAV`는 event와 timestamp·pose를 결합해
+world-frame 방향 ray로 투영하는 팀 내부 software 경로의 역사적 식별자다. 확인한
+성과는 별도 legacy address-only event population을 world-frame direction-ray와
+world-grid downstream으로 연결한 software feasibility이며, 이것으로 AER 구조의
+후속 확장 경로를 확인했다. 최종 polarity-v1 stream을 입력으로 한 full replay,
+wire-complete 변환기 RTL/PPA와 depth·translation을 포함한 metric 3D world point는
+후속 범위다.
+
 ## 제출 수치
 
 | 항목 | 제출값 | 근거 경계 |
@@ -88,4 +97,4 @@ Genus/Innovus Tcl은 upstream 실행을 그대로 보존했기 때문에 원래 
 - `0.10738887 mW`를 workload/VCD/SAIF power라고 부르지 않는다.
 - internal DRC/antenna 0을 foundry signoff, LVS, ERC, IR/EM 또는 SI/OCV
   signoff로 확대하지 않는다.
-- CAV/world software 결과를 CAV/world RTL PPA로 합치지 않는다.
+- world-coordinate software 결과를 변환기 RTL PPA로 합치지 않는다.

@@ -19,8 +19,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4457,
-      "sha256": "7fd44a7e49b4f2667ece22c0b888a69951fc1f7822f9769b9f204a05a1f4cc78"
+      "bytes": 5156,
+      "sha256": "b529b37eb80428b1db446c0a5882d939abe174220fcc1370b7d01feeb75d5fea"
     },
     {
       "path": "evidence/functional/full50_steal_buf/README.md",
@@ -454,43 +454,43 @@
     },
     {
       "path": "presentation/assets/cluster2_cav_latency_histogram.svg",
-      "bytes": 2369,
-      "sha256": "564af603e1d47d91a40dabd166065b0aacd9fc031bfa5d740aa823aad07acc75"
+      "bytes": 2387,
+      "sha256": "ef9b36feb58cbd86d0184f0ad3b49460aafc47fdac01997d6611dcf571266698"
     },
     {
       "path": "presentation/assets/cluster2_cav_population_flow.svg",
-      "bytes": 2646,
-      "sha256": "d266431e2b0c382f1a920a559fcf8518d6b7c717c08f6a2d31739f852621b180"
+      "bytes": 2718,
+      "sha256": "aaa102b493010e806e20836b0722f7f6bc57197890cd02599a29881e1fd902e1"
     },
     {
       "path": "presentation/assets/cluster2_cav_world_grid_coverage.svg",
-      "bytes": 2187,
-      "sha256": "5f76e864699e2965defd895141d7e18ff8b417f9efd3913e504724571115ded7"
+      "bytes": 2205,
+      "sha256": "bbffa2ea9d14e66c0c39d60cf569fd1929b53c3c1a85528dda9cface207b6645"
     },
     {
       "path": "presentation/cluster2_cav_first_round_briefing.md",
-      "bytes": 15507,
-      "sha256": "68155cb204506bd445cfed0fd97f56b8fccb9ee15c14bd2ab49454de86bd7899"
+      "bytes": 16785,
+      "sha256": "7a816eb94a09cd190e98d4ce7ea44bb492659867691f53b3ef629078830cb382"
     },
     {
       "path": "presentation/cluster2_cav_polarity_v1_integration_evidence_matrix_20260826.md",
-      "bytes": 6296,
-      "sha256": "b1005315e6610bb62d1b0dc05f965ae86c64d0447a838307ede7e2410b382d86"
+      "bytes": 6759,
+      "sha256": "e771606ab0175b80adc7fb9161be7e612fc4beae9ee6e92fcb9903300af45cd9"
     },
     {
       "path": "presentation/cluster2_digital_first_round_20260828.pptx",
-      "bytes": 60836,
-      "sha256": "7c2bed245b11195cbe8962c8e33a0486a91c77fad2f822b0f6a0d7a995c026f4"
+      "bytes": 60848,
+      "sha256": "35d37d3eb81df717860b16476bba1fd89dd61d65c070db297702cc1b7dd637c7"
     },
     {
       "path": "presentation/cluster2_digital_first_round_slides.md",
-      "bytes": 9412,
-      "sha256": "bd9b25acd40e6c951d56ea37d1e85147de9333123b994dd042d819052b5fd1ac"
+      "bytes": 9928,
+      "sha256": "4a886db7a7ae436ed6767193c8bf9a98764b000335dc5958a7c7bf4c85c9fadd"
     },
     {
       "path": "presentation/ganghee_cluster2_ppa_diagnostic_handoff_20260824.md",
-      "bytes": 7316,
-      "sha256": "8991365bb242ca5676ca2e5f3612ca9b4259a615bbb51c08603ee8c1e97ec4f1"
+      "bytes": 7350,
+      "sha256": "29acd4f4616696b997b333525d13e6c7c2c5abc521c38d2f249971f414b342b4"
     },
     {
       "path": "source/rtl/aer_tx16_trad_rowcol_fovea_cluster2_steal_buf_polarity.v",
@@ -544,8 +544,8 @@
     },
     {
       "path": "tools/build_presentation.py",
-      "bytes": 23752,
-      "sha256": "69a0173b88783bd0ed293fa64ed509df1792e1db5f09108de983610f02017e72"
+      "bytes": 23789,
+      "sha256": "203fc0e7c55cfe9198b3190cb1c91dbb72ddc9d7579842977f3072b5a24df2a6"
     },
     {
       "path": "tools/requirements.txt",
