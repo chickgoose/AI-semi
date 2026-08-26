@@ -28,9 +28,6 @@ from .transport_time import (
 
 SOURCE_EVENT_SCHEMA = "redred.cluster2_cav_bridge.source_event/v1"
 TRANSPORT_OUTCOME_SCHEMA = "redred.cluster2_cav_bridge.transport_outcome/v1"
-TRANSPORT_OUTCOME_POLARITY_SCHEMA = (
-    "redred.cluster2_cav_bridge.transport_outcome/v2"
-)
 MANIFEST_SCHEMA = "redred.cluster2_cav_bridge.manifest/v2"
 PROJECTION_SCHEMA = "redred.cluster2_cav_bridge.four_view_projection/v2"
 CANONICAL_JSONL_FORMAT = "canonical-jsonl/v1"
@@ -53,11 +50,10 @@ _SOURCE_FIELDS = frozenset((
     "polarity", "window_id", "is_query", "sensor_ray",
     "causal_pose_source_index", "transform_guard_valid", "event_content_sha256",
 ))
-_OUTCOME_V1_FIELDS = frozenset((
+_OUTCOME_FIELDS = frozenset((
     "schema", "event_id", "source_index", "occurrence_cycle", "outcome",
     "retire_cycle", "retire_native_lane", "retire_row", "retire_col",
 ))
-_OUTCOME_V2_FIELDS = _OUTCOME_V1_FIELDS | frozenset(("retire_polarity",))
 _MANIFEST_FIELDS = frozenset((
     "schema", "bridge_id", "source_events", "transport_outcomes",
     "mapping_authority", "source_registry_authority", "pose_stream_authority",
@@ -382,16 +378,8 @@ def validate_source_event(value: object) -> Mapping[str, object]:
 
 
 def validate_transport_outcome(value: object) -> Mapping[str, object]:
-    if not isinstance(value, Mapping):
-        raise BridgeValidationError("transport outcome field schema differs")
-    schema = value.get("schema")
-    if schema == TRANSPORT_OUTCOME_SCHEMA:
-        outcome = _exact_mapping(value, _OUTCOME_V1_FIELDS, "transport outcome")
-        carries_polarity = False
-    elif schema == TRANSPORT_OUTCOME_POLARITY_SCHEMA:
-        outcome = _exact_mapping(value, _OUTCOME_V2_FIELDS, "transport outcome")
-        carries_polarity = True
-    else:
+    outcome = _exact_mapping(value, _OUTCOME_FIELDS, "transport outcome")
+    if outcome["schema"] != TRANSPORT_OUTCOME_SCHEMA:
         raise BridgeValidationError("transport outcome schema differs")
     _nonnegative_int(outcome["event_id"], "transport outcome event_id")
     source_index = _nonnegative_int(outcome["source_index"], "transport outcome source_index")
@@ -428,20 +416,12 @@ def validate_transport_outcome(value: object) -> Mapping[str, object]:
             raise BridgeValidationError(
                 "transport outcome native lane cannot emit the source row"
             )
-        if carries_polarity and (
-            type(outcome["retire_polarity"]) is not int
-            or outcome["retire_polarity"] not in (0, 1)
-        ):
-            raise BridgeValidationError(
-                "transport outcome retire_polarity must be 0 or 1"
-            )
     elif outcome["outcome"] == "OVERRUN":
         if (
             outcome["retire_cycle"] is not None
             or outcome["retire_native_lane"] is not None
             or outcome["retire_row"] is not None
             or outcome["retire_col"] is not None
-            or (carries_polarity and outcome["retire_polarity"] is not None)
         ):
             raise BridgeValidationError("OVERRUN retire fields must all be null")
     else:
@@ -587,15 +567,11 @@ def _join_streams(
         previous_timestamp = timestamp
         sources.append(source)
     outcomes_by_id = {}  # type: Dict[object, Mapping[str, object]]
-    outcome_schemas = set()
     for raw_outcome in outcome_rows:
         outcome = validate_transport_outcome(raw_outcome)
-        outcome_schemas.add(outcome["schema"])
         if outcome["event_id"] in outcomes_by_id:
             raise BridgeValidationError("transport outcome IDs must be unique")
         outcomes_by_id[outcome["event_id"]] = outcome
-    if len(outcome_schemas) != 1:
-        raise BridgeValidationError("transport outcome stream mixes schema versions")
     if source_ids != set(outcomes_by_id):
         raise BridgeValidationError("source and transport event IDs do not partition exactly")
     zero_ns = manifest["aer_cycle_zero_timestamp_ns"]
