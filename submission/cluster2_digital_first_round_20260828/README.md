@@ -37,6 +37,13 @@ vectorless 추정값이다.
 - `PROVENANCE.json`: source commit과 고정 hash
 - `SHA256SUMS`: 패키지 전체 파일 checksum
 
+Ganghee upstream provenance는 세 역할로 분리한다. `44f8918...`은 최종
+RTL/native run, `58c132f...`은 ledger 재현 도구, `f2f93a8...`은 manifest
+receipt다. Exact manifest는
+`evidence/functional/uzh_shapes_rotation_patch.polarity_manifest.json`에
+그대로 포함하며 SHA-256은 `df7ecc74...a02fa`다. 이 과정에서 polarity JSONL
+bytes는 바뀌지 않았고 SHA-256은 `518a2a5b...e9cd3`이다.
+
 ## 무결성 재검증
 
 패키지 루트 또는 저장소 루트에서 아래 verifier만 실행한다. 이 명령은 파일을

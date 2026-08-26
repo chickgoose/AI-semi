@@ -16,12 +16,16 @@
     "sample_report_blob": "b1efb3a5cb8c64806ef058e0ea6df755aa2a6dce"
   },
   "functional_source": {
-    "ganghee_commit": "44f8918c6e0085f7b75bb90fbe6c099abe1882cc",
+    "source_rtl_native_run_commit": "44f8918c6e0085f7b75bb90fbe6c099abe1882cc",
+    "polarity_ledger_repro_commit": "58c132fb475013634ee156eddf5037128c0ce0b3",
+    "polarity_ledger_receipt_commit": "f2f93a830414aff2e0a3b7db05154294e1d4b78d",
     "native_receipt_commit": "29d785661fec4062930d7bf54ff3fec0d306be60",
     "release_gate_commit": "c3d0a2479bcfd1bc68e942acfc418f023f6d3506"
   },
   "hashes": {
     "rtl_sha256": "20d601a9ee1d4d78854dbfeb5ee60f1c8db712c07c20aff6364c51c142e5ad81",
+    "polarity_ledger_manifest_sha256": "df7ecc74be802c55dedb2596ef8dc7063c71f9324d48ab45dfaa360cb87a02fa",
+    "polarity_ledger_jsonl_sha256": "518a2a5ba977516ea687fdc23a9246ff9cfe90fbf3d013efdd358200596e9cd3",
     "verification_report_sha256": "19d2ff34720b4fa594eb8dc847f47c383e20e16b14727a5a4e353a8d0f6a375e",
     "native_evidence_archive_sha256": "28401809a244571f084d01a2cc950ad381fc393f8b9a747364c45abbb16e8610"
   },

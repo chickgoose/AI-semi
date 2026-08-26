@@ -35,12 +35,23 @@ The new functional authority selects Ganghee polarity **v1**, not v2:
 
 - source commit:
   `44f8918c6e0085f7b75bb90fbe6c099abe1882cc`;
+- source/native-run role: this commit binds the selected RTL and the original
+  native event-logger JSONL bytes; it is not the later ledger-reproduction or
+  manifest-receipt commit;
 - selected RTL:
   `rtl/aer_tx16_trad_rowcol_fovea_cluster2_steal_buf_polarity.v`;
 - selected RTL SHA-256:
   `20d601a9ee1d4d78854dbfeb5ee60f1c8db712c07c20aff6364c51c142e5ad81`;
-- upstream hardware-polarity ledger milestone:
+- upstream historical hardware-polarity ledger milestone:
   `b9f2b76cc3c5fcfeee071193a2fbcb70aa35f55d`;
+- upstream ledger reproducibility/tool commit:
+  `58c132fb475013634ee156eddf5037128c0ce0b3`;
+- upstream ledger manifest receipt commit:
+  `f2f93a830414aff2e0a3b7db05154294e1d4b78d`;
+- exact receipt manifest SHA-256:
+  `df7ecc74be802c55dedb2596ef8dc7063c71f9324d48ab45dfaa360cb87a02fa`;
+- unchanged polarity transport JSONL SHA-256:
+  `518a2a5ba977516ea687fdc23a9246ff9cfe90fbf3d013efdd358200596e9cd3`;
 - upstream committed polarity-v1 P&R sweep milestone:
   `9b0d95121cf88ba55bee13cf0e5d444d688010b6`;
 - native receipt commit:

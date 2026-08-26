@@ -4,13 +4,23 @@ Date: 2026-08-26
 
 Disposition: **GO — final pinned polarity-v1 functional integration evidence**
 
-This is a documentation-only handoff. It records the authoritative integrated
-evidence from `/tmp/cluster2-cav-polarity-integration`; it does not amend the
-legacy address-only canonical result JSON or claim a new test execution.
+This handoff records the authoritative integrated evidence from
+`/tmp/cluster2-cav-polarity-integration`. The final packaging follow-up binds
+the separate upstream source, reproduction, and receipt commits; it does not
+amend the legacy address-only canonical result JSON or claim a new simulation.
 
 ## Final authority
 
-- Ganghee source: `44f8918c6e0085f7b75bb90fbe6c099abe1882cc`.
+- Ganghee RTL/native-run source:
+  `44f8918c6e0085f7b75bb90fbe6c099abe1882cc`.
+- Ganghee ledger reproducibility/tool commit:
+  `58c132fb475013634ee156eddf5037128c0ce0b3`.
+- Ganghee ledger manifest receipt commit:
+  `f2f93a830414aff2e0a3b7db05154294e1d4b78d`.
+- Exact receipt manifest SHA-256:
+  `df7ecc74be802c55dedb2596ef8dc7063c71f9324d48ab45dfaa360cb87a02fa`.
+- Unchanged polarity transport JSONL SHA-256:
+  `518a2a5ba977516ea687fdc23a9246ff9cfe90fbf3d013efdd358200596e9cd3`.
 - Selected v1 RTL SHA-256:
   `20d601a9ee1d4d78854dbfeb5ee60f1c8db712c07c20aff6364c51c142e5ad81`.
 - Historical upstream ledger/P&R milestones:
@@ -80,9 +90,10 @@ limits, and the distinct RTL top.
 
 ## Work performed for this final handoff
 
-Documentation only. The committed integrated receipt, authority, report,
-ledger, archive, and test records were inspected read-only. No RTL, scripts,
-tests, ledgers, reports, existing authority documents, or canonical result JSON
-were changed. Xcelium and the regressions were not rerun during this follow-up;
-the results above are the authoritative integrated evidence, not a newly
-executed campaign.
+The final packaging follow-up updated only provenance authority, evidence
+packaging, documentation, tests for that authority, and the submission
+verifier/inventory. It preserved the exact upstream manifest bytes and did not
+change RTL, source-crosswalk code, ledgers, simulation reports, native receipt,
+release gate, or the canonical result JSON. Xcelium was not rerun; the results
+above remain the authoritative integrated evidence, not a newly executed
+campaign.

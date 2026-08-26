@@ -1,6 +1,6 @@
 {
   "schema": "cluster2-digital-first-round-manifest-v1",
-  "file_count": 107,
+  "file_count": 108,
   "files": [
     {
       "path": "DESIGN_MANIFEST.json",
@@ -14,18 +14,18 @@
     },
     {
       "path": "PROVENANCE.json",
-      "bytes": 1408,
-      "sha256": "441ae51e7b0fe78d4c2eb526062cfeb7c187b4a40f11bf657ebf5cfffa5bed47"
+      "bytes": 1795,
+      "sha256": "d430e0cc25a243d9cb1e7d678bd189b5702473c709bffb93ab8db46985268324"
     },
     {
       "path": "README.md",
-      "bytes": 3889,
-      "sha256": "c140db72aa4781260394a3c4c5cb6d78584a8487e9decf4f9ed993ff2d85e107"
+      "bytes": 4310,
+      "sha256": "47b1532062c76a402f3da7a500e4bca72bddd033b4a134cfab39df3abb7cf31e"
     },
     {
       "path": "evidence/functional/ganghee_cluster2_polarity_v1_authority.json",
-      "bytes": 3671,
-      "sha256": "8b9695c08b9441df96250cfb54116f565459607ff4e485f41d0e2c1658588a13"
+      "bytes": 4117,
+      "sha256": "0b00d9edec870531d0ebd8375e85bf4fea10138449de11d8f6b0fe0d010e3e81"
     },
     {
       "path": "evidence/functional/polarity_release_authority.json",
@@ -51,6 +51,11 @@
       "path": "evidence/functional/polarity_v1_source.f",
       "bytes": 96,
       "sha256": "ab05e0df03d991fda13b3e73474bd1bd743f436e08f4019373b5f55dfd33e677"
+    },
+    {
+      "path": "evidence/functional/uzh_shapes_rotation_patch.polarity_manifest.json",
+      "bytes": 3205,
+      "sha256": "df7ecc74be802c55dedb2596ef8dc7063c71f9324d48ab45dfaa360cb87a02fa"
     },
     {
       "path": "evidence/functional/uzh_shapes_rotation_patch.polarity_native_cycle.ledger",
@@ -454,8 +459,8 @@
     },
     {
       "path": "presentation/cluster2_cav_polarity_v1_integration_evidence_matrix_20260826.md",
-      "bytes": 5700,
-      "sha256": "e1ced5f934c66edbd52be730f1171242e4906455ece378952340033cc2bdea70"
+      "bytes": 6296,
+      "sha256": "b1005315e6610bb62d1b0dc05f965ae86c64d0447a838307ede7e2410b382d86"
     },
     {
       "path": "presentation/cluster2_digital_first_round_20260828.pptx",
@@ -534,8 +539,8 @@
     },
     {
       "path": "tools/verify_submission.py",
-      "bytes": 13690,
-      "sha256": "96ea13e5c053f916faca805e033a85d65c772320f06347f62822cba52fa98a75"
+      "bytes": 17408,
+      "sha256": "0ef10daa5f44a135da5f4c6563f49e4514eccf78680a1ec642f4279b540df5c5"
     }
   ]
 }

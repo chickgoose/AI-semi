@@ -17,6 +17,12 @@ RTL_SHA256 = "20d601a9ee1d4d78854dbfeb5ee60f1c8db712c07c20aff6364c51c142e5ad81"
 ARCHIVE_SHA256 = "28401809a244571f084d01a2cc950ad381fc393f8b9a747364c45abbb16e8610"
 TRACE_SHA256 = "9f682af4eb11239f0743c2f95a82e4302836ac8a02e68278b8b69464beac55c4"
 VERIFIER_SHA256 = "da221ad2a3c4aac05c4b3afa97a327b16cfce8ea41b7dd36a89569636d9229e6"
+SOURCE_RTL_NATIVE_RUN_COMMIT = "44f8918c6e0085f7b75bb90fbe6c099abe1882cc"
+POLARITY_LEDGER_REPRO_COMMIT = "58c132fb475013634ee156eddf5037128c0ce0b3"
+POLARITY_LEDGER_RECEIPT_COMMIT = "f2f93a830414aff2e0a3b7db05154294e1d4b78d"
+POLARITY_MANIFEST_SHA256 = "df7ecc74be802c55dedb2596ef8dc7063c71f9324d48ab45dfaa360cb87a02fa"
+POLARITY_JSONL_SHA256 = "518a2a5ba977516ea687fdc23a9246ff9cfe90fbf3d013efdd358200596e9cd3"
+POLARITY_JSONL_GIT_BLOB = "f43e0c41bf2b2ed15e826e191a7aeee3ee33638c"
 INTEGRATION_COMMIT = "fbb053f5e6ae3b8178a479a1a50e7bce50eb6b9f"
 PPA_COMMIT = "9b0d95121cf88ba55bee13cf0e5d444d688010b6"
 
@@ -111,6 +117,59 @@ def validate_design_metadata():
         raise SystemExit("HOLD PPA provenance mismatch")
     if provenance.get("hashes", {}).get("rtl_sha256") != RTL_SHA256:
         raise SystemExit("HOLD provenance RTL hash mismatch")
+    functional = provenance.get("functional_source", {})
+    expected_functional_provenance = {
+        "source_rtl_native_run_commit": SOURCE_RTL_NATIVE_RUN_COMMIT,
+        "polarity_ledger_repro_commit": POLARITY_LEDGER_REPRO_COMMIT,
+        "polarity_ledger_receipt_commit": POLARITY_LEDGER_RECEIPT_COMMIT,
+        "native_receipt_commit": "29d785661fec4062930d7bf54ff3fec0d306be60",
+        "release_gate_commit": "c3d0a2479bcfd1bc68e942acfc418f023f6d3506",
+    }
+    if functional != expected_functional_provenance:
+        raise SystemExit("HOLD functional provenance role mismatch")
+    hashes = provenance.get("hashes", {})
+    if hashes.get("polarity_ledger_manifest_sha256") != POLARITY_MANIFEST_SHA256:
+        raise SystemExit("HOLD provenance polarity manifest hash mismatch")
+    if hashes.get("polarity_ledger_jsonl_sha256") != POLARITY_JSONL_SHA256:
+        raise SystemExit("HOLD provenance polarity JSONL hash mismatch")
+
+
+def validate_polarity_ledger_provenance():
+    relative = "evidence/functional/uzh_shapes_rotation_patch.polarity_manifest.json"
+    manifest_path = require(ROOT / relative)
+    if sha256(manifest_path) != POLARITY_MANIFEST_SHA256:
+        raise SystemExit("HOLD bundled polarity manifest SHA-256 mismatch")
+    manifest = strict_json(manifest_path)
+    if manifest.get("repro", {}).get("git_commit") != POLARITY_LEDGER_REPRO_COMMIT:
+        raise SystemExit("HOLD polarity manifest reproduction commit mismatch")
+    if (manifest.get("generated"), manifest.get("delivered"), manifest.get("overrun")) != (
+        8503, 8503, 0
+    ):
+        raise SystemExit("HOLD polarity manifest conservation mismatch")
+    if manifest.get("sha1", {}).get("jsonl_out") != POLARITY_JSONL_GIT_BLOB:
+        raise SystemExit("HOLD polarity manifest JSONL blob mismatch")
+
+    authority = strict_json(
+        ROOT / "evidence/functional/ganghee_cluster2_polarity_v1_authority.json"
+    )
+    if authority.get("schema") != (
+        "redred.cluster2_cav_bridge.ganghee_polarity_v1_authority/v2"
+    ):
+        raise SystemExit("HOLD Ganghee polarity authority schema mismatch")
+    if authority.get("git_commit") != SOURCE_RTL_NATIVE_RUN_COMMIT:
+        raise SystemExit("HOLD Ganghee source/native-run commit mismatch")
+    upstream = authority.get("provenance", {})
+    if upstream.get("source_rtl_native_run_commit") != SOURCE_RTL_NATIVE_RUN_COMMIT:
+        raise SystemExit("HOLD authority source/native-run role mismatch")
+    if upstream.get("polarity_ledger_repro_commit") != POLARITY_LEDGER_REPRO_COMMIT:
+        raise SystemExit("HOLD authority ledger reproduction role mismatch")
+    if upstream.get("polarity_ledger_receipt_commit") != POLARITY_LEDGER_RECEIPT_COMMIT:
+        raise SystemExit("HOLD authority ledger receipt role mismatch")
+    evidence = {row.get("role"): row for row in authority.get("evidence_files", [])}
+    if evidence.get("v1_polarity_ledger_manifest", {}).get("sha256") != POLARITY_MANIFEST_SHA256:
+        raise SystemExit("HOLD authority polarity manifest hash mismatch")
+    if evidence.get("v1_polarity_ledger_jsonl", {}).get("sha256") != POLARITY_JSONL_SHA256:
+        raise SystemExit("HOLD authority polarity JSONL hash mismatch")
 
 
 def validate_sweep():
@@ -184,6 +243,7 @@ def validate_archives():
 def validate_payload():
     reject_non_regular_paths()
     validate_design_metadata()
+    validate_polarity_ledger_provenance()
     rtl = require(ROOT / "source" / "rtl" / "aer_tx16_trad_rowcol_fovea_cluster2_steal_buf_polarity.v")
     if sha256(rtl) != RTL_SHA256:
         raise SystemExit("HOLD final RTL SHA-256 mismatch")

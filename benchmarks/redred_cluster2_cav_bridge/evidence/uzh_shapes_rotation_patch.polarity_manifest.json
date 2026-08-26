@@ -1,0 +1,53 @@
+{
+  "source_trace": "uzh_shapes_rotation_patch.addrpol.txt",
+  "patch": {
+    "x": [
+      110,
+      113
+    ],
+    "y": [
+      85,
+      88
+    ],
+    "bin_seconds": 0.001
+  },
+  "dut": "aer_tx16_trad_rowcol_fovea_cluster2_steal_buf_polarity.v (final submission candidate, includes real polarity -- NOT the unmodified baseline used in section 93/98's first pass)",
+  "harness": "tb_steal_buf_polarity_event_logger.v",
+  "generated": 8503,
+  "delivered": 8503,
+  "overrun": 0,
+  "loss_rate": 0.0,
+  "checks": {
+    "generated_eq_delivered_plus_overrun": true,
+    "every_id_present_exactly_once": true,
+    "duplicate_count": 0,
+    "missing_id_count": 0,
+    "tb_ledger_self_consistent": true,
+    "tb_ledger_order_violations": 0,
+    "polarity_roundtrip_ok": true,
+    "polarity_mismatches": 0
+  },
+  "known_limitations": [
+    "tb_ledger_self_consistent\uc740 \ub3c5\ub9bd \uc624\ub77c\ud074\uc774 \uc544\ub2d8: TB\uac00 event_id\ub97c arrival \uc21c\uc11c\ub85c \uc9c1\uc811 \ub9e4\uae30\uace0 \uadf8 \uc21c\uc11c\ub97c shadow FIFO\ub85c \uc7ac\uc0dd\ud558\ubbc0\ub85c, \uc774 \uccb4\ud06c\ub294 TB \uc790\uccb4 \uc7a5\ubd80\uac00 \uc2a4\uc2a4\ub85c \uc77c\uad00\uc801\uc778\uc9c0\ub9cc \uac80\uc99d\ud568(DUT\uac00 \uac19\uc740 source \uc774\ubca4\ud2b8\ub97c \uc7ac\uc815\ub82c\ud574\ub3c4 \uac80\ucd9c \ubd88\uac00) -- \uc8fc\uc18c\ub9cc \uc804\ub2ec\ud558\ub294 DUT\ub294 \uc774\ubca4\ud2b8 \uc2e0\uc6d0 \uc790\uccb4\ub97c \ud558\ub4dc\uc6e8\uc5b4\uc5d0 \uc548 \uc2e4\uc73c\ubbc0\ub85c \ub3c5\ub9bd \uac80\uc99d \uc2e0\ud638\uac00 \uc5c6\uc74c (\ud604\uc218 \uac10\uc0ac \uc9c0\uc801, 2026-08-25, HOLD \ud310\uc815 \ubc18\uc601)."
+  ],
+  "sha1": {
+    "rtl_dut": "7e716049ab72d5773af4fb87f3f92d7cf2d26bf6",
+    "rtl_deps": {
+      "rtl/arbiter2.v": "c5f512f1f3a685c30991ef5cf1ef76da42341348",
+      "rtl/arbiter4_tree.v": "a772cac49d7f10282f6b467ceaabcd51155cc63e"
+    },
+    "tb_harness": "c9e93f4d2659daf72d575f528fe77fd5b99219e3",
+    "trace_file": "899d314a053f58e7ded69638e07650b4a4a53f3e",
+    "eventmeta_tsv": "86bd48ae0a0a029a02c9e8d7dffd9c5a5d8ba88c",
+    "eventlog_txt": "f2f7a31c748a7b8d0ef425ec40392c2f6f1bd8ff",
+    "jsonl_out": "f43e0c41bf2b2ed15e826e191a7aeee3ee33638c"
+  },
+  "repro": {
+    "git_commit": "58c132fb475013634ee156eddf5037128c0ce0b3",
+    "git_commit_note": "\uc774 \ucee4\ubc0b\uc5d0 RTL/TB/trace/eventmeta/eventlog\uac00 \uc804\ubd80 \uc874\uc7ac\ud574\uc57c \uc7ac\ud604 \uac00\ub2a5. manifest/jsonl \uc790\uccb4\ub294 \uc774 \ucee4\ubc0b *\uc774\ud6c4* \ubcc4\ub3c4 receipt \ucee4\ubc0b\uc73c\ub85c \ubd09\uc778\ud568(\uc0dd\uc131 \uc2dc\uc810\uc5d4 \uc544\uc9c1 git\uc5d0 \uc5c6\uc5b4\uc11c \uac19\uc740 \ucee4\ubc0b\uc5d0 \uc790\uae30 \uc790\uc2e0\uc744 \ud3ec\ud568 \ubabb \ud568).",
+    "simulator": "Icarus Verilog version 12.0 (devel) (s20150603-1539-g2693dd32b)",
+    "compile_cmd": "iverilog -g2012 -o pol_event_logger.vvp rtl/*.v tb/tb_steal_buf_polarity_event_logger.v",
+    "run_cmd": "vvp pol_event_logger.vvp +TRACE_FILE=common_traces_uzh/uzh_shapes_rotation_patch.addrpol.txt +OUT_FILE=common_traces_uzh/event_logger_out/uzh_shapes_rotation_patch.polarity_eventlog.txt",
+    "join_cmd": "python3 scripts/join_polarity_event_logger_output.py"
+  }
+}

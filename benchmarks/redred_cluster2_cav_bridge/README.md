@@ -186,6 +186,13 @@ generated and delivered events, zero overrun, zero phantom or duplicate
 retirements, and an empty bounded drain. The release gate reports **GO** for
 this native polarity transport scope while explicitly declining event-ID order
 independence and any common-seam, CAV RTL, physical-signoff, or PPA claim.
+The upstream provenance is intentionally split: `44f8918...` binds the
+RTL/native run, `58c132f...` binds the ledger reproduction tools, and
+`f2f93a8...` is the manifest receipt. The exact receipt manifest is preserved
+at `evidence/uzh_shapes_rotation_patch.polarity_manifest.json` with SHA-256
+`df7ecc74be802c55dedb2596ef8dc7063c71f9324d48ab45dfaa360cb87a02fa`;
+its referenced polarity JSONL remained unchanged at SHA-256
+`518a2a5ba977516ea687fdc23a9246ff9cfe90fbf3d013efdd358200596e9cd3`.
 
 ## Official UZH-to-world functional replay
 
