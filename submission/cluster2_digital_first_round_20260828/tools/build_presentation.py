@@ -6,7 +6,7 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Inches, Pt
 
 
@@ -46,6 +46,7 @@ def text(slide, value, x, y, w, h, size=24, color=WHITE, bold=False,
     frame = box.text_frame
     frame.clear()
     frame.word_wrap = True
+    frame.auto_size = MSO_AUTO_SIZE.NONE
     frame.vertical_anchor = valign
     frame.margin_left = frame.margin_right = Inches(0.02)
     frame.margin_top = frame.margin_bottom = Inches(0.01)
@@ -65,11 +66,11 @@ def header(prs, section, title, number, source):
     slide.background.fill.fore_color.rgb = BG
     shape(slide, 0, 0, 0.14, 7.5, CYAN, False)
     shape(slide, 0.55, 0.26, 1.40, 0.34, CARD_2)
-    text(slide, section, 0.60, 0.31, 1.30, 0.20, 10, CYAN, True, PP_ALIGN.CENTER)
-    text(slide, title, 2.18, 0.20, 10.45, 0.54, 25, WHITE, True)
+    text(slide, section, 0.60, 0.30, 1.30, 0.22, 11, CYAN, True, PP_ALIGN.CENTER)
+    text(slide, title, 2.18, 0.18, 10.45, 0.58, 27, WHITE, True)
     shape(slide, 0.55, 0.88, 12.18, 0.025, CYAN, False)
-    text(slide, source, 0.60, 7.18, 11.30, 0.13, 6, MUTED)
-    text(slide, f"{number:02d}", 12.02, 7.10, 0.60, 0.18, 9, CYAN, True, PP_ALIGN.RIGHT)
+    text(slide, source, 0.60, 7.10, 11.30, 0.20, 8.5, MUTED)
+    text(slide, f"{number:02d}", 12.02, 7.08, 0.60, 0.20, 10, CYAN, True, PP_ALIGN.RIGHT)
     return slide
 
 
@@ -79,15 +80,15 @@ def arrow(slide, x, y, color=CYAN, size=28, w=0.55):
 
 def takeaway(slide, value, color=GREEN):
     shape(slide, 0.78, 6.20, 11.78, 0.62, CARD)
-    text(slide, value, 1.02, 6.35, 11.30, 0.28, 15, color, True, PP_ALIGN.CENTER)
+    text(slide, value, 1.02, 6.32, 11.30, 0.34, 17, color, True, PP_ALIGN.CENTER)
 
 
 def metric(slide, x, y, w, label, value, accent, note=""):
     shape(slide, x, y, w, 1.15, CARD, True, accent)
-    text(slide, label, x + 0.18, y + 0.14, w - 0.36, 0.20, 9, MUTED, True)
+    text(slide, label, x + 0.18, y + 0.12, w - 0.36, 0.24, 11, MUTED, True)
     text(slide, value, x + 0.18, y + 0.40, w - 0.36, 0.42, 24, accent, True)
     if note:
-        text(slide, note, x + 0.18, y + 0.88, w - 0.36, 0.16, 8, MUTED)
+        text(slide, note, x + 0.18, y + 0.86, w - 0.36, 0.19, 10, MUTED)
 
 
 def build():
@@ -100,8 +101,8 @@ def build():
     slide.background.fill.solid()
     slide.background.fill.fore_color.rgb = BG
     shape(slide, 0, 0, 0.18, 7.5, CYAN, False)
-    text(slide, "병목을 줄이고 의미를 보존하는 AER", 0.84, 0.72, 11.8, 0.70, 35, WHITE, True)
-    text(slide, "Cluster2 Steal-Buffer Polarity AER", 0.86, 1.55, 10.8, 0.34, 18, CYAN, True)
+    text(slide, "병목을 줄이고 의미를 보존하는 AER", 0.84, 0.68, 11.8, 0.76, 38, WHITE, True)
+    text(slide, "Cluster2 Steal-Buffer Polarity AER", 0.86, 1.55, 10.8, 0.38, 21, CYAN, True)
     stages = [
         (0.90, RED, "AER 병목", "직렬 출력\n재발생·불균형"),
         (4.43, CYAN, "제안 구조", "bitmap · FIFO\nsteal · polarity"),
@@ -112,10 +113,10 @@ def build():
         text(slide, tag, x + 0.25, 2.72, 2.65, 0.26, 13, accent, True, PP_ALIGN.CENTER)
         text(slide, body, x + 0.25, 3.18, 2.65, 0.82, 22, WHITE, True, PP_ALIGN.CENTER)
         if i < 2:
-            arrow(slide, x + 3.28, 3.20, CYAN, 34, 0.62)
+            arrow(slide, x + 3.12, 3.20, CYAN, 32, 0.40)
     shape(slide, 0.90, 5.18, 10.62, 0.52, CARD_2)
     text(slide, "문제 정의  →  구조 설계  →  정량 개선  →  RTL/PPA  →  CAV 확장", 1.12, 5.31, 10.18, 0.24, 16, MUTED, True, PP_ALIGN.CENTER)
-    text(slide, "2026-08-28  |  Xcelium · Genus · Innovus", 0.86, 6.90, 11.0, 0.20, 9, MUTED)
+    text(slide, "2026-08-28  |  Xcelium · Genus · Innovus", 0.86, 6.86, 11.0, 0.24, 10, MUTED)
 
     # 2. Translate all six literature problems into project requirements.
     slide = header(prs, "01 문제", "Ryu의 문제 흐름을 여섯 설계 요구사항으로 분해했다", 2,
@@ -124,8 +125,8 @@ def build():
         ("① 주소 overhead", "bitmap 집약", "repeat-flag 후속", ORANGE, "부분"),
         ("② bandwidth", "2 row-bitmap lanes", "최대 8 events/cycle", GREEN, "직접"),
         ("③ arbitration latency", "병렬 retire + depth-2", "대기·재발생 완화", GREEN, "직접"),
-        ("④ unfair arbitration", "rotating arbiter + steal", "별도 fairness metric 없음", PURPLE, "구조"),
-        ("⑤ timestamp", "occurrence-time sidecar", "DUT payload 통합은 후속", RED, "HOLD"),
+        ("④ unfair arbitration", "rotating RR + steal", "fairness 수치는 미측정", PURPLE, "구조"),
+        ("⑤ timestamp", "time sidecar only", "DUT payload 통합은 후속", RED, "HOLD"),
         ("⑥ motion artifact", "sensor/system 대응", "이번 RTL에서는 미검증", RED, "HOLD"),
     ]
     for i, (problem, action, result, accent, status) in enumerate(rows):
@@ -133,10 +134,10 @@ def build():
         y = 1.22 + (i // 2) * 1.48
         shape(slide, x, y, 5.72, 1.16, CARD, True, accent)
         shape(slide, x + 0.20, y + 0.18, 0.75, 0.30, accent)
-        text(slide, status, x + 0.25, y + 0.23, 0.65, 0.17, 9, BG, True, PP_ALIGN.CENTER)
+        text(slide, status, x + 0.25, y + 0.21, 0.65, 0.20, 10, BG, True, PP_ALIGN.CENTER)
         text(slide, problem, x + 1.10, y + 0.18, 2.15, 0.25, 13, accent, True)
         text(slide, action, x + 1.10, y + 0.55, 2.15, 0.28, 14, WHITE, True)
-        text(slide, result, x + 3.28, y + 0.55, 2.12, 0.28, 11, MUTED, False, PP_ALIGN.RIGHT)
+        text(slide, result, x + 3.18, y + 0.53, 2.22, 0.32, 12, MUTED, False, PP_ALIGN.RIGHT)
     takeaway(slide, "②③은 직접 완화 · ①④는 부분/구조 대응 · ⑤⑥은 이번 RTL의 HOLD 범위다", ORANGE)
 
     # 3. Measured baseline mechanism.
@@ -177,13 +178,13 @@ def build():
     arrow(slide, 5.52, 2.52, CYAN, 28, 0.38)
     arrow(slide, 8.54, 2.52, GREEN, 28, 0.38)
     shape(slide, 5.75, 4.88, 2.95, 0.46, CARD_2, True, PURPLE)
-    text(slide, "traffic 쏠림 시 lane steal", 5.96, 5.00, 2.54, 0.21, 11, PURPLE, True, PP_ALIGN.CENTER)
+    text(slide, "traffic 쏠림 시 lane steal", 5.92, 4.98, 2.62, 0.24, 12, PURPLE, True, PP_ALIGN.CENTER)
     shape(slide, 9.34, 4.88, 2.45, 0.46, GREEN)
-    text(slide, "최대 8 events/cycle", 9.52, 5.00, 2.10, 0.21, 11, BG, True, PP_ALIGN.CENTER)
+    text(slide, "최대 8 events/cycle", 9.48, 4.98, 2.18, 0.24, 12, BG, True, PP_ALIGN.CENTER)
     takeaway(slide, "Cluster2의 병렬 row 전송 위에 depth-2·steal·polarity lockstep을 통합했다", GREEN)
 
     # 5. Bitmap and depth-2 solve different causes.
-    slide = header(prs, "02 구조", "bitmap은 출력 폭을, depth-2는 같은 source 재발생을 푼다", 5,
+    slide = header(prs, "02 구조", "bitmap은 출력 폭, depth-2는 source 재발생을 푼다", 5,
                    "Source: final RTL contract · full50 bottleneck diagnosis")
     shape(slide, 0.78, 1.25, 5.72, 4.55, CARD, True, CYAN)
     text(slide, "IDEA 1  ROW BITMAP", 1.08, 1.56, 5.12, 0.28, 14, CYAN, True, PP_ALIGN.CENTER)
@@ -200,7 +201,7 @@ def build():
     for i, label in enumerate(["event A", "event B", "grant A"]):
         x = 7.75 + i * 1.40
         shape(slide, x, 2.04, 1.05, 0.58, CARD_2, True, ORANGE if i < 2 else GREEN)
-        text(slide, label, x + 0.08, 2.21, 0.89, 0.20, 10, WHITE, True, PP_ALIGN.CENTER)
+        text(slide, label, x + 0.08, 2.19, 0.89, 0.23, 11, WHITE, True, PP_ALIGN.CENTER)
     shape(slide, 8.08, 3.15, 3.28, 1.15, CARD_2, True, ORANGE)
     text(slide, "slot 0: A  |  slot 1: B", 8.30, 3.52, 2.84, 0.30, 17, WHITE, True, PP_ALIGN.CENTER)
     text(slide, "두 번째 event를 overrun 대신 저장", 7.22, 4.75, 4.92, 0.28, 14, ORANGE, True, PP_ALIGN.CENTER)
@@ -217,7 +218,7 @@ def build():
     shape(slide, 4.15, 2.18, 1.82, 1.50, CARD_2, True, MUTED)
     text(slide, "PERIPH.", 4.40, 2.44, 1.32, 0.22, 12, MUTED, True, PP_ALIGN.CENTER)
     text(slide, "idle", 4.40, 2.93, 1.32, 0.32, 19, MUTED, True, PP_ALIGN.CENTER)
-    text(slide, "← steal capacity", 3.02, 2.75, 1.16, 0.32, 11, PURPLE, True, PP_ALIGN.CENTER)
+    text(slide, "← steal\ncapacity", 3.02, 2.66, 1.16, 0.50, 12, PURPLE, True, PP_ALIGN.CENTER)
     text(slide, "idle class의 처리력을 재사용\n(global fairness 수치는 별도)", 1.20, 4.43, 4.90, 0.62, 13, PURPLE, True, PP_ALIGN.CENTER)
     shape(slide, 6.82, 1.25, 5.72, 4.55, CARD, True, BLUE)
     text(slide, "IDEA 4  POLARITY LOCKSTEP", 7.12, 1.56, 5.12, 0.28, 14, BLUE, True, PP_ALIGN.CENTER)
@@ -232,67 +233,65 @@ def build():
     takeaway(slide, "steal_buf는 처리력 낭비와 재발생 손실을 잡고, polarity FIFO는 의미를 보존한다", GREEN)
 
     # 7. Address-overhead extensions are presented as a coherent next layer.
-    slide = header(prs, "02 구조", "주소 overhead는 전송 부호화 계층에서 더 줄일 수 있다", 7,
-                   "Source: row-trim/repeat-flag architecture studies · integration boundary")
-    text(slide, "현재 최종 RTL", 0.85, 1.20, 3.46, 0.26, 12, CYAN, True, PP_ALIGN.CENTER)
-    text(slide, "별도 address-codec 실험", 4.92, 1.20, 7.50, 0.26, 12, ORANGE, True, PP_ALIGN.CENTER)
-    shape(slide, 0.78, 1.62, 3.60, 3.72, CARD, True, CYAN)
-    text(slide, "ROW + MASK", 1.08, 1.98, 3.00, 0.32, 19, CYAN, True, PP_ALIGN.CENTER)
-    text(slide, "row\ncol_mask\npol_mask", 1.44, 2.64, 2.28, 1.22, 18, WHITE, True, PP_ALIGN.CENTER)
-    text(slide, "bitmap으로 반복 주소 집약", 1.05, 4.62, 3.05, 0.24, 12, MUTED, True, PP_ALIGN.CENTER)
-    shape(slide, 4.78, 1.62, 3.48, 3.72, CARD, True, MUTED)
-    text(slide, "ROW-TRIM", 5.06, 1.98, 2.92, 0.32, 19, MUTED, True, PP_ALIGN.CENTER)
-    text(slide, "−14.29%", 5.22, 2.67, 2.60, 0.48, 28, MUTED, True, PP_ALIGN.CENTER)
-    text(slide, "기본 Cluster2 전용", 5.10, 3.48, 2.84, 0.25, 13, WHITE, True, PP_ALIGN.CENTER)
-    text(slide, "address-only 실험\nsteal 확장 row에는 적용 불가", 5.02, 4.20, 3.00, 0.58, 10, RED, True, PP_ALIGN.CENTER)
-    shape(slide, 8.66, 1.62, 3.88, 3.72, CARD, True, ORANGE)
-    text(slide, "REPEAT-FLAG", 8.96, 1.98, 3.28, 0.32, 19, ORANGE, True, PP_ALIGN.CENTER)
-    text(slide, "−15.61%", 9.28, 2.67, 2.64, 0.48, 28, ORANGE, True, PP_ALIGN.CENTER)
-    text(slide, "steal_buf address 실험", 9.16, 3.48, 2.88, 0.25, 13, WHITE, True, PP_ALIGN.CENTER)
-    text(slide, "address-only 실험\npolarity grammar 재검증 필요", 9.12, 4.20, 2.96, 0.58, 10, ORANGE, True, PP_ALIGN.CENTER)
-    takeaway(slide, "최종 제출은 ROW+MASK이고, repeat-flag는 polarity 재검증이 필요한 2차 후보다", ORANGE)
+    slide = header(prs, "02 구조", "주소 부호화: repeat-flag 통합은 아직 HOLD", 7,
+                   "Source: row-trim/repeat-flag studies · address-only integration boundary")
+    codec_cards = [
+        (0.78, 3.60, CYAN, "FINAL POLARITY RTL", "ROW + MASK", "row · col_mask · pol_mask", "제출된 polarity RTL의 현재 encoding", MUTED),
+        (4.78, 3.48, MUTED, "ADDRESS-ONLY STUDY", "ROW-TRIM", "−14.29%", "기본 Cluster2 전용\nsteal_buf row에는 적용 불가", RED),
+        (8.66, 3.88, ORANGE, "ADDRESS-ONLY STUDY", "REPEAT-FLAG", "−15.61%", "steal_buf address 실험\npolarity grammar 재검증", ORANGE),
+    ]
+    for x, w, accent, badge, name, value, note, note_color in codec_cards:
+        shape(slide, x, 1.35, w, 4.42, CARD, True, accent)
+        text(slide, badge, x + 0.22, 1.66, w - 0.44, 0.30, 16, accent, True, PP_ALIGN.CENTER)
+        text(slide, name, x + 0.22, 2.18, w - 0.44, 0.38, 22, WHITE, True, PP_ALIGN.CENTER)
+        value_size = 34 if value.startswith("−") else 18
+        text(slide, value, x + 0.22, 2.86, w - 0.44, 0.62, value_size, accent, True, PP_ALIGN.CENTER)
+        text(slide, note, x + 0.25, 4.12, w - 0.50, 0.78, 16, note_color, True, PP_ALIGN.CENTER)
+    takeaway(slide, "최종 제출: ROW + MASK  |  repeat-flag: final-polarity 재검증 전까지 2차 후보", ORANGE)
 
     # 8. One integrated quantitative evolution.
-    slide = header(prs, "03 결과", "steal_buf는 기본 Cluster2의 source-overrun을 95.9% 줄였다", 8,
+    slide = header(prs, "03 결과", "full50 source-overrun: 12,259 → 502 (−95.9%)", 8,
                    "Source: recovered scalar/base + upstream steal_buf full50 · same 106,416-event denominator")
+    shape(slide, 0.78, 1.04, 11.78, 0.48, CARD_2)
+    text(slide, "동일 full50 50 traces · 106,416 generated events / design", 1.02, 1.16, 11.30, 0.24, 15, CYAN, True, PP_ALIGN.CENTER)
     data = [
         ("SCALAR FOVEA", 26.49, "28,187", RED),
         ("BASE CLUSTER2", 11.52, "12,259", ORANGE),
         ("STEAL_BUF", 0.47, "502", GREEN),
     ]
-    max_h = 3.10
+    max_h = 2.75
     for i, (label, pct, count, accent) in enumerate(data):
         x = 0.98 + i * 2.98
         h = max(0.10, max_h * pct / 26.49)
-        shape(slide, x + 0.52, 4.76 - h, 1.48, h, accent, False)
-        text(slide, f"{pct:.2f}%", x + 0.12, 1.28 if i == 2 else 4.36 - h, 2.28, 0.42, 22, accent, True, PP_ALIGN.CENTER)
-        text(slide, label, x, 5.02, 2.52, 0.28, 11, WHITE, True, PP_ALIGN.CENTER)
-        text(slide, f"loss {count}", x, 5.42, 2.52, 0.22, 10, MUTED, False, PP_ALIGN.CENTER)
+        shape(slide, x + 0.52, 4.78 - h, 1.48, h, accent, False)
+        text(slide, f"{pct:.2f}%", x + 0.12, 1.72 if i == 2 else 4.38 - h, 2.28, 0.42, 24, accent, True, PP_ALIGN.CENTER)
+        text(slide, label, x, 5.00, 2.52, 0.30, 13, WHITE, True, PP_ALIGN.CENTER)
+        text(slide, f"loss {count}", x, 5.40, 2.52, 0.24, 12, MUTED, False, PP_ALIGN.CENTER)
     shape(slide, 9.78, 1.55, 2.55, 1.50, GREEN)
     text(slide, "−95.9%", 10.00, 1.82, 2.11, 0.46, 27, BG, True, PP_ALIGN.CENTER)
-    text(slide, "남은 loss = 1/24.42", 9.96, 2.42, 2.20, 0.22, 10, BG, True, PP_ALIGN.CENTER)
+    text(slide, "남은 loss = 1/24.42", 9.92, 2.40, 2.28, 0.26, 12, BG, True, PP_ALIGN.CENTER)
     shape(slide, 9.58, 3.40, 2.95, 1.18, CARD, True, ORANGE)
     text(slide, "48 / 50 traces", 9.80, 3.63, 2.50, 0.28, 16, GREEN, True, PP_ALIGN.CENTER)
-    text(slide, "overrun 0 · worst 5.39%", 9.78, 4.07, 2.54, 0.22, 9, MUTED, True, PP_ALIGN.CENTER)
+    text(slide, "overrun 0 · worst 5.39%", 9.74, 4.04, 2.62, 0.26, 11, MUTED, True, PP_ALIGN.CENTER)
     takeaway(slide, "architecture-family full50 결과이며, 다음 UZH polarity-v1 검증과는 별도 population이다", ORANGE)
 
     # 9. Actual simulator and cycle evidence.
-    slide = header(prs, "03 결과", "실제 TB가 입력부터 cycle ledger까지 독립 검증한다", 9,
+    slide = header(prs, "03 결과", "실제 TB: 입력부터 cycle ledger까지 독립 검증", 9,
                    "Source: Xcelium 23.09-s013 · polarity-v1 native observational evidence")
     stages = [
         (0.72, BLUE, "UZH TRACE", "8,503 events"),
-        (3.48, CYAN, "RTL + TB", "Xcelium 23.09-s013"),
+        (3.48, CYAN, "RTL + TB", "Xcelium\n23.09-s013"),
         (6.58, PURPLE, "CYCLE LEDGER", "independent check"),
         (9.72, GREEN, "RESULT", "8,503 / 8,503"),
     ]
     for i, (x, accent, label, value) in enumerate(stages):
         shape(slide, x, 1.34, 2.42, 1.25, CARD, True, accent)
-        text(slide, label, x + 0.18, 1.58, 2.06, 0.22, 11, accent, True, PP_ALIGN.CENTER)
-        text(slide, value, x + 0.18, 1.98, 2.06, 0.28, 15, WHITE, True, PP_ALIGN.CENTER)
+        text(slide, label, x + 0.18, 1.55, 2.06, 0.25, 13, accent, True, PP_ALIGN.CENTER)
+        text(slide, value, x + 0.14, 1.87, 2.14, 0.52, 16, WHITE, True, PP_ALIGN.CENTER)
         if i < 3:
             arrow(slide, x + 2.48, 1.75, CYAN, 24, 0.36)
     text(slide, "TB · redred_cluster2_polarity_v1_native_observational_tb.sv",
-         1.40, 2.72, 10.50, 0.18, 8, MUTED, True, PP_ALIGN.CENTER)
+         1.20, 2.67, 10.90, 0.24, 10, MUTED, True, PP_ALIGN.CENTER)
     shape(slide, 0.90, 3.02, 11.55, 1.34, CARD, True, CYAN)
     text(slide, "REAL RETIRE · CYCLE 4162", 1.18, 3.27, 2.70, 0.25, 12, CYAN, True)
     text(slide, "lane0  row2  col=0x6  pol=0x0", 4.05, 3.23, 3.42, 0.30, 16, WHITE, True, PP_ALIGN.CENTER)
@@ -302,89 +301,111 @@ def build():
     for i, (label, value) in enumerate(checks):
         x = 1.08 + i * 2.84
         shape(slide, x, 4.77, 2.46, 0.82, CARD_2, True, GREEN)
-        text(slide, label, x + 0.12, 4.96, 1.50, 0.20, 10, MUTED, True)
+        text(slide, label, x + 0.12, 4.94, 1.56, 0.24, 12, MUTED, True)
         text(slide, value, x + 1.65, 4.91, 0.55, 0.30, 19, GREEN, True, PP_ALIGN.RIGHT)
     takeaway(slide, "UZH shapes_rotation 4×4 patch · 1 ms bins · selected-event polarity sequence · drain empty", GREEN)
 
     # 10. Physical results.
-    slide = header(prs, "04 구현", "최종 polarity RTL은 285.714 MHz에서 setup·hold PASS", 10,
-                   "Source: Genus/Innovus slow 0.9 V 125 °C · discrete timing sweep")
-    metric(slide, 0.78, 1.25, 3.48, "FASTEST TESTED PASS", "285.714 MHz", GREEN, "setup +0.454 ns · hold +0.167 ns")
-    shape(slide, 4.56, 1.25, 3.48, 1.15, CARD, True, CYAN)
-    text(slide, "SYNTHESIS → P&R AREA RAW", 4.74, 1.39, 3.12, 0.20, 9, MUTED, True)
-    text(slide, "Genus 1156.644", 4.74, 1.70, 3.12, 0.24, 15, CYAN, True)
-    text(slide, "Innovus 1254.114", 4.74, 2.02, 3.12, 0.24, 15, WHITE, True)
-    metric(slide, 8.34, 1.25, 3.98, "VECTORLESS POWER", "0.107389 mW", ORANGE, "default activity 0.2")
-    shape(slide, 1.04, 3.28, 10.75, 0.10, CARD_2, False)
+    slide = header(prs, "04 구현", "최종 polarity-v1 RTL: 3.5 ns post-route setup·hold PASS", 10,
+                   "Source: Genus/Innovus · GPDK045 slow 0.9 V/125 °C · discrete per-target sweep")
+    shape(slide, 0.78, 1.20, 4.10, 1.38, CARD, True, GREEN)
+    text(slide, "POST-ROUTE TIMING TARGET", 0.98, 1.36, 2.70, 0.22, 10, MUTED, True)
+    shape(slide, 3.78, 1.33, 0.78, 0.30, GREEN)
+    text(slide, "PASS", 3.84, 1.39, 0.66, 0.18, 10, BG, True, PP_ALIGN.CENTER)
+    text(slide, "3.5 ns · 285.714 MHz", 0.98, 1.68, 3.68, 0.42, 25, GREEN, True)
+    text(slide, "setup WNS +0.454 ns · hold WNS +0.167 ns", 0.98, 2.20, 3.68, 0.20, 10, MUTED)
+    shape(slide, 5.18, 1.20, 3.38, 1.38, CARD, True, CYAN)
+    text(slide, "AREA · RAW REPORT UNIT", 5.38, 1.36, 2.98, 0.22, 10, MUTED, True)
+    text(slide, "SYNTHESIS", 5.38, 1.72, 1.08, 0.22, 10, MUTED, True)
+    text(slide, "1156.644", 6.48, 1.67, 1.68, 0.28, 19, CYAN, True, PP_ALIGN.RIGHT)
+    shape(slide, 5.38, 2.02, 2.78, 0.01, CARD_2, False)
+    text(slide, "P&R", 5.38, 2.14, 1.08, 0.22, 10, MUTED, True)
+    text(slide, "1254.114", 6.48, 2.09, 1.68, 0.28, 19, WHITE, True, PP_ALIGN.RIGHT)
+    shape(slide, 8.86, 1.20, 3.46, 1.38, CARD, True, ORANGE)
+    text(slide, "POST-ROUTE POWER · VECTORLESS", 9.06, 1.36, 3.06, 0.22, 10, MUTED, True)
+    text(slide, "0.107389 mW", 9.06, 1.68, 3.06, 0.42, 24, ORANGE, True)
+    text(slide, "default activity 0.2 · not workload power", 9.06, 2.20, 3.06, 0.20, 10, MUTED)
+    text(slide, "DISCRETE POST-ROUTE SETUP WNS SWEEP", 1.02, 2.78, 5.00, 0.22, 10, MUTED, True)
+    shape(slide, 1.66, 3.28, 5.96, 0.08, GREEN, False)
+    shape(slide, 7.62, 3.28, 2.98, 0.08, CARD_2, False)
     points = [
-        (1.42, "222.2", "+1.349", GREEN),
-        (4.34, "250.0", "+0.849", GREEN),
-        (7.28, "285.7", "+0.454", GREEN),
-        (10.38, "333.3", "−0.004", RED),
+        (1.66, "222.222", "+1.349", GREEN),
+        (4.64, "250.000", "+0.849", GREEN),
+        (7.62, "285.714", "+0.454", GREEN),
+        (10.60, "333.333", "−0.004", RED),
     ]
-    for x, freq, slack, accent in points:
-        shape(slide, x, 3.06, 0.46, 0.46, accent)
-        text(slide, f"{freq} MHz", x - 0.36, 3.77, 1.18, 0.25, 12, accent, True, PP_ALIGN.CENTER)
-        text(slide, f"setup {slack}", x - 0.44, 4.20, 1.34, 0.20, 9, MUTED, False, PP_ALIGN.CENTER)
-    shape(slide, 0.98, 4.82, 7.16, 0.74, CARD, True, CYAN)
-    text(slide, "각 period: Genus generic→map→opt  |  Innovus place→CTS→route", 1.18, 5.04, 6.76, 0.28, 13, WHITE, True, PP_ALIGN.CENTER)
-    shape(slide, 8.48, 4.82, 3.62, 0.74, CARD, True, GREEN)
-    text(slide, "internal DRC 0 · antenna 0", 8.68, 5.04, 3.22, 0.28, 12, GREEN, True, PP_ALIGN.CENTER)
-    text(slide, "single slow Non-OCV · SI off · no SPEF/RCDB · internal flow, not signoff",
-         1.20, 5.76, 10.95, 0.18, 8, MUTED, True, PP_ALIGN.CENTER)
-    takeaway(slide, "285.714 MHz는 검증 동작점이며, 333.333 MHz는 첫 faster setup FAIL이다", ORANGE)
+    for center, freq, slack, accent in points:
+        shape(slide, center - 0.23, 3.05, 0.46, 0.46, accent)
+        text(slide, f"{freq} MHz", center - 0.71, 3.72, 1.42, 0.26, 13, accent, True, PP_ALIGN.CENTER)
+        text(slide, f"WNS {slack} ns", center - 0.77, 4.10, 1.54, 0.22, 10, MUTED, False, PP_ALIGN.CENTER)
+    shape(slide, 0.98, 4.62, 7.16, 0.78, CARD, True, CYAN)
+    text(slide, "PER-TARGET FLOW", 1.20, 4.75, 2.10, 0.20, 10, MUTED, True)
+    text(slide, "Genus: generic → map → opt  |  Innovus: place → CTS → route", 1.20, 5.02, 6.72, 0.26, 13, WHITE, True, PP_ALIGN.CENTER)
+    shape(slide, 8.48, 4.62, 3.62, 0.78, CARD, True, GREEN)
+    text(slide, "INTERNAL TOOL CHECKS", 8.68, 4.75, 3.22, 0.20, 10, MUTED, True)
+    text(slide, "DRC 0 · antenna 0", 8.68, 5.02, 3.22, 0.26, 15, GREEN, True, PP_ALIGN.CENTER)
+    shape(slide, 0.98, 5.52, 11.12, 0.48, CARD, True, ORANGE)
+    text(slide, "LIMITS", 1.16, 5.65, 0.74, 0.20, 10, ORANGE, True)
+    text(slide, "single slow view · Non-OCV · SI off · no SPEF/RCDB · vectorless power · internal checks only",
+         1.98, 5.64, 9.90, 0.22, 11, WHITE, True)
+    takeaway(slide, "GO: 3.5 ns reported setup·hold PASS  |  HOLD: exact Fmax·activity power·signoff", ORANGE)
 
     # 11. CAV extension with proven and next clearly separated.
     slide = header(prs, "05 확장", "별도 software path에서 CAV 좌표계 전수 분기를 검증했다", 11,
                    "Source: sealed legacy address-only official UZH→CAV result")
-    shape(slide, 0.78, 1.18, 11.78, 0.50, CARD_2)
-    text(slide, "검증 완료 · legacy address-only software path", 1.02, 1.31, 11.30, 0.22, 12, PURPLE, True, PP_ALIGN.CENTER)
+    shape(slide, 0.78, 1.14, 11.78, 0.52, CARD_2)
+    text(slide, "SEPARATE SOFTWARE TRACK · legacy address-only", 1.02, 1.27, 11.30, 0.24, 14, PURPLE, True, PP_ALIGN.CENTER)
     stages = [
-        (0.82, BLUE, "UZH + POSE", "8,503"),
+        (0.82, BLUE, "EVENTS + POSE", "8,503 INPUT"),
         (3.56, GREEN, "TB-SIDE JOIN", "8,503 / 8,503"),
-        (6.52, PURPLE, "CAUSAL-CAV", "occurrence time"),
+        (6.52, PURPLE, "TIME SEMANTICS", "OCCURRENCE TIME"),
     ]
     for i, (x, accent, label, value) in enumerate(stages):
-        shape(slide, x, 2.02, 2.34, 1.48, CARD, True, accent)
-        text(slide, label, x + 0.17, 2.30, 2.00, 0.23, 11, accent, True, PP_ALIGN.CENTER)
-        text(slide, value, x + 0.17, 2.79, 2.00, 0.35, 19, WHITE, True, PP_ALIGN.CENTER)
+        shape(slide, x, 1.94, 2.34, 1.58, CARD, True, accent)
+        text(slide, label, x + 0.17, 2.18, 2.00, 0.27, 14, accent, True, PP_ALIGN.CENTER)
+        text(slide, value, x + 0.12, 2.66, 2.10, 0.52, 20, WHITE, True, PP_ALIGN.CENTER)
         if i < 2:
-            arrow(slide, x + 2.40, 2.51, CYAN, 24, 0.40)
-    arrow(slide, 9.03, 2.16, CYAN, 22, 0.42)
-    arrow(slide, 9.03, 3.17, ORANGE, 22, 0.42)
-    shape(slide, 9.50, 1.85, 2.55, 1.15, CARD, True, CYAN)
-    text(slide, "WORLD  8,420", 9.72, 2.20, 2.12, 0.30, 18, CYAN, True, PP_ALIGN.CENTER)
-    shape(slide, 9.50, 3.24, 2.55, 1.15, CARD, True, ORANGE)
-    text(slide, "BYPASS  83", 9.72, 3.59, 2.12, 0.30, 18, ORANGE, True, PP_ALIGN.CENTER)
-    shape(slide, 0.98, 4.55, 5.60, 0.78, CARD)
-    text(slide, "ID는 RTL payload 아님 · WORLD grid 821 cells", 1.24, 4.79, 5.08, 0.30, 14, PURPLE, True, PP_ALIGN.CENTER)
-    shape(slide, 6.90, 4.55, 5.20, 0.78, CARD, True, ORANGE)
-    text(slide, "NEXT · polarity full replay → CAV RTL", 7.14, 4.79, 4.72, 0.30, 15, ORANGE, True, PP_ALIGN.CENTER)
+            arrow(slide, x + 2.40, 2.48, CYAN, 24, 0.40)
+    shape(slide, 8.88, 2.72, 0.48, 0.04, CYAN, False)
+    shape(slide, 9.32, 2.24, 0.04, 1.02, CYAN, False)
+    shape(slide, 9.32, 2.24, 0.34, 0.04, CYAN, False)
+    shape(slide, 9.32, 3.22, 0.34, 0.04, ORANGE, False)
+    shape(slide, 9.66, 1.76, 2.55, 1.12, CARD, True, CYAN)
+    text(slide, "WORLD", 9.88, 1.99, 2.12, 0.24, 14, CYAN, True, PP_ALIGN.CENTER)
+    text(slide, "8,420", 9.88, 2.36, 2.12, 0.34, 24, WHITE, True, PP_ALIGN.CENTER)
+    shape(slide, 9.66, 3.02, 2.55, 1.12, CARD, True, ORANGE)
+    text(slide, "SENSOR_FIXED", 9.84, 3.25, 2.20, 0.24, 14, ORANGE, True, PP_ALIGN.CENTER)
+    text(slide, "83", 9.88, 3.62, 2.12, 0.34, 24, WHITE, True, PP_ALIGN.CENTER)
+    shape(slide, 0.98, 4.52, 5.60, 0.82, CARD)
+    text(slide, "WORLD → 821 cells · ID는 RTL payload 아님", 1.20, 4.77, 5.16, 0.32, 16, PURPLE, True, PP_ALIGN.CENTER)
+    shape(slide, 6.74, 4.52, 5.46, 0.82, CARD, True, ORANGE)
+    text(slide, "NEXT · polarity replay → CAV RTL/PPA", 6.98, 4.77, 4.98, 0.32, 16, ORANGE, True, PP_ALIGN.CENTER)
     takeaway(slide, "확장성은 software 기능 경로로 입증했고, polarity→CAV RTL/PPA는 2차 과제다", ORANGE)
 
     # 12. Close with integrated conclusions and roadmap.
-    slide = header(prs, "SUMMARY", "결론: 병목·의미·구현·확장성을 하나의 흐름으로 검증했다", 12,
+    slide = header(prs, "SUMMARY", "결론: RTL/PPA와 CAV software 경로를 각각 검증했다", 12,
                    "Source bundle: receipts · raw reports · SHA256SUMS · PROVENANCE.json")
     claims = [
-        (0.78, CYAN, "구조", "bitmap · FIFO", "steal · polarity"),
-        (4.72, GREEN, "효과", "loss 0.47%", "95.9% 감소"),
-        (8.66, BLUE, "최종 RTL", "8,503 / 8,503", "285.714 MHz PASS"),
+        (0.78, CYAN, "DESIGN", "bitmap · FIFO", "steal · polarity"),
+        (4.72, GREEN, "DIRECTIONAL EFFECT", "11.52% → 0.47%", "95.9% lower"),
+        (8.66, BLUE, "PROVED FINAL RTL", "8,503 / 8,503", "285.714 MHz\ntested PASS"),
     ]
     for x, accent, tag, line1, line2 in claims:
         shape(slide, x, 1.38, 3.52, 2.22, CARD, True, accent)
-        text(slide, tag, x + 0.25, 1.68, 3.02, 0.26, 13, accent, True, PP_ALIGN.CENTER)
-        text(slide, line1, x + 0.25, 2.18, 3.02, 0.34, 20, WHITE, True, PP_ALIGN.CENTER)
-        text(slide, line2, x + 0.25, 2.78, 3.02, 0.35, 18, accent, True, PP_ALIGN.CENTER)
-    shape(slide, 0.78, 4.18, 11.40, 1.20, CARD)
-    text(slide, "2차", 1.04, 4.50, 0.76, 0.25, 12, ORANGE, True, PP_ALIGN.CENTER)
-    roadmap = ["repeat-flag", "polarity→CAV replay", "CAV RTL", "activity power", "exact Fmax"]
-    for i, item in enumerate(roadmap):
-        x = 1.98 + i * 1.98
-        shape(slide, x, 4.40, 1.66, 0.54, CARD_2, True, ORANGE)
-        text(slide, item, x + 0.08, 4.57, 1.50, 0.20, 10, WHITE, True, PP_ALIGN.CENTER)
-        if i < len(roadmap) - 1:
-            arrow(slide, x + 1.68, 4.50, MUTED, 18, 0.25)
-    takeaway(slide, "1차 GO: polarity RTL·TB·PPA·CAV software evidence  |  2차: link·CAV RTL·정밀 PPA", GREEN)
+        text(slide, tag, x + 0.25, 1.64, 3.02, 0.28, 15, accent, True, PP_ALIGN.CENTER)
+        text(slide, line1, x + 0.22, 2.12, 3.08, 0.40, 23, WHITE, True, PP_ALIGN.CENTER)
+        text(slide, line2, x + 0.20, 2.70, 3.12, 0.56, 17, accent, True, PP_ALIGN.CENTER)
+    shape(slide, 0.78, 4.05, 11.40, 1.45, CARD)
+    tracks = [
+        (0.98, CYAN, "LINK", "repeat-flag 통합\nlink-bit 재측정"),
+        (4.55, PURPLE, "CAV", "polarity full replay\n→ CAV RTL/PPA"),
+        (8.12, ORANGE, "PPA", "activity power\nexact Fmax 탐색"),
+    ]
+    for x, accent, tag, body in tracks:
+        shape(slide, x, 4.25, 3.16, 1.02, CARD_2, True, accent)
+        text(slide, tag, x + 0.20, 4.43, 0.72, 0.24, 14, accent, True)
+        text(slide, body, x + 0.94, 4.37, 2.02, 0.58, 15, WHITE, True, PP_ALIGN.CENTER)
+    takeaway(slide, "SUBMIT: polarity RTL·TB·tested PPA  |  SEPARATE: CAV software evidence", GREEN)
 
     # Restamp headers last so the PowerPoint batch renderer cannot drop them
     # behind dense slide content.
@@ -394,8 +415,8 @@ def build():
         title_label = early[3].text
         shape(finished_slide, 0.45, 0.14, 12.30, 0.68, BG, False)
         shape(finished_slide, 0.55, 0.26, 1.40, 0.34, CARD_2)
-        text(finished_slide, section_label, 0.60, 0.31, 1.30, 0.20, 10, CYAN, True, PP_ALIGN.CENTER)
-        text(finished_slide, title_label, 2.18, 0.20, 10.45, 0.54, 25, WHITE, True)
+        text(finished_slide, section_label, 0.60, 0.30, 1.30, 0.22, 11, CYAN, True, PP_ALIGN.CENTER)
+        text(finished_slide, title_label, 2.18, 0.18, 10.45, 0.58, 27, WHITE, True)
         shape(finished_slide, 0.55, 0.88, 12.18, 0.025, CYAN, False)
 
     prs.core_properties.title = "Cluster2 Steal-Buffer Polarity AER"
