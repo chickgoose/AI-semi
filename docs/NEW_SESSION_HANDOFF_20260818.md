@@ -556,8 +556,9 @@ retire cycle/latency는 관측 sidecar일 뿐이며, latency-quality 결과가 �
 - 공개 branch history가 위 `160e7dc...`를 ancestor로 포함
 - 당시 clean fresh clone에서 bridge suite 144개 중 141 PASS, 3
   environment-gated SKIP. 이후 presentation-assets 회귀 5개와 replay-receipt
-  회귀 4개가 추가되어 현재 suite는 153개 중 150 PASS, 3 environment-gated
-  SKIP
+  회귀 4개가 추가되어 현재 suite는 153개 중 149 PASS, 알려진 release-waived
+  비차단 FAIL 1개, 3 environment-gated SKIP. 따라서 suite 자체 판정은
+  FAILED지만 해당 알려진 이슈는 release 판단에서 비차단으로 waiver됨
 - tracked sealed bundle의 CRLF cyclemask를 문서 절차로 명시적으로 LF로
   canonicalize하고 hash를 확인한 뒤, 공식 8,503-event golden replay PASS
 - 위 exact replay는
@@ -577,7 +578,9 @@ PPA로 합치지 않는다.
 - `integration/cluster2-steal-buf-cav-bridge`의 evidence-package checkpoint
   `f5109974236d297b5b60b0f1c18aecc4c1d184e6`는 public origin에 push됐고,
   public fresh clone에서 HEAD와 remote ref가 일치했다.
-- fresh clone bridge suite는 153개 중 150 PASS, environment-gated 3 SKIP였다.
+- fresh clone bridge suite는 153개 중 149 PASS, 알려진 release-waived 비차단
+  FAIL 1개, environment-gated 3 SKIP였다. Suite 자체 판정은 FAILED지만 해당
+  알려진 이슈는 release 판단에서 비차단으로 waiver됐다.
   공식 UZH source와 accepted LF cyclemask를 켠 8,503-event exact golden replay
   1개도 별도로 PASS했다.
 - presentation SVG 3개는 committed generator로 재생성한 뒤 byte 변경이 없었고,

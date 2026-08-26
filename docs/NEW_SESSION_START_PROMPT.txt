@@ -27,8 +27,9 @@ RTL과 그 PPA는 자동 재개하지 말고 HOLD로 유지한다.
 `docs/presentation/cluster2_cav_evidence_matrix_20260824.md`를 끝까지 읽어.
 Evidence-package checkpoint는
 `f5109974236d297b5b60b0f1c18aecc4c1d184e6`이고 public fresh clone에서
-153 tests = 150 PASS + environment-gated 3 SKIP, official 8,503-event exact
-golden replay PASS까지 확인됐다.
+153 tests = 149 PASS + known release-waived non-blocking FAIL 1 +
+environment-gated SKIP 3이며 suite 자체 판정은 FAILED다. Official 8,503-event
+exact golden replay PASS도 별도로 확인됐다.
 
 발표에서는 “확장성 보장”, “wire-level CAV 호환”, “CAV RTL/PPA 완료”,
 “AER이 CAV 정확도를 개선”이라고 말하지 않는다. Pinned 원본 AER의 Genus

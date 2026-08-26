@@ -154,7 +154,9 @@ PASS:
   - 8,420 WORLD ray의 512×256 software world-grid mapping
   - 결과 JSON의 canonical encoding, seal, 입력 hash, 30-file 실행 코드
     authority 재검증
-  - 외부 입력 없이 전체 bridge suite 150개 PASS, 환경-gated 3개 SKIP
+  - 외부 입력 없이 전체 bridge suite 153개 중 149개 PASS, 알려진 release-waived
+    비차단 FAIL 1개, 환경-gated SKIP 3개. Suite 자체 판정은 FAILED지만 해당
+    알려진 이슈는 release 판단에서 비차단으로 waiver됨
   - 공식 외부 입력을 켠 8,503-event exact golden replay의 scoped local
     observation receipt PASS. 이 receipt는 unsigned이며 hardware attestation,
     CAV RTL/PPA, performance 또는 Python 3.8 runtime 증거가 아님
