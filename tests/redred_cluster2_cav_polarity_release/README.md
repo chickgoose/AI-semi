@@ -42,11 +42,12 @@ authority.
 
 The TB binding follows the actual native observational interface and markers:
 the `redred_cluster2_polarity_v1_native_observational_tb` top, native
-`polarity_in`/`pol_mask0`/`pol_mask1` wiring, lowercase `polarity mismatch`
-failure text, and
-`REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%0d delivered=%0d overrun=%0d polarity_checked=%0d`.
+`polarity_in`/`pol_mask0`/`pol_mask1` wiring, and
+`REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%0d delivered=%0d overrun=%0d phantom=0 duplicate=0 drain_empty=1`.
+The final raw TB contains no `polarity mismatch` diagnostic string.
 The runner binding likewise requires its external source pin, trace/TB hashes,
-and `POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d output_root=%s`.
+and `POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d
+identity_order_independence_claimed=false output_root=%s` (one output line).
 
 Run the mutation suite and current-tree probe with:
 

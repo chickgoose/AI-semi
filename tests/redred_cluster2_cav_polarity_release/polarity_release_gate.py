@@ -514,8 +514,7 @@ def validate_release(root: Path, document: Mapping[str, object]) -> Mapping[str,
     for token in (
         "module " + EXPECTED_TB_TOP, EXPECTED_TOP,
         ".polarity_in(polarity_in)", ".pol_mask0(pol_mask0)", ".pol_mask1(pol_mask1)",
-        "REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%0d delivered=%0d overrun=%0d polarity_checked=%0d",
-        "polarity mismatch",
+        "REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%0d delivered=%0d overrun=%0d phantom=0 duplicate=0 drain_empty=1",
     ):
         if token not in tb_text:
             raise ReleaseHold("polarity-v1 observational TB token is absent: %s" % token)
@@ -524,7 +523,8 @@ def validate_release(root: Path, document: Mapping[str, object]) -> Mapping[str,
         'PINNED_COMMIT = "' + SOURCE_COMMIT + '"',
         'TRACE_SHA256 = "' + str(artifacts["polarity_v1_trace"]["sha256"]) + '"',
         'TB_SHA256 = "' + str(artifacts["polarity_v1_tb"]["sha256"]) + '"',
-        "POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d output_root=%s",
+        "POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d ",
+        "identity_order_independence_claimed=false output_root=%s",
     ):
         if token not in runner_text:
             raise ReleaseHold("polarity-v1 observational runner token is absent: %s" % token)

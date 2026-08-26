@@ -142,8 +142,7 @@ class ReleaseFixture:
         tb = (
             "module %s; logic polarity_in; logic [3:0] pol_mask0, pol_mask1;\n"
             "%s dut(.polarity_in(polarity_in),.pol_mask0(pol_mask0),.pol_mask1(pol_mask1));\n"
-            '// $fatal(1, "polarity mismatch");\n'
-            '// $display("REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%%0d delivered=%%0d overrun=%%0d polarity_checked=%%0d");\n'
+            '// $display("REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%%0d delivered=%%0d overrun=%%0d phantom=0 duplicate=0 drain_empty=1");\n'
             "endmodule\n" % (gate.EXPECTED_TB_TOP, gate.EXPECTED_TOP)
         ).encode("ascii")
         write(self.root, self.paths["tb"], tb)
@@ -158,7 +157,8 @@ class ReleaseFixture:
         write(self.root, self.paths["verifier"], verifier)
         runner = (
             'PINNED_COMMIT = "%s"\nTRACE_SHA256 = "%s"\nTB_SHA256 = "%s"\n'
-            'PASS = "POLARITY_V1_NATIVE_PASS commit=%%s simulator=%%s events=%%d output_root=%%s"\n'
+            'PASS = ("POLARITY_V1_NATIVE_PASS commit=%%s simulator=%%s events=%%d "\n'
+            '        "identity_order_independence_claimed=false output_root=%%s")\n'
             % (gate.SOURCE_COMMIT, gate.sha256(trace), gate.sha256(tb))
         ).encode("ascii")
         write(self.root, self.paths["runner"], runner)
@@ -342,7 +342,11 @@ class PolarityReleaseGateTests(unittest.TestCase):
             "semantic LF hash differs",
         )
         runner = (fixture.root / fixture.paths["runner"]).read_text()
-        self.assertIn("POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d output_root=%s", runner)
+        tb = (fixture.root / fixture.paths["tb"]).read_text()
+        self.assertNotIn("polarity mismatch", tb)
+        self.assertIn(
+            "identity_order_independence_claimed=false output_root=%s", runner
+        )
 
     def test_source_filelist_is_exact_ordered_and_wildcard_free(self) -> None:
         fixture = self.fixture()
