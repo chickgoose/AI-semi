@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the exact public Ganghee polarity-v1 RTL against its pinned addrpol trace."""
+"""Run exact Ganghee polarity-v1 RTL and verify its raw native observations."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +16,16 @@ import tempfile
 sys.dont_write_bytecode = True
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from benchmarks.redred_cluster2_cav_bridge.polarity_native_ledger import (  # noqa: E402
+    PolarityNativeLedgerError,
+    parse_addrpol_trace,
+    verify_polarity_native_ledger,
+)
+
+
 TB_PATH = (
     PROJECT_ROOT
     / "tests/redred_cluster2_cav_bridge"
@@ -30,7 +39,7 @@ TRACE_PATH = "common_traces_uzh/uzh_shapes_rotation_patch.addrpol.txt"
 TRACE_SHA256 = "9f682af4eb11239f0743c2f95a82e4302836ac8a02e68278b8b69464beac55c4"
 TRACE_LINE_COUNT = 3259
 TRACE_EVENT_COUNT = 8503
-TB_SHA256 = "eaeb199bb9b9037c03e09eef8173fdd9971e73c63bc79c130549d9117f62e4ec"
+TB_SHA256 = "595120fd996573e24e724b3d9a0e0984736975319421ab7f4b1997ab45fcb5a8"
 RTL_SOURCES = (
     (
         "rtl/arbiter2.v",
@@ -45,9 +54,6 @@ RTL_SOURCES = (
         "20d601a9ee1d4d78854dbfeb5ee60f1c8db712c07c20aff6364c51c142e5ad81",
     ),
 )
-LEDGER_SCHEMA = "redred.cluster2_cav_bridge.polarity_v1_native_ledger/v1"
-TRACE_ROW = re.compile(rb"(0|[1-9][0-9]*) ([0-9a-f]{4}) ([0-9a-f]{4})\n")
-UINT = re.compile(r"0|[1-9][0-9]*")
 
 
 class RunnerError(RuntimeError):
@@ -112,134 +118,16 @@ def verify_source_checkout(root: Path, trace_relative: str):
     if trace.resolve() != trace or not trace.is_file():
         raise RunnerError("polarity trace path is not a regular normalized file")
     trace_payload = _read_exact(trace, TRACE_SHA256, TRACE_PATH)
-    occurrences = parse_trace(trace_payload)
-    if len(trace_payload.splitlines()) != TRACE_LINE_COUNT:
-        raise RunnerError("pinned polarity trace line count differs")
+    try:
+        occurrences, line_endings = parse_addrpol_trace(trace_payload)
+    except PolarityNativeLedgerError as error:
+        raise RunnerError("pinned polarity trace is invalid") from error
+    if line_endings != "LF" or len(trace_payload.splitlines()) != TRACE_LINE_COUNT:
+        raise RunnerError("pinned polarity trace encoding or line count differs")
     if len(occurrences) != TRACE_EVENT_COUNT:
         raise RunnerError("pinned polarity trace event count differs")
     verified[TRACE_PATH] = trace
     return verified, status
-
-
-def parse_trace(payload: bytes):
-    if not payload or not payload.endswith(b"\n"):
-        raise RunnerError("polarity trace must be nonempty LF-terminated bytes")
-    occurrences = []
-    previous_cycle = None
-    event_id = 0
-    offset = 0
-    for match in TRACE_ROW.finditer(payload):
-        if match.start() != offset:
-            raise RunnerError("polarity trace contains malformed bytes")
-        offset = match.end()
-        cycle = int(match.group(1))
-        arrival = int(match.group(2), 16)
-        polarity = int(match.group(3), 16)
-        if arrival == 0 or polarity & ~arrival:
-            raise RunnerError("polarity trace bitmap semantics differ")
-        if previous_cycle is not None and cycle <= previous_cycle:
-            raise RunnerError("polarity trace cycles are not strictly increasing")
-        previous_cycle = cycle
-        for source in range(16):
-            if arrival & (1 << source):
-                occurrences.append((event_id, source, cycle, (polarity >> source) & 1))
-                event_id += 1
-    if offset != len(payload):
-        raise RunnerError("polarity trace contains malformed trailing bytes")
-    return occurrences
-
-
-def _uint(token: str, label: str) -> int:
-    if not UINT.fullmatch(token):
-        raise RunnerError("ledger %s is not a canonical unsigned integer" % label)
-    return int(token)
-
-
-def validate_ledger(trace_payload: bytes, ledger_payload: bytes):
-    try:
-        text = ledger_payload.decode("ascii")
-    except UnicodeError as error:
-        raise RunnerError("polarity ledger is not ASCII") from error
-    if not text.endswith("\n"):
-        raise RunnerError("polarity ledger is not LF terminated")
-    lines = text.splitlines()
-    if len(lines) < 3 or lines[0] != "SCHEMA|" + LEDGER_SCHEMA:
-        raise RunnerError("polarity ledger schema differs")
-    occurrences = parse_trace(trace_payload)
-    expected = {row[0]: row for row in occurrences}
-    observed = {}
-    retirement_slots = set()
-    lane_rows = {}
-    last_delivered_by_source = {}
-    delivered = 0
-    overruns = 0
-    legal_pairs = {(0, 3), (1, 0), (1, 2), (1, 3), (2, 0), (2, 3)}
-
-    for line in lines[1:-1]:
-        fields = line.split("|")
-        if len(fields) != 10 or fields[0] != "EVENT":
-            raise RunnerError("polarity ledger event row shape differs")
-        event_id = _uint(fields[1], "event_id")
-        source = _uint(fields[2], "source")
-        occurrence_cycle = _uint(fields[3], "occurrence_cycle")
-        polarity = _uint(fields[9], "polarity")
-        if polarity not in (0, 1) or event_id not in expected or event_id in observed:
-            raise RunnerError("polarity ledger event identity differs")
-        if expected[event_id] != (event_id, source, occurrence_cycle, polarity):
-            raise RunnerError("polarity ledger source occurrence or polarity differs")
-        outcome = fields[4]
-        if outcome == "OVERRUN":
-            if fields[5:9] != ["-", "-", "-", "-"]:
-                raise RunnerError("overrun carries native retirement fields")
-            overruns += 1
-        elif outcome == "DELIVERED":
-            retire_cycle = _uint(fields[5], "retire_cycle")
-            lane = _uint(fields[6], "lane")
-            row = _uint(fields[7], "row")
-            column = _uint(fields[8], "column")
-            if retire_cycle < occurrence_cycle or lane not in (0, 1):
-                raise RunnerError("delivered timing or lane differs")
-            if row > 3 or column > 3 or source != row * 4 + column:
-                raise RunnerError("delivered native coordinate differs")
-            allowed = ({0, 1, 2}, {0, 2, 3})[lane]
-            if row not in allowed:
-                raise RunnerError("delivered lane-row combination differs")
-            slot = (retire_cycle, lane, column)
-            if slot in retirement_slots:
-                raise RunnerError("duplicate native retirement slot")
-            retirement_slots.add(slot)
-            lane_key = (retire_cycle, lane)
-            if lane_key in lane_rows and lane_rows[lane_key] != row:
-                raise RunnerError("one lane bitmap contains multiple rows")
-            lane_rows[lane_key] = row
-            if source in last_delivered_by_source and event_id <= last_delivered_by_source[source]:
-                raise RunnerError("per-source FIFO retirement order differs")
-            last_delivered_by_source[source] = event_id
-            delivered += 1
-        else:
-            raise RunnerError("polarity ledger outcome differs")
-        observed[event_id] = outcome
-
-    for cycle in {key[0] for key in lane_rows}:
-        row0 = lane_rows.get((cycle, 0))
-        row1 = lane_rows.get((cycle, 1))
-        if row0 is not None and row1 is not None and (row0, row1) not in legal_pairs:
-            raise RunnerError("two-lane row pair differs")
-        if row0 is not None and row1 is None and row0 not in (1, 2):
-            raise RunnerError("lane0-only row differs")
-        if row0 is None and row1 is not None and row1 not in (0, 3):
-            raise RunnerError("lane1-only row differs")
-    if set(observed) != set(expected):
-        raise RunnerError("polarity ledger does not partition trace events")
-
-    summary = lines[-1].split("|")
-    if len(summary) != 5 or summary[0] != "SUMMARY":
-        raise RunnerError("polarity ledger summary shape differs")
-    counts = tuple(_uint(value, "summary") for value in summary[1:])
-    wanted = (len(expected), delivered, overruns, delivered)
-    if counts != wanted or len(expected) != delivered + overruns:
-        raise RunnerError("polarity ledger conservation or check count differs")
-    return wanted
 
 
 def _select_simulator(requested: str):
@@ -340,7 +228,7 @@ def main(arguments=None) -> int:
     output_root = Path(tempfile.mkdtemp(prefix="redred-cluster2-polarity-v1-"))
     compile_log = output_root / "compile.log"
     run_log = output_root / "run.log"
-    ledger = output_root / "polarity_v1_native_ledger.psv"
+    ledger = output_root / "polarity_v1_raw_native_ledger.psv"
     try:
         rtl, trace, tb = _stage(verified, output_root)
         plusargs = ["+ADDRPOL_FILE=%s" % trace, "+LEDGER_FILE=%s" % ledger]
@@ -350,8 +238,8 @@ def main(arguments=None) -> int:
             run_output = _run([
                 simulator, "-64bit", "-sv", "-timescale", "1ns/1ps",
                 "-top", TOP, "-xmlibdirname", output_root / "xcelium.d",
-                "-l", tool_log,
-                rtl[0], rtl[1], rtl[2], tb, plusargs[0], plusargs[1],
+                "-l", tool_log, rtl[0], rtl[1], rtl[2], tb,
+                plusargs[0], plusargs[1],
             ], run_log, output_root)
         elif simulator_name == "verilator":
             object_root = output_root / "obj"
@@ -373,10 +261,18 @@ def main(arguments=None) -> int:
             run_output = _run([
                 vvp, executable, plusargs[0], plusargs[1],
             ], run_log, output_root)
-        counts = validate_ledger(trace.read_bytes(), ledger.read_bytes())
+        try:
+            report = verify_polarity_native_ledger(
+                trace.read_bytes(), ledger.read_bytes()
+            )
+        except PolarityNativeLedgerError as error:
+            raise RunnerError("raw polarity ledger verification failed") from error
+        if report.identity_order_independence_claimed:
+            raise RunnerError("raw observation verifier made a forbidden identity claim")
         marker = (
             "REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%d delivered=%d "
-            "overrun=%d polarity_checked=%d" % counts
+            "overrun=%d phantom=0 duplicate=0 drain_empty=1"
+            % (report.generated, report.delivered, report.overrun)
         )
         completion_output = run_output
         if simulator_name == "xrun" and marker not in run_output.splitlines():
@@ -388,7 +284,7 @@ def main(arguments=None) -> int:
         if lines.count(marker) != 1 or any("fatal" in line.lower() for line in lines):
             raise RunnerError("simulator completion marker differs")
         _assert_source_unchanged(options.faer_root, source_status)
-    except (OSError, RunnerError) as error:
+    except (OSError, RunnerError, UnicodeError) as error:
         try:
             _assert_source_unchanged(options.faer_root, source_status)
         except RunnerError as source_error:
@@ -397,8 +293,9 @@ def main(arguments=None) -> int:
         print("output_root=%s" % output_root, file=sys.stderr)
         return 1
     print(
-        "POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d output_root=%s"
-        % (PINNED_COMMIT, simulator_name, counts[0], output_root)
+        "POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d "
+        "identity_order_independence_claimed=false output_root=%s"
+        % (PINNED_COMMIT, simulator_name, report.generated, output_root)
     )
     return 0
 

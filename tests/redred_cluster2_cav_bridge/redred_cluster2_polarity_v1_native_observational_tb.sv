@@ -1,7 +1,8 @@
 `timescale 1ns/1ps
 
-// Observational only: TB identity/polarity FIFOs check the DUT but never drive
-// arbitration, admission, retirement, or the DUT's stored polarity state.
+// Raw observational recorder only.  It assigns no event IDs and keeps no
+// shadow identity or polarity FIFO.  Python reconstructs the v1 per-source
+// FIFO exclusively from the pinned addrpol trace and these cycle observations.
 module redred_cluster2_polarity_v1_native_observational_tb;
   parameter integer DRAIN_LIMIT = 100000;
 
@@ -38,29 +39,29 @@ module redred_cluster2_polarity_v1_native_observational_tb;
   reg [15:0] next_polarity;
   reg have_next;
   longint unsigned cycle_number;
-  longint unsigned next_event_id;
   longint unsigned generated_count;
   longint unsigned delivered_count;
   longint unsigned overrun_count;
-  longint unsigned polarity_checked_count;
-  integer source_index;
-  integer fifo_count [0:15];
-  longint unsigned fifo_event_id [0:15][0:1];
-  longint unsigned fifo_occurrence_cycle [0:15][0:1];
-  reg fifo_polarity [0:15][0:1];
-  longint unsigned current_event_id [0:15];
-  longint unsigned current_occurrence_cycle [0:15];
-  reg current_polarity [0:15];
   reg [15:0] sampled_overrun;
-  reg [15:0] accepted_mask;
   integer drain_steps;
 
-  function automatic integer total_fifo_count;
+  function automatic integer popcount16;
+    input [15:0] value;
     integer index;
     begin
-      total_fifo_count = 0;
+      popcount16 = 0;
       for (index = 0; index < 16; index = index + 1)
-        total_fifo_count = total_fifo_count + fifo_count[index];
+        popcount16 = popcount16 + value[index];
+    end
+  endfunction
+
+  function automatic integer popcount4;
+    input [3:0] value;
+    integer index;
+    begin
+      popcount4 = 0;
+      for (index = 0; index < 4; index = index + 1)
+        popcount4 = popcount4 + value[index];
     end
   endfunction
 
@@ -83,96 +84,32 @@ module redred_cluster2_polarity_v1_native_observational_tb;
     end
   endtask
 
-  task automatic check_native_lanes;
+  task automatic record_raw_cycle;
     begin
-      if ((^valid0) === 1'bx || (^row0) === 1'bx ||
-          (^col_mask0) === 1'bx || (^pol_mask0) === 1'bx)
-        $fatal(1, "lane0 contains X/Z cycle=%0d", cycle_number);
-      if ((^valid1) === 1'bx || (^row1) === 1'bx ||
+      if ((^sampled_overrun) === 1'bx || (^valid0) === 1'bx ||
+          (^row0) === 1'bx || (^col_mask0) === 1'bx || (^pol_mask0) === 1'bx ||
+          (^valid1) === 1'bx || (^row1) === 1'bx ||
           (^col_mask1) === 1'bx || (^pol_mask1) === 1'bx)
-        $fatal(1, "lane1 contains X/Z cycle=%0d", cycle_number);
-      if (valid0 && !((row0 == 2'd0) || (row0 == 2'd1) || (row0 == 2'd2)))
-        $fatal(1, "lane0 selected forbidden row=%0d cycle=%0d", row0, cycle_number);
-      if (valid1 && !((row1 == 2'd0) || (row1 == 2'd2) || (row1 == 2'd3)))
-        $fatal(1, "lane1 selected forbidden row=%0d cycle=%0d", row1, cycle_number);
-      if (valid0 && (col_mask0 == 4'b0))
-        $fatal(1, "lane0 valid with empty bitmap cycle=%0d", cycle_number);
-      if (valid1 && (col_mask1 == 4'b0))
-        $fatal(1, "lane1 valid with empty bitmap cycle=%0d", cycle_number);
-      if (!valid0 && ((col_mask0 != 4'b0) || (pol_mask0 != 4'b0)))
-        $fatal(1, "lane0 invalid with nonempty output cycle=%0d", cycle_number);
-      if (!valid1 && ((col_mask1 != 4'b0) || (pol_mask1 != 4'b0)))
-        $fatal(1, "lane1 invalid with nonempty output cycle=%0d", cycle_number);
-      if ((pol_mask0 & ~col_mask0) != 4'b0 || (pol_mask1 & ~col_mask1) != 4'b0)
-        $fatal(1, "polarity asserted outside retired columns cycle=%0d", cycle_number);
-      if (valid0 && valid1 && (row0 == row1))
-        $fatal(1, "native lanes selected the same row=%0d cycle=%0d", row0, cycle_number);
-      if (valid0 && !valid1 && !((row0 == 2'd1) || (row0 == 2'd2)))
-        $fatal(1, "lane0-only selected impossible row=%0d cycle=%0d", row0, cycle_number);
-      if (!valid0 && valid1 && !((row1 == 2'd0) || (row1 == 2'd3)))
-        $fatal(1, "lane1-only selected impossible row=%0d cycle=%0d", row1, cycle_number);
-      if (valid0 && valid1 && !(
-          ((row0 == 2'd0) && (row1 == 2'd3)) ||
-          ((row0 == 2'd1) && (row1 == 2'd0)) ||
-          ((row0 == 2'd1) && (row1 == 2'd2)) ||
-          ((row0 == 2'd1) && (row1 == 2'd3)) ||
-          ((row0 == 2'd2) && (row1 == 2'd0)) ||
-          ((row0 == 2'd2) && (row1 == 2'd3))))
-        $fatal(1, "native lanes selected impossible row pair=%0d,%0d cycle=%0d",
-               row0, row1, cycle_number);
+        $fatal(1, "raw native observation contains X/Z cycle=%0d", cycle_number);
+      $fwrite(ledger_fd,
+        "CYCLE|%0d|%04x|%0d|%0d|%01x|%01x|%0d|%0d|%01x|%01x\n",
+        cycle_number, sampled_overrun,
+        valid0, row0, col_mask0, pol_mask0,
+        valid1, row1, col_mask1, pol_mask1);
+      delivered_count = delivered_count + popcount4(valid0 ? col_mask0 : 4'b0);
+      delivered_count = delivered_count + popcount4(valid1 ? col_mask1 : 4'b0);
+      overrun_count = overrun_count + popcount16(sampled_overrun);
     end
   endtask
 
-  task automatic retire_lane;
-    input integer native_lane;
-    input integer valid_in;
-    input [1:0] row_in;
-    input [3:0] col_mask_in;
-    input [3:0] pol_mask_in;
-    integer column;
-    integer retired_source;
-    longint unsigned retired_event_id;
-    longint unsigned retired_occurrence_cycle;
-    reg retired_polarity;
+  task automatic drive_sample_and_record;
     begin
-      if (valid_in) begin
-        for (column = 0; column < 4; column = column + 1) begin
-          if (col_mask_in[column]) begin
-            retired_source = row_in * 4 + column;
-            if (fifo_count[retired_source] == 0)
-              $fatal(1, "phantom retirement source=%0d cycle=%0d lane=%0d",
-                     retired_source, cycle_number, native_lane);
-            retired_event_id = fifo_event_id[retired_source][0];
-            retired_occurrence_cycle = fifo_occurrence_cycle[retired_source][0];
-            retired_polarity = fifo_polarity[retired_source][0];
-            if (pol_mask_in[column] !== retired_polarity)
-              $fatal(1, "polarity mismatch source=%0d event=%0d cycle=%0d got=%0d expected=%0d",
-                     retired_source, retired_event_id, cycle_number,
-                     pol_mask_in[column], retired_polarity);
-            if (fifo_count[retired_source] == 2) begin
-              fifo_event_id[retired_source][0] = fifo_event_id[retired_source][1];
-              fifo_occurrence_cycle[retired_source][0] =
-                fifo_occurrence_cycle[retired_source][1];
-              fifo_polarity[retired_source][0] = fifo_polarity[retired_source][1];
-            end
-            fifo_count[retired_source] = fifo_count[retired_source] - 1;
-            delivered_count = delivered_count + 1;
-            polarity_checked_count = polarity_checked_count + 1;
-            $fwrite(ledger_fd,
-              "EVENT|%0d|%0d|%0d|DELIVERED|%0d|%0d|%0d|%0d|%0d\n",
-              retired_event_id, retired_source, retired_occurrence_cycle,
-              cycle_number, native_lane, row_in, column, retired_polarity);
-          end
-        end
-      end
-    end
-  endtask
-
-  task automatic sample_retirement;
-    begin
-      check_native_lanes();
-      retire_lane(0, valid0, row0, col_mask0, pol_mask0);
-      retire_lane(1, valid1, row1, col_mask1, pol_mask1);
+      #4;
+      sampled_overrun = overrun;
+      @(posedge clk);
+      #1;
+      record_raw_cycle();
+      cycle_number = cycle_number + 1;
     end
   endtask
 
@@ -182,23 +119,9 @@ module redred_cluster2_polarity_v1_native_observational_tb;
     polarity_in = 16'b0;
     have_next = 1'b0;
     cycle_number = 0;
-    next_event_id = 0;
     generated_count = 0;
     delivered_count = 0;
     overrun_count = 0;
-    polarity_checked_count = 0;
-    for (source_index = 0; source_index < 16; source_index = source_index + 1) begin
-      fifo_count[source_index] = 0;
-      fifo_event_id[source_index][0] = 0;
-      fifo_event_id[source_index][1] = 0;
-      fifo_occurrence_cycle[source_index][0] = 0;
-      fifo_occurrence_cycle[source_index][1] = 0;
-      fifo_polarity[source_index][0] = 1'b0;
-      fifo_polarity[source_index][1] = 1'b0;
-      current_event_id[source_index] = 0;
-      current_occurrence_cycle[source_index] = 0;
-      current_polarity[source_index] = 1'b0;
-    end
 
     if (!$value$plusargs("ADDRPOL_FILE=%s", trace_file))
       $fatal(1, "missing +ADDRPOL_FILE=<path>");
@@ -209,9 +132,11 @@ module redred_cluster2_polarity_v1_native_observational_tb;
       $fatal(1, "cannot open polarity trace file");
     ledger_fd = $fopen(ledger_file, "w");
     if (ledger_fd == 0)
-      $fatal(1, "cannot open ledger file");
+      $fatal(1, "cannot open raw polarity ledger file");
     $fwrite(ledger_fd,
-      "SCHEMA|redred.cluster2_cav_bridge.polarity_v1_native_ledger/v1\n");
+      "SCHEMA|redred.cluster2_cav_bridge.polarity_native_ledger/v1\n");
+    $fwrite(ledger_fd,
+      "SCOPE|SOURCE_FIFO_POLARITY_SEQUENCE_ONLY;IDENTICAL_SAME_SOURCE_EQUAL_POLARITY_EVENTS_UNOBSERVABLE;EVENT_ID_ORDER_INDEPENDENCE_NOT_CLAIMED\n");
     read_next_trace();
 
     repeat (2) @(posedge clk);
@@ -227,100 +152,37 @@ module redred_cluster2_polarity_v1_native_observational_tb;
       if (next_cycle == cycle_number) begin
         arrival = next_arrival;
         polarity_in = next_polarity;
-        for (source_index = 0; source_index < 16; source_index = source_index + 1) begin
-          if (next_arrival[source_index]) begin
-            current_event_id[source_index] = next_event_id;
-            current_occurrence_cycle[source_index] = cycle_number;
-            current_polarity[source_index] = next_polarity[source_index];
-            next_event_id = next_event_id + 1;
-            generated_count = generated_count + 1;
-          end
-        end
+        generated_count = generated_count + popcount16(next_arrival);
         read_next_trace();
         if (have_next && (next_cycle <= cycle_number))
           $fatal(1, "polarity trace cycles are not strictly increasing");
       end
-
-      #4;
-      sampled_overrun = overrun;
-      if ((^sampled_overrun) === 1'bx)
-        $fatal(1, "sampled overrun contains X/Z cycle=%0d", cycle_number);
-      if ((sampled_overrun & ~arrival) != 16'b0)
-        $fatal(1, "DUT overrun escaped the presented arrival bitmap");
-      accepted_mask = arrival & ~sampled_overrun;
-      for (source_index = 0; source_index < 16; source_index = source_index + 1) begin
-        if (sampled_overrun[source_index] !==
-            (arrival[source_index] && (fifo_count[source_index] == 2)))
-          $fatal(1, "v1 pre-edge overrun differs from arrival-and-full source=%0d cycle=%0d",
-                 source_index, cycle_number);
-        if (sampled_overrun[source_index]) begin
-          overrun_count = overrun_count + 1;
-          $fwrite(ledger_fd, "EVENT|%0d|%0d|%0d|OVERRUN|-|-|-|-|%0d\n",
-                  current_event_id[source_index], source_index,
-                  current_occurrence_cycle[source_index],
-                  current_polarity[source_index]);
-        end
-      end
-
-      @(posedge clk);
-      #1;
-      sample_retirement();
-
-      // Current-edge admissions enter the shadow only after old events retire.
-      for (source_index = 0; source_index < 16; source_index = source_index + 1) begin
-        if (accepted_mask[source_index]) begin
-          if (fifo_count[source_index] >= 2)
-            $fatal(1, "accepted occurrence exceeds TB FIFO depth");
-          fifo_event_id[source_index][fifo_count[source_index]] =
-            current_event_id[source_index];
-          fifo_occurrence_cycle[source_index][fifo_count[source_index]] =
-            current_occurrence_cycle[source_index];
-          fifo_polarity[source_index][fifo_count[source_index]] =
-            current_polarity[source_index];
-          fifo_count[source_index] = fifo_count[source_index] + 1;
-        end
-      end
-      cycle_number = cycle_number + 1;
+      drive_sample_and_record();
     end
 
-    arrival = 16'b0;
-    polarity_in = 16'b0;
+    // One unconditional empty-input cycle exposes any occurrence admitted on
+    // the final trace edge. Continue until a cycle-complete quiescent witness.
     drain_steps = 0;
-    while ((total_fifo_count() != 0) || valid0 || valid1) begin
-      if (drain_steps >= DRAIN_LIMIT)
-        $fatal(1, "empty drain timed out pending=%0d", total_fifo_count());
-      @(negedge clk);
-      arrival = 16'b0;
-      polarity_in = 16'b0;
-      #4;
-      sampled_overrun = overrun;
-      if ((^sampled_overrun) === 1'bx || sampled_overrun != 16'b0)
-        $fatal(1, "overrun invalid during empty-input drain cycle=%0d", cycle_number);
-      @(posedge clk);
-      #1;
-      sample_retirement();
-      cycle_number = cycle_number + 1;
-      drain_steps = drain_steps + 1;
+    begin : bounded_drain
+      while (drain_steps < DRAIN_LIMIT) begin
+        @(negedge clk);
+        arrival = 16'b0;
+        polarity_in = 16'b0;
+        drive_sample_and_record();
+        drain_steps = drain_steps + 1;
+        if (!valid0 && !valid1 && sampled_overrun == 16'b0)
+          disable bounded_drain;
+      end
     end
+    if (valid0 || valid1 || sampled_overrun != 16'b0)
+      $fatal(1, "bounded drain did not reach a quiescent witness");
 
-    if (total_fifo_count() != 0)
-      $fatal(1, "TB-only FIFO is not empty after drain");
-    if (generated_count != delivered_count + overrun_count)
-      $fatal(1, "conservation failed generated=%0d delivered=%0d overrun=%0d",
-             generated_count, delivered_count, overrun_count);
-    if (polarity_checked_count != delivered_count)
-      $fatal(1, "not every delivery had polarity checked");
-    if (next_event_id != generated_count)
-      $fatal(1, "event ID accounting differs");
-
-    $fwrite(ledger_fd, "SUMMARY|%0d|%0d|%0d|%0d\n",
-            generated_count, delivered_count, overrun_count,
-            polarity_checked_count);
+    $fwrite(ledger_fd, "SUMMARY|%0d|%0d|%0d|0|0|1\n",
+            generated_count, delivered_count, overrun_count);
     $fclose(trace_fd);
     $fclose(ledger_fd);
-    $display("REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%0d delivered=%0d overrun=%0d polarity_checked=%0d",
-             generated_count, delivered_count, overrun_count,
-             polarity_checked_count);
+    $display("REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%0d delivered=%0d overrun=%0d phantom=0 duplicate=0 drain_empty=1",
+             generated_count, delivered_count, overrun_count);
     $finish;
   end
 endmodule

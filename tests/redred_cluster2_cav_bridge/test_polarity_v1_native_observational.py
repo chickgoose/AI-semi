@@ -8,6 +8,11 @@ import subprocess
 import tempfile
 import unittest
 
+from benchmarks.redred_cluster2_cav_bridge.polarity_native_ledger import (
+    IDENTITY_SCOPE,
+    LEDGER_SCHEMA,
+    verify_polarity_native_ledger,
+)
 import tests.redred_cluster2_cav_bridge.run_polarity_v1_native_observational as runner
 
 
@@ -26,55 +31,57 @@ UPSTREAM = Path("/tmp/ganghee-ai-semi-audit-20260825")
 
 
 def positive_trace():
-    return b"0 0001 0001\n1 0001 0000\n"
+    return b"0 0111 0010\n1 0001 0001\n2 0001 0000\n"
 
 
-def positive_ledger():
+def positive_raw_ledger():
     return (
         "SCHEMA|%s\n"
-        "EVENT|0|0|0|DELIVERED|1|1|0|0|1\n"
-        "EVENT|1|0|1|DELIVERED|2|1|0|0|0\n"
-        "SUMMARY|2|2|0|2\n" % runner.LEDGER_SCHEMA
+        "SCOPE|%s\n"
+        "CYCLE|0|0000|0|0|0|0|0|0|0|0\n"
+        "CYCLE|1|0000|1|1|1|1|1|2|1|0\n"
+        "CYCLE|2|0001|0|0|0|0|1|0|1|0\n"
+        "CYCLE|3|0000|0|0|0|0|1|0|1|1\n"
+        "CYCLE|4|0000|0|0|0|0|0|0|0|0\n"
+        "SUMMARY|5|4|1|0|0|1\n" % (LEDGER_SCHEMA, IDENTITY_SCOPE)
     ).encode("ascii")
 
 
-class PolarityV1LedgerTests(unittest.TestCase):
-    def test_trace_and_ledger_preserve_exact_polarity(self):
-        self.assertEqual(
-            runner.parse_trace(positive_trace()),
-            [(0, 0, 0, 1), (1, 0, 1, 0)],
+class PolarityV1RawInteroperabilityTests(unittest.TestCase):
+    def test_runner_uses_da329e3_raw_verifier(self):
+        self.assertIs(runner.verify_polarity_native_ledger, verify_polarity_native_ledger)
+        report = runner.verify_polarity_native_ledger(
+            positive_trace(), positive_raw_ledger()
         )
         self.assertEqual(
-            runner.validate_ledger(positive_trace(), positive_ledger()),
-            (2, 2, 0, 2),
+            (report.generated, report.delivered, report.overrun),
+            (5, 4, 1),
         )
+        self.assertFalse(report.identity_order_independence_claimed)
 
-    def test_polarity_identity_and_native_mutations_fail_closed(self):
-        base = positive_ledger()
-        mutations = {
-            "polarity": base.replace(b"|0|0|1\n", b"|0|0|0\n", 1),
-            "source": base.replace(b"EVENT|0|0|0", b"EVENT|0|1|0"),
-            "coordinate": base.replace(b"|1|1|0|0|1", b"|1|1|0|1|1"),
-            "duplicate": base.replace(b"EVENT|1|0|1", b"EVENT|0|0|1"),
-            "summary": base.replace(b"SUMMARY|2|2|0|2", b"SUMMARY|2|2|0|1"),
-            "extra": base + b"TRAILING\n",
-        }
-        for name, payload in mutations.items():
-            with self.subTest(name=name), self.assertRaises(runner.RunnerError):
-                runner.validate_ledger(positive_trace(), payload)
-
-    def test_trace_bytes_are_strict(self):
-        mutations = (
-            b"0 0001 0002\n",
-            b"00 0001 0001\n",
-            b"0 0001 0001\r\n",
-            b"0 0001 0001",
-            b"0 0000 0000\n",
-            b"1 0001 0001\n1 0002 0000\n",
+    def test_tb_emits_exact_raw_ledger_grammar_only(self):
+        source = TB.read_text(encoding="utf-8")
+        self.assertIn(
+            '"SCHEMA|redred.cluster2_cav_bridge.polarity_native_ledger/v1\\n"',
+            source,
         )
-        for payload in mutations:
-            with self.subTest(payload=payload), self.assertRaises(runner.RunnerError):
-                runner.parse_trace(payload)
+        self.assertIn("SCOPE|" + IDENTITY_SCOPE, source)
+        self.assertIn(
+            '"CYCLE|%0d|%04x|%0d|%0d|%01x|%01x|%0d|%0d|%01x|%01x\\n"',
+            source,
+        )
+        self.assertIn('"SUMMARY|%0d|%0d|%0d|0|0|1\\n"', source)
+        self.assertNotIn('"EVENT|', source)
+        self.assertNotIn("event_id", source)
+        self.assertNotIn("fifo_event", source)
+        self.assertNotIn("fifo_polarity", source)
+
+    def test_runner_has_no_parallel_event_ledger_parser(self):
+        source = RUNNER.read_text(encoding="utf-8")
+        self.assertIn("report = verify_polarity_native_ledger(", source)
+        self.assertNotIn("def validate_ledger", source)
+        self.assertNotIn("def parse_trace", source)
+        self.assertIn("identity_order_independence_claimed=false", source)
 
 
 class PolarityV1SourceAuthorityTests(unittest.TestCase):
@@ -143,7 +150,7 @@ class PolarityV1SourceAuthorityTests(unittest.TestCase):
 
 
 class PolarityV1TestbenchTests(unittest.TestCase):
-    def test_tb_is_pinned_and_checks_real_v1_polarity_path(self):
+    def test_tb_is_pinned_and_observes_real_v1_ports(self):
         source = TB.read_text(encoding="utf-8")
         self.assertEqual(hashlib.sha256(TB.read_bytes()).hexdigest(), runner.TB_SHA256)
         self.assertIn(
@@ -157,13 +164,9 @@ class PolarityV1TestbenchTests(unittest.TestCase):
         ):
             self.assertIn(mapping, source)
         self.assertNotIn("steal_buf_polarity_v2", source)
-        self.assertIn("fifo_polarity [0:15][0:1]", source)
-        self.assertIn("pol_mask_in[column] !== retired_polarity", source)
-        self.assertIn("v1 pre-edge overrun differs from arrival-and-full", source)
-        sample = source.index("sampled_overrun = overrun;", source.index("while (have_next)"))
-        admission = source.index("@(posedge clk);", sample)
-        self.assertLess(sample, admission)
-        self.assertIn("polarity_checked_count != delivered_count", source)
+        self.assertIn("sampled_overrun = overrun;", source)
+        self.assertIn("record_raw_cycle();", source)
+        self.assertIn("One unconditional empty-input cycle", source)
 
     @unittest.skipUnless(shutil.which("iverilog") and shutil.which("vvp"), "iverilog unavailable")
     def test_tb_compiles_with_only_the_three_pinned_sources(self):
