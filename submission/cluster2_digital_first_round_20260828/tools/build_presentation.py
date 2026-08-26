@@ -63,6 +63,18 @@ def arrow(slide, x, y, w=0.34, h=0.24, color=SLATE):
     return obj
 
 
+def down_arrow(slide, x, y, w=0.24, h=0.30, color=SLATE):
+    obj = slide.shapes.add_shape(MSO_SHAPE.DOWN_ARROW, Inches(x), Inches(y), Inches(w), Inches(h))
+    obj.fill.solid(); obj.fill.fore_color.rgb = color; obj.line.fill.background()
+    return obj
+
+
+def left_arrow(slide, x, y, w=0.34, h=0.24, color=SLATE):
+    obj = slide.shapes.add_shape(MSO_SHAPE.LEFT_ARROW, Inches(x), Inches(y), Inches(w), Inches(h))
+    obj.fill.solid(); obj.fill.fore_color.rgb = color; obj.line.fill.background()
+    return obj
+
+
 def pill(slide, value, x, y, w, fill, color=WHITE, size=11):
     size = max(size, 12)
     box(slide, x, y, w, 0.34, fill, None)
@@ -187,39 +199,54 @@ def build():
     s = header(prs, "02 구조", "bitmap은 직렬화를, depth-2는 재발생을 줄인다", 5,
                "Source: final RTL architecture contract")
     box(s, 0.72, 1.30, 5.80, 4.55); card_head(s, "IDEA 1", "ROW BITMAP", 0.72, 1.30, 5.80, BLUE)
-    text(s, "row 2", 1.08, 2.30, 1.10, 0.24, 15, SLATE, True)
+    text(s, "한 row에 column 4개", 1.08, 2.22, 5.08, 0.26, 15, SLATE, True, PP_ALIGN.CENTER)
     for i in range(4):
-        x = 2.22 + i * 0.76; box(s, x, 2.17, 0.56, 0.56, BLUE_P, BLUE)
-        text(s, "1", x, 2.34, 0.56, 0.20, 16, BLUE, True, PP_ALIGN.CENTER)
-    text(s, "네 scalar 주소", 1.08, 3.20, 1.62, 0.28, 16, INK, True); arrow(s, 2.90, 3.20, 0.52, 0.28, BLUE)
-    box(s, 3.70, 3.03, 2.18, 0.70, BLUE_P, None); text(s, "row + 1111", 3.90, 3.26, 1.78, 0.24, 17, BLUE, True, PP_ALIGN.CENTER)
-    text(s, "한 lane transaction = 최대 4 events", 1.08, 4.30, 4.95, 0.30, 16, SLATE)
+        x = 1.89 + i * 0.92
+        box(s, x, 2.66, 0.70, 0.64, BLUE_P, BLUE)
+        text(s, f"col{i}", x, 2.78, 0.70, 0.18, 12, BLUE, True, PP_ALIGN.CENTER)
+        text(s, "1", x, 3.02, 0.70, 0.18, 14, BLUE, True, PP_ALIGN.CENTER)
+    down_arrow(s, 3.48, 3.36, 0.28, 0.26, BLUE)
+    box(s, 1.46, 3.72, 4.32, 0.74, BLUE_P, None)
+    text(s, "row 2  +  col_mask 1111", 1.70, 3.95, 3.84, 0.24, 17, BLUE, True, PP_ALIGN.CENTER)
+    box(s, 1.28, 4.82, 4.68, 0.54, PALE, None)
+    text(s, "lane transaction 1회 · event 최대 4개", 1.52, 4.98, 4.20, 0.22, 14, NAVY, True, PP_ALIGN.CENTER)
     box(s, 6.82, 1.30, 5.80, 4.55); card_head(s, "IDEA 2", "SOURCE-LOCAL DEPTH-2", 6.82, 1.30, 5.80, ORANGE)
-    text(s, "같은 source", 7.18, 2.30, 1.42, 0.24, 15, SLATE, True)
-    for x, label in [(8.82, "slot 0\nA"), (10.34, "slot 1\nB")]:
-        box(s, x, 2.08, 1.30, 0.82, ORANGE_P, ORANGE); text(s, label, x, 2.25, 1.30, 0.44, 15, ORANGE, True, PP_ALIGN.CENTER)
-    text(s, "A가 grant를 기다리는 동안 B 재발생", 7.18, 3.35, 4.95, 0.30, 16, INK, True)
-    text(s, "두 번째 occurrence를 overrun 대신 저장", 7.18, 4.28, 4.95, 0.30, 16, SLATE)
-    takeaway(s, "bitmap은 serialization을, depth-2는 same-source recurrence를 줄인다", NAVY, PALE)
+    text(s, "같은 source에서 연속 발생", 7.18, 2.22, 5.08, 0.26, 15, SLATE, True, PP_ALIGN.CENTER)
+    for x, tag, value in [(7.48, "SLOT 0", "A · 대기"), (9.92, "SLOT 1", "B · 재발생")]:
+        box(s, x, 2.66, 2.04, 0.92, ORANGE_P, ORANGE)
+        text(s, tag, x, 2.82, 2.04, 0.20, 12, ORANGE, True, PP_ALIGN.CENTER)
+        text(s, value, x, 3.14, 2.04, 0.22, 15, INK, True, PP_ALIGN.CENTER)
+    arrow(s, 9.60, 2.98, 0.24, 0.22, ORANGE)
+    down_arrow(s, 9.58, 3.64, 0.28, 0.24, ORANGE)
+    box(s, 7.46, 3.96, 4.52, 0.68, ORANGE_P, None)
+    text(s, "B를 slot 1에 저장", 7.70, 4.18, 4.04, 0.24, 17, ORANGE, True, PP_ALIGN.CENTER)
+    box(s, 7.28, 4.82, 4.88, 0.54, PALE, None)
+    text(s, "grant 대기 중 재발생 → overrun 완화", 7.52, 4.98, 4.40, 0.22, 14, NAVY, True, PP_ALIGN.CENTER)
+    takeaway(s, "bitmap은 직렬화를, depth-2는 같은 source의 재발생을 줄인다", NAVY, PALE)
 
     # 06. Steal and polarity.
     s = header(prs, "02 구조", "steal은 capacity를, lockstep은 의미를 지킨다", 6,
                "Source: final polarity RTL · native observational contract")
-    box(s, 0.72, 1.30, 5.80, 4.55); card_head(s, "IDEA 3", "CONDITIONAL LANE STEAL", 0.72, 1.30, 5.80, PURPLE)
-    for x, title, body, accent, pale in [(1.10, "CENTER", "busy", TEAL, TEAL_P), (4.20, "PERIPH.", "idle", SLATE, PALE)]:
-        box(s, x, 2.25, 1.76, 1.15, pale, accent); text(s, title, x, 2.48, 1.76, 0.22, 12, accent, True, PP_ALIGN.CENTER)
-        text(s, body, x, 2.86, 1.76, 0.28, 18, accent, True, PP_ALIGN.CENTER)
-    arrow(s, 3.66, 2.68, 0.36, 0.24, PURPLE)
-    text(s, "idle lane capacity를 반대 class가 재사용", 1.08, 4.08, 5.10, 0.30, 16, PURPLE, True, PP_ALIGN.CENTER)
-    text(s, "global fairness 수치는 별도", 1.08, 4.62, 5.10, 0.24, 13, SLATE, False, PP_ALIGN.CENTER)
+    box(s, 0.72, 1.30, 5.80, 4.55); card_head(s, "IDEA 3", "IDLE-LANE STEAL", 0.72, 1.30, 5.80, PURPLE)
+    text(s, "한 class는 busy, 반대 class는 idle", 1.08, 2.22, 5.08, 0.26, 15, SLATE, True, PP_ALIGN.CENTER)
+    for x, title, body, accent, pale in [(1.23, "CENTER", "busy", TEAL, TEAL_P), (4.13, "PERIPHERAL", "idle", SLATE, PALE)]:
+        box(s, x, 2.70, 1.88, 1.04, pale, accent)
+        text(s, title, x, 2.91, 1.88, 0.20, 12, accent, True, PP_ALIGN.CENTER)
+        text(s, body, x, 3.25, 1.88, 0.26, 18, accent, True, PP_ALIGN.CENTER)
+    left_arrow(s, 3.43, 3.10, 0.42, 0.24, PURPLE)
+    box(s, 1.23, 4.16, 4.78, 0.68, PURPLE, None)
+    text(s, "busy class가 idle lane을 재사용", 1.47, 4.38, 4.30, 0.24, 16, WHITE, True, PP_ALIGN.CENTER)
+    text(s, "capacity 활용도 향상 · fairness 정량 평가는 별도", 1.08, 5.08, 5.10, 0.22, 13, SLATE, False, PP_ALIGN.CENTER)
     box(s, 6.82, 1.30, 5.80, 4.55); card_head(s, "IDEA 4", "POLARITY LOCKSTEP", 6.82, 1.30, 5.80, BLUE)
+    text(s, "address·polarity를 같은 source slot에서 처리", 7.18, 2.22, 5.08, 0.26, 15, SLATE, True, PP_ALIGN.CENTER)
     for i, (name, addr, pol) in enumerate([("A", "row2 · col1", "pol 0"), ("B", "row2 · col2", "pol 1")]):
-        y = 2.14 + i * 1.05; box(s, 7.22, y, 5.00, 0.78, BLUE_P, BLUE)
-        text(s, name, 7.46, y + 0.24, 0.38, 0.22, 15, BLUE, True)
-        text(s, addr, 8.06, y + 0.24, 2.08, 0.22, 15, INK, True)
-        text(s, pol, 10.56, y + 0.24, 1.30, 0.22, 15, BLUE, True, PP_ALIGN.RIGHT)
-    text(s, "address와 polarity를 같은 slot에서 push / pop", 7.20, 4.64, 5.04, 0.26, 15, BLUE, True, PP_ALIGN.CENTER)
-    takeaway(s, "steal은 capacity 낭비를 줄이고, lockstep은 selected-event 의미를 보존한다")
+        y = 2.70 + i * 1.02; box(s, 7.22, y, 5.00, 0.74, BLUE_P, BLUE)
+        text(s, name, 7.46, y + 0.26, 0.38, 0.22, 15, BLUE, True)
+        text(s, addr, 8.06, y + 0.26, 2.08, 0.22, 15, INK, True)
+        text(s, pol, 10.56, y + 0.26, 1.30, 0.22, 15, BLUE, True, PP_ALIGN.RIGHT)
+    box(s, 7.22, 4.86, 5.00, 0.48, BLUE, None)
+    text(s, "동시 push · 동시 pop · 의미 보존", 7.46, 5.00, 4.52, 0.20, 14, WHITE, True, PP_ALIGN.CENTER)
+    takeaway(s, "steal은 capacity 낭비를 줄이고, lockstep은 selected event의 의미를 보존한다")
 
     # 07. Encoding boundary.
     s = header(prs, "02 구조", "주소 절감은 제출 RTL과 후속 실험을 분리했다", 7,
