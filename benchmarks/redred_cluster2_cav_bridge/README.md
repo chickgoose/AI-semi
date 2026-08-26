@@ -175,11 +175,17 @@ not common-seam, CAV, or PPA evidence. Likewise, the pinned converter plus
 tracked cyclemask bind
 only those repository bytes; no official UZH archive/member or source-to-
 cyclemask reproduction receipt is bound or claimed here.
-The present TB ledger expands native bitmaps directly to `EVENT` rows instead
-of emitting a second raw per-cycle lane-observation stream. Adding that raw
-stream and binding the committed TB, parser, runner, and outputs in a semantic
-receipt remains **HOLD**; this checkpoint does not promote an unsealed runner
-PASS to common-seam evidence.
+The selected polarity-v1 track is separately bound by
+`polarity_release_authority.json`. Its observational TB emits only raw
+per-cycle lane, overrun, column-mask, and polarity-mask records; it assigns no
+event IDs. `polarity_native_ledger.py` independently rebuilds the two-entry
+per-source FIFO from the pinned address/polarity trace. Only `pol_mask` bits
+selected by `col_mask` represent retired events; other row-slice polarity bits
+are intentionally ignored. The sealed Xcelium 23.09 replay observed 8,503
+generated and delivered events, zero overrun, zero phantom or duplicate
+retirements, and an empty bounded drain. The release gate reports **GO** for
+this native polarity transport scope while explicitly declining event-ID order
+independence and any common-seam, CAV RTL, physical-signoff, or PPA claim.
 
 ## Official UZH-to-world functional replay
 

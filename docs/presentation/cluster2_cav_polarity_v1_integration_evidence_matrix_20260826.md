@@ -2,7 +2,7 @@
 
 Date: 2026-08-26
 
-Working branch: `work/polarity-a8-evidence`
+Integration branch: `integration/cluster2-steal-buf-cav-polarity-v1`
 
 Status: **FINAL INTEGRATED POLARITY-V1 EVIDENCE — GO**
 
@@ -63,7 +63,7 @@ The integrated release authority grants
 | Identity scope | `identity_order_independence_claimed=false` | explicit limitation |
 | Verification report SHA-256 | `19d2ff34720b4fa594eb8dc847f47c383e20e16b14727a5a4e353a8d0f6a375e` | bound |
 | Raw CYCLE ledger SHA-256 | `7096a7b0ebdc2fd50cda31e4c977cd4ed1a7e75585174d17051fe89cbab89ea8` | bound |
-| Native evidence archive SHA-256 | `28401809a244571f084d01a2cc950ad381fc393f8b9a747364c45abbb16e8610` | bound |
+| Native evidence archive SHA-256 | `28401809a244571f084d01a2cc950ad381fc393f8b9a747364c45abbb16e8610` | separately preserved; not a required release-manifest role |
 | Polarity release tests | 14/14 PASS | **PASS** |
 | Bridge regression | 189 PASS, 4 environment-gated SKIP | **PASS with disclosed skips** |
 | Polarity-v1 functional release gate | all required bound checks closed | **GO** |

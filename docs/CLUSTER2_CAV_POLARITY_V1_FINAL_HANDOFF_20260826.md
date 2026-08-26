@@ -27,6 +27,11 @@ legacy address-only canonical result JSON or claim a new test execution.
 - Native evidence archive SHA-256:
   `28401809a244571f084d01a2cc950ad381fc393f8b9a747364c45abbb16e8610`.
 
+The archive is a separately preserved convenience bundle. Release GO is
+derived from the manifest-bound raw trace, raw CYCLE ledger, RTL, TB, runner,
+independent verifier, receipt, and integration authority rather than from the
+archive alone.
+
 Xcelium `23.09-s013` passed with generated=8503, delivered=8503,
 overrun=0, phantom=0, duplicate=0, drain_empty=true, final_cycle=59426, and
 observed_cycles=59427. The release tests are 14/14 PASS; the bridge regression
