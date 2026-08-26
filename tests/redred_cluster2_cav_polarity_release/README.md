@@ -1,29 +1,52 @@
 # Cluster2/CAV polarity-v1 release gate
 
-This self-contained package is safe to cherry-pick before the polarity release
-artifacts.  It does not modify or synthesize RTL.  The repository probe remains
-`HOLD` until the fixed manifest exists at:
+This self-contained package is safe to cherry-pick before the release
+artifacts. It does not modify or synthesize RTL. The repository probe remains
+`HOLD` until an actual receipt and the fixed manifest exist at:
 
 ```text
 benchmarks/redred_cluster2_cav_bridge/polarity_release_authority.json
 ```
 
-The manifest must bind exact SHA-256 values for an explicit, wildcard-free
-synthesis filelist and source closure; polarity-v1 RTL, TB, trace, ledger, and
-receipt; and a separate integration-authority document.  All text declares
-either canonical `LF` or exact `CRLF` raw bytes plus its normalized-LF digest.
+The v2 manifest binds full raw and semantic SHA-256 values for:
 
-The source, receipt, and integration commits are three distinct stages.  The
-source commit may identify Ganghee's external repository; the receipt and
-integration commits must be available in the integrated repository, with the
-receipt commit an ancestor of the integration commit and every integrated blob
-matching the manifest.  The integration-authority document must explicitly say
-`NATIVE_POLARITY_V1_BOUND` and grant release authority.
+- the explicit, wildcard-free source filelist containing exactly `arbiter2.v`,
+  `arbiter4_tree.v`, and the selected polarity-v1 RTL;
+- polarity-v1 RTL, the native observational TB and runner, the authoritative
+  raw addr/polarity trace, the raw CYCLE ledger, the independent verifier, and
+  the actual receipt; and
+- a separate integration-authority document granting
+  `EXPLICIT_INTEGRATION_RELEASE_AUTHORITY` with
+  `NATIVE_POLARITY_V1_BOUND`.
 
-The trace and ledger are canonical JSONL with ordered event IDs `0..8502`.
-The gate recomputes exactly 8,503 generated and delivered events, zero overrun,
-and zero expected-versus-observed polarity mismatches.  Declared counters alone
-cannot promote the gate.
+All text declares canonical `LF`, or (for an input that supports it) exact
+`CRLF` raw bytes plus a normalized-LF digest. The da329e3-compatible raw CYCLE
+ledger itself is canonical LF.
+
+Authority has three stages. Ganghee commit
+`44f8918c6e0085f7b75bb90fbe6c099abe1882cc` is pinned as external source
+provenance and is intentionally **not** required to exist as a commit object in
+the integration repository. The receipt and integration commits are distinct
+local commits; the receipt must be an ancestor of the integration commit, and
+their scoped blobs must match every declared hash.
+
+The gate independently reparses raw `cycle addr_mask polarity_mask` records and
+reconstructs the two-entry per-source polarity FIFOs from the cycle-complete
+ledger contract introduced by `da329e3`. The raw trace must expand to 8,503
+generated occurrences. Delivered and overrun totals are not assumed: they are
+derived only after replay and must conserve `generated = delivered + overrun`.
+Every native retirement must match the FIFO-front polarity; phantom,
+duplicate, incomplete-drain, malformed-geometry, and polarity failures hold the
+release. JSONL `EVENT` IDs and predeclared manifest counters have no release
+authority.
+
+The TB binding follows the actual native observational interface and markers:
+the `redred_cluster2_polarity_v1_native_observational_tb` top, native
+`polarity_in`/`pol_mask0`/`pol_mask1` wiring, lowercase `polarity mismatch`
+failure text, and
+`REDRED_CLUSTER2_POLARITY_V1_NATIVE_PASS generated=%0d delivered=%0d overrun=%0d polarity_checked=%0d`.
+The runner binding likewise requires its external source pin, trace/TB hashes,
+and `POLARITY_V1_NATIVE_PASS commit=%s simulator=%s events=%d output_root=%s`.
 
 Run the mutation suite and current-tree probe with:
 
@@ -31,4 +54,5 @@ Run the mutation suite and current-tree probe with:
 tests/redred_cluster2_cav_polarity_release/run_all.sh
 ```
 
-The probe exits `0` only for `GO`; a fail-closed `HOLD` exits `2`.
+The probe exits `0` only for `GO`; absent manifest or receipt and all other
+fail-closed cases return `HOLD` with exit `2`.
